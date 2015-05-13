@@ -2,6 +2,7 @@
 #![feature(core)]
 #![feature(catch_panic)]
 
+use std::rc::Rc;
 use std::cell::RefCell;
 use std::boxed::FnBox;
 use std::any::Any;
@@ -12,39 +13,10 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc;
 use std::ptr::{self, Unique};
 
-unsafe impl<T> Send for AtomicOption<T> {}
+use atomic_option::AtomicOption;
 
-pub struct AtomicOption<T> {
-    inner: AtomicPtr<T>,
-}
-
-impl<T> AtomicOption<T> {
-    pub fn new() -> AtomicOption<T> {
-        AtomicOption { inner: AtomicPtr::new(ptr::null_mut()) }
-    }
-
-    fn swap_inner(&self, ptr: *mut T, order: Ordering) -> Option<Box<T>> {
-        let old = self.inner.swap(ptr, order);
-        if old.is_null() {
-            None
-        } else {
-            Some(unsafe { mem::transmute(old) })
-        }
-    }
-
-    // allows re-use of allocation
-    pub fn swap_box(&self, t: Box<T>, order: Ordering) -> Option<Box<T>> {
-        self.swap_inner(unsafe { mem::transmute(t) }, order)
-    }
-
-    pub fn swap(&self, t: T, order: Ordering) -> Option<T> {
-        self.swap_box(Box::new(t), order).map(|old| *old)
-    }
-
-    pub fn take(&self, order: Ordering) -> Option<T> {
-        self.swap_inner(ptr::null_mut(), order).map(|old| *old)
-    }
-}
+mod atomic_option;
+mod raw_thread;
 
 pub type WorkResult<T> = Result<T, Box<Any + Send>>;
 
@@ -155,36 +127,6 @@ impl Drop for ThreadPool {
     }
 }
 
-struct RawHandle<T> {
-    inner: thread::JoinHandle<()>,
-    packet: Arc<AtomicOption<T>>,
-}
-
-unsafe fn spawn_raw<'a, F, T>(f: F) -> RawHandle<T> where
-    F: FnOnce() -> T + 'a, T: 'a
-{
-    let their_packet = Arc::new(AtomicOption::new());
-    let my_packet = their_packet.clone();
-
-    let closure: Box<FnBox() + 'a> = Box::new(move || {
-        their_packet.swap(f(), Ordering::Relaxed);
-    });
-    let closure: Box<FnBox() + Send> = mem::transmute(closure);
-
-    RawHandle {
-        inner: thread::spawn(closure),
-        packet: my_packet,
-    }
-}
-
-impl<T> RawHandle<T> {
-    unsafe fn join(self) -> WorkResult<T> {
-        let packet = self.packet;
-        self.inner.join().map(|_| {
-            packet.take(Ordering::Relaxed).unwrap()
-        })
-    }
-}
 
 pub struct Scope<'a> {
     dtors: RefCell<Option<DtorChain<'a>>>
@@ -193,6 +135,38 @@ pub struct Scope<'a> {
 struct DtorChain<'a> {
     dtor: Box<FnBox() + 'a>,
     next: Option<Box<DtorChain<'a>>>
+}
+
+enum JoinState {
+    Running(thread::JoinHandle<()>),
+    Joined(WorkResult<()>),
+    Empty,
+}
+
+impl JoinState {
+    fn join(&mut self) {
+        let mut state = JoinState::Empty;
+        mem::swap(self, &mut state);
+        if let JoinState::Running(handle) = state {
+            *self = JoinState::Joined(handle.join())
+        }
+    }
+
+    fn join_and_extract(&mut self) -> WorkResult<()> {
+        let mut state = JoinState::Empty;
+        mem::swap(self, &mut state);
+        match state {
+            JoinState::Running(handle) => handle.join(),
+            JoinState::Joined(res) => res,
+            _ => unreachable!(),
+        }
+    }
+}
+
+pub struct ScopedJoinHandle<T> {
+    inner: Rc<RefCell<JoinState>>,
+    packet: Arc<AtomicOption<T>>,
+    thread: thread::Thread,
 }
 
 pub fn scope<'a, F, R>(f: F) -> R where F: FnOnce(&Scope<'a>) -> R {
@@ -233,11 +207,44 @@ impl<'a> Scope<'a> {
         });
     }
 
-    pub fn spawn<F, T>(&self, f: F) -> thread::JoinHandle<T> where
-        F: FnOnce() -> T + Send + 'a,
-        T: Send + 'static
+    pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T> where
+        F: FnOnce() -> T + Send + 'a, T: Send + 'a
     {
-        panic!()
+        let their_packet = Arc::new(AtomicOption::new());
+        let my_packet = their_packet.clone();
+
+        let join_handle = unsafe {
+            raw_thread::spawn(move || {
+                their_packet.swap(f(), Ordering::Relaxed);
+            })
+        };
+
+        let thread = join_handle.thread().clone();
+        let deferred_handle = Rc::new(RefCell::new(JoinState::Running(join_handle)));
+        let my_handle = deferred_handle.clone();
+
+        self.defer(move || {
+            let mut state = deferred_handle.borrow_mut();
+            state.join();
+        });
+
+        ScopedJoinHandle {
+            inner: my_handle,
+            packet: my_packet,
+            thread: thread,
+        }
+    }
+}
+
+impl<T> ScopedJoinHandle<T> {
+    pub fn join(self) -> WorkResult<T> {
+        self.inner.borrow_mut().join_and_extract().map(|_| {
+            self.packet.take(Ordering::Relaxed).unwrap()
+        })
+    }
+
+    pub fn thread(&self) -> &thread::Thread {
+        &self.thread
     }
 }
 
