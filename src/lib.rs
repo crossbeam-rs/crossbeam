@@ -155,6 +155,37 @@ impl Drop for ThreadPool {
     }
 }
 
+struct RawHandle<T> {
+    inner: thread::JoinHandle<()>,
+    packet: Arc<AtomicOption<T>>,
+}
+
+unsafe fn spawn_raw<'a, F, T>(f: F) -> RawHandle<T> where
+    F: FnOnce() -> T + 'a, T: 'a
+{
+    let their_packet = Arc::new(AtomicOption::new());
+    let my_packet = their_packet.clone();
+
+    let closure: Box<FnBox() + 'a> = Box::new(move || {
+        their_packet.swap(f(), Ordering::Relaxed);
+    });
+    let closure: Box<FnBox() + Send> = mem::transmute(closure);
+
+    RawHandle {
+        inner: thread::spawn(closure),
+        packet: my_packet,
+    }
+}
+
+impl<T> RawHandle<T> {
+    unsafe fn join(self) -> WorkResult<T> {
+        let packet = self.packet;
+        self.inner.join().map(|_| {
+            packet.take(Ordering::Relaxed).unwrap()
+        })
+    }
+}
+
 pub struct Scope<'a> {
     dtors: RefCell<Option<DtorChain<'a>>>
 }
