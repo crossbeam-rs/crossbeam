@@ -1,7 +1,5 @@
 use std::boxed::FnBox;
 use std::mem;
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::thread;
 
 pub unsafe fn spawn<'a, F>(f: F) -> thread::JoinHandle<()> where F: FnOnce() + 'a {
