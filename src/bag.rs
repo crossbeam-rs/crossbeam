@@ -35,7 +35,10 @@ impl<T> Bag<T> {
     }
 
     pub fn iter<'a>(&'a self) -> Iter<'a, T> {
-        Iter { next: &self.head }
+        Iter {
+            next: &self.head,
+            needs_acq: true,
+        }
     }
 }
 
@@ -59,13 +62,21 @@ impl<T> Iterator for IterClobber<T> {
 
 pub struct Iter<'a, T: 'a> {
     next: &'a AtomicPtr<Node<T>>,
+    needs_acq: bool,
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<&'a T> {
         unsafe {
-            let cur = self.next.load(Acquire);
+            let cur;
+            if self.needs_acq {
+                self.needs_acq = false;
+                cur = self.next.load(Acquire);
+            } else {
+                cur = self.next.load(Relaxed);
+            }
+
             if cur == ptr::null_mut() { return None }
             let Node { ref data, ref next } = *cur;
             self.next = mem::transmute(next);
