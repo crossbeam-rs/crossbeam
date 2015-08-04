@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cell::Cell;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
@@ -59,7 +60,7 @@ static EPOCH: EpochState = EpochState::new();
 
 struct Handle {
     participant: *const Participant,
-    op_count: u32,
+    op_count: Cell<u32>,
 }
 
 impl Handle {
@@ -70,10 +71,10 @@ impl Handle {
 
         let epoch = EPOCH.epoch.load(Relaxed);
         if epoch == part.epoch.load(Relaxed) {
-            self.op_count = self.op_count.saturating_add(1);
+            self.op_count.set(self.op_count.get().saturating_add(1));
         } else {
             part.epoch.store(epoch, Relaxed);
-            self.op_count = 0
+            self.op_count.set(0)
         }
     }
 
@@ -152,26 +153,53 @@ impl<'a, T> Deref for Shared<'a, T> {
     }
 }
 
+impl<'a, T> Shared<'a, T> {
+    unsafe fn from_raw(raw: *mut T) -> Shared<'a, T> {
+        Shared { data: mem::transmute(raw) }
+    }
+
+    unsafe fn from_ref(r: &T) -> Shared<'a, T> {
+        Shared { data: mem::transmute(r) }
+    }
+
+    unsafe fn from_owned(owned: Owned<T>) -> Shared<'a, T> {
+        Shared::from_ref(owned.deref())
+    }
+
+    fn as_raw(&self) -> *mut T {
+        self.data as *const _ as *mut _
+    }
+}
+
+impl<T> Owned<T> {
+    fn as_raw(&self) -> *mut T {
+        self.deref() as *const _ as *mut _
+    }
+}
+
 pub struct AtomicPtr<T> {
     ptr: atomic::AtomicPtr<T>,
 }
 
-impl<T> AtomicPtr<T> {
+impl<T> Default for AtomicPtr<T> {
+    fn default() -> AtomicPtr<T> {
+        AtomicPtr { ptr: atomic::AtomicPtr::new(ptr::null_mut()) }
+    }
+}
 
+impl<T> AtomicPtr<T> {
     pub fn load<'a>(&self, ord: Ordering, _: &'a Guard) -> Option<Shared<'a, T>> {
         let p = self.ptr.load(ord);
         if p == ptr::null_mut() {
             None
         } else {
-            Some(Shared {
-                data: unsafe { mem::transmute(p) },
-            })
+            Some(unsafe { Shared::from_raw(p) })
         }
     }
 
     pub fn store<'a>(&self, val: Owned<T>, ord: Ordering, g: &'a Guard) -> Shared<'a, T> {
         unsafe {
-            let shared = Shared { data: mem::transmute(val.deref()) };
+            let shared = Shared::from_owned(val);
             self.store_shared(shared, ord);
             shared
         }
@@ -182,30 +210,33 @@ impl<T> AtomicPtr<T> {
     }
 
     pub unsafe fn store_shared(&self, val: Shared<T>, ord: Ordering) {
-        self.ptr.store(val.deref() as *const _ as *mut _, ord)
+        self.ptr.store(val.as_raw(), ord)
     }
 
     pub fn cas<'a>(&self, old: Shared<T>, new: Owned<T>, ord: Ordering, _: &'a Guard)
                    -> Result<Shared<'a, T>, Owned<T>>
     {
-        let old_p = old.deref() as *const _ as *mut _;
-        let new_p = new.deref() as *const _ as *mut _;
-        if self.ptr.compare_and_swap(old_p, new_p, ord) == old_p {
-            unsafe { Ok(mem::transmute(new.deref())) }
+        if self.ptr.compare_and_swap(old.as_raw(), new.as_raw(), ord) == old.as_raw() {
+            Ok(unsafe { Shared::from_owned(new) })
         } else {
             Err(new)
         }
     }
 
     pub fn cas_to_null(&self, old: Shared<T>, ord: Ordering) -> bool {
-        let old_p = old.deref() as *const _ as *mut _;
-        self.ptr.compare_and_swap(old_p, ptr::null_mut(), ord) == old_p
+        self.ptr.compare_and_swap(old.as_raw(), ptr::null_mut(), ord) == old.as_raw()
     }
 
     pub unsafe fn cas_shared(&self, old: Shared<T>, new: Shared<T>, ord: Ordering) -> bool {
-        let old_p = old.deref() as *const _ as *mut _;
-        let new_p = new.deref() as *const _ as *mut _;
-        self.ptr.compare_and_swap(old_p, new_p, ord) == old_p
+        self.ptr.compare_and_swap(old.as_raw(), new.as_raw(), ord) == old.as_raw()
+    }
+
+    pub fn swap<'a>(&self, new: Owned<T>, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
+        unsafe { Shared::from_raw(self.ptr.swap(new.as_raw(), ord)) }
+    }
+
+    pub fn swap_null<'a>(&self, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
+        unsafe { Shared::from_raw(self.ptr.swap(ptr::null_mut(), ord)) }
     }
 }
 
