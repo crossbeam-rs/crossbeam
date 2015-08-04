@@ -250,6 +250,12 @@ pub struct Guard {
     _dummy: ()
 }
 
+impl Guard {
+    pub fn unlinked<T>(&self, val: Shared<T>) {
+        LOCAL_EPOCH.with(|p| unsafe { (**p).reclaim(val.as_raw()) })
+    }
+}
+
 impl Drop for Guard {
     fn drop(&mut self) {
         LOCAL_EPOCH.with(|p| unsafe { (**p).exit() });
