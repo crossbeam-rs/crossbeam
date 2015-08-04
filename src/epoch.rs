@@ -1,14 +1,14 @@
-use std::any::Any;
-use std::cell::Cell;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
 use std::ops::{Deref, DerefMut};
-use std::marker;
 
 use bag::Bag;
 use cache_padded::CachePadded;
+
+trait AnyType {}
+impl<T: ?Sized> AnyType for T {}
 
 struct Participants {
     bag: Bag<CachePadded<Participant>>,
@@ -17,6 +17,7 @@ struct Participants {
 struct Participant {
     epoch: AtomicUsize,
     in_critical: AtomicBool,
+    op_count: u32,
 }
 
 impl Participants {
@@ -24,20 +25,21 @@ impl Participants {
         Participants { bag: Bag::new() }
     }
 
-    fn enroll(&self) -> *const Participant {
+    fn enroll(&self) -> *mut Participant {
         let participant = Participant {
             epoch: AtomicUsize::new(0),
             in_critical: AtomicBool::new(false),
+            op_count: 0,
         };
         unsafe {
-            (*self.bag.insert(CachePadded::new(participant))).deref()
+            self.bag.insert(CachePadded::new(participant)) as *mut _
         }
     }
 }
 
 struct EpochState {
     epoch: CachePadded<AtomicUsize>,
-    garbage: [CachePadded<Bag<*mut Any>>; 3],
+    garbage: [CachePadded<Bag<*mut AnyType>>; 3],
     participants: Participants,
 }
 
@@ -58,36 +60,33 @@ impl EpochState {
 
 static EPOCH: EpochState = EpochState::new();
 
-struct Handle {
-    participant: *const Participant,
-    op_count: Cell<u32>,
-}
-
-impl Handle {
+impl Participant {
     fn enter(&mut self) {
-        let part = unsafe { &*self.participant };
-        part.in_critical.store(true, Relaxed);
+        self.in_critical.store(true, Relaxed);
         atomic::fence(SeqCst);
 
         let epoch = EPOCH.epoch.load(Relaxed);
-        if epoch == part.epoch.load(Relaxed) {
-            self.op_count.set(self.op_count.get().saturating_add(1));
+        if epoch == self.epoch.load(Relaxed) {
+            self.op_count = self.op_count.saturating_add(1);
         } else {
-            part.epoch.store(epoch, Relaxed);
-            self.op_count.set(0)
+            self.epoch.store(epoch, Relaxed);
+            self.op_count = 0;
         }
     }
 
     fn exit(&mut self) {
         unsafe {
-            (*self.participant).in_critical.store(false, Release);
+            self.in_critical.store(false, Release);
         }
     }
 
-    fn reclaim<T: Any>(&mut self, data: *mut T) {
-        unsafe {
-            EPOCH.garbage[(*self.participant).epoch.load(Relaxed)].insert(data);
-        }
+    fn reclaim<T>(&mut self, data: *mut T) {
+        let data: *mut AnyType = data;
+        EPOCH.garbage[self.epoch.load(Relaxed)]
+             .insert(unsafe {
+                 // forget any borrows within `data`:
+                 mem::transmute(data)
+             });
     }
 }
 
@@ -240,7 +239,10 @@ impl<T> AtomicPtr<T> {
     }
 }
 
+thread_local!(static LOCAL_EPOCH: *mut Participant = EPOCH.participants.enroll());
+
 pub fn pin() -> Guard {
+    LOCAL_EPOCH.with(|p| unsafe { (**p).enter() });
     Guard {
         _dummy: ()
     }
@@ -252,6 +254,6 @@ pub struct Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
-
+        LOCAL_EPOCH.with(|p| unsafe { (**p).exit() });
     }
 }
