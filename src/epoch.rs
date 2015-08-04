@@ -1,6 +1,6 @@
 use std::mem;
 use std::ptr;
-use std::sync::atomic::{self, AtomicUsize, AtomicBool};
+use std::sync::atomic::{self, AtomicUsize};
 use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
 use std::ops::{Deref, DerefMut};
 
@@ -16,7 +16,7 @@ struct Participants {
 
 struct Participant {
     epoch: AtomicUsize,
-    in_critical: AtomicBool,
+    active: AtomicUsize,
     op_count: u32,
 }
 
@@ -28,7 +28,7 @@ impl Participants {
     fn enroll(&self) -> *mut Participant {
         let participant = Participant {
             epoch: AtomicUsize::new(0),
-            in_critical: AtomicBool::new(false),
+            active: AtomicUsize::new(0),
             op_count: 0,
         };
         unsafe {
@@ -62,7 +62,7 @@ static EPOCH: EpochState = EpochState::new();
 
 impl Participant {
     fn enter(&mut self) {
-        self.in_critical.store(true, Relaxed);
+        self.active.store(self.active.load(Relaxed) + 1, Relaxed);
         atomic::fence(SeqCst);
 
         let epoch = EPOCH.epoch.load(Relaxed);
@@ -75,9 +75,7 @@ impl Participant {
     }
 
     fn exit(&mut self) {
-        unsafe {
-            self.in_critical.store(false, Release);
-        }
+        self.active.store(self.active.load(Relaxed) - 1, Release);
     }
 
     fn reclaim<T>(&mut self, data: *mut T) {
@@ -95,7 +93,7 @@ pub fn try_collect() -> bool {
     let cur_epoch = EPOCH.epoch.load(SeqCst);
 
     for p in EPOCH.participants.bag.iter() {
-        if p.in_critical.load(Relaxed) && p.epoch.load(Relaxed) != cur_epoch {
+        if p.active.load(Relaxed) > 0 && p.epoch.load(Relaxed) != cur_epoch {
             return false
         }
     }
@@ -196,7 +194,7 @@ impl<T> AtomicPtr<T> {
         }
     }
 
-    pub fn store<'a>(&self, val: Owned<T>, ord: Ordering, g: &'a Guard) -> Shared<'a, T> {
+    pub fn store<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
         unsafe {
             let shared = Shared::from_owned(val);
             self.store_shared(shared, ord);
