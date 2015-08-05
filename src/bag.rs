@@ -18,7 +18,7 @@ impl<T> Bag<T> {
     }
 
     pub fn insert(&self, t: T) -> *const T {
-        let mut n = Box::into_raw(Box::new(
+        let n = Box::into_raw(Box::new(
             Node { data: t, next: AtomicPtr::new(ptr::null_mut()) })) as *mut Node<T>;
         loop {
             let head = self.head.load(Relaxed);
@@ -32,13 +32,6 @@ impl<T> Bag<T> {
         let out = self.head.load(Relaxed);
         self.head.store(ptr::null_mut(), Relaxed);
         mem::transmute(out)
-    }
-
-    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
-        Iter {
-            next: &self.head,
-            needs_acq: true,
-        }
     }
 }
 
@@ -57,30 +50,5 @@ impl<T> Iterator for IterClobber<T> {
             self.0 = next;
             data
         })
-    }
-}
-
-pub struct Iter<'a, T: 'a> {
-    next: &'a AtomicPtr<Node<T>>,
-    needs_acq: bool,
-}
-
-impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = &'a T;
-    fn next(&mut self) -> Option<&'a T> {
-        unsafe {
-            let cur;
-            if self.needs_acq {
-                self.needs_acq = false;
-                cur = self.next.load(Acquire);
-            } else {
-                cur = self.next.load(Relaxed);
-            }
-
-            if cur == ptr::null_mut() { return None }
-            let Node { ref data, ref next } = *cur;
-            self.next = mem::transmute(next);
-            Some(mem::transmute(data))
-        }
     }
 }

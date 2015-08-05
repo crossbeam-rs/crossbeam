@@ -1,6 +1,7 @@
+use std::cell::Cell;
 use std::mem;
 use std::ptr;
-use std::sync::atomic::{self, AtomicUsize};
+use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
 use std::ops::{Deref, DerefMut};
 
@@ -11,29 +12,77 @@ trait AnyType {}
 impl<T: ?Sized> AnyType for T {}
 
 struct Participants {
-    bag: Bag<CachePadded<Participant>>,
+    head: AtomicPtr<ParticipantNode>
 }
+
+type ParticipantNode = CachePadded<Participant>;
 
 struct Participant {
     epoch: AtomicUsize,
-    active: AtomicUsize,
-    op_count: u32,
+    in_critical: AtomicUsize,
+    op_count: Cell<u32>,
+    active: AtomicBool,
+    next: AtomicPtr<ParticipantNode>,
 }
 
 impl Participants {
     const fn new() -> Participants {
-        Participants { bag: Bag::new() }
+        Participants { head: AtomicPtr::new() }
     }
 
-    fn enroll(&self) -> *mut Participant {
-        let participant = Participant {
-            epoch: AtomicUsize::new(0),
-            active: AtomicUsize::new(0),
-            op_count: 0,
-        };
-        unsafe {
-            self.bag.insert(CachePadded::new(participant)) as *mut _
+    fn enroll(&self) -> &'static Participant {
+        let mut participant = Owned::new(unsafe { CachePadded::new(
+            Participant {
+                epoch: AtomicUsize::new(0),
+                in_critical: AtomicUsize::new(0),
+                op_count: Cell::new(0),
+                active: AtomicBool::new(true),
+                next: AtomicPtr::default(),
+            }
+        )});
+        let g = Guard { _dummy: () };
+        loop {
+            let head = self.head.load(Relaxed, &g);
+            unsafe { participant.next.store_shared(head, Relaxed) };
+            match self.head.cas_and_ref(head, participant, Release, &g) {
+                Ok(shared) => {
+                    return unsafe { mem::transmute::<&Participant, _>(&shared) };
+                }
+                Err(owned) => {
+                    participant = owned;
+                }
+            }
         }
+    }
+
+    fn iter<'a>(&'a self, g: &'a Guard) -> Iter<'a> {
+        Iter {
+            guard: g,
+            next: &self.head,
+            needs_acq: true,
+        }
+    }
+}
+
+struct Iter<'a> {
+    guard: &'a Guard,
+    next: &'a AtomicPtr<ParticipantNode>,
+    needs_acq: bool,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = &'a Participant;
+    fn next(&mut self) -> Option<&'a Participant> {
+        let cur = if self.needs_acq {
+            self.needs_acq = false;
+            self.next.load(Acquire, self.guard)
+        } else {
+            self.next.load(Relaxed, self.guard)
+        };
+        cur.map(|n| {
+            self.next = &n.next;
+            &***n
+        })
     }
 }
 
@@ -61,24 +110,24 @@ impl EpochState {
 static EPOCH: EpochState = EpochState::new();
 
 impl Participant {
-    fn enter(&mut self) {
-        self.active.store(self.active.load(Relaxed) + 1, Relaxed);
+    fn enter(&self) {
+        self.in_critical.store(self.in_critical.load(Relaxed) + 1, Relaxed);
         atomic::fence(SeqCst);
 
         let epoch = EPOCH.epoch.load(Relaxed);
         if epoch == self.epoch.load(Relaxed) {
-            self.op_count = self.op_count.saturating_add(1);
+            self.op_count.set(self.op_count.get().saturating_add(1));
         } else {
             self.epoch.store(epoch, Relaxed);
-            self.op_count = 0;
+            self.op_count.set(0);
         }
     }
 
-    fn exit(&mut self) {
-        self.active.store(self.active.load(Relaxed) - 1, Release);
+    fn exit(&self) {
+        self.in_critical.store(self.in_critical.load(Relaxed) - 1, Release);
     }
 
-    fn reclaim<T>(&mut self, data: *mut T) {
+    fn reclaim<T>(&self, data: *mut T) {
         let data: *mut AnyType = data;
         EPOCH.garbage[self.epoch.load(Relaxed)]
              .insert(unsafe {
@@ -88,34 +137,18 @@ impl Participant {
     }
 }
 
-
-pub fn try_collect() -> bool {
-    let cur_epoch = EPOCH.epoch.load(SeqCst);
-
-    for p in EPOCH.participants.bag.iter() {
-        if p.active.load(Relaxed) > 0 && p.epoch.load(Relaxed) != cur_epoch {
-            return false
-        }
-    }
-
-    let new_epoch = (cur_epoch + 1) % 3;
-    atomic::fence(Acquire);
-    if EPOCH.epoch.compare_and_swap(cur_epoch, new_epoch, SeqCst) != cur_epoch {
-        return false
-    }
-
-    unsafe {
-        for g in EPOCH.garbage[(new_epoch + 1) % 3].iter_clobber() {
-            // the pointer g is now unique; drop it
-            mem::drop(Box::from_raw(g))
-        }
-    }
-
-    true
-}
-
 pub struct Owned<T> {
     data: Box<T>,
+}
+
+impl<T> Owned<T> {
+    pub fn new(t: T) -> Owned<T> {
+        Owned { data: Box::new(t) }
+    }
+
+    fn as_raw(&self) -> *mut T {
+        self.deref() as *const _ as *mut _
+    }
 }
 
 impl<T> Deref for Owned<T> {
@@ -144,15 +177,16 @@ impl<'a, T> Clone for Shared<'a, T> {
 }
 
 impl<'a, T> Deref for Shared<'a, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        self.data
+    type Target = &'a T;
+    fn deref(&self) -> &&'a T {
+        &self.data
     }
 }
 
 impl<'a, T> Shared<'a, T> {
-    unsafe fn from_raw(raw: *mut T) -> Shared<'a, T> {
-        Shared { data: mem::transmute(raw) }
+    unsafe fn from_raw(raw: *mut T) -> Option<Shared<'a, T>> {
+        if raw == ptr::null_mut() { None }
+        else { Some(Shared { data: mem::transmute(raw) }) }
     }
 
     unsafe fn from_ref(r: &T) -> Shared<'a, T> {
@@ -168,12 +202,6 @@ impl<'a, T> Shared<'a, T> {
     }
 }
 
-impl<T> Owned<T> {
-    fn as_raw(&self) -> *mut T {
-        self.deref() as *const _ as *mut _
-    }
-}
-
 pub struct AtomicPtr<T> {
     ptr: atomic::AtomicPtr<T>,
 }
@@ -184,80 +212,136 @@ impl<T> Default for AtomicPtr<T> {
     }
 }
 
+fn opt_shared_into_raw<T>(val: Option<Shared<T>>) -> *mut T {
+    val.map(|p| p.as_raw()).unwrap_or(ptr::null_mut())
+}
+
+fn opt_owned_as_raw<T>(val: &Option<Owned<T>>) -> *mut T {
+    val.as_ref().map(Owned::as_raw).unwrap_or(ptr::null_mut())
+}
+
 impl<T> AtomicPtr<T> {
-    pub fn load<'a>(&self, ord: Ordering, _: &'a Guard) -> Option<Shared<'a, T>> {
-        let p = self.ptr.load(ord);
-        if p == ptr::null_mut() {
-            None
-        } else {
-            Some(unsafe { Shared::from_raw(p) })
-        }
+    pub const fn new() -> AtomicPtr<T> {
+        AtomicPtr { ptr: atomic::AtomicPtr::new(0 as *mut _) }
     }
 
-    pub fn store<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
+    pub fn load<'a>(&self, ord: Ordering, _: &'a Guard) -> Option<Shared<'a, T>> {
+        unsafe { Shared::from_raw(self.ptr.load(ord)) }
+    }
+
+    pub fn store(&self, val: Option<Owned<T>>, ord: Ordering) {
+        self.ptr.store(opt_owned_as_raw(&val), ord)
+    }
+
+    pub fn store_and_ref<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
         unsafe {
             let shared = Shared::from_owned(val);
-            self.store_shared(shared, ord);
+            self.store_shared(Some(shared), ord);
             shared
         }
     }
 
-    pub fn store_null(&self, ord: Ordering) {
-        self.ptr.store(ptr::null_mut(), ord)
+    pub unsafe fn store_shared(&self, val: Option<Shared<T>>, ord: Ordering) {
+        self.ptr.store(opt_shared_into_raw(val), ord)
     }
 
-    pub unsafe fn store_shared(&self, val: Shared<T>, ord: Ordering) {
-        self.ptr.store(val.as_raw(), ord)
-    }
-
-    pub fn cas<'a>(&self, old: Shared<T>, new: Owned<T>, ord: Ordering, _: &'a Guard)
-                   -> Result<Shared<'a, T>, Owned<T>>
+    pub fn cas(&self, old: Option<Shared<T>>, new: Option<Owned<T>>, ord: Ordering)
+               -> Result<(), Option<Owned<T>>>
     {
-        if self.ptr.compare_and_swap(old.as_raw(), new.as_raw(), ord) == old.as_raw() {
+        if self.ptr.compare_and_swap(opt_shared_into_raw(old),
+                                     opt_owned_as_raw(&new),
+                                     ord) == opt_shared_into_raw(old)
+        {
+            Ok(())
+        } else {
+            Err(new)
+        }
+    }
+
+    pub fn cas_and_ref<'a>(&self, old: Option<Shared<T>>, new: Owned<T>,
+                           ord: Ordering, _: &'a Guard)
+                           -> Result<Shared<'a, T>, Owned<T>>
+    {
+        if self.ptr.compare_and_swap(opt_shared_into_raw(old), new.as_raw(), ord)
+            == opt_shared_into_raw(old)
+        {
             Ok(unsafe { Shared::from_owned(new) })
         } else {
             Err(new)
         }
     }
 
-    pub fn cas_to_null(&self, old: Shared<T>, ord: Ordering) -> bool {
-        self.ptr.compare_and_swap(old.as_raw(), ptr::null_mut(), ord) == old.as_raw()
+    pub unsafe fn cas_shared(&self, old: Option<Shared<T>>, new: Option<Shared<T>>,
+                             ord: Ordering)
+                             -> bool
+    {
+        self.ptr.compare_and_swap(opt_shared_into_raw(old),
+                                  opt_shared_into_raw(new),
+                                  ord) == opt_shared_into_raw(old)
     }
 
-    pub unsafe fn cas_shared(&self, old: Shared<T>, new: Shared<T>, ord: Ordering) -> bool {
-        self.ptr.compare_and_swap(old.as_raw(), new.as_raw(), ord) == old.as_raw()
+    pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, _: &'a Guard)
+                    -> Option<Shared<'a, T>> {
+        unsafe { Shared::from_raw(self.ptr.swap(opt_owned_as_raw(&new), ord)) }
     }
 
-    pub fn swap<'a>(&self, new: Owned<T>, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
-        unsafe { Shared::from_raw(self.ptr.swap(new.as_raw(), ord)) }
-    }
-
-    pub fn swap_null<'a>(&self, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
-        unsafe { Shared::from_raw(self.ptr.swap(ptr::null_mut(), ord)) }
-    }
-}
-
-thread_local!(static LOCAL_EPOCH: *mut Participant = EPOCH.participants.enroll());
-
-pub fn pin() -> Guard {
-    LOCAL_EPOCH.with(|p| unsafe { (**p).enter() });
-    Guard {
-        _dummy: ()
+    pub fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, _: &'a Guard)
+                           -> Option<Shared<'a, T>> {
+        unsafe {
+            Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord))
+        }
     }
 }
+
+thread_local!(static LOCAL_EPOCH: &'static Participant = EPOCH.participants.enroll());
 
 pub struct Guard {
     _dummy: ()
 }
 
+pub fn pin() -> Guard {
+    LOCAL_EPOCH.with(|p| p.enter());
+    Guard {
+        _dummy: ()
+    }
+}
+
 impl Guard {
     pub fn unlinked<T>(&self, val: Shared<T>) {
-        LOCAL_EPOCH.with(|p| unsafe { (**p).reclaim(val.as_raw()) })
+        LOCAL_EPOCH.with(|p| p.reclaim(val.as_raw()))
+    }
+
+    pub fn try_collect(&self) -> bool {
+        let cur_epoch = EPOCH.epoch.load(SeqCst);
+
+        for p in EPOCH.participants.iter(self) {
+            if p.in_critical.load(Relaxed) > 0 && p.epoch.load(Relaxed) != cur_epoch {
+                return false
+            }
+        }
+
+        let new_epoch = (cur_epoch + 1) % 3;
+        atomic::fence(Acquire);
+        if EPOCH.epoch.compare_and_swap(cur_epoch, new_epoch, SeqCst) != cur_epoch {
+            return false
+        }
+
+        unsafe {
+            for g in EPOCH.garbage[(new_epoch + 1) % 3].iter_clobber() {
+                // the pointer g is now unique; drop it
+                mem::drop(Box::from_raw(g))
+            }
+        }
+
+        true
     }
 }
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        LOCAL_EPOCH.with(|p| unsafe { (**p).exit() });
+        LOCAL_EPOCH.with(|p| p.exit());
     }
 }
+
+impl !Send for Guard {}
+impl !Sync for Guard {}
