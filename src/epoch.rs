@@ -73,16 +73,26 @@ struct Iter<'a> {
 impl<'a> Iterator for Iter<'a> {
     type Item = &'a Participant;
     fn next(&mut self) -> Option<&'a Participant> {
-        let cur = if self.needs_acq {
+        let mut cur = if self.needs_acq {
             self.needs_acq = false;
             self.next.load(Acquire, self.guard)
         } else {
             self.next.load(Relaxed, self.guard)
         };
-        cur.map(|n| {
-            self.next = &n.next;
-            &***n
-        })
+
+        while let Some(n) = cur {
+            if !n.active.load(Relaxed) {
+                cur = n.next.load(Relaxed, self.guard);
+                let unlinked = unsafe { self.next.cas_shared(Some(n), cur, Relaxed) };
+                if unlinked { self.guard.unlinked(n) }
+                self.next = &n.next;
+            } else {
+                self.next = &n.next;
+                return Some(&n)
+            }
+        }
+
+        None
     }
 }
 
@@ -293,14 +303,31 @@ impl<T> AtomicPtr<T> {
     }
 }
 
-thread_local!(static LOCAL_EPOCH: &'static Participant = EPOCH.participants.enroll());
+struct LocalEpoch {
+    participant: &'static Participant,
+}
+
+impl LocalEpoch {
+    fn new() -> LocalEpoch {
+        LocalEpoch { participant: EPOCH.participants.enroll() }
+    }
+}
+
+impl Drop for LocalEpoch {
+    fn drop(&mut self) {
+        debug_assert!(self.participant.in_critical.load(Relaxed) == 0);
+        self.participant.active.store(false, Relaxed);
+    }
+}
+
+thread_local!(static LOCAL_EPOCH: LocalEpoch = LocalEpoch::new() );
 
 pub struct Guard {
     _dummy: ()
 }
 
 pub fn pin() -> Guard {
-    LOCAL_EPOCH.with(|p| p.enter());
+    LOCAL_EPOCH.with(|e| e.participant.enter());
     Guard {
         _dummy: ()
     }
@@ -308,7 +335,7 @@ pub fn pin() -> Guard {
 
 impl Guard {
     pub fn unlinked<T>(&self, val: Shared<T>) {
-        LOCAL_EPOCH.with(|p| p.reclaim(val.as_raw()))
+        LOCAL_EPOCH.with(|e| e.participant.reclaim(val.as_raw()))
     }
 
     pub fn try_collect(&self) -> bool {
@@ -339,7 +366,7 @@ impl Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        LOCAL_EPOCH.with(|p| p.exit());
+        LOCAL_EPOCH.with(|e| e.participant.exit());
     }
 }
 
