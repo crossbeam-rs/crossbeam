@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
@@ -11,6 +11,54 @@ use cache_padded::CachePadded;
 trait AnyType {}
 impl<T: ?Sized> AnyType for T {}
 
+struct GarbageBag(Vec<*mut AnyType>);
+
+impl GarbageBag {
+    fn new() -> GarbageBag {
+        GarbageBag(vec![])
+    }
+
+    fn push(&mut self, elem: *mut AnyType) {
+        self.0.push(elem)
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    unsafe fn collect(&mut self) {
+        for g in self.0.drain(..) {
+            mem::drop(Box::from_raw(g))
+        }
+    }
+}
+
+unsafe impl Send for GarbageBag {}
+
+struct LocalGarbage {
+    old: GarbageBag,
+    cur: GarbageBag,
+}
+
+impl LocalGarbage {
+    fn new() -> LocalGarbage {
+        LocalGarbage {
+            old: GarbageBag::new(),
+            cur: GarbageBag::new(),
+        }
+    }
+
+    unsafe fn collect_one_epoch(&mut self) {
+        self.old.collect();
+        mem::swap(&mut self.old, &mut self.cur)
+    }
+
+    unsafe fn collect_all(&mut self) {
+        self.old.collect();
+        self.cur.collect();
+    }
+}
+
 struct Participants {
     head: AtomicPtr<ParticipantNode>
 }
@@ -20,8 +68,8 @@ type ParticipantNode = CachePadded<Participant>;
 struct Participant {
     epoch: AtomicUsize,
     in_critical: AtomicUsize,
-    op_count: Cell<u32>,
     active: AtomicBool,
+    garbage: RefCell<LocalGarbage>,
     next: AtomicPtr<ParticipantNode>,
 }
 
@@ -35,8 +83,8 @@ impl Participants {
             Participant {
                 epoch: AtomicUsize::new(0),
                 in_critical: AtomicUsize::new(0),
-                op_count: Cell::new(0),
                 active: AtomicBool::new(true),
+                garbage: RefCell::new(LocalGarbage::new()),
                 next: AtomicPtr::default(),
             }
         )});
@@ -98,7 +146,7 @@ impl<'a> Iterator for Iter<'a> {
 
 struct EpochState {
     epoch: CachePadded<AtomicUsize>,
-    garbage: [CachePadded<Bag<*mut AnyType>>; 3],
+    garbage: [CachePadded<Bag<GarbageBag>>; 3],
     participants: Participants,
 }
 
@@ -125,11 +173,17 @@ impl Participant {
         atomic::fence(SeqCst);
 
         let epoch = EPOCH.epoch.load(Relaxed);
-        if epoch == self.epoch.load(Relaxed) {
-            self.op_count.set(self.op_count.get().saturating_add(1));
-        } else {
+        let delta = epoch - self.epoch.load(Relaxed);
+        if delta > 0 {
             self.epoch.store(epoch, Relaxed);
-            self.op_count.set(0);
+
+            unsafe {
+                if delta == 1 {
+                    self.garbage.borrow_mut().collect_one_epoch();
+                } else {
+                    self.garbage.borrow_mut().collect_all();
+                }
+            }
         }
     }
 
@@ -139,11 +193,10 @@ impl Participant {
 
     fn reclaim<T>(&self, data: *mut T) {
         let data: *mut AnyType = data;
-        EPOCH.garbage[self.epoch.load(Relaxed)]
-             .insert(unsafe {
-                 // forget any borrows within `data`:
-                 mem::transmute(data)
-             });
+        self.garbage.borrow_mut().cur.push(unsafe {
+            // forget any borrows within `data`:
+            mem::transmute(data)
+        });
     }
 }
 
@@ -315,6 +368,7 @@ impl LocalEpoch {
 
 impl Drop for LocalEpoch {
     fn drop(&mut self) {
+        pin().migrate_garbage();
         debug_assert!(self.participant.in_critical.load(Relaxed) == 0);
         self.participant.active.store(false, Relaxed);
     }
@@ -326,11 +380,22 @@ pub struct Guard {
     _dummy: ()
 }
 
+static GC_THRESH: usize = 32;
+
 pub fn pin() -> Guard {
-    LOCAL_EPOCH.with(|e| e.participant.enter());
-    Guard {
+    let needs_collect = LOCAL_EPOCH.with(|e| {
+        e.participant.enter();
+        e.participant.garbage.borrow().old.len() > GC_THRESH
+    });
+    let g = Guard {
         _dummy: ()
+    };
+
+    if needs_collect {
+        g.try_collect();
     }
+
+    g
 }
 
 impl Guard {
@@ -347,20 +412,34 @@ impl Guard {
             }
         }
 
-        let new_epoch = (cur_epoch + 1) % 3;
+        let new_epoch = cur_epoch.wrapping_add(1);
         atomic::fence(Acquire);
         if EPOCH.epoch.compare_and_swap(cur_epoch, new_epoch, SeqCst) != cur_epoch {
             return false
         }
 
         unsafe {
-            for g in EPOCH.garbage[(new_epoch + 1) % 3].iter_clobber() {
-                // the pointer g is now unique; drop it
-                mem::drop(Box::from_raw(g))
+            for mut g in EPOCH.garbage[new_epoch.wrapping_add(1) % 3].iter_clobber() {
+                g.collect();
             }
+
+            LOCAL_EPOCH.with(|e| e.participant.garbage.borrow_mut().collect_one_epoch());
         }
 
         true
+    }
+
+    pub fn migrate_garbage(&self) {
+        let mut old = GarbageBag::new();
+        let mut cur = GarbageBag::new();
+        let cur_epoch = LOCAL_EPOCH.with(|e| {
+            mem::swap(&mut e.participant.garbage.borrow_mut().old, &mut old);
+            mem::swap(&mut e.participant.garbage.borrow_mut().cur, &mut cur);
+            e.participant.epoch.load(Relaxed)
+        });
+
+        EPOCH.garbage[cur_epoch.wrapping_sub(1) % 3].insert(old);
+        EPOCH.garbage[cur_epoch].insert(cur);
     }
 }
 

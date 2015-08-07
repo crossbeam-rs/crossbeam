@@ -12,7 +12,7 @@ struct Node<T> {
     next: AtomicPtr<Node<T>>,
 }
 
-impl<T> Bag<T> {
+impl<T: Send> Bag<T> {
     pub const fn new() -> Bag<T> {
         Bag { head: AtomicPtr::new(0 as *mut _) }
     }

@@ -3,6 +3,7 @@
 #![feature(box_raw)]
 #![feature(const_fn)]
 #![feature(optin_builtin_traits)]
+#![feature(drain)]
 
 pub mod atomic_option;
 pub mod epoch;
