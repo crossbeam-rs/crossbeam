@@ -5,71 +5,49 @@ use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
 use std::ops::{Deref, DerefMut};
 
-use bag::Bag;
+use std::io::stderr;
+use std::io::prelude::*;
+
 use cache_padded::CachePadded;
 
-trait AnyType {}
-impl<T: ?Sized> AnyType for T {}
+mod garbage;
 
-struct GarbageBag(Vec<*mut AnyType>);
-
-impl GarbageBag {
-    fn new() -> GarbageBag {
-        GarbageBag(vec![])
-    }
-
-    fn push(&mut self, elem: *mut AnyType) {
-        self.0.push(elem)
-    }
-
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    unsafe fn collect(&mut self) {
-        for g in self.0.drain(..) {
-            mem::drop(Box::from_raw(g))
-        }
-    }
-}
-
-unsafe impl Send for GarbageBag {}
-
-struct LocalGarbage {
-    old: GarbageBag,
-    cur: GarbageBag,
-}
-
-impl LocalGarbage {
-    fn new() -> LocalGarbage {
-        LocalGarbage {
-            old: GarbageBag::new(),
-            cur: GarbageBag::new(),
-        }
-    }
-
-    unsafe fn collect_one_epoch(&mut self) {
-        self.old.collect();
-        mem::swap(&mut self.old, &mut self.cur)
-    }
-
-    unsafe fn collect_all(&mut self) {
-        self.old.collect();
-        self.cur.collect();
-    }
+fn log(s: &str) {
+    let _ = stderr().write(s.as_bytes());
+    let _ = stderr().write("\n".as_bytes());
 }
 
 struct Participants {
     head: AtomicPtr<ParticipantNode>
 }
 
-type ParticipantNode = CachePadded<Participant>;
+//type ParticipantNode = CachePadded<Participant>;
+struct ParticipantNode(Participant);
+
+impl ParticipantNode {
+    fn new(p: Participant) -> ParticipantNode {
+        ParticipantNode(p)
+    }
+}
+
+impl Deref for ParticipantNode {
+    type Target = Participant;
+    fn deref(&self) -> &Participant {
+        &self.0
+    }
+}
+
+impl DerefMut for ParticipantNode {
+    fn deref_mut(&mut self) -> &mut Participant {
+        &mut self.0
+    }
+}
 
 struct Participant {
     epoch: AtomicUsize,
     in_critical: AtomicUsize,
     active: AtomicBool,
-    garbage: RefCell<LocalGarbage>,
+    garbage: RefCell<garbage::Local>,
     next: AtomicPtr<ParticipantNode>,
 }
 
@@ -78,23 +56,29 @@ impl Participants {
         Participants { head: AtomicPtr::new() }
     }
 
-    fn enroll(&self) -> &'static Participant {
-        let mut participant = Owned::new(unsafe { CachePadded::new(
+    fn enroll(&self) -> *const Participant {
+        let mut participant = Owned::new(ParticipantNode::new(
             Participant {
                 epoch: AtomicUsize::new(0),
                 in_critical: AtomicUsize::new(0),
                 active: AtomicBool::new(true),
-                garbage: RefCell::new(LocalGarbage::new()),
-                next: AtomicPtr::default(),
+                garbage: RefCell::new(garbage::Local::new()),
+                next: AtomicPtr::new(),
             }
-        )});
-        let g = Guard { _dummy: () };
+        ));
+        let ret = &**participant as *const _;
+        mem::forget(participant);
+        return ret;
+
+        let fake_guard = ();
+        let g: &'static Guard = unsafe { mem::transmute(&fake_guard) };
         loop {
-            let head = self.head.load(Relaxed, &g);
+            let head = self.head.load(Relaxed, g);
             unsafe { participant.next.store_shared(head, Relaxed) };
-            match self.head.cas_and_ref(head, participant, Release, &g) {
+            match self.head.cas_and_ref(head, participant, Release, g) {
                 Ok(shared) => {
-                    return unsafe { mem::transmute::<&Participant, _>(&shared) };
+                    let shared: &Participant = &shared;
+                    return shared;
                 }
                 Err(owned) => {
                     participant = owned;
@@ -132,7 +116,7 @@ impl<'a> Iterator for Iter<'a> {
             if !n.active.load(Relaxed) {
                 cur = n.next.load(Relaxed, self.guard);
                 let unlinked = unsafe { self.next.cas_shared(Some(n), cur, Relaxed) };
-                if unlinked { self.guard.unlinked(n) }
+                if unlinked { unsafe { self.guard.unlinked(n) } }
                 self.next = &n.next;
             } else {
                 self.next = &n.next;
@@ -146,7 +130,7 @@ impl<'a> Iterator for Iter<'a> {
 
 struct EpochState {
     epoch: CachePadded<AtomicUsize>,
-    garbage: [CachePadded<Bag<GarbageBag>>; 3],
+    garbage: [CachePadded<garbage::ConcBag>; 3],
     participants: Participants,
 }
 
@@ -191,12 +175,42 @@ impl Participant {
         self.in_critical.store(self.in_critical.load(Relaxed) - 1, Release);
     }
 
-    fn reclaim<T>(&self, data: *mut T) {
-        let data: *mut AnyType = data;
-        self.garbage.borrow_mut().cur.push(unsafe {
-            // forget any borrows within `data`:
-            mem::transmute(data)
-        });
+    unsafe fn reclaim<T>(&self, data: *mut T) {
+        self.garbage.borrow_mut().reclaim(data);
+    }
+
+    fn try_collect(&self) -> bool {
+        let cur_epoch = EPOCH.epoch.load(SeqCst);
+
+        let fake_guard = ();
+        let g: &'static Guard = unsafe { mem::transmute(&fake_guard) };
+
+        for p in EPOCH.participants.iter(g) {
+            if p.in_critical.load(Relaxed) > 0 && p.epoch.load(Relaxed) != cur_epoch {
+                return false
+            }
+        }
+
+        let new_epoch = cur_epoch.wrapping_add(1);
+        atomic::fence(Acquire);
+        if EPOCH.epoch.compare_and_swap(cur_epoch, new_epoch, SeqCst) != cur_epoch {
+            return false
+        }
+
+        unsafe {
+            EPOCH.garbage[new_epoch.wrapping_add(1) % 3].collect();
+            self.garbage.borrow_mut().collect_one_epoch();
+        }
+
+        true
+    }
+
+    fn migrate_garbage(&self) {
+        let mut local = garbage::Local::new();
+        let cur_epoch = self.epoch.load(Relaxed);
+        mem::swap(&mut *self.garbage.borrow_mut(), &mut local);
+        EPOCH.garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
+        EPOCH.garbage[cur_epoch].insert(local.cur);
     }
 }
 
@@ -249,7 +263,11 @@ impl<'a, T> Deref for Shared<'a, T> {
 impl<'a, T> Shared<'a, T> {
     unsafe fn from_raw(raw: *mut T) -> Option<Shared<'a, T>> {
         if raw == ptr::null_mut() { None }
-        else { Some(Shared { data: mem::transmute(raw) }) }
+        else {
+            Some(Shared {
+                data: mem::transmute::<*mut T, &T>(raw)
+            })
+        }
     }
 
     unsafe fn from_ref(r: &T) -> Shared<'a, T> {
@@ -357,35 +375,47 @@ impl<T> AtomicPtr<T> {
 }
 
 struct LocalEpoch {
-    participant: &'static Participant,
+    participant: *const Participant,
 }
 
 impl LocalEpoch {
     fn new() -> LocalEpoch {
         LocalEpoch { participant: EPOCH.participants.enroll() }
     }
+
+    fn get(&self) -> &Participant {
+        unsafe { &*self.participant }
+    }
 }
 
 impl Drop for LocalEpoch {
     fn drop(&mut self) {
-        pin().migrate_garbage();
-        debug_assert!(self.participant.in_critical.load(Relaxed) == 0);
-        self.participant.active.store(false, Relaxed);
+        let p = self.get();
+        p.enter();
+        p.try_collect();
+        p.migrate_garbage();
+        p.exit();
+        p.active.store(false, Relaxed);
     }
 }
 
 thread_local!(static LOCAL_EPOCH: LocalEpoch = LocalEpoch::new() );
 
+#[must_use]
 pub struct Guard {
     _dummy: ()
 }
 
 static GC_THRESH: usize = 32;
 
+fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
+    LOCAL_EPOCH.with(|e| f(e.get()))
+}
+
 pub fn pin() -> Guard {
-    let needs_collect = LOCAL_EPOCH.with(|e| {
-        e.participant.enter();
-        e.participant.garbage.borrow().old.len() > GC_THRESH
+    let needs_collect = with_participant(|p| {
+        p.enter();
+        p.garbage.borrow().size() > GC_THRESH
     });
     let g = Guard {
         _dummy: ()
@@ -399,55 +429,57 @@ pub fn pin() -> Guard {
 }
 
 impl Guard {
-    pub fn unlinked<T>(&self, val: Shared<T>) {
-        LOCAL_EPOCH.with(|e| e.participant.reclaim(val.as_raw()))
+    pub unsafe fn unlinked<T>(&self, val: Shared<T>) {
+        with_participant(|p| p.reclaim(val.as_raw()))
     }
 
     pub fn try_collect(&self) -> bool {
-        let cur_epoch = EPOCH.epoch.load(SeqCst);
-
-        for p in EPOCH.participants.iter(self) {
-            if p.in_critical.load(Relaxed) > 0 && p.epoch.load(Relaxed) != cur_epoch {
-                return false
-            }
-        }
-
-        let new_epoch = cur_epoch.wrapping_add(1);
-        atomic::fence(Acquire);
-        if EPOCH.epoch.compare_and_swap(cur_epoch, new_epoch, SeqCst) != cur_epoch {
-            return false
-        }
-
-        unsafe {
-            for mut g in EPOCH.garbage[new_epoch.wrapping_add(1) % 3].iter_clobber() {
-                g.collect();
-            }
-
-            LOCAL_EPOCH.with(|e| e.participant.garbage.borrow_mut().collect_one_epoch());
-        }
-
-        true
+        with_participant(|p| p.try_collect())
     }
 
     pub fn migrate_garbage(&self) {
-        let mut old = GarbageBag::new();
-        let mut cur = GarbageBag::new();
-        let cur_epoch = LOCAL_EPOCH.with(|e| {
-            mem::swap(&mut e.participant.garbage.borrow_mut().old, &mut old);
-            mem::swap(&mut e.participant.garbage.borrow_mut().cur, &mut cur);
-            e.participant.epoch.load(Relaxed)
-        });
-
-        EPOCH.garbage[cur_epoch.wrapping_sub(1) % 3].insert(old);
-        EPOCH.garbage[cur_epoch].insert(cur);
+        with_participant(|p| p.migrate_garbage())
     }
 }
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        LOCAL_EPOCH.with(|e| e.participant.exit());
+        with_participant(|p| p.exit());
     }
 }
 
 impl !Send for Guard {}
 impl !Sync for Guard {}
+
+#[cfg(test)]
+mod test {
+    use std::mem;
+    use super::{Participants, with_participant, LocalEpoch, EPOCH};
+    use super::*;
+
+    #[test]
+    fn smoke_enroll() {
+        Participants::new().enroll();
+    }
+
+    #[test]
+    fn smoke_enroll_EPOCH() {
+        EPOCH.participants.enroll();
+    }
+
+    #[test]
+    fn smoke_local_epoch() {
+        LocalEpoch::new();
+    }
+
+    #[test]
+    fn smoke_with_participant() {
+        with_participant(|p| {})
+    }
+
+    #[test]
+    fn smoke_pin() {
+        let g = pin();
+        mem::forget(g);
+    }
+}

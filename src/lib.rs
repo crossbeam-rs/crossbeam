@@ -6,8 +6,8 @@
 #![feature(drain)]
 
 pub mod atomic_option;
-pub mod epoch;
+pub mod mem;
+pub mod queue;
 
 mod raw_thread;
 mod cache_padded;
-mod bag;
