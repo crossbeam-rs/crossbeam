@@ -8,6 +8,6 @@
 pub mod atomic_option;
 pub mod mem;
 pub mod queue;
+pub mod thread;
 
-mod raw_thread;
 mod cache_padded;
