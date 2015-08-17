@@ -15,7 +15,7 @@ struct Node<T> {
 
 impl<T> Queue<T> {
     pub fn new() -> Queue<T> {
-        let mut q = Queue { head: AtomicPtr::new(), tail: AtomicPtr::new() };
+        let q = Queue { head: AtomicPtr::new(), tail: AtomicPtr::new() };
         let sentinel = Owned::new(Node {
             data: RefCell::new(None),
             next: AtomicPtr::new()
@@ -27,19 +27,26 @@ impl<T> Queue<T> {
     }
 
     pub fn push(&self, t: T) {
-        let mut n = Some(Owned::new(Node {
+        let mut n = Owned::new(Node {
             data: RefCell::new(Some(t)),
             next: AtomicPtr::new()
-        }));
+        });
         let guard = epoch::pin();
         loop {
             let tail = self.tail.load(Acquire, &guard).unwrap();
             if let Some(next) = tail.next.load(Relaxed, &guard) {
                 unsafe { self.tail.cas_shared(Some(tail), Some(next), Relaxed); }
-            } else if let Err(owned) = tail.next.cas(None, n, Release) {
-                n = owned;
-            } else {
-                break;
+                continue;
+            }
+
+            match tail.next.cas_and_ref(None, n, Release, &guard) {
+                Ok(shared) => {
+                    unsafe { self.tail.cas_shared(Some(tail), Some(shared), Relaxed); }
+                    break;
+                }
+                Err(owned) => {
+                    n = owned;
+                }
             }
         }
     }
@@ -62,14 +69,69 @@ impl<T> Queue<T> {
     }
 }
 
+/*
+impl<T: Debug> Queue<T> {
+    pub fn debug(&self) {
+        writeln!(stderr(), "Debugging queue:");
+
+        let guard = epoch::pin();
+        let mut node = self.head.load(Acquire, &guard);
+        while let Some(n) = node {
+            writeln!(stderr(), "{:?}", (*n).data.borrow());
+            node = n.next.load(Relaxed, &guard);
+        }
+
+        writeln!(stderr(), "");
+    }
+}
+*/
+
 #[cfg(test)]
 mod test {
+    use std::thread;
+
     use super::*;
 
     #[test]
-    fn smoke_test() {
+    fn smoke_queue() {
         let q: Queue<i32> = Queue::new();
-        //q.push(3);
-        //assert_eq!(q.pop(), Some(3));
+    }
+
+    #[test]
+    fn push_pop_1() {
+        let q: Queue<i32> = Queue::new();
+        q.push(37);
+        assert_eq!(q.pop(), Some(37));
+    }
+
+    #[test]
+    fn push_pop_2() {
+        let q: Queue<i32> = Queue::new();
+        q.push(37);
+        q.push(48);
+        assert_eq!(q.pop(), Some(37));
+        assert_eq!(q.pop(), Some(48));
+    }
+
+    #[test]
+    fn push_pop_many_seq() {
+        let q: Queue<i32> = Queue::new();
+        for i in 0..200 {
+            q.push(i)
+        }
+        for i in 0..200 {
+            assert_eq!(q.pop(), Some(i));
+        }
+    }
+
+    #[test]
+    fn push_pop_many_spsc() {
+        let q: Queue<i32> = Queue::new();
+        for i in 0..200 {
+            q.push(i)
+        }
+        for i in 0..200 {
+            assert_eq!(q.pop(), Some(i));
+        }
     }
 }

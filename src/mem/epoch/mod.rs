@@ -210,7 +210,7 @@ impl Participant {
         let cur_epoch = self.epoch.load(Relaxed);
         mem::swap(&mut *self.garbage.borrow_mut(), &mut local);
         EPOCH.garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
-        EPOCH.garbage[cur_epoch].insert(local.cur);
+        EPOCH.garbage[cur_epoch % 3].insert(local.cur);
     }
 }
 
@@ -275,7 +275,9 @@ impl<'a, T> Shared<'a, T> {
     }
 
     unsafe fn from_owned(owned: Owned<T>) -> Shared<'a, T> {
-        Shared::from_ref(owned.deref())
+        let ret = Shared::from_ref(owned.deref());
+        mem::forget(owned);
+        ret
     }
 
     fn as_raw(&self) -> *mut T {
@@ -453,8 +455,7 @@ impl !Sync for Guard {}
 
 #[cfg(test)]
 mod test {
-    use std::mem;
-    use super::{Participants, with_participant, LocalEpoch, EPOCH};
+    use super::{Participants, EPOCH};
     use super::*;
 
     #[test]
@@ -468,18 +469,7 @@ mod test {
     }
 
     #[test]
-    fn smoke_local_epoch() {
-        LocalEpoch::new();
-    }
-
-    #[test]
-    fn smoke_with_participant() {
-        with_participant(|p| {})
-    }
-
-    #[test]
-    fn smoke_pin() {
+    fn smoke_guard() {
         let g = pin();
-        mem::forget(g);
     }
 }
