@@ -28,26 +28,17 @@ struct DtorChain<'a> {
 
 enum JoinState {
     Running(thread::JoinHandle<()>),
-    Joined(thread::Result<()>),
-    Empty,
+    Joined,
 }
 
 impl JoinState {
     fn join(&mut self) {
-        let mut state = JoinState::Empty;
+        let mut state = JoinState::Joined;
         mem::swap(self, &mut state);
         if let JoinState::Running(handle) = state {
-            *self = JoinState::Joined(handle.join())
-        }
-    }
+            let res = handle.join();
 
-    fn join_and_extract(&mut self) -> thread::Result<()> {
-        let mut state = JoinState::Empty;
-        mem::swap(self, &mut state);
-        match state {
-            JoinState::Running(handle) => handle.join(),
-            JoinState::Joined(res) => res,
-            _ => unreachable!(),
+            if !thread::panicking() { res.unwrap(); }
         }
     }
 }
@@ -127,9 +118,8 @@ impl<'a> Scope<'a> {
 
 impl<T> ScopedJoinHandle<T> {
     pub fn join(self) -> T {
-        self.inner.borrow_mut().join_and_extract().map(|_| {
-            self.packet.take(Ordering::Relaxed).unwrap()
-        }).unwrap()
+        self.inner.borrow_mut().join();
+        self.packet.take(Ordering::Relaxed).unwrap()
     }
 
     pub fn thread(&self) -> &thread::Thread {
