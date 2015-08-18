@@ -162,10 +162,23 @@ impl Participant {
             self.epoch.store(epoch, Relaxed);
 
             unsafe {
+                // Note: carefully designed to allow re-entrancy via drop, by
+                // performing the drops *after* the borrow_mut() is relinquished
+
+                let gen1 = self.garbage.borrow_mut().collect();
                 if delta == 1 {
-                    self.garbage.borrow_mut().collect_one_epoch();
+                    for g in gen1 {
+                        mem::drop(g);
+                    }
                 } else {
-                    self.garbage.borrow_mut().collect_all();
+                    let gen2 = self.garbage.borrow_mut().collect();
+
+                    for g in gen1 {
+                        mem::drop(g);
+                    }
+                    for g in gen2 {
+                        mem::drop(g);
+                    }
                 }
             }
         }
@@ -199,16 +212,17 @@ impl Participant {
 
         unsafe {
             EPOCH.garbage[new_epoch.wrapping_add(1) % 3].collect();
-            self.garbage.borrow_mut().collect_one_epoch();
+            for g in self.garbage.borrow_mut().collect() {
+                mem::drop(g);
+            }
         }
 
         true
     }
 
     fn migrate_garbage(&self) {
-        let mut local = garbage::Local::new();
         let cur_epoch = self.epoch.load(Relaxed);
-        mem::swap(&mut *self.garbage.borrow_mut(), &mut local);
+        let local = mem::replace(&mut *self.garbage.borrow_mut(), garbage::Local::new());
         EPOCH.garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
         EPOCH.garbage[cur_epoch % 3].insert(local.cur);
     }
@@ -412,6 +426,10 @@ static GC_THRESH: usize = 32;
 
 fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
     LOCAL_EPOCH.with(|e| f(e.get()))
+}
+
+pub fn garbage_size() -> usize {
+    with_participant(|p| p.garbage.borrow().size())
 }
 
 pub fn pin() -> Guard {

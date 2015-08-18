@@ -2,6 +2,7 @@ use std::ptr;
 use std::mem;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering::{Relaxed, Release};
+use std::vec;
 
 trait AnyType {}
 impl<T: ?Sized> AnyType for T {}
@@ -21,10 +22,22 @@ impl Bag {
         self.0.len()
     }
 
-    pub unsafe fn collect(&mut self) {
-        for g in self.0.drain(..) {
-            mem::drop(Box::from_raw(g))
-        }
+    fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+
+    pub unsafe fn collect(&mut self) -> Collect {
+        Collect(mem::replace(&mut self.0, vec![]).into_iter())
+    }
+}
+
+struct Collect(vec::IntoIter<*mut AnyType>);
+
+impl Iterator for Collect {
+    type Item = Box<AnyType>;
+
+    fn next(&mut self) -> Option<Box<AnyType>> {
+        unsafe { self.0.next().map(|p| Box::from_raw(p)) }
     }
 }
 
@@ -51,18 +64,18 @@ impl Local {
         );
     }
 
-    pub unsafe fn collect_one_epoch(&mut self) {
-        self.old.collect();
-        mem::swap(&mut self.old, &mut self.cur)
-    }
-
-    pub unsafe fn collect_all(&mut self) {
-        self.old.collect();
-        self.cur.collect();
+    pub unsafe fn collect(&mut self) -> Collect {
+        let ret = self.old.collect();
+        mem::swap(&mut self.old, &mut self.cur);
+        ret
     }
 
     pub fn size(&self) -> usize {
         self.old.len() + self.cur.len()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.old.capacity() + self.cur.capacity()
     }
 }
 
