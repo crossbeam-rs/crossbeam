@@ -88,25 +88,30 @@ impl<T: Debug> Queue<T> {
 
 #[cfg(test)]
 mod test {
-    use std::thread;
+    const CONC_COUNT: i64 = 10000000;
 
+    use std::io::stderr;
+    use std::io::prelude::*;
+
+    use mem::epoch;
+    use thread;
     use super::*;
 
     #[test]
     fn smoke_queue() {
-        let q: Queue<i32> = Queue::new();
+        let q: Queue<i64> = Queue::new();
     }
 
     #[test]
     fn push_pop_1() {
-        let q: Queue<i32> = Queue::new();
+        let q: Queue<i64> = Queue::new();
         q.push(37);
         assert_eq!(q.pop(), Some(37));
     }
 
     #[test]
     fn push_pop_2() {
-        let q: Queue<i32> = Queue::new();
+        let q: Queue<i64> = Queue::new();
         q.push(37);
         q.push(48);
         assert_eq!(q.pop(), Some(37));
@@ -115,7 +120,7 @@ mod test {
 
     #[test]
     fn push_pop_many_seq() {
-        let q: Queue<i32> = Queue::new();
+        let q: Queue<i64> = Queue::new();
         for i in 0..200 {
             q.push(i)
         }
@@ -126,12 +131,103 @@ mod test {
 
     #[test]
     fn push_pop_many_spsc() {
-        let q: Queue<i32> = Queue::new();
-        for i in 0..200 {
-            q.push(i)
+        let q: Queue<i64> = Queue::new();
+
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                let mut next = 0;
+
+                while next < CONC_COUNT {
+                    if let Some(elem) = q.pop() {
+                        assert_eq!(elem, next);
+                        next += 1;
+                    }
+                }
+            });
+
+            for i in 0..CONC_COUNT {
+                q.push(i)
+            }
+        });
+    }
+
+    #[test]
+    fn push_pop_many_spmc() {
+        fn recv(t: i32, q: &Queue<i64>) {
+            let mut cur = -1;
+            for i in 0..CONC_COUNT {
+                if let Some(elem) = q.pop() {
+                    if elem <= cur {
+                        writeln!(stderr(), "{}: {} <= {}", t, elem, cur);
+                    }
+                    assert!(elem > cur);
+                    cur = elem;
+
+                    if cur == CONC_COUNT - 1 { break }
+                }
+
+                if i % 10000 == 0 {
+                    writeln!(stderr(), "{}: {} @ {}", t, i, cur);
+                }
+            }
         }
-        for i in 0..200 {
-            assert_eq!(q.pop(), Some(i));
-        }
+
+        let q: Queue<i64> = Queue::new();
+        let qr = &q;
+
+        thread::scope(|scope| {
+            for i in 0..2 {
+                scope.spawn(move || recv(i, qr));
+            }
+
+            for i in 0..CONC_COUNT {
+                q.push(i);
+
+                if i % 10000 == 0 {
+                    writeln!(stderr(), "Push: {}", i);
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn push_pop_many_mpmc() {
+        enum LR { Left(i64), Right(i64) }
+
+        let q: Queue<LR> = Queue::new();
+
+        thread::scope(|scope| {
+            for _t in 0..2 {
+                scope.spawn(|| {
+                    for i in CONC_COUNT-1..CONC_COUNT {
+                        q.push(LR::Left(i))
+                    }
+                });
+                scope.spawn(|| {
+                    for i in CONC_COUNT-1..CONC_COUNT {
+                        q.push(LR::Right(i))
+                    }
+                });
+                scope.spawn(|| {
+                    let mut vl = vec![];
+                    let mut vr = vec![];
+                    for _i in 0..CONC_COUNT {
+                        match q.pop() {
+                            Some(LR::Left(x)) => vl.push(x),
+                            Some(LR::Right(x)) => vr.push(x),
+                            _ => {}
+                        }
+                    }
+
+                    let mut vl2 = vl.clone();
+                    let mut vr2 = vr.clone();
+                    vl2.sort();
+                    vr2.sort();
+
+                    assert_eq!(vl, vl2);
+                    assert_eq!(vr, vr2);
+                });
+            }
+        });
     }
 }
