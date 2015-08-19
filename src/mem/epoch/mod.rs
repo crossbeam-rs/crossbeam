@@ -66,10 +66,6 @@ impl Participants {
                 next: AtomicPtr::new(),
             }
         ));
-        let ret = &**participant as *const _;
-        mem::forget(participant);
-        return ret;
-
         let fake_guard = ();
         let g: &'static Guard = unsafe { mem::transmute(&fake_guard) };
         loop {
