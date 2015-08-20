@@ -9,13 +9,8 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex, Condvar};
 use std::thread;
 
-use atomic_option::AtomicOption;
-
-pub unsafe fn spawn_raw<'a, F>(f: F) -> thread::JoinHandle<()> where F: FnOnce() + 'a {
-    let closure: Box<FnBox() + 'a> = Box::new(f);
-    let closure: Box<FnBox() + Send> = mem::transmute(closure);
-    thread::spawn(closure)
-}
+use spawn_unsafe;
+use sync::AtomicOption;
 
 pub struct Scope<'a> {
     dtors: RefCell<Option<DtorChain<'a>>>
@@ -94,7 +89,7 @@ impl<'a> Scope<'a> {
         let my_packet = their_packet.clone();
 
         let join_handle = unsafe {
-            spawn_raw(move || {
+            spawn_unsafe(move || {
                 their_packet.swap(f(), Ordering::Relaxed);
             })
         };

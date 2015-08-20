@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 use std::io::stderr;
 use std::io::prelude::*;
 
-use cache_padded::CachePadded;
+use mem::cache_padded::CachePadded;
 
 mod garbage;
 
@@ -426,7 +426,7 @@ pub struct Guard {
     _dummy: ()
 }
 
-static GC_THRESH: usize = 256;
+static GC_THRESH: usize = 32;
 
 fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
     LOCAL_EPOCH.with(|e| f(e.get()))

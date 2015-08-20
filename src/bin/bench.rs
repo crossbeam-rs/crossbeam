@@ -5,11 +5,15 @@ extern crate crossbeam;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
-use crossbeam::thread::scope;
-use crossbeam::queue::Queue;
+use crossbeam::scope;
+use crossbeam::sync::MsQueue;
 
-const COUNT: u64 = 1000000;
-const THREADS: u64 = 3;
+const COUNT: u64 = 10000000;
+const THREADS: u64 = 2;
+
+fn nanos(d: Duration) -> f64 {
+    d.as_secs() as f64 * 1000000000f64 + (d.subsec_nanos() as f64)
+}
 
 fn bench_chan_mpsc() -> f64 {
     let (tx, rx) = channel();
@@ -32,11 +36,11 @@ fn bench_chan_mpsc() -> f64 {
         });
     });
 
-    d.subsec_nanos() as f64 / ((COUNT * THREADS) as f64)
+    nanos(d) / ((COUNT * THREADS) as f64)
 }
 
 fn bench_queue_mpsc() -> f64 {
-    let q = Queue::new();
+    let q = MsQueue::new();
 
     let d = Duration::span(|| {
         scope(|scope| {
@@ -58,7 +62,43 @@ fn bench_queue_mpsc() -> f64 {
         });
     });
 
-    d.subsec_nanos() as f64 / ((COUNT * THREADS) as f64)
+    nanos(d) / ((COUNT * THREADS) as f64)
+}
+
+fn bench_queue_mpmc() -> f64 {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering::Relaxed;
+
+    let q = MsQueue::new();
+    let prod_count = AtomicUsize::new(0);
+
+    let d = Duration::span(|| {
+        scope(|scope| {
+            for _i in 0..THREADS {
+                let qr = &q;
+                let pcr = &prod_count;
+                scope.spawn(move || {
+                    for x in 0..COUNT {
+                        qr.push(true);
+                    }
+                    if pcr.fetch_add(1, Relaxed) == (THREADS as usize) - 1 {
+                        for x in 0..THREADS {
+                            qr.push(false)
+                        }
+                    }
+                });
+                scope.spawn(move || {
+                    loop {
+                        if let Some(false) = qr.pop() { break }
+                    }
+                });
+            }
+
+
+        });
+    });
+
+    nanos(d) / ((COUNT * THREADS) as f64)
 }
 
 fn bench_alloc() -> f64 {
@@ -67,11 +107,12 @@ fn bench_alloc() -> f64 {
             Box::new(i);
         }
     });
-    d.subsec_nanos() as f64 / ((COUNT * THREADS) as f64)
+    nanos(d) / ((COUNT * THREADS) as f64)
 }
 
 fn main() {
     println!("chan_mpsc: {}", bench_chan_mpsc());
     println!("queue_mpsc: {}", bench_queue_mpsc());
+    println!("queue_mpmc: {}", bench_queue_mpmc());
     //println!("alloc: {}", bench_alloc());
 }

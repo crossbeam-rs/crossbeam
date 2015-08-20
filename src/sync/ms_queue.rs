@@ -3,7 +3,7 @@ use std::cell::RefCell;
 
 use mem::epoch::{self, AtomicPtr, Owned};
 
-pub struct Queue<T> {
+pub struct MsQueue<T> {
     head: AtomicPtr<Node<T>>,
     tail: AtomicPtr<Node<T>>,
 }
@@ -13,9 +13,9 @@ struct Node<T> {
     next: AtomicPtr<Node<T>>,
 }
 
-impl<T> Queue<T> {
-    pub fn new() -> Queue<T> {
-        let q = Queue { head: AtomicPtr::new(), tail: AtomicPtr::new() };
+impl<T> MsQueue<T> {
+    pub fn new() -> MsQueue<T> {
+        let q = MsQueue { head: AtomicPtr::new(), tail: AtomicPtr::new() };
         let sentinel = Owned::new(Node {
             data: RefCell::new(None),
             next: AtomicPtr::new()
@@ -70,7 +70,7 @@ impl<T> Queue<T> {
 }
 
 /*
-impl<T: Debug> Queue<T> {
+impl<T: Debug> MsQueue<T> {
     pub fn debug(&self) {
         writeln!(stderr(), "Debugging queue:");
 
@@ -99,19 +99,19 @@ mod test {
 
     #[test]
     fn smoke_queue() {
-        let q: Queue<i64> = Queue::new();
+        let q: MsQueue<i64> = MsQueue::new();
     }
 
     #[test]
     fn push_pop_1() {
-        let q: Queue<i64> = Queue::new();
+        let q: MsQueue<i64> = MsQueue::new();
         q.push(37);
         assert_eq!(q.pop(), Some(37));
     }
 
     #[test]
     fn push_pop_2() {
-        let q: Queue<i64> = Queue::new();
+        let q: MsQueue<i64> = MsQueue::new();
         q.push(37);
         q.push(48);
         assert_eq!(q.pop(), Some(37));
@@ -120,7 +120,7 @@ mod test {
 
     #[test]
     fn push_pop_many_seq() {
-        let q: Queue<i64> = Queue::new();
+        let q: MsQueue<i64> = MsQueue::new();
         for i in 0..200 {
             q.push(i)
         }
@@ -131,7 +131,7 @@ mod test {
 
     #[test]
     fn push_pop_many_spsc() {
-        let q: Queue<i64> = Queue::new();
+        let q: MsQueue<i64> = MsQueue::new();
 
         thread::scope(|scope| {
             scope.spawn(|| {
@@ -155,7 +155,7 @@ mod test {
     fn push_pop_many_spmc() {
         use std::time::Duration;
 
-        fn recv(t: i32, q: &Queue<i64>) {
+        fn recv(t: i32, q: &MsQueue<i64>) {
             let mut cur = -1;
             for i in 0..CONC_COUNT {
                 if let Some(elem) = q.pop() {
@@ -174,7 +174,7 @@ mod test {
             }
         }
 
-        let q: Queue<i64> = Queue::new();
+        let q: MsQueue<i64> = MsQueue::new();
         let qr = &q;
         thread::scope(|scope| {
             for i in 0..3 {
@@ -197,7 +197,7 @@ mod test {
     fn push_pop_many_mpmc() {
         enum LR { Left(i64), Right(i64) }
 
-        let q: Queue<LR> = Queue::new();
+        let q: MsQueue<LR> = MsQueue::new();
 
         thread::scope(|scope| {
             for _t in 0..2 {
