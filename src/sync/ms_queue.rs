@@ -94,7 +94,7 @@ mod test {
     use std::io::prelude::*;
 
     use mem::epoch;
-    use thread;
+    use scope;
     use super::*;
 
     #[test]
@@ -133,7 +133,7 @@ mod test {
     fn push_pop_many_spsc() {
         let q: MsQueue<i64> = MsQueue::new();
 
-        thread::scope(|scope| {
+        scope(|scope| {
             scope.spawn(|| {
                 let mut next = 0;
 
@@ -176,7 +176,7 @@ mod test {
 
         let q: MsQueue<i64> = MsQueue::new();
         let qr = &q;
-        thread::scope(|scope| {
+        scope(|scope| {
             for i in 0..3 {
                 scope.spawn(move || recv(i, qr));
             }
@@ -199,7 +199,7 @@ mod test {
 
         let q: MsQueue<LR> = MsQueue::new();
 
-        thread::scope(|scope| {
+        scope(|scope| {
             for _t in 0..2 {
                 scope.spawn(|| {
                     for i in CONC_COUNT-1..CONC_COUNT {
