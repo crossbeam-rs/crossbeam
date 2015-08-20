@@ -88,7 +88,7 @@ impl<T: Debug> Queue<T> {
 
 #[cfg(test)]
 mod test {
-    const CONC_COUNT: i64 = 10000000;
+    const CONC_COUNT: i64 = 1000000;
 
     use std::io::stderr;
     use std::io::prelude::*;
@@ -153,6 +153,8 @@ mod test {
 
     #[test]
     fn push_pop_many_spmc() {
+        use std::time::Duration;
+
         fn recv(t: i32, q: &Queue<i64>) {
             let mut cur = -1;
             for i in 0..CONC_COUNT {
@@ -167,27 +169,28 @@ mod test {
                 }
 
                 if i % 10000 == 0 {
-                    writeln!(stderr(), "{}: {} @ {}", t, i, cur);
+                    //writeln!(stderr(), "{}: {} @ {}", t, i, cur);
                 }
             }
         }
 
         let q: Queue<i64> = Queue::new();
         let qr = &q;
-
         thread::scope(|scope| {
-            for i in 0..2 {
+            for i in 0..3 {
                 scope.spawn(move || recv(i, qr));
             }
 
-            for i in 0..CONC_COUNT {
-                q.push(i);
+            scope.spawn(|| {
+                for i in 0..CONC_COUNT {
+                    q.push(i);
 
-                if i % 10000 == 0 {
-                    writeln!(stderr(), "Push: {}", i);
+                    if i % 10000 == 0 {
+                        //writeln!(stderr(), "Push: {}", i);
+                    }
                 }
-            }
-        })
+            })
+        });
     }
 
     #[test]

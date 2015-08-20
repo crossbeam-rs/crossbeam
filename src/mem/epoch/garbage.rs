@@ -46,6 +46,7 @@ unsafe impl Send for Bag {}
 pub struct Local {
     pub old: Bag,
     pub cur: Bag,
+    pub new: Bag,
 }
 
 impl Local {
@@ -53,12 +54,13 @@ impl Local {
         Local {
             old: Bag::new(),
             cur: Bag::new(),
+            new: Bag::new(),
         }
     }
 
     pub unsafe fn reclaim<T>(&mut self, elem: *mut T) {
         let elem: *mut AnyType = elem;
-        self.cur.insert(
+        self.new.insert(
             // forget any borrows within `data`:
             mem::transmute(elem)
         );
@@ -67,6 +69,7 @@ impl Local {
     pub unsafe fn collect(&mut self) -> Collect {
         let ret = self.old.collect();
         mem::swap(&mut self.old, &mut self.cur);
+        mem::swap(&mut self.cur, &mut self.new);
         ret
     }
 

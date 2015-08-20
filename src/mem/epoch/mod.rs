@@ -21,12 +21,11 @@ struct Participants {
     head: AtomicPtr<ParticipantNode>
 }
 
-//type ParticipantNode = CachePadded<Participant>;
-struct ParticipantNode(Participant);
+struct ParticipantNode(CachePadded<Participant>);
 
 impl ParticipantNode {
     fn new(p: Participant) -> ParticipantNode {
-        ParticipantNode(p)
+        unsafe { ParticipantNode(CachePadded::new(p)) }
     }
 }
 
@@ -152,10 +151,17 @@ impl Participant {
         self.in_critical.store(self.in_critical.load(Relaxed) + 1, Relaxed);
         atomic::fence(SeqCst);
 
-        let epoch = EPOCH.epoch.load(Relaxed);
-        let delta = epoch - self.epoch.load(Relaxed);
+        let global_epoch = EPOCH.epoch.load(Relaxed);
+        let local_epoch = self.epoch.load(Relaxed);
+
+        // cope with wraparound by recording that 2 epochs have passed
+        let delta = if global_epoch >= local_epoch {
+            global_epoch - local_epoch
+        } else {
+            2
+        };
         if delta > 0 {
-            self.epoch.store(epoch, Relaxed);
+            self.epoch.store(global_epoch, Relaxed);
 
             unsafe {
                 // Note: carefully designed to allow re-entrancy via drop, by
@@ -206,6 +212,8 @@ impl Participant {
             return false
         }
 
+        self.epoch.store(new_epoch, Relaxed);
+
         unsafe {
             EPOCH.garbage[new_epoch.wrapping_add(1) % 3].collect();
             for g in self.garbage.borrow_mut().collect() {
@@ -221,6 +229,7 @@ impl Participant {
         let local = mem::replace(&mut *self.garbage.borrow_mut(), garbage::Local::new());
         EPOCH.garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
         EPOCH.garbage[cur_epoch % 3].insert(local.cur);
+        EPOCH.garbage[EPOCH.epoch.load(Relaxed) % 3].insert(local.new);
     }
 }
 
@@ -403,10 +412,9 @@ impl LocalEpoch {
 impl Drop for LocalEpoch {
     fn drop(&mut self) {
         let p = self.get();
-        p.enter();
-        p.try_collect();
-        p.migrate_garbage();
-        p.exit();
+         p.enter();
+         p.migrate_garbage();
+         p.exit();
         p.active.store(false, Relaxed);
     }
 }
@@ -418,7 +426,7 @@ pub struct Guard {
     _dummy: ()
 }
 
-static GC_THRESH: usize = 32;
+static GC_THRESH: usize = 256;
 
 fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
     LOCAL_EPOCH.with(|e| f(e.get()))
