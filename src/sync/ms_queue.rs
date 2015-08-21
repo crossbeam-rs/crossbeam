@@ -69,23 +69,6 @@ impl<T> MsQueue<T> {
     }
 }
 
-/*
-impl<T: Debug> MsQueue<T> {
-    pub fn debug(&self) {
-        writeln!(stderr(), "Debugging queue:");
-
-        let guard = epoch::pin();
-        let mut node = self.head.load(Acquire, &guard);
-        while let Some(n) = node {
-            writeln!(stderr(), "{:?}", (*n).data.borrow());
-            node = n.next.load(Relaxed, &guard);
-        }
-
-        writeln!(stderr(), "");
-    }
-}
-*/
-
 #[cfg(test)]
 mod test {
     const CONC_COUNT: i64 = 1000000;

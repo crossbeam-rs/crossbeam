@@ -5,17 +5,9 @@ use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
 use std::ops::{Deref, DerefMut};
 
-use std::io::stderr;
-use std::io::prelude::*;
-
 use mem::cache_padded::CachePadded;
 
 mod garbage;
-
-fn log(s: &str) {
-    let _ = stderr().write(s.as_bytes());
-    let _ = stderr().write("\n".as_bytes());
-}
 
 struct Participants {
     head: AtomicPtr<ParticipantNode>

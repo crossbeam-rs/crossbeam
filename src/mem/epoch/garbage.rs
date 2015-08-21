@@ -22,10 +22,6 @@ impl Bag {
         self.0.len()
     }
 
-    fn capacity(&self) -> usize {
-        self.0.capacity()
-    }
-
     pub unsafe fn collect(&mut self) -> Collect {
         Collect(mem::replace(&mut self.0, vec![]).into_iter())
     }
@@ -76,10 +72,6 @@ impl Local {
     pub fn size(&self) -> usize {
         self.old.len() + self.cur.len()
     }
-
-    pub fn capacity(&self) -> usize {
-        self.old.capacity() + self.cur.capacity()
-    }
 }
 
 pub struct ConcBag {
@@ -92,10 +84,6 @@ struct Node {
 }
 
 impl ConcBag {
-    pub const fn new() -> ConcBag {
-        ConcBag { head: AtomicPtr::new(0 as *mut _) }
-    }
-
     pub fn insert(&self, t: Bag){
         let n = Box::into_raw(Box::new(
             Node { data: t, next: AtomicPtr::new(ptr::null_mut()) })) as *mut Node;

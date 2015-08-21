@@ -1,12 +1,9 @@
-use std::any::Any;
 use std::boxed::FnBox;
 use std::cell::RefCell;
 use std::mem;
-use std::ptr::{self, Unique};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicPtr, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::thread;
 
 use spawn_unsafe;

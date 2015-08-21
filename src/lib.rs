@@ -1,28 +1,32 @@
 //! Tools for concurrent and parallel programming.
 //!
-//! This crate provides a number of building blocks for writing concurrent and parallel code
+//! This crate is an early work in progress. The focus for the moment is
+//! concurrency:
+//!
+//! - **Non-blocking data structures**. These data structures allow for high
+//! performance, highly-concurrent access, much superior to wrapping with a
+//! `Mutex`. Ultimately the goal is to include stacks, queues, deques, bags,
+//! sets and maps.
+//!
+//! - **Memory management**. Because non-blocking data structures avoid global
+//! synchronization, it is not easy to tell when internal data can be safely
+//! freed. The `mem` module provides generic, easy to use, and high-performance
+//! APIs for managing memory in these cases.
+//!
+//! - **Synchronization**. The standard library provides a few synchronization
+//! primitives (locks, semaphores, barriers, etc) but this crate seeks to expand
+//! that set to include more advanced/niche primitives, as well as userspace
+//! alternatives.
+//!
+//! - **Scoped thread API**. Finally, the crate provides a "scoped" thread API,
+//! making it possible to spawn threads that share stack data with their
+//! parents.
 
-/*
-
-mem - memory management
-    epoch
-    cache_padded
-sync -
-    atomic_option
-    msqueue
-scope
-parallel
-
-*/
-
-#![feature(test)]
-#![feature(duration_span)]
 #![feature(fnbox)]
 #![feature(box_patterns)]
 #![feature(box_raw)]
 #![feature(const_fn)]
 #![feature(optin_builtin_traits)]
-#![feature(drain)]
 
 use std::boxed::FnBox;
 use std::thread;
