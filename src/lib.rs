@@ -1,4 +1,4 @@
-//! Tools for concurrent and parallel programming.
+//! Support for concurrent and parallel programming.
 //!
 //! This crate is an early work in progress. The focus for the moment is
 //! concurrency:
