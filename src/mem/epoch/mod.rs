@@ -140,7 +140,10 @@ static EPOCH: EpochState = EpochState::new();
 
 impl Participant {
     fn enter(&self) {
-        self.in_critical.store(self.in_critical.load(Relaxed) + 1, Relaxed);
+        let new_count = self.in_critical.load(Relaxed) + 1;
+        self.in_critical.store(new_count, Relaxed);
+        if new_count > 1 { return }
+
         atomic::fence(SeqCst);
 
         let global_epoch = EPOCH.epoch.load(Relaxed);
@@ -179,7 +182,10 @@ impl Participant {
     }
 
     fn exit(&self) {
-        self.in_critical.store(self.in_critical.load(Relaxed) - 1, Release);
+        let new_count = self.in_critical.load(Relaxed) - 1;
+        self.in_critical.store(
+            new_count,
+            if new_count > 1 { Relaxed } else { Release });
     }
 
     unsafe fn reclaim<T>(&self, data: *mut T) {
