@@ -1,3 +1,5 @@
+//! Epoch-based memory management
+
 use std::cell::RefCell;
 use std::mem;
 use std::ptr;
@@ -10,7 +12,7 @@ use mem::cache_padded::CachePadded;
 mod garbage;
 
 struct Participants {
-    head: AtomicPtr<ParticipantNode>
+    head: Atomic<ParticipantNode>
 }
 
 struct ParticipantNode(CachePadded<Participant>);
@@ -39,12 +41,12 @@ struct Participant {
     in_critical: AtomicUsize,
     active: AtomicBool,
     garbage: RefCell<garbage::Local>,
-    next: AtomicPtr<ParticipantNode>,
+    next: Atomic<ParticipantNode>,
 }
 
 impl Participants {
     const fn new() -> Participants {
-        Participants { head: AtomicPtr::new() }
+        Participants { head: Atomic::new() }
     }
 
     fn enroll(&self) -> *const Participant {
@@ -54,7 +56,7 @@ impl Participants {
                 in_critical: AtomicUsize::new(0),
                 active: AtomicBool::new(true),
                 garbage: RefCell::new(garbage::Local::new()),
-                next: AtomicPtr::new(),
+                next: Atomic::new(),
             }
         ));
         let fake_guard = ();
@@ -85,7 +87,7 @@ impl Participants {
 
 struct Iter<'a> {
     guard: &'a Guard,
-    next: &'a AtomicPtr<ParticipantNode>,
+    next: &'a Atomic<ParticipantNode>,
     needs_acq: bool,
 }
 
@@ -302,13 +304,13 @@ impl<'a, T> Shared<'a, T> {
     }
 }
 
-pub struct AtomicPtr<T> {
+pub struct Atomic<T> {
     ptr: atomic::AtomicPtr<T>,
 }
 
-impl<T> Default for AtomicPtr<T> {
-    fn default() -> AtomicPtr<T> {
-        AtomicPtr { ptr: atomic::AtomicPtr::new(ptr::null_mut()) }
+impl<T> Default for Atomic<T> {
+    fn default() -> Atomic<T> {
+        Atomic { ptr: atomic::AtomicPtr::new(ptr::null_mut()) }
     }
 }
 
@@ -320,9 +322,9 @@ fn opt_owned_as_raw<T>(val: &Option<Owned<T>>) -> *mut T {
     val.as_ref().map(Owned::as_raw).unwrap_or(ptr::null_mut())
 }
 
-impl<T> AtomicPtr<T> {
-    pub const fn new() -> AtomicPtr<T> {
-        AtomicPtr { ptr: atomic::AtomicPtr::new(0 as *mut _) }
+impl<T> Atomic<T> {
+    pub const fn new() -> Atomic<T> {
+        Atomic { ptr: atomic::AtomicPtr::new(0 as *mut _) }
     }
 
     pub fn load<'a>(&self, ord: Ordering, _: &'a Guard) -> Option<Shared<'a, T>> {
@@ -371,8 +373,7 @@ impl<T> AtomicPtr<T> {
         }
     }
 
-    pub unsafe fn cas_shared(&self, old: Option<Shared<T>>, new: Option<Shared<T>>,
-                             ord: Ordering)
+    pub unsafe fn cas_shared(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering)
                              -> bool
     {
         self.ptr.compare_and_swap(opt_shared_into_raw(old),
@@ -410,9 +411,9 @@ impl LocalEpoch {
 impl Drop for LocalEpoch {
     fn drop(&mut self) {
         let p = self.get();
-         p.enter();
-         p.migrate_garbage();
-         p.exit();
+        p.enter();
+        p.migrate_garbage();
+        p.exit();
         p.active.store(false, Relaxed);
     }
 }

@@ -11,7 +11,7 @@ pub struct Bag(Vec<*mut AnyType>);
 
 impl Bag {
     fn new() -> Bag {
-        Bag(vec![])
+        Bag(Vec::with_capacity(super::GC_THRESH * 2))
     }
 
     fn insert(&mut self, elem: *mut AnyType) {
@@ -23,7 +23,8 @@ impl Bag {
     }
 
     pub unsafe fn collect(&mut self) -> Collect {
-        Collect(mem::replace(&mut self.0, vec![]).into_iter())
+        Collect(mem::replace(&mut self.0, Vec::with_capacity(super::GC_THRESH * 2))
+                .into_iter())
     }
 }
 

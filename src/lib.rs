@@ -22,6 +22,8 @@
 //! making it possible to spawn threads that share stack data with their
 //! parents.
 
+//#![deny(missing_docs)]
+
 #![feature(fnbox)]
 #![feature(box_patterns)]
 #![feature(box_raw)]

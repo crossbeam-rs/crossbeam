@@ -1,24 +1,24 @@
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 use std::cell::RefCell;
 
-use mem::epoch::{self, AtomicPtr, Owned};
+use mem::epoch::{self, Atomic, Owned};
 
 pub struct MsQueue<T> {
-    head: AtomicPtr<Node<T>>,
-    tail: AtomicPtr<Node<T>>,
+    head: Atomic<Node<T>>,
+    tail: Atomic<Node<T>>,
 }
 
 struct Node<T> {
     data: RefCell<Option<T>>,
-    next: AtomicPtr<Node<T>>,
+    next: Atomic<Node<T>>,
 }
 
 impl<T> MsQueue<T> {
     pub fn new() -> MsQueue<T> {
-        let q = MsQueue { head: AtomicPtr::new(), tail: AtomicPtr::new() };
+        let q = MsQueue { head: Atomic::new(), tail: Atomic::new() };
         let sentinel = Owned::new(Node {
             data: RefCell::new(None),
-            next: AtomicPtr::new()
+            next: Atomic::new()
         });
         let guard = epoch::pin();
         let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
@@ -29,7 +29,7 @@ impl<T> MsQueue<T> {
     pub fn push(&self, t: T) {
         let mut n = Owned::new(Node {
             data: RefCell::new(Some(t)),
-            next: AtomicPtr::new()
+            next: Atomic::new()
         });
         let guard = epoch::pin();
         loop {
