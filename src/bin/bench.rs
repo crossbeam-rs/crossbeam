@@ -9,7 +9,7 @@ use crossbeam::scope;
 use crossbeam::sync::MsQueue;
 
 const COUNT: u64 = 1000000;
-const THREADS: u64 = 3;
+const THREADS: u64 = 2;
 
 fn nanos(d: Duration) -> f64 {
     d.as_secs() as f64 * 1000000000f64 + (d.subsec_nanos() as f64)
@@ -143,5 +143,5 @@ fn main() {
     println!("chan_mpsc: {}", bench_chan_mpsc());
     println!("queue_mpsc: {}", bench_queue_mpsc());
     println!("queue_mpmc: {}", bench_queue_mpmc());
-    //println!("mutex_mpmc: {}", bench_mutex_mpmc());
+    println!("mutex_mpmc: {}", bench_mutex_mpmc());
 }

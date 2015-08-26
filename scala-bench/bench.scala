@@ -180,11 +180,11 @@ object Bench {
   }
 
   def main(args: Array[String]) {
-    do_linked(3, 1000000)
-    do_linked(3, 10000000)
+    do_linked(2, 1000000)
+    do_linked(2, 10000000)
 
-    do_msq(3, 1000000)
-    do_msq(3, 10000000)
+    do_msq(2, 1000000)
+    do_msq(2, 10000000)
 
     do_linked_mpmc(2, 1000000)
     do_linked_mpmc(2, 10000000)
