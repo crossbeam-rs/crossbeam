@@ -1,45 +1,48 @@
+use alloc::heap;
+
 use std::ptr;
 use std::mem;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering::{Relaxed, Release};
-use std::vec;
 
-trait AnyType {}
-impl<T: ?Sized> AnyType for T {}
+struct Item {
+    ptr: *mut u8,
+    size: usize,
+    align: usize,
+}
 
-pub struct Bag(Vec<*mut AnyType>);
+pub struct Bag(Vec<Item>);
 
 impl Bag {
     fn new() -> Bag {
-        Bag(Vec::with_capacity(super::GC_THRESH * 2))
+        Bag(vec![])
     }
 
-    fn insert(&mut self, elem: *mut AnyType) {
-        self.0.push(elem)
+    fn insert<T>(&mut self, elem: *mut T) {
+        let size = mem::size_of::<T>();
+        if size > 0 {
+            self.0.push(Item {
+                ptr: elem as *mut u8,
+                size: size,
+                align: mem::align_of::<T>(),
+            })
+        }
     }
 
     fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub unsafe fn collect(&mut self) -> Collect {
-        Collect(mem::replace(&mut self.0, Vec::with_capacity(super::GC_THRESH * 2))
-                .into_iter())
-    }
-}
-
-struct Collect(vec::IntoIter<*mut AnyType>);
-
-impl Iterator for Collect {
-    type Item = Box<AnyType>;
-
-    fn next(&mut self) -> Option<Box<AnyType>> {
-        unsafe { self.0.next().map(|p| Box::from_raw(p)) }
+    pub unsafe fn collect(&mut self) {
+        for item in self.0.drain(..) {
+            heap::deallocate(item.ptr, item.size, item.align);
+        }
     }
 }
 
 unsafe impl Send for Bag {}
 
+// FIXME: switch this to use modular arithmetic and accessors instead
 pub struct Local {
     pub old: Bag,
     pub cur: Bag,
@@ -56,14 +59,10 @@ impl Local {
     }
 
     pub unsafe fn reclaim<T>(&mut self, elem: *mut T) {
-        let elem: *mut AnyType = elem;
-        self.new.insert(
-            // forget any borrows within `data`:
-            mem::transmute(elem)
-        );
+        self.new.insert(elem)
     }
 
-    pub unsafe fn collect(&mut self) -> Collect {
+    pub unsafe fn collect(&mut self) {
         let ret = self.old.collect();
         mem::swap(&mut self.old, &mut self.cur);
         mem::swap(&mut self.cur, &mut self.new);

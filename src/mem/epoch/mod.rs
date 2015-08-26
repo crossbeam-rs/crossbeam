@@ -161,23 +161,9 @@ impl Participant {
             self.epoch.store(global_epoch, Relaxed);
 
             unsafe {
-                // Note: carefully designed to allow re-entrancy via drop, by
-                // performing the drops *after* the borrow_mut() is relinquished
-
-                let gen1 = self.garbage.borrow_mut().collect();
-                if delta == 1 {
-                    for g in gen1 {
-                        mem::drop(g);
-                    }
-                } else {
-                    let gen2 = self.garbage.borrow_mut().collect();
-
-                    for g in gen1 {
-                        mem::drop(g);
-                    }
-                    for g in gen2 {
-                        mem::drop(g);
-                    }
+                self.garbage.borrow_mut().collect();
+                if delta > 1 {
+                    self.garbage.borrow_mut().collect();
                 }
             }
         }
@@ -216,9 +202,6 @@ impl Participant {
 
         unsafe {
             EPOCH.garbage[new_epoch.wrapping_add(1) % 3].collect();
-            for g in self.garbage.borrow_mut().collect() {
-                mem::drop(g);
-            }
         }
 
         true
@@ -408,6 +391,7 @@ impl LocalEpoch {
     }
 }
 
+// FIXME: avoid leaking when all threads have exited
 impl Drop for LocalEpoch {
     fn drop(&mut self) {
         let p = self.get();

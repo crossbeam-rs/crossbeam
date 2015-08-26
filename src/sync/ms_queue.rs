@@ -1,5 +1,5 @@
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
-use std::cell::RefCell;
+use std::{ptr, mem};
 
 use mem::epoch::{self, Atomic, Owned};
 
@@ -9,7 +9,7 @@ pub struct MsQueue<T> {
 }
 
 struct Node<T> {
-    data: RefCell<Option<T>>,
+    data: T,
     next: Atomic<Node<T>>,
 }
 
@@ -17,7 +17,7 @@ impl<T> MsQueue<T> {
     pub fn new() -> MsQueue<T> {
         let q = MsQueue { head: Atomic::new(), tail: Atomic::new() };
         let sentinel = Owned::new(Node {
-            data: RefCell::new(None),
+            data: unsafe { mem::uninitialized() },
             next: Atomic::new()
         });
         let guard = epoch::pin();
@@ -28,7 +28,7 @@ impl<T> MsQueue<T> {
 
     pub fn push(&self, t: T) {
         let mut n = Owned::new(Node {
-            data: RefCell::new(Some(t)),
+            data: t,
             next: Atomic::new()
         });
         let guard = epoch::pin();
@@ -57,10 +57,11 @@ impl<T> MsQueue<T> {
             let head = self.head.load(Acquire, &guard).unwrap();
 
             if let Some(next) = head.next.load(Relaxed, &guard) {
-                if unsafe { self.head.cas_shared(Some(head), Some(next), Relaxed) } {
-                    unsafe { guard.unlinked(head); }
-                    // FIXME: rustc bug that (*next) is required
-                    return (*next).data.borrow_mut().take()
+                unsafe {
+                    if self.head.cas_shared(Some(head), Some(next), Relaxed) {
+                        guard.unlinked(head);
+                        return Some(ptr::read(&(*next).data))
+                    }
                 }
             } else {
                 return None
