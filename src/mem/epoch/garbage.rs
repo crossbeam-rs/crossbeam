@@ -1,3 +1,5 @@
+//! Data structure for storing garbage
+
 use alloc::heap;
 
 use std::ptr;
@@ -5,12 +7,16 @@ use std::mem;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering::{Relaxed, Release};
 
+/// One item of garbage.
+///
+/// Stores enough information to do a deallocation.
 struct Item {
     ptr: *mut u8,
     size: usize,
     align: usize,
 }
 
+/// A single, thread-local bag of garbage.
 pub struct Bag(Vec<Item>);
 
 impl Bag {
@@ -33,6 +39,7 @@ impl Bag {
         self.0.len()
     }
 
+    /// Deallocate all garbage in the bag
     pub unsafe fn collect(&mut self) {
         for item in self.0.drain(..) {
             heap::deallocate(item.ptr, item.size, item.align);
@@ -40,12 +47,17 @@ impl Bag {
     }
 }
 
+// needed because the bags store raw pointers.
 unsafe impl Send for Bag {}
 
+/// A thread-local set of garbage bags.
 // FIXME: switch this to use modular arithmetic and accessors instead
 pub struct Local {
+    /// Garbage added at least one epoch behind the current local epoch
     pub old: Bag,
+    /// Garbage added in the current local epoch or earlier
     pub cur: Bag,
+    /// Garbage added in the current *global* epoch
     pub new: Bag,
 }
 
@@ -58,10 +70,11 @@ impl Local {
         }
     }
 
-    pub unsafe fn reclaim<T>(&mut self, elem: *mut T) {
+    pub fn reclaim<T>(&mut self, elem: *mut T) {
         self.new.insert(elem)
     }
 
+    /// Collect one epoch of garbage, rotating the local garbage bags.
     pub unsafe fn collect(&mut self) {
         let ret = self.old.collect();
         mem::swap(&mut self.old, &mut self.cur);
@@ -74,6 +87,9 @@ impl Local {
     }
 }
 
+/// A concurrent garbage bag, currently based on Treiber's stack.
+///
+/// The elements are themselves owned `Bag`s.
 pub struct ConcBag {
     head: AtomicPtr<Node>,
 }

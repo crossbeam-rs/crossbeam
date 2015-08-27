@@ -2,10 +2,14 @@ use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 use std::{ptr, mem};
 
 use mem::epoch::{self, Atomic, Owned};
+use mem::CachePadded;
 
+/// A Michael-Scott lock-free queue.
+///
+/// Usable with any number of producers and consumers.
 pub struct MsQueue<T> {
-    head: Atomic<Node<T>>,
-    tail: Atomic<Node<T>>,
+    head: CachePadded<Atomic<Node<T>>>,
+    tail: CachePadded<Atomic<Node<T>>>,
 }
 
 struct Node<T> {
@@ -14,11 +18,15 @@ struct Node<T> {
 }
 
 impl<T> MsQueue<T> {
+    /// Create a enw, emtpy queue.
     pub fn new() -> MsQueue<T> {
-        let q = MsQueue { head: Atomic::new(), tail: Atomic::new() };
+        let q = MsQueue {
+            head: CachePadded::new(Atomic::null()),
+            tail: CachePadded::new(Atomic::null()),
+        };
         let sentinel = Owned::new(Node {
             data: unsafe { mem::uninitialized() },
-            next: Atomic::new()
+            next: Atomic::null()
         });
         let guard = epoch::pin();
         let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
@@ -26,10 +34,11 @@ impl<T> MsQueue<T> {
         q
     }
 
+    /// Add `t` to the back of the queue.
     pub fn push(&self, t: T) {
         let mut n = Owned::new(Node {
             data: t,
-            next: Atomic::new()
+            next: Atomic::null()
         });
         let guard = epoch::pin();
         loop {
@@ -51,6 +60,9 @@ impl<T> MsQueue<T> {
         }
     }
 
+    /// Attempt to dequeue from the front.
+    ///
+    /// Returns `None` if the queue is observed to be empty.
     pub fn pop(&self) -> Option<T> {
         let guard = epoch::pin();
         loop {

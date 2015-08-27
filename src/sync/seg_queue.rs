@@ -6,20 +6,21 @@ use std::cell::UnsafeCell;
 
 use mem::epoch::{self, Atomic, Owned};
 
-use std::io::stderr;
-use std::io::prelude::*;
-
 const SEG_SIZE: usize = 32;
 
+/// A Michael-Scott queue that allocates "segments" (arrays of nodes)
+/// for efficiency.
+///
+/// Usable with any number of producers and consumers.
 pub struct SegQueue<T> {
     head: Atomic<Segment<T>>,
     tail: Atomic<Segment<T>>,
 }
 
 struct Segment<T> {
+    low: AtomicUsize,
     data: [UnsafeCell<T>; SEG_SIZE],
     ready: [AtomicBool; SEG_SIZE],
-    low: AtomicUsize,
     high: AtomicUsize,
     next: Atomic<Segment<T>>,
 }
@@ -31,14 +32,18 @@ impl<T> Segment<T> {
             ready: unsafe { mem::transmute([0usize; SEG_SIZE]) },
             low: AtomicUsize::new(0),
             high: AtomicUsize::new(0),
-            next: Atomic::new(),
+            next: Atomic::null(),
         }
     }
 }
 
 impl<T> SegQueue<T> {
+    /// Create a enw, emtpy queue.
     pub fn new() -> SegQueue<T> {
-        let q = SegQueue { head: Atomic::new(), tail: Atomic::new() };
+        let q = SegQueue {
+            head: Atomic::null(),
+            tail: Atomic::null(),
+        };
         let sentinel = Owned::new(Segment::new());
         let guard = epoch::pin();
         let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
@@ -46,6 +51,7 @@ impl<T> SegQueue<T> {
         q
     }
 
+    /// Add `t` to the back of the queue.
     pub fn push(&self, t: T) {
         let guard = epoch::pin();
         loop {
@@ -68,6 +74,9 @@ impl<T> SegQueue<T> {
         }
     }
 
+    /// Attempt to dequeue from the front.
+    ///
+    /// Returns `None` if the queue is observed to be empty.
     pub fn pop(&self) -> Option<T> {
         let guard = epoch::pin();
         loop {

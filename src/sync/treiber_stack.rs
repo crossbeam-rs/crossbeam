@@ -3,6 +3,9 @@ use std::ptr;
 
 use mem::epoch::{self, Atomic, Owned};
 
+/// Treiber's lock-free stack.
+///
+/// Usable with any number of producers and consumers.
 pub struct TreiberStack<T> {
     head: Atomic<Node<T>>,
 }
@@ -13,16 +16,18 @@ struct Node<T> {
 }
 
 impl<T> TreiberStack<T> {
+    /// Crate a new, empty stack.
     pub fn new() -> TreiberStack<T> {
         TreiberStack {
-            head: Atomic::new()
+            head: Atomic::null()
         }
     }
 
+    /// Push `t` on top of the stack.
     pub fn push(&self, t: T) {
         let mut n = Owned::new(Node {
             data: t,
-            next: Atomic::new()
+            next: Atomic::null()
         });
         let guard = epoch::pin();
         loop {
@@ -35,6 +40,9 @@ impl<T> TreiberStack<T> {
         }
     }
 
+    /// Attempt to pop the top element of the stack.
+    ///
+    /// Returns `None` if the stack is observed to be empty.
     pub fn pop(&self) -> Option<T> {
         let guard = epoch::pin();
         loop {

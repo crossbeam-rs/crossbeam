@@ -16,7 +16,7 @@ use extra_impls::mpsc_queue::Queue as MpscQueue;
 
 mod extra_impls;
 
-const COUNT: u64 = 1000000;
+const COUNT: u64 = 10000000;
 const THREADS: u64 = 2;
 
 fn nanos(d: Duration) -> f64 {
@@ -45,7 +45,7 @@ impl<T> Queue<T> for MpscQueue<T> {
 
         loop {
             match self.pop() {
-                Data(T) => return Some(T),
+                Data(t) => return Some(t),
                 Empty => return None,
                 Inconsistent => (),
             }
@@ -135,42 +135,6 @@ fn bench_chan_mpsc() -> f64 {
             for _i in 0..COUNT*THREADS {
                 let _ = rx.recv().unwrap();
             }
-        });
-    });
-
-    nanos(d) / ((COUNT * THREADS) as f64)
-}
-
-fn bench_mutex_mpmc() -> f64 {
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::Ordering::Relaxed;
-
-    let q = Mutex::new(VecDeque::new());
-    let prod_count = AtomicUsize::new(0);
-
-    let d = Duration::span(|| {
-        scope(|scope| {
-            for _i in 0..THREADS {
-                let qr = &q;
-                let pcr = &prod_count;
-                scope.spawn(move || {
-                    for _x in 0..COUNT {
-                        qr.lock().unwrap().push_back(true);
-                    }
-                    if pcr.fetch_add(1, Relaxed) == (THREADS as usize) - 1 {
-                        for _x in 0..THREADS {
-                            qr.lock().unwrap().push_back(false);
-                        }
-                    }
-                });
-                scope.spawn(move || {
-                    loop {
-                        if let Some(false) = qr.lock().unwrap().pop_front() { break }
-                    }
-                });
-            }
-
-
         });
     });
 
