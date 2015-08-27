@@ -63,7 +63,7 @@
 //! impl<T> TreiberStack<T> {
 //!     fn new() -> TreiberStack<T> {
 //!         TreiberStack {
-//!             head: Atomic::new()
+//!             head: Atomic::null()
 //!         }
 //!     }
 //!
@@ -71,7 +71,7 @@
 //!         // allocate the node via Owned
 //!         let mut n = Owned::new(Node {
 //!             data: t,
-//!             next: Atomic::new(),
+//!             next: Atomic::null(),
 //!         });
 //!
 //!         // become active
@@ -650,19 +650,15 @@ fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
 /// perform several lock-free operations in quick succession, you may consider
 /// pinning around the entire set of operations.
 pub fn pin() -> Guard {
-    let needs_collect = with_participant(|p| {
+    with_participant(|p| {
         p.enter();
-        p.garbage.borrow().size() > GC_THRESH
+        if p.garbage.borrow().size() > GC_THRESH {
+            p.try_collect();
+        }
     });
-    let g = Guard {
+    Guard {
         _dummy: ()
-    };
-
-    if needs_collect {
-        g.try_collect();
     }
-
-    g
 }
 
 impl Guard {
@@ -670,11 +666,6 @@ impl Guard {
     /// structure and should be collected when sufficient epochs have passed.
     pub unsafe fn unlinked<T>(&self, val: Shared<T>) {
         with_participant(|p| p.reclaim(val.as_raw()))
-    }
-
-    /// Attempt a garbage collection; returns `true` if successful.
-    pub fn try_collect(&self) -> bool {
-        with_participant(|p| p.try_collect())
     }
 
     /// Move the thread-local garbage into the global set of garbage.
