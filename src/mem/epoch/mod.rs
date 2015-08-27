@@ -82,7 +82,7 @@
 //!             let head = self.head.load(Relaxed, &guard);
 //!
 //!             // update `next` pointer with snapshot
-//!             unsafe { n.next.store_shared(head, Relaxed); }
+//!             n.next.store_shared(head, Relaxed);
 //!
 //!             // if snapshot is still good, link in the new node
 //!             match self.head.cas_and_ref(head, n, Release, &guard) {
@@ -105,16 +105,14 @@
 //!                     let next = head.next.load(Relaxed, &guard);
 //!
 //!                     // if snapshot is still good, update from `head` to `next`
-//!                     let success = unsafe {
-//!                         self.head.cas_shared(Some(head), next, Release)
-//!                     };
+//!                     if self.head.cas_shared(Some(head), next, Release) {
+//!                         unsafe {
+//!                             // mark the node as unlinked
+//!                             guard.unlinked(head);
 //!
-//!                     if success {
-//!                         // mark the node as unlinked
-//!                         unsafe { guard.unlinked(head); }
-//!
-//!                         // extract out the data from the now-unlinked node
-//!                         return Some(unsafe { ptr::read(&(*head).data) })
+//!                             // extract out the data from the now-unlinked node
+//!                             return Some(ptr::read(&(*head).data))
+//!                         }
 //!                     }
 //!                 }
 //!
@@ -210,7 +208,7 @@ impl Participants {
         let g: &'static Guard = unsafe { mem::transmute(&fake_guard) };
         loop {
             let head = self.head.load(Relaxed, g);
-            unsafe { participant.next.store_shared(head, Relaxed) };
+            participant.next.store_shared(head, Relaxed);
             match self.head.cas_and_ref(head, participant, Release, g) {
                 Ok(shared) => {
                     let shared: &Participant = &shared;
@@ -513,24 +511,12 @@ impl<T> Atomic<T> {
     /// Do an atomic store of a `Shared` pointer with the given memory ordering.
     ///
     /// This operation does not require a guard, because it does not yield any
-    /// new information about the lifetime of a pointer. It is unsafe because
-    /// the provided `Shared` pointer has a limited lifetime, but the operation
-    /// will make it available indefinitely.
-    ///
-    /// In general, `store_shared` is safe to use when:
-    ///
-    /// - You know for certain that the same pointer is already reachable through some
-    ///   other path in the same lock-free data structure, or,
-    ///
-    /// - You just removed the sole pointer reaching it from the lock-free data
-    /// structure, but did not schedule it for deletion. In that case, you
-    /// effectively "own" the pointer.
-    ///
+    /// new information about the lifetime of a pointer.
     ///
     /// # Panics
     ///
     /// Panics if `order` is `Acquire` or `AcqRel`.
-    pub unsafe fn store_shared(&self, val: Option<Shared<T>>, ord: Ordering) {
+    pub fn store_shared(&self, val: Option<Shared<T>>, ord: Ordering) {
         self.ptr.store(opt_shared_into_raw(val), ord)
     }
 
@@ -574,9 +560,8 @@ impl<T> Atomic<T> {
     /// Do a compare-and-set from a `Shared` to another `Shared` pointer with
     /// the given memory ordering.
     ///
-    /// The boolean return value is `true` when the CAS is successful. This
-    /// operation is unsafe for exactly the same reason that `store_shared` is.
-    pub unsafe fn cas_shared(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering)
+    /// The boolean return value is `true` when the CAS is successful.
+    pub fn cas_shared(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering)
                              -> bool
     {
         self.ptr.compare_and_swap(opt_shared_into_raw(old),
@@ -591,11 +576,9 @@ impl<T> Atomic<T> {
     }
 
     /// Do an atomic swap with a `Shared` pointer with the given memory ordering.
-    ///
-    /// Unsafe for the same reason `store_shared` is.
-    pub unsafe fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, _: &'a Guard)
+    pub fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, _: &'a Guard)
                                   -> Option<Shared<'a, T>> {
-        Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord))
+        unsafe { Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord)) }
     }
 }
 

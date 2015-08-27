@@ -47,7 +47,7 @@ impl<T> SegQueue<T> {
         let sentinel = Owned::new(Segment::new());
         let guard = epoch::pin();
         let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
-        unsafe { q.tail.store_shared(Some(sentinel), Relaxed); }
+        q.tail.store_shared(Some(sentinel), Relaxed);
         q
     }
 
@@ -91,7 +91,7 @@ impl<T> SegQueue<T> {
                     if low + 1 == SEG_SIZE {
                         loop {
                             if let Some(next) = head.next.load(Relaxed, &guard) {
-                                unsafe { self.head.store_shared(Some(next), Relaxed); }
+                                self.head.store_shared(Some(next), Relaxed);
                                 break
                             }
                         }
