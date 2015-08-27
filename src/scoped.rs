@@ -1,4 +1,3 @@
-use std::boxed::FnBox;
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
@@ -6,7 +5,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
-use spawn_unsafe;
+use {spawn_unsafe, FnBox};
 use sync::AtomicOption;
 
 pub struct Scope<'a> {
@@ -14,7 +13,7 @@ pub struct Scope<'a> {
 }
 
 struct DtorChain<'a> {
-    dtor: Box<FnBox() + 'a>,
+    dtor: Box<FnBox + 'a>,
     next: Option<Box<DtorChain<'a>>>
 }
 
@@ -67,7 +66,7 @@ impl<'a> Scope<'a> {
                     return
                 }
             };
-            dtor()
+            dtor.call_box()
         }
     }
 
