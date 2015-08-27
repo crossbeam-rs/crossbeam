@@ -40,9 +40,12 @@ impl Bag {
 
     /// Deallocate all garbage in the bag
     pub unsafe fn collect(&mut self) {
-        for item in self.0.drain(..) {
+        let mut data = mem::replace(&mut self.0, Vec::new());
+        for item in data.iter() {
             (item.free)(item.ptr);
         }
+        data.truncate(0);
+        self.0 = data;
     }
 }
 
