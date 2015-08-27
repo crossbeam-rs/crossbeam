@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use crossbeam::scope;
 use crossbeam::sync::MsQueue;
+use crossbeam::sync::SegQueue;
 
 use extra_impls::mpsc_queue::Queue as MpscQueue;
 
@@ -28,6 +29,11 @@ trait Queue<T> {
 }
 
 impl<T> Queue<T> for MsQueue<T> {
+    fn push(&self, t: T) { self.push(t) }
+    fn pop(&self) -> Option<T> { self.pop() }
+}
+
+impl<T> Queue<T> for SegQueue<T> {
     fn push(&self, t: T) { self.push(t) }
     fn pop(&self) -> Option<T> { self.pop() }
 }
@@ -76,35 +82,10 @@ fn bench_queue_mpsc<Q: Queue<u64> + Sync>(q: Q) -> f64 {
     nanos(d) / ((COUNT * THREADS) as f64)
 }
 
-fn bench_chan_mpsc() -> f64 {
-    let (tx, rx) = channel();
-
-    let d = Duration::span(|| {
-        scope(|scope| {
-            for _i in 0..THREADS {
-                let my_tx = tx.clone();
-
-                scope.spawn(move || {
-                    for x in 0..COUNT {
-                        let _ = my_tx.send(x);
-                    }
-                });
-            }
-
-            for _i in 0..COUNT*THREADS {
-                let _ = rx.recv().unwrap();
-            }
-        });
-    });
-
-    nanos(d) / ((COUNT * THREADS) as f64)
-}
-
-fn bench_queue_mpmc() -> f64 {
+fn bench_queue_mpmc<Q: Queue<bool> + Sync>(q: Q) -> f64 {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering::Relaxed;
 
-    let q = MsQueue::new();
     let prod_count = AtomicUsize::new(0);
 
     let d = Duration::span(|| {
@@ -130,6 +111,30 @@ fn bench_queue_mpmc() -> f64 {
             }
 
 
+        });
+    });
+
+    nanos(d) / ((COUNT * THREADS) as f64)
+}
+
+fn bench_chan_mpsc() -> f64 {
+    let (tx, rx) = channel();
+
+    let d = Duration::span(|| {
+        scope(|scope| {
+            for _i in 0..THREADS {
+                let my_tx = tx.clone();
+
+                scope.spawn(move || {
+                    for x in 0..COUNT {
+                        let _ = my_tx.send(x);
+                    }
+                });
+            }
+
+            for _i in 0..COUNT*THREADS {
+                let _ = rx.recv().unwrap();
+            }
         });
     });
 
@@ -176,6 +181,11 @@ fn main() {
     println!("MSQ mpsc: {}", bench_queue_mpsc(MsQueue::new()));
     println!("chan mpsc: {}", bench_chan_mpsc());
     println!("mpsc mpsc: {}", bench_queue_mpsc(MpscQueue::new()));
+    println!("Seg mpsc: {}", bench_queue_mpsc(SegQueue::new()));
+
+    println!("MSQ mpmc: {}", bench_queue_mpmc(MsQueue::new()));
+    println!("Seg mpmc: {}", bench_queue_mpmc(SegQueue::new()));
+
 //    println!("queue_mpsc: {}", bench_queue_mpsc());
 //    println!("queue_mpmc: {}", bench_queue_mpmc());
 //   println!("mutex_mpmc: {}", bench_mutex_mpmc());
