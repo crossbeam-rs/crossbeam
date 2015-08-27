@@ -25,7 +25,6 @@
 //#![deny(missing_docs)]
 
 #![feature(drain)]
-#![feature(box_patterns)]
 #![feature(const_fn)]
 #![feature(repr_simd)]
 #![feature(optin_builtin_traits)]
