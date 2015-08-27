@@ -127,12 +127,13 @@
 // FIXME: document implementation details
 
 use std::cell::UnsafeCell;
-use std::mem;
-use std::ptr;
-use std::sync::atomic::{self, AtomicUsize, AtomicBool};
-use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
-use std::ops::{Deref, DerefMut};
 use std::marker::PhantomData;
+use std::marker;
+use std::mem;
+use std::ops::{Deref, DerefMut};
+use std::ptr;
+use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
+use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 
 use mem::CachePadded;
 
@@ -619,7 +620,7 @@ thread_local!(static LOCAL_EPOCH: LocalEpoch = LocalEpoch::new() );
 /// destruction, it unpins the epoch.
 #[must_use]
 pub struct Guard {
-    _dummy: ()
+    _marker: marker::PhantomData<*mut ()>, // !Send and !Sync
 }
 
 static GC_THRESH: usize = 32;
@@ -644,7 +645,7 @@ pub fn pin() -> Guard {
         }
     });
     Guard {
-        _dummy: ()
+        _marker: marker::PhantomData,
     }
 }
 
@@ -666,9 +667,6 @@ impl Drop for Guard {
         with_participant(|p| p.exit());
     }
 }
-
-impl !Send for Guard {}
-impl !Sync for Guard {}
 
 #[cfg(test)]
 mod test {

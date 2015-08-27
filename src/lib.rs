@@ -29,8 +29,8 @@
 #![feature(box_patterns)]
 #![feature(box_raw)]
 #![feature(const_fn)]
-#![feature(optin_builtin_traits)]
 #![feature(repr_simd)]
+#![feature(optin_builtin_traits)]
 
 use std::boxed::FnBox;
 use std::thread;
