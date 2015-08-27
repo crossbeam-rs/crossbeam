@@ -1,7 +1,5 @@
 //! Data structure for storing garbage
 
-use alloc::heap;
-
 use std::ptr;
 use std::mem;
 use std::sync::atomic::AtomicPtr;
@@ -12,8 +10,7 @@ use std::sync::atomic::Ordering::{Relaxed, Release};
 /// Stores enough information to do a deallocation.
 struct Item {
     ptr: *mut u8,
-    size: usize,
-    align: usize,
+    free: unsafe fn(*mut u8),
 }
 
 /// A single, thread-local bag of garbage.
@@ -29,9 +26,11 @@ impl Bag {
         if size > 0 {
             self.0.push(Item {
                 ptr: elem as *mut u8,
-                size: size,
-                align: mem::align_of::<T>(),
+                free: free::<T>,
             })
+        }
+        unsafe fn free<T>(t: *mut u8) {
+            drop(Vec::from_raw_parts(t as *mut T, 0, 1));
         }
     }
 
@@ -42,7 +41,7 @@ impl Bag {
     /// Deallocate all garbage in the bag
     pub unsafe fn collect(&mut self) {
         for item in self.0.drain(..) {
-            heap::deallocate(item.ptr, item.size, item.align);
+            (item.free)(item.ptr);
         }
     }
 }
