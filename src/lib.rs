@@ -27,7 +27,6 @@
 #![feature(drain)]
 #![feature(fnbox)]
 #![feature(box_patterns)]
-#![feature(box_raw)]
 #![feature(const_fn)]
 #![feature(repr_simd)]
 #![feature(optin_builtin_traits)]
