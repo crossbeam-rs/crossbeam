@@ -5,3 +5,5 @@ authors = ["Aaron Turon <aturon@mozilla.com>"]
 description = "Support for lock-free data structures, synchronizers, and parallel programming"
 repository = "https://github.com/aturon/crossbeam"
 documentation = "http://aturon.github.io/crossbeam-doc/crossbeam/"
+readme = "README.md"
+license = "Apache-2.0/MIT"
