@@ -49,6 +49,7 @@ impl Bag {
 
 // needed because the bags store raw pointers.
 unsafe impl Send for Bag {}
+unsafe impl Sync for Bag {}
 
 /// A thread-local set of garbage bags.
 // FIXME: switch this to use modular arithmetic and accessors instead

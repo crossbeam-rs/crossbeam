@@ -126,12 +126,13 @@
 
 // FIXME: document implementation details
 
-use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
 use std::ops::{Deref, DerefMut};
+use std::marker::PhantomData;
 
 use mem::CachePadded;
 
@@ -163,6 +164,8 @@ impl DerefMut for ParticipantNode {
     }
 }
 
+unsafe impl Sync for Participant {}
+
 /// Thread-local data for epoch participation.
 struct Participant {
     /// The local epoch.
@@ -177,7 +180,7 @@ struct Participant {
     active: AtomicBool,
 
     /// Thread-local garbage tracking
-    garbage: RefCell<garbage::Local>,
+    garbage: UnsafeCell<garbage::Local>,
 
     /// The participant list is coded intrusively; here's the `next` pointer.
     next: Atomic<ParticipantNode>,
@@ -196,7 +199,7 @@ impl Participants {
                 epoch: AtomicUsize::new(0),
                 in_critical: AtomicUsize::new(0),
                 active: AtomicBool::new(true),
-                garbage: RefCell::new(garbage::Local::new()),
+                garbage: UnsafeCell::new(garbage::Local::new()),
                 next: Atomic::null(),
             }
         ));
@@ -310,7 +313,7 @@ impl Participant {
         let global_epoch = EPOCH.epoch.load(Relaxed);
         if global_epoch != self.epoch.load(Relaxed) {
             self.epoch.store(global_epoch, Relaxed);
-            unsafe { self.garbage.borrow_mut().collect(); }
+            unsafe { (*self.garbage.get()).collect(); }
         }
     }
 
@@ -322,7 +325,7 @@ impl Participant {
     }
 
     unsafe fn reclaim<T>(&self, data: *mut T) {
-        self.garbage.borrow_mut().reclaim(data);
+        (*self.garbage.get()).reclaim(data);
     }
 
     fn try_collect(&self) -> bool {
@@ -354,7 +357,7 @@ impl Participant {
 
     fn migrate_garbage(&self) {
         let cur_epoch = self.epoch.load(Relaxed);
-        let local = mem::replace(&mut *self.garbage.borrow_mut(), garbage::Local::new());
+        let local = unsafe { mem::replace(&mut *self.garbage.get(), garbage::Local::new()) };
         EPOCH.garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
         EPOCH.garbage[cur_epoch % 3].insert(local.cur);
         EPOCH.garbage[EPOCH.epoch.load(Relaxed) % 3].insert(local.new);
@@ -441,13 +444,11 @@ impl<'a, T> Shared<'a, T> {
 /// the `Owned` and `Shared` types.
 pub struct Atomic<T> {
     ptr: atomic::AtomicPtr<T>,
+    _marker: PhantomData<*const ()>,
 }
 
-impl<T> Default for Atomic<T> {
-    fn default() -> Atomic<T> {
-        Atomic { ptr: atomic::AtomicPtr::new(ptr::null_mut()) }
-    }
-}
+unsafe impl<T: Sync> Send for Atomic<T> {}
+unsafe impl<T: Sync> Sync for Atomic<T> {}
 
 fn opt_shared_into_raw<T>(val: Option<Shared<T>>) -> *mut T {
     val.map(|p| p.as_raw()).unwrap_or(ptr::null_mut())
@@ -460,7 +461,10 @@ fn opt_owned_as_raw<T>(val: &Option<Owned<T>>) -> *mut T {
 impl<T> Atomic<T> {
     /// Create a new, null atomic pointer.
     pub const fn null() -> Atomic<T> {
-        Atomic { ptr: atomic::AtomicPtr::new(0 as *mut _) }
+        Atomic {
+            ptr: atomic::AtomicPtr::new(0 as *mut _),
+            _marker: PhantomData
+        }
     }
 
     /// Do an atomic load with the given memory ordering.
@@ -635,7 +639,7 @@ fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
 pub fn pin() -> Guard {
     with_participant(|p| {
         p.enter();
-        if p.garbage.borrow().size() > GC_THRESH {
+        if unsafe { (*p.garbage.get()).size() } > GC_THRESH {
             p.try_collect();
         }
     });

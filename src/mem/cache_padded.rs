@@ -24,8 +24,8 @@ pub struct CachePadded<T> {
     _marker: marker::PhantomData<T>,
 }
 
-unsafe impl<T> Send for CachePadded<T> where T: Send {}
-unsafe impl<T> Sync for CachePadded<T> where T: Sync {}
+unsafe impl<T: Send> Send for CachePadded<T> {}
+unsafe impl<T: Sync> Sync for CachePadded<T> {}
 
 /// Types for which mem::zeroed() is safe.
 ///

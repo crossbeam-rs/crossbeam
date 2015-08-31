@@ -2,7 +2,8 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use std::ptr;
 use std::mem;
 
-unsafe impl<T> Send for AtomicOption<T> {}
+unsafe impl<T: Send> Send for AtomicOption<T> {}
+unsafe impl<T: Send> Sync for AtomicOption<T> {}
 
 pub struct AtomicOption<T> {
     inner: AtomicPtr<T>,
