@@ -489,7 +489,7 @@ impl<T> Atomic<T> {
     ///
     /// # Panics
     ///
-    /// Panics if `order` is `Acquire` or `AcqRel`.
+    /// Panics if `ord` is `Acquire` or `AcqRel`.
     pub fn store(&self, val: Option<Owned<T>>, ord: Ordering) {
         self.ptr.store(opt_owned_as_raw(&val), ord)
     }
@@ -503,7 +503,7 @@ impl<T> Atomic<T> {
     ///
     /// # Panics
     ///
-    /// Panics if `order` is `Acquire` or `AcqRel`.
+    /// Panics if `ord` is `Acquire` or `AcqRel`.
     pub fn store_and_ref<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
         unsafe {
             let shared = Shared::from_owned(val);
@@ -519,7 +519,7 @@ impl<T> Atomic<T> {
     ///
     /// # Panics
     ///
-    /// Panics if `order` is `Acquire` or `AcqRel`.
+    /// Panics if `ord` is `Acquire` or `AcqRel`.
     pub fn store_shared(&self, val: Option<Shared<T>>, ord: Ordering) {
         self.ptr.store(opt_shared_into_raw(val), ord)
     }
