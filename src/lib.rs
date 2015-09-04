@@ -32,6 +32,7 @@
 #![feature(box_raw)]
 #![feature(const_fn)]
 #![feature(optin_builtin_traits)]
+#![feature(repr_simd)]
 
 extern crate alloc;
 

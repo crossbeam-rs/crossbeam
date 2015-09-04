@@ -7,6 +7,9 @@ use std::ops::{Deref, DerefMut};
 // For now, treat this as an arch-independent constant.
 const CACHE_LINE: usize = 32;
 
+#[repr(simd)]
+struct Padding(u64, u64, u64, u64);
+
 /// Pad `T` to the length of a cacheline.
 ///
 /// Sometimes concurrent programming requires a piece of data to be padded out
@@ -21,7 +24,7 @@ const CACHE_LINE: usize = 32;
 /// if you need to run dtors.
 pub struct CachePadded<T> {
     data: UnsafeCell<[usize; CACHE_LINE]>,
-    _marker: marker::PhantomData<T>,
+    _marker: ([Padding; 0], marker::PhantomData<T>),
 }
 
 unsafe impl<T: Send> Send for CachePadded<T> {}
@@ -48,8 +51,8 @@ impl<T: ZerosValid> CachePadded<T> {
     /// A const fn equivalent to mem::zeroed().
     pub const fn zeroed() -> CachePadded<T> {
         CachePadded {
-            data: UnsafeCell::new([0; CACHE_LINE]),
-            _marker: marker::PhantomData,
+            data: UnsafeCell::new(([0; CACHE_LINE])),
+            _marker: ([], marker::PhantomData),
         }
     }
 }
@@ -69,8 +72,8 @@ impl<T> CachePadded<T> {
     pub fn new(t: T) -> CachePadded<T> {
         assert_valid::<T>();
         let ret = CachePadded {
-            data: UnsafeCell::new([0; CACHE_LINE]),
-            _marker: marker::PhantomData,
+            data: UnsafeCell::new(([0; CACHE_LINE])),
+            _marker: ([], marker::PhantomData),
         };
         unsafe {
             let p: *mut T = mem::transmute(&ret.data);
