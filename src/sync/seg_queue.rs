@@ -57,7 +57,7 @@ impl<T> SegQueue<T> {
     pub fn push(&self, t: T) {
         let guard = epoch::pin();
         loop {
-            let tail = self.tail.load(Relaxed, &guard).unwrap();
+            let tail = self.tail.load(Acquire, &guard).unwrap();
             if tail.high.load(Relaxed) >= SEG_SIZE { continue }
             let i = tail.high.fetch_add(1, Relaxed);
             unsafe {
@@ -66,8 +66,8 @@ impl<T> SegQueue<T> {
                     tail.ready.get_unchecked(i).store(true, Release);
 
                     if i + 1 == SEG_SIZE {
-                        let tail = tail.next.store_and_ref(Owned::new(Segment::new()), Relaxed, &guard);
-                        self.tail.store_shared(Some(tail), Relaxed);
+                        let tail = tail.next.store_and_ref(Owned::new(Segment::new()), Release, &guard);
+                        self.tail.store_shared(Some(tail), Release);
                     }
 
                     return
@@ -92,8 +92,8 @@ impl<T> SegQueue<T> {
                     }
                     if low + 1 == SEG_SIZE {
                         loop {
-                            if let Some(next) = head.next.load(Relaxed, &guard) {
-                                self.head.store_shared(Some(next), Relaxed);
+                            if let Some(next) = head.next.load(Acquire, &guard) {
+                                self.head.store_shared(Some(next), Release);
                                 break
                             }
                         }
