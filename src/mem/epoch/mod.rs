@@ -458,6 +458,12 @@ fn opt_owned_as_raw<T>(val: &Option<Owned<T>>) -> *mut T {
     val.as_ref().map(Owned::as_raw).unwrap_or(ptr::null_mut())
 }
 
+fn opt_owned_into_raw<T>(val: Option<Owned<T>>) -> *mut T {
+    let ptr = val.as_ref().map(Owned::as_raw).unwrap_or(ptr::null_mut());
+    mem::forget(val);
+    ptr
+}
+
 impl<T> Atomic<T> {
     /// Create a new, null atomic pointer.
     pub const fn null() -> Atomic<T> {
@@ -491,7 +497,7 @@ impl<T> Atomic<T> {
     ///
     /// Panics if `ord` is `Acquire` or `AcqRel`.
     pub fn store(&self, val: Option<Owned<T>>, ord: Ordering) {
-        self.ptr.store(opt_owned_as_raw(&val), ord)
+        self.ptr.store(opt_owned_into_raw(val), ord)
     }
 
     /// Do an atomic store with the given memory ordering, immediately yielding
@@ -537,6 +543,7 @@ impl<T> Atomic<T> {
                                      opt_owned_as_raw(&new),
                                      ord) == opt_shared_into_raw(old)
         {
+            mem::forget(new);
             Ok(())
         } else {
             Err(new)
@@ -576,7 +583,7 @@ impl<T> Atomic<T> {
     /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
     pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, _: &'a Guard)
                     -> Option<Shared<'a, T>> {
-        unsafe { Shared::from_raw(self.ptr.swap(opt_owned_as_raw(&new), ord)) }
+        unsafe { Shared::from_raw(self.ptr.swap(opt_owned_into_raw(new), ord)) }
     }
 
     /// Do an atomic swap with a `Shared` pointer with the given memory ordering.
@@ -672,6 +679,7 @@ impl !Sync for Guard {}
 
 #[cfg(test)]
 mod test {
+    use std::sync::atomic::Ordering;
     use super::{Participants, EPOCH};
     use super::*;
 
@@ -688,5 +696,32 @@ mod test {
     #[test]
     fn smoke_guard() {
         let g = pin();
+    }
+
+
+    #[test]
+    fn test_no_drop() {
+        static mut DROPS: i32 = 0;
+        struct Test;
+        impl Drop for Test {
+            fn drop(&mut self) {
+                unsafe {
+                    DROPS += 1;
+                }
+            }
+        }
+        let g = pin();
+
+        let x = Atomic::null();
+        x.store(Some(Owned::new(Test)), Ordering::Relaxed);
+        x.store_and_ref(Owned::new(Test), Ordering::Relaxed, &g);
+        let y = x.load(Ordering::Relaxed, &g);
+        let z = x.cas_and_ref(y, Owned::new(Test), Ordering::Relaxed, &g).ok();
+        x.cas(z, Some(Owned::new(Test)), Ordering::Relaxed);
+        x.swap(Some(Owned::new(Test)), Ordering::Relaxed, &g);
+
+        unsafe {
+            assert_eq!(DROPS, 0);
+        }
     }
 }
