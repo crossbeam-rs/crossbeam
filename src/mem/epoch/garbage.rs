@@ -1,7 +1,5 @@
 //! Data structure for storing garbage
 
-use alloc::heap;
-
 use std::ptr;
 use std::mem;
 use std::sync::atomic::AtomicPtr;
@@ -12,8 +10,7 @@ use std::sync::atomic::Ordering::{Relaxed, Release};
 /// Stores enough information to do a deallocation.
 struct Item {
     ptr: *mut u8,
-    size: usize,
-    align: usize,
+    free: unsafe fn(*mut u8),
 }
 
 /// A single, thread-local bag of garbage.
@@ -29,9 +26,11 @@ impl Bag {
         if size > 0 {
             self.0.push(Item {
                 ptr: elem as *mut u8,
-                size: size,
-                align: mem::align_of::<T>(),
+                free: free::<T>,
             })
+        }
+        unsafe fn free<T>(t: *mut u8) {
+            drop(Vec::from_raw_parts(t as *mut T, 0, 1));
         }
     }
 
@@ -41,9 +40,12 @@ impl Bag {
 
     /// Deallocate all garbage in the bag
     pub unsafe fn collect(&mut self) {
-        for item in self.0.drain(..) {
-            heap::deallocate(item.ptr, item.size, item.align);
+        let mut data = mem::replace(&mut self.0, Vec::new());
+        for item in data.iter() {
+            (item.free)(item.ptr);
         }
+        data.truncate(0);
+        self.0 = data;
     }
 }
 
@@ -102,8 +104,8 @@ struct Node {
 
 impl ConcBag {
     pub fn insert(&self, t: Bag){
-        let n = Box::into_raw(Box::new(
-            Node { data: t, next: AtomicPtr::new(ptr::null_mut()) })) as *mut Node;
+        let n = into_raw(Box::new(
+            Node { data: t, next: AtomicPtr::new(ptr::null_mut()) }));
         loop {
             let head = self.head.load(Relaxed);
             unsafe { (*n).next.store(head, Relaxed) };
@@ -116,9 +118,17 @@ impl ConcBag {
         self.head.store(ptr::null_mut(), Relaxed);
 
         while head != ptr::null_mut() {
-            let mut n = Box::from_raw(head);
+            let mut n = from_raw(head);
             n.data.collect();
             head = n.next.load(Relaxed);
         }
     }
+}
+
+fn into_raw<T>(b: Box<T>) -> *mut T {
+    unsafe { mem::transmute(b) }
+}
+
+unsafe fn from_raw<T>(p: *mut T) -> Box<T> {
+    mem::transmute(p)
 }

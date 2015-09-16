@@ -24,19 +24,10 @@
 
 //#![deny(missing_docs)]
 
-#![feature(drain)]
-#![feature(alloc)]
-#![feature(heap_api)]
-#![feature(fnbox)]
-#![feature(box_patterns)]
-#![feature(box_raw)]
 #![feature(const_fn)]
-#![feature(optin_builtin_traits)]
 #![feature(repr_simd)]
+#![feature(optin_builtin_traits)]
 
-extern crate alloc;
-
-use std::boxed::FnBox;
 use std::thread;
 
 pub use scoped::{scope, Scope, ScopedJoinHandle};
@@ -45,11 +36,20 @@ pub mod mem;
 pub mod sync;
 mod scoped;
 
+#[doc(hidden)]
+trait FnBox {
+    fn call_box(self: Box<Self>);
+}
+
+impl<F: FnOnce()> FnBox for F {
+    fn call_box(self: Box<Self>) { (*self)() }
+}
+
 /// Like `std::thread::spawn`, but without the closure bounds.
 pub unsafe fn spawn_unsafe<'a, F>(f: F) -> thread::JoinHandle<()> where F: FnOnce() + 'a {
     use std::mem;
 
-    let closure: Box<FnBox() + 'a> = Box::new(f);
-    let closure: Box<FnBox() + Send> = mem::transmute(closure);
-    thread::spawn(closure)
+    let closure: Box<FnBox + 'a> = Box::new(f);
+    let closure: Box<FnBox + Send> = mem::transmute(closure);
+    thread::spawn(move || closure.call_box())
 }
