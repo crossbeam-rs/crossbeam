@@ -1,5 +1,4 @@
 #![feature(duration_span)]
-#![feature(box_raw)]
 
 extern crate crossbeam;
 
