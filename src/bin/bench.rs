@@ -1,4 +1,5 @@
-#![feature(duration_span)]
+#![cfg_attr(feature = "nightly",
+            feature(duration_span))]
 
 extern crate crossbeam;
 
@@ -17,6 +18,16 @@ mod extra_impls;
 
 const COUNT: u64 = 10000000;
 const THREADS: u64 = 2;
+
+#[cfg(feature = "nightly")]
+fn time<F: FnOnce()>(f: F) -> Duration {
+    Duration::span(f)
+}
+
+#[cfg(not(feature = "nightly"))]
+fn time<F: FnOnce()>(_f: F) -> Duration {
+    Duration::new(0, 0)
+}
 
 fn nanos(d: Duration) -> f64 {
     d.as_secs() as f64 * 1000000000f64 + (d.subsec_nanos() as f64)
@@ -58,7 +69,7 @@ impl<T> Queue<T> for Mutex<VecDeque<T>> {
 }
 
 fn bench_queue_mpsc<Q: Queue<u64> + Sync>(q: Q) -> f64 {
-    let d = Duration::span(|| {
+    let d = time(|| {
         scope(|scope| {
             for _i in 0..THREADS {
                 let qr = &q;
@@ -87,7 +98,7 @@ fn bench_queue_mpmc<Q: Queue<bool> + Sync>(q: Q) -> f64 {
 
     let prod_count = AtomicUsize::new(0);
 
-    let d = Duration::span(|| {
+    let d = time(|| {
         scope(|scope| {
             for _i in 0..THREADS {
                 let qr = &q;
@@ -119,7 +130,7 @@ fn bench_queue_mpmc<Q: Queue<bool> + Sync>(q: Q) -> f64 {
 fn bench_chan_mpsc() -> f64 {
     let (tx, rx) = channel();
 
-    let d = Duration::span(|| {
+    let d = time(|| {
         scope(|scope| {
             for _i in 0..THREADS {
                 let my_tx = tx.clone();

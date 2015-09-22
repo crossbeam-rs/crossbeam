@@ -126,244 +126,18 @@
 
 // FIXME: document implementation details
 
-use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::marker;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
-use std::sync::atomic::Ordering::{self, Relaxed, Acquire, Release, SeqCst};
-use std::sync::atomic::{self, AtomicUsize, AtomicBool};
+use std::sync::atomic::{self, Ordering};
 
-use mem::CachePadded;
-
+mod participant;
+mod participants;
+mod global;
+mod local;
 mod garbage;
-
-/// Global, threadsafe list of threads participating in epoch management.
-struct Participants {
-    head: Atomic<ParticipantNode>
-}
-
-struct ParticipantNode(CachePadded<Participant>);
-
-impl ParticipantNode {
-    fn new(p: Participant) -> ParticipantNode {
-        ParticipantNode(CachePadded::new(p))
-    }
-}
-
-impl Deref for ParticipantNode {
-    type Target = Participant;
-    fn deref(&self) -> &Participant {
-        &self.0
-    }
-}
-
-impl DerefMut for ParticipantNode {
-    fn deref_mut(&mut self) -> &mut Participant {
-        &mut self.0
-    }
-}
-
-unsafe impl Sync for Participant {}
-
-/// Thread-local data for epoch participation.
-struct Participant {
-    /// The local epoch.
-    epoch: AtomicUsize,
-
-    /// Number of pending uses of `epoch::pin()`; keeping a count allows for
-    /// reentrant use of epoch management.
-    in_critical: AtomicUsize,
-
-    /// Is the thread still active? Becomes `false` when the thread exits. This
-    /// is ultimately used to free `Participant` records.
-    active: AtomicBool,
-
-    /// Thread-local garbage tracking
-    garbage: UnsafeCell<garbage::Local>,
-
-    /// The participant list is coded intrusively; here's the `next` pointer.
-    next: Atomic<ParticipantNode>,
-}
-
-impl Participants {
-    const fn new() -> Participants {
-        Participants { head: Atomic::null() }
-    }
-
-    /// Enroll a new thread in epoch management by adding a new `Particpant`
-    /// record to the global list.
-    fn enroll(&self) -> *const Participant {
-        let mut participant = Owned::new(ParticipantNode::new(
-            Participant {
-                epoch: AtomicUsize::new(0),
-                in_critical: AtomicUsize::new(0),
-                active: AtomicBool::new(true),
-                garbage: UnsafeCell::new(garbage::Local::new()),
-                next: Atomic::null(),
-            }
-        ));
-
-        // we ultimately use epoch tracking to free Participant nodes, but we
-        // can't actually enter an epoch here, so fake it; we know the node
-        // can't be removed until marked inactive anyway.
-        let fake_guard = ();
-        let g: &'static Guard = unsafe { mem::transmute(&fake_guard) };
-        loop {
-            let head = self.head.load(Relaxed, g);
-            participant.next.store_shared(head, Relaxed);
-            match self.head.cas_and_ref(head, participant, Release, g) {
-                Ok(shared) => {
-                    let shared: &Participant = &shared;
-                    return shared;
-                }
-                Err(owned) => {
-                    participant = owned;
-                }
-            }
-        }
-    }
-
-    fn iter<'a>(&'a self, g: &'a Guard) -> Iter<'a> {
-        Iter {
-            guard: g,
-            next: &self.head,
-            needs_acq: true,
-        }
-    }
-}
-
-struct Iter<'a> {
-    // pin to an epoch so that we can free inactive nodes
-    guard: &'a Guard,
-    next: &'a Atomic<ParticipantNode>,
-
-    // an Acquire read is needed only for the first read, due to release
-    // sequences
-    needs_acq: bool,
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = &'a Participant;
-    fn next(&mut self) -> Option<&'a Participant> {
-        let mut cur = if self.needs_acq {
-            self.needs_acq = false;
-            self.next.load(Acquire, self.guard)
-        } else {
-            self.next.load(Relaxed, self.guard)
-        };
-
-        while let Some(n) = cur {
-            // attempt to clean up inactive nodes
-            if !n.active.load(Relaxed) {
-                cur = n.next.load(Relaxed, self.guard);
-                unsafe {
-                    if self.next.cas_shared(Some(n), cur, Relaxed) {
-                        self.guard.unlinked(n)
-                    }
-                }
-                self.next = &n.next;
-            } else {
-                self.next = &n.next;
-                return Some(&n)
-            }
-        }
-
-        None
-    }
-}
-
-/// Global epoch state
-struct EpochState {
-    /// Current global epoch
-    epoch: CachePadded<AtomicUsize>,
-
-    /// Global garbage bags
-    garbage: [CachePadded<garbage::ConcBag>; 3],
-
-    /// Participant list
-    participants: Participants,
-}
-
-unsafe impl Send for EpochState {}
-unsafe impl Sync for EpochState {}
-
-impl EpochState {
-    const fn new() -> EpochState {
-        EpochState {
-            epoch: CachePadded::zeroed(),
-            garbage: [CachePadded::zeroed(),
-                      CachePadded::zeroed(),
-                      CachePadded::zeroed()],
-            participants: Participants::new(),
-        }
-    }
-}
-
-static EPOCH: EpochState = EpochState::new();
-
-impl Participant {
-    fn enter(&self) {
-        let new_count = self.in_critical.load(Relaxed) + 1;
-        self.in_critical.store(new_count, Relaxed);
-        if new_count > 1 { return }
-
-        atomic::fence(SeqCst);
-
-        let global_epoch = EPOCH.epoch.load(Relaxed);
-        if global_epoch != self.epoch.load(Relaxed) {
-            self.epoch.store(global_epoch, Relaxed);
-            unsafe { (*self.garbage.get()).collect(); }
-        }
-    }
-
-    fn exit(&self) {
-        let new_count = self.in_critical.load(Relaxed) - 1;
-        self.in_critical.store(
-            new_count,
-            if new_count > 1 { Relaxed } else { Release });
-    }
-
-    unsafe fn reclaim<T>(&self, data: *mut T) {
-        (*self.garbage.get()).reclaim(data);
-    }
-
-    fn try_collect(&self) -> bool {
-        let cur_epoch = EPOCH.epoch.load(SeqCst);
-
-        let fake_guard = ();
-        let g: &'static Guard = unsafe { mem::transmute(&fake_guard) };
-
-        for p in EPOCH.participants.iter(g) {
-            if p.in_critical.load(Relaxed) > 0 && p.epoch.load(Relaxed) != cur_epoch {
-                return false
-            }
-        }
-
-        let new_epoch = cur_epoch.wrapping_add(1);
-        atomic::fence(Acquire);
-        if EPOCH.epoch.compare_and_swap(cur_epoch, new_epoch, SeqCst) != cur_epoch {
-            return false
-        }
-
-        self.epoch.store(new_epoch, Relaxed);
-
-        unsafe {
-            EPOCH.garbage[new_epoch.wrapping_add(1) % 3].collect();
-        }
-
-        true
-    }
-
-    fn migrate_garbage(&self) {
-        let cur_epoch = self.epoch.load(Relaxed);
-        let local = unsafe { mem::replace(&mut *self.garbage.get(), garbage::Local::new()) };
-        EPOCH.garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
-        EPOCH.garbage[cur_epoch % 3].insert(local.cur);
-        EPOCH.garbage[EPOCH.epoch.load(Relaxed) % 3].insert(local.new);
-    }
-}
 
 /// Like `Box<T>`: an owned, heap-allocated data value of type `T`.
 pub struct Owned<T> {
@@ -467,6 +241,16 @@ fn opt_owned_into_raw<T>(val: Option<Owned<T>>) -> *mut T {
 
 impl<T> Atomic<T> {
     /// Create a new, null atomic pointer.
+    #[cfg(not(feature = "nightly"))]
+    pub fn null() -> Atomic<T> {
+        Atomic {
+            ptr: atomic::AtomicPtr::new(0 as *mut _),
+            _marker: PhantomData
+        }
+    }
+
+    /// Create a new, null atomic pointer.
+    #[cfg(feature = "nightly")]
     pub const fn null() -> Atomic<T> {
         Atomic {
             ptr: atomic::AtomicPtr::new(0 as *mut _),
@@ -511,7 +295,9 @@ impl<T> Atomic<T> {
     /// # Panics
     ///
     /// Panics if `ord` is `Acquire` or `AcqRel`.
-    pub fn store_and_ref<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
+    pub fn store_and_ref<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard)
+                             -> Shared<'a, T>
+    {
         unsafe {
             let shared = Shared::from_owned(val);
             self.store_shared(Some(shared), ord);
@@ -574,7 +360,7 @@ impl<T> Atomic<T> {
     ///
     /// The boolean return value is `true` when the CAS is successful.
     pub fn cas_shared(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering)
-                             -> bool
+                      -> bool
     {
         self.ptr.compare_and_swap(opt_shared_into_raw(old),
                                   opt_shared_into_raw(new),
@@ -589,37 +375,10 @@ impl<T> Atomic<T> {
 
     /// Do an atomic swap with a `Shared` pointer with the given memory ordering.
     pub fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, _: &'a Guard)
-                                  -> Option<Shared<'a, T>> {
+                           -> Option<Shared<'a, T>> {
         unsafe { Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord)) }
     }
 }
-
-struct LocalEpoch {
-    participant: *const Participant,
-}
-
-impl LocalEpoch {
-    fn new() -> LocalEpoch {
-        LocalEpoch { participant: EPOCH.participants.enroll() }
-    }
-
-    fn get(&self) -> &Participant {
-        unsafe { &*self.participant }
-    }
-}
-
-// FIXME: avoid leaking when all threads have exited
-impl Drop for LocalEpoch {
-    fn drop(&mut self) {
-        let p = self.get();
-        p.enter();
-        p.migrate_garbage();
-        p.exit();
-        p.active.store(false, Relaxed);
-    }
-}
-
-thread_local!(static LOCAL_EPOCH: LocalEpoch = LocalEpoch::new() );
 
 /// An RAII-style guard for pinning the current epoch.
 ///
@@ -632,10 +391,6 @@ pub struct Guard {
 
 static GC_THRESH: usize = 32;
 
-fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
-    LOCAL_EPOCH.with(|e| f(e.get()))
-}
-
 /// Pin the current epoch.
 ///
 /// Threads generally pin before interacting with a lock-free data
@@ -645,57 +400,49 @@ fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
 /// perform several lock-free operations in quick succession, you may consider
 /// pinning around the entire set of operations.
 pub fn pin() -> Guard {
-    with_participant(|p| {
+    local::with_participant(|p| {
         p.enter();
-        if unsafe { (*p.garbage.get()).size() } > GC_THRESH {
-            p.try_collect();
+
+        let g = Guard {
+            _marker: marker::PhantomData,
+        };
+
+        if p.garbage_size() > GC_THRESH {
+            p.try_collect(&g);
         }
-    });
-    Guard {
-        _marker: marker::PhantomData,
-    }
+
+        g
+    })
 }
 
 impl Guard {
     /// Assert that the value is no longer reachable from a lock-free data
     /// structure and should be collected when sufficient epochs have passed.
     pub unsafe fn unlinked<T>(&self, val: Shared<T>) {
-        with_participant(|p| p.reclaim(val.as_raw()))
+        local::with_participant(|p| p.reclaim(val.as_raw()))
     }
 
     /// Move the thread-local garbage into the global set of garbage.
     pub fn migrate_garbage(&self) {
-        with_participant(|p| p.migrate_garbage())
+        local::with_participant(|p| p.migrate_garbage())
     }
 }
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        with_participant(|p| p.exit());
+        local::with_participant(|p| p.exit());
     }
 }
 
 #[cfg(test)]
 mod test {
     use std::sync::atomic::Ordering;
-    use super::{Participants, EPOCH};
     use super::*;
-
-    #[test]
-    fn smoke_enroll() {
-        Participants::new().enroll();
-    }
-
-    #[test]
-    fn smoke_enroll_EPOCH() {
-        EPOCH.participants.enroll();
-    }
 
     #[test]
     fn smoke_guard() {
         let g = pin();
     }
-
 
     #[test]
     fn test_no_drop() {

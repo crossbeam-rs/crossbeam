@@ -7,7 +7,8 @@ use std::ops::{Deref, DerefMut};
 // For now, treat this as an arch-independent constant.
 const CACHE_LINE: usize = 32;
 
-#[repr(simd)]
+#[cfg_attr(feature = "nightly",
+           repr(simd))]
 struct Padding(u64, u64, u64, u64);
 
 /// Pad `T` to the length of a cacheline.
@@ -35,6 +36,8 @@ unsafe impl<T: Sync> Sync for CachePadded<T> {}
 /// If a type `T: ZerosValid`, then a sequence of zeros the size of `T` must be
 /// a valid member of the type `T`.
 pub unsafe trait ZerosValid {}
+
+#[cfg(feature = "nightly")]
 unsafe impl ZerosValid for .. {}
 
 macro_rules! zeros_valid { ($( $T:ty )*) => ($(
@@ -49,6 +52,16 @@ unsafe impl<T> ZerosValid for ::std::sync::atomic::AtomicPtr<T> {}
 
 impl<T: ZerosValid> CachePadded<T> {
     /// A const fn equivalent to mem::zeroed().
+    #[cfg(not(feature = "nightly"))]
+    pub fn zeroed() -> CachePadded<T> {
+        CachePadded {
+            data: UnsafeCell::new(([0; CACHE_LINE])),
+            _marker: ([], marker::PhantomData),
+        }
+    }
+
+    /// A const fn equivalent to mem::zeroed().
+    #[cfg(feature = "nightly")]
     pub const fn zeroed() -> CachePadded<T> {
         CachePadded {
             data: UnsafeCell::new(([0; CACHE_LINE])),

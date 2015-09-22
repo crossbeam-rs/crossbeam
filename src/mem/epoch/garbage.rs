@@ -1,9 +1,17 @@
-//! Data structure for storing garbage
+// Data structures for storing garbage to be freed later (once the
+// epochs have sufficiently advanced).
+//
+// In general, we try to manage the garbage thread locally whenever
+// possible. Each thread keep track of three bags of garbage. But if a
+// thread is exiting, these bags must be moved into the global garbage
+// bags.
 
 use std::ptr;
 use std::mem;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering::{Relaxed, Release};
+
+use mem::ZerosValid;
 
 /// One item of garbage.
 ///
@@ -96,6 +104,8 @@ impl Local {
 pub struct ConcBag {
     head: AtomicPtr<Node>,
 }
+
+unsafe impl ZerosValid for ConcBag {}
 
 struct Node {
     data: Bag,
