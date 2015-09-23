@@ -64,7 +64,7 @@ impl Participant {
         let new_count = self.in_critical.load(Relaxed) - 1;
         self.in_critical.store(
             new_count,
-            if new_count > 1 { Relaxed } else { Release });
+            if new_count > 0 { Relaxed } else { Release });
     }
 
     /// Begin the reclamation process for a piece of data.
