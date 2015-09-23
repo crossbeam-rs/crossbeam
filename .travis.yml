@@ -24,8 +24,8 @@ script:
   - |
       travis-cargo build &&
       travis-cargo test &&
-      travis-cargo test --release &&
-      travis-cargo run --release &&
+      travis-cargo test -- --release &&
+      travis-cargo run -- --release &&
       travis-cargo --only stable doc
 env:
   global:
