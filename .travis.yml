@@ -15,7 +15,7 @@ rust:
   - stable
   # and the first stable one (this should be bumped as the minimum
   # Rust version required changes)
-  - 1.0.0
+  - 1.4.0
 
 # load travis-cargo
 before_script:
