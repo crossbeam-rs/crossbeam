@@ -22,3 +22,17 @@ alternatives.
 
 - **Scoped thread API**. Finally, the crate provides a "scoped" thread API,
 making it possible to spawn threads that share stack data with their parents.
+
+# Usage
+
+To use Crossbeam, add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+crossbeam = "0.1.5"
+```
+
+For examples of what Crossbeam is capable of, see the
+[documentation][docs].
+
+[docs]: http://aturon.github.io/crossbeam-doc/crossbeam/
