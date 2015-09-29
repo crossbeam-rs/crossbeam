@@ -163,18 +163,21 @@ impl<'a> Scope<'a> {
     /// ```
     ///
     /// Because [`std::thread::spawn`][spawn] doesn't know about this scope, it requires a
-    /// `'static` lifetime. One way of giving it a proper lifetime is to [`Box`][box] it up:
+    /// `'static` lifetime. One way of giving it a proper lifetime is to use an [`Arc`][arc]:
     ///
-    /// [box]: http://doc.rust-lang.org/std/boxed/struct.Box.html
+    /// [arc]: http://doc.rust-lang.org/stable/std/sync/struct.Arc.html
     ///
     /// ```
-    /// let array = Box::new([1, 2, 3]);
+    /// use std::sync::Arc;
+    ///
+    /// let array = Arc::new([1, 2, 3]);
     /// let mut guards = vec![];
     ///
     /// for i in (0..array.len()) {
-    ///     let i = array[i];
+    ///     let a = array.clone();
+    ///
     ///     let guard = std::thread::spawn(move || {
-    ///         println!("element: {}", i);
+    ///         println!("element: {}", a[i]);
     ///     });
     ///
     ///     guards.push(guard);
@@ -185,7 +188,8 @@ impl<'a> Scope<'a> {
     /// }
     /// ```
     ///
-    /// But this introduces unnecessary allocation: we know that we're joining the threads before
+    /// But this introduces unnecessary allocation, as `Arc<T>` puts its data on the heap, and we
+    /// also end up dealing with reference counts. We know that we're joining the threads before
     /// our function returns, so just taking a reference _should_ be safe. Rust can't know that,
     /// though.
     ///
