@@ -34,27 +34,27 @@ impl JoinState {
     }
 }
 
+/// A handle to a scoped thread
 pub struct ScopedJoinHandle<T> {
     inner: Rc<RefCell<JoinState>>,
     packet: Arc<AtomicOption<T>>,
     thread: thread::Thread,
 }
 
-/// Create a new `scope`, for scoped concurrency operations.
+/// Create a new `scope`, for deferred destructors.
 ///
-/// Using crossbeam for concurrency involves creating a [`Scope`][scope]. That's the job of
-/// `scope`.
-///
-/// [scope]: struct.Scope.html
+/// Scopes, in particular, support [*scoped thread spaawning*](struct.Scope.html#method.spawn).
 ///
 /// # Examples
 ///
-/// Creating a scope:
+/// Creating and using a scope:
 ///
 /// ```
 /// crossbeam::scope(|scope| {
-///     // do stuff with scope here
+///     scope.defer(|| println!("Exiting scope"));
+///     scope.spawn(|| println!("Running child thread in scope"))
 /// });
+/// // Prints messages in the reverse order written
 /// ```
 pub fn scope<'a, F, R>(f: F) -> R where F: FnOnce(&Scope<'a>) -> R {
     let mut scope = Scope { dtors: RefCell::new(None) };
@@ -86,6 +86,10 @@ impl<'a> Scope<'a> {
         }
     }
 
+    /// Schedule code to be executed when exiting the scope.
+    ///
+    /// This is akin to having a destructor on the stack, except that it is
+    /// *guaranteed* to be run.
     pub fn defer<F>(&self, f: F) where F: FnOnce() + 'a {
         let mut dtors = self.dtors.borrow_mut();
         *dtors = Some(DtorChain {
@@ -154,7 +158,7 @@ impl<'a> Scope<'a> {
     /// note: ...but borrowed value is only valid for the block suffix following statement 0 at ...
     ///     let array = [1, 2, 3];
     ///     let mut guards = vec![];
-    ///     
+    ///
     ///     for i in &array {
     ///         let guard = std::thread::spawn(move || {
     ///             println!("element: {}", i);
@@ -239,11 +243,13 @@ impl<'a> Scope<'a> {
 }
 
 impl<T> ScopedJoinHandle<T> {
+    /// Join the scoped thread, returning the result it produced.
     pub fn join(self) -> T {
         self.inner.borrow_mut().join();
         self.packet.take(Ordering::Relaxed).unwrap()
     }
 
+    /// Get the underlying thread handle.
     pub fn thread(&self) -> &thread::Thread {
         &self.thread
     }
