@@ -43,7 +43,7 @@ pub struct ScopedJoinHandle<T> {
 
 /// Create a new `scope`, for deferred destructors.
 ///
-/// Scopes, in particular, support [*scoped thread spaawning*](struct.Scope.html#method.spawn).
+/// Scopes, in particular, support [*scoped thread spawning*](struct.Scope.html#method.spawn).
 ///
 /// # Examples
 ///
