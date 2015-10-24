@@ -40,7 +40,7 @@ impl<T> Segment<T> {
 }
 
 impl<T> SegQueue<T> {
-    /// Create a enw, emtpy queue.
+    /// Create a new, empty queue.
     pub fn new() -> SegQueue<T> {
         let q = SegQueue {
             head: Atomic::null(),
