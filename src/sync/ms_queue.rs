@@ -43,14 +43,14 @@ impl<T> MsQueue<T> {
         let guard = epoch::pin();
         loop {
             let tail = self.tail.load(Acquire, &guard).unwrap();
-            if let Some(next) = tail.next.load(Relaxed, &guard) {
-                self.tail.cas_shared(Some(tail), Some(next), Relaxed);
+            if let Some(next) = tail.next.load(Acquire, &guard) {
+                self.tail.cas_shared(Some(tail), Some(next), Release);
                 continue;
             }
 
             match tail.next.cas_and_ref(None, n, Release, &guard) {
                 Ok(shared) => {
-                    self.tail.cas_shared(Some(tail), Some(shared), Relaxed);
+                    self.tail.cas_shared(Some(tail), Some(shared), Release);
                     break;
                 }
                 Err(owned) => {
@@ -68,9 +68,9 @@ impl<T> MsQueue<T> {
         loop {
             let head = self.head.load(Acquire, &guard).unwrap();
 
-            if let Some(next) = head.next.load(Relaxed, &guard) {
+            if let Some(next) = head.next.load(Acquire, &guard) {
                 unsafe {
-                    if self.head.cas_shared(Some(head), Some(next), Relaxed) {
+                    if self.head.cas_shared(Some(head), Some(next), Release) {
                         guard.unlinked(head);
                         return Some(ptr::read(&(*next).data))
                     }
