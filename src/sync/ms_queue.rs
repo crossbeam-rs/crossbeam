@@ -18,7 +18,7 @@ struct Node<T> {
 }
 
 impl<T> MsQueue<T> {
-    /// Create a enw, emtpy queue.
+    /// Create a new, empty queue.
     pub fn new() -> MsQueue<T> {
         let q = MsQueue {
             head: CachePadded::new(Atomic::null()),
