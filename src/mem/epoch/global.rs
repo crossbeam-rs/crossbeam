@@ -54,11 +54,11 @@ mod imp {
 
         if addr == 0 {
             let boxed = Box::new(EpochState::new());
-            let raw: *mut EpochState = unsafe { mem::transmute(boxed) };
+            let raw = Box::into_raw(boxed);
 
             addr = EPOCH.compare_and_swap(0, raw as usize, Relaxed);
             if addr != 0 {
-                let boxed: Box<EpochState> = unsafe { mem::transmute(raw) };
+                let boxed = unsafe { Box::from_raw(raw) };
                 mem::drop(boxed);
             } else {
                 addr = raw as usize;
