@@ -113,13 +113,12 @@ mod test {
     use std::io::stderr;
     use std::io::prelude::*;
 
-    use mem::epoch;
     use scope;
     use super::*;
 
     #[test]
     fn smoke_queue() {
-        let q: SegQueue<i64> = SegQueue::new();
+        let _q: SegQueue<i64> = SegQueue::new();
     }
 
     #[test]
@@ -144,7 +143,7 @@ mod test {
         for i in 0..200 {
             q.push(i)
         }
-        writeln!(stderr(), "done pushing");
+        writeln!(stderr(), "done pushing").unwrap();
         for i in 0..200 {
             assert_eq!(q.pop(), Some(i));
         }
@@ -174,14 +173,12 @@ mod test {
 
     #[test]
     fn push_pop_many_spmc() {
-        use std::time::Duration;
-
         fn recv(t: i32, q: &SegQueue<i64>) {
             let mut cur = -1;
             for i in 0..CONC_COUNT {
                 if let Some(elem) = q.pop() {
                     if elem <= cur {
-                        writeln!(stderr(), "{}: {} <= {}", t, elem, cur);
+                        writeln!(stderr(), "{}: {} <= {}", t, elem, cur).unwrap();
                     }
                     assert!(elem > cur);
                     cur = elem;
