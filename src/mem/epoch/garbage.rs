@@ -114,7 +114,7 @@ struct Node {
 
 impl ConcBag {
     pub fn insert(&self, t: Bag){
-        let n = into_raw(Box::new(
+        let n = Box::into_raw(Box::new(
             Node { data: t, next: AtomicPtr::new(ptr::null_mut()) }));
         loop {
             let head = self.head.load(Relaxed);
@@ -128,17 +128,9 @@ impl ConcBag {
         self.head.store(ptr::null_mut(), Relaxed);
 
         while head != ptr::null_mut() {
-            let mut n = from_raw(head);
+            let mut n = Box::from_raw(head);
             n.data.collect();
             head = n.next.load(Relaxed);
         }
     }
-}
-
-fn into_raw<T>(b: Box<T>) -> *mut T {
-    unsafe { mem::transmute(b) }
-}
-
-unsafe fn from_raw<T>(p: *mut T) -> Box<T> {
-    mem::transmute(p)
 }

@@ -40,7 +40,6 @@
 
 pub use self::PopResult::*;
 
-use std::mem;
 use std::ptr;
 use std::cell::UnsafeCell;
 
@@ -77,7 +76,7 @@ unsafe impl<T: Send> Sync for Queue<T> { }
 
 impl<T> Node<T> {
     unsafe fn new(v: Option<T>) -> *mut Node<T> {
-        mem::transmute(Box::new(Node {
+        Box::into_raw(Box::new(Node {
             next: AtomicPtr::new(ptr::null_mut()),
             value: v,
         }))
@@ -124,7 +123,7 @@ impl<T> Queue<T> {
                 assert!((*tail).value.is_none());
                 assert!((*next).value.is_some());
                 let ret = (*next).value.take().unwrap();
-                let _: Box<Node<T>> = mem::transmute(tail);
+                let _ = Box::from_raw(tail);
                 return Data(ret);
             }
 
@@ -139,7 +138,7 @@ impl<T> Drop for Queue<T> {
             let mut cur = *self.tail.get();
             while !cur.is_null() {
                 let next = (*cur).next.load(Ordering::Relaxed);
-                let _: Box<Node<T>> = mem::transmute(cur);
+                let _ = Box::from_raw(cur);
                 cur = next;
             }
         }
