@@ -16,7 +16,7 @@ struct Node<T> {
 }
 
 impl<T> TreiberStack<T> {
-    /// Crate a new, empty stack.
+    /// Create a new, empty stack.
     pub fn new() -> TreiberStack<T> {
         TreiberStack {
             head: Atomic::null()
