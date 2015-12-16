@@ -153,6 +153,11 @@ impl<T> Owned<T> {
     fn as_raw(&self) -> *mut T {
         self.deref() as *const _ as *mut _
     }
+
+    /// Move data out of the owned box, deallocating the box.
+    pub fn into_inner(self) -> T {
+        *self.data
+    }
 }
 
 impl<T> Deref for Owned<T> {
@@ -208,7 +213,7 @@ impl<'a, T> Shared<'a, T> {
         ret
     }
 
-    fn as_raw(&self) -> *mut T {
+    pub fn as_raw(&self) -> *mut T {
         self.data as *const _ as *mut _
     }
 }
@@ -440,11 +445,6 @@ mod test {
     use super::*;
 
     #[test]
-    fn smoke_guard() {
-        let g = pin();
-    }
-
-    #[test]
     fn test_no_drop() {
         static mut DROPS: i32 = 0;
         struct Test;
@@ -462,7 +462,7 @@ mod test {
         x.store_and_ref(Owned::new(Test), Ordering::Relaxed, &g);
         let y = x.load(Ordering::Relaxed, &g);
         let z = x.cas_and_ref(y, Owned::new(Test), Ordering::Relaxed, &g).ok();
-        x.cas(z, Some(Owned::new(Test)), Ordering::Relaxed);
+        let _ = x.cas(z, Some(Owned::new(Test)), Ordering::Relaxed);
         x.swap(Some(Owned::new(Test)), Ordering::Relaxed, &g);
 
         unsafe {

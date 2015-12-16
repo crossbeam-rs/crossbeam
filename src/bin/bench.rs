@@ -35,22 +35,22 @@ fn nanos(d: Duration) -> f64 {
 
 trait Queue<T> {
     fn push(&self, T);
-    fn pop(&self) -> Option<T>;
+    fn try_pop(&self) -> Option<T>;
 }
 
 impl<T> Queue<T> for MsQueue<T> {
     fn push(&self, t: T) { self.push(t) }
-    fn pop(&self) -> Option<T> { self.pop() }
+    fn try_pop(&self) -> Option<T> { self.try_pop() }
 }
 
 impl<T> Queue<T> for SegQueue<T> {
     fn push(&self, t: T) { self.push(t) }
-    fn pop(&self) -> Option<T> { self.pop() }
+    fn try_pop(&self) -> Option<T> { self.try_pop() }
 }
 
 impl<T> Queue<T> for MpscQueue<T> {
     fn push(&self, t: T) { self.push(t) }
-    fn pop(&self) -> Option<T> {
+    fn try_pop(&self) -> Option<T> {
         use extra_impls::mpsc_queue::*;
 
         loop {
@@ -65,7 +65,7 @@ impl<T> Queue<T> for MpscQueue<T> {
 
 impl<T> Queue<T> for Mutex<VecDeque<T>> {
     fn push(&self, t: T) { self.lock().unwrap().push_back(t) }
-    fn pop(&self) -> Option<T> { self.lock().unwrap().pop_front() }
+    fn try_pop(&self) -> Option<T> { self.lock().unwrap().pop_front() }
 }
 
 fn bench_queue_mpsc<Q: Queue<u64> + Sync>(q: Q) -> f64 {
@@ -82,7 +82,7 @@ fn bench_queue_mpsc<Q: Queue<u64> + Sync>(q: Q) -> f64 {
 
             let mut count = 0;
             while count < COUNT*THREADS {
-                if q.pop().is_some() {
+                if q.try_pop().is_some() {
                     count += 1;
                 }
             }
@@ -115,7 +115,7 @@ fn bench_queue_mpmc<Q: Queue<bool> + Sync>(q: Q) -> f64 {
                 });
                 scope.spawn(move || {
                     loop {
-                        if let Some(false) = qr.pop() { break }
+                        if let Some(false) = qr.try_pop() { break }
                     }
                 });
             }

@@ -79,7 +79,7 @@ impl<T> SegQueue<T> {
     /// Attempt to dequeue from the front.
     ///
     /// Returns `None` if the queue is observed to be empty.
-    pub fn pop(&self) -> Option<T> {
+    pub fn try_pop(&self) -> Option<T> {
         let guard = epoch::pin();
         loop {
             let head = self.head.load(Acquire, &guard).unwrap();
@@ -110,23 +110,14 @@ impl<T> SegQueue<T> {
 mod test {
     const CONC_COUNT: i64 = 1000000;
 
-    use std::io::stderr;
-    use std::io::prelude::*;
-
-    use mem::epoch;
     use scope;
     use super::*;
-
-    #[test]
-    fn smoke_queue() {
-        let q: SegQueue<i64> = SegQueue::new();
-    }
 
     #[test]
     fn push_pop_1() {
         let q: SegQueue<i64> = SegQueue::new();
         q.push(37);
-        assert_eq!(q.pop(), Some(37));
+        assert_eq!(q.try_pop(), Some(37));
     }
 
     #[test]
@@ -134,8 +125,8 @@ mod test {
         let q: SegQueue<i64> = SegQueue::new();
         q.push(37);
         q.push(48);
-        assert_eq!(q.pop(), Some(37));
-        assert_eq!(q.pop(), Some(48));
+        assert_eq!(q.try_pop(), Some(37));
+        assert_eq!(q.try_pop(), Some(48));
     }
 
     #[test]
@@ -144,9 +135,8 @@ mod test {
         for i in 0..200 {
             q.push(i)
         }
-        writeln!(stderr(), "done pushing");
         for i in 0..200 {
-            assert_eq!(q.pop(), Some(i));
+            assert_eq!(q.try_pop(), Some(i));
         }
     }
 
@@ -159,7 +149,7 @@ mod test {
                 let mut next = 0;
 
                 while next < CONC_COUNT {
-                    if let Some(elem) = q.pop() {
+                    if let Some(elem) = q.try_pop() {
                         assert_eq!(elem, next);
                         next += 1;
                     }
@@ -174,23 +164,14 @@ mod test {
 
     #[test]
     fn push_pop_many_spmc() {
-        use std::time::Duration;
-
-        fn recv(t: i32, q: &SegQueue<i64>) {
+        fn recv(_t: i32, q: &SegQueue<i64>) {
             let mut cur = -1;
-            for i in 0..CONC_COUNT {
-                if let Some(elem) = q.pop() {
-                    if elem <= cur {
-                        writeln!(stderr(), "{}: {} <= {}", t, elem, cur);
-                    }
+            for _i in 0..CONC_COUNT {
+                if let Some(elem) = q.try_pop() {
                     assert!(elem > cur);
                     cur = elem;
 
                     if cur == CONC_COUNT - 1 { break }
-                }
-
-                if i % 10000 == 0 {
-                    //writeln!(stderr(), "{}: {} @ {}", t, i, cur);
                 }
             }
         }
@@ -205,10 +186,6 @@ mod test {
             scope.spawn(|| {
                 for i in 0..CONC_COUNT {
                     q.push(i);
-
-                    if i % 10000 == 0 {
-                        //writeln!(stderr(), "Push: {}", i);
-                    }
                 }
             })
         });
@@ -236,7 +213,7 @@ mod test {
                     let mut vl = vec![];
                     let mut vr = vec![];
                     for _i in 0..CONC_COUNT {
-                        match q.pop() {
+                        match q.try_pop() {
                             Some(LR::Left(x)) => vl.push(x),
                             Some(LR::Right(x)) => vr.push(x),
                             _ => {}
