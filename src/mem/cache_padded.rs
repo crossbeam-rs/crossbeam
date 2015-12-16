@@ -128,13 +128,13 @@ mod test {
 
     #[test]
     fn cache_padded_store_u64() {
-        let x: CachePadded<u64> = unsafe { CachePadded::new(17) };
+        let x: CachePadded<u64> = CachePadded::new(17);
         assert_eq!(*x, 17);
     }
 
     #[test]
     fn cache_padded_store_pair() {
-        let x: CachePadded<(u64, u64)> = unsafe { CachePadded::new((17, 37)) };
+        let x: CachePadded<(u64, u64)> = CachePadded::new((17, 37));
         assert_eq!(x.0, 17);
         assert_eq!(x.1, 37);
     }
