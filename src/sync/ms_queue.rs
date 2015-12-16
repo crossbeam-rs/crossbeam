@@ -89,13 +89,12 @@ mod test {
     use std::io::stderr;
     use std::io::prelude::*;
 
-    use mem::epoch;
     use scope;
     use super::*;
 
     #[test]
     fn smoke_queue() {
-        let q: MsQueue<i64> = MsQueue::new();
+        let _q: MsQueue<i64> = MsQueue::new();
     }
 
     #[test]
@@ -149,14 +148,12 @@ mod test {
 
     #[test]
     fn push_pop_many_spmc() {
-        use std::time::Duration;
-
         fn recv(t: i32, q: &MsQueue<i64>) {
             let mut cur = -1;
             for i in 0..CONC_COUNT {
                 if let Some(elem) = q.pop() {
                     if elem <= cur {
-                        writeln!(stderr(), "{}: {} <= {}", t, elem, cur);
+                        writeln!(stderr(), "{}: {} <= {}", t, elem, cur).unwrap();
                     }
                     assert!(elem > cur);
                     cur = elem;

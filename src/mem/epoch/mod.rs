@@ -441,7 +441,7 @@ mod test {
 
     #[test]
     fn smoke_guard() {
-        let g = pin();
+        let _g = pin();
     }
 
     #[test]
@@ -462,7 +462,7 @@ mod test {
         x.store_and_ref(Owned::new(Test), Ordering::Relaxed, &g);
         let y = x.load(Ordering::Relaxed, &g);
         let z = x.cas_and_ref(y, Owned::new(Test), Ordering::Relaxed, &g).ok();
-        x.cas(z, Some(Owned::new(Test)), Ordering::Relaxed);
+        x.cas(z, Some(Owned::new(Test)), Ordering::Relaxed).ok().expect("Could not compare and swap");
         x.swap(Some(Owned::new(Test)), Ordering::Relaxed, &g);
 
         unsafe {
