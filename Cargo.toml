@@ -10,3 +10,6 @@ license = "Apache-2.0/MIT"
 
 [features]
 nightly = []
+
+[dev-dependencies]
+rand = "0.3"
