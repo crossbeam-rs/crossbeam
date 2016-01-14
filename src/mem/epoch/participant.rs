@@ -82,8 +82,8 @@ impl Participant {
     }
 
     /// Begin the reclamation process for a piece of data.
-    pub unsafe fn reclaim<T>(&self, data: *mut T) {
-        (*self.garbage.get()).insert(data);
+    pub unsafe fn reclaim<T>(&self, data: *mut T, drop: bool) {
+        (*self.garbage.get()).insert(data, drop);
     }
 
     /// Attempt to collect garbage by moving the global epoch forward.
