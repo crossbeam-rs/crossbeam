@@ -46,10 +46,10 @@ impl<T> Node<T> {
     }
 }
 
-// FIXME: Stay on the safe side for now, requiring both `Send` and
-// `Sync` in all cases.
-unsafe impl<T: Send + Sync> Sync for MsQueue<T> {}
-unsafe impl<T: Send + Sync> Send for MsQueue<T> {}
+// Any particular `T` should never accessed concurrently, so no need
+// for Sync.
+unsafe impl<T: Send> Sync for MsQueue<T> {}
+unsafe impl<T: Send> Send for MsQueue<T> {}
 
 impl<T> MsQueue<T> {
     /// Create a new, empty queue.
