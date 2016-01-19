@@ -27,6 +27,8 @@
 #![cfg_attr(feature = "nightly",
             feature(const_fn, repr_simd, optin_builtin_traits))]
 
+#![allow(drop_with_repr_extern)] //for structs with specific layouts that also drop
+
 use std::thread;
 
 pub use scoped::{scope, Scope, ScopedJoinHandle};
