@@ -25,7 +25,7 @@ struct Segment<T> {
     next: Atomic<Segment<T>>,
 }
 
-unsafe impl<T> Sync for Segment<T> {}
+unsafe impl<T: Send> Sync for Segment<T> {}
 
 impl<T> Segment<T> {
     fn new() -> Segment<T> {
