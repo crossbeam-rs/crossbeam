@@ -34,6 +34,7 @@ mod imp {
     use super::EpochState;
     use mem::CachePadded;
     use mem::epoch::participants::Participants;
+    use BoxExt;
 
     impl EpochState {
         fn new() -> EpochState {
@@ -54,11 +55,11 @@ mod imp {
 
         if addr == 0 {
             let boxed = Box::new(EpochState::new());
-            let raw = Box::into_raw(boxed);
+            let raw = Box::into_raw_(boxed);
 
             addr = EPOCH.compare_and_swap(0, raw as usize, Relaxed);
             if addr != 0 {
-                let boxed = unsafe { Box::from_raw(raw) };
+                let boxed = unsafe { Box::from_raw_(raw) };
                 mem::drop(boxed);
             } else {
                 addr = raw as usize;

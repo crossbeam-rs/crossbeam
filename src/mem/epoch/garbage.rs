@@ -12,6 +12,7 @@ use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering::{Relaxed, Release};
 
 use mem::ZerosValid;
+use BoxExt;
 
 /// One item of garbage.
 ///
@@ -114,7 +115,7 @@ struct Node {
 
 impl ConcBag {
     pub fn insert(&self, t: Bag){
-        let n = Box::into_raw(Box::new(
+        let n = Box::into_raw_(Box::new(
             Node { data: t, next: AtomicPtr::new(ptr::null_mut()) }));
         loop {
             let head = self.head.load(Relaxed);
@@ -128,7 +129,7 @@ impl ConcBag {
         self.head.store(ptr::null_mut(), Relaxed);
 
         while head != ptr::null_mut() {
-            let mut n = Box::from_raw(head);
+            let mut n = Box::from_raw_(head);
             n.data.collect();
             head = n.next.load(Relaxed);
         }

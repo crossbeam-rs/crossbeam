@@ -44,6 +44,25 @@ impl<F: FnOnce()> FnBox for F {
     fn call_box(self: Box<Self>) { (*self)() }
 }
 
+// TODO: Remove once Cargo no longer wants to build on Rust 1.2.0.
+trait BoxExt {
+    type T;
+    fn into_raw_(s: Self) -> *mut Self::T;
+    unsafe fn from_raw_(t: *mut Self::T) -> Self;
+}
+
+impl<T> BoxExt for Box<T> {
+    type T = T;
+    fn into_raw_(b: Box<T>) -> *mut T {
+        unsafe {
+            std::mem::transmute(b)
+        }
+    }
+    unsafe fn from_raw_(t: *mut T) -> Box<T> {
+        std::mem::transmute(t)
+    }
+}
+
 /// Like `std::thread::spawn`, but without the closure bounds.
 pub unsafe fn spawn_unsafe<'a, F>(f: F) -> thread::JoinHandle<()> where F: FnOnce() + 'a {
     use std::mem;
