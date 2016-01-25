@@ -1,6 +1,8 @@
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::ptr;
 
+use BoxExt;
+
 unsafe impl<T: Send> Send for AtomicOption<T> {}
 unsafe impl<T: Send> Sync for AtomicOption<T> {}
 
@@ -18,13 +20,13 @@ impl<T> AtomicOption<T> {
         if old.is_null() {
             None
         } else {
-            Some(unsafe { Box::from_raw(old) })
+            Some(unsafe { Box::from_raw_(old) })
         }
     }
 
     // allows re-use of allocation
     pub fn swap_box(&self, t: Box<T>, order: Ordering) -> Option<Box<T>> {
-        self.swap_inner(Box::into_raw(t), order)
+        self.swap_inner(Box::into_raw_(t), order)
     }
 
     pub fn swap(&self, t: T, order: Ordering) -> Option<T> {
