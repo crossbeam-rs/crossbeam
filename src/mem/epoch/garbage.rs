@@ -9,7 +9,7 @@
 use std::ptr;
 use std::mem;
 use std::sync::atomic::AtomicPtr;
-use std::sync::atomic::Ordering::{Relaxed, Release};
+use std::sync::atomic::Ordering::{Relaxed, Release, Acquire};
 
 use mem::ZerosValid;
 
@@ -124,13 +124,17 @@ impl ConcBag {
     }
 
     pub unsafe fn collect(&self) {
+        // check to avoid xchg instruction
+        // when no garbage exists
         let mut head = self.head.load(Relaxed);
-        self.head.store(ptr::null_mut(), Relaxed);
+        if head != ptr::null_mut() {
+            head = self.head.swap(ptr::null_mut(), Acquire);
 
-        while head != ptr::null_mut() {
-            let mut n = Box::from_raw(head);
-            n.data.collect();
-            head = n.next.load(Relaxed);
+            while head != ptr::null_mut() {
+                let mut n = Box::from_raw(head);
+                n.data.collect();
+                head = n.next.load(Relaxed);
+            }
         }
     }
 }
