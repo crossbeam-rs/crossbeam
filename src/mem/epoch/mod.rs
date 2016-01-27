@@ -246,6 +246,14 @@ fn opt_owned_into_raw<T>(val: Option<Owned<T>>) -> *mut T {
 
 impl<T> Atomic<T> {
     /// Create a new, null atomic pointer.
+    #[cfg(feature = "nightly")]
+    pub const fn null() -> Atomic<T> {
+        Atomic {
+            ptr: atomic::AtomicPtr::new(0 as *mut _),
+            _marker: PhantomData
+        }
+    }
+
     #[cfg(not(feature = "nightly"))]
     pub fn null() -> Atomic<T> {
         Atomic {
@@ -254,11 +262,10 @@ impl<T> Atomic<T> {
         }
     }
 
-    /// Create a new, null atomic pointer.
-    #[cfg(feature = "nightly")]
-    pub const fn null() -> Atomic<T> {
+    /// Create a new atomic pointer
+    pub fn new(data: T) -> Atomic<T> {
         Atomic {
-            ptr: atomic::AtomicPtr::new(0 as *mut _),
+            ptr: atomic::AtomicPtr::new(Box::into_raw(Box::new(data))),
             _marker: PhantomData
         }
     }
@@ -443,6 +450,7 @@ impl Drop for Guard {
 mod test {
     use std::sync::atomic::Ordering;
     use super::*;
+    use mem::epoch;
 
     #[test]
     fn test_no_drop() {
@@ -468,5 +476,13 @@ mod test {
         unsafe {
             assert_eq!(DROPS, 0);
         }
+    }
+
+    #[test]
+    fn test_new() {
+        let guard = epoch::pin();
+        let my_atomic = Atomic::new(42);
+
+        assert_eq!(**my_atomic.load(Ordering::Relaxed, &guard).unwrap(), 42);
     }
 }
