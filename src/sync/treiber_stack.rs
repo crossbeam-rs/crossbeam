@@ -60,4 +60,30 @@ impl<T> TreiberStack<T> {
             }
         }
     }
+
+    /// Check if this queue is empty.
+    pub fn is_empty(&self) -> bool {
+        let guard = epoch::pin();
+        self.head.load(Acquire, &guard).is_none()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn is_empty() {
+        let q: TreiberStack<i64> = TreiberStack::new();
+        assert!(q.is_empty());
+        q.push(20);
+        q.push(20);
+        assert!(!q.is_empty());
+        assert!(!q.is_empty());
+        assert!(q.pop().is_some());
+        assert!(q.pop().is_some());
+        assert!(q.is_empty());
+        q.push(25);
+        assert!(!q.is_empty());
+    }
 }
