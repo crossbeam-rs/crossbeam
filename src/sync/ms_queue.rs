@@ -400,7 +400,6 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
-            assert!(!q.is_empty());
         });
     }
 
@@ -430,7 +429,6 @@ mod test {
                 for i in 0..CONC_COUNT {
                     q.push(i);
                 }
-                assert!(!q.is_empty());
             })
         });
     }
@@ -448,13 +446,11 @@ mod test {
                     for i in CONC_COUNT-1..CONC_COUNT {
                         q.push(LR::Left(i))
                     }
-                    assert!(!q.is_empty());
                 });
                 scope.spawn(|| {
                     for i in CONC_COUNT-1..CONC_COUNT {
                         q.push(LR::Right(i))
                     }
-                    assert!(!q.is_empty());
                 });
                 scope.spawn(|| {
                     let mut vl = vec![];
@@ -475,11 +471,8 @@ mod test {
                     assert_eq!(vl, vl2);
                     assert_eq!(vr, vr2);
                 });
-
-                assert!(q.is_empty());
             }
         });
-        assert!(q.is_empty());
     }
 
     #[test]
