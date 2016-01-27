@@ -204,6 +204,22 @@ impl<T> MsQueue<T> {
         }
     }
 
+    /// Check if this queue is empty.
+    pub fn is_empty(&self) -> bool {
+        let guard = epoch::pin();
+        let head = self.head.load(Acquire, &guard).unwrap();
+
+        if let Some(next) = head.next.load(Acquire, &guard) {
+            if let Payload::Data(_) = next.payload {
+                false
+            } else {
+                true
+            }
+        } else {
+            true
+        }
+    }
+
     /// Attempt to dequeue from the front.
     ///
     /// Returns `None` if the queue is observed to be empty.
@@ -298,35 +314,47 @@ mod test {
     #[test]
     fn push_try_pop_1() {
         let q: MsQueue<i64> = MsQueue::new();
+        assert!(q.is_empty());
         q.push(37);
+        assert!(!q.is_empty());
         assert_eq!(q.try_pop(), Some(37));
+        assert!(q.is_empty());
     }
 
     #[test]
     fn push_try_pop_2() {
         let q: MsQueue<i64> = MsQueue::new();
+        assert!(q.is_empty());
         q.push(37);
         q.push(48);
         assert_eq!(q.try_pop(), Some(37));
+        assert!(!q.is_empty());
         assert_eq!(q.try_pop(), Some(48));
+        assert!(q.is_empty());
     }
 
     #[test]
     fn push_try_pop_many_seq() {
         let q: MsQueue<i64> = MsQueue::new();
+        assert!(q.is_empty());
         for i in 0..200 {
             q.push(i)
         }
+        assert!(!q.is_empty());
         for i in 0..200 {
             assert_eq!(q.try_pop(), Some(i));
         }
+        assert!(q.is_empty());
     }
 
     #[test]
     fn push_pop_1() {
         let q: MsQueue<i64> = MsQueue::new();
+        assert!(q.is_empty());
         q.push(37);
+        assert!(!q.is_empty());
         assert_eq!(q.pop(), 37);
+        assert!(q.is_empty());
     }
 
     #[test]
@@ -341,17 +369,21 @@ mod test {
     #[test]
     fn push_pop_many_seq() {
         let q: MsQueue<i64> = MsQueue::new();
+        assert!(q.is_empty());
         for i in 0..200 {
             q.push(i)
         }
+        assert!(!q.is_empty());
         for i in 0..200 {
             assert_eq!(q.pop(), i);
         }
+        assert!(q.is_empty());
     }
 
     #[test]
     fn push_try_pop_many_spsc() {
         let q: MsQueue<i64> = MsQueue::new();
+        assert!(q.is_empty());
 
         scope(|scope| {
             scope.spawn(|| {
@@ -368,6 +400,7 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
+            assert!(!q.is_empty());
         });
     }
 
@@ -386,6 +419,7 @@ mod test {
         }
 
         let q: MsQueue<i64> = MsQueue::new();
+        assert!(q.is_empty());
         let qr = &q;
         scope(|scope| {
             for i in 0..3 {
@@ -396,6 +430,7 @@ mod test {
                 for i in 0..CONC_COUNT {
                     q.push(i);
                 }
+                assert!(!q.is_empty());
             })
         });
     }
@@ -405,6 +440,7 @@ mod test {
         enum LR { Left(i64), Right(i64) }
 
         let q: MsQueue<LR> = MsQueue::new();
+        assert!(q.is_empty());
 
         scope(|scope| {
             for _t in 0..2 {
@@ -412,11 +448,13 @@ mod test {
                     for i in CONC_COUNT-1..CONC_COUNT {
                         q.push(LR::Left(i))
                     }
+                    assert!(!q.is_empty());
                 });
                 scope.spawn(|| {
                     for i in CONC_COUNT-1..CONC_COUNT {
                         q.push(LR::Right(i))
                     }
+                    assert!(!q.is_empty());
                 });
                 scope.spawn(|| {
                     let mut vl = vec![];
@@ -437,8 +475,11 @@ mod test {
                     assert_eq!(vl, vl2);
                     assert_eq!(vr, vr2);
                 });
+
+                assert!(q.is_empty());
             }
         });
+        assert!(q.is_empty());
     }
 
     #[test]
@@ -458,5 +499,16 @@ mod test {
                 q.push(i)
             }
         });
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn is_empty_dont_pop() {
+        let q: MsQueue<i64> = MsQueue::new();
+        q.push(20);
+        q.push(20);
+        assert!(!q.is_empty());
+        assert!(!q.is_empty());
+        assert!(q.try_pop().is_some());
     }
 }
