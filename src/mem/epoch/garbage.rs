@@ -94,7 +94,7 @@ impl Local {
     }
 
     pub fn size(&self) -> usize {
-        self.old.len() + self.cur.len()
+        self.old.len() + self.cur.len() + self.new.len()
     }
 }
 

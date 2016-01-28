@@ -107,10 +107,18 @@ impl<'a> Iterator for Iter<'a> {
                 cur = n.next.load(Relaxed, self.guard);
                 unsafe {
                     if self.next.cas_shared(Some(n), cur, Relaxed) {
-                        self.guard.unlinked(n)
+                        // Having succesfully disconnected n from our
+                        // current node doesn't guarantee that n is
+                        // totally disconnected from the list: the
+                        // node that self.next lies in may have itself
+                        // been disconnected from the list. Thus, do a
+                        // CAS against unlinked to make sure we only
+                        // unlink a node once.
+                        if n.unlinked.compare_and_swap(false, true, Relaxed) {
+                            self.guard.unlinked(n);
+                        }
                     }
                 }
-                self.next = &n.next;
             } else {
                 self.next = &n.next;
                 return Some(&n)
