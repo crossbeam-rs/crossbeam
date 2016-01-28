@@ -110,7 +110,6 @@ impl<'a> Iterator for Iter<'a> {
                         self.guard.unlinked(n)
                     }
                 }
-                self.next = &n.next;
             } else {
                 self.next = &n.next;
                 return Some(&n)
