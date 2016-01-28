@@ -25,6 +25,10 @@ pub struct Participant {
     /// is ultimately used to free `Participant` records.
     pub active: AtomicBool,
 
+    /// Has the thread been passed to unlinked() yet?
+    /// Used to avoid a double free when reclaiming participants.
+    pub unlinked: AtomicBool,
+
     /// The participant list is coded intrusively; here's the `next` pointer.
     pub next: Atomic<ParticipantNode>,
 }
@@ -37,6 +41,7 @@ impl Participant {
             epoch: AtomicUsize::new(0),
             in_critical: AtomicUsize::new(0),
             active: AtomicBool::new(true),
+            unlinked: AtomicBool::new(false),
             garbage: UnsafeCell::new(garbage::Local::new()),
             next: Atomic::null(),
         }
