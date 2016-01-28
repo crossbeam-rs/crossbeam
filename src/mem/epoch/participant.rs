@@ -93,6 +93,7 @@ impl Participant {
         self.epoch.store(new_epoch, Relaxed);
 
         unsafe {
+            (*self.garbage.get()).collect();
             global::get().garbage[new_epoch.wrapping_add(1) % 3].collect();
         }
 
