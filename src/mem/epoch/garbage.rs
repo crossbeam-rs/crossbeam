@@ -114,6 +114,9 @@ struct Node {
 
 impl ConcBag {
     pub fn insert(&self, t: Bag){
+        if t.len() == 0 {
+            return //don't insert an empty bag
+        }
         let n = Box::into_raw(Box::new(
             Node { data: t, next: AtomicPtr::new(ptr::null_mut()) }));
         loop {

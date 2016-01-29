@@ -107,6 +107,9 @@ impl Participant {
 
     /// Move the current thread-local garbage into the global garbage bags.
     pub fn migrate_garbage(&self) {
+        if self.garbage_size() == 0 {
+            return //skip resetting bags in there's nothing in them
+        }
         let cur_epoch = self.epoch.load(Relaxed);
         let local = unsafe { mem::replace(&mut *self.garbage.get(), garbage::Local::new()) };
         global::get().garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
