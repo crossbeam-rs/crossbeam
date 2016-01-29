@@ -64,8 +64,8 @@ struct Deque<T> {
 }
 
 // FIXME: can these constraints be relaxed?
-unsafe impl<T: Send + Sync> Send for Deque<T> {}
-unsafe impl<T: Send + Sync> Sync for Deque<T> {}
+unsafe impl<T: Send> Send for Deque<T> {}
+unsafe impl<T: Send> Sync for Deque<T> {}
 
 /// Worker half of the work-stealing deque. This worker has exclusive access to
 /// one side of the deque, and uses `push` and `try_pop` method to manipulate it.
