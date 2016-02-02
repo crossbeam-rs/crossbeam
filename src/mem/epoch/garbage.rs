@@ -13,94 +13,7 @@ use std::sync::atomic::Ordering::{Relaxed, Release, Acquire};
 
 use mem::ZerosValid;
 
-/// One item of garbage.
-///
-/// Stores enough information to do a deallocation.
-struct Item {
-    ptr: *mut u8,
-    free: unsafe fn(*mut u8),
-}
-
-/// A single, thread-local bag of garbage.
-pub struct Bag(Vec<Item>);
-
-impl Bag {
-    fn new() -> Bag {
-        Bag(vec![])
-    }
-
-    fn insert<T>(&mut self, elem: *mut T) {
-        let size = mem::size_of::<T>();
-        if size > 0 {
-            self.0.push(Item {
-                ptr: elem as *mut u8,
-                free: free::<T>,
-            })
-        }
-        unsafe fn free<T>(t: *mut u8) {
-            drop(Vec::from_raw_parts(t as *mut T, 0, 1));
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Deallocate all garbage in the bag
-    pub unsafe fn collect(&mut self) {
-        let mut data = mem::replace(&mut self.0, Vec::new());
-        for item in data.iter() {
-            (item.free)(item.ptr);
-        }
-        data.truncate(0);
-        self.0 = data;
-    }
-}
-
-// needed because the bags store raw pointers.
-unsafe impl Send for Bag {}
-unsafe impl Sync for Bag {}
-
-/// A thread-local set of garbage bags.
-// FIXME: switch this to use modular arithmetic and accessors instead
-pub struct Local {
-    /// Garbage added at least one epoch behind the current local epoch
-    pub old: Bag,
-    /// Garbage added in the current local epoch or earlier
-    pub cur: Bag,
-    /// Garbage added in the current *global* epoch
-    pub new: Bag,
-}
-
-impl Local {
-    pub fn new() -> Local {
-        Local {
-            old: Bag::new(),
-            cur: Bag::new(),
-            new: Bag::new(),
-        }
-    }
-
-    pub fn reclaim<T>(&mut self, elem: *mut T) {
-        self.new.insert(elem)
-    }
-
-    /// Collect one epoch of garbage, rotating the local garbage bags.
-    pub unsafe fn collect(&mut self) {
-        let ret = self.old.collect();
-        mem::swap(&mut self.old, &mut self.cur);
-        mem::swap(&mut self.cur, &mut self.new);
-        ret
-    }
-
-    pub fn size(&self) -> usize {
-        self.old.len() + self.cur.len() + self.new.len()
-    }
-}
-
 /// A concurrent garbage bag, currently based on Treiber's stack.
-///
-/// The elements are themselves owned `Bag`s.
 pub struct ConcBag {
     head: AtomicPtr<Node>,
 }
@@ -108,16 +21,27 @@ pub struct ConcBag {
 unsafe impl ZerosValid for ConcBag {}
 
 struct Node {
-    data: Bag,
+    ptr: *mut u8,
+    free: unsafe fn(*mut u8),
     next: AtomicPtr<Node>,
 }
 
 impl ConcBag {
-    pub fn insert(&self, t: Bag){
-        let n = Box::into_raw(Box::new(
-            Node { data: t, next: AtomicPtr::new(ptr::null_mut()) }));
+    pub fn insert<T>(&self, elem: *mut T) {
+        unsafe fn free<T>(t: *mut u8) {
+            drop(Vec::from_raw_parts(t as *mut T, 0, 1));
+        }
+
+        if mem::size_of::<T>() == 0 { return; }
+
+        let n = Box::into_raw(Box::new(Node {
+            ptr: elem as *mut u8,
+            free: free::<T>,
+            next: AtomicPtr::new(ptr::null_mut())
+        }));
+
         loop {
-            let head = self.head.load(Relaxed);
+            let head = self.head.load(Acquire);
             unsafe { (*n).next.store(head, Relaxed) };
             if self.head.compare_and_swap(head, n, Release) == head { break }
         }
@@ -131,8 +55,8 @@ impl ConcBag {
             head = self.head.swap(ptr::null_mut(), Acquire);
 
             while head != ptr::null_mut() {
-                let mut n = Box::from_raw(head);
-                n.data.collect();
+                let n = Box::from_raw(head);
+                (n.free)(n.ptr);
                 head = n.next.load(Relaxed);
             }
         }

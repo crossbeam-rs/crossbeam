@@ -1,12 +1,11 @@
 // Manages a single participant in the epoch scheme. This is where all
 // of the actual epoch management logic happens!
 
-use std::mem;
-use std::cell::UnsafeCell;
+use std::cell::Cell;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
 
-use mem::epoch::{Atomic, Guard, garbage, global};
+use mem::epoch::{Atomic, Guard, global};
 use mem::epoch::participants::ParticipantNode;
 
 /// Thread-local data for epoch participation.
@@ -18,16 +17,12 @@ pub struct Participant {
     /// reentrant use of epoch management.
     in_critical: AtomicUsize,
 
-    /// Thread-local garbage tracking
-    garbage: UnsafeCell<garbage::Local>,
+    /// Number of operations since last GC
+    num_ops: Cell<u64>,
 
     /// Is the thread still active? Becomes `false` when the thread exits. This
     /// is ultimately used to free `Participant` records.
     pub active: AtomicBool,
-
-    /// Has the thread been passed to unlinked() yet?
-    /// Used to avoid a double free when reclaiming participants.
-    pub unlinked: AtomicBool,
 
     /// The participant list is coded intrusively; here's the `next` pointer.
     pub next: Atomic<ParticipantNode>,
@@ -35,14 +30,15 @@ pub struct Participant {
 
 unsafe impl Sync for Participant {}
 
+const GC_THRESH: u64 = 128;
+
 impl Participant {
     pub fn new() -> Participant {
         Participant {
             epoch: AtomicUsize::new(0),
             in_critical: AtomicUsize::new(0),
+            num_ops: Cell::new(0),
             active: AtomicBool::new(true),
-            unlinked: AtomicBool::new(false),
-            garbage: UnsafeCell::new(garbage::Local::new()),
             next: Atomic::null(),
         }
     }
@@ -50,18 +46,25 @@ impl Participant {
     /// Enter a critical section.
     ///
     /// This method is reentrant, allowing for nested critical sections.
-    pub fn enter(&self) {
+    ///
+    /// Returns `true` is this is the first entry on the stack (as opposed to a
+    /// re-entrant call).
+    pub fn enter(&self) -> bool {
         let new_count = self.in_critical.load(Relaxed) + 1;
         self.in_critical.store(new_count, Relaxed);
-        if new_count > 1 { return }
+        if new_count > 1 { return false }
 
         atomic::fence(SeqCst);
 
         let global_epoch = global::get().epoch.load(Relaxed);
         if global_epoch != self.epoch.load(Relaxed) {
             self.epoch.store(global_epoch, Relaxed);
-            unsafe { (*self.garbage.get()).collect(); }
+            self.num_ops.set(0);
+        } else {
+            self.num_ops.set(self.num_ops.get() + 1);
         }
+
+        true
     }
 
     /// Exit the current (nested) critical section.
@@ -74,7 +77,8 @@ impl Participant {
 
     /// Begin the reclamation process for a piece of data.
     pub unsafe fn reclaim<T>(&self, data: *mut T) {
-        (*self.garbage.get()).reclaim(data);
+        let cur_global = global::get().epoch.load(Acquire);
+        global::get().garbage[cur_global % 3].insert(data);
     }
 
     /// Attempt to collect garbage by moving the global epoch forward.
@@ -96,26 +100,16 @@ impl Participant {
         }
 
         self.epoch.store(new_epoch, Relaxed);
-
         unsafe {
-            (*self.garbage.get()).collect();
             global::get().garbage[new_epoch.wrapping_add(1) % 3].collect();
         }
+        self.num_ops.set(0);
 
         true
     }
 
-    /// Move the current thread-local garbage into the global garbage bags.
-    pub fn migrate_garbage(&self) {
-        let cur_epoch = self.epoch.load(Relaxed);
-        let local = unsafe { mem::replace(&mut *self.garbage.get(), garbage::Local::new()) };
-        global::get().garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
-        global::get().garbage[cur_epoch % 3].insert(local.cur);
-        global::get().garbage[global::get().epoch.load(Relaxed) % 3].insert(local.new);
-    }
-
-    /// How much garbage is this participant currently storing?
-    pub fn garbage_size(&self) -> usize {
-        unsafe { (*self.garbage.get()).size() }
+    /// Is this participant past its local GC threshhold?
+    pub fn should_gc(&self) -> bool {
+        self.num_ops.get() >= GC_THRESH
     }
 }
