@@ -10,9 +10,10 @@
 
 //! A lock-free concurrent work-stealing deque
 //!
-//! This module contains an implementation of the Chase-Lev work stealing deque
-//! described in "Dynamic Circular Work-Stealing Deque". The implementation is
-//! heavily based on the pseudocode found in the paper.
+//! This module contains a hybrid implementation of the Chase-Lev work stealing deque
+//! described in ["Dynamic Circular Work-Stealing Deque"][chase_lev] and the improved version
+//! described in ["Correct and Efficient Work-Stealing for Weak Memory Models"][weak_chase_lev].
+//! The implementation is heavily based on the pseudocode found in the papers.
 //!
 //! # Example
 //!
@@ -33,15 +34,15 @@
 //! let stealer2 = stealer.clone();
 //! stealer2.steal();
 //! ```
-
-// FIXME: all atomic operations in this module use a SeqCst ordering. That is
-//      probably overkill
+//!
+//! [chase_lev]: http://neteril.org/~jeremie/Dynamic_Circular_Work_Queue.pdf
+//! [weak_chase_lev]: http://www.di.ens.fr/~zappa/readings/ppopp13.pdf
 
 use std::cell::UnsafeCell;
 use std::mem;
 use std::ptr;
-use std::sync::atomic::Ordering::SeqCst;
-use std::sync::atomic::AtomicIsize;
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
+use std::sync::atomic::{AtomicIsize, fence};
 use std::sync::Arc;
 
 use mem::epoch::{self, Atomic, Shared, Owned};
@@ -158,68 +159,82 @@ impl<T> Deque<T> {
     unsafe fn push(&self, data: T) {
         let guard = epoch::pin();
 
-        let mut b = self.bottom.load(SeqCst);
-        let t = self.top.load(SeqCst);
-        let mut a = self.array.load(SeqCst, &guard).unwrap();
+        let mut b = self.bottom.load(Relaxed);
+        let t = self.top.load(Acquire);
+        let mut a = self.array.load(Relaxed, &guard).unwrap();
+
         let size = b - t;
         if size >= (a.size() as isize) - 1 {
             // You won't find this code in the chase-lev deque paper. This is
             // alluded to in a small footnote, however. We always free a buffer
             // when growing in order to prevent leaks.
-            a = self.swap_buffer(b, a, a.resize(b, t, 1), &guard);
-            b = self.bottom.load(SeqCst);
+            a = self.swap_buffer(a, a.resize(b, t, 1), &guard);
+
+            // reload the bottom counter, since swap_buffer modifies it.
+            b = self.bottom.load(Relaxed);
         }
         a.put(b, data);
-        self.bottom.store(b + 1, SeqCst);
+        fence(Release);
+        self.bottom.store(b + 1, Relaxed);
     }
 
     unsafe fn try_pop(&self) -> Option<T> {
         let guard = epoch::pin();
 
-        let b = self.bottom.load(SeqCst);
-        let a = self.array.load(SeqCst, &guard).unwrap();
-        let b = b - 1;
-        self.bottom.store(b, SeqCst);
-        let t = self.top.load(SeqCst);
+        let b = self.bottom.load(Relaxed) - 1;
+        let a = self.array.load(Relaxed, &guard).unwrap();
+        self.bottom.store(b, Relaxed);
+        fence(SeqCst); // the store to bottom must occur before loading top.
+        let t = self.top.load(Relaxed);
+
         let size = b - t;
-        if size < 0 {
-            self.bottom.store(t, SeqCst);
-            return None
-        }
-        let data = a.get(b);
-        if size > 0 {
-            self.maybe_shrink(b, t, &guard);
-            return Some(data)
-        }
-        if self.top.compare_and_swap(t, t + 1, SeqCst) == t {
-            self.bottom.store(t + 1, SeqCst);
-            return Some(data)
+        if size >= 0 {
+            // non-empty case
+            let mut data = Some(a.get(b));
+            if size == 0 {
+                // last element in queue, check for races.
+                if self.top.compare_and_swap(t, t + 1, SeqCst) != t {
+                    // lost the race.
+                    mem::forget(data.take());
+                }
+
+                // set the queue to a canonically empty state.
+                self.bottom.store(b + 1, Relaxed);
+            } else {
+                self.maybe_shrink(b, t, &guard);
+            }
+            data
         } else {
-            self.bottom.store(t + 1, SeqCst);
-            mem::forget(data); // someone else stole this value
-            return None
+            // empty queue. revert the decrement of "b" and try to shrink.
+            //
+            // the original chase_lev paper uses "t" here, but the new one uses "b + 1".
+            // don't worry, they're the same thing: pop and steal operations will never leave
+            // the top counter greater than the bottom counter. After we decrement "b" at
+            // the beginning of this function, the lowest possible value it could hold here is "t - 1".
+            // That's also the only value that could cause this branch to be taken.
+            self.bottom.store(b + 1, Relaxed);
+            None
         }
     }
 
     fn steal(&self) -> Steal<T> {
         let guard = epoch::pin();
 
-        let t = self.top.load(SeqCst);
-        let old = self.array.load(SeqCst, &guard).unwrap();
-        let b = self.bottom.load(SeqCst);
-        let a = self.array.load(SeqCst, &guard).unwrap();
+        let t = self.top.load(Acquire);
+        fence(SeqCst); // top must be loaded before bottom.
+        let b = self.bottom.load(Acquire);
+
         let size = b - t;
         if size <= 0 {
             return Steal::Empty
         }
-        if (size as usize) % a.size() == 0 {
-            if *a as *const _ == *old as *const _ && t == self.top.load(SeqCst) {
-                return Steal::Empty
-            }
-            return Steal::Abort
-        }
+
         unsafe {
+            // while the paper uses a "consume" ordering here, the closest thing we have
+            // available is Acquire, which is strictly stronger.
+            let a = self.array.load(Acquire, &guard).unwrap();
             let data = a.get(t);
+            // we may be racing against other steals and a pop.
             if self.top.compare_and_swap(t, t + 1, SeqCst) == t {
                 Steal::Data(data)
             } else {
@@ -229,10 +244,12 @@ impl<T> Deque<T> {
         }
     }
 
+    // potentially shrink the array. This can be called only from the worker.
     unsafe fn maybe_shrink(&self, b: isize, t: isize, guard: &epoch::Guard) {
         let a = self.array.load(SeqCst, guard).unwrap();
-        if b - t < (a.size() as isize) / K && b - t > (1 << MIN_BITS) {
-            self.swap_buffer(b, a, a.resize(b, t, -1), guard);
+        let size = b - t;
+        if size < (a.size() as isize) / K && size > (1 << MIN_BITS) {
+            self.swap_buffer(a, a.resize(b, t, -1), guard);
         }
     }
 
@@ -245,22 +262,19 @@ impl<T> Deque<T> {
     // to be read after we flag this buffer for reclamation. All stealers,
     // however, have their own epoch pinned during this time so the buffer will
     // just naturally be free'd once all concurrent stealers have exited.
+    //
+    // This method may only be called safely from the workers due to the way it modifies
+    // the array pointer.
     unsafe fn swap_buffer<'a>(&self,
-                              b: isize,
                               old: Shared<'a, Buffer<T>>,
                               buf: Buffer<T>,
                               guard: &'a epoch::Guard)
                               -> Shared<'a, Buffer<T>> {
         let newbuf = Owned::new(buf);
-        let newbuf = self.array.store_and_ref(newbuf, SeqCst, &guard);
-        let ss = newbuf.size() as isize;
-        self.bottom.store(b + ss, SeqCst);
-        let t = self.top.load(SeqCst);
-        if self.top.compare_and_swap(t, t + ss, SeqCst) != t {
-            self.bottom.store(b, SeqCst);
-        }
+        let newbuf = self.array.store_and_ref(newbuf, Release, &guard);
         guard.unlinked(old);
-        return newbuf
+
+        newbuf
     }
 }
 
@@ -269,9 +283,11 @@ impl<T> Drop for Deque<T> {
     fn drop(&mut self) {
         let guard = epoch::pin();
 
-        let t = self.top.load(SeqCst);
-        let b = self.bottom.load(SeqCst);
-        let a = self.array.swap(None, SeqCst, &guard).unwrap();
+        // Arc enforces that we have truly exclusive access here.
+
+        let t = self.top.load(Relaxed);
+        let b = self.bottom.load(Relaxed);
+        let a = self.array.swap(None, Relaxed, &guard).unwrap();
         // Free whatever is leftover in the dequeue, then free the backing
         // memory itself
         unsafe {
