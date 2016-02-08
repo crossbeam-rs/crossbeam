@@ -62,7 +62,7 @@ impl<T> SegQueue<T> {
             let i = tail.high.fetch_add(1, Relaxed);
             unsafe {
                 if i < SEG_SIZE {
-                    *(*tail).data.get_unchecked(i).get() = t;
+                    ptr::write((*tail).data.get_unchecked(i).get(), t);
                     tail.ready.get_unchecked(i).store(true, Release);
 
                     if i + 1 == SEG_SIZE {
