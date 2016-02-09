@@ -19,8 +19,7 @@ pub struct SegQueue<T> {
 
 struct Segment<T> {
     low: AtomicUsize,
-    data: [UnsafeCell<T>; SEG_SIZE],
-    ready: [AtomicBool; SEG_SIZE],
+    data: [UnsafeCell<(T, AtomicBool)>; SEG_SIZE],
     high: AtomicUsize,
     next: Atomic<Segment<T>>,
 }
@@ -29,13 +28,18 @@ unsafe impl<T: Send> Sync for Segment<T> {}
 
 impl<T> Segment<T> {
     fn new() -> Segment<T> {
-        Segment {
+        let rqueue = Segment {
             data: unsafe { mem::uninitialized() },
-            ready: unsafe { mem::transmute([0usize; SEG_SIZE]) },
             low: AtomicUsize::new(0),
             high: AtomicUsize::new(0),
             next: Atomic::null(),
+        };
+        for val in rqueue.data.iter() {
+            unsafe {
+                (*val.get()).1 = AtomicBool::new(false);
+            }
         }
+        rqueue
     }
 }
 
@@ -62,8 +66,9 @@ impl<T> SegQueue<T> {
             let i = tail.high.fetch_add(1, Relaxed);
             unsafe {
                 if i < SEG_SIZE {
-                    ptr::write((*tail).data.get_unchecked(i).get(), t);
-                    tail.ready.get_unchecked(i).store(true, Release);
+                    let cell = (*tail).data.get_unchecked(i).get();
+                    ptr::write(&mut (*cell).0, t);
+                    (*cell).1.store(true, Release);
 
                     if i + 1 == SEG_SIZE {
                         let tail = tail.next.store_and_ref(Owned::new(Segment::new()), Release, &guard);
@@ -87,19 +92,21 @@ impl<T> SegQueue<T> {
                 let low = head.low.load(Relaxed);
                 if low >= cmp::min(head.high.load(Relaxed), SEG_SIZE) { break }
                 if head.low.compare_and_swap(low, low+1, Relaxed) == low {
-                    loop {
-                        if unsafe { head.ready.get_unchecked(low).load(Acquire) } { break }
-                    }
-                    if low + 1 == SEG_SIZE {
+                    unsafe {
+                        let cell = (*head).data.get_unchecked(low).get();
                         loop {
-                            if let Some(next) = head.next.load(Acquire, &guard) {
-                                self.head.store_shared(Some(next), Release);
-                                unsafe { guard.unlinked(head);}
-                                break
+                            if (*cell).1.load(Acquire) { break }
+                        }
+                        if low + 1 == SEG_SIZE {
+                            loop {
+                                if let Some(next) = head.next.load(Acquire, &guard) {
+                                    self.head.store_shared(Some(next), Release);
+                                    break
+                                }
                             }
                         }
+                        return Some(ptr::read(&(*cell).0))
                     }
-                    return Some(unsafe { ptr::read((*head).data.get_unchecked(low).get()) })
                 }
             }
             if head.next.load(Relaxed, &guard).is_none() { return None }
