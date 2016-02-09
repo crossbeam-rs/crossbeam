@@ -99,10 +99,10 @@ impl Participant {
             return false
         }
 
-        self.epoch.store(new_epoch, Relaxed);
         unsafe {
             global::get().garbage[new_epoch.wrapping_add(1) % 3].collect();
         }
+        self.epoch.store(new_epoch, Release);
         self.num_ops.set(0);
 
         true
