@@ -417,7 +417,6 @@ pub fn pin() -> Guard {
             _marker: marker::PhantomData,
         };
 
-
         if p.should_gc() {
             p.try_collect(&g);
         }
@@ -431,6 +430,11 @@ impl Guard {
     /// structure and should be collected when sufficient epochs have passed.
     pub unsafe fn unlinked<T>(&self, val: Shared<T>) {
         local::with_participant(|p| p.reclaim(val.as_raw()))
+    }
+
+    /// Move the thread-local garbage into the global set of garbage.
+    pub fn migrate_garbage(&self) {
+        local::with_participant(|p| p.migrate_garbage())
     }
 }
 

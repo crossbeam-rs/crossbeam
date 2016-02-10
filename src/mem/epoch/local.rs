@@ -22,7 +22,11 @@ impl LocalEpoch {
 // FIXME: avoid leaking when all threads have exited
 impl Drop for LocalEpoch {
     fn drop(&mut self) {
-        self.get().active.store(false, Relaxed);
+        let p = self.get();
+        p.enter();
+        p.migrate_garbage();
+        p.exit();
+        p.active.store(false, Relaxed);
     }
 }
 

@@ -1,11 +1,12 @@
 // Manages a single participant in the epoch scheme. This is where all
 // of the actual epoch management logic happens!
 
-use std::cell::Cell;
+use std::mem;
+use std::cell::UnsafeCell;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
 
-use mem::epoch::{Atomic, Guard, global};
+use mem::epoch::{Atomic, Guard, garbage, global};
 use mem::epoch::participants::ParticipantNode;
 
 /// Thread-local data for epoch participation.
@@ -17,8 +18,8 @@ pub struct Participant {
     /// reentrant use of epoch management.
     in_critical: AtomicUsize,
 
-    /// Number of operations since last GC
-    num_ops: Cell<u64>,
+    /// Thread-local garbage tracking
+    garbage: UnsafeCell<garbage::Local>,
 
     /// Is the thread still active? Becomes `false` when the thread exits. This
     /// is ultimately used to free `Participant` records.
@@ -30,15 +31,15 @@ pub struct Participant {
 
 unsafe impl Sync for Participant {}
 
-const GC_THRESH: u64 = 128;
+const GC_THRESH: usize = 32;
 
 impl Participant {
     pub fn new() -> Participant {
         Participant {
             epoch: AtomicUsize::new(0),
             in_critical: AtomicUsize::new(0),
-            num_ops: Cell::new(0),
             active: AtomicBool::new(true),
+            garbage: UnsafeCell::new(garbage::Local::new()),
             next: Atomic::null(),
         }
     }
@@ -59,9 +60,7 @@ impl Participant {
         let global_epoch = global::get().epoch.load(Relaxed);
         if global_epoch != self.epoch.load(Relaxed) {
             self.epoch.store(global_epoch, Relaxed);
-            self.num_ops.set(0);
-        } else {
-            self.num_ops.set(self.num_ops.get() + 1);
+            unsafe { (*self.garbage.get()).collect(); }
         }
 
         true
@@ -77,8 +76,7 @@ impl Participant {
 
     /// Begin the reclamation process for a piece of data.
     pub unsafe fn reclaim<T>(&self, data: *mut T) {
-        let cur_global = global::get().epoch.load(Acquire);
-        global::get().garbage[cur_global % 3].insert(data);
+        (*self.garbage.get()).insert(data);
     }
 
     /// Attempt to collect garbage by moving the global epoch forward.
@@ -100,16 +98,29 @@ impl Participant {
         }
 
         unsafe {
+            (*self.garbage.get()).collect();
             global::get().garbage[new_epoch.wrapping_add(1) % 3].collect();
         }
         self.epoch.store(new_epoch, Release);
-        self.num_ops.set(0);
 
         true
     }
 
+    /// Move the current thread-local garbage into the global garbage bags.
+    pub fn migrate_garbage(&self) {
+        let cur_epoch = self.epoch.load(Relaxed);
+        let local = unsafe { mem::replace(&mut *self.garbage.get(), garbage::Local::new()) };
+        global::get().garbage[cur_epoch.wrapping_sub(1) % 3].insert(local.old);
+        global::get().garbage[cur_epoch % 3].insert(local.cur);
+        global::get().garbage[global::get().epoch.load(Relaxed) % 3].insert(local.new);
+    }
+
+    /// How much garbage is this participant currently storing?
+    pub fn garbage_size(&self) -> usize {
+        unsafe { (*self.garbage.get()).size() }
+    }
     /// Is this participant past its local GC threshhold?
     pub fn should_gc(&self) -> bool {
-        self.num_ops.get() >= GC_THRESH
+        self.garbage_size() >= GC_THRESH
     }
 }
