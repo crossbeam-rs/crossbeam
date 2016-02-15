@@ -101,6 +101,7 @@ impl<T> SegQueue<T> {
                             loop {
                                 if let Some(next) = head.next.load(Acquire, &guard) {
                                     self.head.store_shared(Some(next), Release);
+                                    unsafe { guard.unlinked(head); }
                                     break
                                 }
                             }
