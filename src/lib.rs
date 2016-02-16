@@ -45,7 +45,7 @@ impl<F: FnOnce()> FnBox for F {
 }
 
 /// Like `std::thread::spawn`, but without the closure bounds.
-pub unsafe fn spawn_unsafe<'a, F>(f: F) -> thread::JoinHandle<()> where F: FnOnce() + 'a {
+pub unsafe fn spawn_unsafe<'a, F>(f: F) -> thread::JoinHandle<()> where F: FnOnce() + Send + 'a {
     use std::mem;
 
     let closure: Box<FnBox + 'a> = Box::new(f);
