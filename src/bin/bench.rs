@@ -1,6 +1,3 @@
-#![cfg_attr(feature = "nightly",
-            feature(duration_span))]
-
 extern crate crossbeam;
 
 use std::collections::VecDeque;
@@ -21,7 +18,9 @@ const THREADS: u64 = 2;
 
 #[cfg(feature = "nightly")]
 fn time<F: FnOnce()>(f: F) -> Duration {
-    Duration::span(f)
+    let start = ::std::time::Instant::now();
+    f();
+    start.elapsed()
 }
 
 #[cfg(not(feature = "nightly"))]
