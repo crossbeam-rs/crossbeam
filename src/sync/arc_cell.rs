@@ -4,18 +4,18 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A type providing atomic storage and retrieval of an `Arc<T>`.
-pub struct AtomicReference<T>(AtomicUsize, PhantomData<Arc<T>>);
+pub struct ArcCell<T>(AtomicUsize, PhantomData<Arc<T>>);
 
-impl<T> Drop for AtomicReference<T> {
+impl<T> Drop for ArcCell<T> {
     fn drop(&mut self) {
         self.take();
     }
 }
 
-impl<T> AtomicReference<T> {
-    /// Creates a new `AtomicReference`.
-    pub fn new(t: Arc<T>) -> AtomicReference<T> {
-        AtomicReference(AtomicUsize::new(unsafe { mem::transmute(t) }), PhantomData)
+impl<T> ArcCell<T> {
+    /// Creates a new `ArcCell`.
+    pub fn new(t: Arc<T>) -> ArcCell<T> {
+        ArcCell(AtomicUsize::new(unsafe { mem::transmute(t) }), PhantomData)
     }
 
     fn take(&self) -> Arc<T> {
@@ -32,7 +32,7 @@ impl<T> AtomicReference<T> {
         self.0.store(unsafe { mem::transmute(t) }, Ordering::Release);
     }
 
-    /// Stores a new value in the `AtomicReference`, returning the previous
+    /// Stores a new value in the `ArcCell`, returning the previous
     /// value.
     pub fn set(&self, t: Arc<T>) -> Arc<T> {
         let old = self.take();
@@ -40,7 +40,7 @@ impl<T> AtomicReference<T> {
         old
     }
 
-    /// Returns a copy of the value stored by the `AtomicReference`.
+    /// Returns a copy of the value stored by the `ArcCell`.
     pub fn get(&self) -> Arc<T> {
         let t = self.take();
         // NB: correctness here depends on Arc's clone impl not panicking
@@ -59,7 +59,7 @@ mod test {
 
     #[test]
     fn basic() {
-        let r = AtomicReference::new(Arc::new(0));
+        let r = ArcCell::new(Arc::new(0));
         assert_eq!(*r.get(), 0);
         assert_eq!(*r.set(Arc::new(1)), 0);
         assert_eq!(*r.get(), 1);
@@ -77,7 +77,7 @@ mod test {
             }
         }
 
-        let r = AtomicReference::new(Arc::new(Foo));
+        let r = ArcCell::new(Arc::new(Foo));
         let _f = r.get();
         r.get();
         r.set(Arc::new(Foo));
