@@ -40,12 +40,14 @@
 
 pub use self::PopResult::*;
 
+use std::fmt;
 use std::ptr;
 use std::cell::UnsafeCell;
 
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 /// A result of the `pop` function.
+#[derive(Debug)]
 pub enum PopResult<T> {
     /// Some data has been popped
     Data(T),
@@ -58,6 +60,7 @@ pub enum PopResult<T> {
     Inconsistent,
 }
 
+#[derive(Debug)]
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
     value: Option<T>,
@@ -69,6 +72,12 @@ struct Node<T> {
 pub struct Queue<T> {
     head: AtomicPtr<Node<T>>,
     tail: UnsafeCell<*mut Node<T>>,
+}
+
+impl<T> fmt::Debug for Queue<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Queue {{ ... }}")
+    }
 }
 
 unsafe impl<T: Send> Send for Queue<T> { }

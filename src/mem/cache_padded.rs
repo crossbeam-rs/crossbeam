@@ -1,5 +1,6 @@
 use std::marker;
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::ops::{Deref, DerefMut};
@@ -9,6 +10,7 @@ const CACHE_LINE: usize = 32;
 
 #[cfg_attr(feature = "nightly",
            repr(simd))]
+#[derive(Debug)]
 struct Padding(u64, u64, u64, u64);
 
 /// Pad `T` to the length of a cacheline.
@@ -26,6 +28,12 @@ struct Padding(u64, u64, u64, u64);
 pub struct CachePadded<T> {
     data: UnsafeCell<[usize; CACHE_LINE]>,
     _marker: ([Padding; 0], marker::PhantomData<T>),
+}
+
+impl<T> fmt::Debug for CachePadded<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "CachePadded {{ ... }}")
+    }
 }
 
 unsafe impl<T: Send> Send for CachePadded<T> {}

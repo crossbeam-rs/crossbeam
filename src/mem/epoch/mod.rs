@@ -142,6 +142,7 @@ use std::ptr;
 use std::mem;
 
 /// Like `Box<T>`: an owned, heap-allocated data value of type `T`.
+#[derive(Debug)]
 pub struct Owned<T> {
     data: Box<T>,
 }
@@ -177,6 +178,7 @@ impl<T> DerefMut for Owned<T> {
 
 #[derive(PartialEq, Eq)]
 /// Like `&'a T`: a shared reference valid for lifetime `'a`.
+#[derive(Debug)]
 pub struct Shared<'a, T: 'a> {
     data: &'a T,
 }

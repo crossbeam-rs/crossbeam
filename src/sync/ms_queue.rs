@@ -13,16 +13,19 @@ use mem::CachePadded;
 // node at the front. In general the `tail` pointer may lag behind the
 // actual tail. Non-sentinal nodes are either all `Data` or all
 // `Blocked` (requests for data from blocked threads).
+#[derive(Debug)]
 pub struct MsQueue<T> {
     head: CachePadded<Atomic<Node<T>>>,
     tail: CachePadded<Atomic<Node<T>>>,
 }
 
+#[derive(Debug)]
 struct Node<T> {
     payload: Payload<T>,
     next: Atomic<Node<T>>,
 }
 
+#[derive(Debug)]
 enum Payload<T> {
     /// A node with actual data that can be popped.
     Data(T),
@@ -31,6 +34,7 @@ enum Payload<T> {
 }
 
 /// A blocked request for data, which includes a slot to write the data.
+#[derive(Debug)]
 struct Signal<T> {
     /// Thread to unpark when data is ready.
     thread: Thread,

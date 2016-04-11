@@ -39,6 +39,7 @@
 //! [weak_chase_lev]: http://www.di.ens.fr/~zappa/readings/ppopp13.pdf
 
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
@@ -58,6 +59,7 @@ const K: isize = 4;
 // The size in question is 1 << MIN_BITS
 const MIN_BITS: u32 = 7;
 
+#[derive(Debug)]
 struct Deque<T> {
     bottom: AtomicIsize,
     top: AtomicIsize,
@@ -73,6 +75,7 @@ unsafe impl<T: Send> Sync for Deque<T> {}
 ///
 /// There may only be one worker per deque, and operations on the worker
 /// require mutable access to the worker itself.
+#[derive(Debug)]
 pub struct Worker<T> {
     deque: Arc<Deque<T>>,
 }
@@ -82,6 +85,7 @@ pub struct Worker<T> {
 /// `steal` method.
 ///
 /// Stealers can be cloned to have more than one handle active at a time.
+#[derive(Debug)]
 pub struct Stealer<T> {
     deque: Arc<Deque<T>>,
 }
@@ -107,6 +111,12 @@ pub enum Steal<T> {
 struct Buffer<T> {
     storage: UnsafeCell<Vec<T>>,
     log_size: u32,
+}
+
+impl<T> fmt::Debug for Buffer<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Buffer {{ ... }}")
+    }
 }
 
 impl<T> Worker<T> {

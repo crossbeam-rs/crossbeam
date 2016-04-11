@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A type providing atomic storage and retrieval of an `Arc<T>`.
+#[derive(Debug)]
 pub struct ArcCell<T>(AtomicUsize, PhantomData<Arc<T>>);
 
 impl<T> Drop for ArcCell<T> {

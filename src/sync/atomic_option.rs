@@ -4,6 +4,7 @@ use std::ptr;
 unsafe impl<T: Send> Send for AtomicOption<T> {}
 unsafe impl<T: Send> Sync for AtomicOption<T> {}
 
+#[derive(Debug)]
 pub struct AtomicOption<T> {
     inner: AtomicPtr<T>,
 }

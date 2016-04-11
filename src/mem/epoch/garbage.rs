@@ -16,12 +16,14 @@ use mem::ZerosValid;
 /// One item of garbage.
 ///
 /// Stores enough information to do a deallocation.
+#[derive(Debug)]
 struct Item {
     ptr: *mut u8,
     free: unsafe fn(*mut u8),
 }
 
 /// A single, thread-local bag of garbage.
+#[derive(Debug)]
 pub struct Bag(Vec<Item>);
 
 impl Bag {
@@ -62,6 +64,7 @@ unsafe impl Send for Bag {}
 unsafe impl Sync for Bag {}
 
 /// A thread-local set of garbage bags.
+#[derive(Debug)]
 pub struct Local {
     /// Garbage added at least one epoch behind the current local epoch
     pub old: Bag,
@@ -100,12 +103,14 @@ impl Local {
 /// A concurrent garbage bag, currently based on Treiber's stack.
 ///
 /// The elements are themselves owned `Bag`s.
+#[derive(Debug)]
 pub struct ConcBag {
     head: AtomicPtr<Node>,
 }
 
 unsafe impl ZerosValid for ConcBag {}
 
+#[derive(Debug)]
 struct Node {
     data: Bag,
     next: AtomicPtr<Node>,
