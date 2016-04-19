@@ -9,6 +9,7 @@ use super::{Owned, Shared, Guard};
 ///
 /// Provides atomic access to a (nullable) pointer of type `T`, interfacing with
 /// the `Owned` and `Shared` types.
+#[derive(Debug)]
 pub struct Atomic<T> {
     ptr: atomic::AtomicPtr<T>,
     _marker: PhantomData<*const ()>,

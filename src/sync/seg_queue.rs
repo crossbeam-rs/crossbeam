@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::fmt;
 use std::{ptr, mem};
 use std::cmp;
 use std::cell::UnsafeCell;
@@ -12,6 +13,7 @@ const SEG_SIZE: usize = 32;
 /// for efficiency.
 ///
 /// Usable with any number of producers and consumers.
+#[derive(Debug)]
 pub struct SegQueue<T> {
     head: Atomic<Segment<T>>,
     tail: Atomic<Segment<T>>,
@@ -22,6 +24,12 @@ struct Segment<T> {
     data: [UnsafeCell<(T, AtomicBool)>; SEG_SIZE],
     high: AtomicUsize,
     next: Atomic<Segment<T>>,
+}
+
+impl<T> fmt::Debug for Segment<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Segment {{ ... }}")
+    }
 }
 
 unsafe impl<T: Send> Sync for Segment<T> {}

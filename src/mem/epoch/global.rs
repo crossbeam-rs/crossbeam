@@ -8,6 +8,7 @@ use mem::epoch::garbage;
 use mem::epoch::participants::Participants;
 
 /// Global epoch state
+#[derive(Debug)]
 pub struct EpochState {
     /// Current global epoch
     pub epoch: CachePadded<AtomicUsize>,

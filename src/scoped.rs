@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fmt;
 use std::mem;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
@@ -61,6 +62,18 @@ pub fn scope<'a, F, R>(f: F) -> R where F: FnOnce(&Scope<'a>) -> R {
     let ret = f(&scope);
     scope.drop_all();
     ret
+}
+
+impl<'a> fmt::Debug for Scope<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Scope {{ ... }}")
+    }
+}
+
+impl<T> fmt::Debug for ScopedJoinHandle<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ScopedJoinHandle {{ ... }}")
+    }
 }
 
 impl<'a> Scope<'a> {

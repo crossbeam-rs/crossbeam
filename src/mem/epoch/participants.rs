@@ -11,10 +11,12 @@ use mem::epoch::participant::Participant;
 use mem::CachePadded;
 
 /// Global, threadsafe list of threads participating in epoch management.
+#[derive(Debug)]
 pub struct Participants {
     head: Atomic<ParticipantNode>
 }
 
+#[derive(Debug)]
 pub struct ParticipantNode(CachePadded<Participant>);
 
 impl ParticipantNode {
@@ -81,6 +83,7 @@ impl Participants {
     }
 }
 
+#[derive(Debug)]
 pub struct Iter<'a> {
     // pin to an epoch so that we can free inactive nodes
     guard: &'a Guard,

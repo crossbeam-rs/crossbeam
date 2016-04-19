@@ -5,6 +5,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use mem::epoch::participant::Participant;
 use mem::epoch::global;
 
+#[derive(Debug)]
 struct LocalEpoch {
     participant: *const Participant,
 }

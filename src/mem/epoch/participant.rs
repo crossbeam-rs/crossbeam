@@ -3,6 +3,7 @@
 
 use std::mem;
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
 
@@ -27,6 +28,12 @@ pub struct Participant {
 
     /// The participant list is coded intrusively; here's the `next` pointer.
     pub next: Atomic<ParticipantNode>,
+}
+
+impl fmt::Debug for Participant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Participant {{ ... }}")
+    }
 }
 
 unsafe impl Sync for Participant {}

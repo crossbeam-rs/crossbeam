@@ -7,6 +7,7 @@ use super::{local, Shared};
 /// A guard must be acquired before most operations on an `Atomic` pointer. On
 /// destruction, it unpins the epoch.
 #[must_use]
+#[derive(Debug)]
 pub struct Guard {
     _marker: marker::PhantomData<*mut ()>, // !Send and !Sync
 }

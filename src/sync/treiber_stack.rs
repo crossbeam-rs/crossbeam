@@ -6,10 +6,12 @@ use mem::epoch::{self, Atomic, Owned};
 /// Treiber's lock-free stack.
 ///
 /// Usable with any number of producers and consumers.
+#[derive(Debug)]
 pub struct TreiberStack<T> {
     head: Atomic<Node<T>>,
 }
 
+#[derive(Debug)]
 struct Node<T> {
     data: T,
     next: Atomic<Node<T>>,
