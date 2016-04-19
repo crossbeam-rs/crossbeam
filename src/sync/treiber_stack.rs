@@ -20,16 +20,14 @@ struct Node<T> {
 impl<T> TreiberStack<T> {
     /// Create a new, empty stack.
     pub fn new() -> TreiberStack<T> {
-        TreiberStack {
-            head: Atomic::null()
-        }
+        TreiberStack { head: Atomic::null() }
     }
 
     /// Push `t` on top of the stack.
     pub fn push(&self, t: T) {
         let mut n = Owned::new(Node {
             data: t,
-            next: Atomic::null()
+            next: Atomic::null(),
         });
         let guard = epoch::pin();
         loop {
@@ -43,9 +41,18 @@ impl<T> TreiberStack<T> {
     }
 
     /// Attempt to pop the top element of the stack.
+    /// **Deprecated method**, use try_pop
     ///
     /// Returns `None` if the stack is observed to be empty.
+    #[cfg_attr(any(feature="beta", feature="nightly"), deprecated(note="The pop method has been renamed to try_pop for consistency with other collections."))]
     pub fn pop(&self) -> Option<T> {
+        self.try_pop()
+    }
+
+    /// Attempt to pop the top element of the stack.
+    ///
+    /// Returns `None` if the stack is observed to be empty.
+    pub fn try_pop(&self) -> Option<T> {
         let guard = epoch::pin();
         loop {
             match self.head.load(Acquire, &guard) {
@@ -54,11 +61,11 @@ impl<T> TreiberStack<T> {
                     if self.head.cas_shared(Some(head), next, Release) {
                         unsafe {
                             guard.unlinked(head);
-                            return Some(ptr::read(&(*head).data))
+                            return Some(ptr::read(&(*head).data));
                         }
                     }
                 }
-                None => return None
+                None => return None,
             }
         }
     }
@@ -82,8 +89,8 @@ mod test {
         q.push(20);
         assert!(!q.is_empty());
         assert!(!q.is_empty());
-        assert!(q.pop().is_some());
-        assert!(q.pop().is_some());
+        assert!(q.try_pop().is_some());
+        assert!(q.try_pop().is_some());
         assert!(q.is_empty());
         q.push(25);
         assert!(!q.is_empty());
