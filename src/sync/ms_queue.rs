@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
+use std::sync::atomic::Ordering::{Acquire, AcqRel, Release, Relaxed};
 use std::sync::atomic::AtomicBool;
 use std::{ptr, mem};
 use std::thread::{self, Thread};
@@ -83,17 +83,18 @@ impl<T> MsQueue<T> {
                      n: Owned<Node<T>>)
                      -> Result<(), Owned<Node<T>>>
     {
-        // is `onto` the actual tail?
-        if let Some(next) = onto.next.load(Acquire, guard) {
-            // if not, try to "help" by moving the tail pointer forward
-            self.tail.cas_shared(Some(onto), Some(next), Release);
-            Err(n)
-        } else {
-            // looks like the actual tail; attempt to link in `n`
-            onto.next.cas_and_ref(None, n, Release, guard).map(|shared| {
-                // try to move the tail pointer forward
-                self.tail.cas_shared(Some(onto), Some(shared), Release);
-            })
+        // try to add the node by swapping the next pointer
+        match onto.next.compare_and_swap_ref(None, n, AcqRel, guard) {
+            Ok(n) => {
+                // success, try to move the tail pointer forward
+                self.tail.cas_shared(Some(onto), Some(n.new), Release);
+                Ok(())
+            },
+            Err(n) => {
+                // failure, try to "help" by moving the tail pointer forward
+                self.tail.cas_shared(Some(onto), n.previous, Release);
+                Err(n.new)
+            }
         }
     }
 

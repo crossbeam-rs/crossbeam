@@ -32,6 +32,18 @@ fn opt_owned_into_raw<T>(val: Option<Owned<T>>) -> *mut T {
     ptr
 }
 
+/// The return type for Atomic compare-and-swap operations
+pub struct CasValue<P, N> {
+    /// The previous value
+    pub previous: P,
+    /// The new value
+    pub new: N,
+}
+
+pub type SharedCasValue<'a, T> = CasValue<Option<Shared<'a, T>>, Shared<'a, T>>;
+
+pub type OwnedCasValue<'a, T> = CasValue<Option<Shared<'a, T>>, Owned<T>>;
+
 impl<T> Atomic<T> {
     /// Create a new, null atomic pointer.
     #[cfg(feature = "nightly")]
@@ -138,7 +150,7 @@ impl<T> Atomic<T> {
     }
 
     /// Do a compare-and-set from a `Shared` to an `Owned` pointer with the
-    /// given memory ordering, immediatley acquiring a new `Shared` reference to
+    /// given memory ordering, immediately acquiring a new `Shared` reference to
     /// the previously-owned pointer if successful.
     ///
     /// This operation is analogous to `store_and_ref`.
@@ -165,6 +177,66 @@ impl<T> Atomic<T> {
         self.ptr.compare_and_swap(opt_shared_into_raw(old),
                                   opt_shared_into_raw(new),
                                   ord) == opt_shared_into_raw(old)
+    }
+
+    /// Do a compare-and-swap from a `Shared` to an `Owned` pointer with the
+    /// given memory ordering.
+    ///
+    /// The return value always contains the previous value. If unsuccessful,
+    /// the new value will also be returned.
+    pub fn compare_and_swap(&self, current: Option<Shared<T>>, new: Owned<T>, ord: Ordering)
+                                   -> Result<Option<Shared<T>>, OwnedCasValue<T>>
+    {
+        let current = opt_shared_into_raw(current);
+        let previous = self.ptr.compare_and_swap(current, new.as_raw(), ord);
+        if previous == current {
+            Ok(unsafe { Shared::from_raw(previous) } )
+        } else {
+            Err(OwnedCasValue{
+                previous: unsafe { Shared::from_raw(previous) },
+                new: new,
+            })
+        }
+    }
+
+    /// Do a compare-and-swap from a `Shared` to an `Owned` pointer with the
+    /// given memory ordering, immediately acquiring a new `Shared` reference to
+    /// the previously-owned pointer if successful.
+    ///
+    /// This operation is analogous to `store_and_ref`.
+    pub fn compare_and_swap_ref<'a>(&self, current: Option<Shared<T>>, new: Owned<T>,
+                           ord: Ordering, _: &'a Guard)
+                           -> Result<SharedCasValue<'a, T>, OwnedCasValue<'a, T>>
+    {
+        let current = opt_shared_into_raw(current);
+        let previous = self.ptr.compare_and_swap(current, new.as_raw(), ord);
+        if previous == current {
+            Ok(SharedCasValue{
+                previous: unsafe { Shared::from_raw(previous) },
+                new: unsafe { Shared::from_owned(new) },
+            })
+        } else {
+            Err(OwnedCasValue{
+                previous: unsafe { Shared::from_raw(previous) },
+                new: new,
+            })
+        }
+    }
+
+    /// Do a compare-and-swap from a `Shared` to another `Shared` pointer with
+    /// the given memory ordering.
+    ///
+    /// The return value is always the previous value.
+    pub fn compare_and_swap_shared(&self, current: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering)
+                                   -> Result<Option<Shared<T>>, Option<Shared<T>>>
+    {
+        let current = opt_shared_into_raw(current);
+        let previous = self.ptr.compare_and_swap(current, opt_shared_into_raw(new), ord);
+        if previous == current {
+            Ok(unsafe { Shared::from_raw(previous) } )
+        } else {
+            Err(unsafe { Shared::from_raw(previous) } )
+        }
     }
 
     /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
