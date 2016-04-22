@@ -47,13 +47,11 @@ impl<T> SegQueue<T> {
     /// Create a new, empty queue.
     pub fn new() -> SegQueue<T> {
         let q = SegQueue {
-            head: Atomic::null(),
+            head: Atomic::new(Segment::new()),
             tail: Atomic::null(),
         };
-        let sentinel = Owned::new(Segment::new());
         let guard = epoch::pin();
-        let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
-        q.tail.store_shared(Some(sentinel), Relaxed);
+        q.tail.store_shared(q.head.load(Relaxed, &guard), Relaxed);
         q
     }
 

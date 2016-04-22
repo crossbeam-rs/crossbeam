@@ -49,16 +49,14 @@ impl<T> MsQueue<T> {
     /// Create a new, empty queue.
     pub fn new() -> MsQueue<T> {
         let q = MsQueue {
-            head: CachePadded::new(Atomic::null()),
+            head: CachePadded::new(Atomic::new(Node {
+                payload: unsafe { mem::uninitialized() },
+                next: Atomic::null(),
+            })),
             tail: CachePadded::new(Atomic::null()),
         };
-        let sentinel = Owned::new(Node {
-            payload: unsafe { mem::uninitialized() },
-            next: Atomic::null(),
-        });
         let guard = epoch::pin();
-        let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
-        q.tail.store_shared(Some(sentinel), Relaxed);
+        q.tail.store_shared(q.head.load(Relaxed, &guard), Relaxed);
         q
     }
 

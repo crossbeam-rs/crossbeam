@@ -147,12 +147,10 @@ pub fn deque<T>() -> (Worker<T>, Stealer<T>) {
 
 impl<T> Deque<T> {
     fn new() -> Deque<T> {
-        let array = Atomic::null();
-        array.store(Some(Owned::new(Buffer::new(MIN_BITS))), SeqCst);
         Deque {
             bottom: AtomicIsize::new(0),
             top: AtomicIsize::new(0),
-            array: array,
+            array: Atomic::new(Buffer::new(MIN_BITS)),
         }
     }
 
