@@ -155,10 +155,16 @@ impl<T> MsQueue<T> {
                         // race to dequeue the node
                         if self.head.cas_shared(Some(head), Some(blocked_node), Release) {
                             unsafe {
+                                // take ownership of the handle. this is needed to avoid
+                                // accessing memory after we store ready. The woken thread
+                                // will forget the handle so we are responsible for dropping
+                                // it.
+                                let thread = ptr::read(&(*signal).thread);
+
                                 // signal the thread
                                 (*signal).data = Some(cache.into_data());
                                 (*signal).ready.store(true, Relaxed);
-                                (*signal).thread.unpark();
+                                thread.unpark();
                                 guard.unlinked(head);
                                 return;
                             }
@@ -289,6 +295,10 @@ impl<T> MsQueue<T> {
                             while !signal.ready.load(Relaxed) {
                                 thread::park();
                             }
+
+                            // Forget the handle, the thread that woke this one will drop it
+                            mem::forget(signal.thread);
+
                             return signal.data.unwrap();
                         }
                         Err(n) => {
