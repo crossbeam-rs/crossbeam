@@ -23,6 +23,12 @@ struct Node<T> {
     next: Atomic<Node<T>>,
 }
 
+impl<T> Node<T> {
+    fn new(p: Payload<T>) -> Node<T> {
+        Node { payload: p, next: Atomic::null() }
+    }
+}
+
 enum Payload<T> {
     /// A node with actual data that can be popped.
     Data(T),
@@ -49,10 +55,9 @@ impl<T> MsQueue<T> {
     /// Create a new, empty queue.
     pub fn new() -> MsQueue<T> {
         let q = MsQueue {
-            head: CachePadded::new(Atomic::new(Node {
-                payload: unsafe { mem::uninitialized() },
-                next: Atomic::null(),
-            })),
+            head: CachePadded::new(Atomic::new(
+                Node::new(unsafe { mem::uninitialized() })
+            )),
             tail: CachePadded::new(Atomic::null()),
         };
         let guard = epoch::pin();
@@ -106,13 +111,8 @@ impl<T> MsQueue<T> {
             /// Extract the node if cached, or allocate if not.
             fn into_node(self) -> Owned<Node<T>> {
                 match self {
-                    Cache::Data(t) => {
-                        Owned::new(Node {
-                            payload: Payload::Data(t),
-                            next: Atomic::null()
-                        })
-                    }
-                    Cache::Node(n) => n
+                    Cache::Data(t) => Owned::new(Node::new(Payload::Data(t))),
+                    Cache::Node(n) => n,
                 }
             }
 
@@ -263,10 +263,7 @@ impl<T> MsQueue<T> {
         };
 
         // Go ahead and allocate the blocked node; chances are, we'll need it.
-        let mut node = Owned::new(Node {
-            payload: Payload::Blocked(&mut signal),
-            next: Atomic::null(),
-        });
+        let mut node = Owned::new(Node::new(Payload::Blocked(&mut signal)));
 
         loop {
             // try a normal pop
