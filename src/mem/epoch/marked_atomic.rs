@@ -236,4 +236,15 @@ impl<T> MarkedAtomic<T> {
         let (ptr, mark) = unpack_mark(self.ptr.swap(opt_shared_into_usize(new, new_mark), ord));
         unsafe { (Shared::from_raw(ptr), mark) }
     }
+
+    /// Perform a logical "or" on the current mark and the argument `mark` and set the new mark to
+    /// the result.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mark >= mem::align_of::<T>()`.
+    pub fn or_mark(&self, mark: usize, ord: Ordering) {
+        guard_mark::<T>(mark);
+        self.ptr.fetch_or(mark, ord);
+    }
 }
