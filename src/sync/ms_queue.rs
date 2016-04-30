@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::{ptr, mem};
 use std::thread::{self, Thread};
 
-use mem::epoch::{self, Atomic, Owned, Shared};
+use mem::epoch::{self, Atomic, Guard, Owned, Shared};
 use mem::CachePadded;
 
 /// A Michael-Scott lock-free queue, with support for blocking `pop`s.
@@ -67,7 +67,7 @@ impl<T> MsQueue<T> {
 
     #[inline(always)]
     /// Get the value of the head pointer
-    fn get_head(&self, guard: &epoch::Guard) -> *mut Node<T> {
+    fn get_head(&self, guard: &Guard) -> *mut Node<T> {
         self.head.load(Relaxed, &guard).unwrap().as_raw()
     }
 
@@ -77,7 +77,7 @@ impl<T> MsQueue<T> {
     /// If unsuccessful, returns ownership of `n`, possibly updating
     /// the queue's `tail` pointer.
     fn push_internal(&self,
-                     guard: &epoch::Guard,
+                     guard: &Guard,
                      onto: Shared<Node<T>>,
                      n: Owned<Node<T>>)
                      -> Result<(), Owned<Node<T>>>
@@ -187,7 +187,7 @@ impl<T> MsQueue<T> {
     #[inline(always)]
     // Attempt to pop a data node. `Ok(None)` if queue is empty or in blocking
     // mode; `Err(())` if lost race to pop.
-    fn pop_internal(&self, guard: &epoch::Guard) -> Result<Option<T>, ()> {
+    fn pop_internal(&self, guard: &Guard) -> Result<Option<T>, ()> {
         let head = self.head.load(Acquire, guard).unwrap();
         if let Some(next) = head.next.load(Acquire, guard) {
             if let Payload::Data(ref t) = next.payload {
