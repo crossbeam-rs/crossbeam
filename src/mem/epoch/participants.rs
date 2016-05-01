@@ -5,7 +5,7 @@
 use std::mem;
 use std::ptr;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
+use std::sync::atomic::Ordering::{Relaxed, Acquire, Release};
 
 use mem::epoch::{MarkedAtomic, Owned, Shared, Guard};
 use mem::epoch::participant::Participant;
@@ -127,7 +127,7 @@ impl<'a> Iterator for Iter<'a> {
 
         // Try to clean up the inactive participants. If we fail, someone else will
         // deal with it.
-        if self.prev.cas_shared(self.current, 0, cur, 0, SeqCst) {
+        if self.prev.cas_shared(self.current, 0, cur, 0, Relaxed) {
             let mut to_cleanup = self.current;
             while opt_shared_into_raw(to_cleanup) != opt_shared_into_raw(cur) {
                 let node = to_cleanup.unwrap();
