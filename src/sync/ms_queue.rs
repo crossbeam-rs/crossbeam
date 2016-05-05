@@ -41,9 +41,26 @@ struct Signal<T> {
     /// Thread to unpark when data is ready.
     thread: Thread,
     /// The actual data, when available.
-    data: Option<T>,
+    data: T,
     /// Is the data ready? Needed to cope with spurious wakeups.
     ready: AtomicBool,
+}
+
+impl<T> Signal<T> {
+    fn signal(signal: *mut Signal<T>, data: T) {
+        unsafe {
+            // take ownership of the handle. this is needed to avoid
+            // accessing memory after we store ready. The woken thread
+            // will forget the handle so we are responsible for dropping
+            // it.
+            let thread = ptr::read(&(*signal).thread);
+
+            // signal the thread
+            ptr::write(&mut (*signal).data, data);
+            (*signal).ready.store(true, Relaxed);
+            thread.unpark();
+        }
+    }
 }
 
 // Any particular `T` should never accessed concurrently, so no need
@@ -154,20 +171,10 @@ impl<T> MsQueue<T> {
                     if let Some((blocked_node, signal)) = request {
                         // race to dequeue the node
                         if self.head.cas_shared(Some(head), Some(blocked_node), Release) {
-                            unsafe {
-                                // take ownership of the handle. this is needed to avoid
-                                // accessing memory after we store ready. The woken thread
-                                // will forget the handle so we are responsible for dropping
-                                // it.
-                                let thread = ptr::read(&(*signal).thread);
-
-                                // signal the thread
-                                (*signal).data = Some(cache.into_data());
-                                (*signal).ready.store(true, Relaxed);
-                                thread.unpark();
-                                guard.unlinked(head);
-                                return;
-                            }
+                            // signal the thread
+                            Signal::signal(signal, cache.into_data());
+                            unsafe { guard.unlinked(head); }
+                            return;
                         }
                     }
                 },
@@ -258,7 +265,7 @@ impl<T> MsQueue<T> {
         // blocked until receiving the signal.
         let mut signal = Signal {
             thread: thread::current(),
-            data: None,
+            data: unsafe { mem::uninitialized() },
             ready: AtomicBool::new(false),
         };
 
@@ -268,6 +275,9 @@ impl<T> MsQueue<T> {
         loop {
             // try a normal pop
             if let Ok(Some(r)) = self.pop_internal(&guard) {
+                // Forget the data, it is uninitialized
+                mem::forget(signal.data);
+                
                 return r;
             }
 
@@ -296,7 +306,7 @@ impl<T> MsQueue<T> {
                             // Forget the handle, the thread that woke this one will drop it
                             mem::forget(signal.thread);
 
-                            return signal.data.unwrap();
+                            return signal.data;
                         }
                         Err(n) => {
                             node = n;
