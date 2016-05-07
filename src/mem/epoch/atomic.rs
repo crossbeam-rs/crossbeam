@@ -69,6 +69,14 @@ impl<T> Atomic<T> {
         }
     }
 
+    /// Create an atomic pointer from a raw pointer.
+    pub unsafe fn from_raw(raw: *mut T) -> Atomic<T> {
+        Atomic {
+            ptr: atomic::AtomicPtr::new(raw),
+            _marker: PhantomData
+        }
+    }
+
     /// Do an atomic load with the given memory ordering.
     ///
     /// In order to perform the load, we must pass in a borrow of a
