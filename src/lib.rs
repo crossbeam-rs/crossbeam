@@ -25,7 +25,7 @@
 //#![deny(missing_docs)]
 
 #![cfg_attr(feature = "nightly",
-            feature(const_fn, repr_simd, optin_builtin_traits))]
+            feature(const_fn, repr_simd, optin_builtin_traits, specialization))]
 
 use std::thread;
 
