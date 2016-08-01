@@ -3,8 +3,8 @@ use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 
-/// This type contains two values: and `Arc<T>` and a marker bit. Conditional atomic operations can
-/// be performed on the pair, or the values can be managed separately, also atomically.
+/// A `MarkableArcCell` maintains an `Arc<T>` and a marker bit, providing atomic storage and
+/// retrieval of both, as well as atomic `CAS` operations on them.
 #[derive(Debug)]
 pub struct MarkableArcCell<T>(AtomicUsize, AtomicBool, PhantomData<Arc<T>>);
 
@@ -15,14 +15,16 @@ impl<T> Drop for MarkableArcCell<T> {
 }
 
 impl<T> MarkableArcCell<T> {
-    /// Creates a new `MarkableArcCell` with given initial values of the `Arc<T>` and the marker bit.
+    /// Creates a new `MarkableArcCell` with the specified initial values of the `Arc` and the
+    /// marker bit.
     pub fn new(t: Arc<T>, m: bool) -> MarkableArcCell<T> {
         MarkableArcCell(AtomicUsize::new(unsafe { mem::transmute(t) }), AtomicBool::new(m), PhantomData)
     }
 
-    /// Creates a new `MarkableArcCell` with given initial values of the `Arc<T>` interior and the marker bit.
-    pub fn with_val(t: T, m: bool) -> MarkableArcCell<T> {
-        MarkableArcCell(AtomicUsize::new(unsafe { mem::transmute(Arc::new(t)) }), AtomicBool::new(m), PhantomData)
+    /// Creates a new `MarkableArcCell` with the specified initial values of the `Arc` interior
+    /// and the marker bit.
+    pub fn with_val(v: T, m: bool) -> MarkableArcCell<T> {
+        MarkableArcCell(AtomicUsize::new(unsafe { mem::transmute(Arc::new(v)) }), AtomicBool::new(m), PhantomData)
     }
 
     // Locks the internal spinlock.
@@ -41,14 +43,14 @@ impl<T> MarkableArcCell<T> {
         self.0.store(unsafe { mem::transmute(t) }, Ordering::Release);
     }
 
-    /// Uncoditionally sets the `Arc<T>` value and returns the previous one.
+    /// Unconditionally sets the `Arc` value and returns the previous one.
     pub fn set_arc(&self, t: Arc<T>) -> Arc<T> {
         let old = self.take();
         self.put(t);
         old
     }
 
-    /// Returns a copy of the `Arc<T>` value.
+    /// Returns a copy of the current `Arc` value.
     pub fn get_arc(&self) -> Arc<T> {
         let t = self.take();
         // NB: correctness here depends on Arc's clone impl not panicking
@@ -57,18 +59,18 @@ impl<T> MarkableArcCell<T> {
         out
     }
 
-    /// Unconditionally sets the marker bit and returns its previous value.
+    /// Unconditionally sets the marker bit value and returns the previous one.
     pub fn set_mark(&self, m: bool) -> bool {
         self.1.swap(m, Ordering::AcqRel)
     }
 
-    /// Returns the marker bit value.
+    /// Returns the current marker bit value.
     pub fn get_mark(&self) -> bool {
         self.1.load(Ordering::Acquire)
     }
 
-
-    /// Unconditionally sets both values to the given ones and returns the previous values.
+    /// Unconditionally sets the values of both the `Arc` and the marker bit and returns the
+    /// previous ones.
     pub fn set(&self, t: Arc<T>, m: bool) -> (Arc<T>, bool) {
         let old = self.take();
         let old_both = (old, self.1.swap(m, Ordering::AcqRel));
@@ -76,7 +78,7 @@ impl<T> MarkableArcCell<T> {
         old_both
     }
 
-    /// Returns the contained values of `Arc<T>` and marker bit.
+    /// Returns the current values of both the `Arc` and the marker bit.
     pub fn get(&self) -> (Arc<T>, bool) {
         let t = self.take();
         let out = (t.clone(), self.1.load(Ordering::Acquire));
@@ -84,23 +86,22 @@ impl<T> MarkableArcCell<T> {
         out
     }
 
-    // +-------------------------------+
-    // |TODO return old values in CASs?|
-    // +-------------------------------+
-    // TODO make better interface -> parameter and fn names should match stuff in std::sync::atomic
-    //
-    // TODO DOCS DOCS DOCS HOW BAD CAN THEY BE REALLY WTH
-
-    /// Atomically sets the marker bit to the given value if the `Arc<T>` in this
-    /// `MarkableArcCell<T>' manages the same object as the provided `Arc<T>`.
-    /// Returns a value indicating whether the operation was successful.
-    pub fn compare_arc_exchange_mark(&self, current: Arc<T>, m: bool) -> bool {
-        let current: usize = unsafe { mem::transmute(current) };
-        drop::<Arc<T>>(unsafe { mem::transmute(current) });
+    /// Atomically sets the value of the marker bit if the current value of the `Arc` is the same
+    /// as the specified `current` value. Returns `true` iff the new value was written.
+    ///
+    /// Two `Arc`s are said to be the same iff they manage the same object. If we were to imagine
+    /// a function `fn is_same<T>(a: Arc<T>, b: Arc<T>) -> bool`, the following would hold:
+    ///
+    /// `is_same(Arc::new(2), Arc::new(2)) == false`
+    ///
+    /// `let v = Arc::new(2); is_same(v.clone(), v) == true`
+    pub fn compare_arc_exchange_mark(&self, current_t: Arc<T>, new_m: bool) -> bool {
+        let current_t: usize = unsafe { mem::transmute(current_t) };
+        drop::<Arc<T>>(unsafe { mem::transmute(current_t) });
 
         let t: usize = unsafe { mem::transmute(self.take()) };
-        if t == current {
-            self.1.store(m, Ordering::Release);
+        if t == current_t {
+            self.1.store(new_m, Ordering::Release);
             self.put(unsafe { mem::transmute(t) });
             return true;
         }
@@ -110,38 +111,47 @@ impl<T> MarkableArcCell<T> {
         }
     }
 
-    /// Atomically sets the `Arc<T>` value to the given value if the marker bit is set to the same
-    /// value as the provided one. Returns a value indicating whether the operation was
-    /// successful.
-    pub fn compare_mark_exchange_arc(&self, expected: bool, t: Arc<T>) -> bool {
-        let curr = self.take();
-        if self.1.load(Ordering::Acquire) == expected {
-            self.put(t);
+    /// Atomically sets the value of the `Arc` if the current value of the marker bit is the same
+    /// as the specified `current` value. Returns `true` iff the new value was written.
+    pub fn compare_mark_exchange_arc(&self, current_m: bool, new_t: Arc<T>) -> bool {
+        let t = self.take();
+        if self.1.load(Ordering::Acquire) == current_m {
+            self.put(new_t);
             return true;
         }
-        self.put(curr);
-        return false;
+        else {
+            self.put(t);
+            return false;
+        }
     }
 
-    /// Stores new values in the `MarkableArcCell` to the provided `new` values if the `Arc<T>`
-    /// value manages the same object as the provided `curr` `Arc<T>` and the marker bit is set to
-    /// the same value as the provided `curr` value. Returns a value indicating whether the
-    /// operation was successful.
-    pub fn compare_exchange(&self, currv: Arc<T>, newv: Arc<T>, currm: bool, newm: bool) -> bool {
+    /// Atomically sets the values of both the `Arc` and the marker bit if the current values of
+    /// both are the same as the specified `current` values. Returns `true` iff the new values were
+    /// written.
+    ///
+    /// Two `Arc`s are said to be the same iff they manage the same object. If we were to imagine
+    /// a function `fn is_same<T>(a: Arc<T>, b: Arc<T>) -> bool`, the following would hold:
+    ///
+    /// `is_same(Arc::new(2), Arc::new(2)) == false`
+    ///
+    /// `let v = Arc::new(2); is_same(v.clone(), v) == true`
+    pub fn compare_exchange(&self, current_t: Arc<T>, new_t: Arc<T>, current_m: bool, new_m: bool) -> bool {
         // get a usize representation of current and then drop it
-        let currv: usize = unsafe { mem::transmute(currv) };
-        drop::<Arc<T>>(unsafe { mem::transmute(currv) });
+        let current_t: usize = unsafe { mem::transmute(current_t) };
+        drop::<Arc<T>>(unsafe { mem::transmute(current_t) });
 
         // this locks the value, meaning it will necessarily stay alive
         let t: usize = unsafe { mem::transmute(self.take()) };
-        if t == currv && self.1.load(Ordering::Acquire) == currm {
-            self.1.store(newm, Ordering::Release);
-            self.put(newv);
+        if t == current_t && self.1.load(Ordering::Acquire) == current_m {
+            self.1.store(new_m, Ordering::Release);
+            self.put(new_t);
             drop::<Arc<T>>( unsafe { mem::transmute(t) } );
             return true;
         }
-        self.put(unsafe { mem::transmute(t) });
-        return false;
+        else {
+            self.put(unsafe { mem::transmute(t) });
+            return false;
+        }
     }
 }
 
