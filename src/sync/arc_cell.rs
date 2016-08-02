@@ -41,7 +41,7 @@ impl<T> ArcCell<T> {
     pub fn set(&self, t: Arc<T>) -> Arc<T> {
         unsafe {
             let t: usize = mem::transmute(t);
-            let old: Arc<T> = mem::transmute(self.ptr.swap(t, Ordering::Relaxed));
+            let old: Arc<T> = mem::transmute(self.ptr.swap(t, Ordering::Acquire));
             while self.sem.load(Ordering::Relaxed) > 0 {}
             old
         }
