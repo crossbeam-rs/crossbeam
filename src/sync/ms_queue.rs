@@ -63,7 +63,7 @@ impl<T> MsQueue<T> {
             tail: CachePadded::new(Atomic::null()),
         };
         let sentinel = Owned::new(Node {
-            payload: unsafe { mem::uninitialized() },
+            payload: Payload::Data(unsafe { mem::uninitialized() }),
             next: Atomic::null(),
         });
         let guard = epoch::pin();
