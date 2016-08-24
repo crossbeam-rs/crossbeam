@@ -27,15 +27,6 @@ impl<T> ArcCell<T> {
         }
     }
 
-    /// Create a new `ArcCell` from the given `Arc` interior.
-    pub fn with_val(v: T) -> ArcCell<T> {
-        ArcCell {
-            ptr: AtomicUsize::new(unsafe { mem::transmute(Arc::new(v)) }),
-            sem: AtomicUsize::new(0),
-            _marker: PhantomData,
-        }
-    }
-
     /// Stores a new value in the `ArcCell`, returning the previous
     /// value.
     pub fn set(&self, t: Arc<T>) -> Arc<T> {

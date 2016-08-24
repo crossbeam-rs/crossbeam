@@ -1,12 +1,16 @@
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 /// A `MarkableArcCell` maintains an `Arc<T>` and a marker bit, providing atomic storage and
 /// retrieval of both, as well as atomic `CAS` operations on them.
 #[derive(Debug)]
-pub struct MarkableArcCell<T>(AtomicUsize, AtomicBool, PhantomData<Arc<T>>);
+pub struct MarkableArcCell<T> {
+    ptr: AtomicUsize,
+    sem: AtomicUsize,
+    _marker: PhantomData<Arc<T>>,
+}
 
 impl<T> Drop for MarkableArcCell<T> {
     fn drop(&mut self) {
@@ -14,78 +18,50 @@ impl<T> Drop for MarkableArcCell<T> {
     }
 }
 
+fn tag_val(p: usize, b: bool) -> usize {
+    debug_assert!(p as usize & 1 == 0);
+    p | b as usize
+}
+
+fn untag_val(t: usize) -> (usize, bool) {
+    let mark = t & 1;
+    (t - mark, mark as bool)
+}
+
 impl<T> MarkableArcCell<T> {
     /// Creates a new `MarkableArcCell` with the specified initial values of the `Arc` and the
     /// marker bit.
     pub fn new(t: Arc<T>, m: bool) -> MarkableArcCell<T> {
-        MarkableArcCell(AtomicUsize::new(unsafe { mem::transmute(t) }), AtomicBool::new(m), PhantomData)
-    }
-
-    /// Creates a new `MarkableArcCell` with the specified initial values of the `Arc` interior
-    /// and the marker bit.
-    pub fn with_val(v: T, m: bool) -> MarkableArcCell<T> {
-        MarkableArcCell(AtomicUsize::new(unsafe { mem::transmute(Arc::new(v)) }), AtomicBool::new(m), PhantomData)
-    }
-
-    // Locks the internal spinlock.
-    fn take(&self) -> Arc<T> {
-        loop {
-            match self.0.swap(0, Ordering::Acquire) {
-                0 => {}
-                n => return unsafe { mem::transmute(n) }
-            }
+        MarkableArcCell {
+            ptr: AtomicUsize::new(tag_ptr(unsafe { mem::transmute(t) }, m)),
+            sem: AtomicUsize::new(0),
+            _marker: PhantomData,
         }
-    }
-
-    // Unlocks the internal spinlock.
-    fn put(&self, t: Arc<T>) {
-        debug_assert_eq!(self.0.load(Ordering::SeqCst), 0);
-        self.0.store(unsafe { mem::transmute(t) }, Ordering::Release);
-    }
-
-    /// Unconditionally sets the `Arc` value and returns the previous one.
-    pub fn set_arc(&self, t: Arc<T>) -> Arc<T> {
-        let old = self.take();
-        self.put(t);
-        old
-    }
-
-    /// Returns a copy of the current `Arc` value.
-    pub fn get_arc(&self) -> Arc<T> {
-        let t = self.take();
-        // NB: correctness here depends on Arc's clone impl not panicking
-        let out = t.clone();
-        self.put(t);
-        out
-    }
-
-    /// Unconditionally sets the marker bit value and returns the previous one.
-    pub fn set_mark(&self, m: bool) -> bool {
-        self.1.swap(m, Ordering::AcqRel)
-    }
-
-    /// Returns the current marker bit value.
-    pub fn get_mark(&self) -> bool {
-        self.1.load(Ordering::Acquire)
     }
 
     /// Unconditionally sets the values of both the `Arc` and the marker bit and returns the
     /// previous ones.
     pub fn set(&self, t: Arc<T>, m: bool) -> (Arc<T>, bool) {
-        let old = self.take();
-        let old_both = (old, self.1.swap(m, Ordering::AcqRel));
-        self.put(t);
-        old_both
+        unsafe {
+            let t = tag_val(mem::transmute(t), m);
+            let old = untag_val(self.ptr.swap(t, Ordering::Acquire));
+            while self.sem.load(Ordering::Relaxed > 0 {}
+            (mem::transmute(old.0), old.1)
+        }
     }
 
     /// Returns the current values of both the `Arc` and the marker bit.
     pub fn get(&self) -> (Arc<T>, bool) {
-        let t = self.take();
-        let out = (t.clone(), self.1.load(Ordering::Acquire));
-        self.put(t);
+        self.sem.fetch_add(1, Ordering::Relaxed);
+        let t = untag_ptr(self.ptr.load(Ordering::SeqCst));
+        let t = (mem::transmute(t.0), t.1);
+        let out = (t.0.clone(), t.1);
+        self.sem.fetch_sub(1, Ordering::Relaxed);
+        mem::forget(t);
         out
     }
 
+    // TODO below
     /// Atomically sets the value of the marker bit if the current value of the `Arc` is the same
     /// as the specified `current` value. Returns `true` iff the new value was written.
     ///
@@ -107,20 +83,6 @@ impl<T> MarkableArcCell<T> {
         }
         else {
             self.put(unsafe { mem::transmute(t) });
-            return false;
-        }
-    }
-
-    /// Atomically sets the value of the `Arc` if the current value of the marker bit is the same
-    /// as the specified `current` value. Returns `true` iff the new value was written.
-    pub fn compare_mark_exchange_arc(&self, current_m: bool, new_t: Arc<T>) -> bool {
-        let t = self.take();
-        if self.1.load(Ordering::Acquire) == current_m {
-            self.put(new_t);
-            return true;
-        }
-        else {
-            self.put(t);
             return false;
         }
     }
