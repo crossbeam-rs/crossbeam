@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A `MarkableArcCell` maintains an `Arc<T>` and a marker bit, providing atomic storage and
 /// retrieval of both, as well as atomic `CAS` operations on them.
@@ -14,7 +14,7 @@ pub struct MarkableArcCell<T> {
 
 impl<T> Drop for MarkableArcCell<T> {
     fn drop(&mut self) {
-        self.take();
+        unsafe { mem::transmute::<_, Arc<T>>(untag_val(self.ptr.load(Ordering::Relaxed)).0); }
     }
 }
 
@@ -25,7 +25,7 @@ fn tag_val(p: usize, b: bool) -> usize {
 
 fn untag_val(t: usize) -> (usize, bool) {
     let mark = t & 1;
-    (t - mark, mark as bool)
+    (t - mark, mark == 1)
 }
 
 impl<T> MarkableArcCell<T> {
@@ -33,7 +33,7 @@ impl<T> MarkableArcCell<T> {
     /// marker bit.
     pub fn new(t: Arc<T>, m: bool) -> MarkableArcCell<T> {
         MarkableArcCell {
-            ptr: AtomicUsize::new(tag_ptr(unsafe { mem::transmute(t) }, m)),
+            ptr: AtomicUsize::new(tag_val(unsafe { mem::transmute(t) }, m)),
             sem: AtomicUsize::new(0),
             _marker: PhantomData,
         }
@@ -45,7 +45,7 @@ impl<T> MarkableArcCell<T> {
         unsafe {
             let t = tag_val(mem::transmute(t), m);
             let old = untag_val(self.ptr.swap(t, Ordering::Acquire));
-            while self.sem.load(Ordering::Relaxed > 0 {}
+            while self.sem.load(Ordering::Relaxed) > 0 {}
             (mem::transmute(old.0), old.1)
         }
     }
@@ -53,12 +53,16 @@ impl<T> MarkableArcCell<T> {
     /// Returns the current values of both the `Arc` and the marker bit.
     pub fn get(&self) -> (Arc<T>, bool) {
         self.sem.fetch_add(1, Ordering::Relaxed);
-        let t = untag_ptr(self.ptr.load(Ordering::SeqCst));
-        let t = (mem::transmute(t.0), t.1);
+        let t = untag_val(self.ptr.load(Ordering::SeqCst));
+        let t: (Arc<T>, bool) = unsafe { (mem::transmute(t.0), t.1) };
         let out = (t.0.clone(), t.1);
         self.sem.fetch_sub(1, Ordering::Relaxed);
         mem::forget(t);
         out
+    }
+
+    pub fn is_marked(&self) -> bool {
+        self.ptr.load(Ordering::Relaxed) & 1 == 1
     }
 
     // TODO below
@@ -72,19 +76,28 @@ impl<T> MarkableArcCell<T> {
     ///
     /// `let v = Arc::new(2); is_same(v.clone(), v) == true`
     pub fn compare_arc_exchange_mark(&self, current_t: Arc<T>, new_m: bool) -> bool {
-        let current_t: usize = unsafe { mem::transmute(current_t) };
-        drop::<Arc<T>>(unsafe { mem::transmute(current_t) });
+        let current: usize = unsafe { mem::transmute(current_t) };
+        drop::<Arc<T>>(unsafe { mem::transmute(current) });
 
-        let t: usize = unsafe { mem::transmute(self.take()) };
-        if t == current_t {
-            self.1.store(new_m, Ordering::Release);
-            self.put(unsafe { mem::transmute(t) });
-            return true;
+        let mut t = untag_val(self.ptr.load(Ordering::Relaxed));
+        while t.0 == current {
+            if t.1 == new_m {
+                return true;
+            }
+
+            if let Ok(_) = self.ptr.compare_exchange_weak(
+                tag_val(t.0, t.1),
+                tag_val(t.0, new_m),
+                Ordering::SeqCst,
+                Ordering::Relaxed,
+            ) {
+                return true;
+            }
+
+            t = untag_val(self.ptr.load(Ordering::Relaxed));
         }
-        else {
-            self.put(unsafe { mem::transmute(t) });
-            return false;
-        }
+
+        return false;
     }
 
     /// Atomically sets the values of both the `Arc` and the marker bit if the current values of
@@ -99,20 +112,23 @@ impl<T> MarkableArcCell<T> {
     /// `let v = Arc::new(2); is_same(v.clone(), v) == true`
     pub fn compare_exchange(&self, current_t: Arc<T>, new_t: Arc<T>, current_m: bool, new_m: bool) -> bool {
         // get a usize representation of current and then drop it
-        let current_t: usize = unsafe { mem::transmute(current_t) };
-        drop::<Arc<T>>(unsafe { mem::transmute(current_t) });
+        let current: usize = unsafe { mem::transmute(current_t) };
+        drop::<Arc<T>>(unsafe { mem::transmute(current) });
+        let current = tag_val(current, current_m);
 
-        // this locks the value, meaning it will necessarily stay alive
-        let t: usize = unsafe { mem::transmute(self.take()) };
-        if t == current_t && self.1.load(Ordering::Acquire) == current_m {
-            self.1.store(new_m, Ordering::Release);
-            self.put(new_t);
-            drop::<Arc<T>>( unsafe { mem::transmute(t) } );
-            return true;
-        }
-        else {
-            self.put(unsafe { mem::transmute(t) });
-            return false;
+        let new: usize = unsafe { mem::transmute(new_t) };
+        let new = tag_val(new, new_m);
+
+        match self.ptr.compare_exchange(current, new, Ordering::SeqCst, Ordering::Relaxed) {
+            Ok(prev) => {
+                while self.sem.load(Ordering::Relaxed) > 0 {}
+                drop::<Arc<T>>(unsafe { mem::transmute(untag_val(prev).0) } );
+                return true;
+            },
+            Err(_) => {
+                drop::<Arc<T>>(unsafe { mem::transmute(untag_val(new).0) } );
+                return false;
+            },
         }
     }
 }
@@ -126,19 +142,15 @@ mod test {
 
     #[test]
     fn basic() {
-        let r = MarkableArcCell::with_val(0, false);
+        let r = MarkableArcCell::new(Arc::new(0), false);
 
-        assert_eq!(*r.get_arc(), 0);
-        assert_eq!(r.get_mark(), false);
         let vals = r.get();
         assert_eq!(*vals.0, 0);
         assert_eq!(vals.1, false);
+        assert_eq!(r.is_marked(), false);
 
-        assert_eq!(*r.set_arc(Arc::new(1)), 0);
-        assert_eq!(*r.get_arc(), 1);
-
-        assert_eq!(r.set_mark(true), false);
-        assert_eq!(r.get_mark(), true);
+        assert_eq!(*r.set(Arc::new(1), true).0, 0);
+        assert_eq!(*r.get().0, 1);
 
         let old = r.set(Arc::new(2), false);
         assert_eq!(*old.0, 1);
@@ -161,10 +173,10 @@ mod test {
             }
         }
 
-        let r = MarkableArcCell::with_val(Foo, false);
-        let _f = r.get_arc();
-        r.get_arc();
-        r.set_arc(Arc::new(Foo));
+        let r = MarkableArcCell::new(Arc::new(Foo), false);
+        let _f = r.get().0;
+        r.get();
+        r.set(Arc::new(Foo), false);
         drop(_f);
         assert_eq!(DROPS.load(Ordering::SeqCst), 1);
         drop(r);
@@ -173,34 +185,26 @@ mod test {
 
     #[test]
     fn cmpxchg_works() {
-        let r = MarkableArcCell::with_val(1, true);
+        let r = MarkableArcCell::new(Arc::new(1), true);
 
-        r.compare_arc_exchange_mark(r.get_arc(), false);
-        assert_eq!(*r.get_arc(), 1);
-        assert_eq!(r.get_mark(), false);
+        r.compare_arc_exchange_mark(r.get().0, false);
+        assert_eq!(*r.get().0, 1);
+        assert_eq!(r.is_marked(), false);
 
-        r.compare_mark_exchange_arc(false, Arc::new(2));
-        assert_eq!(*r.get_arc(), 2);
-        assert_eq!(r.get_mark(), false);
-
-        r.compare_exchange(r.get_arc(), Arc::new(3), false, true);
-        assert_eq!(*r.get_arc(), 3);
-        assert_eq!(r.get_mark(), true);
+        r.compare_exchange(r.get().0, Arc::new(3), false, true);
+        assert_eq!(*r.get().0, 3);
+        assert_eq!(r.is_marked(), true);
 
         r.compare_arc_exchange_mark(Arc::new(0), false);
-        assert_eq!(*r.get_arc(), 3);
-        assert_eq!(r.get_mark(), true);
+        assert_eq!(*r.get().0, 3);
+        assert_eq!(r.is_marked(), true);
 
-        r.compare_mark_exchange_arc(false, Arc::new(0));
-        assert_eq!(*r.get_arc(), 3);
-        assert_eq!(r.get_mark(), true);
-
-        r.compare_exchange(r.get_arc(), Arc::new(4), false, false);
-        assert_eq!(*r.get_arc(), 3);
-        assert_eq!(r.get_mark(), true);
+        r.compare_exchange(r.get().0, Arc::new(4), false, false);
+        assert_eq!(*r.get().0, 3);
+        assert_eq!(r.is_marked(), true);
 
         r.compare_exchange(Arc::new(0), Arc::new(4), true, false);
-        assert_eq!(*r.get_arc(), 3);
-        assert_eq!(r.get_mark(), true);
+        assert_eq!(*r.get().0, 3);
+        assert_eq!(r.is_marked(), true);
     }
 }
