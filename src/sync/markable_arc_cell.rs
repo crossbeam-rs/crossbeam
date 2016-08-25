@@ -3,8 +3,8 @@ use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// A `MarkableArcCell` maintains an `Arc<T>` and a marker bit, providing atomic storage and
-/// retrieval of both, as well as atomic `CAS` operations on them.
+/// A `MarkableArcCell` maintains an `Arc<T>` and a marker bit, providing atomic storage,
+/// retrieval and CAS operations on the pair.
 #[derive(Debug)]
 pub struct MarkableArcCell<T> {
     ptr: AtomicUsize,
@@ -18,11 +18,13 @@ impl<T> Drop for MarkableArcCell<T> {
     }
 }
 
+/// Tags an even usize with a boolean marker bit.
 fn tag_val(p: usize, b: bool) -> usize {
     debug_assert!(p as usize & 1 == 0);
     p | b as usize
 }
 
+/// Retrieves the original value and the boolean marker bit from a tagged usize.
 fn untag_val(t: usize) -> (usize, bool) {
     let mark = t & 1;
     (t - mark, mark == 1)
@@ -61,11 +63,22 @@ impl<T> MarkableArcCell<T> {
         out
     }
 
+    /// Returns the current value of the `Arc`.
+    pub fn get_arc(&self) -> Arc<T> {
+        self.sem.fetch_add(1, Ordering::Relaxed);
+        let t = untag_val(self.ptr.load(Ordering::SeqCst)).0;
+        let t: Arc<T> = unsafe { mem::transmute(t) };
+        let out = t.clone();
+        self.sem.fetch_sub(1, Ordering::Relaxed);
+        mem::forget(t);
+        out
+    }
+
+    /// Returns the current value of the marker bit.
     pub fn is_marked(&self) -> bool {
         self.ptr.load(Ordering::Relaxed) & 1 == 1
     }
 
-    // TODO below
     /// Atomically sets the value of the marker bit if the current value of the `Arc` is the same
     /// as the specified `current` value. Returns `true` iff the new value was written.
     ///
@@ -111,7 +124,6 @@ impl<T> MarkableArcCell<T> {
     ///
     /// `let v = Arc::new(2); is_same(v.clone(), v) == true`
     pub fn compare_exchange(&self, current_t: Arc<T>, new_t: Arc<T>, current_m: bool, new_m: bool) -> bool {
-        // get a usize representation of current and then drop it
         let current: usize = unsafe { mem::transmute(current_t) };
         drop::<Arc<T>>(unsafe { mem::transmute(current) });
         let current = tag_val(current, current_m);
@@ -142,23 +154,21 @@ mod test {
 
     #[test]
     fn basic() {
-        let r = MarkableArcCell::new(Arc::new(0), false);
+        let r = MarkableArcCell::new(Arc::new(3), false);
 
         let vals = r.get();
-        assert_eq!(*vals.0, 0);
+        assert_eq!(*vals.0, 3);
         assert_eq!(vals.1, false);
+
+        assert_eq!(*r.get_arc(), 3);
         assert_eq!(r.is_marked(), false);
 
-        assert_eq!(*r.set(Arc::new(1), true).0, 0);
-        assert_eq!(*r.get().0, 1);
+        let prev = r.set(Arc::new(2), true);
+        assert_eq!(*prev.0, 3);
+        assert_eq!(prev.1, false);
 
-        let old = r.set(Arc::new(2), false);
-        assert_eq!(*old.0, 1);
-        assert_eq!(old.1, true);
-
-        let now = r.get();
-        assert_eq!(*now.0, 2);
-        assert_eq!(now.1, false);
+        assert_eq!(*r.get_arc(), 2);
+        assert_eq!(r.is_marked(), true);
     }
 
     #[test]
@@ -175,7 +185,7 @@ mod test {
 
         let r = MarkableArcCell::new(Arc::new(Foo), false);
         let _f = r.get().0;
-        r.get();
+        r.get_arc();
         r.set(Arc::new(Foo), false);
         drop(_f);
         assert_eq!(DROPS.load(Ordering::SeqCst), 1);
@@ -187,24 +197,36 @@ mod test {
     fn cmpxchg_works() {
         let r = MarkableArcCell::new(Arc::new(1), true);
 
-        r.compare_arc_exchange_mark(r.get().0, false);
-        assert_eq!(*r.get().0, 1);
+        let st = r.compare_arc_exchange_mark(r.get_arc(), false);
+        assert_eq!(st, true);
+        assert_eq!(*r.get_arc(), 1);
         assert_eq!(r.is_marked(), false);
 
-        r.compare_exchange(r.get().0, Arc::new(3), false, true);
-        assert_eq!(*r.get().0, 3);
+        let st = r.compare_exchange(r.get_arc(), Arc::new(3), false, true);
+        assert_eq!(st, true);
+        assert_eq!(*r.get_arc(), 3);
         assert_eq!(r.is_marked(), true);
 
-        r.compare_arc_exchange_mark(Arc::new(0), false);
-        assert_eq!(*r.get().0, 3);
+        let st = r.compare_arc_exchange_mark(Arc::new(3), false);
+        assert_eq!(st, false);
+        assert_eq!(*r.get_arc(), 3);
         assert_eq!(r.is_marked(), true);
 
-        r.compare_exchange(r.get().0, Arc::new(4), false, false);
-        assert_eq!(*r.get().0, 3);
+        let st = r.compare_exchange(r.get_arc(), Arc::new(4), false, false);
+        assert_eq!(st, false);
+        assert_eq!(*r.get_arc(), 3);
         assert_eq!(r.is_marked(), true);
 
-        r.compare_exchange(Arc::new(0), Arc::new(4), true, false);
-        assert_eq!(*r.get().0, 3);
+        let st = r.compare_exchange(Arc::new(0), Arc::new(4), true, false);
+        assert_eq!(st, false);
+        assert_eq!(*r.get_arc(), 3);
         assert_eq!(r.is_marked(), true);
+    }
+
+    #[test]
+    fn concurrency_works() {
+
+
+
     }
 }
