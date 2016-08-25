@@ -3,7 +3,7 @@ use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// A `MarkableArcCell` maintains an `Arc<T>` and a marker bit, providing atomic storage,
+/// A type, which maintains an `Arc<T>` and a marker bit, providing atomic storage,
 /// retrieval and CAS operations on the pair.
 #[derive(Debug)]
 pub struct MarkableArcCell<T> {
@@ -53,6 +53,8 @@ impl<T> MarkableArcCell<T> {
     }
 
     /// Returns the current values of both the `Arc` and the marker bit.
+    ///
+    /// This method is wait-free.
     pub fn get(&self) -> (Arc<T>, bool) {
         self.sem.fetch_add(1, Ordering::Relaxed);
         let t = untag_val(self.ptr.load(Ordering::SeqCst));
@@ -64,6 +66,8 @@ impl<T> MarkableArcCell<T> {
     }
 
     /// Returns the current value of the `Arc`.
+    ///
+    /// This method is wait-free.
     pub fn get_arc(&self) -> Arc<T> {
         self.sem.fetch_add(1, Ordering::Relaxed);
         let t = untag_val(self.ptr.load(Ordering::SeqCst)).0;
@@ -75,6 +79,8 @@ impl<T> MarkableArcCell<T> {
     }
 
     /// Returns the current value of the marker bit.
+    ///
+    /// This method is wait-free.
     pub fn is_marked(&self) -> bool {
         self.ptr.load(Ordering::Relaxed) & 1 == 1
     }
@@ -88,6 +94,7 @@ impl<T> MarkableArcCell<T> {
     /// `is_same(Arc::new(2), Arc::new(2)) == false`
     ///
     /// `let v = Arc::new(2); is_same(v.clone(), v) == true`
+    // TODO is this wait-free?
     pub fn compare_arc_exchange_mark(&self, current_t: Arc<T>, new_m: bool) -> bool {
         let current: usize = unsafe { mem::transmute(current_t) };
         drop::<Arc<T>>(unsafe { mem::transmute(current) });
@@ -147,24 +154,25 @@ impl<T> MarkableArcCell<T> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
+    use std::sync::{Arc, Barrier};
     use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 
     use super::*;
+    use scope;
 
     #[test]
     fn basic() {
-        let r = MarkableArcCell::new(Arc::new(3), false);
+        let r = MarkableArcCell::new(Arc::new(1), false);
 
         let vals = r.get();
-        assert_eq!(*vals.0, 3);
+        assert_eq!(*vals.0, 1);
         assert_eq!(vals.1, false);
 
-        assert_eq!(*r.get_arc(), 3);
+        assert_eq!(*r.get_arc(), 1);
         assert_eq!(r.is_marked(), false);
 
         let prev = r.set(Arc::new(2), true);
-        assert_eq!(*prev.0, 3);
+        assert_eq!(*prev.0, 1);
         assert_eq!(prev.1, false);
 
         assert_eq!(*r.get_arc(), 2);
@@ -202,31 +210,114 @@ mod test {
         assert_eq!(*r.get_arc(), 1);
         assert_eq!(r.is_marked(), false);
 
-        let st = r.compare_exchange(r.get_arc(), Arc::new(3), false, true);
+        let st = r.compare_exchange(r.get_arc(), Arc::new(2), false, true);
         assert_eq!(st, true);
-        assert_eq!(*r.get_arc(), 3);
+        assert_eq!(*r.get_arc(), 2);
         assert_eq!(r.is_marked(), true);
 
-        let st = r.compare_arc_exchange_mark(Arc::new(3), false);
+        let st = r.compare_arc_exchange_mark(Arc::new(2), false);
         assert_eq!(st, false);
-        assert_eq!(*r.get_arc(), 3);
+        assert_eq!(*r.get_arc(), 2);
         assert_eq!(r.is_marked(), true);
 
-        let st = r.compare_exchange(r.get_arc(), Arc::new(4), false, false);
+        let st = r.compare_exchange(r.get_arc(), Arc::new(3), false, false);
         assert_eq!(st, false);
-        assert_eq!(*r.get_arc(), 3);
+        assert_eq!(*r.get_arc(), 2);
         assert_eq!(r.is_marked(), true);
 
-        let st = r.compare_exchange(Arc::new(0), Arc::new(4), true, false);
+        let st = r.compare_exchange(Arc::new(0), Arc::new(3), true, false);
         assert_eq!(st, false);
-        assert_eq!(*r.get_arc(), 3);
+        assert_eq!(*r.get_arc(), 2);
         assert_eq!(r.is_marked(), true);
     }
 
+    const NUM_THREADS: usize = 8;
+
     #[test]
     fn concurrency_works() {
+        // TODO make this better somehow
+        let r = MarkableArcCell::new(Arc::new(1), true);
+        let b = Barrier::new(NUM_THREADS * 2);
+        let u = AtomicUsize::new(0);
 
+        scope(|scope| {
+            for _ in 0..NUM_THREADS {
+                scope.spawn(|| {
+                    b.wait();
+                    if r.compare_arc_exchange_mark(r.get_arc(), false) {
+                        u.fetch_add(1, Ordering::Relaxed);
+                    }
+                } );
+            }
 
+            for _ in 0..NUM_THREADS {
+                scope.spawn(|| {
+                    b.wait();
+                    r.get_arc();
+                    r.is_marked();
+                    r.get();
+                } );
+            }
+        } );
 
+        assert_eq!(u.load(Ordering::Relaxed), NUM_THREADS);
+        assert_eq!(*r.get_arc(), 1);
+        assert_eq!(r.is_marked(), false);
+
+        u.store(0, Ordering::Relaxed);
+        scope(|scope| {
+            for _ in 0..NUM_THREADS {
+                scope.spawn(|| {
+                    b.wait();
+                    if r.compare_exchange(r.get_arc(), Arc::new(2), false, true) {
+                        u.fetch_add(1, Ordering::Relaxed);
+                    }
+                } );
+            }
+
+            for _ in 0..NUM_THREADS {
+                scope.spawn(|| {
+                    b.wait();
+                    r.get();
+                    r.get_arc();
+                    r.is_marked();
+                } );
+            }
+        } );
+
+        assert_eq!(u.load(Ordering::Relaxed), 1);
+        assert_eq!(*r.get_arc(), 2);
+        assert_eq!(r.is_marked(), true);
+
+        u.store(0, Ordering::Relaxed);
+        scope(|scope| {
+            for _ in 0..NUM_THREADS {
+                scope.spawn(|| {
+                    b.wait();
+                    let prev = r.set(Arc::new(3), false);
+                    if *prev.0 == 2 {
+                        assert_eq!(prev.1, true);
+                        u.fetch_add(1, Ordering::Relaxed);
+                    }
+                    else {
+                        assert_eq!(*prev.0, 3);
+                        assert_eq!(prev.1, false);
+                    }
+                } );
+            }
+
+            for _ in 0..NUM_THREADS {
+                scope.spawn(|| {
+                    b.wait();
+                    r.is_marked();
+                    r.get_arc();
+                    r.get();
+                } );
+            }
+        } );
+
+        assert_eq!(u.load(Ordering::Relaxed), 1);
+        assert_eq!(*r.get_arc(), 3);
+        assert_eq!(r.is_marked(), false);
     }
 }
