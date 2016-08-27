@@ -13,7 +13,7 @@
 //! the snapshots in threads accessing it. Before we delete a node, we need to know
 //! that it cannot be reached in either of these ways.
 //!
-//! 2. Once a node has been unliked from the data structure, no *new* snapshots
+//! 2. Once a node has been unlinked from the data structure, no *new* snapshots
 //! reaching it will be created.
 //!
 //! Using the epoch scheme is fairly straightforward, and does not require
