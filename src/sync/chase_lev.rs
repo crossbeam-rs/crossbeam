@@ -121,13 +121,13 @@ impl<T> fmt::Debug for Buffer<T> {
 
 impl<T> Worker<T> {
     /// Pushes data onto the front of this work queue.
-    pub fn push(&mut self, t: T) {
+    pub fn push(&self, t: T) {
         unsafe { self.deque.push(t) }
     }
 
     /// Pops data off the front of the work queue, returning `None` on an empty
     /// queue.
-    pub fn try_pop(&mut self) -> Option<T> {
+    pub fn try_pop(&self) -> Option<T> {
         unsafe { self.deque.try_pop() }
     }
 }
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let (mut w, s) = deque();
+        let (w, s) = deque();
         assert_eq!(w.try_pop(), None);
         assert_eq!(s.steal(), Steal::Empty);
         w.push(1);
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn stealpush() {
         static AMT: isize = 100000;
-        let (mut w, s) = deque();
+        let (w, s) = deque();
         let t = thread::spawn(move || {
             let mut left = AMT;
             while left > 0 {
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn stealpush_large() {
         static AMT: isize = 100000;
-        let (mut w, s) = deque();
+        let (w, s) = deque();
         let t = thread::spawn(move || {
             let mut left = AMT;
             while left > 0 {
@@ -429,7 +429,7 @@ mod tests {
         t.join().unwrap();
     }
 
-    fn stampede(mut w: Worker<Box<isize>>,
+    fn stampede(w: Worker<Box<isize>>,
                 s: Stealer<Box<isize>>,
                 nthreads: isize,
                 amt: usize) {
@@ -499,7 +499,7 @@ mod tests {
         static NTHREADS: isize = 8;
         static DONE: AtomicBool = ATOMIC_BOOL_INIT;
         static HITS: AtomicUsize = ATOMIC_USIZE_INIT;
-        let (mut w, s) = deque();
+        let (w, s) = deque();
 
         let threads = (0..NTHREADS).map(|_| {
             let s = s.clone();
@@ -551,7 +551,7 @@ mod tests {
         static AMT: isize = 10000;
         static NTHREADS: isize = 4;
         static DONE: AtomicBool = ATOMIC_BOOL_INIT;
-        let (mut w, s) = deque();
+        let (w, s) = deque();
 
         let (threads, hits): (Vec<_>, Vec<_>) = (0..NTHREADS).map(|_| {
             let s = s.clone();
