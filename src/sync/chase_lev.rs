@@ -19,7 +19,7 @@
 //!
 //! ```
 //! use crossbeam::sync::chase_lev;
-//! let (mut worker, stealer) = chase_lev::deque();
+//! let (worker, stealer) = chase_lev::deque();
 //!
 //! // Only the worker may push/try_pop
 //! worker.push(1);
@@ -73,8 +73,8 @@ unsafe impl<T: Send> Sync for Deque<T> {}
 /// Worker half of the work-stealing deque. This worker has exclusive access to
 /// one side of the deque, and uses `push` and `try_pop` method to manipulate it.
 ///
-/// There may only be one worker per deque, and operations on the worker
-/// require mutable access to the worker itself.
+/// There may only be one worker per deque, so `Worker` does not implement
+/// `Clone` or `Copy`.
 #[derive(Debug)]
 pub struct Worker<T> {
     deque: Arc<Deque<T>>,
