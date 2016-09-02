@@ -230,7 +230,7 @@ impl<T> Deque<T> {
     fn steal(&self) -> Steal<T> {
         let guard = epoch::pin();
 
-        let t = self.top.load(Acquire);
+        let t = self.top.load(Relaxed); // the next SeqCst fence is enough.
         fence(SeqCst); // top must be loaded before bottom.
         let b = self.bottom.load(Acquire);
 
