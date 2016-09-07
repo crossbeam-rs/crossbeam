@@ -45,6 +45,8 @@ use std::ptr;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 use std::sync::atomic::{AtomicIsize, fence};
 use std::sync::Arc;
+use std::marker::PhantomData;
+use std::cell::Cell;
 
 use epoch::{self, Atomic, Shared, Owned};
 
@@ -78,6 +80,11 @@ unsafe impl<T: Send> Sync for Deque<T> {}
 #[derive(Debug)]
 pub struct Worker<T> {
     deque: Arc<Deque<T>>,
+
+    // Marker so that the Worker is Send but not Sync. The worker can only be
+    // accessed from a single thread at once. Ideally we would use a negative
+    // impl here but these are not stable yet.
+    marker: PhantomData<Cell<()>>,
 }
 
 /// The stealing half of the work-stealing deque. Stealers have access to the
@@ -149,7 +156,7 @@ impl<T> Clone for Stealer<T> {
 pub fn deque<T>() -> (Worker<T>, Stealer<T>) {
     let a = Arc::new(Deque::new());
     let b = a.clone();
-    (Worker { deque: a }, Stealer { deque: b })
+    (Worker { deque: a, marker: PhantomData }, Stealer { deque: b })
 }
 
 // Almost all of this code can be found directly in the paper so I'm not
