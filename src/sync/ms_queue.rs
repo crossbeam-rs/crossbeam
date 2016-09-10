@@ -11,7 +11,7 @@ use mem::CachePadded;
 /// Usable with any number of producers and consumers.
 // The representation here is a singly-linked list, with a sentinel
 // node at the front. In general the `tail` pointer may lag behind the
-// actual tail. Non-sentinal nodes are either all `Data` or all
+// actual tail. Non-sentinel nodes are either all `Data` or all
 // `Blocked` (requests for data from blocked threads).
 #[derive(Debug)]
 pub struct MsQueue<T> {
