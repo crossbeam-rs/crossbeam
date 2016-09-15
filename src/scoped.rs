@@ -190,7 +190,7 @@ impl<'a> Scope<'a> {
     /// let array = Arc::new([1, 2, 3]);
     /// let mut guards = vec![];
     ///
-    /// for i in (0..array.len()) {
+    /// for i in 0..array.len() {
     ///     let a = array.clone();
     ///
     ///     let guard = std::thread::spawn(move || {
