@@ -85,7 +85,7 @@ impl<'a> Scope<'a> {
     fn drop_all(&mut self) {
         loop {
             // use a separate scope to ensure that the RefCell borrow
-            // is relinquishe before running `dtor`
+            // is relinquished before running `dtor`
             let dtor = {
                 let mut dtors = self.dtors.borrow_mut();
                 if let Some(mut node) = dtors.take() {
