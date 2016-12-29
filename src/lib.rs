@@ -14,8 +14,8 @@
 //! APIs for managing memory in these cases. These live in the `mem` module.
 //!
 //! - **Synchronization**. The standard library provides a few synchronization
-//! primitives (locks, semaphores, barriers, etc) but this crate seeks to expand
-//! that set to include more advanced/niche primitives, as well as userspace
+//! primitives (locks, barriers, etc) but this crate seeks to expand that set
+//! to include more advanced/niche primitives, as well as userspace
 //! alternatives. These live in the `sync` module.
 //!
 //! - **Scoped thread API**. Finally, the crate provides a "scoped" thread API,
