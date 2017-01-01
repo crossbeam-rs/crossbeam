@@ -174,7 +174,7 @@ impl<T> MsQueue<T> {
                         unsafe {
                             // signal the thread
                             (*signal).data = Some(cache.into_data());
-                            (*signal).ready.store(true, Relaxed);
+                            (*signal).ready.store(true, Release);
                             (*signal).thread.unpark();
                             guard.unlinked(head);
                             return;
@@ -295,7 +295,7 @@ impl<T> MsQueue<T> {
             // case, blocked.
             match self.push_internal(&guard, tail, node) {
                 Ok(()) => {
-                    while !signal.ready.load(Relaxed) {
+                    while !signal.ready.load(Acquire) {
                         thread::park();
                     }
                     return signal.data.unwrap();
