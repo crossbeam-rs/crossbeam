@@ -51,7 +51,7 @@ fn opt_owned_into_usize<T>(val: Option<Owned<T>>) -> usize {
 impl<T> MarkableAtomic<T> {
     /// Create a new, null, markable atomic pointer with the given marker value.
     #[cfg(feature = "nightly")]
-    pub const fn null(mark: bool) -> MarkableAtomic<T> {
+    pub /*const*/ fn null(mark: bool) -> MarkableAtomic<T> {
         debug_assert!(mem::align_of::<T>() >= 2);
 
         MarkableAtomic {
