@@ -127,7 +127,7 @@
 // FIXME: document implementation details
 
 mod atomic;
-mod marked_atomic;
+mod markable_atomic;
 
 mod garbage;
 mod global;
@@ -137,7 +137,7 @@ mod participant;
 mod participants;
 
 pub use self::atomic::Atomic;
-pub use self::marked_atomic::MarkedAtomic;
+pub use self::markable_atomic::MarkableAtomic;
 pub use self::guard::{pin, Guard};
 
 use std::ops::{Deref, DerefMut};

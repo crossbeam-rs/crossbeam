@@ -7,7 +7,7 @@ use std::fmt;
 use std::sync::atomic::{self, AtomicUsize};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
 
-use mem::epoch::{MarkedAtomic, Guard, garbage, global};
+use mem::epoch::{MarkableAtomic, Guard, garbage, global};
 use mem::epoch::participants::ParticipantNode;
 
 /// Thread-local data for epoch participation.
@@ -25,7 +25,7 @@ pub struct Participant {
     /// The participant list is coded intrusively; here's the `next` pointer. The
     /// mark denotes whether the thread is still active. It is ultimately used to
     /// free `Participant` records.
-    pub next: MarkedAtomic<ParticipantNode>,
+    pub next: MarkableAtomic<ParticipantNode>,
 }
 
 impl fmt::Debug for Participant {
@@ -44,7 +44,7 @@ impl Participant {
             epoch: AtomicUsize::new(0),
             in_critical: AtomicUsize::new(0),
             garbage: UnsafeCell::new(garbage::Local::new()),
-            next: MarkedAtomic::null(),
+            next: MarkableAtomic::zero(),
         }
     }
 

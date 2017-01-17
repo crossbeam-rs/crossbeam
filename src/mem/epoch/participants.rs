@@ -7,14 +7,14 @@ use std::ptr;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release};
 
-use mem::epoch::{MarkedAtomic, Owned, Shared, Guard};
+use mem::epoch::{MarkableAtomic, Owned, Shared, Guard};
 use mem::epoch::participant::Participant;
 use mem::CachePadded;
 
 /// Global, threadsafe list of threads participating in epoch management.
 #[derive(Debug)]
 pub struct Participants {
-    head: MarkedAtomic<ParticipantNode>
+    head: MarkableAtomic<ParticipantNode>
 }
 
 #[derive(Debug)]
@@ -42,12 +42,12 @@ impl DerefMut for ParticipantNode {
 impl Participants {
     #[cfg(not(feature = "nightly"))]
     pub fn new() -> Participants {
-        Participants { head: MarkedAtomic::null() }
+        Participants { head: MarkableAtomic::zero() }
     }
 
     #[cfg(feature = "nightly")]
     pub const fn new() -> Participants {
-        Participants { head: MarkedAtomic::null() }
+        Participants { head: MarkableAtomic::zero() }
     }
 
     /// Enroll a new thread in epoch management by adding a new `Particpant`
@@ -88,7 +88,7 @@ impl Participants {
 pub struct Iter<'a> {
     // pin to an epoch so that we can free inactive nodes
     guard: &'a Guard,
-    prev: &'a MarkedAtomic<ParticipantNode>,
+    prev: &'a MarkableAtomic<ParticipantNode>,
     current: Option<Shared<'a, ParticipantNode>>
 }
 
