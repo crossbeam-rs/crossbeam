@@ -30,8 +30,9 @@ fn guard_mark<T>(mark: usize) {
 
 /// Retrieves the original pointer and the mark from a packed value.
 fn unpack_mark<T>(val: usize) -> (*mut T, usize) {
-    let mark = val & (mem::align_of::<T>() - 1);
-    ((val - mark) as *mut T, mark)
+    let ptr = (val & !(mem::align_of::<T>() - 1)) as *mut T;
+    let mark = val &  (mem::align_of::<T>() - 1);
+    (ptr, mark)
 }
 
 fn opt_shared_into_usize<T>(ptr: Option<Shared<T>>, mark: usize) -> usize {
@@ -92,7 +93,13 @@ impl<T> MarkableAtomic<T> {
         }
     }
 
-    /// Unsafely create a new markable atomic pointer from the given raw pointer.
+    /// Create a new markable atomic pointer from the given raw pointer.
+    /// This is unsafe because the pointer must be either null or pointing
+    /// to valid memory, otherwise it will lead to undefined behaviour.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mark >= mem::align_of::<T>()`.
     pub unsafe fn from_raw(ptr: *mut T, mark: usize) -> MarkableAtomic<T> {
         guard_mark::<T>(mark);
         MarkableAtomic {
@@ -264,14 +271,25 @@ impl<T> MarkableAtomic<T> {
         unsafe { (Shared::from_raw(ptr), mark) }
     }
 
-    /// Perform a logical "OR" on the current mark and the argument `mark` and set the new mark to
-    /// the result.
+    /// Perform a bitwise or on the current mark and the argument `mark` and set the new mark to
+    /// the result. Returns the previous value of the mark.
     ///
     /// # Panics
     ///
     /// Panics if `mark >= mem::align_of::<T>()`.
-    pub fn or_mark(&self, mark: usize, ord: Ordering) {
+    pub fn or_mark(&self, mark: usize, ord: Ordering) -> usize {
         guard_mark::<T>(mark);
-        self.ptr.fetch_or(mark, ord);
+        self.ptr.fetch_or(mark, ord)
+    }
+
+    /// Perform a bitwise and on the current mark and the argument `mark` and set the new mark to
+    /// the result. Returns the previous value of the mark.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mark >= mem::align_of::<T>()`.
+    pub fn and_mark(&self, mark: usize, ord: Ordering) -> usize {
+        guard_mark::<T>(mark);
+        self.ptr.fetch_and(mark, ord)
     }
 }
