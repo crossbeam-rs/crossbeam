@@ -22,16 +22,22 @@ pub struct TaggedAtomic<T> {
 unsafe impl<T: Sync> Send for TaggedAtomic<T> {}
 unsafe impl<T: Sync> Sync for TaggedAtomic<T> {}
 
+/// Returns the power of two that the tag must be strictly
+/// less than. This value is `2.pow(n_unused_bits)`.
+fn tag_ceil<T>() -> usize {
+    0b1 << mem::align_of::<T>().trailing_zeros()
+}
+
 /// Verifies that the tag can fit into the unused bits of a pointer to `T`.
 fn guard_tag<T>(tag: usize) {
-    assert!(tag < mem::align_of::<T>(),
-            "tag too large to fit into unused bits of pointer in TaggedAtomic: {} >= {}", tag, mem::align_of::<T>());
+    assert!(tag < tag_ceil::<T>(),
+            "tag too large to fit into unused bits of pointer in TaggedAtomic: {} >= {}", tag, tag_ceil::<T>());
 }
 
 /// Retrieves the original pointer and the tag from a packed value.
 fn unpack_tag<T>(val: usize) -> (*mut T, usize) {
-    let ptr = (val & !(mem::align_of::<T>() - 1)) as *mut T;
-    let tag = val &  (mem::align_of::<T>() - 1);
+    let ptr = (val & !(tag_ceil::<T>() - 1)) as *mut T;
+    let tag =  val &  (tag_ceil::<T>() - 1);
     (ptr, tag)
 }
 
@@ -277,7 +283,7 @@ impl<T> TaggedAtomic<T> {
     /// # Panics
     ///
     /// Panics if `tag >= mem::align_of::<T>()`.
-    pub fn or_tag(&self, tag: usize, ord: Ordering) -> usize {
+    pub fn fetch_or_tag(&self, tag: usize, ord: Ordering) -> usize {
         guard_tag::<T>(tag);
         self.ptr.fetch_or(tag, ord)
     }
@@ -288,8 +294,8 @@ impl<T> TaggedAtomic<T> {
     /// # Panics
     ///
     /// Panics if `tag >= mem::align_of::<T>()`.
-    pub fn and_tag(&self, tag: usize, ord: Ordering) -> usize {
+    pub fn fetch_and_tag(&self, tag: usize, ord: Ordering) -> usize {
         guard_tag::<T>(tag);
-        self.ptr.fetch_and(tag, ord)
+        self.ptr.fetch_and(tag | !(tag_ceil::<T>() - 1), ord)
     }
 }
