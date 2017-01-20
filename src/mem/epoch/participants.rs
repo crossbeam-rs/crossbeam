@@ -7,14 +7,14 @@ use std::ptr;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release};
 
-use mem::epoch::{MarkedAtomic, Owned, Shared, Guard};
+use mem::epoch::{TaggedAtomic, Owned, Shared, Guard};
 use mem::epoch::participant::Participant;
 use mem::CachePadded;
 
 /// Global, threadsafe list of threads participating in epoch management.
 #[derive(Debug)]
 pub struct Participants {
-    head: MarkedAtomic<ParticipantNode>
+    head: TaggedAtomic<ParticipantNode>
 }
 
 #[derive(Debug)]
@@ -42,12 +42,12 @@ impl DerefMut for ParticipantNode {
 impl Participants {
     #[cfg(not(feature = "nightly"))]
     pub fn new() -> Participants {
-        Participants { head: MarkedAtomic::null() }
+        Participants { head: TaggedAtomic::zero() }
     }
 
     #[cfg(feature = "nightly")]
     pub const fn new() -> Participants {
-        Participants { head: MarkedAtomic::null() }
+        Participants { head: TaggedAtomic::zero() }
     }
 
     /// Enroll a new thread in epoch management by adding a new `Particpant`
@@ -88,7 +88,7 @@ impl Participants {
 pub struct Iter<'a> {
     // pin to an epoch so that we can free inactive nodes
     guard: &'a Guard,
-    prev: &'a MarkedAtomic<ParticipantNode>,
+    prev: &'a TaggedAtomic<ParticipantNode>,
     current: Option<Shared<'a, ParticipantNode>>
 }
 
@@ -103,8 +103,8 @@ impl<'a> Iterator for Iter<'a> {
         let mut cur = match self.current {
             None => return None,
             Some(node) => {
-                let (next, mark) = node.next.load(Relaxed, self.guard);
-                if mark == 0 {
+                let (next, tag) = node.next.load(Relaxed, self.guard);
+                if tag == 0 {
                     self.prev = &node.next;
                     self.current = next;
                     return Some(&*node);
@@ -116,8 +116,8 @@ impl<'a> Iterator for Iter<'a> {
         // Scan for an active node
         let mut final_next = None;
         while let Some(node) = cur {
-            let (next, mark) = node.next.load(Relaxed, self.guard);
-            if mark == 0 {
+            let (next, tag) = node.next.load(Relaxed, self.guard);
+            if tag == 0 {
                 final_next = Some(next);
                 break;
             } else {
