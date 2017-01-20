@@ -22,10 +22,11 @@ pub struct TaggedAtomic<T> {
 unsafe impl<T: Sync> Send for TaggedAtomic<T> {}
 unsafe impl<T: Sync> Sync for TaggedAtomic<T> {}
 
-/// Returns the power of two that the tag must be strictly
-/// less than. This value is `2.pow(n_unused_bits)`.
+/// Returns 2 to the power of the number of unused bits
+/// in a pointer to `T`. Any tag placed on such a pointer
+/// must be strictly less than this value.
 fn tag_ceil<T>() -> usize {
-    0b1 << mem::align_of::<T>().trailing_zeros()
+    1 << mem::align_of::<T>().trailing_zeros()
 }
 
 /// Verifies that the tag can fit into the unused bits of a pointer to `T`.
@@ -283,7 +284,7 @@ impl<T> TaggedAtomic<T> {
     /// # Panics
     ///
     /// Panics if `tag >= mem::align_of::<T>()`.
-    pub fn fetch_or_tag(&self, tag: usize, ord: Ordering) -> usize {
+    pub fn fetch_or(&self, tag: usize, ord: Ordering) -> usize {
         guard_tag::<T>(tag);
         self.ptr.fetch_or(tag, ord)
     }
@@ -294,8 +295,19 @@ impl<T> TaggedAtomic<T> {
     /// # Panics
     ///
     /// Panics if `tag >= mem::align_of::<T>()`.
-    pub fn fetch_and_tag(&self, tag: usize, ord: Ordering) -> usize {
+    pub fn fetch_and(&self, tag: usize, ord: Ordering) -> usize {
         guard_tag::<T>(tag);
         self.ptr.fetch_and(tag | !(tag_ceil::<T>() - 1), ord)
+    }
+
+    /// Perform a bitwise xor on the current tag and the argument `tag` and set the new tag to
+    /// the result. Returns the previous value of the tag.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `tag >= mem::align_of::<T>()`.
+    pub fn fetch_xor(&self, tag: usize, ord: Ordering) -> usize {
+        guard_tag::<T>(tag);
+        self.ptr.fetch_xor(tag, ord)
     }
 }

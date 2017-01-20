@@ -27,7 +27,7 @@ impl Drop for LocalEpoch {
         p.enter();
         p.migrate_garbage();
         p.exit();
-        p.next.fetch_or_tag(1, Relaxed);
+        p.next.fetch_or(1, Relaxed);
     }
 }
 
