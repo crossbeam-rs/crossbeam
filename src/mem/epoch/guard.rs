@@ -22,13 +22,13 @@ pub struct Guard {
 /// pinning around the entire set of operations.
 pub fn pin() -> Guard {
     local::with_participant(|p| {
-        p.enter();
+        let entered = p.enter();
 
         let g = Guard {
             _marker: marker::PhantomData,
         };
 
-        if p.should_gc() {
+        if entered && p.should_gc() {
             p.try_collect(&g);
         }
 
