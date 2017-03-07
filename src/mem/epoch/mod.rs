@@ -217,6 +217,20 @@ impl<'a, T> Shared<'a, T> {
         ret
     }
 
+    /// Map the pointer to some other pointer.
+    ///
+    /// This applies `f` to the reference and returns the result wrapped in `Shared`.
+    ///
+    /// # Safety
+    ///
+    /// This is safe as it preserves the invariant that `'a` spans an epoch pin.
+    pub fn map<U: 'a, F>(self, f: F) -> Shared<'a, U>
+        where F: FnOnce(&'a T) -> &'a U {
+        unsafe {
+            Shared::from_ref(f(&self))
+        }
+    }
+
     pub fn as_raw(&self) -> *mut T {
         self.data as *const _ as *mut _
     }
