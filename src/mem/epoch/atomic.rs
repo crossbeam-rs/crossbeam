@@ -179,3 +179,9 @@ impl<T> Atomic<T> {
         unsafe { Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord)) }
     }
 }
+
+impl<T> Default for Atomic<T> {
+    fn default() -> Atomic<T> {
+        Atomic::null()
+    }
+}
