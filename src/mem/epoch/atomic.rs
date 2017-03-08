@@ -219,7 +219,7 @@ impl<T> Atomic<T> {
 
     /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
     pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, _: &'a Guard)
-                    -> Option<Shared<'a, T>> {
+        -> Option<Shared<'a, T>> {
         unsafe { Shared::from_raw(self.ptr.swap(opt_owned_into_raw(new), ord)) }
     }
 
