@@ -1,4 +1,4 @@
-use std::marker;
+use std::{marker, ops};
 
 use super::{local, Shared};
 
@@ -12,14 +12,45 @@ pub struct Guard {
     _marker: marker::PhantomData<*mut ()>, // !Send and !Sync
 }
 
+/// A value pinned to an epoch.
+///
+/// This wraps an arbitrary type, such that it can only be indirectly access, while also holding a
+/// epoch guard, such that the value must span an epoch.
+#[derive(Debug)]
+pub struct Pinned<T> {
+    guard: Guard,
+    inner: T,
+}
+
+impl<T> Pinned<T> {
+    /// Create a `Pinned<T>` based on the parameters.
+    pub fn new(inner: T, guard: Guard) -> Pinned<T> {
+        Pinned {
+            guard: guard,
+            inner: inner,
+        }
+    }
+
+    pub fn epoch(&self) -> &Guard {
+        &self.guard
+    }
+}
+
+impl<T> ops::Deref for Pinned<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.inner
+    }
+}
+
 /// Pin the current epoch.
 ///
-/// Threads generally pin before interacting with a lock-free data
-/// structure. Pinning requires a full memory barrier, so is somewhat
-/// expensive. It is rentrant -- you can safely acquire nested guards, and only
-/// the first guard requires a barrier. Thus, in cases where you expect to
-/// perform several lock-free operations in quick succession, you may consider
-/// pinning around the entire set of operations.
+/// Threads generally pin before interacting with a lock-free data structure. Pinning requires a
+/// full memory barrier, so is somewhat expensive. It is rentrant -- you can safely acquire nested
+/// guards, and only the first guard requires a barrier. Thus, in cases where you expect to perform
+/// several lock-free operations in quick succession, you may consider pinning around the entire
+/// set of operations.
 pub fn pin() -> Guard {
     local::with_participant(|p| {
         let entered = p.enter();
