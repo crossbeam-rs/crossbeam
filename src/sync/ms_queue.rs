@@ -86,13 +86,13 @@ impl<T> MsQueue<T> {
         // is `onto` the actual tail?
         if let Some(next) = onto.next.load(Acquire, guard) {
             // if not, try to "help" by moving the tail pointer forward
-            self.tail.cas_shared(Some(onto), Some(next), Release);
+            self.tail.compare_and_set_shared(Some(onto), Some(next), Release);
             Err(n)
         } else {
             // looks like the actual tail; attempt to link in `n`
-            onto.next.cas_and_ref(None, n, Release, guard).map(|shared| {
+            onto.next.compare_and_set_ref(None, n, Release, guard).map(|shared| {
                 // try to move the tail pointer forward
-                self.tail.cas_shared(Some(onto), Some(shared), Release);
+                self.tail.compare_and_set_shared(Some(onto), Some(shared), Release);
             })
         }
     }
@@ -170,7 +170,7 @@ impl<T> MsQueue<T> {
                 });
                 if let Some((blocked_node, signal)) = request {
                     // race to dequeue the node
-                    if self.head.cas_shared(Some(head), Some(blocked_node), Release) {
+                    if self.head.compare_and_set_shared(Some(head), Some(blocked_node), Release) {
                         unsafe {
                             // signal the thread
                             (*signal).data = Some(cache.into_data());
@@ -193,7 +193,7 @@ impl<T> MsQueue<T> {
         if let Some(next) = head.next.load(Acquire, guard) {
             if let Payload::Data(ref t) = next.payload {
                 unsafe {
-                    if self.head.cas_shared(Some(head), Some(next), Release) {
+                    if self.head.compare_and_set_shared(Some(head), Some(next), Release) {
                         guard.unlinked(head);
                         Ok(Some(ptr::read(t)))
                     } else {
