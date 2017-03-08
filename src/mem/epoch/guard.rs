@@ -55,9 +55,7 @@ pub fn pin() -> Guard {
     local::with_participant(|p| {
         let entered = p.enter();
 
-        let g = Guard {
-            _marker: marker::PhantomData,
-        };
+        let g = Guard { _marker: marker::PhantomData };
 
         if entered && p.should_gc() {
             p.try_collect(&g);

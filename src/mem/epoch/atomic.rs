@@ -38,7 +38,7 @@ impl<T> Atomic<T> {
     pub const fn null() -> Atomic<T> {
         Atomic {
             ptr: atomic::AtomicPtr::new(0 as *mut _),
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 
@@ -46,7 +46,7 @@ impl<T> Atomic<T> {
     pub fn null() -> Atomic<T> {
         Atomic {
             ptr: atomic::AtomicPtr::new(0 as *mut _),
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 
@@ -54,7 +54,7 @@ impl<T> Atomic<T> {
     pub fn new(data: T) -> Atomic<T> {
         Atomic {
             ptr: atomic::AtomicPtr::new(Box::into_raw(Box::new(data))),
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 
@@ -95,9 +95,7 @@ impl<T> Atomic<T> {
     /// # Panics
     ///
     /// Panics if `ord` is `Acquire` or `AcqRel`.
-    pub fn store_and_ref<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard)
-                             -> Shared<'a, T>
-    {
+    pub fn store_and_ref<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard) -> Shared<'a, T> {
         unsafe {
             let shared = Shared::from_owned(val);
             self.store_shared(Some(shared), ord);
@@ -123,13 +121,13 @@ impl<T> Atomic<T> {
     /// As with `store`, this operation does not require a guard; it produces no new
     /// lifetime information. The `Result` indicates whether the CAS succeeded; if
     /// not, ownership of the `new` pointer is returned to the caller.
-    pub fn cas(&self, old: Option<Shared<T>>, new: Option<Owned<T>>, ord: Ordering)
-               -> Result<(), Option<Owned<T>>>
-    {
-        if self.ptr.compare_and_swap(opt_shared_into_raw(old),
-                                     opt_owned_as_raw(&new),
-                                     ord) == opt_shared_into_raw(old)
-        {
+    pub fn cas(&self,
+               old: Option<Shared<T>>,
+               new: Option<Owned<T>>,
+               ord: Ordering)
+               -> Result<(), Option<Owned<T>>> {
+        if self.ptr.compare_and_swap(opt_shared_into_raw(old), opt_owned_as_raw(&new), ord) ==
+           opt_shared_into_raw(old) {
             mem::forget(new);
             Ok(())
         } else {
@@ -142,13 +140,14 @@ impl<T> Atomic<T> {
     /// the previously-owned pointer if successful.
     ///
     /// This operation is analogous to `store_and_ref`.
-    pub fn cas_and_ref<'a>(&self, old: Option<Shared<T>>, new: Owned<T>,
-                           ord: Ordering, _: &'a Guard)
-                           -> Result<Shared<'a, T>, Owned<T>>
-    {
-        if self.ptr.compare_and_swap(opt_shared_into_raw(old), new.as_raw(), ord)
-            == opt_shared_into_raw(old)
-        {
+    pub fn cas_and_ref<'a>(&self,
+                           old: Option<Shared<T>>,
+                           new: Owned<T>,
+                           ord: Ordering,
+                           _: &'a Guard)
+                           -> Result<Shared<'a, T>, Owned<T>> {
+        if self.ptr.compare_and_swap(opt_shared_into_raw(old), new.as_raw(), ord) ==
+           opt_shared_into_raw(old) {
             Ok(unsafe { Shared::from_owned(new) })
         } else {
             Err(new)
@@ -159,22 +158,29 @@ impl<T> Atomic<T> {
     /// the given memory ordering.
     ///
     /// The boolean return value is `true` when the CAS is successful.
-    pub fn cas_shared(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering)
-                      -> bool
-    {
-        self.ptr.compare_and_swap(opt_shared_into_raw(old),
-                                  opt_shared_into_raw(new),
-                                  ord) == opt_shared_into_raw(old)
+    pub fn cas_shared(&self,
+                      old: Option<Shared<T>>,
+                      new: Option<Shared<T>>,
+                      ord: Ordering)
+                      -> bool {
+        self.ptr.compare_and_swap(opt_shared_into_raw(old), opt_shared_into_raw(new), ord) ==
+        opt_shared_into_raw(old)
     }
 
     /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
-    pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, _: &'a Guard)
+    pub fn swap<'a>(&self,
+                    new: Option<Owned<T>>,
+                    ord: Ordering,
+                    _: &'a Guard)
                     -> Option<Shared<'a, T>> {
         unsafe { Shared::from_raw(self.ptr.swap(opt_owned_into_raw(new), ord)) }
     }
 
     /// Do an atomic swap with a `Shared` pointer with the given memory ordering.
-    pub fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, _: &'a Guard)
+    pub fn swap_shared<'a>(&self,
+                           new: Option<Shared<T>>,
+                           ord: Ordering,
+                           _: &'a Guard)
                            -> Option<Shared<'a, T>> {
         unsafe { Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord)) }
     }

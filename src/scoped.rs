@@ -11,12 +11,12 @@ use {builder_spawn_unsafe, FnBox};
 use sync::AtomicOption;
 
 pub struct Scope<'a> {
-    dtors: RefCell<Option<DtorChain<'a>>>
+    dtors: RefCell<Option<DtorChain<'a>>>,
 }
 
 struct DtorChain<'a> {
     dtor: Box<FnBox + 'a>,
-    next: Option<Box<DtorChain<'a>>>
+    next: Option<Box<DtorChain<'a>>>,
 }
 
 enum JoinState {
@@ -31,7 +31,9 @@ impl JoinState {
         if let JoinState::Running(handle) = state {
             let res = handle.join();
 
-            if !thread::panicking() { res.unwrap(); }
+            if !thread::panicking() {
+                res.unwrap();
+            }
         }
     }
 }
@@ -58,7 +60,9 @@ pub struct ScopedJoinHandle<T> {
 /// });
 /// // Prints messages in the reverse order written
 /// ```
-pub fn scope<'a, F, R>(f: F) -> R where F: FnOnce(&Scope<'a>) -> R {
+pub fn scope<'a, F, R>(f: F) -> R
+    where F: FnOnce(&Scope<'a>) -> R
+{
     let mut scope = Scope { dtors: RefCell::new(None) };
     let ret = f(&scope);
     scope.drop_all();
@@ -93,7 +97,7 @@ impl<'a> Scope<'a> {
                     *dtors = node.next.take().map(|b| *b);
                     node.dtor
                 } else {
-                    return
+                    return;
                 }
             };
             dtor.call_box()
@@ -104,11 +108,13 @@ impl<'a> Scope<'a> {
     ///
     /// This is akin to having a destructor on the stack, except that it is
     /// *guaranteed* to be run.
-    pub fn defer<F>(&self, f: F) where F: FnOnce() + 'a {
+    pub fn defer<F>(&self, f: F)
+        where F: FnOnce() + 'a
+    {
         let mut dtors = self.dtors.borrow_mut();
         *dtors = Some(DtorChain {
             dtor: Box::new(f),
-            next: dtors.take().map(Box::new)
+            next: dtors.take().map(Box::new),
         });
     }
 
@@ -227,8 +233,9 @@ impl<'a> Scope<'a> {
     /// ```
     ///
     /// Much more straightforward.
-    pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T> where
-        F: FnOnce() -> T + Send + 'a, T: Send + 'a
+    pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T>
+        where F: FnOnce() -> T + Send + 'a,
+              T: Send + 'a
     {
         self.builder().spawn(f).unwrap()
     }
@@ -266,15 +273,15 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
 
     /// Spawns a new thread, and returns a join handle for it.
     pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<T>>
-            where F: FnOnce() -> T + Send + 'a, T: Send + 'a
+        where F: FnOnce() -> T + Send + 'a,
+              T: Send + 'a
     {
         let their_packet = Arc::new(AtomicOption::new());
         let my_packet = their_packet.clone();
 
         let join_handle = try!(unsafe {
-            builder_spawn_unsafe(self.builder, move || {
-                their_packet.swap(f(), Ordering::Relaxed);
-            })
+            builder_spawn_unsafe(self.builder,
+                                 move || { their_packet.swap(f(), Ordering::Relaxed); })
         });
 
         let thread = join_handle.thread().clone();

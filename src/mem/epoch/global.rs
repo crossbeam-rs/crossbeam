@@ -40,9 +40,7 @@ mod imp {
         fn new() -> EpochState {
             EpochState {
                 epoch: CachePadded::zeroed(),
-                garbage: [CachePadded::zeroed(),
-                          CachePadded::zeroed(),
-                          CachePadded::zeroed()],
+                garbage: [CachePadded::zeroed(), CachePadded::zeroed(), CachePadded::zeroed()],
                 participants: Participants::new(),
             }
         }
@@ -66,9 +64,7 @@ mod imp {
             }
         }
 
-        unsafe {
-            &*(addr as *mut EpochState)
-        }
+        unsafe { &*(addr as *mut EpochState) }
     }
 }
 
@@ -82,14 +78,14 @@ mod imp {
         const fn new() -> EpochState {
             EpochState {
                 epoch: CachePadded::zeroed(),
-                garbage: [CachePadded::zeroed(),
-                          CachePadded::zeroed(),
-                          CachePadded::zeroed()],
+                garbage: [CachePadded::zeroed(), CachePadded::zeroed(), CachePadded::zeroed()],
                 participants: Participants::new(),
             }
         }
     }
 
     static EPOCH: EpochState = EpochState::new();
-    pub fn get() -> &'static EpochState { &EPOCH }
+    pub fn get() -> &'static EpochState {
+        &EPOCH
+    }
 }

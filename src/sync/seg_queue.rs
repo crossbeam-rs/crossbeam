@@ -70,7 +70,9 @@ impl<T> SegQueue<T> {
         let guard = epoch::pin();
         loop {
             let tail = self.tail.load(Acquire, &guard).unwrap();
-            if tail.high.load(Relaxed) >= SEG_SIZE { continue }
+            if tail.high.load(Relaxed) >= SEG_SIZE {
+                continue;
+            }
             let i = tail.high.fetch_add(1, Relaxed);
             unsafe {
                 if i < SEG_SIZE {
@@ -79,11 +81,12 @@ impl<T> SegQueue<T> {
                     (*cell).1.store(true, Release);
 
                     if i + 1 == SEG_SIZE {
-                        let tail = tail.next.store_and_ref(Owned::new(Segment::new()), Release, &guard);
+                        let tail = tail.next
+                            .store_and_ref(Owned::new(Segment::new()), Release, &guard);
                         self.tail.store_shared(Some(tail), Release);
                     }
 
-                    return
+                    return;
                 }
             }
         }
@@ -98,27 +101,33 @@ impl<T> SegQueue<T> {
             let head = self.head.load(Acquire, &guard).unwrap();
             loop {
                 let low = head.low.load(Relaxed);
-                if low >= cmp::min(head.high.load(Relaxed), SEG_SIZE) { break }
-                if head.low.compare_and_swap(low, low+1, Relaxed) == low {
+                if low >= cmp::min(head.high.load(Relaxed), SEG_SIZE) {
+                    break;
+                }
+                if head.low.compare_and_swap(low, low + 1, Relaxed) == low {
                     unsafe {
                         let cell = (*head).data.get_unchecked(low).get();
                         loop {
-                            if (*cell).1.load(Acquire) { break }
+                            if (*cell).1.load(Acquire) {
+                                break;
+                            }
                         }
                         if low + 1 == SEG_SIZE {
                             loop {
                                 if let Some(next) = head.next.load(Acquire, &guard) {
                                     self.head.store_shared(Some(next), Release);
                                     guard.unlinked(head);
-                                    break
+                                    break;
                                 }
                             }
                         }
-                        return Some(ptr::read(&(*cell).0))
+                        return Some(ptr::read(&(*cell).0));
                     }
                 }
             }
-            if head.next.load(Relaxed, &guard).is_none() { return None }
+            if head.next.load(Relaxed, &guard).is_none() {
+                return None;
+            }
         }
     }
 }
@@ -188,7 +197,9 @@ mod test {
                     assert!(elem > cur);
                     cur = elem;
 
-                    if cur == CONC_COUNT - 1 { break }
+                    if cur == CONC_COUNT - 1 {
+                        break;
+                    }
                 }
             }
         }
@@ -200,52 +211,47 @@ mod test {
                 scope.spawn(move || recv(i, qr));
             }
 
-            scope.spawn(|| {
-                for i in 0..CONC_COUNT {
-                    q.push(i);
-                }
+            scope.spawn(|| for i in 0..CONC_COUNT {
+                q.push(i);
             })
         });
     }
 
     #[test]
     fn push_pop_many_mpmc() {
-        enum LR { Left(i64), Right(i64) }
+        enum LR {
+            Left(i64),
+            Right(i64),
+        }
 
         let q: SegQueue<LR> = SegQueue::new();
 
-        scope(|scope| {
-            for _t in 0..2 {
-                scope.spawn(|| {
-                    for i in CONC_COUNT-1..CONC_COUNT {
-                        q.push(LR::Left(i))
+        scope(|scope| for _t in 0..2 {
+            scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
+                q.push(LR::Left(i))
+            });
+            scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
+                q.push(LR::Right(i))
+            });
+            scope.spawn(|| {
+                let mut vl = vec![];
+                let mut vr = vec![];
+                for _i in 0..CONC_COUNT {
+                    match q.try_pop() {
+                        Some(LR::Left(x)) => vl.push(x),
+                        Some(LR::Right(x)) => vr.push(x),
+                        _ => {}
                     }
-                });
-                scope.spawn(|| {
-                    for i in CONC_COUNT-1..CONC_COUNT {
-                        q.push(LR::Right(i))
-                    }
-                });
-                scope.spawn(|| {
-                    let mut vl = vec![];
-                    let mut vr = vec![];
-                    for _i in 0..CONC_COUNT {
-                        match q.try_pop() {
-                            Some(LR::Left(x)) => vl.push(x),
-                            Some(LR::Right(x)) => vr.push(x),
-                            _ => {}
-                        }
-                    }
+                }
 
-                    let mut vl2 = vl.clone();
-                    let mut vr2 = vr.clone();
-                    vl2.sort();
-                    vr2.sort();
+                let mut vl2 = vl.clone();
+                let mut vr2 = vr.clone();
+                vl2.sort();
+                vr2.sort();
 
-                    assert_eq!(vl, vl2);
-                    assert_eq!(vr, vr2);
-                });
-            }
+                assert_eq!(vl, vl2);
+                assert_eq!(vr, vr2);
+            });
         });
     }
 }

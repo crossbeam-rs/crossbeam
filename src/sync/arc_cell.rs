@@ -13,7 +13,9 @@ pub struct ArcCell<T> {
 
 impl<T> Drop for ArcCell<T> {
     fn drop(&mut self) {
-        unsafe { mem::transmute::<_, Arc<T>>(self.ptr.load(Ordering::Relaxed)); }
+        unsafe {
+            mem::transmute::<_, Arc<T>>(self.ptr.load(Ordering::Relaxed));
+        }
     }
 }
 

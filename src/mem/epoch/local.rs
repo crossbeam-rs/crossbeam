@@ -33,6 +33,8 @@ impl Drop for LocalEpoch {
 
 thread_local!(static LOCAL_EPOCH: LocalEpoch = LocalEpoch::new() );
 
-pub fn with_participant<F, T>(f: F) -> T where F: FnOnce(&Participant) -> T {
+pub fn with_participant<F, T>(f: F) -> T
+    where F: FnOnce(&Participant) -> T
+{
     LOCAL_EPOCH.with(|e| f(e.get()))
 }

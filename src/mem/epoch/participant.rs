@@ -60,14 +60,18 @@ impl Participant {
     pub fn enter(&self) -> bool {
         let new_count = self.in_critical.load(Relaxed) + 1;
         self.in_critical.store(new_count, Relaxed);
-        if new_count > 1 { return false }
+        if new_count > 1 {
+            return false;
+        }
 
         atomic::fence(SeqCst);
 
         let global_epoch = global::get().epoch.load(Relaxed);
         if global_epoch != self.epoch.load(Relaxed) {
             self.epoch.store(global_epoch, Relaxed);
-            unsafe { (*self.garbage.get()).collect(); }
+            unsafe {
+                (*self.garbage.get()).collect();
+            }
         }
 
         true
@@ -76,9 +80,7 @@ impl Participant {
     /// Exit the current (nested) critical section.
     pub fn exit(&self) {
         let new_count = self.in_critical.load(Relaxed) - 1;
-        self.in_critical.store(
-            new_count,
-            if new_count > 0 { Relaxed } else { Release });
+        self.in_critical.store(new_count, if new_count > 0 { Relaxed } else { Release });
     }
 
     /// Begin the reclamation process for a piece of data.
@@ -94,14 +96,14 @@ impl Participant {
 
         for p in global::get().participants.iter(guard) {
             if p.in_critical.load(Relaxed) > 0 && p.epoch.load(Relaxed) != cur_epoch {
-                return false
+                return false;
             }
         }
 
         let new_epoch = cur_epoch.wrapping_add(1);
         atomic::fence(Acquire);
         if global::get().epoch.compare_and_swap(cur_epoch, new_epoch, SeqCst) != cur_epoch {
-            return false
+            return false;
         }
 
         unsafe {

@@ -13,7 +13,7 @@ use mem::CachePadded;
 /// Global, threadsafe list of threads participating in epoch management.
 #[derive(Debug)]
 pub struct Participants {
-    head: Atomic<ParticipantNode>
+    head: Atomic<ParticipantNode>,
 }
 
 #[derive(Debug)]
@@ -111,7 +111,7 @@ impl<'a> Iterator for Iter<'a> {
                 // TODO: actually reclaim inactive participants!
             } else {
                 self.next = &n.next;
-                return Some(&n)
+                return Some(&n);
             }
         }
 

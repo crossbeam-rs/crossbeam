@@ -46,7 +46,11 @@ struct Signal<T> {
 
 impl<T> Node<T> {
     fn is_data(&self) -> bool {
-        if let Payload::Data(_) = self.payload { true } else { false }
+        if let Payload::Data(_) = self.payload {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -81,8 +85,7 @@ impl<T> MsQueue<T> {
                      guard: &epoch::Guard,
                      onto: Shared<Node<T>>,
                      n: Owned<Node<T>>)
-                     -> Result<(), Owned<Node<T>>>
-    {
+                     -> Result<(), Owned<Node<T>>> {
         // is `onto` the actual tail?
         if let Some(next) = onto.next.load(Acquire, guard) {
             // if not, try to "help" by moving the tail pointer forward
@@ -114,10 +117,10 @@ impl<T> MsQueue<T> {
                     Cache::Data(t) => {
                         Owned::new(Node {
                             payload: Payload::Data(t),
-                            next: Atomic::null()
+                            next: Atomic::null(),
                         })
                     }
-                    Cache::Node(n) => n
+                    Cache::Node(n) => n,
                 }
             }
 
@@ -145,8 +148,7 @@ impl<T> MsQueue<T> {
 
             // Is the queue in Data mode (empty queues can be viewed as either mode)?
             if tail.is_data() ||
-                self.head.load(Relaxed, &guard).unwrap().as_raw() == tail.as_raw()
-            {
+               self.head.load(Relaxed, &guard).unwrap().as_raw() == tail.as_raw() {
                 // Attempt to push onto the `tail` snapshot; fails if
                 // `tail.next` has changed, which will always be the case if the
                 // queue has transitioned to blocking mode.
@@ -162,11 +164,9 @@ impl<T> MsQueue<T> {
                 let head = self.head.load(Acquire, &guard).unwrap();
                 // Get a handle on the first blocked node. Racy, so queue might
                 // be empty or in data mode by the time we see it.
-                let request = head.next.load(Acquire, &guard).and_then(|next| {
-                    match next.payload {
-                        Payload::Blocked(signal) => Some((next, signal)),
-                        Payload::Data(_) => None,
-                    }
+                let request = head.next.load(Acquire, &guard).and_then(|next| match next.payload {
+                    Payload::Blocked(signal) => Some((next, signal)),
+                    Payload::Data(_) => None,
                 });
                 if let Some((blocked_node, signal)) = request {
                     // race to dequeue the node
@@ -284,7 +284,9 @@ impl<T> MsQueue<T> {
                 // The current tail is in data mode, so we probably need to abort.
                 // BUT, it might be the sentinel, so check for that first.
                 let head = self.head.load(Relaxed, &guard).unwrap();
-                if tail.is_data() && tail.as_raw() != head.as_raw() { continue; }
+                if tail.is_data() && tail.as_raw() != head.as_raw() {
+                    continue;
+                }
             }
 
             // At this point, the tail snapshot is either a blocked node deep in
@@ -416,7 +418,9 @@ mod test {
                     assert!(elem > cur);
                     cur = elem;
 
-                    if cur == CONC_COUNT - 1 { break }
+                    if cur == CONC_COUNT - 1 {
+                        break;
+                    }
                 }
             }
         }
@@ -429,53 +433,48 @@ mod test {
                 scope.spawn(move || recv(i, qr));
             }
 
-            scope.spawn(|| {
-                for i in 0..CONC_COUNT {
-                    q.push(i);
-                }
+            scope.spawn(|| for i in 0..CONC_COUNT {
+                q.push(i);
             })
         });
     }
 
     #[test]
     fn push_try_pop_many_mpmc() {
-        enum LR { Left(i64), Right(i64) }
+        enum LR {
+            Left(i64),
+            Right(i64),
+        }
 
         let q: MsQueue<LR> = MsQueue::new();
         assert!(q.is_empty());
 
-        scope(|scope| {
-            for _t in 0..2 {
-                scope.spawn(|| {
-                    for i in CONC_COUNT-1..CONC_COUNT {
-                        q.push(LR::Left(i))
+        scope(|scope| for _t in 0..2 {
+            scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
+                q.push(LR::Left(i))
+            });
+            scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
+                q.push(LR::Right(i))
+            });
+            scope.spawn(|| {
+                let mut vl = vec![];
+                let mut vr = vec![];
+                for _i in 0..CONC_COUNT {
+                    match q.try_pop() {
+                        Some(LR::Left(x)) => vl.push(x),
+                        Some(LR::Right(x)) => vr.push(x),
+                        _ => {}
                     }
-                });
-                scope.spawn(|| {
-                    for i in CONC_COUNT-1..CONC_COUNT {
-                        q.push(LR::Right(i))
-                    }
-                });
-                scope.spawn(|| {
-                    let mut vl = vec![];
-                    let mut vr = vec![];
-                    for _i in 0..CONC_COUNT {
-                        match q.try_pop() {
-                            Some(LR::Left(x)) => vl.push(x),
-                            Some(LR::Right(x)) => vr.push(x),
-                            _ => {}
-                        }
-                    }
+                }
 
-                    let mut vl2 = vl.clone();
-                    let mut vr2 = vr.clone();
-                    vl2.sort();
-                    vr2.sort();
+                let mut vl2 = vl.clone();
+                let mut vr2 = vr.clone();
+                vl2.sort();
+                vr2.sort();
 
-                    assert_eq!(vl, vl2);
-                    assert_eq!(vr, vr2);
-                });
-            }
+                assert_eq!(vl, vl2);
+                assert_eq!(vr, vr2);
+            });
         });
     }
 

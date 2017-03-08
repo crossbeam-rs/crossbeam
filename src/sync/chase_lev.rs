@@ -255,7 +255,7 @@ impl<T> Deque<T> {
 
         let size = b - t;
         if size <= 0 {
-            return Steal::Empty
+            return Steal::Empty;
         }
 
         unsafe {
@@ -375,9 +375,7 @@ impl<T> Buffer<T> {
     }
 
     fn mask(&self) -> isize {
-        unsafe {
-            ((*self.storage.get()).capacity() - 1) as isize
-        }
+        unsafe { ((*self.storage.get()).capacity() - 1) as isize }
     }
 
     unsafe fn elem(&self, i: isize) -> *mut T {
@@ -417,8 +415,7 @@ mod tests {
 
     use std::thread;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT,
-                            AtomicUsize, ATOMIC_USIZE_INIT};
+    use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, AtomicUsize, ATOMIC_USIZE_INIT};
     use std::sync::atomic::Ordering::SeqCst;
 
     use self::rand::Rng;
@@ -468,7 +465,9 @@ mod tests {
             let mut left = AMT;
             while left > 0 {
                 match s.steal() {
-                    Steal::Data((1, 10)) => { left -= 1; }
+                    Steal::Data((1, 10)) => {
+                        left -= 1;
+                    }
                     Steal::Data(..) => panic!(),
                     Steal::Abort | Steal::Empty => {}
                 }
@@ -482,20 +481,17 @@ mod tests {
         t.join().unwrap();
     }
 
-    fn stampede(mut w: Worker<Box<isize>>,
-                s: Stealer<Box<isize>>,
-                nthreads: isize,
-                amt: usize) {
+    fn stampede(mut w: Worker<Box<isize>>, s: Stealer<Box<isize>>, nthreads: isize, amt: usize) {
         for _ in 0..amt {
             w.push(Box::new(20));
         }
         let remaining = Arc::new(AtomicUsize::new(amt));
 
-        let threads = (0..nthreads).map(|_| {
-            let remaining = remaining.clone();
-            let s = s.clone();
-            thread::spawn(move || {
-                while remaining.load(SeqCst) > 0 {
+        let threads = (0..nthreads)
+            .map(|_| {
+                let remaining = remaining.clone();
+                let s = s.clone();
+                thread::spawn(move || while remaining.load(SeqCst) > 0 {
                     match s.steal() {
                         Steal::Data(val) => {
                             if *val == 20 {
@@ -506,9 +502,9 @@ mod tests {
                         }
                         Steal::Abort | Steal::Empty => {}
                     }
-                }
+                })
             })
-        }).collect::<Vec<_>>();
+            .collect::<Vec<_>>();
 
         while remaining.load(SeqCst) > 0 {
             if let Some(val) = w.try_pop() {
@@ -534,12 +530,12 @@ mod tests {
     #[test]
     fn many_stampede() {
         static AMT: usize = 4;
-        let threads = (0..AMT).map(|_| {
-            let (w, s) = deque();
-            thread::spawn(|| {
-                stampede(w, s, 4, 10000);
+        let threads = (0..AMT)
+            .map(|_| {
+                let (w, s) = deque();
+                thread::spawn(|| { stampede(w, s, 4, 10000); })
             })
-        }).collect::<Vec<_>>();
+            .collect::<Vec<_>>();
 
         for thread in threads.into_iter() {
             thread.join().unwrap();
@@ -554,19 +550,21 @@ mod tests {
         static HITS: AtomicUsize = ATOMIC_USIZE_INIT;
         let (mut w, s) = deque();
 
-        let threads = (0..NTHREADS).map(|_| {
-            let s = s.clone();
-            thread::spawn(move || {
-                loop {
+        let threads = (0..NTHREADS)
+            .map(|_| {
+                let s = s.clone();
+                thread::spawn(move || loop {
                     match s.steal() {
-                        Steal::Data(2) => { HITS.fetch_add(1, SeqCst); }
+                        Steal::Data(2) => {
+                            HITS.fetch_add(1, SeqCst);
+                        }
                         Steal::Data(..) => panic!(),
                         _ if DONE.load(SeqCst) => break,
                         _ => {}
                     }
-                }
+                })
             })
-        }).collect::<Vec<_>>();
+            .collect::<Vec<_>>();
 
         let mut rng = rand::thread_rng();
         let mut expected = 0;
@@ -574,7 +572,9 @@ mod tests {
             if rng.gen_range(0, 3) == 2 {
                 match w.try_pop() {
                     None => {}
-                    Some(2) => { HITS.fetch_add(1, SeqCst); },
+                    Some(2) => {
+                        HITS.fetch_add(1, SeqCst);
+                    }
                     Some(_) => panic!(),
                 }
             } else {
@@ -586,7 +586,9 @@ mod tests {
         while HITS.load(SeqCst) < AMT as usize {
             match w.try_pop() {
                 None => {}
-                Some(2) => { HITS.fetch_add(1, SeqCst); },
+                Some(2) => {
+                    HITS.fetch_add(1, SeqCst);
+                }
                 Some(_) => panic!(),
             }
         }
@@ -606,21 +608,24 @@ mod tests {
         static DONE: AtomicBool = ATOMIC_BOOL_INIT;
         let (mut w, s) = deque();
 
-        let (threads, hits): (Vec<_>, Vec<_>) = (0..NTHREADS).map(|_| {
-            let s = s.clone();
-            let ctr = Arc::new(AtomicUsize::new(0));
-            let ctr2 = ctr.clone();
-            (thread::spawn(move || {
-                loop {
-                    match s.steal() {
-                        Steal::Data((1, 2)) => { ctr.fetch_add(1, SeqCst); }
-                        Steal::Data(..) => panic!(),
-                        _ if DONE.load(SeqCst) => break,
-                        _ => {}
-                    }
-                }
-            }), ctr2)
-        }).unzip();
+        let (threads, hits): (Vec<_>, Vec<_>) = (0..NTHREADS)
+            .map(|_| {
+                let s = s.clone();
+                let ctr = Arc::new(AtomicUsize::new(0));
+                let ctr2 = ctr.clone();
+                (thread::spawn(move || loop {
+                     match s.steal() {
+                         Steal::Data((1, 2)) => {
+                             ctr.fetch_add(1, SeqCst);
+                         }
+                         Steal::Data(..) => panic!(),
+                         _ if DONE.load(SeqCst) => break,
+                         _ => {}
+                     }
+                 }),
+                 ctr2)
+            })
+            .unzip();
 
         let mut rng = rand::thread_rng();
         let mut myhit = false;
@@ -639,10 +644,12 @@ mod tests {
 
             for slot in hits.iter() {
                 let amt = slot.load(SeqCst);
-                if amt == 0 { continue 'outer; }
+                if amt == 0 {
+                    continue 'outer;
+                }
             }
             if myhit {
-                break
+                break;
             }
         }
 

@@ -117,13 +117,17 @@ struct Node {
 }
 
 impl ConcBag {
-    pub fn insert(&self, t: Bag){
-        let n = Box::into_raw(Box::new(
-            Node { data: t, next: AtomicPtr::new(ptr::null_mut()) }));
+    pub fn insert(&self, t: Bag) {
+        let n = Box::into_raw(Box::new(Node {
+            data: t,
+            next: AtomicPtr::new(ptr::null_mut()),
+        }));
         loop {
             let head = self.head.load(Acquire);
             unsafe { (*n).next.store(head, Relaxed) };
-            if self.head.compare_and_swap(head, n, Release) == head { break }
+            if self.head.compare_and_swap(head, n, Release) == head {
+                break;
+            }
         }
     }
 

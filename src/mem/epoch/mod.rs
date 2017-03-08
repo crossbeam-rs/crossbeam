@@ -203,11 +203,10 @@ impl<'a, T> Deref for Shared<'a, T> {
 
 impl<'a, T> Shared<'a, T> {
     unsafe fn from_raw(raw: *mut T) -> Option<Shared<'a, T>> {
-        if raw == ptr::null_mut() { None }
-        else {
-            Some(Shared {
-                data: mem::transmute::<*mut T, &T>(raw)
-            })
+        if raw == ptr::null_mut() {
+            None
+        } else {
+            Some(Shared { data: mem::transmute::<*mut T, &T>(raw) })
         }
     }
 
@@ -229,10 +228,9 @@ impl<'a, T> Shared<'a, T> {
     ///
     /// This is safe as it preserves the invariant that `'a` spans an epoch pin.
     pub fn map<U: 'a, F>(self, f: F) -> Shared<'a, U>
-        where F: FnOnce(&'a T) -> &'a U {
-        unsafe {
-            Shared::from_ref(f(&self))
-        }
+        where F: FnOnce(&'a T) -> &'a U
+    {
+        unsafe { Shared::from_ref(f(&self)) }
     }
 
     pub fn as_raw(&self) -> *mut T {
