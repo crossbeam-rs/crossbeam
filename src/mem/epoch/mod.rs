@@ -136,8 +136,7 @@ pub use self::atomic::Atomic;
 pub use self::guard::{pin, Guard, Pinned};
 
 use std::ops::{Deref, DerefMut};
-use std::ptr;
-use std::mem;
+use std::{mem, ptr};
 
 /// Like `Box<T>`: an owned, heap-allocated data value of type `T`.
 // TODO: Eliminate this.
