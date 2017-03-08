@@ -5,8 +5,9 @@ use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
+use std::io;
 
-use {spawn_unsafe, FnBox};
+use {builder_spawn_unsafe, FnBox};
 use sync::AtomicOption;
 
 pub struct Scope<'a> {
@@ -229,29 +230,67 @@ impl<'a> Scope<'a> {
     pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T> where
         F: FnOnce() -> T + Send + 'a, T: Send + 'a
     {
+        self.builder().spawn(f).unwrap()
+    }
+
+    /// Generates the base configuration for spawning a scoped thread, from which configuration
+    /// methods can be chained.
+    pub fn builder<'s>(&'s self) -> ScopedThreadBuilder<'s, 'a> {
+        ScopedThreadBuilder {
+            scope: self,
+            builder: thread::Builder::new(),
+        }
+    }
+}
+
+/// Scoped thread configuration. Provides detailed control over the properties and behavior of new
+/// scoped threads.
+pub struct ScopedThreadBuilder<'s, 'a: 's> {
+    scope: &'s Scope<'a>,
+    builder: thread::Builder,
+}
+
+impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
+    /// Names the thread-to-be. Currently the name is used for identification only in panic
+    /// messages.
+    pub fn name(mut self, name: String) -> ScopedThreadBuilder<'s, 'a> {
+        self.builder = self.builder.name(name);
+        self
+    }
+
+    /// Sets the size of the stack for the new thread.
+    pub fn stack_size(mut self, size: usize) -> ScopedThreadBuilder<'s, 'a> {
+        self.builder = self.builder.stack_size(size);
+        self
+    }
+
+    /// Spawns a new thread, and returns a join handle for it.
+    pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<T>>
+            where F: FnOnce() -> T + Send + 'a, T: Send + 'a
+    {
         let their_packet = Arc::new(AtomicOption::new());
         let my_packet = their_packet.clone();
 
-        let join_handle = unsafe {
-            spawn_unsafe(move || {
+        let join_handle = try!(unsafe {
+            builder_spawn_unsafe(self.builder, move || {
                 their_packet.swap(f(), Ordering::Relaxed);
             })
-        };
+        });
 
         let thread = join_handle.thread().clone();
         let deferred_handle = Rc::new(RefCell::new(JoinState::Running(join_handle)));
         let my_handle = deferred_handle.clone();
 
-        self.defer(move || {
+        self.scope.defer(move || {
             let mut state = deferred_handle.borrow_mut();
             state.join();
         });
 
-        ScopedJoinHandle {
+        Ok(ScopedJoinHandle {
             inner: my_handle,
             packet: my_packet,
             thread: thread,
-        }
+        })
     }
 }
 
