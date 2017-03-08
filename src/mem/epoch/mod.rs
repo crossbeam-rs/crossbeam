@@ -135,7 +135,7 @@ mod participant;
 mod participants;
 
 pub use self::atomic::Atomic;
-pub use self::guard::{pin, Guard};
+pub use self::guard::{pin, Guard, Pinned};
 
 use std::ops::{Deref, DerefMut};
 use std::ptr;
@@ -160,6 +160,10 @@ impl<T> Owned<T> {
     /// Move data out of the owned box, deallocating the box.
     pub fn into_inner(self) -> T {
         *self.data
+    }
+
+    pub fn into_pinned(self, guard: Guard) -> Pinned<Box<T>> {
+        Pinned::new(self.data, guard)
     }
 }
 
@@ -219,6 +223,10 @@ impl<'a, T> Shared<'a, T> {
 
     pub fn as_raw(&self) -> *mut T {
         self.data as *const _ as *mut _
+    }
+
+    pub fn into_pinned(self, guard: Guard) -> Pinned<&'a T> {
+        Pinned::new(self.data, guard)
     }
 }
 
