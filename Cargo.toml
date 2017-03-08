@@ -7,6 +7,7 @@ repository = "https://github.com/aturon/crossbeam"
 documentation = "http://aturon.github.io/crossbeam-doc/crossbeam/"
 readme = "README.md"
 license = "Apache-2.0/MIT"
+categories = ["concurrency", "data-structures"]
 
 [features]
 nightly = []
