@@ -23,15 +23,10 @@ struct Item {
 }
 
 /// A single, thread-local bag of garbage.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bag(Vec<Item>);
 
 impl Bag {
-    /// Create a new, empty bag of garbage.
-    fn new() -> Bag {
-        Bag(Vec::new())
-    }
-
     /// Insert a pointer to be deallocated when the garbage is collected.
     ///
     /// This inserts `elem` into the bag of garbage with the destructor deallocating it.
@@ -73,7 +68,7 @@ unsafe impl Send for Bag {}
 unsafe impl Sync for Bag {}
 
 /// A thread-local set of garbage bags.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Local {
     /// Garbage added at least one epoch behind the current local epoch.
     pub old: Bag,
@@ -84,15 +79,6 @@ pub struct Local {
 }
 
 impl Local {
-    /// Create an empty garbage set.
-    pub fn new() -> Local {
-        Local {
-            old: Bag::new(),
-            cur: Bag::new(),
-            new: Bag::new(),
-        }
-    }
-
     /// Insert a new element to be deallocated eventually.
     pub fn insert<T>(&mut self, elem: *mut T) {
         self.new.insert(elem)
@@ -119,7 +105,7 @@ impl Local {
 /// A concurrent garbage bag.
 ///
 /// This is currently based on Treiber's stack. The elements are themselves owned `Bag`s.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ConcBag {
     /// The top node of the stack.
     head: AtomicPtr<Node>,
@@ -187,3 +173,37 @@ impl ConcBag {
 
 // Null pointer is a valid and null `Vec<T>` is also.
 unsafe impl ZerosValid for ConcBag {}
+
+/// A cross-thread set of garbage bags.
+#[derive(Debug, Default)]
+pub struct Global {
+    /// The garbage bags.
+    ///
+    /// This is in order: old, current, new.
+    pub bags: [ConcBag; 3],
+}
+
+impl Global {
+    /// Create an empty, global set of garbage.
+    // TODO: When stabilized, this can be merged with `Default`.
+    #[cfg(feature = "nightly")]
+    pub const fn new() -> Global {
+        Global {
+            old: ConcBag::zeroed(),
+            cur: ConcBag::zeroed(),
+            new: ConcBag::zeroed(),
+        }
+    }
+
+    /// Collect the garbage of some epoch.
+    pub fn collect(&self, epoch: usize) {
+        // Find the associated array entry and collect it.
+        self.bags[epoch % 3].collect()
+    }
+
+    /// Insert a bag of garbage into some epoch..
+    pub fn insert(&self, epoch: usize, bag: Bag) {
+        // Find the associated array entry and insert the bag.
+        self.bags[epoch % 3].insert(bag)
+    }
+}

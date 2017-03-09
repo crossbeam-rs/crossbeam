@@ -1,26 +1,33 @@
-// Manages the global participant list, which is an intrustive list in
-// which items are lazily removed on traversal (after being
-// "logically" deleted by becoming inactive.)
+// Global participant list.
+//
+// The global participant list is an intrustive list in which items are lazily removed on traversal
+// (after being "logically" deleted by becoming inactive).
 
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::Ordering::{Relaxed, Acquire, Release};
+use std::sync::atomic;
 
 use mem::epoch::{Atomic, Owned, Guard};
 use mem::epoch::participant::Participant;
 use mem::CachePadded;
 
-/// Global, threadsafe list of threads participating in epoch management.
-#[derive(Debug)]
+/// A thread-safe list of threads participating in epoch management.
+///
+/// Currently implemented like a Treiber stack.
+#[derive(Debug, Default)]
 pub struct Participants {
+    /// The head node.
     head: Atomic<ParticipantNode>,
 }
 
+/// A participant node.
+///
+/// The data is cache padded to avoid cache line racing.
 #[derive(Debug)]
 pub struct ParticipantNode(CachePadded<Participant>);
 
-impl ParticipantNode {
-    pub fn new() -> ParticipantNode {
+impl Default for ParticipantNode {
+    fn default() -> ParticipantNode {
         ParticipantNode(CachePadded::new(Participant::new()))
     }
 }
@@ -39,82 +46,99 @@ impl DerefMut for ParticipantNode {
 }
 
 impl Participants {
-    #[cfg(not(feature = "nightly"))]
-    pub fn new() -> Participants {
-        Participants { head: Atomic::null() }
-    }
-
+    // TODO: Remove this cfg when `const fn` is stabilized.
+    /// Create an empty list of participants.
     #[cfg(feature = "nightly")]
     pub const fn new() -> Participants {
         Participants { head: Atomic::null() }
     }
 
-    /// Enroll a new thread in epoch management by adding a new `Particpant`
+    /// Enroll the current thread into the list.
+    ///
+    /// This adds the current thread to the list in epoch management by adding a new `Particpant`
     /// record to the global list.
     pub fn enroll(&self) -> *const Participant {
+        // The new list.
         let mut participant = Owned::new(ParticipantNode::new());
 
-        // we ultimately use epoch tracking to free Participant nodes, but we
-        // can't actually enter an epoch here, so fake it; we know the node
-        // can't be removed until marked inactive anyway.
-        let fake_guard = ();
-        let g: &'static Guard = unsafe { mem::transmute(&fake_guard) };
+        // We ultimately use epoch tracking to free `Participant` nodes, but we can't actually
+        // enter an epoch here, so fake it; we know the node can't be removed until marked inactive
+        // anyway.
+        let guard = unsafe { Guard::fake() };
+
         loop {
-            let head = self.head.load(Relaxed, g);
-            participant.next.store_shared(head, Relaxed);
-            match self.head.compare_and_set_ref(head, participant, Release, g) {
+            // Load the head of the participant list we're traversing.
+            let head = self.head.load(atomic::Ordering::Relaxed, &guard);
+            // Move the head to the tail of the new list, which we will store.
+            participant.next.store_shared(head, atomic::Ordering::Relaxed);
+
+            // To solve the ABA problem, we must use CAS, testing against the loaded head.
+            match self.head.compare_and_set_ref(head, participant, atomic::Ordering::Release, &guard) {
                 Ok(shared) => {
-                    let shared: &Participant = &shared;
-                    return shared;
+                    // It succeeded and the new list is now placed at `self`.
+                    return &shared;
                 }
                 Err(owned) => {
+                    // It failed. Put back the value and retry.
                     participant = owned;
                 }
             }
         }
+
+        // To avoid the guard from exiting the epoch, we leak it (no memory leakage is done, though).
+        mem::forget(guard)
     }
 
-    pub fn iter<'a>(&'a self, g: &'a Guard) -> Iter<'a> {
+    /// Get an iterator over the participants.
+    pub fn iter(&self, g: &Guard) -> impl Iterator<Item = &Participant> {
         Iter {
             guard: g,
             next: &self.head,
-            needs_acq: true,
+            first: true,
         }
     }
 }
 
+/// An iterator over items of a participant list.
 #[derive(Debug)]
 pub struct Iter<'a> {
-    // pin to an epoch so that we can free inactive nodes
+    // Pin to an epoch.
+    //
+    // This ensures that we can free inactive nodes.
     guard: &'a Guard,
+    /// The next node.
     next: &'a Atomic<ParticipantNode>,
-
-    // an Acquire read is needed only for the first read, due to release
-    // sequences
-    needs_acq: bool,
+    // Has `self.next()` **not** been called before?
+    first: bool,
 }
 
 impl<'a> Iterator for Iter<'a> {
     type Item = &'a Participant;
     fn next(&mut self) -> Option<&'a Participant> {
-        let mut cur = if self.needs_acq {
-            self.needs_acq = false;
-            self.next.load(Acquire, self.guard)
-        } else {
-            self.next.load(Relaxed, self.guard)
-        };
+        // Load the next node.
+        let mut cur = self.next.load(if self.first {
+            // an Acquire read is needed only for the first read, due to release
+            // sequences
+            atomic::Ordering::Acquire
+        } else { atomic::Ordering::Relaxed }, self.guard);
 
+        // Find the next available. node
         while let Some(n) = cur {
-            // attempt to clean up inactive nodes
-            if !n.active.load(Relaxed) {
-                cur = n.next.load(Relaxed, self.guard);
-                // TODO: actually reclaim inactive participants!
+            // Attempt to clean up inactive nodes.
+            if !n.active.load(atomic::Ordering::Relaxed) {
+                // Go to the next node and repeat.
+                cur = n.next.load(atomic::Ordering::Relaxed, self.guard);
+
+                // TODO: Actually reclaim inactive participants!
             } else {
+                // Go to the next node.
                 self.next = &n.next;
+
                 return Some(&n);
             }
         }
 
+        // If the loop was finished without returning, no more nodes are to be found.
         None
     }
 }

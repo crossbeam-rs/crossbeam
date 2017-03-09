@@ -72,20 +72,22 @@ pub struct CachePadded<T> {
 
 impl<T: ZerosValid> CachePadded<T> {
     /// Create a zeroed cache padded value.
-    #[cfg(not(feature = "nightly"))]
-    pub fn zeroed() -> CachePadded<T> {
-        CachePadded {
-            data: UnsafeCell::new(([0; CACHE_LINE])),
-            _marker: ([], marker::PhantomData),
-        }
-    }
-
-    /// Create a zeroed cache padded value.
     #[cfg(feature = "nightly")]
     pub const fn zeroed() -> CachePadded<T> {
         CachePadded {
             data: UnsafeCell::new(([0; CACHE_LINE])),
-            _marker: ([], marker::PhantomData),
+            _pad: [],
+            _marker: marker::PhantomData,
+        }
+    }
+}
+
+impl<T: ZerosValid> Default for CachePadded<T> {
+    fn default() -> CachePadded<T> {
+        CachePadded {
+            data: UnsafeCell::new(([0; CACHE_LINE])),
+            _pad: [],
+            _marker: marker::PhantomData,
         }
     }
 }
