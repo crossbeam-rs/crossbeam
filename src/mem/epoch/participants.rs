@@ -3,8 +3,7 @@
 // The global participant list is an intrustive list in which items are lazily removed on traversal
 // (after being "logically" deleted by becoming inactive).
 
-use std::mem;
-use std::ops::{Deref, DerefMut};
+use std::{ops, mem};
 use std::sync::atomic;
 
 use mem::epoch::{Atomic, Owned, Guard};
@@ -32,14 +31,14 @@ impl Default for ParticipantNode {
     }
 }
 
-impl Deref for ParticipantNode {
+impl ops::Deref for ParticipantNode {
     type Target = Participant;
     fn deref(&self) -> &Participant {
         &self.0
     }
 }
 
-impl DerefMut for ParticipantNode {
+impl ops::DerefMut for ParticipantNode {
     fn deref_mut(&mut self) -> &mut Participant {
         &mut self.0
     }

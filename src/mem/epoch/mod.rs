@@ -135,8 +135,7 @@ mod participants;
 pub use self::atomic::Atomic;
 pub use self::guard::{pin, Guard, Pinned};
 
-use std::ops::{Deref, DerefMut};
-use std::{mem, ptr};
+use std::{mem, ptr, ops};
 
 /// Like `Box<T>`: an owned, heap-allocated data value of type `T`.
 // TODO: Eliminate this.
@@ -168,14 +167,14 @@ impl<T> Owned<T> {
     }
 }
 
-impl<T> Deref for Owned<T> {
+impl<T> ops::Deref for Owned<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.data
     }
 }
 
-impl<T> DerefMut for Owned<T> {
+impl<T> ops::DerefMut for Owned<T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut self.data
     }
@@ -267,7 +266,7 @@ impl<'a, T> Clone for Shared<'a, T> {
     }
 }
 
-impl<'a, T> Deref for Shared<'a, T> {
+impl<'a, T> ops::Deref for Shared<'a, T> {
     type Target = &'a T;
     fn deref(&self) -> &&'a T {
         &self.data
