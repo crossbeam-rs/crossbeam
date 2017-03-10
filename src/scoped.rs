@@ -1,12 +1,12 @@
 //! Scoped threads.
 
-use std::boxed::FnBox;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::{mem, fmt, io, thread};
 
+use FnBox;
 use builder_spawn_unsafe;
 use sync::AtomicOption;
 
@@ -117,13 +117,13 @@ impl<T> fmt::Debug for ScopedJoinHandle<T> {
 
 impl<'a> Scope<'a> {
     /// Pop the last destructor added.
-    fn pop_dtor(&self) -> Option<Box<FnBox>> {
+    fn pop_dtor(&self) -> Option<Box<FnBox + 'a>> {
         // Borrow the destructor list.
         let mut dtors = self.dtors.borrow_mut();
 
-        if let Some(node) = dtors.take() {
+        if let Some(mut node) = dtors.take() {
             // Put the next node in the previous node's place.
-            *dtors = node.next.take().map(|&b| b);
+            *dtors = node.next.take().map(|b| *b);
 
             Some(node.dtor)
         } else {
@@ -144,7 +144,7 @@ impl<'a> Scope<'a> {
 
         loop {
             // Pop and run the top dtor.
-            if let Some(x) = self.pop_dtors() { x } else {
+            if let Some(x) = self.pop_dtor() { x } else {
                 // No more destructors.
                 break;
             }.call_box()
@@ -367,7 +367,7 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
         }
 
         Ok(ScopedJoinHandle {
-            inner: my_handle,
+            inner: join_handle,
             packet: my_packet,
             thread: thread,
         })

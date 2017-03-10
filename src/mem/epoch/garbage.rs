@@ -32,7 +32,7 @@ impl Bag {
     /// This inserts `elem` into the bag of garbage with the destructor deallocating it.
     fn insert<T>(&mut self, elem: *mut T) {
         /// The freeing destructor.
-        unsafe fn dtor<T>(t: *mut u8, len: usize) {
+        unsafe fn dtor<T>(t: *mut u8) {
             // Construct a vector and drop it.
             drop(Vec::from_raw_parts(t as *mut T, 0, 1));
         }
@@ -57,7 +57,7 @@ impl Bag {
     /// Run all destructors of the garbage in the bag.
     pub unsafe fn collect(&mut self) {
         // Go over all the garbage, remove it and run the destructors.
-        for item in data.drain(..) {
+        for item in self.0.drain(..) {
             (item.dtor)(item.ptr);
         }
     }
@@ -96,7 +96,7 @@ impl Local {
     }
 
     /// Get the total number of garbage items in the set.
-    pub fn size(&self) -> usize {
+    pub fn len(&self) -> usize {
         // Sum the bags.
         self.old.len() + self.cur.len() + self.new.len()
     }
@@ -180,7 +180,7 @@ pub struct Global {
     /// The garbage bags.
     ///
     /// This is in order: old, current, new.
-    pub bags: [ConcBag; 3],
+    bags: [ConcBag; 3],
 }
 
 impl Global {
@@ -197,8 +197,9 @@ impl Global {
 
     /// Collect the garbage of some epoch.
     pub fn collect(&self, epoch: usize) {
-        // Find the associated array entry and collect it.
-        self.bags[epoch % 3].collect()
+        // Find the associated array entry and collect it. Due to the invariants of this type, this
+        // is safe.
+        unsafe { self.bags[epoch % 3].collect() }
     }
 
     /// Insert a bag of garbage into some epoch..

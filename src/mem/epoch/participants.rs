@@ -10,15 +10,6 @@ use mem::epoch::{Atomic, Owned, Guard};
 use mem::epoch::participant::Participant;
 use mem::CachePadded;
 
-/// A thread-safe list of threads participating in epoch management.
-///
-/// Currently implemented like a Treiber stack.
-#[derive(Debug, Default)]
-pub struct Participants {
-    /// The head node.
-    head: Atomic<ParticipantNode>,
-}
-
 /// A participant node.
 ///
 /// The data is cache padded to avoid cache line racing.
@@ -27,7 +18,7 @@ pub struct ParticipantNode(CachePadded<Participant>);
 
 impl Default for ParticipantNode {
     fn default() -> ParticipantNode {
-        ParticipantNode(CachePadded::new(Participant::new()))
+        ParticipantNode(CachePadded::new(Participant::default()))
     }
 }
 
@@ -44,6 +35,15 @@ impl ops::DerefMut for ParticipantNode {
     }
 }
 
+/// A thread-safe list of threads participating in epoch management.
+///
+/// Currently implemented like a Treiber stack.
+#[derive(Debug, Default)]
+pub struct Participants {
+    /// The head node.
+    head: Atomic<ParticipantNode>,
+}
+
 impl Participants {
     // TODO: Remove this cfg when `const fn` is stabilized.
     /// Create an empty list of participants.
@@ -58,24 +58,29 @@ impl Participants {
     /// record to the global list.
     pub fn enroll(&self) -> *const Participant {
         // The new list.
-        let mut participant = Owned::new(ParticipantNode::new());
+        let mut participant = Owned::new(ParticipantNode::default());
 
         // We ultimately use epoch tracking to free `Participant` nodes, but we can't actually
         // enter an epoch here, so fake it; we know the node can't be removed until marked inactive
         // anyway.
-        let guard = unsafe { Guard::fake() };
+        let fake_guard = ();
+        let guard: &'static Guard = unsafe { mem::transmute(&fake_guard) };
 
         loop {
             // Load the head of the participant list we're traversing.
-            let head = self.head.load(atomic::Ordering::Relaxed, &guard);
+            let head = self.head.load(atomic::Ordering::Relaxed, guard);
             // Move the head to the tail of the new list, which we will store.
             participant.next.store_shared(head, atomic::Ordering::Relaxed);
 
             // To solve the ABA problem, we must use CAS, testing against the loaded head.
-            match self.head.compare_and_set_ref(head, participant, atomic::Ordering::Release, &guard) {
+            match self.head.compare_and_set_ref(head, participant, atomic::Ordering::Release, guard) {
                 Ok(shared) => {
                     // It succeeded and the new list is now placed at `self`.
-                    return &shared;
+
+                    // We cast to `Participant` when we return.
+                    // FIXME: This is an ugly ugly hack.
+                    let shared: &Participant = &shared;
+                    return shared;
                 }
                 Err(owned) => {
                     // It failed. Put back the value and retry.
@@ -83,13 +88,11 @@ impl Participants {
                 }
             }
         }
-
-        // To avoid the guard from exiting the epoch, we leak it (no memory leakage is done, though).
-        mem::forget(guard)
     }
 
     /// Get an iterator over the participants.
-    pub fn iter(&self, g: &Guard) -> impl Iterator<Item = &Participant> {
+    // FIXME: For some reason, removing these lifetimes breaks the code.
+    pub fn iter<'a>(&'a self, g: &'a Guard) -> Iter<'a> {
         Iter {
             guard: g,
             next: &self.head,

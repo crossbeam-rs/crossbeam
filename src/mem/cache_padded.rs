@@ -75,7 +75,7 @@ impl<T: ZerosValid> CachePadded<T> {
     #[cfg(feature = "nightly")]
     pub const fn zeroed() -> CachePadded<T> {
         CachePadded {
-            data: UnsafeCell::new(([0; CACHE_LINE])),
+            data: UnsafeCell::new([0; CACHE_LINE]),
             _pad: [],
             _marker: marker::PhantomData,
         }
@@ -85,7 +85,7 @@ impl<T: ZerosValid> CachePadded<T> {
 impl<T: ZerosValid> Default for CachePadded<T> {
     fn default() -> CachePadded<T> {
         CachePadded {
-            data: UnsafeCell::new(([0; CACHE_LINE])),
+            data: UnsafeCell::new([0; CACHE_LINE]),
             _pad: [],
             _marker: marker::PhantomData,
         }
@@ -108,8 +108,9 @@ impl<T> CachePadded<T> {
 
         // Construct the (zeroed) type.
         let ret = CachePadded {
-            data: UnsafeCell::new(([0; CACHE_LINE])),
-            _marker: ([], marker::PhantomData),
+            data: UnsafeCell::new([0; CACHE_LINE]),
+            _pad: [],
+            _marker: marker::PhantomData,
         };
 
         // Copy the data into the untyped buffer.

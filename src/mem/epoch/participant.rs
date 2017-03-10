@@ -8,7 +8,7 @@ use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use mem::epoch::{Atomic, Guard, garbage, global};
 use mem::epoch::participants::ParticipantNode;
 
-/// The garbage collection threshold (in bytes).
+/// The garbage collection threshold (in garbage items).
 const GC_THRESHOLD: usize = 32;
 
 /// Thread-local data for epoch participation.
@@ -51,7 +51,7 @@ impl Participant {
             atomic::fence(atomic::Ordering::SeqCst);
 
             // Load the global epoch counter and test if this epoch matches the global.
-            let global_epoch = global::get().epoch.load(atomic::Ordering::Relaxed);
+            let global_epoch = global::EPOCH.epoch.load(atomic::Ordering::Relaxed);
             if global_epoch != self.epoch.load(atomic::Ordering::Relaxed) {
                 // As it isn't already at the global epoch count, set it.
                 self.epoch.store(global_epoch, atomic::Ordering::Relaxed);
@@ -83,10 +83,10 @@ impl Participant {
     /// If it failed, it returns `Err(())`.
     pub fn try_collect(&self, guard: &Guard) -> Result<(), ()> {
         // Load the global epoch counter.
-        let cur_epoch = global::get().epoch.load(atomic::Ordering::SeqCst);
+        let cur_epoch = global::EPOCH.epoch.load(atomic::Ordering::SeqCst);
 
         // Go over the participants to ensure that none are critical.
-        for p in global::get().participants.iter(guard) {
+        for p in global::EPOCH.participants.iter(guard) {
             if p.is_critical() && p.epoch.load(atomic::Ordering::Relaxed) != cur_epoch {
                 // A participant was in critical state, and can thus not be GC'd at this moment.
                 return Err(());
@@ -101,7 +101,7 @@ impl Participant {
         // CAS with the new epoch. The reason we do CAS and not a simple store is that we want to
         // solve the ABA problem, as another thread could have updated the counter, causing us to
         // reverting its changes. Hence, we must ensure that this is NOT the case.
-        if global::get().epoch.compare_and_swap(cur_epoch, new_epoch, atomic::Ordering::SeqCst) != cur_epoch {
+        if global::EPOCH.epoch.compare_and_swap(cur_epoch, new_epoch, atomic::Ordering::SeqCst) != cur_epoch {
             // Another thread touched it, so the collection failed.
             return Err(());
         }
@@ -109,7 +109,7 @@ impl Participant {
         // If you've come so far, everything is right for collecting the garbage, so let's do it.
         unsafe {
             (*self.garbage.get()).collect();
-            global::get().garbage.collect(new_epoch.wrapping_add(1))
+            global::EPOCH.garbage.collect(new_epoch.wrapping_add(1))
         }
 
         // Update the epoch counter. As the epoch was collected, the ABA problem shouldn't be an
@@ -124,25 +124,26 @@ impl Participant {
     pub fn migrate_garbage(&self) {
         // Load the current epoch counter.
         let cur_epoch = self.epoch.load(atomic::Ordering::Relaxed);
-        // 
-        let local = unsafe { mem::replace(&mut *self.garbage.get(), garbage::Local::new()) };
-        global::get().garbage.insert(cur_epoch.wrapping_sub(1), local.old);
-        global::get().garbage.insert(cur_epoch, local.cur);
-        global::get().garbage.insert(cur_epoch.wrapping_add(1), local.new);
+        // Replace the local garbage set with an empty set.
+        let local = unsafe { mem::replace(&mut *self.garbage.get(), garbage::Local::default()) };
+        // Insert each epoch-kind into the global set.
+        global::EPOCH.garbage.insert(cur_epoch.wrapping_sub(1), local.old);
+        global::EPOCH.garbage.insert(cur_epoch, local.cur);
+        global::EPOCH.garbage.insert(cur_epoch.wrapping_add(1), local.new);
+
         // TODO
-        // global::get().garbage[global::get().epoch.load(atomic::Ordering::Relaxed) % 3].insert(local.new);
+        // global::EPOCH.garbage[global::EPOCH.epoch.load(atomic::Ordering::Relaxed) % 3].insert(local.new);
     }
 
-    /// How much garbage is this participant currently storing?
-    ///
-    /// Meassured in bytes.
-    pub fn garbage_size(&self) -> usize {
-        unsafe { (*self.garbage.get()).size() }
+    /// How many garbage items is this participant currently storing?
+    pub fn garbage_len(&self) -> usize {
+        unsafe { (*self.garbage.get()).len() }
     }
 
     /// Is this participant past its local GC threshold?
     pub fn should_gc(&self) -> bool {
-        self.garbage_size() >= GC_THRESHOLD
+        // We only GC when the garbage length is above some threshold.
+        self.garbage_len() >= GC_THRESHOLD
     }
 
     /// Is this participant in a critical state?

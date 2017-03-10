@@ -23,14 +23,27 @@
 #![cfg_attr(feature = "nightly",
             feature(const_fn, repr_simd, optin_builtin_traits))]
 
-use std::{io, thread, mem};
-use std::boxed::FnBox;
+#[macro_use]
+extern crate lazy_static;
+
+use std::{io, thread};
 
 pub use scoped::{scope, Scope, ScopedJoinHandle};
 
 pub mod mem;
 pub mod sync;
 mod scoped;
+
+/// A boxed closure.
+trait FnBox {
+    fn call_box(self: Box<Self>);
+}
+
+impl<F: FnOnce()> FnBox for F {
+    fn call_box(self: Box<Self>) {
+        (*self)()
+    }
+}
 
 /// Spawn a thread without any thread-safe checking.
 ///
@@ -57,6 +70,10 @@ pub unsafe fn spawn_unsafe<'a, F>(f: F) -> thread::JoinHandle<()>
 pub unsafe fn builder_spawn_unsafe<'a, F>(builder: thread::Builder, f: F)
     -> io::Result<thread::JoinHandle<()>>
     where F: FnOnce() + Send + 'a {
+    // We import this here to avoid colliding with the module of same name.
+    // TODO: Move when `mem` is removed.
+    use std::mem;
+
     // Transmute the closure to trick the compiler into believeing it is thread-safe (which it
     // hopefully is).
     let closure: Box<FnBox + 'a> = Box::new(f);

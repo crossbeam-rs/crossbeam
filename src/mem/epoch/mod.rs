@@ -158,7 +158,7 @@ impl<T> Owned<T> {
     ///
     /// Creating a raw pointer is not unsafe, but using it is.
     fn as_raw(&self) -> *mut T {
-        self.deref() as *const _ as *mut _
+        &**self as *const _ as *mut _
     }
 
     /// Move data out of the owned box, deallocating the box.
@@ -224,7 +224,7 @@ impl<'a, T> Shared<'a, T> {
     ///
     /// This is unsafe as it assumes the call side assure an epoch is valid for `'a`.
     unsafe fn from_owned(owned: Owned<T>) -> Shared<'a, T> {
-        let ret = Shared::from_ref(owned.deref());
+        let ret = Shared::from_ref(&*owned);
         mem::forget(owned);
         ret
     }

@@ -22,12 +22,14 @@ pub fn pin() -> Guard {
         // Start the epoch.
         let entered = p.enter();
 
-        // Initialize the guard.
-        let g = Guard::default();
+        // Construct the guard. This is safe as we have already called `enter`, ensuring that there
+        // is an active epoch for this thread.
+        let g = unsafe { Guard::fake() };
 
         // Collect the garbage if needed.
         if entered && p.should_gc() {
-            p.try_collect(&g);
+            // If it doesn't succeed, we will just wait 'till next time.
+            let _ = p.try_collect(&g);
         }
 
         g

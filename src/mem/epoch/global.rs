@@ -31,7 +31,7 @@ pub struct EpochState {
 
 /// The global epoch.
 #[cfg(feature = "nightly")]
-static EPOCH: EpochState = EpochState {
+pub static EPOCH: EpochState = EpochState {
     epoch: CachePadded::new(),
     garbage: garbage::Global::new(),
     participants: Participants::new(),
@@ -41,7 +41,7 @@ static EPOCH: EpochState = EpochState {
 #[cfg(not(feature = "nightly"))]
 lazy_static! {
     /// The global epoch.
-    static EPOCH: EpochState = EpochState::default();
+    pub static ref EPOCH: EpochState = EpochState::default();
 }
 
 unsafe impl Send for EpochState {}

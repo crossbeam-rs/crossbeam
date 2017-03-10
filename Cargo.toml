@@ -12,5 +12,8 @@ categories = ["concurrency", "data-structures"]
 [features]
 nightly = []
 
+[dependencies]
+lazy_static = "0.2"
+
 [dev-dependencies]
 rand = "0.3"

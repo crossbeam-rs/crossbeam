@@ -40,7 +40,7 @@ thread_local! {
     /// The local epoch state.
     static LOCAL_EPOCH: LocalEpoch = LocalEpoch {
         // Add the current thread to the global state.
-        participant: global::get().participants.enroll(),
+        participant: global::EPOCH.participants.enroll(),
     }
 }
 
@@ -52,5 +52,5 @@ thread_local! {
 /// It is relatively fast as it only accesses a thread-local variable.
 pub fn with_participant<F, T>(f: F) -> T
     where F: FnOnce(&Participant) -> T {
-    LOCAL_EPOCH.with(|e| f(e.get()))
+    LOCAL_EPOCH.with(|e| f(unsafe { &*e.participant }))
 }
