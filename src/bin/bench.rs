@@ -34,23 +34,23 @@ fn nanos(d: Duration) -> f64 {
 }
 
 trait Queue<T> {
-    fn push(&self, T);
-    fn try_pop(&self) -> Option<T>;
+    fn queue_(&self, T);
+    fn dequeue_(&self) -> Option<T>;
 }
 
 impl<T> Queue<T> for MsQueue<T> {
-    fn push(&self, t: T) { self.push(t) }
-    fn try_pop(&self) -> Option<T> { self.try_pop() }
+    fn queue_(&self, t: T) { self.queue(t) }
+    fn dequeue_(&self) -> Option<T> { self.dequeue() }
 }
 
 impl<T> Queue<T> for SegQueue<T> {
-    fn push(&self, t: T) { self.push(t) }
-    fn try_pop(&self) -> Option<T> { self.try_pop() }
+    fn queue_(&self, t: T) { self.queue(t) }
+    fn dequeue_(&self) -> Option<T> { self.dequeue() }
 }
 
 impl<T> Queue<T> for MpscQueue<T> {
-    fn push(&self, t: T) { self.push(t) }
-    fn try_pop(&self) -> Option<T> {
+    fn queue_(&self, t: T) { self.push(t) }
+    fn dequeue_(&self) -> Option<T> {
         use extra_impls::mpsc_queue::*;
 
         loop {
@@ -64,8 +64,8 @@ impl<T> Queue<T> for MpscQueue<T> {
 }
 
 impl<T> Queue<T> for Mutex<VecDeque<T>> {
-    fn push(&self, t: T) { self.lock().unwrap().push_back(t) }
-    fn try_pop(&self) -> Option<T> { self.lock().unwrap().pop_front() }
+    fn queue_(&self, t: T) { self.lock().unwrap().push_back(t) }
+    fn dequeue_(&self) -> Option<T> { self.lock().unwrap().pop_front() }
 }
 
 fn bench_queue_mpsc<Q: 'static + Queue<u64> + Send + Sync>(q: Q) -> f64 {
@@ -77,14 +77,14 @@ fn bench_queue_mpsc<Q: 'static + Queue<u64> + Send + Sync>(q: Q) -> f64 {
             let qr = arc.clone();
             v.push(thread::spawn(move || {
                 for x in 0..COUNT {
-                    let _ = qr.push(x);
+                    let _ = qr.queue_(x);
                 }
             }));
         }
 
         let mut count = 0;
         while count < COUNT*THREADS {
-            if arc.try_pop().is_some() {
+            if arc.dequeue_().is_some() {
                 count += 1;
             }
         }
@@ -111,11 +111,11 @@ fn bench_queue_mpmc<Q: 'static + Queue<bool> + Send + Sync>(q: Q) -> f64 {
             let pcr = prod_count.clone();
             v.push(thread::spawn(move || {
                 for _x in 0..COUNT {
-                    qr.push(true);
+                    qr.queue_(true);
                 }
                 if pcr.fetch_add(1, Relaxed) == (THREADS as usize) - 1 {
                     for _x in 0..THREADS {
-                        qr.push(false)
+                        qr.queue_(false)
                     }
                 }
             }));
@@ -123,7 +123,7 @@ fn bench_queue_mpmc<Q: 'static + Queue<bool> + Send + Sync>(q: Q) -> f64 {
             let qr = arc.clone();
             v.push(thread::spawn(move || {
                 loop {
-                    if let Some(false) = qr.try_pop() { break }
+                    if let Some(false) = qr.dequeue_() { break }
                 }
             }));
         }

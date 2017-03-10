@@ -74,6 +74,7 @@ impl<T> SegQueue<T> {
         // Set the two ends to the sentinel node.
         let guard = epoch::pin();
         let sentinel = queue.head.store_and_ref(sentinel, atomic::Ordering::Relaxed, &guard);
+        queue.tail.store_shared(Some(sentinel), atomic::Ordering::Relaxed);
 
         queue
     }

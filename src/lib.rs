@@ -26,7 +26,5 @@
 #[macro_use]
 extern crate lazy_static;
 
-use std::{io, thread};
-
 pub mod mem;
 pub mod sync;

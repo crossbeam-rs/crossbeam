@@ -135,7 +135,7 @@ mod participants;
 pub use self::atomic::Atomic;
 pub use self::guard::{pin, Guard, Pinned};
 
-use std::{mem, ptr, ops};
+use std::ops;
 
 /// Like `Box<T>`: an owned, heap-allocated data value of type `T`.
 // TODO: Eliminate this.
@@ -191,42 +191,15 @@ pub struct Shared<'a, T: 'a> {
 }
 
 impl<'a, T> Shared<'a, T> {
-    /// Create a `Shared` pointer from a raw pointer.
-    ///
-    /// It does not transfer ownership.
-    ///
-    /// # Safety
-    ///
-    /// This assumes the call type ensures that `raw` and an epoch is valid for at least lifetime
-    /// `'a`.
-    unsafe fn from_raw(raw: *mut T) -> Option<Shared<'a, T>> {
-        if raw == ptr::null_mut() {
-            None
-        } else {
-            Some(Shared { data: mem::transmute::<*mut T, &T>(raw) })
-        }
-    }
-
     /// Create a `Shared` pointer from a reference.
     ///
     /// # Safety
     ///
     /// This is unsafe as it assumes the call side assure an epoch is valid for `'a`.
-    unsafe fn from_ref(r: &T) -> Shared<'a, T> {
-        Shared { data: mem::transmute(r) }
-    }
-
-    /// Convert an owned pointer into a shared pointer.
-    ///
-    /// This leak `owned`.
-    ///
-    /// # Safety
-    ///
-    /// This is unsafe as it assumes the call side assure an epoch is valid for `'a`.
-    unsafe fn from_owned(owned: Owned<T>) -> Shared<'a, T> {
-        let ret = Shared::from_ref(&*owned);
-        mem::forget(owned);
-        ret
+    unsafe fn from_ptr(r: *const T) -> Shared<'a, T> {
+        Shared {
+            data: &*r,
+        }
     }
 
     /// Map the pointer to some other pointer.
@@ -238,7 +211,7 @@ impl<'a, T> Shared<'a, T> {
     /// This is safe as it preserves the invariant that `'a` spans an epoch pin.
     pub fn map<U: 'a, F>(self, f: F) -> Shared<'a, U>
         where F: FnOnce(&'a T) -> &'a U {
-        unsafe { Shared::from_ref(f(&self)) }
+        unsafe { Shared::from_ptr(f(&self)) }
     }
 
     /// Obtain the raw pointer to the inner data.

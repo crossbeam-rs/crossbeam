@@ -51,6 +51,17 @@ pub struct Guard {
 }
 
 impl Guard {
+    /// Create a new `Shared<T>` reference.
+    ///
+    /// This creates a shared reference, bound to this epoch.
+    pub fn new_shared<T>(&self, to: &T) -> Shared<T> {
+        unsafe {
+            // This is safe as the existence of the guard (`self`) for the lifetime is the
+            // invariant.
+            Shared::from_ptr(to)
+        }
+    }
+
     /// Assert that the value is no longer reachable.
     ///
     /// This asserts that the value is no longer possible to reach from a lock-free data structure
