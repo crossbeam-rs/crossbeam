@@ -28,56 +28,5 @@ extern crate lazy_static;
 
 use std::{io, thread};
 
-pub use scoped::{scope, Scope, ScopedJoinHandle};
-
 pub mod mem;
 pub mod sync;
-mod scoped;
-
-/// A boxed closure.
-trait FnBox {
-    fn call_box(self: Box<Self>);
-}
-
-impl<F: FnOnce()> FnBox for F {
-    fn call_box(self: Box<Self>) {
-        (*self)()
-    }
-}
-
-/// Spawn a thread without any thread-safe checking.
-///
-/// This works similar to `std::thread::spawn`, but without the closure bounds.
-///
-/// # Safety
-///
-/// As it is possible (and very easy) to introduce race conditions, this is unsafe. The caller is
-/// fully responsible for ensuring thread-safety of the closure.
-pub unsafe fn spawn_unsafe<'a, F>(f: F) -> thread::JoinHandle<()>
-    where F: FnOnce() + Send + 'a {
-    let builder = thread::Builder::new();
-    builder_spawn_unsafe(builder, f).unwrap()
-}
-
-/// Create a builder for a thread without any thread-safe checking.
-///
-/// This works similar to `std::thread::Builder::spawn`, but without the closure bounds.
-///
-/// # Safety
-///
-/// As it is possible (and very easy) to introduce race conditions, this is unsafe. The caller is
-/// fully responsible for ensuring thread-safety of the closure.
-pub unsafe fn builder_spawn_unsafe<'a, F>(builder: thread::Builder, f: F)
-    -> io::Result<thread::JoinHandle<()>>
-    where F: FnOnce() + Send + 'a {
-    // We import this here to avoid colliding with the module of same name.
-    // TODO: Move when `mem` is removed.
-    use std::mem;
-
-    // Transmute the closure to trick the compiler into believeing it is thread-safe (which it
-    // hopefully is).
-    let closure: Box<FnBox + 'a> = Box::new(f);
-    let closure: Box<FnBox + Send> = mem::transmute(closure);
-    // Spawn the closure through the builder.
-    builder.spawn(move || closure.call_box())
-}

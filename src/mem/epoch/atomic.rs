@@ -57,6 +57,7 @@ impl<T> Atomic<T> {
         }
     }
 
+    /// Create a new, null atomic pointer.
     #[cfg(not(feature = "nightly"))]
     pub fn null() -> Atomic<T> {
         Atomic {

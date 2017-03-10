@@ -1,11 +1,12 @@
 extern crate crossbeam;
 
+use std::sync::Arc;
+use std::thread;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
-use crossbeam::scope;
 use crossbeam::sync::MsQueue;
 use crossbeam::sync::SegQueue;
 
@@ -67,60 +68,69 @@ impl<T> Queue<T> for Mutex<VecDeque<T>> {
     fn try_pop(&self) -> Option<T> { self.lock().unwrap().pop_front() }
 }
 
-fn bench_queue_mpsc<Q: Queue<u64> + Sync>(q: Q) -> f64 {
-    let d = time(|| {
-        scope(|scope| {
-            for _i in 0..THREADS {
-                let qr = &q;
-                scope.spawn(move || {
-                    for x in 0..COUNT {
-                        let _ = qr.push(x);
-                    }
-                });
-            }
+fn bench_queue_mpsc<Q: 'static + Queue<u64> + Send + Sync>(q: Q) -> f64 {
+    let arc = Arc::new(q);
+    let d = time(move || {
+        let mut v = Vec::new();
 
-            let mut count = 0;
-            while count < COUNT*THREADS {
-                if q.try_pop().is_some() {
-                    count += 1;
+        for _i in 0..THREADS {
+            let qr = arc.clone();
+            v.push(thread::spawn(move || {
+                for x in 0..COUNT {
+                    let _ = qr.push(x);
                 }
+            }));
+        }
+
+        let mut count = 0;
+        while count < COUNT*THREADS {
+            if arc.try_pop().is_some() {
+                count += 1;
             }
-        });
+        }
+
+        for i in v {
+            i.join().unwrap();
+        }
     });
 
     nanos(d) / ((COUNT * THREADS) as f64)
 }
 
-fn bench_queue_mpmc<Q: Queue<bool> + Sync>(q: Q) -> f64 {
+fn bench_queue_mpmc<Q: 'static + Queue<bool> + Send + Sync>(q: Q) -> f64 {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering::Relaxed;
 
-    let prod_count = AtomicUsize::new(0);
+    let arc = Arc::new(q);
 
     let d = time(|| {
-        scope(|scope| {
-            for _i in 0..THREADS {
-                let qr = &q;
-                let pcr = &prod_count;
-                scope.spawn(move || {
-                    for _x in 0..COUNT {
-                        qr.push(true);
+        let prod_count = Arc::new(AtomicUsize::new(0));
+        let mut v = Vec::new();
+        for _i in 0..THREADS {
+            let qr = arc.clone();
+            let pcr = prod_count.clone();
+            v.push(thread::spawn(move || {
+                for _x in 0..COUNT {
+                    qr.push(true);
+                }
+                if pcr.fetch_add(1, Relaxed) == (THREADS as usize) - 1 {
+                    for _x in 0..THREADS {
+                        qr.push(false)
                     }
-                    if pcr.fetch_add(1, Relaxed) == (THREADS as usize) - 1 {
-                        for _x in 0..THREADS {
-                            qr.push(false)
-                        }
-                    }
-                });
-                scope.spawn(move || {
-                    loop {
-                        if let Some(false) = qr.try_pop() { break }
-                    }
-                });
-            }
+                }
+            }));
 
+            let qr = arc.clone();
+            v.push(thread::spawn(move || {
+                loop {
+                    if let Some(false) = qr.try_pop() { break }
+                }
+            }));
+        }
 
-        });
+        for i in v {
+            i.join().unwrap();
+        }
     });
 
     nanos(d) / ((COUNT * THREADS) as f64)
@@ -130,21 +140,24 @@ fn bench_chan_mpsc() -> f64 {
     let (tx, rx) = channel();
 
     let d = time(|| {
-        scope(|scope| {
-            for _i in 0..THREADS {
-                let my_tx = tx.clone();
+        let mut v = Vec::new();
+        for _i in 0..THREADS {
+            let my_tx = tx.clone();
 
-                scope.spawn(move || {
-                    for x in 0..COUNT {
-                        let _ = my_tx.send(x);
-                    }
-                });
-            }
+            v.push(thread::spawn(move || {
+                for x in 0..COUNT {
+                    let _ = my_tx.send(x);
+                }
+            }));
+        }
 
-            for _i in 0..COUNT*THREADS {
-                let _ = rx.recv().unwrap();
-            }
-        });
+        for _i in 0..COUNT*THREADS {
+            let _ = rx.recv().unwrap();
+        }
+
+        for i in v {
+            i.join().unwrap();
+        }
     });
 
     nanos(d) / ((COUNT * THREADS) as f64)
