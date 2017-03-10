@@ -9,7 +9,7 @@ use mem::epoch::{Atomic, Guard, garbage, global};
 use mem::epoch::participants::ParticipantNode;
 
 /// The garbage collection threshold (in garbage items).
-const GC_THRESHOLD: usize = 32;
+const GC_THRESHOLD: usize = 128;
 
 /// Thread-local data for epoch participation.
 pub struct Participant {
