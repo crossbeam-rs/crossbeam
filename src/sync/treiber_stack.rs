@@ -3,7 +3,7 @@
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 use std::ptr;
 
-use epoch::{self, Atomic, Owned};
+use epoch::{self, Atomic};
 
 /// Treiber's lock-free stack.
 ///
@@ -34,7 +34,7 @@ impl<T> TreiberStack<T> {
     /// Push an element on top of the stack.
     pub fn push(&self, elem: T) {
         // Construct the node.
-        let mut n = Owned::new(Node {
+        let mut n = Box::new(Node {
             data: elem,
             next: Atomic::null(),
         });

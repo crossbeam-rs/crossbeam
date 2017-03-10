@@ -6,7 +6,7 @@
 use std::{ops, mem};
 use std::sync::atomic;
 
-use epoch::{Atomic, Owned, Guard};
+use epoch::{Atomic, Guard};
 use epoch::participant::Participant;
 use CachePadded;
 
@@ -58,7 +58,7 @@ impl Participants {
     /// record to the global list.
     pub fn enroll(&self) -> *const Participant {
         // The new list.
-        let mut participant = Owned::new(ParticipantNode::default());
+        let mut participant = Box::new(ParticipantNode::default());
 
         // We ultimately use epoch tracking to free `Participant` nodes, but we can't actually
         // enter an epoch here, so fake it; we know the node can't be removed until marked inactive

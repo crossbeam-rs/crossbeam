@@ -30,14 +30,11 @@
 //!
 //! To put the `Guard` to use, Crossbeam provides a set of three pointer types meant to work together:
 //!
-//! - `Owned<T>`, akin to `Box<T>`, which points to uniquely-owned data that has not yet been
-//!   published in a concurrent data structure.
-//!
 //! - `Shared<'a, T>`, akin to `&'a T`, which points to shared data that may or may not be
 //!   reachable from a data structure, but it guaranteed not to be freed during lifetime `'a`.
 //!
 //! - `Atomic<T>`, akin to `std::sync::atomic::AtomicPtr`, which provides atomic updates to a
-//!   pointer using the `Owned` and `Shared` types, and connects them to a `Guard`.
+//!   pointer using the `Shared` types, and connects them to a `Guard`.
 //!
 //! Each of these types provides further documentation on usage.
 //!
@@ -47,7 +44,7 @@
 //! use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 //! use std::ptr;
 //!
-//! use crossbeam::mem::epoch::{self, Atomic, Owned};
+//! use crossbeam::epoch::{self, Atomic};
 //!
 //! struct TreiberStack<T> {
 //!     head: Atomic<Node<T>>,
@@ -66,8 +63,8 @@
 //!     }
 //!
 //!     fn push(&self, t: T) {
-//!         // allocate the node via Owned
-//!         let mut n = Owned::new(Node {
+//!         // allocate the node via Box.
+//!         let mut n = Box::new(Node {
 //!             data: t,
 //!             next: Atomic::null(),
 //!         });
@@ -136,49 +133,6 @@ pub use self::atomic::Atomic;
 pub use self::guard::{pin, Guard, Pinned};
 
 use std::ops;
-
-/// Like `Box<T>`: an owned, heap-allocated data value of type `T`.
-// TODO: Eliminate this.
-#[derive(Debug)]
-pub struct Owned<T> {
-    data: Box<T>,
-}
-
-impl<T> Owned<T> {
-    /// Move `t` to a new heap allocation.
-    pub fn new(t: T) -> Owned<T> {
-        Owned { data: Box::new(t) }
-    }
-
-    /// Obtain the raw pointer to the inner data.
-    ///
-    /// Note that this is not consuming and will thus be invalid when `self` drops.
-    ///
-    /// # Safety
-    ///
-    /// Creating a raw pointer is not unsafe, but using it is.
-    fn as_raw(&self) -> *mut T {
-        &**self as *const _ as *mut _
-    }
-
-    /// Move data out of the owned box, deallocating the box.
-    pub fn into_inner(self) -> T {
-        *self.data
-    }
-}
-
-impl<T> ops::Deref for Owned<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.data
-    }
-}
-
-impl<T> ops::DerefMut for Owned<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.data
-    }
-}
 
 /// Like `&'a T`: a shared reference valid for lifetime `'a`.
 ///
@@ -250,7 +204,7 @@ impl<'a, T> ops::Deref for Shared<'a, T> {
 mod test {
     use std::sync::atomic::Ordering;
     use super::*;
-    use mem::epoch;
+    use epoch;
 
     #[test]
     fn test_no_drop() {
@@ -266,12 +220,12 @@ mod test {
         let g = pin();
 
         let x = Atomic::null();
-        x.store(Some(Owned::new(Test)), Ordering::Relaxed);
-        x.store_and_ref(Owned::new(Test), Ordering::Relaxed, &g);
+        x.store(Some(Box::new(Test)), Ordering::Relaxed);
+        x.store_and_ref(Box::new(Test), Ordering::Relaxed, &g);
         let y = x.load(Ordering::Relaxed, &g);
-        let z = x.compare_and_set_ref(y, Owned::new(Test), Ordering::Relaxed, &g).ok();
-        let _ = x.compare_and_set(z, Some(Owned::new(Test)), Ordering::Relaxed);
-        x.swap(Some(Owned::new(Test)), Ordering::Relaxed, &g);
+        let z = x.compare_and_set_ref(y, Box::new(Test), Ordering::Relaxed, &g).ok();
+        let _ = x.compare_and_set(z, Some(Box::new(Test)), Ordering::Relaxed);
+        x.swap(Some(Box::new(Test)), Ordering::Relaxed, &g);
 
         unsafe {
             assert_eq!(DROPS, 0);

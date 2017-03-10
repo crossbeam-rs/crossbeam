@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::sync::atomic::{self, AtomicBool, AtomicUsize};
 use std::{ptr, mem, fmt, cmp};
 
-use epoch::{self, Atomic, Owned};
+use epoch::{self, Atomic};
 
 /// The maximal number of entries in a segment.
 const SEG_SIZE: usize = 32;
@@ -69,7 +69,7 @@ impl<T> SegQueue<T> {
         };
 
         // Construct the sentinel node with an empty segment.
-        let sentinel = Owned::new(Segment::default());
+        let sentinel = Box::new(Segment::default());
 
         // Set the two ends to the sentinel node.
         let guard = epoch::pin();
@@ -120,7 +120,7 @@ impl<T> SegQueue<T> {
 
                     // Append a new segment to the local tail.
                     let tail = tail.next
-                        .store_and_ref(Owned::new(Segment::default()), atomic::Ordering::Release, &guard);
+                        .store_and_ref(Box::new(Segment::default()), atomic::Ordering::Release, &guard);
                     // Store the local tail to the queue.
                     self.tail.store_shared(Some(tail), atomic::Ordering::Release);
                 }

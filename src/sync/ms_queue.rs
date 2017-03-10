@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicBool;
 use std::{ptr, mem};
 use std::thread::{self, Thread};
 
-use epoch::{self, Atomic, Owned, Shared};
+use epoch::{self, Atomic, Shared};
 use CachePadded;
 
 /// A Michael—Scott lock-free queue.
@@ -89,7 +89,7 @@ impl<T> MsQueue<T> {
         };
 
         // Construct the sentinel node with empty payload.
-        let sentinel = Owned::new(Node {
+        let sentinel = Box::new(Node {
             payload: Payload::Data(unsafe { mem::uninitialized() }),
             next: Atomic::null(),
         });
@@ -106,8 +106,8 @@ impl<T> MsQueue<T> {
     ///
     /// If unsuccessful, returns ownership of `n`, possibly updating the queue's `tail` pointer.
     #[inline(always)]
-    fn queue_internal(&self, guard: &epoch::Guard, onto: Shared<Node<T>>, n: Owned<Node<T>>)
-        -> Result<(), Owned<Node<T>>> {
+    fn queue_internal(&self, guard: &epoch::Guard, onto: Shared<Node<T>>, n: Box<Node<T>>)
+        -> Result<(), Box<Node<T>>> {
         // Is `onto` the actual tail?
         if let Some(next) = onto.next.load(atomic::Ordering::Acquire, guard) {
             // If not, try to "help" by moving the tail pointer forward.
@@ -130,15 +130,15 @@ impl<T> MsQueue<T> {
         // We may or may not need to allocate a node; once we do, we cache that allocation.
         enum Cache<T> {
             Data(T),
-            Node(Owned<Node<T>>),
+            Node(Box<Node<T>>),
         }
 
         impl<T> Cache<T> {
             /// Extract the node if cached, or allocate if not.
-            fn into_node(self) -> Owned<Node<T>> {
+            fn into_node(self) -> Box<Node<T>> {
                 match self {
                     Cache::Data(t) => {
-                        Owned::new(Node {
+                        Box::new(Node {
                             payload: Payload::Data(t),
                             next: Atomic::null(),
                         })
@@ -152,7 +152,7 @@ impl<T> MsQueue<T> {
                 match self {
                     Cache::Data(t) => t,
                     Cache::Node(node) => {
-                        match node.into_inner().payload {
+                        match node.payload {
                             Payload::Data(t) => t,
                             _ => unreachable!(),
                         }
@@ -309,7 +309,7 @@ impl<T> MsQueue<T> {
         };
 
         // Go ahead and allocate the blocked node; chances are, we'll need it.
-        let mut node = Owned::new(Node {
+        let mut node = Box::new(Node {
             payload: Payload::Blocked(&mut signal),
             next: Atomic::null(),
         });

@@ -1,7 +1,7 @@
 use std::sync::atomic::{self, Ordering};
 use std::{marker, ptr, mem};
 
-use super::{Owned, Shared, Guard};
+use super::{Shared, Guard};
 
 /// Convert `Option<Shared<T>>` into `*mut T`.
 ///
@@ -12,32 +12,28 @@ fn opt_shared_into_raw<T>(val: Option<Shared<T>>) -> *mut T {
     val.map(|p| p.as_raw()).unwrap_or(ptr::null_mut())
 }
 
-/// Convert `Option<Owned<T>>` into `*mut T`.
+/// Convert `Option<Box<T>>` into `*mut T`.
 ///
 /// `None` maps to the null pointer.
 #[inline]
-fn opt_owned_into_raw<T>(val: Option<Owned<T>>) -> *mut T {
+fn opt_box_into_raw<T>(val: Option<Box<T>>) -> *mut T {
     // If `None`, return the null pointer.
-    let ptr = val.as_ref().map(Owned::as_raw).unwrap_or(ptr::null_mut());
-    // This is absolutely crucial in order to avoid the returned pointer from being dangling.
-    mem::forget(val);
-
-    ptr
+    val.map(Box::into_raw).unwrap_or(ptr::null_mut())
 }
 
-/// Convert `&Option<Owned<T>>` into `*mut T`.
+/// Convert `&Option<Box<T>>` into `*mut T`.
 ///
 /// `&None` maps to the null pointer.
 #[inline]
-fn opt_owned_as_raw<T>(val: &Option<Owned<T>>) -> *mut T {
+fn opt_box_as_raw<T>(val: &mut Option<Box<T>>) -> *mut T {
     // If `None`, return the null pointer.
-    val.as_ref().map(Owned::as_raw).unwrap_or(ptr::null_mut())
+    val.as_mut().map(|x| &mut **x as *mut T).unwrap_or(ptr::null_mut())
 }
 
 /// Like `std::sync::atomic::AtomicPtr`.
 ///
 /// Provides atomic access to a (nullable) pointer of type `T`, interfacing with
-/// the `Owned` and `Shared` types.
+/// the  `Shared` type.
 #[derive(Debug)]
 pub struct Atomic<T> {
     /// The inner atomic pointer.
@@ -96,26 +92,26 @@ impl<T> Atomic<T> {
 
     /// Do an atomic store with a given memory ordering.
     ///
-    /// This transfers ownership of the given `Owned` pointer, if any. Since no lifetime
+    /// This transfers ownership of the given `Box` pointer, if any. Since no lifetime
     /// information is acquired, no `Guard` value is needed.
     ///
     /// # Panics
     ///
     /// Panics if `ord` is `Acquire` or `AcqRel`.
-    pub fn store(&self, val: Option<Owned<T>>, ord: Ordering) {
-        self.ptr.store(opt_owned_into_raw(val), ord)
+    pub fn store(&self, val: Option<Box<T>>, ord: Ordering) {
+        self.ptr.store(opt_box_into_raw(val), ord)
     }
 
     /// Do an atomic store with the given memory ordering and get a shared reference.
     ///
-    /// This transfers ownership of the given `Owned` pointer, yielding a `Shared` reference to it.
+    /// This transfers ownership of the given `Box` pointer, yielding a `Shared` reference to it.
     /// Since the reference is valid only for the curent epoch, it's lifetime is tied to a `Guard`
     /// value.
     ///
     /// # Panics
     ///
     /// Panics if `ord` is `Acquire` or `AcqRel`.
-    pub fn store_and_ref<'a>(&self, val: Owned<T>, ord: Ordering, guard: &'a Guard) -> Shared<'a, T> {
+    pub fn store_and_ref<'a>(&self, val: Box<T>, ord: Ordering, guard: &'a Guard) -> Shared<'a, T> {
         let shared = guard.new_shared(&*val);
         self.store_shared(Some(shared), ord);
         shared
@@ -156,35 +152,42 @@ impl<T> Atomic<T> {
         }
     }
 
-    /// Compare-and-set from a `Shared` to an `Owned` pointer with a given memory ordering.
+    /// Compare-and-set from a `Shared` to an `Box` pointer with a given memory ordering.
     ///
     /// As with `store`, this operation does not require a guard; it produces no new lifetime
     /// information. The `Result` indicates whether the CAS succeeded; if not, ownership of the
     /// `new` pointer is returned to the caller.
-    pub fn compare_and_set(&self, old: Option<Shared<T>>, new: Option<Owned<T>>, ord: Ordering)
-        -> Result<(), Option<Owned<T>>> {
-        if self.ptr.compare_and_swap(opt_shared_into_raw(old), opt_owned_as_raw(&new), ord)
+    pub fn compare_and_set(&self, old: Option<Shared<T>>, mut new: Option<Box<T>>, ord: Ordering)
+        -> Result<(), Option<Box<T>>> {
+        if self.ptr.compare_and_swap(opt_shared_into_raw(old), opt_box_as_raw(&mut new), ord)
             == opt_shared_into_raw(old) {
             // This is crucial to avoid `new`'s destructor being called, which could cause an
             // dangling pointer to leak into safe API.
             mem::forget(new);
             Ok(())
         } else {
+            // Hand back the ownership.
             Err(new)
         }
    }
 
-    /// Compare-and-set from a `Shared` to an `Owned` pointer with a given memory ordering and get
+    /// Compare-and-set from a `Shared` to an `Box` pointer with a given memory ordering and get
     /// a shared reference to it.
     ///
     /// This operation is analogous to `store_and_ref`.
-    pub fn compare_and_set_ref<'a>(&self, old: Option<Shared<T>>, new: Owned<T>, ord: Ordering, guard: &'a Guard)
-        -> Result<Shared<'a, T>, Owned<T>> {
-        if self.ptr.compare_and_swap(opt_shared_into_raw(old), new.as_raw(), ord)
+    pub fn compare_and_set_ref<'a>(&self, old: Option<Shared<T>>, new: Box<T>, ord: Ordering, guard: &'a Guard)
+        -> Result<Shared<'a, T>, Box<T>> {
+        // FIXME: Ugly code.
+
+        // Cast the box into a raw pointer.
+        let new = Box::into_raw(new);
+
+        if self.ptr.compare_and_swap(opt_shared_into_raw(old), new, ord)
             == opt_shared_into_raw(old) {
-            Ok(guard.new_shared(&new))
+            // Create a `Shared` pointer.
+            Ok(guard.new_shared(unsafe { &*new }))
         } else {
-            Err(new)
+            Err(unsafe { Box::from_raw(new) })
         }
     }
 
@@ -197,12 +200,12 @@ impl<T> Atomic<T> {
             == opt_shared_into_raw(old)
     }
 
-    /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
-    pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, guard: &'a Guard)
+    /// Do an atomic swap with an `Box` pointer with the given memory ordering.
+    pub fn swap<'a>(&self, new: Option<Box<T>>, ord: Ordering, guard: &'a Guard)
         -> Option<Shared<'a, T>> {
         unsafe {
             // Swap the inner.
-            self.ptr.swap(opt_owned_into_raw(new), ord).as_ref()
+            self.ptr.swap(opt_box_into_raw(new), ord).as_ref()
                 // Construct the `Shared` pointer.
                 .map(|x| guard.new_shared(&*x))
         }
