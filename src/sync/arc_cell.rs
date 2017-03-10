@@ -1,57 +1,53 @@
+//! Atomic storage and retrieval of an `Arc<T>`.
+
 use std::{marker, mem};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{self, AtomicUsize, AtomicPtr};
 
-/// A type providing atomic storage and retrieval of an `Arc<T>`.
+/// A thread-safe, reference-counted, and mutable container.
+///
+/// This types provides atomic storage and retrieval of an `Arc<T>`, in a sense similar to RCU: An
+/// `Arc<T>`, which can be retrieved, providing a snapshot of the data, is kept. When it is
+/// updated, the `Arc<T>` is replaced with the new data, and the old inner is first dropped when
+/// all the current "snapshots" are dropped.
 #[derive(Debug)]
 pub struct ArcCell<T> {
-    ptr: AtomicUsize,
+    ptr: AtomicPtr<T>,
     sem: AtomicUsize,
-    _marker: marker::PhantomData<Arc<T>>,
 }
 
 impl<T> Drop for ArcCell<T> {
     fn drop(&mut self) {
         unsafe {
-            mem::transmute::<_, Arc<T>>(self.ptr.load(Ordering::Relaxed));
+            Arc::from_raw(self.ptr.load(atomic::Ordering::Relaxed));
         }
     }
 }
 
 impl<T> ArcCell<T> {
     /// Creates a new `ArcCell`.
-    pub fn new(t: Arc<T>) -> ArcCell<T> {
+    pub fn new(arc: Arc<T>) -> ArcCell<T> {
         ArcCell {
-            ptr: AtomicUsize::new(unsafe { mem::transmute(t) }),
+            ptr: AtomicPtr::new(Arc::into_raw(arc)),
             sem: AtomicUsize::new(0),
-            _marker: marker::PhantomData,
-        }
-    }
-
-    /// Create a new `ArcCell` from the given `Arc` interior.
-    pub fn with_val(v: T) -> ArcCell<T> {
-        ArcCell {
-            ptr: AtomicUsize::new(unsafe { mem::transmute(Arc::new(v)) }),
-            sem: AtomicUsize::new(0),
-            _marker: marker::PhantomData,
         }
     }
 
     /// Stores a new value in the `ArcCell`, returning the previous
     /// value.
-    pub fn set(&self, t: Arc<T>) -> Arc<T> {
-        unsafe {
-            let t: usize = mem::transmute(t);
-            let old: Arc<T> = mem::transmute(self.ptr.swap(t, Ordering::Acquire));
-            while self.sem.load(Ordering::Relaxed) > 0 {}
-            old
-        }
+    pub fn set(&self, arc: Arc<T>) -> Arc<T> {
+        let old = unsafe {
+            Arc::from_raw(self.ptr.swap(Arc::into_raw(t), atomic::Ordering::Acquire))
+        };
+
+        while self.sem.load(atomic::Ordering::Relaxed) > 0 {}
+        old
     }
 
     /// Returns a copy of the value stored by the `ArcCell`.
     pub fn get(&self) -> Arc<T> {
         self.sem.fetch_add(1, Ordering::Relaxed);
-        let t: Arc<T> = unsafe { mem::transmute(self.ptr.load(Ordering::SeqCst)) };
+        let t = unsafe { Arc::from_raw(self.ptr.load(atomic::Ordering::SeqCst)) };
         // NB: correctness here depends on Arc's clone impl not panicking
         let out = t.clone();
         self.sem.fetch_sub(1, Ordering::Relaxed);
