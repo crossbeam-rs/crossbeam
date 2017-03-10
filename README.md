@@ -35,4 +35,4 @@ crossbeam = "0.2"
 For examples of what Crossbeam is capable of, see the
 [documentation][docs].
 
-[docs]: http://aturon.github.io/crossbeam-doc/crossbeam/
+[docs]: https://docs.rs/crate/crossbeam/
