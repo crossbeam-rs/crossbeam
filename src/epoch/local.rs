@@ -4,8 +4,8 @@
 
 use std::sync::atomic;
 
-use mem::epoch::participant::Participant;
-use mem::epoch::global;
+use epoch::participant::Participant;
+use epoch::global;
 
 /// A local epoch state.
 ///

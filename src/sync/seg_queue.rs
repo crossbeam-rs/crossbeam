@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::sync::atomic::{self, AtomicBool, AtomicUsize};
 use std::{ptr, mem, fmt, cmp};
 
-use mem::epoch::{self, Atomic, Owned};
+use epoch::{self, Atomic, Owned};
 
 /// The maximal number of entries in a segment.
 const SEG_SIZE: usize = 32;

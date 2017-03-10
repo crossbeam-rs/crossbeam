@@ -26,5 +26,8 @@
 #[macro_use]
 extern crate lazy_static;
 
-pub mod mem;
+pub mod epoch;
 pub mod sync;
+
+mod cache_padded;
+pub use self::cache_padded::{CachePadded, ZerosValid};

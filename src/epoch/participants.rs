@@ -6,9 +6,9 @@
 use std::{ops, mem};
 use std::sync::atomic;
 
-use mem::epoch::{Atomic, Owned, Guard};
-use mem::epoch::participant::Participant;
-use mem::CachePadded;
+use epoch::{Atomic, Owned, Guard};
+use epoch::participant::Participant;
+use CachePadded;
 
 /// A participant node.
 ///

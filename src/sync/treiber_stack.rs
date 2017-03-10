@@ -3,7 +3,7 @@
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 use std::ptr;
 
-use mem::epoch::{self, Atomic, Owned};
+use epoch::{self, Atomic, Owned};
 
 /// Treiber's lock-free stack.
 ///

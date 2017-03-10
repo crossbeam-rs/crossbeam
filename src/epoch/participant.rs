@@ -5,8 +5,8 @@ use std::{fmt, mem};
 use std::cell::UnsafeCell;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 
-use mem::epoch::{Atomic, Guard, garbage, global};
-use mem::epoch::participants::ParticipantNode;
+use epoch::{Atomic, Guard, garbage, global};
+use epoch::participants::ParticipantNode;
 
 /// The garbage collection threshold (in garbage items).
 const GC_THRESHOLD: usize = 128;

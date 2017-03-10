@@ -7,7 +7,7 @@
 use std::{mem, ptr};
 use std::sync::atomic::{self, AtomicPtr};
 
-use mem::ZerosValid;
+use ZerosValid;
 
 /// One item of garbage.
 ///

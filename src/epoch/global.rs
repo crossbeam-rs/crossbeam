@@ -4,9 +4,9 @@
 
 use std::sync::atomic::AtomicUsize;
 
-use mem::CachePadded;
-use mem::epoch::garbage;
-use mem::epoch::participants::Participants;
+use CachePadded;
+use epoch::garbage;
+use epoch::participants::Participants;
 
 /// The global epoch state.
 ///
