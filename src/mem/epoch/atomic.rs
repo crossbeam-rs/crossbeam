@@ -174,13 +174,6 @@ impl<T> Atomic<T> {
         }
    }
 
-    /// Renamed to `compare_and_set`.
-    #[deprecated]
-    pub fn cas(&self, old: Option<Shared<T>>, new: Option<Owned<T>>, ord: Ordering)
-        -> Result<(), Option<Owned<T>>> {
-        self.compare_and_set(old, new, ord)
-    }
-
     /// Compare-and-set from a `Shared` to an `Owned` pointer with a given memory ordering and get
     /// a shared reference to it.
     ///
@@ -195,13 +188,6 @@ impl<T> Atomic<T> {
         }
     }
 
-    /// Renamed to `compare_and_set_ref`.
-    #[deprecated]
-    pub fn cas_and_ref<'a>(&self, old: Option<Shared<T>>, new: Owned<T>, ord: Ordering, guard: &'a Guard)
-        -> Result<Shared<'a, T>, Owned<T>> {
-        self.compare_and_set_ref(old, new, ord, guard)
-    }
-
     /// compare-and-set from a `Shared` to another `Shared` pointer with a given memory ordering.
     ///
     /// The boolean return value is `true` when the CAS is successful.
@@ -209,13 +195,6 @@ impl<T> Atomic<T> {
         -> bool {
         self.ptr.compare_and_swap(opt_shared_into_raw(old), opt_shared_into_raw(new), ord)
             == opt_shared_into_raw(old)
-    }
-
-    /// Renamed to `compare_and_set_shared`.
-    #[deprecated]
-    pub fn cas_shared(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering)
-                      -> bool {
-        self.compare_and_set_shared(old, new, ord)
     }
 
     /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
