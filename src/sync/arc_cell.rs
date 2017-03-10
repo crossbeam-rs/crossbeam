@@ -1,5 +1,4 @@
-use std::marker::PhantomData;
-use std::mem;
+use std::{marker, mem};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -8,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub struct ArcCell<T> {
     ptr: AtomicUsize,
     sem: AtomicUsize,
-    _marker: PhantomData<Arc<T>>,
+    _marker: marker::PhantomData<Arc<T>>,
 }
 
 impl<T> Drop for ArcCell<T> {
@@ -25,7 +24,7 @@ impl<T> ArcCell<T> {
         ArcCell {
             ptr: AtomicUsize::new(unsafe { mem::transmute(t) }),
             sem: AtomicUsize::new(0),
-            _marker: PhantomData,
+            _marker: marker::PhantomData,
         }
     }
 
@@ -34,7 +33,7 @@ impl<T> ArcCell<T> {
         ArcCell {
             ptr: AtomicUsize::new(unsafe { mem::transmute(Arc::new(v)) }),
             sem: AtomicUsize::new(0),
-            _marker: PhantomData,
+            _marker: marker::PhantomData,
         }
     }
 

@@ -1,6 +1,5 @@
-use std::marker::PhantomData;
 use std::sync::atomic::{self, Ordering};
-use std::{ptr, mem};
+use std::{marker, ptr, mem};
 
 use super::{Owned, Shared, Guard};
 
@@ -45,7 +44,7 @@ pub struct Atomic<T> {
     ptr: atomic::AtomicPtr<T>,
     /// A phantom marker to fix certain compiler bugs.
     // TODO
-    _marker: PhantomData<*const ()>,
+    _marker: marker::PhantomData<*const ()>,
 }
 
 impl<T> Atomic<T> {
@@ -54,7 +53,7 @@ impl<T> Atomic<T> {
     pub const fn null() -> Atomic<T> {
         Atomic {
             ptr: atomic::AtomicPtr::new(ptr::null_mut()),
-            _marker: PhantomData,
+            _marker: marker::PhantomData,
         }
     }
 
@@ -62,7 +61,7 @@ impl<T> Atomic<T> {
     pub fn null() -> Atomic<T> {
         Atomic {
             ptr: atomic::AtomicPtr::new(ptr::null_mut()),
-            _marker: PhantomData,
+            _marker: marker::PhantomData,
         }
     }
 
@@ -73,7 +72,7 @@ impl<T> Atomic<T> {
         Atomic {
             // As the data has to be stored _somewhere_, we have to allocate it to the heap.
             ptr: atomic::AtomicPtr::new(Box::into_raw(Box::new(data))),
-            _marker: PhantomData,
+            _marker: marker::PhantomData,
         }
     }
 
