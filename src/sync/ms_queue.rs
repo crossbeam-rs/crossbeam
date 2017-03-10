@@ -363,6 +363,7 @@ mod test {
 
     use super::*;
     use std::thread;
+    use std::sync::Arc;
 
     #[test]
     fn queue_dequeue_1() {
@@ -435,14 +436,15 @@ mod test {
 
     #[test]
     fn queue_dequeue_many_spsc() {
-        let q: MsQueue<i64> = MsQueue::new();
+        let q: Arc<MsQueue<i64>> = Arc::new(MsQueue::new());
         assert!(q.is_empty());
 
-        let join = thread::spawn(|| {
+        let qr = q.clone();
+        let join = thread::spawn(move || {
             let mut next = 0;
 
             while next < CONC_COUNT {
-                if let Some(elem) = q.dequeue() {
+                if let Some(elem) = qr.dequeue() {
                     assert_eq!(elem, next);
                     next += 1;
                 }
@@ -472,15 +474,15 @@ mod test {
             }
         }
 
-        let q: MsQueue<i64> = MsQueue::new();
+        let q: Arc<MsQueue<i64>> = Arc::new(MsQueue::new());
         assert!(q.is_empty());
-        let qr = &q;
         let mut v = Vec::new();
         for i in 0..3 {
-            v.push(thread::spawn(move || recv(i, qr)));
+            let qr = q.clone();
+            v.push(thread::spawn(move || recv(i, &qr)));
         }
 
-        v.push(thread::spawn(|| for i in 0..CONC_COUNT {
+        v.push(thread::spawn(move || for i in 0..CONC_COUNT {
             q.queue(i);
         }));
 
@@ -496,23 +498,26 @@ mod test {
             Right(i64),
         }
 
-        let q: MsQueue<LR> = MsQueue::new();
+        let q: Arc<MsQueue<LR>> = Arc::new(MsQueue::new());
         assert!(q.is_empty());
 
         let mut v = Vec::new();
 
         for _t in 0..2 {
-            v.push(thread::spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
-                q.queue(LR::Left(i))
+            let qr = q.clone();
+            v.push(thread::spawn(move || for i in CONC_COUNT - 1..CONC_COUNT {
+                qr.queue(LR::Left(i))
             }));
-            v.push(thread::spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
-                q.queue(LR::Right(i))
+            let qr = q.clone();
+            v.push(thread::spawn(move || for i in CONC_COUNT - 1..CONC_COUNT {
+                qr.queue(LR::Right(i))
             }));
-            v.push(thread::spawn(|| {
+            let qr = q.clone();
+            v.push(thread::spawn(move || {
                 let mut vl = vec![];
                 let mut vr = vec![];
                 for _i in 0..CONC_COUNT {
-                    match q.dequeue() {
+                    match qr.dequeue() {
                         Some(LR::Left(x)) => vl.push(x),
                         Some(LR::Right(x)) => vr.push(x),
                         _ => {}
@@ -536,12 +541,13 @@ mod test {
 
     #[test]
     fn queue_dequeue_or_wait_many_spsc() {
-        let q: MsQueue<i64> = MsQueue::new();
+        let q: Arc<MsQueue<i64>> = Arc::new(MsQueue::new());
 
-        let join = thread::spawn(|| {
+        let qr = q.clone();
+        let join = thread::spawn(move || {
             let mut next = 0;
             while next < CONC_COUNT {
-                assert_eq!(q.dequeue_or_wait(), next);
+                assert_eq!(qr.dequeue_or_wait(), next);
                 next += 1;
             }
         });
