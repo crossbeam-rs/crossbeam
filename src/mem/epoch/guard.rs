@@ -43,7 +43,7 @@ impl Guard {
         local::with_participant(|p| p.reclaim(val.as_raw(), false))
     }
 
-    pub unsafe fn unlinked_drop<T: Drop + Send + 'static>(&self, val: Shared<T>) {
+    pub unsafe fn unlinked_drop<T: Send + 'static>(&self, val: Shared<T>) {
         local::with_participant(|p| p.reclaim(val.as_raw(), true))
     }
 
