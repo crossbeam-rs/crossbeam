@@ -119,8 +119,9 @@ impl<'a> Iterator for Iter<'a> {
     fn next(&mut self) -> Option<&'a Participant> {
         // Load the next node.
         let mut cur = self.next.load(if self.first {
-            // an Acquire read is needed only for the first read, due to release
-            // sequences
+            // Now that the method has been called, it should no longer be `true`.
+            self.first = false;
+            // An `Acquire` read is needed only for the first read, due to release sequences.
             atomic::Ordering::Acquire
         } else { atomic::Ordering::Relaxed }, self.guard);
 
