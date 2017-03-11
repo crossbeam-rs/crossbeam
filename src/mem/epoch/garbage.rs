@@ -33,7 +33,7 @@ impl Bag {
 
     fn insert<T>(&mut self, elem: *mut T, do_drop: bool) {
         let size = mem::size_of::<T>();
-        if size > 0 {
+        if size > 0 || do_drop {
             self.0.push(Item {
                 ptr: elem as *mut u8,
                 free: if do_drop { destroy::<T> } else { free::<T> },

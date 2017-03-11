@@ -40,7 +40,11 @@ impl Guard {
     /// Assert that the value is no longer reachable from a lock-free data
     /// structure and should be collected when sufficient epochs have passed.
     pub unsafe fn unlinked<T>(&self, val: Shared<T>) {
-        local::with_participant(|p| p.reclaim(val.as_raw()))
+        local::with_participant(|p| p.reclaim(val.as_raw(), false))
+    }
+
+    pub unsafe fn unlinked_drop<T: Drop + Send + 'static>(&self, val: Shared<T>) {
+        local::with_participant(|p| p.reclaim(val.as_raw(), true))
     }
 
     /// Move the thread-local garbage into the global set of garbage.

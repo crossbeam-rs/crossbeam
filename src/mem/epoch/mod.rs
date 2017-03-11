@@ -276,6 +276,7 @@ mod test {
         }
 
         // unlinking but not dropping, enough to flush all the garbage
+        // tests that the normla unlinked won't do drops
         for _ in 0..RUNS {
             let g = pin();
 
