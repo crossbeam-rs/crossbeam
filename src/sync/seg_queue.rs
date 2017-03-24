@@ -162,6 +162,16 @@ mod test {
     }
 
     #[test]
+    fn push_pop_empty_check() {
+        let q: SegQueue<i64> = SegQueue::new();
+        assert_eq!(q.is_empty(), true);
+        q.push(42);
+        assert_eq!(q.is_empty(), false);
+        assert_eq!(q.try_pop(), Some(42));
+        assert_eq!(q.is_empty(), true);
+    }
+
+    #[test]
     fn push_pop_many_seq() {
         let q: SegQueue<i64> = SegQueue::new();
         for i in 0..200 {
