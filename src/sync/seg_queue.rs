@@ -89,6 +89,21 @@ impl<T> SegQueue<T> {
         }
     }
 
+    /// Judge if the queue is empty.
+    ///
+    /// Returns `true` if the queue is empty.
+    pub fn is_empty(&self) -> bool {
+        let guard = epoch::pin();
+        let head = self.head.load(Acquire, &guard).unwrap();
+        let tail = self.tail.load(Acquire, &guard).unwrap();
+        if head.as_raw() != tail.as_raw() {
+            return false;
+        }
+
+        let low = head.low.load(Relaxed);
+        low >= cmp::min(head.high.load(Relaxed), SEG_SIZE)
+    }
+
     /// Attempt to dequeue from the front.
     ///
     /// Returns `None` if the queue is observed to be empty.
