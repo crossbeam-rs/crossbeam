@@ -5,9 +5,11 @@ use std::{ptr, mem};
 use std::cmp;
 use std::cell::UnsafeCell;
 
-use mem::epoch::{self, Atomic, Owned};
+use mem::epoch::{self, Atomic, Owned, Shared, Guard};
 
 const SEG_SIZE: usize = 32;
+const MAX_TRIES: usize = 6;
+const MIN_TRIES: usize = 1;
 
 /// A Michael-Scott queue that allocates "segments" (arrays of nodes)
 /// for efficiency.
@@ -65,9 +67,19 @@ impl<T> SegQueue<T> {
         q
     }
 
+    #[inline(always)]
+    fn try_add_tail(&self, t: &Shared<Segment<T>>, g: &Guard) {
+        let seg = Owned::new(Segment::new());
+        if let Ok(newptr) = t.next.cas_and_ref(None, seg, Release, &g) {
+            self.tail.store_shared(Some(newptr), Release);
+        }
+    }
+
     /// Add `t` to the back of the queue.
     pub fn push(&self, t: T) {
         let guard = epoch::pin();
+        let mut j = 0;
+        let mut cur_tries = MAX_TRIES;
         loop {
             let tail = self.tail.load(Acquire, &guard).unwrap();
             if tail.high.load(Relaxed) >= SEG_SIZE { continue }
@@ -79,12 +91,20 @@ impl<T> SegQueue<T> {
                     (*cell).1.store(true, Release);
 
                     if i + 1 == SEG_SIZE {
-                        let tail = tail.next.store_and_ref(Owned::new(Segment::new()), Release, &guard);
-                        self.tail.store_shared(Some(tail), Release);
+                        self.try_add_tail(&tail, &guard);
                     }
 
                     return
                 }
+            }
+            j += 1;
+            if j >= cur_tries {
+                j = 0;
+                if cur_tries > MIN_TRIES {
+                    cur_tries = (11 * cur_tries)/16;
+                    cur_tries = cmp::max(cur_tries, MIN_TRIES);
+                }
+                self.try_add_tail(&tail, &guard);
             }
         }
     }
