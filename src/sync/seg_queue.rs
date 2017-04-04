@@ -60,7 +60,7 @@ impl<T> SegQueue<T> {
         };
         let sentinel = Owned::new(Segment::new());
         let guard = epoch::pin();
-        let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
+        let sentinel = q.head.store_ref(sentinel, Relaxed, &guard);
         q.tail.store_shared(Some(sentinel), Relaxed);
         q
     }
@@ -79,7 +79,7 @@ impl<T> SegQueue<T> {
                     (*cell).1.store(true, Release);
 
                     if i + 1 == SEG_SIZE {
-                        let tail = tail.next.store_and_ref(Owned::new(Segment::new()), Release, &guard);
+                        let tail = tail.next.store_ref(Owned::new(Segment::new()), Release, &guard);
                         self.tail.store_shared(Some(tail), Release);
                     }
 

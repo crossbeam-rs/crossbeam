@@ -33,7 +33,7 @@ impl<T> TreiberStack<T> {
         loop {
             let head = self.head.load(Relaxed, &guard);
             n.next.store_shared(head, Relaxed);
-            match self.head.cas_and_ref(head, n, Release, &guard) {
+            match self.head.compare_and_set_ref(head, n, Release, &guard) {
                 Ok(_) => break,
                 Err(owned) => n = owned,
             }
@@ -58,7 +58,7 @@ impl<T> TreiberStack<T> {
             match self.head.load(Acquire, &guard) {
                 Some(head) => {
                     let next = head.next.load(Relaxed, &guard);
-                    if self.head.cas_shared(Some(head), next, Release) {
+                    if self.head.compare_and_set_shared(Some(head), next, Release) {
                         unsafe {
                             guard.unlinked(head);
                             return Some(ptr::read(&(*head).data));

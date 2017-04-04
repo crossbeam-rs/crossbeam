@@ -85,7 +85,7 @@
 //!             n.next.store_shared(head, Relaxed);
 //!
 //!             // if snapshot is still good, link in the new node
-//!             match self.head.cas_and_ref(head, n, Release, &guard) {
+//!             match self.head.compare_and_set_ref(head, n, Release, &guard) {
 //!                 Ok(_) => return,
 //!                 Err(owned) => n = owned,
 //!             }
@@ -105,7 +105,7 @@
 //!                     let next = head.next.load(Relaxed, &guard);
 //!
 //!                     // if snapshot is still good, update from `head` to `next`
-//!                     if self.head.cas_shared(Some(head), next, Release) {
+//!                     if self.head.compare_and_set_shared(Some(head), next, Release) {
 //!                         unsafe {
 //!                             // mark the node as unlinked
 //!                             guard.unlinked(head);
@@ -244,10 +244,10 @@ mod test {
 
         let x = Atomic::null();
         x.store(Some(Owned::new(Test)), Ordering::Relaxed);
-        x.store_and_ref(Owned::new(Test), Ordering::Relaxed, &g);
+        x.store_ref(Owned::new(Test), Ordering::Relaxed, &g);
         let y = x.load(Ordering::Relaxed, &g);
-        let z = x.cas_and_ref(y, Owned::new(Test), Ordering::Relaxed, &g).ok();
-        let _ = x.cas(z, Some(Owned::new(Test)), Ordering::Relaxed);
+        let z = x.compare_and_set_ref(y, Owned::new(Test), Ordering::Relaxed, &g).ok();
+        let _ = x.compare_and_set(z, Some(Owned::new(Test)), Ordering::Relaxed);
         x.swap(Some(Owned::new(Test)), Ordering::Relaxed, &g);
 
         unsafe {
