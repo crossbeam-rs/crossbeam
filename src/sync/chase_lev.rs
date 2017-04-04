@@ -46,7 +46,7 @@ use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 use std::sync::atomic::{AtomicIsize, fence};
 use std::sync::Arc;
 
-use mem::epoch::{self, Atomic, Shared, Owned};
+use epoch::{self, Atomic, Shared, Owned};
 
 // Once the queue is less than 1/K full, then it will be downsized. Note that
 // the deque requires that this number be less than 2.

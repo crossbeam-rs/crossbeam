@@ -49,7 +49,7 @@
 //! use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 //! use std::ptr;
 //!
-//! use crossbeam::mem::epoch::{self, Atomic, Owned};
+//! use crossbeam::epoch::{self, Atomic, Owned};
 //!
 //! struct TreiberStack<T> {
 //!     head: Atomic<Node<T>>,
@@ -227,7 +227,7 @@ impl<'a, T> Shared<'a, T> {
 mod test {
     use std::sync::atomic::Ordering;
     use super::*;
-    use mem::epoch;
+    use epoch;
 
     #[test]
     fn test_no_drop() {

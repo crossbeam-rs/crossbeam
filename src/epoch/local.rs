@@ -2,8 +2,8 @@
 
 use std::sync::atomic::Ordering::Relaxed;
 
-use mem::epoch::participant::Participant;
-use mem::epoch::global;
+use epoch::participant::Participant;
+use epoch::global;
 
 #[derive(Debug)]
 struct LocalEpoch {

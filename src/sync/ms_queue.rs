@@ -3,8 +3,8 @@ use std::sync::atomic::AtomicBool;
 use std::{ptr, mem};
 use std::thread::{self, Thread};
 
-use mem::epoch::{self, Atomic, Owned, Shared};
-use mem::CachePadded;
+use epoch::{self, Atomic, Owned, Shared};
+use CachePadded;
 
 /// A Michael-Scott lock-free queue, with support for blocking `pop`s.
 ///

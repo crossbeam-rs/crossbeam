@@ -3,9 +3,9 @@
 
 use std::sync::atomic::AtomicUsize;
 
-use mem::CachePadded;
-use mem::epoch::garbage;
-use mem::epoch::participants::Participants;
+use CachePadded;
+use epoch::garbage;
+use epoch::participants::Participants;
 
 /// Global epoch state
 #[derive(Debug)]
@@ -33,8 +33,8 @@ mod imp {
     use std::sync::atomic::Ordering::Relaxed;
 
     use super::EpochState;
-    use mem::CachePadded;
-    use mem::epoch::participants::Participants;
+    use CachePadded;
+    use epoch::participants::Participants;
 
     impl EpochState {
         fn new() -> EpochState {
@@ -75,8 +75,8 @@ mod imp {
 #[cfg(feature = "nightly")]
 mod imp {
     use super::EpochState;
-    use mem::CachePadded;
-    use mem::epoch::participants::Participants;
+    use CachePadded;
+    use epoch::participants::Participants;
 
     impl EpochState {
         const fn new() -> EpochState {

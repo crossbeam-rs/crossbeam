@@ -11,7 +11,7 @@ use std::mem;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering::{Relaxed, Release, Acquire};
 
-use mem::ZerosValid;
+use ZerosValid;
 
 /// One item of garbage.
 ///
