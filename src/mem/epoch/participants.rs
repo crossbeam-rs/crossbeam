@@ -3,17 +3,18 @@
 // "logically" deleted by becoming inactive.)
 
 use std::mem;
+use std::ptr;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release};
 
-use mem::epoch::{Atomic, Owned, Guard};
+use mem::epoch::{TaggedAtomic, Owned, Shared, Guard};
 use mem::epoch::participant::Participant;
 use mem::CachePadded;
 
 /// Global, threadsafe list of threads participating in epoch management.
 #[derive(Debug)]
 pub struct Participants {
-    head: Atomic<ParticipantNode>
+    head: TaggedAtomic<ParticipantNode>
 }
 
 #[derive(Debug)]
@@ -41,12 +42,12 @@ impl DerefMut for ParticipantNode {
 impl Participants {
     #[cfg(not(feature = "nightly"))]
     pub fn new() -> Participants {
-        Participants { head: Atomic::null() }
+        Participants { head: TaggedAtomic::zero() }
     }
 
     #[cfg(feature = "nightly")]
     pub const fn new() -> Participants {
-        Participants { head: Atomic::null() }
+        Participants { head: TaggedAtomic::zero() }
     }
 
     /// Enroll a new thread in epoch management by adding a new `Particpant`
@@ -60,9 +61,9 @@ impl Participants {
         let fake_guard = ();
         let g: &'static Guard = unsafe { mem::transmute(&fake_guard) };
         loop {
-            let head = self.head.load(Relaxed, g);
-            participant.next.store_shared(head, Relaxed);
-            match self.head.cas_and_ref(head, participant, Release, g) {
+            let head = self.head.load(Relaxed, g).0;
+            participant.next.store_shared(head, 0, Relaxed);
+            match self.head.cas_and_ref(head, 0, participant, 0, Release, g) {
                 Ok(shared) => {
                     let shared: &Participant = &shared;
                     return shared;
@@ -77,8 +78,8 @@ impl Participants {
     pub fn iter<'a>(&'a self, g: &'a Guard) -> Iter<'a> {
         Iter {
             guard: g,
-            next: &self.head,
-            needs_acq: true,
+            prev: &self.head,
+            current: self.head.load(Acquire, g).0
         }
     }
 }
@@ -87,34 +88,58 @@ impl Participants {
 pub struct Iter<'a> {
     // pin to an epoch so that we can free inactive nodes
     guard: &'a Guard,
-    next: &'a Atomic<ParticipantNode>,
+    prev: &'a TaggedAtomic<ParticipantNode>,
+    current: Option<Shared<'a, ParticipantNode>>
+}
 
-    // an Acquire read is needed only for the first read, due to release
-    // sequences
-    needs_acq: bool,
+fn opt_shared_into_raw<'a, T>(val: Option<Shared<'a, T>>) -> *mut T {
+    val.map_or(ptr::null_mut(), |p| p.as_raw())
 }
 
 impl<'a> Iterator for Iter<'a> {
     type Item = &'a Participant;
     fn next(&mut self) -> Option<&'a Participant> {
-        let mut cur = if self.needs_acq {
-            self.needs_acq = false;
-            self.next.load(Acquire, self.guard)
-        } else {
-            self.next.load(Relaxed, self.guard)
+        // In the simple case, there is nothing to clean up
+        let mut cur = match self.current {
+            None => return None,
+            Some(node) => {
+                let (next, tag) = node.next.load(Relaxed, self.guard);
+                if tag == 0 {
+                    self.prev = &node.next;
+                    self.current = next;
+                    return Some(&*node);
+                }
+                next
+            }
         };
 
-        while let Some(n) = cur {
-            // attempt to clean up inactive nodes
-            if !n.active.load(Relaxed) {
-                cur = n.next.load(Relaxed, self.guard);
-                // TODO: actually reclaim inactive participants!
+        // Scan for an active node
+        let mut final_next = None;
+        while let Some(node) = cur {
+            let (next, tag) = node.next.load(Relaxed, self.guard);
+            if tag == 0 {
+                final_next = Some(next);
+                break;
             } else {
-                self.next = &n.next;
-                return Some(&n)
+                cur = next;
             }
         }
 
-        None
+        // Try to clean up the inactive participants. If we fail, someone else will
+        // deal with it.
+        if self.prev.cas_shared(self.current, 0, cur, 0, Relaxed) {
+            let mut to_cleanup = self.current;
+            while opt_shared_into_raw(to_cleanup) != opt_shared_into_raw(cur) {
+                let node = to_cleanup.unwrap();
+                to_cleanup = node.next.load(Relaxed, self.guard).0;
+                unsafe { self.guard.unlinked(node); }
+            }
+        }
+
+        if let Some(node) = cur {
+            self.prev = &node.next;
+            self.current = final_next.unwrap();
+        }
+        cur.map(|n| &***n)
     }
 }

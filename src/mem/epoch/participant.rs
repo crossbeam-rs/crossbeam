@@ -4,10 +4,10 @@
 use std::mem;
 use std::cell::UnsafeCell;
 use std::fmt;
-use std::sync::atomic::{self, AtomicUsize, AtomicBool};
+use std::sync::atomic::{self, AtomicUsize};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
 
-use mem::epoch::{Atomic, Guard, garbage, global};
+use mem::epoch::{TaggedAtomic, Guard, garbage, global};
 use mem::epoch::participants::ParticipantNode;
 
 /// Thread-local data for epoch participation.
@@ -22,12 +22,10 @@ pub struct Participant {
     /// Thread-local garbage tracking
     garbage: UnsafeCell<garbage::Local>,
 
-    /// Is the thread still active? Becomes `false` when the thread exits. This
-    /// is ultimately used to free `Participant` records.
-    pub active: AtomicBool,
-
-    /// The participant list is coded intrusively; here's the `next` pointer.
-    pub next: Atomic<ParticipantNode>,
+    /// The participant list is coded intrusively; here's the `next` pointer. The
+    /// tag denotes whether the thread is still active. It is ultimately used to
+    /// free `Participant` records.
+    pub next: TaggedAtomic<ParticipantNode>,
 }
 
 impl fmt::Debug for Participant {
@@ -45,9 +43,8 @@ impl Participant {
         Participant {
             epoch: AtomicUsize::new(0),
             in_critical: AtomicUsize::new(0),
-            active: AtomicBool::new(true),
             garbage: UnsafeCell::new(garbage::Local::new()),
-            next: Atomic::null(),
+            next: TaggedAtomic::zero(),
         }
     }
 
