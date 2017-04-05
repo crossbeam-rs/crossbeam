@@ -1,0 +1,7 @@
+[package]
+name = "channel"
+version = "0.1.0"
+authors = ["Stjepan Glavina <stjepang@gmail.com>"]
+license = "Apache-2.0/MIT"
+
+[dependencies]
