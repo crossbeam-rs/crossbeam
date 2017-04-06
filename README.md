@@ -2,9 +2,6 @@
 
 [![Build Status](https://travis-ci.org/aturon/crossbeam.svg?branch=master)](https://travis-ci.org/aturon/crossbeam)
 
-This crate is an early work in progress. The focus for the moment is
-concurrency:
-
 - **Non-blocking data structures**. These data structures allow for high
 performance, highly-concurrent access, much superior to wrapping with a
 `Mutex`. Ultimately the goal is to include stacks, queues, deques, bags, sets
