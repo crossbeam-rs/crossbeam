@@ -62,7 +62,7 @@ impl Participants {
         loop {
             let head = self.head.load(Relaxed, g);
             participant.next.store_shared(head, Relaxed);
-            match self.head.cas_and_ref(head, participant, Release, g) {
+            match self.head.compare_and_set_ref(head, participant, Release, g) {
                 Ok(shared) => {
                     let shared: &Participant = &shared;
                     return shared;
