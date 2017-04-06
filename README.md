@@ -1,6 +1,6 @@
 # Crossbeam: support for concurrent and parallel programming
 
-[![Build Status](https://travis-ci.org/aturon/crossbeam.svg?branch=master)](https://travis-ci.org/aturon/crossbeam)
+[![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](https://travis-ci.org/crossbeam-rs/crossbeam)
 
 This crate is an early work in progress. The focus for the moment is
 concurrency:
