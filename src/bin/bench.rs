@@ -16,16 +16,10 @@ mod extra_impls;
 const COUNT: u64 = 10000000;
 const THREADS: u64 = 2;
 
-#[cfg(feature = "nightly")]
 fn time<F: FnOnce()>(f: F) -> Duration {
     let start = ::std::time::Instant::now();
     f();
     start.elapsed()
-}
-
-#[cfg(not(feature = "nightly"))]
-fn time<F: FnOnce()>(_f: F) -> Duration {
-    Duration::new(0, 0)
 }
 
 fn nanos(d: Duration) -> f64 {
