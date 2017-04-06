@@ -138,7 +138,6 @@ pub use self::atomic::Atomic;
 pub use self::guard::{pin, Guard};
 
 use std::ops::{Deref, DerefMut};
-use std::ptr;
 use std::mem;
 
 /// Like `Box<T>`: an owned, heap-allocated data value of type `T`.
@@ -153,6 +152,7 @@ impl<T> Owned<T> {
         Owned { data: Box::new(t) }
     }
 
+    /// Obtain the raw pointer to the inner data.
     fn as_raw(&self) -> *mut T {
         self.deref() as *const _ as *mut _
     }
@@ -178,6 +178,9 @@ impl<T> DerefMut for Owned<T> {
 
 #[derive(PartialEq, Eq)]
 /// Like `&'a T`: a shared reference valid for lifetime `'a`.
+///
+/// This implicitly asserts that an epoch is active in this thread for
+/// its lifetime, which is what makes this different from `&'a T`.
 #[derive(Debug)]
 pub struct Shared<'a, T: 'a> {
     data: &'a T,
@@ -198,21 +201,18 @@ impl<'a, T> Deref for Shared<'a, T> {
 }
 
 impl<'a, T> Shared<'a, T> {
-    unsafe fn from_raw(raw: *mut T) -> Option<Shared<'a, T>> {
-        if raw == ptr::null_mut() { None }
-        else {
-            Some(Shared {
-                data: mem::transmute::<*mut T, &T>(raw)
-            })
-        }
+    /// from_{raw, ref, owned} create a shared reference, bound to the given epoch.
+    fn from_raw(raw: *mut T, _: &'a Guard) -> Option<Shared<'a, T>> {
+        // This is safe as the existence of the guard for the lifetime is the invariant.
+        unsafe { raw.as_ref().map(|x| Shared { data: x }) }
     }
 
-    unsafe fn from_ref(r: &T) -> Shared<'a, T> {
-        Shared { data: mem::transmute(r) }
+    fn from_ref(r: &T, _: &'a Guard) -> Shared<'a, T> {
+        unsafe { Shared { data: mem::transmute(r) } }
     }
 
-    unsafe fn from_owned(owned: Owned<T>) -> Shared<'a, T> {
-        let ret = Shared::from_ref(owned.deref());
+    fn from_owned(owned: Owned<T>, guard: &'a Guard) -> Shared<'a, T> {
+        let ret = Shared::from_ref(owned.deref(), guard);
         mem::forget(owned);
         ret
     }

@@ -85,8 +85,8 @@ impl<T> Atomic<T> {
     /// # Panics
     ///
     /// Panics if `ord` is `Release` or `AcqRel`.
-    pub fn load<'a>(&self, ord: Ordering, _: &'a Guard) -> Option<Shared<'a, T>> {
-        unsafe { Shared::from_raw(self.ptr.load(ord)) }
+    pub fn load<'a>(&self, ord: Ordering, guard: &'a Guard) -> Option<Shared<'a, T>> {
+        Shared::from_raw(self.ptr.load(ord), guard)
     }
 
     /// Do an atomic store with the given memory ordering.
@@ -111,13 +111,11 @@ impl<T> Atomic<T> {
     /// # Panics
     ///
     /// Panics if `ord` is `Acquire` or `AcqRel`.
-    pub fn store_ref<'a>(&self, val: Owned<T>, ord: Ordering, _: &'a Guard)
-                             -> Shared<'a, T> {
-        unsafe {
-            let shared = Shared::from_owned(val);
-            self.store_shared(Some(shared), ord);
-            shared
-        }
+    pub fn store_ref<'a>(&self, val: Owned<T>, ord: Ordering, guard: &'a Guard)
+                         -> Shared<'a, T> {
+        let shared = Shared::from_owned(val, guard);
+        self.store_shared(Some(shared), ord);
+        shared
     }
 
     /// Do an atomic store of a `Shared` pointer with the given memory ordering.
@@ -139,7 +137,7 @@ impl<T> Atomic<T> {
     /// is returned (with `actual_value` being the read value of `self`).
     ///
     /// All this is done atomically according to the atomic ordering specified in `ord`.
-    pub fn compare_and_swap<'a>(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering, _: &'a Guard)
+    pub fn compare_and_swap<'a>(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering, guard: &'a Guard)
         -> Result<(), Option<Shared<'a, T>>> {
         let old = opt_shared_into_raw(old);
 
@@ -150,7 +148,7 @@ impl<T> Atomic<T> {
             Ok(())
         } else {
             // They did not match, so we will return a shared pointer to the value.
-            Err(unsafe { Shared::from_raw(found) })
+            Err(Shared::from_raw(found, guard))
         }
     }
 
@@ -181,11 +179,11 @@ impl<T> Atomic<T> {
     ///
     /// This operation is analogous to `store_ref`.
     pub fn compare_and_set_ref<'a>(&self, old: Option<Shared<T>>, new: Owned<T>,
-                                   ord: Ordering, _: &'a Guard)
+                                   ord: Ordering, guard: &'a Guard)
                                    -> Result<Shared<'a, T>, Owned<T>> {
         if self.ptr.compare_and_swap(opt_shared_into_raw(old), new.as_raw(), ord)
             == opt_shared_into_raw(old) {
-            Ok(unsafe { Shared::from_owned(new) })
+            Ok(Shared::from_owned(new, guard))
         } else {
             Err(new)
         }
@@ -203,14 +201,14 @@ impl<T> Atomic<T> {
     }
 
     /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
-    pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, _: &'a Guard)
+    pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, guard: &'a Guard)
                     -> Option<Shared<'a, T>> {
-        unsafe { Shared::from_raw(self.ptr.swap(opt_owned_into_raw(new), ord)) }
+        Shared::from_raw(self.ptr.swap(opt_owned_into_raw(new), ord), guard)
     }
 
     /// Do an atomic swap with a `Shared` pointer with the given memory ordering.
-    pub fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, _: &'a Guard)
+    pub fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, guard: &'a Guard)
                            -> Option<Shared<'a, T>> {
-        unsafe { Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord)) }
+        Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord), guard)
     }
 }
