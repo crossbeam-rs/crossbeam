@@ -39,6 +39,11 @@ pub fn pin() -> Guard {
 impl Guard {
     /// Assert that the value is no longer reachable from a lock-free data
     /// structure and should be collected when sufficient epochs have passed.
+    ///
+    /// Bear in mind that epoch garbage collection does not actually drop the
+    /// structure, it only frees its associated memory. If the value owns some
+    /// other region of memory, for example through a pointer, it will have to
+    /// be freed before in some other way.
     pub unsafe fn unlinked<T>(&self, val: Shared<T>) {
         local::with_participant(|p| p.reclaim(val.as_raw()))
     }
