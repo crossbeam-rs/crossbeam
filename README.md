@@ -16,9 +16,8 @@ freed. The `mem` module provides generic, easy to use, and high-performance APIs
 for managing memory in these cases.
 
 - **Synchronization**. The standard library provides a few synchronization
-primitives (locks, semaphores, barriers, etc) but this crate seeks to expand
-that set to include more advanced/niche primitives, as well as userspace
-alternatives.
+primitives (locks, barriers, etc) but this crate seeks to expand that set to
+include more advanced/niche primitives, as well as userspace alternatives.
 
 - **Scoped thread API**. Finally, the crate provides a "scoped" thread API,
 making it possible to spawn threads that share stack data with their parents.
