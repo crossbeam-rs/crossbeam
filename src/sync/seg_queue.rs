@@ -5,7 +5,7 @@ use std::{ptr, mem};
 use std::cmp;
 use std::cell::UnsafeCell;
 
-use mem::epoch::{self, Atomic, Owned};
+use epoch::{self, Atomic, Owned};
 
 const SEG_SIZE: usize = 32;
 

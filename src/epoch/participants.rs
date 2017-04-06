@@ -6,9 +6,9 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release};
 
-use mem::epoch::{Atomic, Owned, Guard};
-use mem::epoch::participant::Participant;
-use mem::CachePadded;
+use epoch::{Atomic, Owned, Guard};
+use epoch::participant::Participant;
+use CachePadded;
 
 /// Global, threadsafe list of threads participating in epoch management.
 #[derive(Debug)]

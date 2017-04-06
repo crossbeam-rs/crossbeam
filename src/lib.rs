@@ -31,9 +31,12 @@ use std::thread;
 
 pub use scoped::{scope, Scope, ScopedJoinHandle};
 
-pub mod mem;
+pub mod epoch;
 pub mod sync;
 mod scoped;
+
+mod cache_padded;
+pub use self::cache_padded::{CachePadded, ZerosValid};
 
 #[doc(hidden)]
 trait FnBox {

@@ -7,8 +7,8 @@ use std::fmt;
 use std::sync::atomic::{self, AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
 
-use mem::epoch::{Atomic, Guard, garbage, global};
-use mem::epoch::participants::ParticipantNode;
+use epoch::{Atomic, Guard, garbage, global};
+use epoch::participants::ParticipantNode;
 
 /// Thread-local data for epoch participation.
 pub struct Participant {
