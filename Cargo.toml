@@ -5,3 +5,4 @@ authors = ["Stjepan Glavina <stjepang@gmail.com>"]
 license = "Apache-2.0/MIT"
 
 [dependencies]
+coco = { path = "../coco" }
