@@ -9,6 +9,9 @@ use super::{Owned, Shared, Guard};
 ///
 /// Provides atomic access to a (nullable) pointer of type `T`, interfacing with
 /// the `Owned` and `Shared` types.
+///
+/// for more information on the atomic operations, see
+/// https://doc.rust-lang.org/std/sync/atomic/struct.AtomicPtr.html
 #[derive(Debug)]
 pub struct Atomic<T> {
     /// The inner atomic pointer.
@@ -130,6 +133,18 @@ impl<T> Atomic<T> {
         self.ptr.store(opt_shared_into_raw(val), ord)
     }
 
+    /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
+    pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, guard: &'a Guard)
+                    -> Option<Shared<'a, T>> {
+        Shared::from_raw(self.ptr.swap(opt_owned_into_raw(new), ord), guard)
+    }
+
+    /// Do an atomic swap with a `Shared` pointer with the given memory ordering.
+    pub fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, guard: &'a Guard)
+                           -> Option<Shared<'a, T>> {
+        Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord), guard)
+    }
+
     /// Atomically compare the value against `old` and swap it with `new` if matching.
     ///
     /// This is commonly refered to as 'CAS'. `self` is compared to `old`.  If equal,
@@ -137,8 +152,9 @@ impl<T> Atomic<T> {
     /// is returned (with `actual_value` being the read value of `self`).
     ///
     /// All this is done atomically according to the atomic ordering specified in `ord`.
-    pub fn compare_and_swap<'a>(&self, old: Option<Shared<T>>, new: Option<Shared<T>>, ord: Ordering, guard: &'a Guard)
-        -> Result<(), Option<Shared<'a, T>>> {
+    pub fn compare_and_swap<'a>(&self, old: Option<Shared<T>>, new: Option<Shared<T>>,
+                                ord: Ordering, guard: &'a Guard)
+                                -> Result<(), Option<Shared<'a, T>>> {
         let old = opt_shared_into_raw(old);
 
         // Compare `old` against `new`.
@@ -183,10 +199,10 @@ impl<T> Atomic<T> {
                                    -> Result<Shared<'a, T>, Owned<T>> {
         if self.ptr.compare_and_swap(opt_shared_into_raw(old), new.as_raw(), ord)
             == opt_shared_into_raw(old) {
-            Ok(Shared::from_owned(new, guard))
-        } else {
-            Err(new)
-        }
+                Ok(Shared::from_owned(new, guard))
+            } else {
+                Err(new)
+            }
     }
 
     /// Compare-and-set from a `Shared` to another `Shared` pointer with the given
@@ -200,15 +216,28 @@ impl<T> Atomic<T> {
                                   ord) == opt_shared_into_raw(old)
     }
 
-    /// Do an atomic swap with an `Owned` pointer with the given memory ordering.
-    pub fn swap<'a>(&self, new: Option<Owned<T>>, ord: Ordering, guard: &'a Guard)
-                    -> Option<Shared<'a, T>> {
-        Shared::from_raw(self.ptr.swap(opt_owned_into_raw(new), ord), guard)
+    /// Stores a value into the pointer if the current value is the same as the
+    /// current value.
+    pub fn compare_exchange<'a>(&self, old: Option<Shared<T>>, new: Option<Shared<T>>,
+                                success: Ordering, failure: Ordering, guard: &'a Guard)
+                                -> Result<Option<Shared<'a, T>>, Option<Shared<'a, T>>> {
+        self.ptr.compare_exchange(opt_shared_into_raw(old),
+                                  opt_shared_into_raw(new),
+                                  success, failure)
+            .map(|found| Shared::from_raw(found, guard))
+            .map_err(|found| Shared::from_raw(found, guard))
     }
 
-    /// Do an atomic swap with a `Shared` pointer with the given memory ordering.
-    pub fn swap_shared<'a>(&self, new: Option<Shared<T>>, ord: Ordering, guard: &'a Guard)
-                           -> Option<Shared<'a, T>> {
-        Shared::from_raw(self.ptr.swap(opt_shared_into_raw(new), ord), guard)
+    /// Stores a value into the pointer if the current value is the same as the
+    /// current value.  This function may spuriously fail even when the
+    /// comparison succeeds.
+    pub fn compare_exchange_weak<'a>(&self, old: Option<Shared<T>>, new: Option<Shared<T>>,
+                                     success: Ordering, failure: Ordering, guard: &'a Guard)
+                                     -> Result<Option<Shared<'a, T>>, Option<Shared<'a, T>>> {
+        self.ptr.compare_exchange_weak(opt_shared_into_raw(old),
+                                       opt_shared_into_raw(new),
+                                       success, failure)
+            .map(|found| Shared::from_raw(found, guard))
+            .map_err(|found| Shared::from_raw(found, guard))
     }
 }
