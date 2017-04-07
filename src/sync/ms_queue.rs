@@ -277,7 +277,7 @@ impl<T> MsQueue<T> {
 
             // At this point, we believe the queue is empty/blocked.
             // Snapshot the tail, onto which we want to push a blocked node.
-            let tail = self.tail.load(Relaxed, &guard).unwrap();
+            let tail = self.tail.load(Acquire, &guard).unwrap();
 
             // Double-check that we're in blocking mode
             if tail.is_data() {
