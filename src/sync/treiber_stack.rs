@@ -49,6 +49,17 @@ impl<T> TreiberStack<T> {
         self.try_pop()
     }
 
+    /// Takes all the elements off the stack at once.
+    ///
+    /// Wait-free
+    pub fn slurp(&self) -> TreiberStack<T> {
+        let newstack = TreiberStack { head: Atomic::null() };
+        let guard = epoch::pin();
+        let head = self.head.swap(None, Acquire, &guard);
+        newstack.head.store_shared(head, Release);
+        return newstack;
+    }
+
     /// Attempt to pop the top element of the stack.
     ///
     /// Returns `None` if the stack is observed to be empty.
@@ -94,5 +105,9 @@ mod test {
         assert!(q.is_empty());
         q.push(25);
         assert!(!q.is_empty());
+
+        let r = q.slurp();
+        assert!(!r.is_empty());
+        assert!(q.is_empty());
     }
 }
