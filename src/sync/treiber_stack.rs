@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
+use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed};
 use std::ptr;
 
 use mem::epoch::{self, Atomic, Owned};
@@ -49,15 +49,17 @@ impl<T> TreiberStack<T> {
         self.try_pop()
     }
 
-    /// Takes all the elements off the stack at once.
+    /// Swaps a stack with a new one.  Can be used to take all the
+    /// elements off the stack at once.
     ///
     /// Wait-free
-    pub fn slurp(&self) -> TreiberStack<T> {
-        let newstack = TreiberStack { head: Atomic::null() };
+    pub fn swap(&self, new: TreiberStack<T>) -> TreiberStack<T> {
         let guard = epoch::pin();
-        let head = self.head.swap(None, Acquire, &guard);
-        newstack.head.store_shared(head, Release);
-        return newstack;
+
+        let newhead = new.head.swap(None, Acquire, &guard);
+        let head = self.head.swap_shared(newhead, AcqRel, &guard);
+        new.head.store_shared(head, Release);
+        return new;
     }
 
     /// Attempt to pop the top element of the stack.
@@ -106,8 +108,15 @@ mod test {
         q.push(25);
         assert!(!q.is_empty());
 
-        let r = q.slurp();
-        assert!(!r.is_empty());
+        let r = q.swap({
+            let tmp = TreiberStack::new();
+            tmp.push(40);
+            tmp
+        });
+        assert!(r.try_pop().is_some());
+        assert!(q.try_pop().is_some());
+
+        assert!(r.is_empty());
         assert!(q.is_empty());
     }
 }
