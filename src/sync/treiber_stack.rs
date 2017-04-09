@@ -55,10 +55,11 @@ impl<T> TreiberStack<T> {
     /// Wait-free
     pub fn swap(&self, new: TreiberStack<T>) -> TreiberStack<T> {
         let guard = epoch::pin();
-
-        let newhead = new.head.swap(None, Acquire, &guard);
+        // new is exclusively owned and so can be written and read
+        // with relaxed atomics
+        let newhead = new.head.swap(None, Relaxed, &guard);
         let head = self.head.swap_shared(newhead, AcqRel, &guard);
-        new.head.store_shared(head, Release);
+        new.head.store_shared(head, Relaxed);
         return new;
     }
 
