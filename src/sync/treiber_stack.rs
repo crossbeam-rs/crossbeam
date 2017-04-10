@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed};
+use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 use std::ptr;
 
 use mem::epoch::{self, Atomic, Owned};
@@ -57,8 +57,8 @@ impl<T> TreiberStack<T> {
         let guard = epoch::pin();
         // new is exclusively owned and so can be written and read
         // with relaxed atomics
-        let newhead = new.head.swap(None, Relaxed, &guard);
-2        let head = self.head.swap_shared(newhead, Relaxed, &guard);
+        let newhead = new.head.load(Relaxed, &guard);
+        let head = self.head.swap_shared(newhead, Relaxed, &guard);
         new.head.store_shared(head, Relaxed);
         return new;
     }
