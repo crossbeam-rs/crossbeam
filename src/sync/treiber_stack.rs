@@ -58,7 +58,7 @@ impl<T> TreiberStack<T> {
         // new is exclusively owned and so can be written and read
         // with relaxed atomics
         let newhead = new.head.swap(None, Relaxed, &guard);
-        let head = self.head.swap_shared(newhead, AcqRel, &guard);
+2        let head = self.head.swap_shared(newhead, Relaxed, &guard);
         new.head.store_shared(head, Relaxed);
         return new;
     }
