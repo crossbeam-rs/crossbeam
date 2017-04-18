@@ -1,175 +1,216 @@
-use std::cell::UnsafeCell;
-use std::fmt;
-use std::mem;
-use std::ptr;
+extern crate coco;
+extern crate either;
+
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize};
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed};
-use std::thread::{self, Thread};
-use std::time::{Duration, Instant};
+use std::sync::Condvar;
+use std::sync::Mutex;
+use std::sync::atomic::{self, AtomicBool, AtomicPtr, AtomicUsize};
+use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
 
-struct Node<T> {
-    lap: AtomicUsize,
-    value: T,
+mod async;
+pub mod buffered;
+// mod rendezvous;
+
+// TODO: len() (add counters to each Node in the async version)
+// TODO: is_empty()
+
+pub struct SendError<T>(pub T);
+
+pub enum TrySendError<T> {
+    Full(T),
+    Closed(T),
 }
 
-struct BoundedQueue<T> {
-    buffer: *mut UnsafeCell<Node<T>>, // !Send + !Sync
-    cap: usize,
-    head: AtomicUsize,
-    tail: AtomicUsize,
-    closed: AtomicBool,
+pub struct RecvError;
+
+pub enum TryRecvError {
+    Empty,
+    Closed,
 }
 
-// enum Waiters<T> {
-//     receivers: WaitQueue<T>
-// }
+enum Flavor<T> {
+    Async(),
+    Buffered(buffered::Queue<T>),
+    Rendezvous(),
+}
 
-// struct Blocked<T> {
-//     _marker: std::marker::PhantomData<T>,
-// }
+pub struct Queue<T> {
+    flavor: Flavor<T>,
+    lock: Mutex<()>,
+    cond: Condvar,
+    blocked: AtomicUsize,
+}
 
-// struct Waiters<T> {
-//     head: AtomicPtr<Blocked<T>>,
-//     tail: AtomicPtr<Blocked<T>>,
-// }
-
-unsafe impl<T: Send> Send for BoundedQueue<T> {}
-unsafe impl<T: Send> Sync for BoundedQueue<T> {}
-
-impl<T> BoundedQueue<T> {
-    pub fn with_capacity(cap: usize) -> Self {
-        let power = cap.next_power_of_two();
-
-        let mut v = Vec::with_capacity(cap);
-        let buffer = v.as_mut_ptr();
-        mem::forget(v);
-        unsafe { ptr::write_bytes(buffer, 0, cap) }
-
-        BoundedQueue {
-            buffer: buffer,
-            cap: cap,
-            head: AtomicUsize::new(power),
-            tail: AtomicUsize::new(0),
-            closed: AtomicBool::new(false),
+impl<T> Queue<T> {
+    pub fn async() -> Self {
+        Queue {
+            flavor: Flavor::Async(),//(unimplemented!()),
+            lock: Mutex::new(()),
+            cond: Condvar::new(),
+            blocked: AtomicUsize::new(0),
         }
     }
 
-    pub fn try_send(&self, value: T) {
-    }
-
-    // pub fn send(&self, mut value: T) {
-    //     loop {
-    //         match self.push(value) {
-    //             Ok(()) => receivers.notify();
-    //             Err(v) => value = v,
-    //         }
-    //
-    //         let waiters = self.waiters.lock().unwrap();
-    //
-    //     }
-    // }
-
-    pub fn push(&self, value: T) -> Result<(), T> {
-        let cap = self.cap;
-        let power = cap.next_power_of_two();
-        let buffer = self.buffer;
-
-        loop {
-            let tail = self.tail.load(Relaxed);
-            let pos = tail & (power - 1);
-            let lap = tail & !(power - 1);
-
-            let cell = unsafe { (*buffer.offset(pos as isize)).get() };
-            let clap = unsafe { (*cell).lap.load(Acquire) };
-
-            if lap == clap {
-                let new = if pos + 1 < cap {
-                    tail + 1
-                } else {
-                    lap.wrapping_add(power).wrapping_add(power)
-                };
-
-                if self.tail.compare_and_swap(tail, new, Relaxed) == tail {
-                    unsafe {
-                        (*cell).value = value;
-                        (*cell).lap.store(clap.wrapping_add(power), Release);
-                        return Ok(());
-                    }
-                }
-            } else if clap.wrapping_add(power) == lap {
-                return Err(value);
-            }
-        }
-    }
-
-    pub fn pop(&self) -> Option<T> {
-        let cap = self.cap;
-        let power = cap.next_power_of_two();
-        let buffer = self.buffer;
-
-        loop {
-            let head = self.head.load(Relaxed);
-            let pos = head & (power - 1);
-            let lap = head & !(power - 1);
-
-            let cell = unsafe { (*buffer.offset(pos as isize)).get() };
-            let clap = unsafe { (*cell).lap.load(Acquire) };
-
-            if lap == clap {
-                let new = if pos + 1 < cap {
-                    head + 1
-                } else {
-                    lap.wrapping_add(power).wrapping_add(power)
-                };
-
-                if self.head.compare_and_swap(head, new, Relaxed) == head {
-                    unsafe {
-                        let value = ptr::read(&(*cell).value);
-                        (*cell).lap.store(clap.wrapping_add(power), Release);
-                        return Some(value);
-                    }
-                }
-            } else if clap.wrapping_add(power) == lap {
-                return None;
-            }
-        }
-    }
-}
-
-enum Inner<T> {
-    Bounded(Arc<BoundedQueue<T>>),
-    // Unbounded(Arc<UnboundedQueue<T>>),
-}
-
-struct Sender<T>(Inner<T>);
-
-struct Receiver<T>(Inner<T>);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::sync::Arc;
-    use std::thread;
-
-    #[test]
-    fn simple() {
-        let q = Arc::new(BoundedQueue::with_capacity(5));
-
-        let t = {
-            let q = q.clone();
-            thread::spawn(move || {
-                for i in 0..10_000_000 {
-                    q.push(i);
-                }
-            })
+    pub fn sync(cap: usize) -> Self {
+        let flavor = if cap == 0 {
+            Flavor::Rendezvous()//(unimplemented!())
+        } else {
+            Flavor::Buffered(buffered::Queue::with_capacity(cap))
         };
 
-        for _ in 0..10_000_000 {
-            q.pop();
+        Queue {
+            flavor: flavor,
+            lock: Mutex::new(()),
+            cond: Condvar::new(),
+            blocked: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn send(&self, mut value: T) -> Result<(), SendError<T>> {
+        match self.try_send(value) {
+            Ok(()) => {},
+            Err(TrySendError::Closed(v)) => return Err(SendError(v)),
+            Err(TrySendError::Full(v)) => {
+                value = v;
+
+                loop {
+                    let guard = self.lock.lock().unwrap();
+
+                    if self.is_closed() {
+                        return Err(SendError(value));
+                    }
+
+                    self.blocked.fetch_add(1, SeqCst);
+
+                    match self.try_send(value) {
+                        Ok(()) => {
+                            self.blocked.fetch_sub(1, SeqCst);
+                            break;
+                        }
+                        Err(TrySendError::Closed(v)) => {
+                            self.blocked.fetch_sub(1, SeqCst);
+                            return Err(SendError(v));
+                        }
+                        Err(TrySendError::Full(v)) => {
+                            value = v;
+                            self.cond.wait(guard).unwrap();
+                            self.blocked.fetch_sub(1, SeqCst);
+                        }
+                    }
+                }
+            }
         }
 
-        t.join().unwrap();
+        if self.blocked.load(SeqCst) > 0 {
+            let _guard = self.lock.lock().unwrap();
+            self.cond.notify_all();
+        }
+
+        Ok(())
     }
+
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        match self.flavor {
+            Flavor::Async() => unimplemented!(),
+            Flavor::Buffered(ref q) => q.try_send(value),
+            Flavor::Rendezvous() => unimplemented!(),
+        }
+    }
+
+    pub fn recv(&self) -> Result<T, RecvError> {
+        let result = self.try_recv().or_else(|_| {
+            loop {
+                let guard = self.lock.lock().unwrap();
+
+                if self.is_closed() {
+                    return Err(RecvError);
+                }
+
+                self.blocked.fetch_add(1, SeqCst);
+
+                match self.try_recv() {
+                    Ok(v) => {
+                        self.blocked.fetch_sub(1, SeqCst);
+                        return Ok(v);
+                    }
+                    Err(TryRecvError::Closed) => {
+                        self.blocked.fetch_sub(1, SeqCst);
+                        return Err(RecvError);
+                    }
+                    Err(TryRecvError::Empty) => {
+                        self.cond.wait(guard).unwrap();
+                        self.blocked.fetch_sub(1, SeqCst);
+                    }
+                }
+            }
+        });
+
+        if self.blocked.load(SeqCst) > 0 {
+            let _guard = self.lock.lock().unwrap();
+            self.cond.notify_all();
+        }
+
+        result
+    }
+
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.flavor {
+            Flavor::Async() => unimplemented!(),
+            Flavor::Buffered(ref q) => q.try_recv(),
+            Flavor::Rendezvous() => unimplemented!(),
+        }
+    }
+
+    pub fn close(&self) -> bool {
+        let _guard = self.lock.lock().unwrap();
+
+        let result = match self.flavor {
+            Flavor::Async() => unimplemented!(),
+            Flavor::Buffered(ref q) => q.close(),
+            Flavor::Rendezvous() => unimplemented!(),
+        };
+
+        self.cond.notify_all();
+        result
+    }
+
+    pub fn is_closed(&self) -> bool {
+        match self.flavor {
+            Flavor::Async() => unimplemented!(),
+            Flavor::Buffered(ref q) => q.is_closed(),
+            Flavor::Rendezvous() => unimplemented!(),
+        }
+    }
+}
+
+pub struct Sender<T>(Arc<Queue<T>>);
+
+impl<T> Sender<T> {
+    pub fn send(&self, t: T) -> Result<(), SendError<T>> {
+        unimplemented!()
+    }
+
+    pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+        unimplemented!()
+    }
+}
+
+pub struct Receiver<T>(Arc<Queue<T>>);
+
+impl<T> Receiver<T> {
+    pub fn recv(&self) -> Result<T, RecvError> {
+        unimplemented!()
+    }
+
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        unimplemented!()
+    }
+}
+
+pub fn async<T>() -> (Sender<T>, Receiver<T>) {
+    unimplemented!()
+}
+
+pub fn sync<T>(size: usize) -> (Sender<T>, Receiver<T>) {
+    unimplemented!()
 }
