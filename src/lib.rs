@@ -13,6 +13,7 @@ pub mod buffered;
 
 // TODO: len() (add counters to each Node in the async version)
 // TODO: is_empty()
+// TODO: make Sender and Receiver Send + Sync
 
 pub struct SendError<T>(pub T);
 
@@ -29,7 +30,7 @@ pub enum TryRecvError {
 }
 
 enum Flavor<T> {
-    Async(),
+    Async(async::Queue<T>),
     Buffered(buffered::Queue<T>),
     Rendezvous(),
 }
@@ -44,7 +45,7 @@ pub struct Queue<T> {
 impl<T> Queue<T> {
     pub fn async() -> Self {
         Queue {
-            flavor: Flavor::Async(),//(unimplemented!()),
+            flavor: Flavor::Async(async::Queue::new()),
             lock: Mutex::new(()),
             cond: Condvar::new(),
             blocked: AtomicUsize::new(0),
@@ -111,7 +112,7 @@ impl<T> Queue<T> {
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         match self.flavor {
-            Flavor::Async() => unimplemented!(),
+            Flavor::Async(ref q) => q.try_send(value),
             Flavor::Buffered(ref q) => q.try_send(value),
             Flavor::Rendezvous() => unimplemented!(),
         }
@@ -155,7 +156,7 @@ impl<T> Queue<T> {
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.flavor {
-            Flavor::Async() => unimplemented!(),
+            Flavor::Async(ref q) => q.try_recv(),
             Flavor::Buffered(ref q) => q.try_recv(),
             Flavor::Rendezvous() => unimplemented!(),
         }
@@ -165,7 +166,7 @@ impl<T> Queue<T> {
         let _guard = self.lock.lock().unwrap();
 
         let result = match self.flavor {
-            Flavor::Async() => unimplemented!(),
+            Flavor::Async(ref q) => q.close(),
             Flavor::Buffered(ref q) => q.close(),
             Flavor::Rendezvous() => unimplemented!(),
         };
@@ -176,7 +177,7 @@ impl<T> Queue<T> {
 
     pub fn is_closed(&self) -> bool {
         match self.flavor {
-            Flavor::Async() => unimplemented!(),
+            Flavor::Async(ref q) => q.is_closed(),
             Flavor::Buffered(ref q) => q.is_closed(),
             Flavor::Rendezvous() => unimplemented!(),
         }

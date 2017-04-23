@@ -6,7 +6,7 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::Condvar;
 use std::sync::Mutex;
-use std::sync::atomic::{self, AtomicBool, AtomicPtr, AtomicUsize};
+use std::sync::atomic::{self, AtomicBool, AtomicPtr, AtomicUsize, fence};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
@@ -95,7 +95,6 @@ impl<T> Queue<T> {
         if inner.closed.load(SeqCst) {
             return Err(TrySendError::Closed(value));
         }
-        ::std::sync::atomic::fence(SeqCst); // TODO: remove
 
         let mut node = Box::new(Node {
             value: value,
@@ -113,7 +112,7 @@ impl<T> Queue<T> {
                 match next.as_ref() {
                     None => {
                         // Try installing the new node.
-                        match t.next.cas_box(next, node, 0) { // TODO: SeqCst
+                        match t.next.cas_box_weak(next, node, 0) {
                             Ok(node) => {
                                 // Successfully pushed the node!
                                 // Tail pointer mustn't fall behind. Move it forward.
@@ -129,7 +128,7 @@ impl<T> Queue<T> {
                     }
                     Some(n) => {
                         // Tail pointer fell behind. Move it forward.
-                        match inner.tail.cas(tail, next) {
+                        match inner.tail.cas_weak(tail, next) {
                             Ok(()) => tail = next,
                             Err(t) => tail = t,
                         }
@@ -145,7 +144,6 @@ impl<T> Queue<T> {
         if inner.closed.load(SeqCst) {
             return Err(TryRecvError::Closed);
         }
-        ::std::sync::atomic::fence(SeqCst); // TODO: remove
 
         epoch::pin(|pin| {
             let mut head = inner.head.load(pin);
@@ -155,7 +153,7 @@ impl<T> Queue<T> {
                     None => return Err(TryRecvError::Empty),
                     Some(n) => {
                         // Try unlinking the head by moving it forward.
-                        match inner.head.cas(head, next) { // TODO: SeqCst
+                        match inner.head.cas_weak_sc(head, next) {
                             Ok(_) => unsafe {
                                 // The old head may be later freed.
                                 epoch::defer_free(head.as_raw(), 1, pin);
