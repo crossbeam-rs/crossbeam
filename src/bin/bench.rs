@@ -8,6 +8,7 @@ use std::time::Duration;
 use crossbeam::scope;
 use crossbeam::sync::MsQueue;
 use crossbeam::sync::SegQueue;
+use crossbeam::sync::{SpscBufferQueue, BufferConsumer, BufferProducer};
 
 use extra_impls::mpsc_queue::Queue as MpscQueue;
 
@@ -25,6 +26,23 @@ fn time<F: FnOnce()>(f: F) -> Duration {
 fn nanos(d: Duration) -> f64 {
     d.as_secs() as f64 * 1000000000f64 + (d.subsec_nanos() as f64)
 }
+
+struct SpscDummy<T: Send> {
+    co: BufferConsumer<T>,
+    pr: BufferProducer<T>,
+}
+
+impl<T: Send> SpscDummy<T> {
+    pub fn new(s: usize) -> SpscDummy<T> {
+        let (pr, co) = SpscBufferQueue::new(s);
+        SpscDummy {
+            pr: pr,
+            co: co,
+        }
+    }
+}
+
+unsafe impl<T: Send> Sync for SpscDummy<T> {}
 
 trait Queue<T> {
     fn push(&self, T);
@@ -53,6 +71,21 @@ impl<T> Queue<T> for MpscQueue<T> {
                 Inconsistent => (),
             }
         }
+    }
+}
+
+impl<T: Send> Queue<T> for SpscDummy<T> {
+    fn push(&self, val: T) {
+        let mut temp = val;
+        loop {
+            match self.pr.try_push(temp) {
+                Ok(_) => break,
+                Err(rval) => temp=rval,
+            }
+        }
+    }
+    fn try_pop(&self) -> Option<T> {
+        self.co.try_pop()
     }
 }
 
@@ -144,6 +177,27 @@ fn bench_chan_mpsc() -> f64 {
     nanos(d) / ((COUNT * THREADS) as f64)
 }
 
+fn bench_queue_spsc<Q: Queue<u64> + Sync>(q: Q, scale: u64) -> f64 {
+    let d = time(||{
+        let qr = &q;
+        scope(|scope| {
+            scope.spawn(move ||{
+                for x in 0..COUNT*scale {
+                    qr.push(x)
+                }
+            });
+            for _ in 0..COUNT*scale {
+                loop {
+                    if let Some(_) = q.try_pop() {
+                        break;
+                    }
+                }
+            }
+        });
+    });
+    nanos(d) / ((COUNT*scale) as f64)
+}
+
 fn main() {
     println!("MSQ mpsc: {}", bench_queue_mpsc(MsQueue::new()));
     println!("chan mpsc: {}", bench_chan_mpsc());
@@ -152,6 +206,11 @@ fn main() {
 
     println!("MSQ mpmc: {}", bench_queue_mpmc(MsQueue::new()));
     println!("Seg mpmc: {}", bench_queue_mpmc(SegQueue::new()));
+
+    println!("BufferQueue spsc: {}", bench_queue_spsc(SpscDummy::new(512), 100));
+    println!("Seg spsc: {}", bench_queue_spsc(SegQueue::new(), 1));
+    println!("Ms spsc: {}", bench_queue_spsc(MsQueue::new(), 1));
+    println!("mpsc spsc: {}", bench_queue_spsc(MpscQueue::new(), 1));
 
 //    println!("queue_mpsc: {}", bench_queue_mpsc());
 //    println!("queue_mpmc: {}", bench_queue_mpmc());
