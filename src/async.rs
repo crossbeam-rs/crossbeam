@@ -11,8 +11,7 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
-use coco::epoch;
-use coco::epoch::Atomic;
+use coco::epoch::{self, Atomic, Owned};
 use either::Either;
 
 use super::SendError;
@@ -68,23 +67,28 @@ unsafe impl<T: Send> Sync for Queue<T> {}
 
 impl<T> Queue<T> {
     pub fn new() -> Self {
-        // Create a sentinel node.
-        let node = Box::new(Node {
-            value: unsafe { mem::uninitialized() },
-            next: Atomic::null(0),
-        });
-
         // Initialize the internal representation of the queue.
         let inner = Inner {
-            head: Atomic::from_box(node, 0),
+            head: Atomic::null(),
             _pad0: unsafe { mem::uninitialized() },
-            tail: Atomic::null(0),
+            tail: Atomic::null(),
             _pad1: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
         };
 
-        // Copy the head pointer into the tail pointer.
-        epoch::pin(|pin| inner.tail.store(inner.head.load(pin)));
+        // Create a sentinel node.
+        let node = Owned::new(Node {
+            value: unsafe { mem::uninitialized() },
+            next: Atomic::null(),
+        });
+
+        unsafe {
+            epoch::unprotected(|scope| {
+                let node = node.into_ptr(scope);
+                inner.head.store(node, Relaxed);
+                inner.tail.store(node, Relaxed);
+            })
+        }
 
         Queue(inner)
     }
@@ -93,30 +97,30 @@ impl<T> Queue<T> {
         let inner = &self.0;
 
         if inner.closed.load(SeqCst) {
-            return Err(TrySendError::Closed(value));
+            return Err(TrySendError::Disconnected(value));
         }
 
-        let mut node = Box::new(Node {
+        let mut node = Owned::new(Node {
             value: value,
-            next: Atomic::null(0),
+            next: Atomic::null(),
         });
 
-        epoch::pin(|pin| {
-            let mut tail = inner.tail.load(pin);
+        epoch::pin(|scope| {
+            let mut tail = inner.tail.load(Acquire, scope);
 
             loop {
                 // Load the node following the tail.
-                let t = tail.unwrap();
-                let next = t.next.load(pin);
+                let t = unsafe { tail.deref() };
+                let next = t.next.load(Acquire, scope);
 
-                match next.as_ref() {
+                match unsafe { next.as_ref() } {
                     None => {
                         // Try installing the new node.
-                        match t.next.cas_box_weak(next, node, 0) {
+                        match t.next.compare_and_swap_weak_owned(next, node, AcqRel, scope) {
                             Ok(node) => {
                                 // Successfully pushed the node!
                                 // Tail pointer mustn't fall behind. Move it forward.
-                                let _ = inner.tail.cas(tail, node);
+                                let _ = inner.tail.compare_and_swap(tail, node, AcqRel, scope);
                                 return Ok(());
                             }
                             Err((next, n)) => {
@@ -128,7 +132,7 @@ impl<T> Queue<T> {
                     }
                     Some(n) => {
                         // Tail pointer fell behind. Move it forward.
-                        match inner.tail.cas_weak(tail, next) {
+                        match inner.tail.compare_and_swap_weak(tail, next, AcqRel, scope) {
                             Ok(()) => tail = next,
                             Err(t) => tail = t,
                         }
@@ -141,22 +145,26 @@ impl<T> Queue<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let inner = &self.0;
 
-        if inner.closed.load(SeqCst) {
-            return Err(TryRecvError::Closed);
-        }
+        epoch::pin(|scope| {
+            let mut head = inner.head.load(Acquire, scope);
 
-        epoch::pin(|pin| {
-            let mut head = inner.head.load(pin);
             loop {
-                let next = head.unwrap().next.load(pin);
-                match next.as_ref() {
-                    None => return Err(TryRecvError::Empty),
+                let next = unsafe { head.deref().next.load(Acquire, scope) };
+
+                match unsafe { next.as_ref() } {
+                    None => {
+                        if inner.closed.load(SeqCst) {
+                            return Err(TryRecvError::Disconnected);
+                        } else {
+                            return Err(TryRecvError::Empty);
+                        }
+                    }
                     Some(n) => {
                         // Try unlinking the head by moving it forward.
-                        match inner.head.cas_weak_sc(head, next) {
+                        match inner.head.compare_and_swap_weak(head, next, SeqCst, scope) { // TODO: SeqCst?
                             Ok(_) => unsafe {
                                 // The old head may be later freed.
-                                epoch::defer_free(head.as_raw(), 1, pin);
+                                epoch::defer_free(head.as_raw(), 1, scope);
 
                                 // The new head holds the popped value (heads are sentinels!).
                                 return Ok(ptr::read(&n.value));
@@ -177,6 +185,8 @@ impl<T> Queue<T> {
         self.0.closed.load(SeqCst)
     }
 }
+
+// TODO: impl Drop
 
 #[cfg(test)]
 mod tests {

@@ -57,7 +57,7 @@ impl<T> Queue<T> {
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
-            return Err(TrySendError::Closed(value));
+            return Err(TrySendError::Disconnected(value));
         }
 
         let cap = self.cap;
@@ -93,10 +93,6 @@ impl<T> Queue<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        if self.closed.load(SeqCst) {
-            return Err(TryRecvError::Closed);
-        }
-
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -123,6 +119,8 @@ impl<T> Queue<T> {
                         return Ok(value);
                     }
                 }
+            } else if self.closed.load(SeqCst) {
+                return Err(TryRecvError::Disconnected);
             } else if clap.wrapping_add(power) == lap {
                 return Err(TryRecvError::Empty);
             }
@@ -137,6 +135,8 @@ impl<T> Queue<T> {
         self.closed.load(SeqCst)
     }
 }
+
+// TODO: impl Drop
 
 #[cfg(test)]
 mod tests {
