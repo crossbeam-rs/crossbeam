@@ -9,4 +9,7 @@ homepage = "https://github.com/crossbeam-rs/crossbeam-epoch"
 documentation = "https://docs.rs/crossbeam-epoch"
 description = "Epoch-based garbage collection"
 
+[features]
+nightly = []
+
 [dependencies]
