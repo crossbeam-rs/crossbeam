@@ -1,5 +1,5 @@
-use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
+use std::sync::atomic::{AtomicBool, fence};
 use std::{ptr, mem};
 use std::thread::{self, Thread};
 
@@ -174,8 +174,10 @@ impl<T> MsQueue<T> {
                         unsafe {
                             // signal the thread
                             (*signal).data = Some(cache.into_data());
-                            (*signal).ready.store(true, Release);
-                            (*signal).thread.unpark();
+                            let thread = (*signal).thread.clone();
+
+                            (*signal).ready.store(true, Relaxed);
+                            thread.unpark();
                             guard.unlinked(head);
                             return;
                         }
