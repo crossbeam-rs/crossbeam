@@ -138,6 +138,19 @@ impl<T> SegQueue<T> {
     }
 }
 
+impl<T> Drop for SegQueue<T> {
+    fn drop(&mut self) {
+        while self.try_pop().is_some() {}
+
+        // Destroy the remaining sentinel segment.
+        let guard = epoch::pin();
+        let sentinel = self.head.load(Relaxed, &guard).unwrap().as_raw();
+        unsafe {
+            drop(Vec::from_raw_parts(sentinel, 0, 1));
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     const CONC_COUNT: i64 = 1000000;

@@ -77,6 +77,12 @@ impl<T> TreiberStack<T> {
     }
 }
 
+impl<T> Drop for TreiberStack<T> {
+    fn drop(&mut self) {
+        while self.try_pop().is_some() {}
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
