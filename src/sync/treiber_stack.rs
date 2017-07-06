@@ -83,6 +83,12 @@ impl<T> Drop for TreiberStack<T> {
     }
 }
 
+impl<T> Default for TreiberStack<T> {
+    fn default() -> Self {
+        TreiberStack::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
