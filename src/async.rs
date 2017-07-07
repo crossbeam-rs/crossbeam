@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::cell::UnsafeCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -16,8 +17,18 @@ use either::Either;
 
 use super::SendError;
 use super::TrySendError;
+use super::SendTimeoutError;
 use super::RecvError;
 use super::TryRecvError;
+use super::RecvTimeoutError;
+
+// TODO: Try Dmitry's modified MPSC queue instead of Michael-Scott. Moreover, don't use complex
+// synchronization nor pinning if there's a single consumer. Note that Receiver can't be Sync in
+// that case. Also, optimize the Sender side if there's only one.
+// Note that in SPSC scenario the Receiver doesn't wait if the queue is in inconsistent state.
+
+use blocking;
+use blocking::Blocking;
 
 /// A single node in a queue.
 struct Node<T> {
@@ -27,26 +38,9 @@ struct Node<T> {
     next: Atomic<Node<T>>,
 }
 
-/// The inner representation of a queue.
-///
-/// It consists of a head and tail pointer, with some padding in-between to avoid false sharing.
-/// A queue is a singly linked list of value nodes. There is always one sentinel value node, and
-/// that is the head. If both head and tail point to the sentinel node, the queue is empty.
-///
-/// If the queue is empty, there might be a list of request nodes following the tail, which
-/// represent threads blocked on future push operations. The tail never moves onto a request node.
-///
-/// To summarize, the structure of the queue is always one of these two:
-///
-/// 1. Sentinel node (head), followed by a number of value nodes (the last one is tail).
-/// 2. Sentinel node (head and tail), followed by a number of request nodes.
-///
-/// Requests are fulfilled by marking the next-pointer of it's node, then copying a value into the
-/// slot, and finally signalling that the blocked thread is ready to be woken up. Nodes with marked
-/// next-pointers are considered to be deleted and can always be unlinked from the list. A request
-/// can cancel itself simply by marking the next-pointer of it's node.
+/// A lock-free multi-producer multi-consumer queue.
 #[repr(C)]
-struct Inner<T> {
+pub struct Queue<T> {
     /// Head of the queue.
     head: Atomic<Node<T>>,
     /// Some padding to avoid false sharing.
@@ -57,10 +51,11 @@ struct Inner<T> {
     _pad1: [u8; 64],
     /// TODO
     closed: AtomicBool,
-}
 
-/// A lock-free multi-producer multi-consumer queue.
-pub struct Queue<T>(Inner<T>);
+    receivers: Blocking,
+
+    _marker: PhantomData<T>,
+}
 
 unsafe impl<T: Send> Send for Queue<T> {}
 unsafe impl<T: Send> Sync for Queue<T> {}
@@ -68,12 +63,14 @@ unsafe impl<T: Send> Sync for Queue<T> {}
 impl<T> Queue<T> {
     pub fn new() -> Self {
         // Initialize the internal representation of the queue.
-        let inner = Inner {
+        let queue = Queue {
             head: Atomic::null(),
             _pad0: unsafe { mem::uninitialized() },
             tail: Atomic::null(),
             _pad1: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
+            receivers: Blocking::new(),
+            _marker: PhantomData,
         };
 
         // Create a sentinel node.
@@ -85,18 +82,16 @@ impl<T> Queue<T> {
         unsafe {
             epoch::unprotected(|scope| {
                 let node = node.into_ptr(scope);
-                inner.head.store(node, Relaxed);
-                inner.tail.store(node, Relaxed);
+                queue.head.store(node, Relaxed);
+                queue.tail.store(node, Relaxed);
             })
         }
 
-        Queue(inner)
+        queue
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        let inner = &self.0;
-
-        if inner.closed.load(SeqCst) {
+        if self.closed.load(SeqCst) {
             return Err(TrySendError::Disconnected(value));
         }
 
@@ -106,21 +101,23 @@ impl<T> Queue<T> {
         });
 
         epoch::pin(|scope| {
-            let mut tail = inner.tail.load(Acquire, scope);
+            let mut tail = self.tail.load(Acquire, scope);
 
             loop {
                 // Load the node following the tail.
                 let t = unsafe { tail.deref() };
-                let next = t.next.load(Acquire, scope);
+                let next = t.next.load(SeqCst, scope);
 
                 match unsafe { next.as_ref() } {
                     None => {
                         // Try installing the new node.
-                        match t.next.compare_and_swap_weak_owned(next, node, AcqRel, scope) {
+                        match t.next.compare_and_swap_weak_owned(next, node, SeqCst, scope) {
                             Ok(node) => {
                                 // Successfully pushed the node!
                                 // Tail pointer mustn't fall behind. Move it forward.
-                                let _ = inner.tail.compare_and_swap(tail, node, AcqRel, scope);
+                                let _ = self.tail.compare_and_swap(tail, node, AcqRel, scope);
+
+                                self.receivers.wake_one();
                                 return Ok(());
                             }
                             Err((next, n)) => {
@@ -132,7 +129,7 @@ impl<T> Queue<T> {
                     }
                     Some(n) => {
                         // Tail pointer fell behind. Move it forward.
-                        match inner.tail.compare_and_swap_weak(tail, next, AcqRel, scope) {
+                        match self.tail.compare_and_swap_weak(tail, next, AcqRel, scope) {
                             Ok(()) => tail = next,
                             Err(t) => tail = t,
                         }
@@ -142,18 +139,28 @@ impl<T> Queue<T> {
         })
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let inner = &self.0;
+    pub fn send_until(
+        &self,
+        mut value: T,
+        _: Option<Instant>,
+    ) -> Result<(), SendTimeoutError<T>> {
+        match self.try_send(value) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Disconnected(v)) => Err(SendTimeoutError::Disconnected(v)),
+            Err(TrySendError::Full(v)) => unreachable!(),
+        }
+    }
 
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         epoch::pin(|scope| {
-            let mut head = inner.head.load(Acquire, scope);
+            let mut head = self.head.load(SeqCst, scope);
 
             loop {
-                let next = unsafe { head.deref().next.load(Acquire, scope) };
+                let next = unsafe { head.deref().next.load(SeqCst, scope) };
 
                 match unsafe { next.as_ref() } {
                     None => {
-                        if inner.closed.load(SeqCst) {
+                        if self.closed.load(SeqCst) {
                             return Err(TryRecvError::Disconnected);
                         } else {
                             return Err(TryRecvError::Empty);
@@ -161,10 +168,10 @@ impl<T> Queue<T> {
                     }
                     Some(n) => {
                         // Try unlinking the head by moving it forward.
-                        match inner.head.compare_and_swap_weak(head, next, SeqCst, scope) { // TODO: SeqCst?
+                        match self.head.compare_and_swap_weak(head, next, SeqCst, scope) {
                             Ok(_) => unsafe {
                                 // The old head may be later freed.
-                                epoch::defer_free(head.as_raw(), 1, scope);
+                                epoch::defer_free(head);
 
                                 // The new head holds the popped value (heads are sentinels!).
                                 return Ok(ptr::read(&n.value));
@@ -177,12 +184,50 @@ impl<T> Queue<T> {
         })
     }
 
+    pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+        let mut blocking = false;
+        loop {
+            let token;
+            if blocking {
+                token = self.receivers.register();
+            }
+
+            match self.try_recv() {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Disconnected) => {
+                    return Err(RecvTimeoutError::Disconnected);
+                }
+                Err(TryRecvError::Empty) => {
+                    if blocking {
+                        if let Some(end) = deadline {
+                            let now = Instant::now();
+                            if now >= end {
+                                return Err(RecvTimeoutError::Timeout);
+                            } else {
+                                thread::park_timeout(end - now);
+                            }
+                        } else {
+                            thread::park();
+                        }
+                    }
+                    blocking = !blocking;
+                }
+            }
+        }
+    }
+
     pub fn close(&self) -> bool {
-        self.0.closed.swap(true, SeqCst) == false
+        if !self.closed.swap(true, SeqCst) {
+            println!("CLOSE");
+            self.receivers.wake_all();
+            true
+        } else {
+            false
+        }
     }
 
     pub fn is_closed(&self) -> bool {
-        self.0.closed.load(SeqCst)
+        self.closed.load(SeqCst)
     }
 }
 

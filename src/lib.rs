@@ -1,3 +1,5 @@
+#![feature(thread_id)]
+
 extern crate coco;
 extern crate either;
 
@@ -9,10 +11,13 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
 use std::time::{Duration, Instant};
 
 mod async;
-pub mod buffered;
-mod rendezvous;
+mod blocking;
+mod sync;
+mod zero;
 
-// TODO: len() (add counters to each Node in the async version)
+// TODO: Use a oneshot optimization
+
+// TODO: len() (add counters to each Node in the async version) (see go implementation)
 // TODO: is_empty()
 // TODO: make Sender and Receiver Send + Sync
 
@@ -48,15 +53,12 @@ pub enum TryRecvError {
 
 enum Flavor<T> {
     Async(async::Queue<T>),
-    Buffered(buffered::Queue<T>),
-    Rendezvous(rendezvous::Queue<T>),
+    Sync(sync::Queue<T>),
+    Zero(zero::Queue<T>),
 }
 
 pub struct Queue<T> {
     flavor: Flavor<T>,
-    lock: Mutex<()>,
-    cond: Condvar,
-    blocked: AtomicUsize,
     senders: AtomicUsize,
     receivers: AtomicUsize,
 }
@@ -65,9 +67,6 @@ impl<T> Queue<T> {
     pub fn async() -> Self {
         Queue {
             flavor: Flavor::Async(async::Queue::new()),
-            lock: Mutex::new(()),
-            cond: Condvar::new(),
-            blocked: AtomicUsize::new(0),
             senders: AtomicUsize::new(0),
             receivers: AtomicUsize::new(0),
         }
@@ -75,16 +74,13 @@ impl<T> Queue<T> {
 
     pub fn sync(cap: usize) -> Self {
         let flavor = if cap == 0 {
-            Flavor::Rendezvous(rendezvous::Queue::new())
+            Flavor::Zero(zero::Queue::new())
         } else {
-            Flavor::Buffered(buffered::Queue::with_capacity(cap))
+            Flavor::Sync(sync::Queue::with_capacity(cap))
         };
 
         Queue {
             flavor: flavor,
-            lock: Mutex::new(()),
-            cond: Condvar::new(),
-            blocked: AtomicUsize::new(0),
             senders: AtomicUsize::new(0),
             receivers: AtomicUsize::new(0),
         }
@@ -95,62 +91,11 @@ impl<T> Queue<T> {
         mut value: T,
         deadline: Option<Instant>
     ) -> Result<(), SendTimeoutError<T>> {
-        match self.try_send(value) {
-            Ok(()) => {},
-            Err(TrySendError::Disconnected(v)) => {
-                return Err(SendTimeoutError::Disconnected(v));
-            }
-            Err(TrySendError::Full(v)) => {
-                value = v;
-
-                loop {
-                    let guard = self.lock.lock().unwrap();
-
-                    if self.is_closed() {
-                        return Err(SendTimeoutError::Disconnected(value));
-                    }
-
-                    self.blocked.fetch_add(1, SeqCst);
-
-                    match self.try_send(value) {
-                        Ok(()) => {
-                            self.blocked.fetch_sub(1, SeqCst);
-                            break;
-                        }
-                        Err(TrySendError::Disconnected(v)) => {
-                            self.blocked.fetch_sub(1, SeqCst);
-                            return Err(SendTimeoutError::Disconnected(v));
-                        }
-                        Err(TrySendError::Full(v)) => {
-                            value = v;
-                            match deadline {
-                                None => {
-                                    self.cond.wait(guard).unwrap();
-                                }
-                                Some(d) => {
-                                    let now = Instant::now();
-                                    if now >= d {
-                                        return Err(SendTimeoutError::Timeout(value));
-                                    }
-                                    let (g, r) = self.cond.wait_timeout(guard, d - now).unwrap();
-                                    if r.timed_out() {
-                                        return Err(SendTimeoutError::Timeout(value));
-                                    }
-                                }
-                            }
-                            self.blocked.fetch_sub(1, SeqCst);
-                        }
-                    }
-                }
-            }
+        match self.flavor {
+            Flavor::Async(ref q) => q.send_until(value, deadline),
+            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => q.send_until(value, deadline),
         }
-
-        if self.blocked.load(SeqCst) > 0 {
-            let _guard = self.lock.lock().unwrap();
-            self.cond.notify_all();
-        }
-
-        Ok(())
     }
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
@@ -168,67 +113,17 @@ impl<T> Queue<T> {
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         match self.flavor {
             Flavor::Async(ref q) => q.try_send(value),
-            Flavor::Buffered(ref q) => q.try_send(value),
-            Flavor::Rendezvous(ref q) => q.try_send(value),
+            Flavor::Sync(ref q) => q.try_send(value),
+            Flavor::Zero(ref q) => q.try_send(value),
         }
     }
 
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
-        let value;
-
-        match self.try_recv() {
-            Ok(v) => value = v,
-            Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
-            Err(TryRecvError::Empty) => {
-                loop {
-                    let guard = self.lock.lock().unwrap();
-
-                    if self.is_closed() {
-                        return Err(RecvTimeoutError::Disconnected);
-                    }
-
-                    self.blocked.fetch_add(1, SeqCst); // TODO: can we move that into Err(Empty)?
-                    // TODO: perhaps this should probably be a guard: see the last return Errs
-
-                    match self.try_recv() {
-                        Ok(v) => {
-                            self.blocked.fetch_sub(1, SeqCst);
-                            value = v;
-                            break;
-                        }
-                        Err(TryRecvError::Disconnected) => {
-                            self.blocked.fetch_sub(1, SeqCst);
-                            return Err(RecvTimeoutError::Disconnected);
-                        }
-                        Err(TryRecvError::Empty) => {
-                            match deadline {
-                                None => {
-                                    self.cond.wait(guard).unwrap();
-                                }
-                                Some(d) => {
-                                    let now = Instant::now();
-                                    if now >= d {
-                                        return Err(RecvTimeoutError::Timeout);
-                                    }
-                                    let (g, r) = self.cond.wait_timeout(guard, d - now).unwrap();
-                                    if r.timed_out() {
-                                        return Err(RecvTimeoutError::Timeout);
-                                    }
-                                }
-                            }
-                            self.blocked.fetch_sub(1, SeqCst);
-                        }
-                    }
-                }
-            }
-        };
-
-        if self.blocked.load(SeqCst) > 0 {
-            let _guard = self.lock.lock().unwrap();
-            self.cond.notify_all();
+        match self.flavor {
+            Flavor::Async(ref q) => q.recv_until(deadline),
+            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => q.recv_until(deadline),
         }
-
-        Ok(value)
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {
@@ -246,36 +141,24 @@ impl<T> Queue<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.flavor {
             Flavor::Async(ref q) => q.try_recv(),
-            Flavor::Buffered(ref q) => q.try_recv(),
-            Flavor::Rendezvous(ref q) => q.try_recv(),
+            Flavor::Sync(ref q) => q.try_recv(),
+            Flavor::Zero(ref q) => q.try_recv(),
         }
     }
 
     pub fn close(&self) -> bool {
-        if self.is_closed() {
-            return false;
-        }
-        println!("CLOSE");
-
-        let _guard = self.lock.lock().unwrap();
-
-        let result = match self.flavor {
+        match self.flavor {
             Flavor::Async(ref q) => q.close(),
-            Flavor::Buffered(ref q) => q.close(),
-            Flavor::Rendezvous(ref q) => q.close(),
-        };
-
-        if result && self.blocked.load(SeqCst) > 0 {
-            self.cond.notify_all();
+            Flavor::Sync(ref q) => q.close(),
+            Flavor::Zero(ref q) => q.close(),
         }
-        result
     }
 
     pub fn is_closed(&self) -> bool {
         match self.flavor {
             Flavor::Async(ref q) => q.is_closed(),
-            Flavor::Buffered(ref q) => q.is_closed(),
-            Flavor::Rendezvous(ref q) => q.is_closed(),
+            Flavor::Sync(ref q) => q.is_closed(),
+            Flavor::Zero(ref q) => q.is_closed(),
         }
     }
 }
@@ -348,50 +231,86 @@ pub fn sync<T>(size: usize) -> (Sender<T>, Receiver<T>) {
     (Sender::new(q.clone()), Receiver::new(q))
 }
 
-// struct Select<'a> {
-//     v: Vec<&'a ()>,
-// }
-//
-// impl<'a> Select<'a> {
-//     fn new() -> Self {
-//         Select {
-//             v: vec![],
-//         }
-//     }
-//
-//     fn add<T>(&mut self, rx: &'a Receiver<T>) -> usize {
-//         // self.v.push(r);
-//         // self.f.push(Box::new(f));
-//         self.v.len()
-//     }
-//
-//     fn wait(&self) -> usize {
-//         7
-//     }
-// }
+pub struct Select {
+    //v: Cell<Vec<blocking::Token>>,
+}
+
+impl Select {
+    pub fn new() -> Self {
+        Select {
+            // v: vec![],
+        }
+    }
+
+    pub fn with_timeout(dur: Duration) -> Self {
+        unimplemented!()
+    }
+
+    pub fn iter(&self) -> Iter {
+        unimplemented!()
+    }
+}
+
+pub struct Iter<'a> {
+    parent: &'a Select,
+}
+
+pub struct Step<'a> {
+    parent: &'a Select,
+}
+
+impl<'a> Step<'a> {
+    pub fn send<T>(&self, tx: &Sender<T>, value: T) -> Result<(), TrySendError<T>> {
+        unimplemented!()
+    }
+
+    pub fn recv<T>(&self, rx: &Receiver<T>) -> Result<T, TryRecvError> {
+        unimplemented!()
+    }
+
+    pub fn all_blocked(&self) -> bool {
+        unimplemented!()
+    }
+
+    pub fn all_closed(&self) -> bool {
+        unimplemented!()
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = Step<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+impl<'a> IntoIterator for &'a Select {
+    type Item = Step<'a>;
+    type IntoIter = Iter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        unimplemented!()
+    }
+}
 
 fn foo() {
-    let (t1, r1) = async::<i32>();
-    let (t2, r2) = async::<i32>();
+    let (tx1, rx1) = async::<i32>();
+    let (tx2, rx2) = async::<i32>();
 
-    // select! {
-    //     a <- t1 {
-    //
-    //     }
-    // }
+    // for sel in &Select::with_timeout(Duration::from_millis(100)) {
+    for sel in &Select::new() {
+        if let Ok(_) = sel.send(&tx1, 10) {
 
-    // let mut sel = Select::new();
-    // let s1 = sel.recv(&r1);
-    // let s2 = sel.send(&r2, 10);
-    // let res = sel.wait();
-    //
-    // if res == s1 {
-    //
-    // } else if res == s2 {
-    //
-    // }
-        // .add(&r1)
-        // .add(&r2, |_| {x += 2;})
-    //     .wait_timeout_ms(10);
-        // .wait();
+        }
+        if let Ok(value) = sel.recv(&rx2) {
+
+        }
+        if sel.all_blocked() {
+
+        }
+        if sel.all_closed() {
+
+        }
+    }
 }

@@ -6,4 +6,6 @@ license = "Apache-2.0/MIT"
 
 [dependencies]
 coco = { path = "../coco" }
-either = "*"
+crossbeam = "*"
+either = "1.1"
+rand = "0.3"

@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::cell::UnsafeCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
@@ -16,18 +17,29 @@ use super::TrySendError;
 use super::RecvError;
 use super::TryRecvError;
 
+use blocking::Blocking;
+
+// TODO: optimize if there's a single Sender or a single Receiver
+
 struct Node<T> {
     lap: AtomicUsize,
     value: T,
 }
 
+#[repr(C)]
 pub struct Queue<T> {
-    buffer: *mut UnsafeCell<Node<T>>, // !Send + !Sync
+    buffer: *mut UnsafeCell<Node<T>>,
     cap: usize,
     power: usize,
+    _pad0: [u8; 64],
     head: AtomicUsize,
+    _pad1: [u8; 64],
     tail: AtomicUsize,
+    _pad2: [u8; 64],
     closed: AtomicBool,
+    senders: Blocking,
+    receivers: Blocking,
+    _marker: PhantomData<T>,
 }
 
 unsafe impl<T: Send> Send for Queue<T> {}
@@ -49,9 +61,15 @@ impl<T> Queue<T> {
             buffer: buffer,
             cap: cap,
             power: power,
+            _pad0: unsafe { mem::uninitialized() },
             head: AtomicUsize::new(power),
+            _pad1: unsafe { mem::uninitialized() },
             tail: AtomicUsize::new(0),
+            _pad2: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
+            senders: Blocking::new(),
+            receivers: Blocking::new(),
+            _marker: PhantomData,
         }
     }
 
@@ -79,10 +97,13 @@ impl<T> Queue<T> {
                     lap.wrapping_add(power).wrapping_add(power)
                 };
 
+                // TODO: use compare_exchange_weak
                 if self.tail.compare_and_swap(tail, new, SeqCst) == tail {
                     unsafe {
                         (*cell).value = value;
                         (*cell).lap.store(clap.wrapping_add(power), Release);
+
+                        self.receivers.wake_one();
                         return Ok(());
                     }
                 }
@@ -116,13 +137,17 @@ impl<T> Queue<T> {
                     unsafe {
                         let value = ptr::read(&(*cell).value);
                         (*cell).lap.store(clap.wrapping_add(power), Release);
+
+                        self.senders.wake_one();
                         return Ok(value);
                     }
                 }
-            } else if self.closed.load(SeqCst) {
-                return Err(TryRecvError::Disconnected);
             } else if clap.wrapping_add(power) == lap {
-                return Err(TryRecvError::Empty);
+                if self.closed.load(SeqCst) {
+                    return Err(TryRecvError::Disconnected);
+                } else {
+                    return Err(TryRecvError::Empty);
+                }
             }
         }
     }
