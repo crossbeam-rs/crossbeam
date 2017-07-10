@@ -1,5 +1,5 @@
-use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
-use std::sync::atomic::{AtomicBool, fence};
+use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
+use std::sync::atomic::AtomicBool;
 use std::{ptr, mem};
 use std::thread::{self, Thread};
 
@@ -176,7 +176,7 @@ impl<T> MsQueue<T> {
                             (*signal).data = Some(cache.into_data());
                             let thread = (*signal).thread.clone();
 
-                            (*signal).ready.store(true, Relaxed);
+                            (*signal).ready.store(true, Release);
                             thread.unpark();
                             guard.unlinked(head);
                             return;
