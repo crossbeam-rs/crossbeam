@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::cell::UnsafeCell;
+use std::collections::VecDeque;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
@@ -27,9 +28,6 @@ use super::RecvTimeoutError;
 // that case. Also, optimize the Sender side if there's only one.
 // Note that in SPSC scenario the Receiver doesn't wait if the queue is in inconsistent state.
 
-use blocking;
-use blocking::Blocking;
-
 /// A single node in a queue.
 struct Node<T> {
     /// The payload. TODO
@@ -52,7 +50,8 @@ pub struct Queue<T> {
     /// TODO
     closed: AtomicBool,
 
-    receivers: Blocking,
+    receivers: Mutex<VecDeque<Thread>>,
+    receivers_len: AtomicUsize,
 
     _marker: PhantomData<T>,
 }
@@ -69,7 +68,8 @@ impl<T> Queue<T> {
             tail: Atomic::null(),
             _pad1: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
-            receivers: Blocking::new(),
+            receivers: Mutex::new(VecDeque::new()),
+            receivers_len: AtomicUsize::new(0),
             _marker: PhantomData,
         };
 
@@ -117,7 +117,15 @@ impl<T> Queue<T> {
                                 // Tail pointer mustn't fall behind. Move it forward.
                                 let _ = self.tail.compare_and_swap(tail, node, AcqRel, scope);
 
-                                self.receivers.wake_one();
+                                if self.receivers_len.load(SeqCst) > 0 {
+                                    let mut r = self.receivers.lock().unwrap();
+
+                                    if let Some(t) = r.pop_front() {
+                                        self.receivers_len.store(r.len(), SeqCst);
+                                        t.unpark();
+                                    }
+                                }
+
                                 return Ok(());
                             }
                             Err((next, n)) => {
@@ -185,41 +193,68 @@ impl<T> Queue<T> {
     }
 
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
-        let mut blocking = false;
         loop {
-            let token;
-            if blocking {
-                token = self.receivers.register();
-            }
-
             match self.try_recv() {
                 Ok(v) => return Ok(v),
-                Err(TryRecvError::Disconnected) => {
-                    return Err(RecvTimeoutError::Disconnected);
-                }
-                Err(TryRecvError::Empty) => {
-                    if blocking {
-                        if let Some(end) = deadline {
-                            let now = Instant::now();
-                            if now >= end {
-                                return Err(RecvTimeoutError::Timeout);
-                            } else {
-                                thread::park_timeout(end - now);
-                            }
-                        } else {
-                            thread::park();
-                        }
-                    }
-                    blocking = !blocking;
+                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
+                Err(TryRecvError::Empty) => {},
+            }
+
+            let now = Instant::now();
+            if let Some(end) = deadline {
+                if now >= end {
+                    return Err(RecvTimeoutError::Timeout);
                 }
             }
+
+            // Register a receiver.
+            {
+                let mut r = self.receivers.lock().unwrap();
+                r.push_back(thread::current());
+
+                match self.try_recv() {
+                    Ok(v) => {
+                        r.pop_back();
+                        return Ok(v);
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        r.pop_back();
+                        return Err(RecvTimeoutError::Disconnected);
+                    }
+                    Err(TryRecvError::Empty) => {}
+                }
+
+                self.receivers_len.store(r.len(), SeqCst);
+            }
+
+            if let Some(end) = deadline {
+                thread::park_timeout(end - now);
+            } else {
+                thread::park();
+            }
+
+            let mut r = self.receivers.lock().unwrap();
+            let id = thread::current().id();
+
+            if let Some((i, _)) = r.iter().enumerate().find(|&(_, t)| t.id() == id) {
+                r.remove(i);
+            } else if let Some(t) = r.pop_front() {
+                t.unpark();
+            }
+
+            self.receivers_len.store(r.len(), SeqCst);
         }
     }
 
     pub fn close(&self) -> bool {
         if !self.closed.swap(true, SeqCst) {
+            let mut r = self.receivers.lock().unwrap();
+            for t in r.drain(..) {
+                t.unpark();
+            }
+            self.receivers_len.store(r.len(), SeqCst);
+
             println!("CLOSE");
-            self.receivers.wake_all();
             true
         } else {
             false
