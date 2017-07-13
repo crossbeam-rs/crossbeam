@@ -1,6 +1,7 @@
 #![feature(thread_id)]
 
 extern crate coco;
+extern crate crossbeam;
 extern crate either;
 
 use std::sync::Arc;
@@ -17,35 +18,38 @@ mod zero;
 
 // TODO: Use a oneshot optimization
 
+// TODO: iterators
+
 // TODO: len() (add counters to each Node in the async version) (see go implementation)
 // TODO: is_empty()
 // TODO: make Sender and Receiver Send + Sync
 
-#[derive(Debug)]
+// TODO: impl Error and Display for these errors
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(pub T);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SendTimeoutError<T> {
     Timeout(T),
     Disconnected(T),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TrySendError<T> {
     Full(T),
     Disconnected(T),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct RecvError;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum RecvTimeoutError {
     Timeout,
     Disconnected,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TryRecvError {
     Empty,
     Disconnected,
@@ -92,17 +96,17 @@ impl<T> Queue<T> {
         deadline: Option<Instant>
     ) -> Result<(), SendTimeoutError<T>> {
         match self.flavor {
-            Flavor::Async(ref q) => q.send_until(value, deadline),
+            Flavor::Async(ref q) => unimplemented!(),
             Flavor::Sync(ref q) => unimplemented!(),
             Flavor::Zero(ref q) => q.send_until(value, deadline),
         }
     }
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        if let Err(SendTimeoutError::Disconnected(v)) = self.send_until(value, None) {
-            Err(SendError(v))
-        } else {
-            Ok(())
+        match self.flavor {
+            Flavor::Async(ref q) => q.send(value),
+            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => unimplemented!(),
         }
     }
 
@@ -135,7 +139,11 @@ impl<T> Queue<T> {
     }
 
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        self.recv_until(Some(Instant::now() + dur))
+        match self.flavor {
+            Flavor::Async(ref q) => q.recv_timeout(dur),
+            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => unimplemented!(),
+        }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
@@ -299,18 +307,21 @@ fn foo() {
     let (tx2, rx2) = async::<i32>();
 
     // for sel in &Select::with_timeout(Duration::from_millis(100)) {
-    for sel in &Select::new() {
-        if let Ok(_) = sel.send(&tx1, 10) {
-
-        }
-        if let Ok(value) = sel.recv(&rx2) {
-
-        }
-        if sel.all_blocked() {
-
-        }
-        if sel.all_closed() {
-
-        }
-    }
+    // for s in &Select::new() {
+    //     if let Ok(_) = rx1.poll(s) {
+    //
+    //     }
+    //     if let Ok(value) = rx2.poll(s) {
+    //
+    //     }
+    //     if s.timed_out() {
+    //
+    //     }
+    //     if s.all_blocked() {
+    //
+    //     }
+    //     if s.all_disconnected() {
+    //
+    //     }
+    // }
 }

@@ -135,7 +135,7 @@ impl<T> Queue<T> {
                             }
                         }
                     }
-                    Some(n) => {
+                    Some(_) => {
                         // Tail pointer fell behind. Move it forward.
                         match self.tail.compare_and_swap_weak(tail, next, AcqRel, scope) {
                             Ok(()) => tail = next,
@@ -147,15 +147,11 @@ impl<T> Queue<T> {
         })
     }
 
-    pub fn send_until(
-        &self,
-        mut value: T,
-        _: Option<Instant>,
-    ) -> Result<(), SendTimeoutError<T>> {
+    pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         match self.try_send(value) {
             Ok(()) => Ok(()),
-            Err(TrySendError::Disconnected(v)) => Err(SendTimeoutError::Disconnected(v)),
-            Err(TrySendError::Full(v)) => unreachable!(),
+            Err(TrySendError::Disconnected(v)) => Err(SendError(v)),
+            Err(TrySendError::Full(_)) => unreachable!(),
         }
     }
 
@@ -179,7 +175,7 @@ impl<T> Queue<T> {
                         match self.head.compare_and_swap_weak(head, next, SeqCst, scope) {
                             Ok(_) => unsafe {
                                 // The old head may be later freed.
-                                epoch::defer_free(head);
+                                scope.defer_free(head);
 
                                 // The new head holds the popped value (heads are sentinels!).
                                 return Ok(ptr::read(&n.value));
@@ -246,6 +242,18 @@ impl<T> Queue<T> {
         }
     }
 
+    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
+        self.recv_until(Some(Instant::now() + dur))
+    }
+
+    pub fn recv(&self) -> Result<T, RecvError> {
+        if let Ok(v) = self.recv_until(None) {
+            Ok(v)
+        } else {
+            Err(RecvError)
+        }
+    }
+
     pub fn close(&self) -> bool {
         if !self.closed.swap(true, SeqCst) {
             let mut r = self.receivers.lock().unwrap();
@@ -254,7 +262,6 @@ impl<T> Queue<T> {
             }
             self.receivers_len.store(r.len(), SeqCst);
 
-            println!("CLOSE");
             true
         } else {
             false
@@ -275,27 +282,119 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
+    use crossbeam;
+
+    // TODO: MPMC stress test
+    // TODO: drop test
+
+    fn ms(ms: u64) -> Duration {
+        Duration::from_millis(ms)
+    }
+
     #[test]
-    fn simple() {
-        const STEPS: usize = 1_000_000;
+    fn smoke() {
+        let q = Queue::new();
+        q.try_send(7).unwrap();
+        assert_eq!(q.try_recv().unwrap(), 7);
 
-        let q = Arc::new(Queue::with_capacity(5));
+        q.send(8);
+        assert_eq!(q.recv().unwrap(), 8);
 
-        let t = {
-            let q = q.clone();
-            thread::spawn(move || {
-                for i in 0..STEPS {
-                    q.send(5);
-                }
-                println!("SEND DONE");
-            })
-        };
+        assert_eq!(q.try_recv(), Err(TryRecvError::Empty));
+        assert_eq!(q.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
+    }
 
-        for _ in 0..STEPS {
-            q.recv();
-        }
-        println!("RECV DONE");
+    #[test]
+    fn recv() {
+        let q = Queue::new();
 
-        t.join().unwrap();
+        crossbeam::scope(|s| {
+            s.spawn(|| {
+                assert_eq!(q.recv(), Ok(7));
+                thread::sleep(ms(100));
+                assert_eq!(q.recv(), Ok(8));
+                thread::sleep(ms(100));
+                assert_eq!(q.recv(), Ok(9));
+                assert_eq!(q.recv(), Err(RecvError));
+            });
+            s.spawn(|| {
+                thread::sleep(ms(150));
+                assert_eq!(q.send(7), Ok(()));
+                assert_eq!(q.send(8), Ok(()));
+                assert_eq!(q.send(9), Ok(()));
+                q.close();
+            });
+        });
+    }
+
+    #[test]
+    fn recv_timeout() {
+        let q = Queue::new();
+
+        crossbeam::scope(|s| {
+            s.spawn(|| {
+                assert_eq!(q.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
+                assert_eq!(q.recv_timeout(ms(100)), Ok(7));
+                assert_eq!(q.recv_timeout(ms(100)), Err(RecvTimeoutError::Disconnected));
+            });
+            s.spawn(|| {
+                thread::sleep(ms(150));
+                assert_eq!(q.send(7), Ok(()));
+                q.close();
+            });
+        });
+    }
+
+    #[test]
+    fn try_recv() {
+        let q = Queue::new();
+
+        crossbeam::scope(|s| {
+            s.spawn(|| {
+                assert_eq!(q.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
+                assert_eq!(q.recv_timeout(ms(100)), Ok(7));
+                assert_eq!(q.recv_timeout(ms(100)), Err(RecvTimeoutError::Disconnected));
+            });
+            s.spawn(|| {
+                thread::sleep(ms(150));
+                assert_eq!(q.send(7), Ok(()));
+                q.close();
+            });
+        });
+    }
+
+    #[test]
+    fn is_closed() {
+        let q = Queue::<()>::new();
+
+        crossbeam::scope(|s| {
+            s.spawn(|| {
+                assert!(!q.is_closed());
+                thread::sleep(ms(150));
+                assert!(q.is_closed());
+            });
+            s.spawn(|| {
+                thread::sleep(ms(100));
+                assert!(!q.is_closed());
+                q.close();
+                assert!(q.is_closed());
+            });
+        });
+    }
+
+    #[test]
+    fn recv_after_close() {
+        let q = Queue::new();
+
+        q.send(1).unwrap();
+        q.send(2).unwrap();
+        q.send(3).unwrap();
+
+        q.close();
+
+        assert_eq!(q.recv(), Ok(1));
+        assert_eq!(q.recv(), Ok(2));
+        assert_eq!(q.recv(), Ok(3));
+        assert_eq!(q.recv(), Err(RecvError));
     }
 }

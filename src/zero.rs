@@ -16,49 +16,25 @@ use super::TryRecvError;
 use super::RecvTimeoutError;
 
 use blocking::Blocking;
+use blocking::Payload;
 
-// TODO: data and thread will get destructed in Drop, which is wrong if version is not FULL
 pub struct Queue<T> {
-    data: UnsafeCell<T>,
-    thread: UnsafeCell<Thread>,
-    version: AtomicUsize,
-
+    lock: Mutex<()>,
     closed: AtomicBool,
 
-    senders: Blocking,
-    receivers: Blocking,
+    senders: Blocking<T>,
+    receivers: Blocking<T>,
+
     _marker: PhantomData<T>,
 }
 
 unsafe impl<T: Send> Send for Queue<T> {}
 unsafe impl<T: Send> Sync for Queue<T> {}
 
-// TODO: sender must wait until its data is taken?
-
-enum State {
-    Empty,
-    Writing,
-    Full,
-    Reading,
-}
-
-impl State {
-    fn from_version(version: usize) -> Self {
-        match version % 4 {
-            0 => State::Empty,
-            1 => State::Writing,
-            2 => State::Full,
-            _ => State::Reading,
-        }
-    }
-}
-
 impl<T> Queue<T> {
     pub fn new() -> Self {
         Queue {
-            data: unsafe { UnsafeCell::new(mem::uninitialized()) },
-            thread: unsafe { UnsafeCell::new(mem::uninitialized()) },
-            version: AtomicUsize::new(0),
+            lock: Mutex::new(()),
             closed: AtomicBool::new(false),
             senders: Blocking::new(),
             receivers: Blocking::new(),
@@ -71,25 +47,9 @@ impl<T> Queue<T> {
             return Err(TrySendError::Disconnected(value));
         }
 
-        loop {
-            let version = self.version.load(Relaxed);
-
-            match State::from_version(version) {
-                State::Empty => {
-                    if self.version.compare_and_swap(version, version.wrapping_add(1), SeqCst) == version {
-                        unsafe {
-                            *self.data.get() = value;
-                            *self.thread.get() = thread::current();
-                        }
-                        self.version.store(version.wrapping_add(2), Release);
-
-                        self.receivers.wake_one();
-                        return Ok(());
-                    }
-                }
-                State::Reading => {},
-                State::Writing | State::Full => return Err(TrySendError::Full(value)),
-            }
+        match self.receivers.send_one(value) {
+            Ok(()) => return Ok(()),
+            Err(value) => return Err(TrySendError::Full(value)),
         }
     }
 
@@ -98,12 +58,8 @@ impl<T> Queue<T> {
         mut value: T,
         deadline: Option<Instant>,
     ) -> Result<(), SendTimeoutError<T>> {
-        let mut blocking = false;
         loop {
-            let token;
-            if blocking {
-                token = self.senders.register();
-            }
+            // TODO: try_send and registration must be enclosed within the same lock guard scope
 
             match self.try_send(value) {
                 Ok(()) => return Ok(()),
@@ -111,13 +67,24 @@ impl<T> Queue<T> {
                     return Err(SendTimeoutError::Disconnected(v));
                 }
                 Err(TrySendError::Full(v)) => {
-                    value = v;
+                    // TODO: use unsafecell?
+                    let mut payload = Payload {
+                        data: Some(v),
+                        available: ptr::null_mut(),
+                    };
+                    {
+                        let token = self.senders.register_with(&mut payload);
 
-                    if blocking {
                         if let Some(end) = deadline {
                             let now = Instant::now();
+
                             if now >= end {
-                                return Err(SendTimeoutError::Timeout(value));
+                                drop(token);
+
+                                match payload.data {
+                                    None => return Ok(()),
+                                    Some(v) => return Err(SendTimeoutError::Timeout(v)),
+                                }
                             } else {
                                 thread::park_timeout(end - now);
                             }
@@ -126,59 +93,51 @@ impl<T> Queue<T> {
                         }
                     }
 
-                    blocking = !blocking;
+                    match payload.data {
+                        None => return Ok(()),
+                        Some(v) => value = v,
+                    }
                 }
             }
         }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        loop {
-            let version = self.version.load(Relaxed);
+        if self.closed.load(SeqCst) {
+            return Err(TryRecvError::Disconnected);
+        }
 
-            match State::from_version(version) {
-                State::Full => {
-                    if self.version.compare_and_swap(version, version.wrapping_add(1), SeqCst) == version {
-                        unsafe {
-                            let value = ptr::read(self.data.get());
-                            let thread = ptr::read(self.thread.get());
-
-                            self.version.store(version.wrapping_add(2), Release);
-                            self.senders.wake_one();
-                            return Ok(value);
-                        }
-                    }
-                }
-                State::Writing => {},
-                State::Reading | State::Empty => {
-                    if self.closed.load(SeqCst) {
-                        return Err(TryRecvError::Disconnected);
-                    } else {
-                        return Err(TryRecvError::Empty);
-                    }
-                }
-            }
+        match self.senders.recv_one() {
+            Ok(v) => return Ok(v),
+            Err(()) => return Err(TryRecvError::Empty),
         }
     }
 
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
-        let mut blocking = false;
         loop {
-            let token;
-            if blocking {
-                token = self.receivers.register();
-            }
-
             match self.try_recv() {
                 Ok(v) => return Ok(v),
                 Err(TryRecvError::Disconnected) => {
                     return Err(RecvTimeoutError::Disconnected);
                 }
                 Err(TryRecvError::Empty) => {
-                    if blocking {
+                    let mut payload = Payload {
+                        data: None,
+                        available: ptr::null_mut(),
+                    };
+                    {
+                        let token = self.receivers.register_with(&mut payload);
+
                         if let Some(end) = deadline {
                             let now = Instant::now();
+
                             if now >= end {
+                                drop(token);
+
+                                match payload.data {
+                                    None => return Err(RecvTimeoutError::Timeout),
+                                    Some(v) => return Ok(v),
+                                }
                                 return Err(RecvTimeoutError::Timeout);
                             } else {
                                 thread::park_timeout(end - now);
@@ -187,7 +146,10 @@ impl<T> Queue<T> {
                             thread::park();
                         }
                     }
-                    blocking = !blocking;
+
+                    if let Some(v) = payload.data {
+                        return Ok(v);
+                    }
                 }
             }
         }

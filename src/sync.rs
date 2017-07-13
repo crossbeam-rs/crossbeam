@@ -17,8 +17,6 @@ use super::TrySendError;
 use super::RecvError;
 use super::TryRecvError;
 
-use blocking::Blocking;
-
 // TODO: optimize if there's a single Sender or a single Receiver
 
 struct Node<T> {
@@ -37,8 +35,6 @@ pub struct Queue<T> {
     tail: AtomicUsize,
     _pad2: [u8; 64],
     closed: AtomicBool,
-    senders: Blocking,
-    receivers: Blocking,
     _marker: PhantomData<T>,
 }
 
@@ -67,8 +63,6 @@ impl<T> Queue<T> {
             tail: AtomicUsize::new(0),
             _pad2: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
-            senders: Blocking::new(),
-            receivers: Blocking::new(),
             _marker: PhantomData,
         }
     }
@@ -103,7 +97,7 @@ impl<T> Queue<T> {
                         (*cell).value = value;
                         (*cell).lap.store(clap.wrapping_add(power), Release);
 
-                        self.receivers.wake_one();
+                        // self.receivers.wake_one();
                         return Ok(());
                     }
                 }
@@ -138,7 +132,7 @@ impl<T> Queue<T> {
                         let value = ptr::read(&(*cell).value);
                         (*cell).lap.store(clap.wrapping_add(power), Release);
 
-                        self.senders.wake_one();
+                        // self.senders.wake_one();
                         return Ok(value);
                     }
                 }
@@ -170,27 +164,27 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    #[test]
-    fn simple() {
-        const STEPS: usize = 1_000_000;
-
-        let q = Arc::new(Queue::with_capacity(5));
-
-        let t = {
-            let q = q.clone();
-            thread::spawn(move || {
-                for i in 0..STEPS {
-                    q.send(5);
-                }
-                println!("SEND DONE");
-            })
-        };
-
-        for _ in 0..STEPS {
-            q.recv();
-        }
-        println!("RECV DONE");
-
-        t.join().unwrap();
-    }
+    // #[test]
+    // fn simple() {
+    //     const STEPS: usize = 1_000_000;
+    //
+    //     let q = Arc::new(Queue::with_capacity(5));
+    //
+    //     let t = {
+    //         let q = q.clone();
+    //         thread::spawn(move || {
+    //             for i in 0..STEPS {
+    //                 q.send(5);
+    //             }
+    //             println!("SEND DONE");
+    //         })
+    //     };
+    //
+    //     for _ in 0..STEPS {
+    //         q.recv();
+    //     }
+    //     println!("RECV DONE");
+    //
+    //     t.join().unwrap();
+    // }
 }
