@@ -257,17 +257,17 @@ impl<T> Queue<T> {
     }
 
     pub fn close(&self) -> bool {
-        if !self.closed.swap(true, SeqCst) {
-            let mut r = self.receivers.lock().unwrap();
-            for t in r.drain(..) {
-                t.unpark();
-            }
-            self.receivers_len.store(r.len(), SeqCst);
-
-            true
-        } else {
-            false
+        if self.closed.swap(true, SeqCst) {
+            return false;
         }
+
+        let mut r = self.receivers.lock().unwrap();
+        for t in r.drain(..) {
+            t.unpark();
+        }
+        self.receivers_len.store(r.len(), SeqCst);
+
+        true
     }
 
     pub fn is_closed(&self) -> bool {

@@ -306,14 +306,15 @@ impl<T> Queue<T> {
     }
 }
 
-#[cfg(debug_assertions)]
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
-        let mut lock = self.lock.get_mut().unwrap();
-        debug_assert_eq!(lock.senders.len(), 0);
-        debug_assert_eq!(lock.receivers.len(), 0);
-        debug_assert_eq!(self.senders_len.load(SeqCst), 0);
-        debug_assert_eq!(self.receivers_len.load(SeqCst), 0);
+        if cfg!(debug_assertions) {
+            let mut lock = self.lock.get_mut().unwrap();
+            debug_assert_eq!(lock.senders.len(), 0);
+            debug_assert_eq!(lock.receivers.len(), 0);
+            debug_assert_eq!(self.senders_len.load(SeqCst), 0);
+            debug_assert_eq!(self.receivers_len.load(SeqCst), 0);
+        }
     }
 }
 

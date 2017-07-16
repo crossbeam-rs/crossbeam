@@ -25,6 +25,9 @@ mod zero;
 // TODO: make Sender and Receiver Send + Sync
 
 // TODO: impl Error and Display for these errors
+
+// TODO: Perhaps another channel::oneshot() variant?
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(pub T);
 
@@ -93,7 +96,7 @@ impl<T> Queue<T> {
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         match self.flavor {
             Flavor::Async(ref q) => q.send(value),
-            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Sync(ref q) => q.send(value),
             Flavor::Zero(ref q) => q.send(value),
         }
     }
@@ -101,7 +104,7 @@ impl<T> Queue<T> {
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
         match self.flavor {
             Flavor::Async(ref q) => q.send_timeout(value, dur),
-            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Sync(ref q) => q.send_timeout(value, dur),
             Flavor::Zero(ref q) => q.send_timeout(value, dur),
         }
     }
@@ -117,7 +120,7 @@ impl<T> Queue<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
         match self.flavor {
             Flavor::Async(ref q) => q.recv(),
-            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Sync(ref q) => q.recv(),
             Flavor::Zero(ref q) => q.recv(),
         }
     }
@@ -125,7 +128,7 @@ impl<T> Queue<T> {
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
         match self.flavor {
             Flavor::Async(ref q) => q.recv_timeout(dur),
-            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Sync(ref q) => q.recv_timeout(dur),
             Flavor::Zero(ref q) => q.recv_timeout(dur),
         }
     }
@@ -248,7 +251,7 @@ pub struct Iter<'a> {
 }
 
 pub struct Step<'a> {
-    parent: &'a Select,
+    parent: &'a mut Select,
 }
 
 impl<'a> Step<'a> {
@@ -277,7 +280,7 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-impl<'a> IntoIterator for &'a Select {
+impl<'a> IntoIterator for &'a mut Select {
     type Item = Step<'a>;
     type IntoIter = Iter<'a>;
 
@@ -291,7 +294,7 @@ fn foo() {
     let (tx2, rx2) = async::<i32>();
 
     // for sel in &Select::with_timeout(Duration::from_millis(100)) {
-    // for s in &Select::new() {
+    for s in &mut Select::new() {
     //     if let Ok(_) = rx1.poll(s) {
     //
     //     }
@@ -307,5 +310,5 @@ fn foo() {
     //     if s.all_disconnected() {
     //
     //     }
-    // }
+    }
 }
