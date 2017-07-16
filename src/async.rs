@@ -286,9 +286,7 @@ mod tests {
 
     use super::*;
 
-    // TODO: MPMC stress test
     // TODO: drop test
-    // TODO: close wakes up
 
     fn ms(ms: u64) -> Duration {
         Duration::from_millis(ms)
@@ -401,5 +399,74 @@ mod tests {
         assert_eq!(q.recv(), Ok(2));
         assert_eq!(q.recv(), Ok(3));
         assert_eq!(q.recv(), Err(RecvError));
+    }
+
+    #[test]
+    fn close_signals_receiver() {
+        let q = Queue::<()>::new();
+
+        crossbeam::scope(|s| {
+            s.spawn(|| {
+                assert_eq!(q.recv(), Err(RecvError));
+                assert!(q.is_closed());
+            });
+            s.spawn(|| {
+                thread::sleep(ms(100));
+                q.close();
+            });
+        });
+    }
+
+    #[test]
+    fn spsc() {
+        const COUNT: usize = 100_000;
+
+        let q = Queue::new();
+
+        crossbeam::scope(|s| {
+            s.spawn(|| {
+                for i in 0..COUNT {
+                    assert_eq!(q.recv(), Ok(i));
+                }
+                assert_eq!(q.recv(), Err(RecvError));
+            });
+            s.spawn(|| {
+                for i in 0..COUNT {
+                    q.send(i).unwrap();
+                }
+                q.close();
+            });
+        });
+    }
+
+    #[test]
+    fn mpmc() {
+        const COUNT: usize = 25_000;
+        const THREADS: usize = 4;
+
+        let q = Queue::<usize>::new();
+        let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
+
+        crossbeam::scope(|s| {
+            for _ in 0..THREADS {
+                s.spawn(|| {
+                    for i in 0..COUNT {
+                        let n = q.recv().unwrap();
+                        v[n].fetch_add(1, SeqCst);
+                    }
+                });
+            }
+            for _ in 0..THREADS {
+                s.spawn(|| {
+                    for i in 0..COUNT {
+                        q.send(i).unwrap();
+                    }
+                });
+            }
+        });
+
+        for c in v {
+            assert_eq!(c.load(SeqCst), THREADS);
+        }
     }
 }
