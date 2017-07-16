@@ -1,20 +1,14 @@
-use std::cell::Cell;
-use std::cell::UnsafeCell;
 use std::collections::VecDeque;
-use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::Arc;
-use std::sync::Condvar;
 use std::sync::Mutex;
-use std::sync::atomic::{self, AtomicBool, AtomicPtr, AtomicUsize, fence};
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
+use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, SeqCst};
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
 use coco::epoch::{self, Atomic, Owned};
-use either::Either;
 
 use super::SendError;
 use super::TrySendError;
@@ -147,6 +141,14 @@ impl<T> Queue<T> {
         })
     }
 
+    pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
+        match self.try_send(value) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Disconnected(v)) => Err(SendTimeoutError::Disconnected(v)),
+            Err(TrySendError::Full(_)) => unreachable!(),
+        }
+    }
+
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         match self.try_send(value) {
             Ok(()) => Ok(()),
@@ -188,7 +190,7 @@ impl<T> Queue<T> {
         })
     }
 
-    pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+    fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
             match self.try_recv() {
                 Ok(v) => return Ok(v),
@@ -277,15 +279,16 @@ impl<T> Queue<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::sync::Arc;
     use std::thread;
 
     use crossbeam;
 
+    use super::*;
+
     // TODO: MPMC stress test
     // TODO: drop test
+    // TODO: close wakes up
 
     fn ms(ms: u64) -> Duration {
         Duration::from_millis(ms)
@@ -351,12 +354,14 @@ mod tests {
 
         crossbeam::scope(|s| {
             s.spawn(|| {
-                assert_eq!(q.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
-                assert_eq!(q.recv_timeout(ms(100)), Ok(7));
-                assert_eq!(q.recv_timeout(ms(100)), Err(RecvTimeoutError::Disconnected));
+                assert_eq!(q.try_recv(), Err(TryRecvError::Empty));
+                thread::sleep(ms(150));
+                assert_eq!(q.try_recv(), Ok(7));
+                thread::sleep(ms(50));
+                assert_eq!(q.try_recv(), Err(TryRecvError::Disconnected));
             });
             s.spawn(|| {
-                thread::sleep(ms(150));
+                thread::sleep(ms(100));
                 assert_eq!(q.send(7), Ok(()));
                 q.close();
             });

@@ -90,28 +90,20 @@ impl<T> Queue<T> {
         }
     }
 
-    fn send_until(
-        &self,
-        mut value: T,
-        deadline: Option<Instant>
-    ) -> Result<(), SendTimeoutError<T>> {
-        match self.flavor {
-            Flavor::Async(ref q) => unimplemented!(),
-            Flavor::Sync(ref q) => unimplemented!(),
-            Flavor::Zero(ref q) => q.send_until(value, deadline),
-        }
-    }
-
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         match self.flavor {
             Flavor::Async(ref q) => q.send(value),
             Flavor::Sync(ref q) => unimplemented!(),
-            Flavor::Zero(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => q.send(value),
         }
     }
 
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        self.send_until(value, Some(Instant::now() + dur))
+        match self.flavor {
+            Flavor::Async(ref q) => q.send_timeout(value, dur),
+            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => q.send_timeout(value, dur),
+        }
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -122,19 +114,11 @@ impl<T> Queue<T> {
         }
     }
 
-    fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
-        match self.flavor {
-            Flavor::Async(ref q) => q.recv_until(deadline),
-            Flavor::Sync(ref q) => unimplemented!(),
-            Flavor::Zero(ref q) => q.recv_until(deadline),
-        }
-    }
-
     pub fn recv(&self) -> Result<T, RecvError> {
-        if let Ok(v) = self.recv_until(None) {
-            Ok(v)
-        } else {
-            Err(RecvError)
+        match self.flavor {
+            Flavor::Async(ref q) => q.recv(),
+            Flavor::Sync(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => q.recv(),
         }
     }
 
@@ -142,7 +126,7 @@ impl<T> Queue<T> {
         match self.flavor {
             Flavor::Async(ref q) => q.recv_timeout(dur),
             Flavor::Sync(ref q) => unimplemented!(),
-            Flavor::Zero(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => q.recv_timeout(dur),
         }
     }
 
