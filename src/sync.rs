@@ -3,7 +3,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
 use std::thread::{self, Thread};
@@ -23,6 +23,11 @@ struct Node<T> {
     value: T,
 }
 
+struct Inner {
+    senders: VecDeque<Thread>,
+    receivers: VecDeque<Thread>,
+}
+
 #[repr(C)]
 pub struct Queue<T> {
     buffer: *mut UnsafeCell<Node<T>>,
@@ -35,9 +40,7 @@ pub struct Queue<T> {
     _pad2: [u8; 64],
     closed: AtomicBool,
 
-    senders: Mutex<VecDeque<Thread>>,
-    receivers: Mutex<VecDeque<Thread>>,
-
+    lock: Mutex<Inner>,
     senders_len: AtomicUsize,
     receivers_len: AtomicUsize,
 
@@ -70,9 +73,10 @@ impl<T> Queue<T> {
             _pad2: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
 
-            senders: Mutex::new(VecDeque::new()),
-            receivers: Mutex::new(VecDeque::new()),
-
+            lock: Mutex::new(Inner {
+                senders: VecDeque::new(),
+                receivers: VecDeque::new(),
+            }),
             senders_len: AtomicUsize::new(0),
             receivers_len: AtomicUsize::new(0),
 
@@ -80,7 +84,7 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+    fn try_send_inner<'a>(&'a self, value: T, lock: Option<&mut MutexGuard<'a, Inner>>) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
             return Err(TrySendError::Disconnected(value));
         }
@@ -90,12 +94,12 @@ impl<T> Queue<T> {
         let buffer = self.buffer;
 
         loop {
-            let tail = self.tail.load(Relaxed);
+            let tail = self.tail.load(SeqCst);
             let pos = tail & (power - 1);
             let lap = tail & !(power - 1);
 
             let cell = unsafe { (*buffer.offset(pos as isize)).get() };
-            let clap = unsafe { (*cell).lap.load(Acquire) };
+            let clap = unsafe { (*cell).lap.load(SeqCst) };
 
             if lap == clap {
                 let new = if pos + 1 < cap {
@@ -110,10 +114,17 @@ impl<T> Queue<T> {
                         (*cell).lap.store(clap.wrapping_add(power), Release);
 
                         if self.receivers_len.load(SeqCst) > 0 {
-                            let mut r = self.receivers.lock().unwrap();
+                            let mut l;
+                            let lock = match lock {
+                                None => {
+                                    l = self.lock.lock();
+                                    l.as_mut().unwrap()
+                                }
+                                Some(x) => x,
+                            };
 
-                            if let Some(t) = r.pop_front() {
-                                self.receivers_len.store(r.len(), SeqCst);
+                            if let Some(t) = lock.receivers.pop_front() {
+                                self.receivers_len.store(lock.receivers.len(), SeqCst);
                                 t.unpark();
                             }
                         }
@@ -124,6 +135,10 @@ impl<T> Queue<T> {
                 return Err(TrySendError::Full(value));
             }
         }
+    }
+
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        self.try_send_inner(value, None)
     }
 
     fn send_until(
@@ -147,22 +162,23 @@ impl<T> Queue<T> {
 
             // Register a sender.
             {
-                let mut s = self.senders.lock().unwrap();
-                s.push_back(thread::current());
+                let mut lock = self.lock.lock().unwrap();
+                lock.senders.push_back(thread::current());
+                self.senders_len.store(lock.senders.len(), SeqCst);
 
-                match self.try_send(value) {
+                match self.try_send_inner(value, Some(&mut lock)) {
                     Ok(v) => {
-                        s.pop_back();
+                        lock.senders.pop_back();
+                        self.senders_len.store(lock.senders.len(), SeqCst);
                         return Ok(());
                     }
                     Err(TrySendError::Disconnected(v)) => {
-                        s.pop_back();
+                        lock.senders.pop_back();
+                        self.senders_len.store(lock.senders.len(), SeqCst);
                         return Err(SendTimeoutError::Disconnected(v));
                     }
                     Err(TrySendError::Full(v)) => value = v,
                 }
-
-                self.senders_len.store(s.len(), SeqCst);
             }
 
             if let Some(end) = deadline {
@@ -171,16 +187,16 @@ impl<T> Queue<T> {
                 thread::park();
             }
 
-            let mut s = self.senders.lock().unwrap();
+            let mut lock = self.lock.lock().unwrap();
             let id = thread::current().id();
 
-            if let Some((i, _)) = s.iter().enumerate().find(|&(_, t)| t.id() == id) {
-                s.remove(i);
-            } else if let Some(t) = s.pop_front() {
+            if let Some((i, _)) = lock.senders.iter().enumerate().find(|&(_, t)| t.id() == id) {
+                lock.senders.remove(i);
+                self.senders_len.store(lock.senders.len(), SeqCst);
+            } else if let Some(t) = lock.senders.pop_front() {
+                self.senders_len.store(lock.senders.len(), SeqCst);
                 t.unpark();
             }
-
-            self.senders_len.store(s.len(), SeqCst);
         }
     }
 
@@ -196,18 +212,18 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+    fn try_recv_inner<'a>(&'a self, lock: Option<&mut MutexGuard<'a, Inner>>) -> Result<T, TryRecvError> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
 
         loop {
-            let head = self.head.load(Relaxed);
+            let head = self.head.load(SeqCst);
             let pos = head & (power - 1);
             let lap = head & !(power - 1);
 
             let cell = unsafe { (*buffer.offset(pos as isize)).get() };
-            let clap = unsafe { (*cell).lap.load(Acquire) };
+            let clap = unsafe { (*cell).lap.load(SeqCst) };
 
             if lap == clap {
                 let new = if pos + 1 < cap {
@@ -222,10 +238,17 @@ impl<T> Queue<T> {
                         (*cell).lap.store(clap.wrapping_add(power), Release);
 
                         if self.senders_len.load(SeqCst) > 0 {
-                            let mut s = self.senders.lock().unwrap();
+                            let mut l;
+                            let lock = match lock {
+                                None => {
+                                    l = self.lock.lock();
+                                    l.as_mut().unwrap()
+                                }
+                                Some(x) => x,
+                            };
 
-                            if let Some(t) = s.pop_front() {
-                                self.senders_len.store(s.len(), SeqCst);
+                            if let Some(t) = lock.senders.pop_front() {
+                                self.senders_len.store(lock.senders.len(), SeqCst);
                                 t.unpark();
                             }
                         }
@@ -240,6 +263,10 @@ impl<T> Queue<T> {
                 }
             }
         }
+    }
+
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        self.try_recv_inner(None)
     }
 
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
@@ -259,22 +286,23 @@ impl<T> Queue<T> {
 
             // Register a receiver.
             {
-                let mut r = self.receivers.lock().unwrap();
-                r.push_back(thread::current());
+                let mut lock = self.lock.lock().unwrap();
+                lock.receivers.push_back(thread::current());
+                self.receivers_len.store(lock.receivers.len(), SeqCst);
 
-                match self.try_recv() {
+                match self.try_recv_inner(Some(&mut lock)) {
                     Ok(v) => {
-                        r.pop_back();
+                        lock.receivers.pop_back();
+                        self.receivers_len.store(lock.receivers.len(), SeqCst);
                         return Ok(v);
                     }
                     Err(TryRecvError::Disconnected) => {
-                        r.pop_back();
+                        lock.receivers.pop_back();
+                        self.receivers_len.store(lock.receivers.len(), SeqCst);
                         return Err(RecvTimeoutError::Disconnected);
                     }
                     Err(TryRecvError::Empty) => {}
                 }
-
-                self.receivers_len.store(r.len(), SeqCst);
             }
 
             if let Some(end) = deadline {
@@ -283,16 +311,16 @@ impl<T> Queue<T> {
                 thread::park();
             }
 
-            let mut r = self.receivers.lock().unwrap();
+            let mut lock = self.lock.lock().unwrap();
             let id = thread::current().id();
 
-            if let Some((i, _)) = r.iter().enumerate().find(|&(_, t)| t.id() == id) {
-                r.remove(i);
-            } else if let Some(t) = r.pop_front() {
+            if let Some((i, _)) = lock.receivers.iter().enumerate().find(|&(_, t)| t.id() == id) {
+                lock.receivers.remove(i);
+                self.receivers_len.store(lock.receivers.len(), SeqCst);
+            } else if let Some(t) = lock.receivers.pop_front() {
+                self.receivers_len.store(lock.receivers.len(), SeqCst);
                 t.unpark();
             }
-
-            self.receivers_len.store(r.len(), SeqCst);
         }
     }
 
@@ -309,23 +337,24 @@ impl<T> Queue<T> {
     }
 
     pub fn close(&self) -> bool {
+        if self.closed.load(SeqCst) {
+            return false;
+        }
+
+        let mut lock = self.lock.lock().unwrap();
+
         if self.closed.swap(true, SeqCst) {
             return false;
         }
 
-        {
-            let mut r = self.receivers.lock().unwrap();
-            for t in r.drain(..) {
-                t.unpark();
-            }
-            self.receivers_len.store(r.len(), SeqCst);
+        self.senders_len.store(0, SeqCst);
+        self.receivers_len.store(0, SeqCst);
+
+        for t in lock.senders.drain(..) {
+            t.unpark();
         }
-        {
-            let mut s = self.senders.lock().unwrap();
-            for t in s.drain(..) {
-                t.unpark();
-            }
-            self.senders_len.store(s.len(), SeqCst);
+        for t in lock.receivers.drain(..) {
+            t.unpark();
         }
 
         true
@@ -339,10 +368,9 @@ impl<T> Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         if cfg!(debug_assertions) {
-            let mut s = self.senders.get_mut().unwrap();
-            let mut r = self.receivers.get_mut().unwrap();
-            debug_assert_eq!(s.len(), 0);
-            debug_assert_eq!(r.len(), 0);
+            let mut lock = self.lock.get_mut().unwrap();
+            debug_assert_eq!(lock.senders.len(), 0);
+            debug_assert_eq!(lock.receivers.len(), 0);
             debug_assert_eq!(self.senders_len.load(SeqCst), 0);
             debug_assert_eq!(self.receivers_len.load(SeqCst), 0);
         }
@@ -452,6 +480,7 @@ mod tests {
                 assert_eq!(q.send(8), Ok(()));
                 thread::sleep(ms(100));
                 assert_eq!(q.send(9), Ok(()));
+                thread::sleep(ms(100));
                 assert_eq!(q.send(10), Err(SendError(10)));
             });
             s.spawn(|| {
@@ -584,7 +613,7 @@ mod tests {
     fn spsc() {
         const COUNT: usize = 100_000;
 
-        let q = Queue::with_capacity(5);
+        let q = Queue::with_capacity(3);
 
         crossbeam::scope(|s| {
             s.spawn(|| {
@@ -607,7 +636,7 @@ mod tests {
         const COUNT: usize = 25_000;
         const THREADS: usize = 4;
 
-        let q = Queue::<usize>::with_capacity(5);
+        let q = Queue::<usize>::with_capacity(3);
         let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
         crossbeam::scope(|s| {

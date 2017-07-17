@@ -85,8 +85,8 @@ impl<T> Queue<T> {
         }
 
         if let Some(f) = lock.receivers.pop_front() {
-            unsafe { (*f).put(value); }
             self.receivers_len.store(lock.receivers.len(), SeqCst);
+            unsafe { (*f).put(value); }
             Ok(())
         } else {
             Err(TrySendError::Full(value))
@@ -111,8 +111,8 @@ impl<T> Queue<T> {
             }
 
             if let Some(f) = lock.receivers.pop_front() {
-                unsafe { (*f).put(value); }
                 self.receivers_len.store(lock.receivers.len(), SeqCst);
+                unsafe { (*f).put(value); }
                 return Ok(())
             }
 
@@ -288,15 +288,15 @@ impl<T> Queue<T> {
             return false;
         }
 
+        self.senders_len.store(0, SeqCst);
+        self.receivers_len.store(0, SeqCst);
+
         for t in lock.senders.drain(..) {
             unsafe { (*t).thread.unpark(); }
         }
         for t in lock.receivers.drain(..) {
             unsafe { (*t).thread.unpark(); }
         }
-
-        self.receivers_len.store(lock.receivers.len(), SeqCst);
-        self.senders_len.store(lock.senders.len(), SeqCst);
 
         true
     }

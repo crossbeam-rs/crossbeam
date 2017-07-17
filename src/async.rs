@@ -159,7 +159,7 @@ impl<T> Queue<T> {
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         epoch::pin(|scope| {
-            let mut head = self.head.load(SeqCst, scope);
+            let mut head = self.head.load(Relaxed, scope);
 
             loop {
                 let next = unsafe { head.deref().next.load(SeqCst, scope) };
@@ -209,20 +209,21 @@ impl<T> Queue<T> {
             {
                 let mut r = self.receivers.lock().unwrap();
                 r.push_back(thread::current());
+                self.receivers_len.store(r.len(), SeqCst);
 
                 match self.try_recv() {
                     Ok(v) => {
                         r.pop_back();
+                        self.receivers_len.store(r.len(), SeqCst);
                         return Ok(v);
                     }
                     Err(TryRecvError::Disconnected) => {
                         r.pop_back();
+                        self.receivers_len.store(r.len(), SeqCst);
                         return Err(RecvTimeoutError::Disconnected);
                     }
                     Err(TryRecvError::Empty) => {}
                 }
-
-                self.receivers_len.store(r.len(), SeqCst);
             }
 
             if let Some(end) = deadline {
@@ -236,11 +237,11 @@ impl<T> Queue<T> {
 
             if let Some((i, _)) = r.iter().enumerate().find(|&(_, t)| t.id() == id) {
                 r.remove(i);
+                self.receivers_len.store(r.len(), SeqCst);
             } else if let Some(t) = r.pop_front() {
+                self.receivers_len.store(r.len(), SeqCst);
                 t.unpark();
             }
-
-            self.receivers_len.store(r.len(), SeqCst);
         }
     }
 
@@ -257,15 +258,20 @@ impl<T> Queue<T> {
     }
 
     pub fn close(&self) -> bool {
-        if self.closed.swap(true, SeqCst) {
+        if self.closed.load(SeqCst) {
             return false;
         }
 
         let mut r = self.receivers.lock().unwrap();
+
+        if self.closed.swap(true, SeqCst) {
+            return false;
+        }
+
+        self.receivers_len.store(0, SeqCst);
         for t in r.drain(..) {
             t.unpark();
         }
-        self.receivers_len.store(r.len(), SeqCst);
 
         true
     }
@@ -275,7 +281,17 @@ impl<T> Queue<T> {
     }
 }
 
-// TODO: impl Drop
+impl<T> Drop for Queue<T> {
+    fn drop(&mut self) {
+        if cfg!(debug_assertions) {
+            let r = self.receivers.lock().unwrap();
+            debug_assert_eq!(r.len(), 0);
+            debug_assert_eq!(self.receivers_len.load(SeqCst), 0);
+        }
+
+        // TODO: impl Drop
+    }
+}
 
 #[cfg(test)]
 mod tests {

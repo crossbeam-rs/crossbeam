@@ -2,7 +2,6 @@
 
 extern crate coco;
 extern crate crossbeam;
-extern crate either;
 
 use std::sync::Arc;
 use std::sync::Condvar;
@@ -12,7 +11,6 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
 use std::time::{Duration, Instant};
 
 mod async;
-mod blocking;
 mod sync;
 mod zero;
 
