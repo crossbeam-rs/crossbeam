@@ -16,6 +16,7 @@ use super::SendTimeoutError;
 use super::RecvError;
 use super::TryRecvError;
 use super::RecvTimeoutError;
+use monitor::Monitor;
 
 // TODO: Try Dmitry's modified MPSC queue instead of Michael-Scott. Moreover, don't use complex
 // synchronization nor pinning if there's a single consumer. Note that Receiver can't be Sync in
@@ -28,10 +29,6 @@ struct Node<T> {
     value: T,
     /// The next node in the queue.
     next: Atomic<Node<T>>,
-}
-
-struct Inner {
-    receivers: VecDeque<Thread>,
 }
 
 /// A lock-free multi-producer multi-consumer queue.
@@ -47,8 +44,7 @@ pub struct Queue<T> {
     _pad1: [u8; 64],
     /// TODO
     closed: AtomicBool,
-    lock: Mutex<Inner>,
-    receivers_len: AtomicUsize,
+    receivers: Monitor,
     _marker: PhantomData<T>,
 }
 
@@ -64,10 +60,7 @@ impl<T> Queue<T> {
             tail: Atomic::null(),
             _pad1: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
-            lock: Mutex::new(Inner {
-                receivers: VecDeque::new(),
-            }),
-            receivers_len: AtomicUsize::new(0),
+            receivers: Monitor::new(),
             _marker: PhantomData,
         };
 
@@ -88,11 +81,7 @@ impl<T> Queue<T> {
         queue
     }
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            return Err(TrySendError::Disconnected(value));
-        }
-
+    fn push(&self, value: T) {
         let mut node = Owned::new(Node {
             value: value,
             next: Atomic::null(),
@@ -110,22 +99,13 @@ impl<T> Queue<T> {
                     None => {
                         // Try installing the new node.
                         match t.next
-                            .compare_and_swap_weak_owned(next, node, SeqCst, scope) {
+                            .compare_and_swap_weak_owned(next, node, SeqCst, scope)
+                        {
                             Ok(node) => {
                                 // Successfully pushed the node!
                                 // Tail pointer mustn't fall behind. Move it forward.
                                 let _ = self.tail.compare_and_swap(tail, node, AcqRel, scope);
-
-                                if self.receivers_len.load(SeqCst) > 0 {
-                                    let mut lock = self.lock.lock().unwrap();
-
-                                    if let Some(t) = lock.receivers.pop_front() {
-                                        self.receivers_len.store(lock.receivers.len(), SeqCst);
-                                        t.unpark();
-                                    }
-                                }
-
-                                return Ok(());
+                                return;
                             }
                             Err((next, n)) => {
                                 // Failed. The node that actually follows `t` is `next`.
@@ -146,6 +126,43 @@ impl<T> Queue<T> {
         })
     }
 
+    fn pop(&self) -> Option<T> {
+        epoch::pin(|scope| {
+            let mut head = self.head.load(SeqCst, scope);
+
+            loop {
+                let next = unsafe { head.deref().next.load(SeqCst, scope) };
+
+                match unsafe { next.as_ref() } {
+                    None => return None,
+                    Some(n) => {
+                        // Try unlinking the head by moving it forward.
+                        match self.head.compare_and_swap_weak(head, next, SeqCst, scope) {
+                            Ok(_) => unsafe {
+                                // The old head may be later freed.
+                                scope.defer_free(head);
+
+                                // The new head holds the popped value (heads are sentinels!).
+                                return Some(ptr::read(&n.value));
+                            },
+                            Err(h) => head = h,
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        if self.closed.load(SeqCst) {
+            Err(TrySendError::Disconnected(value))
+        } else {
+            self.push(value);
+            self.receivers.notify_one();
+            Ok(())
+        }
+    }
+
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
         match self.try_send(value) {
             Ok(()) => Ok(()),
@@ -163,36 +180,16 @@ impl<T> Queue<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        epoch::pin(|scope| {
-            let mut head = self.head.load(SeqCst, scope);
-
-            loop {
-                let next = unsafe { head.deref().next.load(SeqCst, scope) };
-
-                match unsafe { next.as_ref() } {
-                    None => {
-                        if self.closed.load(SeqCst) {
-                            return Err(TryRecvError::Disconnected);
-                        } else {
-                            return Err(TryRecvError::Empty);
-                        }
-                    }
-                    Some(n) => {
-                        // Try unlinking the head by moving it forward.
-                        match self.head.compare_and_swap_weak(head, next, SeqCst, scope) {
-                            Ok(_) => unsafe {
-                                // The old head may be later freed.
-                                scope.defer_free(head);
-
-                                // The new head holds the popped value (heads are sentinels!).
-                                return Ok(ptr::read(&n.value));
-                            },
-                            Err(h) => head = h,
-                        }
-                    }
+        match self.pop() {
+            None => {
+                if self.closed.load(SeqCst) {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
                 }
             }
-        })
+            Some(v) => Ok(v),
+        }
     }
 
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
@@ -210,46 +207,25 @@ impl<T> Queue<T> {
                 }
             }
 
-            // Register a receiver.
-            {
-                let mut lock = self.lock.lock().unwrap();
-                lock.receivers.push_back(thread::current());
-                self.receivers_len.store(lock.receivers.len(), SeqCst);
+            self.receivers.subscribe();
 
-                match self.try_recv() {
-                    Ok(v) => {
-                        lock.receivers.pop_back();
-                        self.receivers_len.store(lock.receivers.len(), SeqCst);
-                        return Ok(v);
-                    }
-                    Err(TryRecvError::Disconnected) => {
-                        lock.receivers.pop_back();
-                        self.receivers_len.store(lock.receivers.len(), SeqCst);
-                        return Err(RecvTimeoutError::Disconnected);
-                    }
-                    Err(TryRecvError::Empty) => {}
+            match self.try_recv() {
+                Ok(v) => {
+                    self.receivers.unsubscribe();
+                    return Ok(v);
                 }
-            }
-
-            if let Some(end) = deadline {
-                thread::park_timeout(end - now);
-            } else {
-                thread::park();
-            }
-
-            let mut lock = self.lock.lock().unwrap();
-            let id = thread::current().id();
-
-            if let Some((i, _)) = lock.receivers
-                .iter()
-                .enumerate()
-                .find(|&(_, t)| t.id() == id)
-            {
-                lock.receivers.remove(i);
-                self.receivers_len.store(lock.receivers.len(), SeqCst);
-            } else if let Some(t) = lock.receivers.pop_front() {
-                self.receivers_len.store(lock.receivers.len(), SeqCst);
-                t.unpark();
+                Err(TryRecvError::Disconnected) => {
+                    self.receivers.unsubscribe();
+                    return Err(RecvTimeoutError::Disconnected);
+                }
+                Err(TryRecvError::Empty) => {
+                    if let Some(end) = deadline {
+                        thread::park_timeout(end - now);
+                    } else {
+                        thread::park();
+                    }
+                    self.receivers.unsubscribe();
+                }
             }
         }
     }
@@ -267,21 +243,11 @@ impl<T> Queue<T> {
     }
 
     pub fn close(&self) -> bool {
-        if self.closed.load(SeqCst) {
-            return false;
-        }
-
-        let mut lock = self.lock.lock().unwrap();
-
         if self.closed.swap(true, SeqCst) {
             return false;
         }
 
-        self.receivers_len.store(0, SeqCst);
-        for t in lock.receivers.drain(..) {
-            t.unpark();
-        }
-
+        self.receivers.notify_all();
         true
     }
 
@@ -292,12 +258,6 @@ impl<T> Queue<T> {
 
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
-        if cfg!(debug_assertions) {
-            let lock = self.lock.lock().unwrap();
-            debug_assert_eq!(lock.receivers.len(), 0);
-            debug_assert_eq!(self.receivers_len.load(SeqCst), 0);
-        }
-
         // TODO: impl Drop
     }
 }

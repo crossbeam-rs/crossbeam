@@ -74,7 +74,7 @@ impl<T> Queue<T> {
         }
     }
 
-    fn push(&self, value: T) -> Result<(), T> {
+    fn push(&self, value: T) -> Option<T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -101,16 +101,16 @@ impl<T> Queue<T> {
                     unsafe {
                         (*cell).value = value;
                         (*cell).lap.store(clap.wrapping_add(power), Release);
-                        return Ok(());
+                        return None;
                     }
                 }
             } else if clap.wrapping_add(power) == lap {
-                return Err(value);
+                return Some(value);
             }
         }
     }
 
-    fn pop(&self) -> Result<T, ()> {
+    fn pop(&self) -> Option<T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -137,11 +137,11 @@ impl<T> Queue<T> {
                     unsafe {
                         let value = ptr::read(&(*cell).value);
                         (*cell).lap.store(clap.wrapping_add(power), Release);
-                        return Ok(value);
+                        return Some(value);
                     }
                 }
             } else if clap.wrapping_add(power) == lap {
-                return Err(());
+                return None;
             }
         }
     }
@@ -171,11 +171,11 @@ impl<T> Queue<T> {
             Err(TrySendError::Disconnected(value))
         } else {
             match self.push(value) {
-                Ok(()) => {
+                None => {
                     self.receivers.notify_one();
                     Ok(())
                 }
-                Err(v) => Err(TrySendError::Full(v)),
+                Some(v) => Err(TrySendError::Full(v)),
             }
         }
     }
@@ -237,16 +237,16 @@ impl<T> Queue<T> {
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.pop() {
-            Ok(v) => {
-                self.senders.notify_one();
-                Ok(v)
-            }
-            Err(()) => {
+            None => {
                 if self.closed.load(SeqCst) {
                     Err(TryRecvError::Disconnected)
                 } else {
                     Err(TryRecvError::Empty)
                 }
+            }
+            Some(v) => {
+                self.senders.notify_one();
+                Ok(v)
             }
         }
     }
