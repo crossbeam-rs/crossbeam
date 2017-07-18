@@ -30,6 +30,10 @@ struct Node<T> {
     next: Atomic<Node<T>>,
 }
 
+struct Inner {
+    receivers: VecDeque<Thread>,
+}
+
 /// A lock-free multi-producer multi-consumer queue.
 #[repr(C)]
 pub struct Queue<T> {
@@ -43,10 +47,8 @@ pub struct Queue<T> {
     _pad1: [u8; 64],
     /// TODO
     closed: AtomicBool,
-
-    receivers: Mutex<VecDeque<Thread>>,
+    lock: Mutex<Inner>,
     receivers_len: AtomicUsize,
-
     _marker: PhantomData<T>,
 }
 
@@ -62,7 +64,9 @@ impl<T> Queue<T> {
             tail: Atomic::null(),
             _pad1: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
-            receivers: Mutex::new(VecDeque::new()),
+            lock: Mutex::new(Inner {
+                receivers: VecDeque::new(),
+            }),
             receivers_len: AtomicUsize::new(0),
             _marker: PhantomData,
         };
@@ -105,17 +109,18 @@ impl<T> Queue<T> {
                 match unsafe { next.as_ref() } {
                     None => {
                         // Try installing the new node.
-                        match t.next.compare_and_swap_weak_owned(next, node, SeqCst, scope) {
+                        match t.next
+                            .compare_and_swap_weak_owned(next, node, SeqCst, scope) {
                             Ok(node) => {
                                 // Successfully pushed the node!
                                 // Tail pointer mustn't fall behind. Move it forward.
                                 let _ = self.tail.compare_and_swap(tail, node, AcqRel, scope);
 
                                 if self.receivers_len.load(SeqCst) > 0 {
-                                    let mut r = self.receivers.lock().unwrap();
+                                    let mut lock = self.lock.lock().unwrap();
 
-                                    if let Some(t) = r.pop_front() {
-                                        self.receivers_len.store(r.len(), SeqCst);
+                                    if let Some(t) = lock.receivers.pop_front() {
+                                        self.receivers_len.store(lock.receivers.len(), SeqCst);
                                         t.unpark();
                                     }
                                 }
@@ -159,7 +164,7 @@ impl<T> Queue<T> {
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         epoch::pin(|scope| {
-            let mut head = self.head.load(Relaxed, scope);
+            let mut head = self.head.load(SeqCst, scope);
 
             loop {
                 let next = unsafe { head.deref().next.load(SeqCst, scope) };
@@ -195,7 +200,7 @@ impl<T> Queue<T> {
             match self.try_recv() {
                 Ok(v) => return Ok(v),
                 Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
-                Err(TryRecvError::Empty) => {},
+                Err(TryRecvError::Empty) => {}
             }
 
             let now = Instant::now();
@@ -207,19 +212,19 @@ impl<T> Queue<T> {
 
             // Register a receiver.
             {
-                let mut r = self.receivers.lock().unwrap();
-                r.push_back(thread::current());
-                self.receivers_len.store(r.len(), SeqCst);
+                let mut lock = self.lock.lock().unwrap();
+                lock.receivers.push_back(thread::current());
+                self.receivers_len.store(lock.receivers.len(), SeqCst);
 
                 match self.try_recv() {
                     Ok(v) => {
-                        r.pop_back();
-                        self.receivers_len.store(r.len(), SeqCst);
+                        lock.receivers.pop_back();
+                        self.receivers_len.store(lock.receivers.len(), SeqCst);
                         return Ok(v);
                     }
                     Err(TryRecvError::Disconnected) => {
-                        r.pop_back();
-                        self.receivers_len.store(r.len(), SeqCst);
+                        lock.receivers.pop_back();
+                        self.receivers_len.store(lock.receivers.len(), SeqCst);
                         return Err(RecvTimeoutError::Disconnected);
                     }
                     Err(TryRecvError::Empty) => {}
@@ -232,14 +237,18 @@ impl<T> Queue<T> {
                 thread::park();
             }
 
-            let mut r = self.receivers.lock().unwrap();
+            let mut lock = self.lock.lock().unwrap();
             let id = thread::current().id();
 
-            if let Some((i, _)) = r.iter().enumerate().find(|&(_, t)| t.id() == id) {
-                r.remove(i);
-                self.receivers_len.store(r.len(), SeqCst);
-            } else if let Some(t) = r.pop_front() {
-                self.receivers_len.store(r.len(), SeqCst);
+            if let Some((i, _)) = lock.receivers
+                .iter()
+                .enumerate()
+                .find(|&(_, t)| t.id() == id)
+            {
+                lock.receivers.remove(i);
+                self.receivers_len.store(lock.receivers.len(), SeqCst);
+            } else if let Some(t) = lock.receivers.pop_front() {
+                self.receivers_len.store(lock.receivers.len(), SeqCst);
                 t.unpark();
             }
         }
@@ -262,14 +271,14 @@ impl<T> Queue<T> {
             return false;
         }
 
-        let mut r = self.receivers.lock().unwrap();
+        let mut lock = self.lock.lock().unwrap();
 
         if self.closed.swap(true, SeqCst) {
             return false;
         }
 
         self.receivers_len.store(0, SeqCst);
-        for t in r.drain(..) {
+        for t in lock.receivers.drain(..) {
             t.unpark();
         }
 
@@ -284,8 +293,8 @@ impl<T> Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         if cfg!(debug_assertions) {
-            let r = self.receivers.lock().unwrap();
-            debug_assert_eq!(r.len(), 0);
+            let lock = self.lock.lock().unwrap();
+            debug_assert_eq!(lock.receivers.len(), 0);
             debug_assert_eq!(self.receivers_len.load(SeqCst), 0);
         }
 
@@ -465,18 +474,14 @@ mod tests {
 
         crossbeam::scope(|s| {
             for _ in 0..THREADS {
-                s.spawn(|| {
-                    for i in 0..COUNT {
-                        let n = q.recv().unwrap();
-                        v[n].fetch_add(1, SeqCst);
-                    }
+                s.spawn(|| for i in 0..COUNT {
+                    let n = q.recv().unwrap();
+                    v[n].fetch_add(1, SeqCst);
                 });
             }
             for _ in 0..THREADS {
-                s.spawn(|| {
-                    for i in 0..COUNT {
-                        q.send(i).unwrap();
-                    }
+                s.spawn(|| for i in 0..COUNT {
+                    q.send(i).unwrap();
                 });
             }
         });

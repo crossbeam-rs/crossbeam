@@ -23,16 +23,16 @@ struct Blocked<T> {
 impl<T> Blocked<T> {
     unsafe fn put(&self, t: T) {
         *self.data.get().as_mut().unwrap() = Some(t);
-        self.signal();
+        self.notify();
     }
 
     unsafe fn take(&self) -> T {
         let value = self.data.get().as_mut().unwrap().take().unwrap();
-        self.signal();
+        self.notify();
         value
     }
 
-    fn signal(&self) {
+    fn notify(&self) {
         let thread = self.thread.clone();
         self.ready.store(true, SeqCst);
         thread.unpark();
@@ -86,18 +86,16 @@ impl<T> Queue<T> {
 
         if let Some(f) = lock.receivers.pop_front() {
             self.receivers_len.store(lock.receivers.len(), SeqCst);
-            unsafe { (*f).put(value); }
+            unsafe {
+                (*f).put(value);
+            }
             Ok(())
         } else {
             Err(TrySendError::Full(value))
         }
     }
 
-    fn send_until(
-        &self,
-        value: T,
-        deadline: Option<Instant>,
-    ) -> Result<(), SendTimeoutError<T>> {
+    fn send_until(&self, value: T, deadline: Option<Instant>) -> Result<(), SendTimeoutError<T>> {
         if self.closed.load(SeqCst) {
             return Err(SendTimeoutError::Disconnected(value));
         }
@@ -112,8 +110,10 @@ impl<T> Queue<T> {
 
             if let Some(f) = lock.receivers.pop_front() {
                 self.receivers_len.store(lock.receivers.len(), SeqCst);
-                unsafe { (*f).put(value); }
-                return Ok(())
+                unsafe {
+                    (*f).put(value);
+                }
+                return Ok(());
             }
 
             blocked = Blocked {
@@ -215,7 +215,9 @@ impl<T> Queue<T> {
 
             if let Some(f) = lock.senders.pop_front() {
                 self.senders_len.store(lock.senders.len(), SeqCst);
-                unsafe { return Ok((*f).take()); }
+                unsafe {
+                    return Ok((*f).take());
+                }
             }
 
             blocked = Blocked {
@@ -229,7 +231,9 @@ impl<T> Queue<T> {
 
         loop {
             if blocked.ready.load(SeqCst) {
-                unsafe { return Ok(blocked.take()); }
+                unsafe {
+                    return Ok(blocked.take());
+                }
             }
 
             if self.closed.load(SeqCst) {
@@ -292,10 +296,14 @@ impl<T> Queue<T> {
         self.receivers_len.store(0, SeqCst);
 
         for t in lock.senders.drain(..) {
-            unsafe { (*t).thread.unpark(); }
+            unsafe {
+                (*t).thread.unpark();
+            }
         }
         for t in lock.receivers.drain(..) {
-            unsafe { (*t).thread.unpark(); }
+            unsafe {
+                (*t).thread.unpark();
+            }
         }
 
         true
@@ -327,6 +335,8 @@ mod tests {
     use crossbeam;
 
     use super::*;
+
+    // TODO: drop test
 
     fn ms(ms: u64) -> Duration {
         Duration::from_millis(ms)
@@ -429,9 +439,15 @@ mod tests {
 
         crossbeam::scope(|s| {
             s.spawn(|| {
-                assert_eq!(q.send_timeout(7, ms(100)), Err(SendTimeoutError::Timeout(7)));
+                assert_eq!(
+                    q.send_timeout(7, ms(100)),
+                    Err(SendTimeoutError::Timeout(7))
+                );
                 assert_eq!(q.send_timeout(8, ms(100)), Ok(()));
-                assert_eq!(q.send_timeout(9, ms(100)), Err(SendTimeoutError::Disconnected(9)));
+                assert_eq!(
+                    q.send_timeout(9, ms(100)),
+                    Err(SendTimeoutError::Disconnected(9))
+                );
             });
             s.spawn(|| {
                 thread::sleep(ms(150));
@@ -544,18 +560,14 @@ mod tests {
 
         crossbeam::scope(|s| {
             for _ in 0..THREADS {
-                s.spawn(|| {
-                    for i in 0..COUNT {
-                        let n = q.recv().unwrap();
-                        v[n].fetch_add(1, SeqCst);
-                    }
+                s.spawn(|| for i in 0..COUNT {
+                    let n = q.recv().unwrap();
+                    v[n].fetch_add(1, SeqCst);
                 });
             }
             for _ in 0..THREADS {
-                s.spawn(|| {
-                    for i in 0..COUNT {
-                        q.send(i).unwrap();
-                    }
+                s.spawn(|| for i in 0..COUNT {
+                    q.send(i).unwrap();
                 });
             }
         });
