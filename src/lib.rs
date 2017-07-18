@@ -2,17 +2,28 @@
 
 extern crate coco;
 extern crate crossbeam;
+extern crate rand;
 
+use std::collections::VecDeque;
+use std::ptr;
 use std::sync::Arc;
 use std::sync::Condvar;
 use std::sync::Mutex;
 use std::sync::atomic::{self, AtomicBool, AtomicPtr, AtomicUsize};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
+use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
+use monitor::Monitor;
+
+use rand::{Rng, thread_rng};
+
 mod async;
+mod monitor;
 mod sync;
 mod zero;
+
+// TODO: Perhaps channel::unbounded() and channel::bounded(cap)
 
 // TODO: Use a oneshot optimization
 
@@ -154,6 +165,22 @@ impl<T> Queue<T> {
             Flavor::Zero(ref q) => q.is_closed(),
         }
     }
+
+    fn receivers(&self) -> &Monitor {
+        match self.flavor {
+            Flavor::Async(ref q) => unimplemented!(),
+            Flavor::Sync(ref q) => &q.receivers,
+            Flavor::Zero(ref q) => unimplemented!(),
+        }
+    }
+
+    fn is_ready(&self) -> bool {
+        match self.flavor {
+            Flavor::Async(ref q) => unimplemented!(),
+            Flavor::Sync(ref q) => q.is_ready(),
+            Flavor::Zero(ref q) => unimplemented!(),
+        }
+    }
 }
 
 pub struct Sender<T>(Arc<Queue<T>>);
@@ -222,91 +249,4 @@ pub fn async<T>() -> (Sender<T>, Receiver<T>) {
 pub fn sync<T>(size: usize) -> (Sender<T>, Receiver<T>) {
     let q = Arc::new(Queue::sync(size));
     (Sender::new(q.clone()), Receiver::new(q))
-}
-
-pub struct Select {
-    //v: Cell<Vec<blocking::Token>>,
-}
-
-impl Select {
-    pub fn new() -> Self {
-        Select {
-            // v: vec![],
-        }
-    }
-
-    pub fn with_timeout(dur: Duration) -> Self {
-        unimplemented!()
-    }
-
-    pub fn iter(&self) -> Iter {
-        unimplemented!()
-    }
-}
-
-pub struct Iter<'a> {
-    parent: &'a Select,
-}
-
-pub struct Step<'a> {
-    parent: &'a mut Select,
-}
-
-impl<'a> Step<'a> {
-    pub fn send<T>(&self, tx: &Sender<T>, value: T) -> Result<(), TrySendError<T>> {
-        unimplemented!()
-    }
-
-    pub fn recv<T>(&self, rx: &Receiver<T>) -> Result<T, TryRecvError> {
-        unimplemented!()
-    }
-
-    pub fn all_blocked(&self) -> bool {
-        unimplemented!()
-    }
-
-    pub fn all_closed(&self) -> bool {
-        unimplemented!()
-    }
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = Step<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        None
-    }
-}
-
-impl<'a> IntoIterator for &'a mut Select {
-    type Item = Step<'a>;
-    type IntoIter = Iter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        unimplemented!()
-    }
-}
-
-fn foo() {
-    let (tx1, rx1) = async::<i32>();
-    let (tx2, rx2) = async::<i32>();
-
-    // for sel in &Select::with_timeout(Duration::from_millis(100)) {
-    for s in &mut Select::new() {
-    //     if let Ok(_) = rx1.poll(s) {
-    //
-    //     }
-    //     if let Ok(value) = rx2.poll(s) {
-    //
-    //     }
-    //     if s.timed_out() {
-    //
-    //     }
-    //     if s.all_blocked() {
-    //
-    //     }
-    //     if s.all_disconnected() {
-    //
-    //     }
-    }
 }
