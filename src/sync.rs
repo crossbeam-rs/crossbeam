@@ -1,12 +1,10 @@
-use std::collections::VecDeque;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::{Mutex, MutexGuard};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
-use std::thread::{self, Thread};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use SendError;
@@ -76,11 +74,7 @@ impl<T> Queue<T> {
         }
     }
 
-    fn push<'a>(&'a self, value: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            return Err(TrySendError::Disconnected(value));
-        }
-
+    fn push(&self, value: T) -> Result<(), T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -111,12 +105,12 @@ impl<T> Queue<T> {
                     }
                 }
             } else if clap.wrapping_add(power) == lap {
-                return Err(TrySendError::Full(value));
+                return Err(value);
             }
         }
     }
 
-    fn pop<'a>(&'a self) -> Result<T, TryRecvError> {
+    fn pop(&self) -> Result<T, ()> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -147,17 +141,12 @@ impl<T> Queue<T> {
                     }
                 }
             } else if clap.wrapping_add(power) == lap {
-                if self.closed.load(SeqCst) {
-                    return Err(TryRecvError::Disconnected);
-                } else {
-                    return Err(TryRecvError::Empty);
-                }
+                return Err(());
             }
         }
     }
 
     pub fn is_ready(&self) -> bool {
-        let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
 
@@ -178,11 +167,17 @@ impl<T> Queue<T> {
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        let res = self.push(value);
-        if res.is_ok() {
-            self.receivers.notify_one();
+        if self.closed.load(SeqCst) {
+            Err(TrySendError::Disconnected(value))
+        } else {
+            match self.push(value) {
+                Ok(()) => {
+                    self.receivers.notify_one();
+                    Ok(())
+                }
+                Err(v) => Err(TrySendError::Full(v)),
+            }
         }
-        res
     }
 
     fn send_until(
@@ -241,11 +236,19 @@ impl<T> Queue<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let res = self.pop();
-        if res.is_ok() {
-            self.senders.notify_one();
+        match self.pop() {
+            Ok(v) => {
+                self.senders.notify_one();
+                Ok(v)
+            }
+            Err(()) => {
+                if self.closed.load(SeqCst) {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
+                }
+            }
         }
-        res
     }
 
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
@@ -273,25 +276,6 @@ impl<T> Queue<T> {
                 }
             }
             self.receivers.unsubscribe();
-
-            // match self.try_recv() {
-            //     Ok(v) => {
-            //         self.receivers.unsubscribe();
-            //         return Ok(v);
-            //     }
-            //     Err(TryRecvError::Disconnected) => {
-            //         self.receivers.unsubscribe();
-            //         return Err(RecvTimeoutError::Disconnected);
-            //     }
-            //     Err(TryRecvError::Empty) => {
-            //         if let Some(end) = deadline {
-            //             thread::park_timeout(end - now);
-            //         } else {
-            //             thread::park();
-            //         }
-            //         self.receivers.unsubscribe();
-            //     }
-            // }
         }
     }
 
