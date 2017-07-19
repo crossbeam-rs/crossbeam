@@ -10,25 +10,21 @@ use std::time::{Duration, Instant};
 
 use coco::epoch::{self, Atomic, Owned};
 
-use super::SendError;
-use super::TrySendError;
-use super::SendTimeoutError;
-use super::RecvError;
-use super::TryRecvError;
-use super::RecvTimeoutError;
+use Channel;
+use RecvError;
+use RecvTimeoutError;
+use SendError;
+use SendTimeoutError;
+use TryRecvError;
+use TrySendError;
 use monitor::Monitor;
-
-// TODO: Try Dmitry's modified MPSC queue instead of Michael-Scott. Moreover, don't use complex
-// synchronization nor pinning if there's a single consumer. Note that Receiver can't be Sync in
-// that case. Also, optimize the Sender side if there's only one.
-// Note that in SPSC scenario the Receiver doesn't wait if the queue is in inconsistent state.
 
 /// A single node in a queue.
 struct Node<T> {
-    /// The payload. TODO
-    value: T,
     /// The next node in the queue.
     next: Atomic<Node<T>>,
+    /// The payload. TODO
+    value: T,
 }
 
 /// A lock-free multi-producer multi-consumer queue.
@@ -36,15 +32,18 @@ struct Node<T> {
 pub struct Queue<T> {
     /// Head of the queue.
     head: Atomic<Node<T>>,
+    recvs: AtomicUsize,
     /// Some padding to avoid false sharing.
     _pad0: [u8; 64],
     /// Tail ofthe queue.
     tail: Atomic<Node<T>>,
+    sends: AtomicUsize,
     /// Some padding to avoid false sharing.
     _pad1: [u8; 64],
     /// TODO
     closed: AtomicBool,
     receivers: Monitor,
+
     _marker: PhantomData<T>,
 }
 
@@ -61,6 +60,10 @@ impl<T> Queue<T> {
             _pad1: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
             receivers: Monitor::new(),
+
+            sends: AtomicUsize::new(0),
+            recvs: AtomicUsize::new(0),
+
             _marker: PhantomData,
         };
 
@@ -87,109 +90,85 @@ impl<T> Queue<T> {
             next: Atomic::null(),
         });
 
-        epoch::pin(|scope| {
-            let mut tail = self.tail.load(Acquire, scope);
-
-            loop {
-                // Load the node following the tail.
-                let t = unsafe { tail.deref() };
-                let next = t.next.load(SeqCst, scope);
-
-                match unsafe { next.as_ref() } {
-                    None => {
-                        // Try installing the new node.
-                        match t.next
-                            .compare_and_swap_weak_owned(next, node, SeqCst, scope)
-                        {
-                            Ok(node) => {
-                                // Successfully pushed the node!
-                                // Tail pointer mustn't fall behind. Move it forward.
-                                let _ = self.tail.compare_and_swap(tail, node, AcqRel, scope);
-                                return;
-                            }
-                            Err((next, n)) => {
-                                // Failed. The node that actually follows `t` is `next`.
-                                tail = next;
-                                node = n;
-                            }
-                        }
-                    }
-                    Some(_) => {
-                        // Tail pointer fell behind. Move it forward.
-                        match self.tail.compare_and_swap_weak(tail, next, AcqRel, scope) {
-                            Ok(()) => tail = next,
-                            Err(t) => tail = t,
-                        }
-                    }
-                }
-            }
-        })
+        unsafe {
+            epoch::unprotected(|scope| {
+                let new = node.into_ptr(scope);
+                let old = self.tail.swap(new, SeqCst, scope);
+                self.sends.fetch_add(1, SeqCst);
+                old.deref().next.store(new, SeqCst);
+            })
+        }
     }
 
     fn pop(&self) -> Option<T> {
-        epoch::pin(|scope| {
-            let mut head = self.head.load(SeqCst, scope);
+        const USE: usize = 1;
+        const MULTI: usize = 2;
 
-            loop {
-                let next = unsafe { head.deref().next.load(SeqCst, scope) };
+        return unsafe {
+            epoch::unprotected(|scope| unsafe {
+                if self.head.load(Relaxed, scope).tag() & MULTI == 0 {
+                    loop {
+                        let head = self.head.fetch_or(USE, SeqCst, scope);
+                        if head.tag() != 0 {
+                            break;
+                        }
 
-                match unsafe { next.as_ref() } {
-                    None => return None,
-                    Some(n) => {
-                        // Try unlinking the head by moving it forward.
-                        match self.head.compare_and_swap_weak(head, next, SeqCst, scope) {
-                            Ok(_) => unsafe {
-                                // The old head may be later freed.
-                                scope.defer_free(head);
+                        let next = head.deref().next.load(SeqCst, scope);
 
-                                // The new head holds the popped value (heads are sentinels!).
-                                return Some(ptr::read(&n.value));
-                            },
-                            Err(h) => head = h,
+                        if next.is_null() {
+                            self.head.fetch_and(!USE, SeqCst, scope);
+
+                            if self.tail.load(SeqCst, scope).as_raw() == head.as_raw() {
+                                return None;
+                            }
+
+                            thread::yield_now();
+                        } else {
+                            let value = ptr::read(&next.deref().value);
+
+                            if self.head
+                                .compare_and_swap(head.with_tag(USE), next, SeqCst, scope)
+                                .is_ok()
+                            {
+                                self.recvs.fetch_add(1, SeqCst);
+                                Vec::from_raw_parts(head.as_raw() as *mut Node<T>, 0, 1);
+                                return Some(value);
+                            }
+                            mem::forget(value);
+
+                            self.head.fetch_and(!USE, SeqCst, scope);
                         }
                     }
+
+                    self.head.fetch_or(MULTI, SeqCst, scope);
+                    while self.head.load(SeqCst, scope).tag() & USE != 0 {
+                        thread::yield_now();
+                    }
                 }
-            }
-        })
-    }
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(value))
-        } else {
-            self.push(value);
-            self.receivers.notify_one();
-            Ok(())
-        }
-    }
+                epoch::pin(|scope| loop {
+                    let head = self.head.load(SeqCst, scope);
+                    let next = head.deref().next.load(SeqCst, scope);
 
-    pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        match self.try_send(value) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Disconnected(v)) => Err(SendTimeoutError::Disconnected(v)),
-            Err(TrySendError::Full(_)) => unreachable!(),
-        }
-    }
+                    if next.is_null() {
+                        if self.tail.load(SeqCst, scope).as_raw() == head.as_raw() {
+                            return None;
+                        }
+                    } else {
+                        if self.head
+                            .compare_and_swap(head, next.with_tag(MULTI), SeqCst, scope)
+                            .is_ok()
+                        {
+                            self.recvs.fetch_add(1, SeqCst);
+                            scope.defer_free(head);
+                            return Some(ptr::read(&next.deref().value));
+                        }
+                    }
 
-    pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        match self.try_send(value) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Disconnected(v)) => Err(SendError(v)),
-            Err(TrySendError::Full(_)) => unreachable!(),
-        }
-    }
-
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop() {
-            None => {
-                if self.closed.load(SeqCst) {
-                    Err(TryRecvError::Disconnected)
-                } else {
-                    Err(TryRecvError::Empty)
-                }
-            }
-            Some(v) => Ok(v),
-        }
+                    thread::yield_now();
+                })
+            })
+        };
     }
 
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
@@ -229,12 +208,36 @@ impl<T> Queue<T> {
             }
         }
     }
+}
 
-    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        self.recv_until(Some(Instant::now() + dur))
+impl<T> Channel<T> for Queue<T> {
+    fn send(&self, value: T) -> Result<(), SendError<T>> {
+        match self.try_send(value) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Disconnected(v)) => Err(SendError(v)),
+            Err(TrySendError::Full(_)) => unreachable!(),
+        }
     }
 
-    pub fn recv(&self) -> Result<T, RecvError> {
+    fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
+        match self.try_send(value) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Disconnected(v)) => Err(SendTimeoutError::Disconnected(v)),
+            Err(TrySendError::Full(_)) => unreachable!(),
+        }
+    }
+
+    fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        if self.closed.load(SeqCst) {
+            Err(TrySendError::Disconnected(value))
+        } else {
+            self.push(value);
+            self.receivers.notify_one();
+            Ok(())
+        }
+    }
+
+    fn recv(&self) -> Result<T, RecvError> {
         if let Ok(v) = self.recv_until(None) {
             Ok(v)
         } else {
@@ -242,7 +245,28 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn close(&self) -> bool {
+    fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
+        self.recv_until(Some(Instant::now() + dur))
+    }
+
+    fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.pop() {
+            None => {
+                if self.closed.load(SeqCst) {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
+                }
+            }
+            Some(v) => Ok(v),
+        }
+    }
+
+    fn len(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn close(&self) -> bool {
         if self.closed.swap(true, SeqCst) {
             return false;
         }
@@ -251,14 +275,31 @@ impl<T> Queue<T> {
         true
     }
 
-    pub fn is_closed(&self) -> bool {
+    fn is_closed(&self) -> bool {
         self.closed.load(SeqCst)
+    }
+
+    fn subscribe(&self) {
+        self.receivers.subscribe();
+    }
+
+    fn unsubscribe(&self) {
+        self.receivers.unsubscribe();
+    }
+
+    fn is_ready(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn id(&self) -> usize {
+        self as *const _ as usize
     }
 }
 
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         // TODO: impl Drop
+        // TODO: debug_assert self.len() == 0
     }
 }
 
