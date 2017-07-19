@@ -191,46 +191,43 @@ impl<T> Deque<T> {
             b = self.bottom.load(Relaxed);
         }
         a.put(b, data);
-        fence(Release);
-        self.bottom.store(b + 1, Relaxed);
+        self.bottom.store(b + 1, Release);
     }
 
     unsafe fn try_pop(&self) -> Option<T> {
         let guard = epoch::pin();
 
-        let b = self.bottom.load(Relaxed) - 1;
+        let b = self.bottom.load(Relaxed);
         let a = self.array.load(Relaxed, &guard).unwrap();
-        self.bottom.store(b, Relaxed);
+        self.bottom.store(b - 1, Relaxed);
         fence(SeqCst); // the store to bottom must occur before loading top.
         let t = self.top.load(Relaxed);
 
         let size = b - t;
-        if size >= 0 {
-            // non-empty case
-            let mut data = Some(a.get(b));
-            if size == 0 {
-                // last element in queue, check for races.
-                if self.top.compare_and_swap(t, t + 1, SeqCst) != t {
-                    // lost the race.
-                    mem::forget(data.take());
-                }
 
-                // set the queue to a canonically empty state.
-                self.bottom.store(b + 1, Relaxed);
-            } else {
-                self.maybe_shrink(b, t, &guard);
-            }
-            data
-        } else {
-            // empty queue. revert the decrement of "b" and try to shrink.
-            //
-            // the original chase_lev paper uses "t" here, but the new one uses "b + 1".
-            // don't worry, they're the same thing: pop and steal operations will never leave
-            // the top counter greater than the bottom counter. After we decrement "b" at
-            // the beginning of this function, the lowest possible value it could hold here is "t - 1".
-            // That's also the only value that could cause this branch to be taken.
-            self.bottom.store(b + 1, Relaxed);
+        if size <= 0 {
+            // empty queue. revert the decrement of bottom.
+            self.bottom.store(b, Relaxed);
             None
+        } else if size >= 2 {
+            // non-racy case. return the data
+            let data = a.get(b - 1);
+            self.maybe_shrink(b - 1, t, &guard);
+            Some(data)
+        } else {
+            // racy case. race against steals.
+            let data = a.get(t);
+            let success = self.top.compare_and_swap(t, t + 1, SeqCst) == t;
+
+            // set the queue to a canonically empty state.
+            self.bottom.store(b, Relaxed);
+
+            if success {
+                Some(data)
+            } else {
+                mem::forget(data); // someone else stole this value
+                None
+            }
         }
     }
 
