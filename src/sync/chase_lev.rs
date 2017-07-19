@@ -285,7 +285,7 @@ impl<T> Deque<T> {
             return StealHalf::Empty;
         }
 
-        let half = size + 1 / 2;
+        let half = (size + 1) / 2;
 
         unsafe {
             let a = self.array.load(Acquire, &guard).unwrap();
