@@ -14,9 +14,9 @@ use SendError;
 use SendTimeoutError;
 use TryRecvError;
 use TrySendError;
-use async;
+use array;
+use list;
 use monitor::Monitor;
-use sync;
 use zero;
 
 // TODO: iterators
@@ -67,8 +67,8 @@ pub trait Channel<T> {
 }
 
 enum Flavor<T> {
-    Async(async::Queue<T>),
-    Sync(sync::Queue<T>),
+    List(list::Queue<T>),
+    Array(array::Queue<T>),
     Zero(zero::Queue<T>),
 }
 
@@ -91,56 +91,56 @@ impl<T> Sender<T> {
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.send(value),
-            Flavor::Sync(ref q) => q.send(value),
+            Flavor::List(ref q) => q.send(value),
+            Flavor::Array(ref q) => q.send(value),
             Flavor::Zero(ref q) => q.send(value),
         }
     }
 
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.send_timeout(value, dur),
-            Flavor::Sync(ref q) => q.send_timeout(value, dur),
+            Flavor::List(ref q) => q.send_timeout(value, dur),
+            Flavor::Array(ref q) => q.send_timeout(value, dur),
             Flavor::Zero(ref q) => q.send_timeout(value, dur),
         }
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.try_send(value),
-            Flavor::Sync(ref q) => q.try_send(value),
+            Flavor::List(ref q) => q.try_send(value),
+            Flavor::Array(ref q) => q.try_send(value),
             Flavor::Zero(ref q) => q.try_send(value),
         }
     }
 
     pub fn len(&self) -> usize {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.len(),
-            Flavor::Sync(ref q) => q.len(),
+            Flavor::List(ref q) => q.len(),
+            Flavor::Array(ref q) => q.len(),
             Flavor::Zero(ref q) => q.len(),
         }
     }
 
     pub fn is_empty(&self) -> usize {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.is_empty(),
-            Flavor::Sync(ref q) => q.is_empty(),
+            Flavor::List(ref q) => q.is_empty(),
+            Flavor::Array(ref q) => q.is_empty(),
             Flavor::Zero(ref q) => q.is_empty(),
         }
     }
 
     pub fn is_full(&self) -> usize {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.is_full(),
-            Flavor::Sync(ref q) => q.is_full(),
+            Flavor::List(ref q) => q.is_full(),
+            Flavor::Array(ref q) => q.is_full(),
             Flavor::Zero(ref q) => q.is_full(),
         }
     }
 
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.capacity(),
-            Flavor::Sync(ref q) => q.capacity(),
+            Flavor::List(ref q) => q.capacity(),
+            Flavor::Array(ref q) => q.capacity(),
             Flavor::Zero(ref q) => q.capacity(),
         }
     }
@@ -150,8 +150,8 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.0.senders.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::Async(ref q) => q.close(),
-                Flavor::Sync(ref q) => q.close(),
+                Flavor::List(ref q) => q.close(),
+                Flavor::Array(ref q) => q.close(),
                 Flavor::Zero(ref q) => q.close(),
             };
         }
@@ -177,64 +177,64 @@ impl<T> Receiver<T> {
 
     pub(crate) fn as_channel(&self) -> &Channel<T> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q,
-            Flavor::Sync(ref q) => q,
+            Flavor::List(ref q) => q,
+            Flavor::Array(ref q) => q,
             Flavor::Zero(ref q) => unimplemented!(),
         }
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.recv(),
-            Flavor::Sync(ref q) => q.recv(),
+            Flavor::List(ref q) => q.recv(),
+            Flavor::Array(ref q) => q.recv(),
             Flavor::Zero(ref q) => q.recv(),
         }
     }
 
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.recv_timeout(dur),
-            Flavor::Sync(ref q) => q.recv_timeout(dur),
+            Flavor::List(ref q) => q.recv_timeout(dur),
+            Flavor::Array(ref q) => q.recv_timeout(dur),
             Flavor::Zero(ref q) => q.recv_timeout(dur),
         }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.try_recv(),
-            Flavor::Sync(ref q) => q.try_recv(),
+            Flavor::List(ref q) => q.try_recv(),
+            Flavor::Array(ref q) => q.try_recv(),
             Flavor::Zero(ref q) => q.try_recv(),
         }
     }
 
     pub fn len(&self) -> usize {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.len(),
-            Flavor::Sync(ref q) => q.len(),
+            Flavor::List(ref q) => q.len(),
+            Flavor::Array(ref q) => q.len(),
             Flavor::Zero(ref q) => q.len(),
         }
     }
 
     pub fn is_empty(&self) -> usize {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.is_empty(),
-            Flavor::Sync(ref q) => q.is_empty(),
+            Flavor::List(ref q) => q.is_empty(),
+            Flavor::Array(ref q) => q.is_empty(),
             Flavor::Zero(ref q) => q.is_empty(),
         }
     }
 
     pub fn is_full(&self) -> usize {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.is_full(),
-            Flavor::Sync(ref q) => q.is_full(),
+            Flavor::List(ref q) => q.is_full(),
+            Flavor::Array(ref q) => q.is_full(),
             Flavor::Zero(ref q) => q.is_full(),
         }
     }
 
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
-            Flavor::Async(ref q) => q.capacity(),
-            Flavor::Sync(ref q) => q.capacity(),
+            Flavor::List(ref q) => q.capacity(),
+            Flavor::Array(ref q) => q.capacity(),
             Flavor::Zero(ref q) => q.capacity(),
         }
     }
@@ -244,8 +244,8 @@ impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         if self.0.receivers.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::Async(ref q) => q.close(),
-                Flavor::Sync(ref q) => q.close(),
+                Flavor::List(ref q) => q.close(),
+                Flavor::Array(ref q) => q.close(),
                 Flavor::Zero(ref q) => q.close(),
             };
         }
@@ -262,7 +262,7 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let q = Arc::new(Queue {
         senders: AtomicUsize::new(0),
         receivers: AtomicUsize::new(0),
-        flavor: Flavor::Async(async::Queue::new()),
+        flavor: Flavor::List(list::Queue::new()),
     });
     (Sender::new(q.clone()), Receiver::new(q))
 }
@@ -274,7 +274,7 @@ pub fn bounded<T>(size: usize) -> (Sender<T>, Receiver<T>) {
         flavor: if size == 0 {
             Flavor::Zero(zero::Queue::new())
         } else {
-            Flavor::Sync(sync::Queue::with_capacity(size))
+            Flavor::Array(array::Queue::with_capacity(size))
         },
     });
     (Sender::new(q.clone()), Receiver::new(q))

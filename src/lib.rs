@@ -2,12 +2,12 @@ extern crate coco;
 extern crate crossbeam;
 extern crate rand;
 
-mod async;
+mod array;
 mod channel;
 mod errors;
+mod list;
 mod monitor;
 mod select;
-mod sync;
 mod zero;
 
 pub use errors::RecvError;
