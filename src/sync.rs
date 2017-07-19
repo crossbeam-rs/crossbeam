@@ -13,6 +13,7 @@ use SendTimeoutError;
 use RecvError;
 use TryRecvError;
 use RecvTimeoutError;
+use Channel;
 use monitor::Monitor;
 
 // TODO: optimize if there's a single Sender or a single Receiver
@@ -36,7 +37,7 @@ pub struct Queue<T> {
     closed: AtomicBool,
 
     senders: Monitor,
-    pub receivers: Monitor, // TODO
+    receivers: Monitor,
 
     _marker: PhantomData<T>,
 }
@@ -107,6 +108,8 @@ impl<T> Queue<T> {
             } else if clap.wrapping_add(power) == lap {
                 return Some(value);
             }
+
+            thread::yield_now();
         }
     }
 
@@ -143,40 +146,8 @@ impl<T> Queue<T> {
             } else if clap.wrapping_add(power) == lap {
                 return None;
             }
-        }
-    }
 
-    pub fn is_ready(&self) -> bool {
-        let power = self.power;
-        let buffer = self.buffer;
-
-        loop {
-            let head = self.head.load(SeqCst);
-            let pos = head & (power - 1);
-            let lap = head & !(power - 1);
-
-            let cell = unsafe { (*buffer.offset(pos as isize)).get() };
-            let clap = unsafe { (*cell).lap.load(Acquire) };
-
-            if lap == clap {
-                return true;
-            } else if clap.wrapping_add(power) == lap {
-                return self.closed.load(SeqCst);
-            }
-        }
-    }
-
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(value))
-        } else {
-            match self.push(value) {
-                None => {
-                    self.receivers.notify_one();
-                    Ok(())
-                }
-                Some(v) => Err(TrySendError::Full(v)),
-            }
+            thread::yield_now();
         }
     }
 
@@ -223,34 +194,6 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        self.send_until(value, Some(Instant::now() + dur))
-    }
-
-    pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        match self.send_until(value, None) {
-            Ok(()) => Ok(()),
-            Err(SendTimeoutError::Disconnected(v)) => Err(SendError(v)),
-            Err(SendTimeoutError::Timeout(v)) => Err(SendError(v)),
-        }
-    }
-
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop() {
-            None => {
-                if self.closed.load(SeqCst) {
-                    Err(TryRecvError::Disconnected)
-                } else {
-                    Err(TryRecvError::Empty)
-                }
-            }
-            Some(v) => {
-                self.senders.notify_one();
-                Ok(v)
-            }
-        }
-    }
-
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
             match self.try_recv() {
@@ -278,12 +221,36 @@ impl<T> Queue<T> {
             self.receivers.unsubscribe();
         }
     }
+}
 
-    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        self.recv_until(Some(Instant::now() + dur))
+impl<T> Channel<T> for Queue<T> {
+    fn send(&self, value: T) -> Result<(), SendError<T>> {
+        match self.send_until(value, None) {
+            Ok(()) => Ok(()),
+            Err(SendTimeoutError::Disconnected(v)) => Err(SendError(v)),
+            Err(SendTimeoutError::Timeout(v)) => Err(SendError(v)),
+        }
     }
 
-    pub fn recv(&self) -> Result<T, RecvError> {
+    fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
+        self.send_until(value, Some(Instant::now() + dur))
+    }
+
+    fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        if self.closed.load(SeqCst) {
+            Err(TrySendError::Disconnected(value))
+        } else {
+            match self.push(value) {
+                None => {
+                    self.receivers.notify_one();
+                    Ok(())
+                }
+                Some(v) => Err(TrySendError::Full(v)),
+            }
+        }
+    }
+
+    fn recv(&self) -> Result<T, RecvError> {
         if let Ok(v) = self.recv_until(None) {
             Ok(v)
         } else {
@@ -291,7 +258,31 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn close(&self) -> bool {
+    fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
+        self.recv_until(Some(Instant::now() + dur))
+    }
+
+    fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.pop() {
+            None => {
+                if self.closed.load(SeqCst) {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
+                }
+            }
+            Some(v) => {
+                self.senders.notify_one();
+                Ok(v)
+            }
+        }
+    }
+
+    fn len(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn close(&self) -> bool {
         if self.closed.swap(true, SeqCst) {
             return false;
         }
@@ -301,8 +292,40 @@ impl<T> Queue<T> {
         true
     }
 
-    pub fn is_closed(&self) -> bool {
+    fn is_closed(&self) -> bool {
         self.closed.load(SeqCst)
+    }
+
+    fn subscribe(&self) {
+        self.receivers.subscribe();
+    }
+
+    fn unsubscribe(&self) {
+        self.receivers.unsubscribe();
+    }
+
+    fn is_ready(&self) -> bool {
+        let power = self.power;
+        let buffer = self.buffer;
+
+        loop {
+            let head = self.head.load(SeqCst);
+            let pos = head & (power - 1);
+            let lap = head & !(power - 1);
+
+            let cell = unsafe { (*buffer.offset(pos as isize)).get() };
+            let clap = unsafe { (*cell).lap.load(Acquire) };
+
+            if lap == clap {
+                return true;
+            } else if clap.wrapping_add(power) == lap {
+                return self.closed.load(SeqCst);
+            }
+        }
+    }
+
+    fn id(&self) -> usize {
+        self as *const _ as usize
     }
 }
 

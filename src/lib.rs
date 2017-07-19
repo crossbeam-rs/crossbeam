@@ -1,5 +1,3 @@
-#![feature(thread_id)]
-
 extern crate coco;
 extern crate crossbeam;
 extern crate rand;
@@ -20,22 +18,20 @@ use rand::{Rng, thread_rng};
 
 mod async;
 mod monitor;
+mod select;
 mod sync;
 mod zero;
 
 // TODO: Perhaps channel::unbounded() and channel::bounded(cap)
 
-// TODO: Use a oneshot optimization
-
 // TODO: iterators
 
 // TODO: len() (add counters to each Node in the async version) (see go implementation)
 // TODO: is_empty()
+// TODO: is_full()
+// TODO: capacity()
+
 // TODO: make Sender and Receiver Send + Sync
-
-// TODO: impl Error and Display for these errors
-
-// TODO: Perhaps another channel::oneshot() variant?
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(pub T);
@@ -67,43 +63,50 @@ pub enum TryRecvError {
     Disconnected,
 }
 
+trait Channel<T> {
+    fn send(&self, value: T) -> Result<(), SendError<T>>;
+    fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>>;
+    fn try_send(&self, value: T) -> Result<(), TrySendError<T>>;
+
+    fn recv(&self) -> Result<T, RecvError>;
+    fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError>;
+    fn try_recv(&self) -> Result<T, TryRecvError>;
+
+    fn len(&self) -> usize;
+    fn close(&self) -> bool;
+    fn is_closed(&self) -> bool;
+
+    fn subscribe(&self);
+    fn unsubscribe(&self);
+    fn is_ready(&self) -> bool;
+    fn id(&self) -> usize;
+}
+
 enum Flavor<T> {
     Async(async::Queue<T>),
     Sync(sync::Queue<T>),
     Zero(zero::Queue<T>),
 }
 
-pub struct Queue<T> {
-    flavor: Flavor<T>,
+struct Inner<T> {
     senders: AtomicUsize,
     receivers: AtomicUsize,
+    queue: Flavor<T>,
 }
 
-impl<T> Queue<T> {
-    pub fn async() -> Self {
-        Queue {
-            flavor: Flavor::Async(async::Queue::new()),
-            senders: AtomicUsize::new(0),
-            receivers: AtomicUsize::new(0),
-        }
-    }
+pub struct Sender<T>(Arc<Inner<T>>);
 
-    pub fn sync(cap: usize) -> Self {
-        let flavor = if cap == 0 {
-            Flavor::Zero(zero::Queue::new())
-        } else {
-            Flavor::Sync(sync::Queue::with_capacity(cap))
-        };
+unsafe impl<T: Send> Send for Sender<T> {}
+unsafe impl<T: Send> Sync for Sender<T> {}
 
-        Queue {
-            flavor: flavor,
-            senders: AtomicUsize::new(0),
-            receivers: AtomicUsize::new(0),
-        }
+impl<T> Sender<T> {
+    fn new(q: Arc<Inner<T>>) -> Self {
+        q.senders.fetch_add(1, SeqCst);
+        Sender(q)
     }
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        match self.flavor {
+        match self.0.queue {
             Flavor::Async(ref q) => q.send(value),
             Flavor::Sync(ref q) => q.send(value),
             Flavor::Zero(ref q) => q.send(value),
@@ -111,7 +114,7 @@ impl<T> Queue<T> {
     }
 
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        match self.flavor {
+        match self.0.queue {
             Flavor::Async(ref q) => q.send_timeout(value, dur),
             Flavor::Sync(ref q) => q.send_timeout(value, dur),
             Flavor::Zero(ref q) => q.send_timeout(value, dur),
@@ -119,15 +122,53 @@ impl<T> Queue<T> {
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        match self.flavor {
+        match self.0.queue {
             Flavor::Async(ref q) => q.try_send(value),
             Flavor::Sync(ref q) => q.try_send(value),
             Flavor::Zero(ref q) => q.try_send(value),
         }
     }
+}
+
+impl<T> Drop for Sender<T> {
+    fn drop(&mut self) {
+        if self.0.senders.fetch_sub(1, SeqCst) == 1 {
+            match self.0.queue {
+                Flavor::Async(ref q) => q.close(),
+                Flavor::Sync(ref q) => q.close(),
+                Flavor::Zero(ref q) => q.close(),
+            };
+        }
+    }
+}
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Sender::new(self.0.clone())
+    }
+}
+
+pub struct Receiver<T>(Arc<Inner<T>>);
+
+unsafe impl<T: Send> Send for Receiver<T> {}
+unsafe impl<T: Send> Sync for Receiver<T> {}
+
+impl<T> Receiver<T> {
+    fn new(q: Arc<Inner<T>>) -> Self {
+        q.receivers.fetch_add(1, SeqCst);
+        Receiver(q)
+    }
+
+    fn channel(&self) -> &Channel<T> {
+        match self.0.queue {
+            Flavor::Async(ref q) => q,
+            Flavor::Sync(ref q) => q,
+            Flavor::Zero(ref q) => unimplemented!(),
+        }
+    }
 
     pub fn recv(&self) -> Result<T, RecvError> {
-        match self.flavor {
+        match self.0.queue {
             Flavor::Async(ref q) => q.recv(),
             Flavor::Sync(ref q) => q.recv(),
             Flavor::Zero(ref q) => q.recv(),
@@ -135,7 +176,7 @@ impl<T> Queue<T> {
     }
 
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        match self.flavor {
+        match self.0.queue {
             Flavor::Async(ref q) => q.recv_timeout(dur),
             Flavor::Sync(ref q) => q.recv_timeout(dur),
             Flavor::Zero(ref q) => q.recv_timeout(dur),
@@ -143,110 +184,50 @@ impl<T> Queue<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.flavor {
+        match self.0.queue {
             Flavor::Async(ref q) => q.try_recv(),
             Flavor::Sync(ref q) => q.try_recv(),
             Flavor::Zero(ref q) => q.try_recv(),
         }
-    }
-
-    pub fn close(&self) -> bool {
-        match self.flavor {
-            Flavor::Async(ref q) => q.close(),
-            Flavor::Sync(ref q) => q.close(),
-            Flavor::Zero(ref q) => q.close(),
-        }
-    }
-
-    pub fn is_closed(&self) -> bool {
-        match self.flavor {
-            Flavor::Async(ref q) => q.is_closed(),
-            Flavor::Sync(ref q) => q.is_closed(),
-            Flavor::Zero(ref q) => q.is_closed(),
-        }
-    }
-
-    fn receivers(&self) -> &Monitor {
-        match self.flavor {
-            Flavor::Async(ref q) => unimplemented!(),
-            Flavor::Sync(ref q) => &q.receivers,
-            Flavor::Zero(ref q) => unimplemented!(),
-        }
-    }
-
-    fn is_ready(&self) -> bool {
-        match self.flavor {
-            Flavor::Async(ref q) => unimplemented!(),
-            Flavor::Sync(ref q) => q.is_ready(),
-            Flavor::Zero(ref q) => unimplemented!(),
-        }
-    }
-}
-
-pub struct Sender<T>(Arc<Queue<T>>);
-
-impl<T> Sender<T> {
-    fn new(q: Arc<Queue<T>>) -> Self {
-        q.senders.fetch_add(1, SeqCst);
-        Sender(q)
-    }
-
-    pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        self.0.send(value)
-    }
-
-    pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        self.0.send_timeout(value, dur)
-    }
-
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        self.0.try_send(value)
-    }
-}
-
-impl<T> Drop for Sender<T> {
-    fn drop(&mut self) {
-        if self.0.senders.fetch_sub(1, SeqCst) == 1 {
-            self.0.close();
-        }
-    }
-}
-
-pub struct Receiver<T>(Arc<Queue<T>>);
-
-impl<T> Receiver<T> {
-    fn new(q: Arc<Queue<T>>) -> Self {
-        q.receivers.fetch_add(1, SeqCst);
-        Receiver(q)
-    }
-
-    pub fn recv(&self) -> Result<T, RecvError> {
-        self.0.recv()
-    }
-
-    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        self.0.recv_timeout(dur)
-    }
-
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        self.0.try_recv()
     }
 }
 
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         if self.0.receivers.fetch_sub(1, SeqCst) == 1 {
-            self.0.close();
+            match self.0.queue {
+                Flavor::Async(ref q) => q.close(),
+                Flavor::Sync(ref q) => q.close(),
+                Flavor::Zero(ref q) => q.close(),
+            };
         }
     }
 }
 
+impl<T> Clone for Receiver<T> {
+    fn clone(&self) -> Self {
+        Receiver::new(self.0.clone())
+    }
+}
+
 pub fn async<T>() -> (Sender<T>, Receiver<T>) {
-    let q = Arc::new(Queue::async());
+    let q = Arc::new(Inner {
+        senders: AtomicUsize::new(0),
+        receivers: AtomicUsize::new(0),
+        queue: Flavor::Async(async::Queue::new()),
+    });
     (Sender::new(q.clone()), Receiver::new(q))
 }
 
 pub fn sync<T>(size: usize) -> (Sender<T>, Receiver<T>) {
-    let q = Arc::new(Queue::sync(size));
+    let q = Arc::new(Inner {
+        senders: AtomicUsize::new(0),
+        receivers: AtomicUsize::new(0),
+        queue: if size == 0 {
+            Flavor::Zero(zero::Queue::new())
+        } else {
+            Flavor::Sync(sync::Queue::with_capacity(size))
+        },
+    });
     (Sender::new(q.clone()), Receiver::new(q))
 }

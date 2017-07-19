@@ -1,17 +1,16 @@
-use std::collections::VecDeque;
-use std::ptr;
-use std::sync::Arc;
-use std::sync::Condvar;
-use std::sync::Mutex;
-use std::sync::atomic::{self, AtomicBool, AtomicPtr, AtomicUsize};
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
-use std::thread::{self, Thread};
+use std::marker::PhantomData;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use rand::{Rng, thread_rng};
 
+use Channel;
+use TryRecvError;
+use monitor::Monitor;
+use super::{Flavor, Receiver};
+
 enum State {
-    Count(*const Monitor),
+    Count(usize),
     TryRecv1,
     TryRecv2,
     Subscribe,
@@ -28,12 +27,13 @@ pub struct Select {
     timed_out: bool,
     disconnected: bool,
     deadline: Option<Instant>,
+    _marker: PhantomData<*mut ()>,
 }
 
 impl Select {
     pub fn new() -> Self {
         Select {
-            state: State::Count(ptr::null()),
+            state: State::Count(0),
             pos: 0,
             len: 0,
             start: 0,
@@ -41,12 +41,13 @@ impl Select {
             timed_out: false,
             disconnected: false,
             deadline: None,
+            _marker: PhantomData,
         }
     }
 
     pub fn with_timeout(dur: Duration) -> Self {
         Select {
-            state: State::Count(ptr::null()),
+            state: State::Count(0),
             pos: 0,
             len: 0,
             start: 0,
@@ -54,6 +55,7 @@ impl Select {
             timed_out: false,
             disconnected: false,
             deadline: Some(Instant::now() + dur),
+            _marker: PhantomData,
         }
     }
 
@@ -65,18 +67,20 @@ impl Select {
         self.disconnected
     }
 
-    pub fn poll<T>(&mut self, q: &Queue<T>) -> Option<T> {
+    pub fn poll<T>(&mut self, rx: &Receiver<T>) -> Option<T> {
+        let chan = rx.channel();
+
         loop {
             match self.state {
-                State::Count(fst) => {
-                    if fst == q.receivers() {
+                State::Count(first) => {
+                    if first == chan.id() {
                         self.start = thread_rng().gen_range(0, self.len);
                         self.state = State::TryRecv1;
                         self.pos = 0;
                         self.closed_count = 0;
                     } else {
-                        if fst.is_null() {
-                            self.state = State::Count(q.receivers());
+                        if first == 0 {
+                            self.state = State::Count(chan.id());
                         }
                         self.pos += 1;
                         self.len += 1;
@@ -90,7 +94,7 @@ impl Select {
                     } else {
                         self.pos += 1;
                         if self.pos > self.start && !self.timed_out {
-                            match q.try_recv() {
+                            match chan.try_recv() {
                                 Ok(v) => return Some(v),
                                 Err(TryRecvError::Disconnected) => self.closed_count += 1,
                                 _ => {}
@@ -106,7 +110,7 @@ impl Select {
                     } else {
                         self.pos += 1;
                         if self.pos <= self.start && !self.timed_out {
-                            match q.try_recv() {
+                            match chan.try_recv() {
                                 Ok(v) => return Some(v),
                                 Err(TryRecvError::Disconnected) => self.closed_count += 1,
                                 _ => {}
@@ -122,7 +126,7 @@ impl Select {
                     } else {
                         self.pos += 1;
                         if !self.disconnected {
-                            q.receivers().subscribe();
+                            chan.subscribe();
                         }
                     }
                 }
@@ -142,7 +146,7 @@ impl Select {
                         self.pos = 0;
                     } else {
                         self.pos += 1;
-                        if !self.disconnected && q.is_ready() {
+                        if !self.disconnected && chan.is_ready() {
                             self.state = State::IsReady(true);
                         }
                     }
@@ -167,7 +171,7 @@ impl Select {
                     } else {
                         self.pos += 1;
                         if !self.disconnected {
-                            q.receivers().unsubscribe();
+                            chan.unsubscribe();
                         }
                     }
                 }
@@ -178,7 +182,11 @@ impl Select {
 
 #[cfg(test)]
 mod tests {
+    use crossbeam;
+
     use super::*;
+    use async;
+    use sync;
 
     fn ms(ms: u64) -> Duration {
         Duration::from_millis(ms)
@@ -186,26 +194,24 @@ mod tests {
 
     #[test]
     fn select() {
-        let a = Queue::sync(1000);
-        let b = Queue::sync(1000);
+        let (tx1, rx1) = sync(1000);
+        let (tx2, rx2) = sync(100);
 
         crossbeam::scope(|s| {
             s.spawn(|| {
                 thread::sleep(ms(100));
-                a.send(1);
-                b.send(2);
-                a.close();
-                b.close();
+                tx1.send(1);
+                tx2.send(2);
             });
             s.spawn(|| {
                 // let mut s = Select::new();
                 let mut s = Select::with_timeout(ms(110));
                 loop {
-                    if let Some(x) = s.poll(&a) {
+                    if let Some(x) = s.poll(&rx1) {
                         println!("{}", x);
                         break;
                     }
-                    if let Some(x) = s.poll(&b) {
+                    if let Some(x) = s.poll(&rx2) {
                         println!("{}", x);
                         break;
                     }
