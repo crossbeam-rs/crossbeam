@@ -10,13 +10,13 @@ use std::time::{Duration, Instant};
 
 use coco::epoch::{self, Atomic, Owned};
 
-use Channel;
 use RecvError;
 use RecvTimeoutError;
 use SendError;
 use SendTimeoutError;
 use TryRecvError;
 use TrySendError;
+use channel::Channel;
 use monitor::Monitor;
 
 /// A single node in a queue.
@@ -170,6 +170,45 @@ impl<T> Queue<T> {
             })
         };
     }
+}
+
+impl<T> Channel<T> for Queue<T> {
+    fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        if self.closed.load(SeqCst) {
+            Err(TrySendError::Disconnected(value))
+        } else {
+            self.push(value);
+            self.receivers.notify_one();
+            Ok(())
+        }
+    }
+
+    fn send_until(
+        &self,
+        mut value: T,
+        deadline: Option<Instant>,
+    ) -> Result<(), SendTimeoutError<T>> {
+        if self.closed.load(SeqCst) {
+            Err(SendTimeoutError::Disconnected(value))
+        } else {
+            self.push(value);
+            self.receivers.notify_one();
+            Ok(())
+        }
+    }
+
+    fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.pop() {
+            None => {
+                if self.closed.load(SeqCst) {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
+                }
+            }
+            Some(v) => Ok(v),
+        }
+    }
 
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
@@ -208,62 +247,21 @@ impl<T> Queue<T> {
             }
         }
     }
-}
-
-impl<T> Channel<T> for Queue<T> {
-    fn send(&self, value: T) -> Result<(), SendError<T>> {
-        match self.try_send(value) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Disconnected(v)) => Err(SendError(v)),
-            Err(TrySendError::Full(_)) => unreachable!(),
-        }
-    }
-
-    fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        match self.try_send(value) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Disconnected(v)) => Err(SendTimeoutError::Disconnected(v)),
-            Err(TrySendError::Full(_)) => unreachable!(),
-        }
-    }
-
-    fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(value))
-        } else {
-            self.push(value);
-            self.receivers.notify_one();
-            Ok(())
-        }
-    }
-
-    fn recv(&self) -> Result<T, RecvError> {
-        if let Ok(v) = self.recv_until(None) {
-            Ok(v)
-        } else {
-            Err(RecvError)
-        }
-    }
-
-    fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        self.recv_until(Some(Instant::now() + dur))
-    }
-
-    fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop() {
-            None => {
-                if self.closed.load(SeqCst) {
-                    Err(TryRecvError::Disconnected)
-                } else {
-                    Err(TryRecvError::Empty)
-                }
-            }
-            Some(v) => Ok(v),
-        }
-    }
 
     fn len(&self) -> usize {
         unimplemented!()
+    }
+
+    fn is_empty(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn is_full(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn capacity(&self) -> Option<usize> {
+        None
     }
 
     fn close(&self) -> bool {

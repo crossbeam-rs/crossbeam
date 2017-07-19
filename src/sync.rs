@@ -7,16 +7,15 @@ use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use SendError;
-use TrySendError;
-use SendTimeoutError;
 use RecvError;
-use TryRecvError;
 use RecvTimeoutError;
-use Channel;
+use SendError;
+use SendTimeoutError;
+use TryRecvError;
+use TrySendError;
+use channel::Channel;
 use monitor::Monitor;
 
-// TODO: optimize if there's a single Sender or a single Receiver
 // TODO: Should we use Acquire-Release or SeqCst
 
 struct Node<T> {
@@ -150,6 +149,22 @@ impl<T> Queue<T> {
             thread::yield_now();
         }
     }
+}
+
+impl<T> Channel<T> for Queue<T> {
+    fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        if self.closed.load(SeqCst) {
+            Err(TrySendError::Disconnected(value))
+        } else {
+            match self.push(value) {
+                None => {
+                    self.receivers.notify_one();
+                    Ok(())
+                }
+                Some(v) => Err(TrySendError::Full(v)),
+            }
+        }
+    }
 
     fn send_until(
         &self,
@@ -194,6 +209,22 @@ impl<T> Queue<T> {
         }
     }
 
+    fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.pop() {
+            None => {
+                if self.closed.load(SeqCst) {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
+                }
+            }
+            Some(v) => {
+                self.senders.notify_one();
+                Ok(v)
+            }
+        }
+    }
+
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
             match self.try_recv() {
@@ -221,65 +252,21 @@ impl<T> Queue<T> {
             self.receivers.unsubscribe();
         }
     }
-}
-
-impl<T> Channel<T> for Queue<T> {
-    fn send(&self, value: T) -> Result<(), SendError<T>> {
-        match self.send_until(value, None) {
-            Ok(()) => Ok(()),
-            Err(SendTimeoutError::Disconnected(v)) => Err(SendError(v)),
-            Err(SendTimeoutError::Timeout(v)) => Err(SendError(v)),
-        }
-    }
-
-    fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        self.send_until(value, Some(Instant::now() + dur))
-    }
-
-    fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(value))
-        } else {
-            match self.push(value) {
-                None => {
-                    self.receivers.notify_one();
-                    Ok(())
-                }
-                Some(v) => Err(TrySendError::Full(v)),
-            }
-        }
-    }
-
-    fn recv(&self) -> Result<T, RecvError> {
-        if let Ok(v) = self.recv_until(None) {
-            Ok(v)
-        } else {
-            Err(RecvError)
-        }
-    }
-
-    fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        self.recv_until(Some(Instant::now() + dur))
-    }
-
-    fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop() {
-            None => {
-                if self.closed.load(SeqCst) {
-                    Err(TryRecvError::Disconnected)
-                } else {
-                    Err(TryRecvError::Empty)
-                }
-            }
-            Some(v) => {
-                self.senders.notify_one();
-                Ok(v)
-            }
-        }
-    }
 
     fn len(&self) -> usize {
         unimplemented!()
+    }
+
+    fn is_empty(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn is_full(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn capacity(&self) -> Option<usize> {
+        Some(self.cap)
     }
 
     fn close(&self) -> bool {
@@ -321,6 +308,8 @@ impl<T> Channel<T> for Queue<T> {
             } else if clap.wrapping_add(power) == lap {
                 return self.closed.load(SeqCst);
             }
+
+            thread::yield_now();
         }
     }
 

@@ -4,10 +4,9 @@ use std::time::{Duration, Instant};
 
 use rand::{Rng, thread_rng};
 
-use Channel;
 use TryRecvError;
 use monitor::Monitor;
-use super::{Flavor, Receiver};
+use channel::{Channel, Receiver};
 
 enum State {
     Count(usize),
@@ -31,6 +30,7 @@ pub struct Select {
 }
 
 impl Select {
+    #[inline]
     pub fn new() -> Self {
         Select {
             state: State::Count(0),
@@ -45,6 +45,7 @@ impl Select {
         }
     }
 
+    #[inline]
     pub fn with_timeout(dur: Duration) -> Self {
         Select {
             state: State::Count(0),
@@ -59,16 +60,18 @@ impl Select {
         }
     }
 
+    #[inline]
     pub fn timed_out(&self) -> bool {
         self.timed_out
     }
 
+    #[inline]
     pub fn disconnected(&self) -> bool {
         self.disconnected
     }
 
     pub fn poll<T>(&mut self, rx: &Receiver<T>) -> Option<T> {
-        let chan = rx.channel();
+        let chan = rx.as_channel();
 
         loop {
             match self.state {
@@ -185,8 +188,8 @@ mod tests {
     use crossbeam;
 
     use super::*;
-    use async;
-    use sync;
+    use bounded;
+    use unbounded;
 
     fn ms(ms: u64) -> Duration {
         Duration::from_millis(ms)
@@ -194,8 +197,8 @@ mod tests {
 
     #[test]
     fn select() {
-        let (tx1, rx1) = sync(1000);
-        let (tx2, rx2) = sync(100);
+        let (tx1, rx1) = bounded(100);
+        let (tx2, rx2) = bounded(100);
 
         crossbeam::scope(|s| {
             s.spawn(|| {

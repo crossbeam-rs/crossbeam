@@ -7,12 +7,14 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
-use super::SendError;
-use super::TrySendError;
-use super::SendTimeoutError;
-use super::RecvError;
-use super::TryRecvError;
-use super::RecvTimeoutError;
+use RecvError;
+use RecvTimeoutError;
+use SendError;
+use SendTimeoutError;
+use TryRecvError;
+use TrySendError;
+use channel::Channel;
+use monitor::Monitor;
 
 struct Blocked<T> {
     thread: Thread,
@@ -49,6 +51,7 @@ pub struct Queue<T> {
     closed: AtomicBool,
     senders_len: AtomicUsize,
     receivers_len: AtomicUsize,
+    monitor: Monitor,
     _marker: PhantomData<T>,
 }
 
@@ -65,11 +68,14 @@ impl<T> Queue<T> {
             closed: AtomicBool::new(false),
             senders_len: AtomicUsize::new(0),
             receivers_len: AtomicUsize::new(0),
+            monitor: Monitor::new(),
             _marker: PhantomData,
         }
     }
+}
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+impl<T> Channel<T> for Queue<T> {
+    fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
             return Err(TrySendError::Disconnected(value));
         }
@@ -134,6 +140,8 @@ impl<T> Queue<T> {
                 break;
             }
 
+            self.monitor.notify_one();
+
             if let Some(end) = deadline {
                 let now = Instant::now();
 
@@ -165,19 +173,7 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        self.send_until(value, Some(Instant::now() + dur))
-    }
-
-    pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        match self.send_until(value, None) {
-            Ok(()) => Ok(()),
-            Err(SendTimeoutError::Disconnected(v)) => Err(SendError(v)),
-            Err(SendTimeoutError::Timeout(_)) => unreachable!(),
-        }
-    }
-
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+    fn try_recv(&self) -> Result<T, TryRecvError> {
         if self.closed.load(SeqCst) {
             return Err(TryRecvError::Disconnected);
         }
@@ -269,19 +265,23 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        self.recv_until(Some(Instant::now() + dur))
+    fn len(&self) -> usize {
+        0
     }
 
-    pub fn recv(&self) -> Result<T, RecvError> {
-        if let Ok(v) = self.recv_until(None) {
-            Ok(v)
-        } else {
-            Err(RecvError)
-        }
+    fn is_empty(&self) -> usize {
+        unimplemented!()
     }
 
-    pub fn close(&self) -> bool {
+    fn is_full(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn capacity(&self) -> Option<usize> {
+        Some(0)
+    }
+
+    fn close(&self) -> bool {
         if self.closed.load(SeqCst) {
             return false;
         }
@@ -309,8 +309,25 @@ impl<T> Queue<T> {
         true
     }
 
-    pub fn is_closed(&self) -> bool {
+    fn is_closed(&self) -> bool {
         self.closed.load(SeqCst)
+    }
+
+    fn subscribe(&self) {
+        self.monitor.subscribe();
+    }
+
+    fn unsubscribe(&self) {
+        self.monitor.unsubscribe();
+    }
+
+    fn is_ready(&self) -> bool {
+        let mut lock = self.lock.lock().unwrap();
+        !lock.senders.is_empty()
+    }
+
+    fn id(&self) -> usize {
+        self as *const _ as usize
     }
 }
 
