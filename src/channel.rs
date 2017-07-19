@@ -1,22 +1,11 @@
-use std::collections::VecDeque;
-use std::ptr;
 use std::sync::Arc;
-use std::sync::Condvar;
-use std::sync::Mutex;
-use std::sync::atomic::{self, AtomicBool, AtomicPtr, AtomicUsize};
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
-use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
-use RecvError;
-use RecvTimeoutError;
-use SendError;
-use SendTimeoutError;
-use TryRecvError;
-use TrySendError;
 use array;
+use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use list;
-use monitor::Monitor;
 use zero;
 
 // TODO: iterators

@@ -5,15 +5,10 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use RecvError;
-use RecvTimeoutError;
-use SendError;
-use SendTimeoutError;
-use TryRecvError;
-use TrySendError;
 use channel::Channel;
+use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
 // TODO: Should we use Acquire-Release or SeqCst

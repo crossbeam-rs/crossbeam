@@ -1,22 +1,15 @@
-use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, SeqCst};
-use std::thread::{self, Thread};
-use std::time::{Duration, Instant};
+use std::thread;
+use std::time::Instant;
 
 use coco::epoch::{self, Atomic, Owned};
 
-use RecvError;
-use RecvTimeoutError;
-use SendError;
-use SendTimeoutError;
-use TryRecvError;
-use TrySendError;
 use channel::Channel;
+use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
 /// A single node in a queue.

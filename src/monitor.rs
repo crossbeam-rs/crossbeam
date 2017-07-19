@@ -1,12 +1,8 @@
 use std::collections::VecDeque;
-use std::ptr;
-use std::sync::Arc;
-use std::sync::Condvar;
 use std::sync::Mutex;
-use std::sync::atomic::{self, AtomicBool, AtomicPtr, AtomicUsize};
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
-use std::time::{Duration, Instant};
 
 pub struct Monitor {
     threads: Mutex<VecDeque<Thread>>,

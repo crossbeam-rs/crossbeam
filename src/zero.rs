@@ -5,15 +5,10 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use RecvError;
-use RecvTimeoutError;
-use SendError;
-use SendTimeoutError;
-use TryRecvError;
-use TrySendError;
 use channel::Channel;
+use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
 struct Blocked<T> {

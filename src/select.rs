@@ -4,9 +4,8 @@ use std::time::{Duration, Instant};
 
 use rand::{Rng, thread_rng};
 
-use TryRecvError;
-use monitor::Monitor;
-use channel::{Channel, Receiver};
+use err::TryRecvError;
+use channel::Receiver;
 
 enum State {
     Count(usize),
