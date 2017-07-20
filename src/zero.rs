@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
-use std::time::Instant;
+use std::time::{Instant, Duration};
 
 use channel::Channel;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
@@ -308,12 +308,8 @@ impl<T> Channel<T> for Queue<T> {
         self.closed.load(SeqCst)
     }
 
-    fn subscribe(&self) {
-        self.monitor.subscribe();
-    }
-
-    fn unsubscribe(&self) {
-        self.monitor.unsubscribe();
+    fn monitor(&self) -> &Monitor {
+        &self.monitor
     }
 
     fn is_ready(&self) -> bool {

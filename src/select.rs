@@ -7,6 +7,10 @@ use rand::{Rng, thread_rng};
 use err::TryRecvError;
 use channel::Receiver;
 
+// TODO: select should unsubscribe, and everyone else should cancel
+// TODO: alternative terminology: watch/unwatch/abort
+// TODO: impl !Send and !Sync
+
 enum State {
     Count(usize),
     TryRecv1,
@@ -14,6 +18,8 @@ enum State {
     Subscribe,
     IsReady(bool),
     Unsubscribe,
+    FinalTryRecv,
+    Finished,
 }
 
 pub struct Select {
@@ -21,6 +27,7 @@ pub struct Select {
     pos: usize,
     len: usize,
     start: usize,
+    woken: usize,
     closed_count: usize,
     timed_out: bool,
     disconnected: bool,
@@ -36,6 +43,7 @@ impl Select {
             pos: 0,
             len: 0,
             start: 0,
+            woken: !0,
             closed_count: 0,
             timed_out: false,
             disconnected: false,
@@ -51,6 +59,7 @@ impl Select {
             pos: 0,
             len: 0,
             start: 0,
+            woken: !0,
             closed_count: 0,
             timed_out: false,
             disconnected: false,
@@ -71,6 +80,7 @@ impl Select {
 
     pub fn poll<T>(&mut self, rx: &Receiver<T>) -> Option<T> {
         let chan = rx.as_channel();
+        // println!("POLL {:?}", rx as *const _);
 
         loop {
             match self.state {
@@ -94,14 +104,15 @@ impl Select {
                         self.state = State::TryRecv2;
                         self.pos = 0;
                     } else {
-                        self.pos += 1;
-                        if self.pos > self.start && !self.timed_out {
+                        if self.pos >= self.start {
+                            // println!("TRY RECV 1 {}", self.pos);
                             match chan.try_recv() {
                                 Ok(v) => return Some(v),
                                 Err(TryRecvError::Disconnected) => self.closed_count += 1,
                                 _ => {}
                             }
                         }
+                        self.pos += 1;
                         return None;
                     }
                 }
@@ -110,14 +121,15 @@ impl Select {
                         self.state = State::Subscribe;
                         self.pos = 0;
                     } else {
-                        self.pos += 1;
-                        if self.pos <= self.start && !self.timed_out {
+                        if self.pos < self.start {
+                            // println!("TRY RECV 2 {}", self.pos);
                             match chan.try_recv() {
                                 Ok(v) => return Some(v),
                                 Err(TryRecvError::Disconnected) => self.closed_count += 1,
                                 _ => {}
                             }
                         }
+                        self.pos += 1;
                         return None;
                     }
                 }
@@ -126,10 +138,12 @@ impl Select {
                         self.state = State::IsReady(false);
                         self.pos = 0;
                     } else {
-                        self.pos += 1;
                         if !self.disconnected {
-                            chan.subscribe();
+                            // println!("SUBSCRIBE {} {:?}", self.pos, rx as *const _);
+                            chan.monitor().watch_start();
                         }
+                        self.pos += 1;
+                        return None;
                     }
                 }
                 State::IsReady(ready) => {
@@ -144,22 +158,39 @@ impl Select {
                                 thread::park();
                             }
                         }
-                        self.state = State::Unsubscribe;
+                        self.state = State::Unsubscribe; // TODO: This should be WatchAbort
                         self.pos = 0;
+                        self.woken = !0;
                     } else {
-                        self.pos += 1;
                         if !self.disconnected && chan.is_ready() {
                             self.state = State::IsReady(true);
                         }
+                        self.pos += 1;
+                        return None;
                     }
                 }
                 State::Unsubscribe => {
                     if self.pos == self.len {
-                        if !self.timed_out {
-                            if let Some(end) = self.deadline {
-                                if Instant::now() > end {
-                                    self.timed_out = true;
-                                }
+                        self.state = State::FinalTryRecv;
+                        self.pos = 0;
+                    } else {
+                        // println!("UNSUBSCRIBE {}", self.pos);
+                        if self.woken == !0 {
+                            if !chan.monitor().watch_stop() {
+                                self.woken = self.pos;
+                            }
+                        } else {
+                            chan.monitor().watch_abort();
+                        }
+                        self.pos += 1;
+                        return None;
+                    }
+                }
+                State::FinalTryRecv => {
+                    if self.pos == self.len {
+                        if let Some(end) = self.deadline {
+                            if Instant::now() >= end {
+                                self.timed_out = true;
                             }
                         }
 
@@ -167,15 +198,27 @@ impl Select {
                             self.disconnected = true;
                         }
 
-                        self.state = State::TryRecv1;
-                        self.pos = 0;
-                        self.closed_count = 0;
-                    } else {
-                        self.pos += 1;
-                        if !self.disconnected {
-                            chan.unsubscribe();
+                        if self.timed_out || self.disconnected {
+                            self.state = State::Finished;
+                        } else {
+                            self.state = State::TryRecv1;
+                            self.pos = 0;
+                            self.closed_count = 0;
                         }
+                    } else {
+                        if !self.disconnected && !self.timed_out && self.woken == self.pos {
+                            // println!("FINAL TRY RECV {}", self.pos);
+                            if let Ok(v) = chan.try_recv() {
+                                return Some(v);
+                            }
+                            chan.monitor().notify_one();
+                        }
+                        self.pos += 1;
+                        return None;
                     }
+                }
+                State::Finished => {
+                    return None;
                 }
             }
         }
@@ -196,18 +239,22 @@ mod tests {
 
     #[test]
     fn select() {
-        let (tx1, rx1) = bounded(100);
-        let (tx2, rx2) = bounded(100);
+        let (tx1, rx1) = bounded::<i32>(0);
+        let (tx2, rx2) = bounded::<i32>(0);
 
         crossbeam::scope(|s| {
             s.spawn(|| {
-                thread::sleep(ms(100));
-                tx1.send(1);
-                tx2.send(2);
+                thread::sleep(ms(150));
+                tx1.send_timeout(1, ms(200));
             });
             s.spawn(|| {
+                thread::sleep(ms(150));
+                tx2.send_timeout(2, ms(200));
+            });
+            s.spawn(|| {
+                thread::sleep(ms(100));
                 // let mut s = Select::new();
-                let mut s = Select::with_timeout(ms(110));
+                let mut s = Select::with_timeout(ms(100));
                 loop {
                     if let Some(x) = s.poll(&rx1) {
                         println!("{}", x);

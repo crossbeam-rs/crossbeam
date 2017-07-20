@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use array;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use list;
+use monitor::Monitor;
 use zero;
 
 // TODO: iterators
@@ -25,8 +26,7 @@ pub trait Channel<T> {
     fn close(&self) -> bool;
     fn is_closed(&self) -> bool;
 
-    fn subscribe(&self);
-    fn unsubscribe(&self);
+    fn monitor(&self) -> &Monitor;
     fn is_ready(&self) -> bool;
     fn id(&self) -> usize;
 
@@ -168,7 +168,7 @@ impl<T> Receiver<T> {
         match self.0.flavor {
             Flavor::List(ref q) => q,
             Flavor::Array(ref q) => q,
-            Flavor::Zero(ref q) => unimplemented!(),
+            Flavor::Zero(ref q) => q,
         }
     }
 

@@ -5,7 +5,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
 use std::thread;
-use std::time::Instant;
+use std::time::{Instant, Duration};
 
 use channel::Channel;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
@@ -180,15 +180,15 @@ impl<T> Channel<T> for Queue<T> {
                 }
             }
 
-            self.senders.subscribe();
+            self.senders.watch_start();
 
             match self.try_send(value) {
                 Ok(()) => {
-                    self.senders.unsubscribe();
+                    self.senders.watch_abort();
                     return Ok(());
                 }
                 Err(TrySendError::Disconnected(v)) => {
-                    self.senders.unsubscribe();
+                    self.senders.watch_abort();
                     return Err(SendTimeoutError::Disconnected(v));
                 }
                 Err(TrySendError::Full(v)) => {
@@ -198,7 +198,7 @@ impl<T> Channel<T> for Queue<T> {
                     } else {
                         thread::park();
                     }
-                    self.senders.unsubscribe();
+                    self.senders.watch_abort();
                 }
             }
         }
@@ -235,7 +235,7 @@ impl<T> Channel<T> for Queue<T> {
                 }
             }
 
-            self.receivers.subscribe();
+            self.receivers.watch_start();
 
             if !self.is_ready() {
                 if let Some(end) = deadline {
@@ -244,7 +244,7 @@ impl<T> Channel<T> for Queue<T> {
                     thread::park();
                 }
             }
-            self.receivers.unsubscribe();
+            self.receivers.watch_abort();
         }
     }
 
@@ -278,12 +278,8 @@ impl<T> Channel<T> for Queue<T> {
         self.closed.load(SeqCst)
     }
 
-    fn subscribe(&self) {
-        self.receivers.subscribe();
-    }
-
-    fn unsubscribe(&self) {
-        self.receivers.unsubscribe();
+    fn monitor(&self) -> &Monitor {
+        &self.receivers
     }
 
     fn is_ready(&self) -> bool {

@@ -4,6 +4,8 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
 
+// TODO: select should unsubscribe, but everyone else should cancel!
+
 pub struct Monitor {
     threads: Mutex<VecDeque<Thread>>,
     len: AtomicUsize,
@@ -17,45 +19,79 @@ impl Monitor {
         }
     }
 
-    pub fn subscribe(&self) {
+    pub fn watch_start(&self) -> bool {
         let mut threads = self.threads.lock().unwrap();
-        threads.push_back(thread::current());
-        self.len.store(threads.len(), SeqCst);
+        let id = thread::current().id();
+
+        if threads.iter().all(|t| t.id() != id) {
+            threads.push_back(thread::current());
+            self.len.store(threads.len(), SeqCst);
+            // println!("PUSH {} {:?}", self.len.load(SeqCst), self as *const Monitor);
+            true
+        } else {
+            false
+        }
     }
 
-    pub fn unsubscribe(&self) {
+    pub fn watch_stop(&self) -> bool {
         let mut threads = self.threads.lock().unwrap();
         let id = thread::current().id();
 
         if let Some((i, _)) = threads.iter().enumerate().find(|&(_, t)| t.id() == id) {
+            // println!("STOP {}, {:?}", self.len.load(SeqCst), self as *const Monitor);
             threads.remove(i);
             self.len.store(threads.len(), SeqCst);
-        } else if let Some(t) = threads.pop_front() {
-            self.len.store(threads.len(), SeqCst);
-            t.unpark();
+            true
+        } else {
+            false
         }
     }
 
-    pub fn notify_one(&self) {
+    pub fn watch_abort(&self) -> bool {
+        let mut threads = self.threads.lock().unwrap();
+        let id = thread::current().id();
+
+        if let Some((i, _)) = threads.iter().enumerate().find(|&(_, t)| t.id() == id) {
+            // println!("ABORT {}, {:?}", self.len.load(SeqCst), self as *const Monitor);
+            threads.remove(i);
+            self.len.store(threads.len(), SeqCst);
+            return true;
+        }
+
+        if let Some(t) = threads.pop_front() {
+            self.len.store(threads.len(), SeqCst);
+            t.unpark();
+        }
+        false
+    }
+
+    pub fn notify_one(&self) -> bool {
         if self.len.load(SeqCst) > 0 {
             let mut threads = self.threads.lock().unwrap();
 
             if let Some(t) = threads.pop_front() {
+                // println!("NOTIFY");
                 self.len.store(threads.len(), SeqCst);
                 t.unpark();
+                return true;
             }
         }
+        false
     }
 
-    pub fn notify_all(&self) {
+    pub fn notify_all(&self) -> bool {
         if self.len.load(SeqCst) > 0 {
             let mut threads = self.threads.lock().unwrap();
 
-            self.len.store(0, SeqCst);
-            for t in threads.drain(..) {
-                t.unpark();
+            if !threads.is_empty() {
+                self.len.store(0, SeqCst);
+                for t in threads.drain(..) {
+                    t.unpark();
+                }
+                return true;
             }
         }
+        false
     }
 }
 

@@ -4,7 +4,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, SeqCst};
 use std::thread;
-use std::time::Instant;
+use std::time::{Instant, Duration};
 
 use coco::epoch::{self, Atomic, Owned};
 
@@ -218,15 +218,15 @@ impl<T> Channel<T> for Queue<T> {
                 }
             }
 
-            self.receivers.subscribe();
+            self.receivers.watch_start();
 
             match self.try_recv() {
                 Ok(v) => {
-                    self.receivers.unsubscribe();
+                    self.receivers.watch_abort();
                     return Ok(v);
                 }
                 Err(TryRecvError::Disconnected) => {
-                    self.receivers.unsubscribe();
+                    self.receivers.watch_abort();
                     return Err(RecvTimeoutError::Disconnected);
                 }
                 Err(TryRecvError::Empty) => {
@@ -235,7 +235,7 @@ impl<T> Channel<T> for Queue<T> {
                     } else {
                         thread::park();
                     }
-                    self.receivers.unsubscribe();
+                    self.receivers.watch_abort();
                 }
             }
         }
@@ -270,12 +270,8 @@ impl<T> Channel<T> for Queue<T> {
         self.closed.load(SeqCst)
     }
 
-    fn subscribe(&self) {
-        self.receivers.subscribe();
-    }
-
-    fn unsubscribe(&self) {
-        self.receivers.unsubscribe();
+    fn monitor(&self) -> &Monitor {
+        &self.receivers
     }
 
     fn is_ready(&self) -> bool {
