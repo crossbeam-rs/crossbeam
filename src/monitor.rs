@@ -26,7 +26,6 @@ impl Monitor {
         if threads.iter().all(|t| t.id() != id) {
             threads.push_back(thread::current());
             self.len.store(threads.len(), SeqCst);
-            // println!("PUSH {} {:?}", self.len.load(SeqCst), self as *const Monitor);
             true
         } else {
             false
@@ -38,7 +37,6 @@ impl Monitor {
         let id = thread::current().id();
 
         if let Some((i, _)) = threads.iter().enumerate().find(|&(_, t)| t.id() == id) {
-            // println!("STOP {}, {:?}", self.len.load(SeqCst), self as *const Monitor);
             threads.remove(i);
             self.len.store(threads.len(), SeqCst);
             true
@@ -52,7 +50,6 @@ impl Monitor {
         let id = thread::current().id();
 
         if let Some((i, _)) = threads.iter().enumerate().find(|&(_, t)| t.id() == id) {
-            // println!("ABORT {}, {:?}", self.len.load(SeqCst), self as *const Monitor);
             threads.remove(i);
             self.len.store(threads.len(), SeqCst);
             return true;
@@ -70,7 +67,6 @@ impl Monitor {
             let mut threads = self.threads.lock().unwrap();
 
             if let Some(t) = threads.pop_front() {
-                // println!("NOTIFY");
                 self.len.store(threads.len(), SeqCst);
                 t.unpark();
                 return true;
