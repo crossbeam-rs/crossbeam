@@ -4,11 +4,9 @@ use std::time::{Duration, Instant};
 
 use rand::{Rng, thread_rng};
 
-use channel::Channel;
-use channel::Receiver;
+use Receiver;
 use err::TryRecvError;
-
-// TODO: impl !Send and !Sync
+use impls::Channel;
 
 pub struct Select {
     machine: Machine,

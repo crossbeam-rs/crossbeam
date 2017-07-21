@@ -7,8 +7,8 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
 use std::time::{Instant, Duration};
 
-use channel::Channel;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use impls::Channel;
 use monitor::Monitor;
 
 struct Blocked<T> {

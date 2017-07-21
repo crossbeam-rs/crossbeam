@@ -8,8 +8,8 @@ use std::time::{Instant, Duration};
 
 use coco::epoch::{self, Atomic, Owned};
 
-use channel::Channel;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use impls::Channel;
 use monitor::Monitor;
 
 /// A single node in a queue.
