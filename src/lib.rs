@@ -5,7 +5,7 @@ extern crate rand;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 pub use select::Select;
@@ -43,18 +43,24 @@ impl<T> Sender<T> {
     }
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        match self.0.flavor {
-            Flavor::List(ref q) => q.send(value),
-            Flavor::Array(ref q) => q.send(value),
-            Flavor::Zero(ref q) => q.send(value),
+        let res = match self.0.flavor {
+            Flavor::List(ref q) => q.send_until(value, None),
+            Flavor::Array(ref q) => q.send_until(value, None),
+            Flavor::Zero(ref q) => q.send_until(value, None),
+        };
+        match res {
+            Ok(()) => Ok(()),
+            Err(SendTimeoutError::Disconnected(v)) => Err(SendError(v)),
+            Err(SendTimeoutError::Timeout(v)) => Err(SendError(v)),
         }
     }
 
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
+        let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
-            Flavor::List(ref q) => q.send_timeout(value, dur),
-            Flavor::Array(ref q) => q.send_timeout(value, dur),
-            Flavor::Zero(ref q) => q.send_timeout(value, dur),
+            Flavor::List(ref q) => q.send_until(value, deadline),
+            Flavor::Array(ref q) => q.send_until(value, deadline),
+            Flavor::Zero(ref q) => q.send_until(value, deadline),
         }
     }
 
@@ -71,14 +77,6 @@ impl<T> Sender<T> {
             Flavor::List(ref q) => q.len(),
             Flavor::Array(ref q) => q.len(),
             Flavor::Zero(ref q) => q.len(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        match self.0.flavor {
-            Flavor::List(ref q) => q.is_empty(),
-            Flavor::Array(ref q) => q.is_empty(),
-            Flavor::Zero(ref q) => q.is_empty(),
         }
     }
 
@@ -137,18 +135,24 @@ impl<T> Receiver<T> {
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {
-        match self.0.flavor {
-            Flavor::List(ref q) => q.recv(),
-            Flavor::Array(ref q) => q.recv(),
-            Flavor::Zero(ref q) => q.recv(),
+        let res = match self.0.flavor {
+            Flavor::List(ref q) => q.recv_until(None),
+            Flavor::Array(ref q) => q.recv_until(None),
+            Flavor::Zero(ref q) => q.recv_until(None),
+        };
+        if let Ok(v) = res {
+            Ok(v)
+        } else {
+            Err(RecvError)
         }
     }
 
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
+        let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
-            Flavor::List(ref q) => q.recv_timeout(dur),
-            Flavor::Array(ref q) => q.recv_timeout(dur),
-            Flavor::Zero(ref q) => q.recv_timeout(dur),
+            Flavor::List(ref q) => q.recv_until(deadline),
+            Flavor::Array(ref q) => q.recv_until(deadline),
+            Flavor::Zero(ref q) => q.recv_until(deadline),
         }
     }
 
@@ -173,14 +177,6 @@ impl<T> Receiver<T> {
             Flavor::List(ref q) => q.is_empty(),
             Flavor::Array(ref q) => q.is_empty(),
             Flavor::Zero(ref q) => q.is_empty(),
-        }
-    }
-
-    pub fn is_full(&self) -> bool {
-        match self.0.flavor {
-            Flavor::List(ref q) => q.is_full(),
-            Flavor::Array(ref q) => q.is_full(),
-            Flavor::Zero(ref q) => q.is_full(),
         }
     }
 

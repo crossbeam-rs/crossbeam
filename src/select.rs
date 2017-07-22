@@ -218,7 +218,7 @@ fn poll_state<T>(state: State, config: Config, chan: &Channel<T>) -> Poll<State,
                 })
             } else {
                 let ready = if config.is_valid(pos) {
-                    chan.is_ready()
+                    !chan.is_empty()
                 } else {
                     false
                 };
