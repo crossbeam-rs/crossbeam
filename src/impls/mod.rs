@@ -27,7 +27,6 @@ pub trait Channel<T> {
 
     fn monitor(&self) -> &Monitor;
     fn is_ready(&self) -> bool;
-    fn id(&self) -> usize;
 
     fn send(&self, value: T) -> Result<(), SendError<T>> {
         match self.send_until(value, None) {

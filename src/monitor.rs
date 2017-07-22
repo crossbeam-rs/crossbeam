@@ -4,8 +4,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
 
-// TODO: select should unsubscribe, but everyone else should cancel!
-
 pub struct Monitor {
     threads: Mutex<VecDeque<Thread>>,
     len: AtomicUsize,

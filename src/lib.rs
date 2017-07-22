@@ -4,8 +4,8 @@ extern crate rand;
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
-use std::time::{Duration, Instant};
+use std::sync::atomic::Ordering::SeqCst;
+use std::time::Duration;
 
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 pub use select::Select;

@@ -8,11 +8,6 @@ use Receiver;
 use err::TryRecvError;
 use impls::Channel;
 
-pub struct Select {
-    machine: Machine,
-    _marker: PhantomData<*mut ()>,
-}
-
 #[derive(Clone, Copy)]
 enum Machine {
     Counting {
@@ -55,6 +50,11 @@ enum Poll<S, T> {
     Move(S),
     Skip(S),
     Success(T),
+}
+
+pub struct Select {
+    machine: Machine,
+    _marker: PhantomData<*mut ()>,
 }
 
 impl Select {
@@ -118,6 +118,10 @@ impl Select {
     }
 }
 
+fn id<T>(chan: &Channel<T>) -> usize {
+    chan as *const Channel<T> as *const u8 as usize
+}
+
 fn poll_machine<T>(machine: Machine, chan: &Channel<T>) -> Poll<Machine, T> {
     match machine {
         Machine::Counting {
@@ -125,7 +129,7 @@ fn poll_machine<T>(machine: Machine, chan: &Channel<T>) -> Poll<Machine, T> {
             id_first,
             deadline,
         } => {
-            if id_first == chan.id() {
+            if id_first == id(chan) {
                 Poll::Move(Machine::Initialized {
                     config: Config {
                         len,
@@ -140,7 +144,7 @@ fn poll_machine<T>(machine: Machine, chan: &Channel<T>) -> Poll<Machine, T> {
             } else {
                 Poll::Skip(Machine::Counting {
                     len: len + 1,
-                    id_first: if id_first == 0 { chan.id() } else { id_first },
+                    id_first: if id_first == 0 { id(chan) } else { id_first },
                     deadline,
                 })
             }
@@ -236,7 +240,7 @@ fn poll_state<T>(state: State, config: Config, chan: &Channel<T>) -> Poll<State,
                     id_woken: if config.is_valid(pos) && id_woken == 0 &&
                         !chan.monitor().watch_stop()
                     {
-                        chan.id()
+                        id(chan)
                     } else {
                         id_woken
                     },
@@ -255,7 +259,7 @@ fn poll_state<T>(state: State, config: Config, chan: &Channel<T>) -> Poll<State,
                     all_disconnected: true,
                 })
             } else {
-                if config.is_valid(pos) && chan.id() == id_woken {
+                if config.is_valid(pos) && id(chan) == id_woken {
                     if let Ok(t) = chan.try_recv() {
                         return Poll::Success(t);
                     }

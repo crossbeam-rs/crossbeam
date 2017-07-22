@@ -316,10 +316,6 @@ impl<T> Channel<T> for Queue<T> {
         let mut lock = self.lock.lock().unwrap();
         !lock.senders.is_empty()
     }
-
-    fn id(&self) -> usize {
-        self as *const _ as usize
-    }
 }
 
 impl<T> Drop for Queue<T> {

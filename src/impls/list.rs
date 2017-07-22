@@ -277,10 +277,6 @@ impl<T> Channel<T> for Queue<T> {
     fn is_ready(&self) -> bool {
         unimplemented!()
     }
-
-    fn id(&self) -> usize {
-        self as *const _ as usize
-    }
 }
 
 impl<T> Drop for Queue<T> {
