@@ -242,15 +242,24 @@ impl<T> Channel<T> for Queue<T> {
     }
 
     fn len(&self) -> usize {
-        unimplemented!()
+        loop {
+            let sends = self.sends.load(SeqCst);
+            let recvs = self.recvs.load(SeqCst);
+
+            if self.sends.load(SeqCst) == sends {
+                return sends.wrapping_sub(recvs);
+            }
+
+            thread::yield_now();
+        }
     }
 
-    fn is_empty(&self) -> usize {
-        unimplemented!()
+    fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
-    fn is_full(&self) -> usize {
-        unimplemented!()
+    fn is_full(&self) -> bool {
+        false
     }
 
     fn capacity(&self) -> Option<usize> {
@@ -275,7 +284,7 @@ impl<T> Channel<T> for Queue<T> {
     }
 
     fn is_ready(&self) -> bool {
-        unimplemented!()
+        !self.is_empty()
     }
 }
 

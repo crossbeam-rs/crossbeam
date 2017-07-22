@@ -5,9 +5,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
-use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use impls::Channel;
 use monitor::Monitor;
 
@@ -264,12 +264,12 @@ impl<T> Channel<T> for Queue<T> {
         0
     }
 
-    fn is_empty(&self) -> usize {
-        unimplemented!()
+    fn is_empty(&self) -> bool {
+        true
     }
 
-    fn is_full(&self) -> usize {
-        unimplemented!()
+    fn is_full(&self) -> bool {
+        true
     }
 
     fn capacity(&self) -> Option<usize> {
@@ -313,7 +313,7 @@ impl<T> Channel<T> for Queue<T> {
     }
 
     fn is_ready(&self) -> bool {
-        let mut lock = self.lock.lock().unwrap();
+        let lock = self.lock.lock().unwrap();
         !lock.senders.is_empty()
     }
 }
@@ -332,13 +332,14 @@ impl<T> Drop for Queue<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use std::sync::atomic::Ordering::SeqCst;
     use std::thread;
+    use std::time::Duration;
 
     use crossbeam;
 
     use super::*;
+    use err::{RecvError, SendError};
 
     // TODO: drop test
 

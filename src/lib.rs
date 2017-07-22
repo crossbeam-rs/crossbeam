@@ -74,7 +74,7 @@ impl<T> Sender<T> {
         }
     }
 
-    pub fn is_empty(&self) -> usize {
+    pub fn is_empty(&self) -> bool {
         match self.0.flavor {
             Flavor::List(ref q) => q.is_empty(),
             Flavor::Array(ref q) => q.is_empty(),
@@ -82,7 +82,7 @@ impl<T> Sender<T> {
         }
     }
 
-    pub fn is_full(&self) -> usize {
+    pub fn is_full(&self) -> bool {
         match self.0.flavor {
             Flavor::List(ref q) => q.is_full(),
             Flavor::Array(ref q) => q.is_full(),
@@ -168,7 +168,7 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn is_empty(&self) -> usize {
+    pub fn is_empty(&self) -> bool {
         match self.0.flavor {
             Flavor::List(ref q) => q.is_empty(),
             Flavor::Array(ref q) => q.is_empty(),
@@ -176,7 +176,7 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn is_full(&self) -> usize {
+    pub fn is_full(&self) -> bool {
         match self.0.flavor {
             Flavor::List(ref q) => q.is_full(),
             Flavor::Array(ref q) => q.is_full(),

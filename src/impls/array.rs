@@ -249,15 +249,37 @@ impl<T> Channel<T> for Queue<T> {
     }
 
     fn len(&self) -> usize {
-        unimplemented!()
+        let cap = self.cap;
+        let power = self.power;
+
+        loop {
+            let tail = self.tail.load(SeqCst);
+            let head = self.head.load(SeqCst);
+
+            if self.tail.load(SeqCst) == tail {
+                let tpos = tail & (power - 1);
+                let tlap = tail & !(power - 1);
+
+                let hpos = head & (power - 1);
+                let hlap = head & !(power - 1);
+
+                return if tlap == hlap {
+                    tpos - hpos
+                } else {
+                    cap - tpos + hpos
+                };
+            }
+
+            thread::yield_now();
+        }
     }
 
-    fn is_empty(&self) -> usize {
-        unimplemented!()
+    fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
-    fn is_full(&self) -> usize {
-        unimplemented!()
+    fn is_full(&self) -> bool {
+        self.len() == self.cap
     }
 
     fn capacity(&self) -> Option<usize> {
@@ -283,25 +305,7 @@ impl<T> Channel<T> for Queue<T> {
     }
 
     fn is_ready(&self) -> bool {
-        let power = self.power;
-        let buffer = self.buffer;
-
-        loop {
-            let head = self.head.load(SeqCst);
-            let pos = head & (power - 1);
-            let lap = head & !(power - 1);
-
-            let cell = unsafe { (*buffer.offset(pos as isize)).get() };
-            let clap = unsafe { (*cell).lap.load(Acquire) };
-
-            if lap == clap {
-                return true;
-            } else if clap.wrapping_add(power) == lap {
-                return self.closed.load(SeqCst);
-            }
-
-            thread::yield_now();
-        }
+        !self.is_empty()
     }
 }
 

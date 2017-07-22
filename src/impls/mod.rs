@@ -18,8 +18,8 @@ pub trait Channel<T> {
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError>;
 
     fn len(&self) -> usize;
-    fn is_empty(&self) -> usize;
-    fn is_full(&self) -> usize;
+    fn is_empty(&self) -> bool;
+    fn is_full(&self) -> bool;
     fn capacity(&self) -> Option<usize>;
 
     fn close(&self) -> bool;
