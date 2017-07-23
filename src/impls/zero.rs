@@ -265,10 +265,12 @@ impl<T> Channel<T> for Queue<T> {
     }
 
     fn is_empty(&self) -> bool {
+        let _lock = self.lock.lock().unwrap();
         self.senders_len.load(SeqCst) == 0
     }
 
     fn is_full(&self) -> bool {
+        let _lock = self.lock.lock().unwrap();
         self.receivers_len.load(SeqCst) == 0
     }
 

@@ -8,50 +8,6 @@ use Receiver;
 use err::TryRecvError;
 use impls::Channel;
 
-#[derive(Clone, Copy)]
-enum Machine {
-    Counting {
-        len: usize,
-        id_first: usize,
-        deadline: Option<Instant>,
-    },
-    Initialized { config: Config, state: State },
-}
-
-#[derive(Clone, Copy)]
-struct Config {
-    len: usize,
-    start: usize,
-    deadline: Option<Instant>,
-}
-
-impl Config {
-    fn is_end(&self, index: usize) -> bool {
-        index >= 2 * self.len
-    }
-
-    fn is_valid(&self, index: usize) -> bool {
-        self.start <= index && index < self.start + self.len
-    }
-}
-
-#[derive(Clone, Copy)]
-enum State {
-    TryRecv { pos: usize, all_disconnected: bool },
-    Subscribe { pos: usize },
-    IsReady { pos: usize, any_ready: bool },
-    Unsubscribe { pos: usize, id_woken: usize },
-    FinalTryRecv { pos: usize, id_woken: usize },
-    TimedOut,
-    Disconnected,
-}
-
-enum Poll<S, T> {
-    Move(S),
-    Skip(S),
-    Success(T),
-}
-
 pub struct Select {
     machine: Machine,
     _marker: PhantomData<*mut ()>,
@@ -103,108 +59,132 @@ impl Select {
     }
 
     pub fn poll<T>(&mut self, rx: &Receiver<T>) -> Option<T> {
-        let chan = rx.as_channel();
+        match self.machine.poll(rx) {
+            Ok(t) => Some(t),
+            Err(m) => {
+                self.machine = m;
+                None
+            }
+        }
+    }
+}
 
+fn id<T>(rx: &Receiver<T>) -> usize {
+    rx.as_channel() as *const Channel<T> as *const u8 as usize
+}
+
+#[derive(Clone, Copy)]
+enum Machine {
+    Counting {
+        len: usize,
+        id_first: usize,
+        deadline: Option<Instant>,
+    },
+    Initialized {
+        pos: usize,
+        state: State,
+        len: usize,
+        start: usize,
+        deadline: Option<Instant>,
+    },
+}
+
+impl Machine {
+    fn poll<T>(mut self, rx: &Receiver<T>) -> Result<T, Machine> {
         loop {
-            match poll_machine(self.machine, chan) {
-                Poll::Move(m) => self.machine = m,
-                Poll::Skip(m) => {
-                    self.machine = m;
-                    return None;
-                }
-                Poll::Success(t) => return Some(t),
-            }
-        }
-    }
-}
-
-fn id<T>(chan: &Channel<T>) -> usize {
-    chan as *const Channel<T> as *const u8 as usize
-}
-
-fn poll_machine<T>(machine: Machine, chan: &Channel<T>) -> Poll<Machine, T> {
-    match machine {
-        Machine::Counting {
-            len,
-            id_first,
-            deadline,
-        } => {
-            if id_first == id(chan) {
-                Poll::Move(Machine::Initialized {
-                    config: Config {
-                        len,
-                        start: thread_rng().gen_range(0, len),
-                        deadline,
-                    },
-                    state: State::TryRecv {
-                        pos: 0,
-                        all_disconnected: true,
-                    },
-                })
-            } else {
-                Poll::Skip(Machine::Counting {
-                    len: len + 1,
-                    id_first: if id_first == 0 { id(chan) } else { id_first },
+            self = match self {
+                Machine::Counting {
+                    len,
+                    id_first,
                     deadline,
-                })
-            }
-        }
-        Machine::Initialized { config, state } => {
-            match poll_state(state, config, chan) {
-                Poll::Move(state) => Poll::Move(Machine::Initialized { config, state }),
-                Poll::Skip(state) => Poll::Skip(Machine::Initialized { config, state }),
-                Poll::Success(t) => Poll::Success(t),
+                } => {
+                    if id_first == id(rx) {
+                        Machine::Initialized {
+                            pos: 0,
+                            state: State::TryRecv {
+                                all_disconnected: true,
+                            },
+                            len,
+                            start: thread_rng().gen_range(0, len),
+                            deadline,
+                        }
+                    } else {
+                        return Err(Machine::Counting {
+                            len: len + 1,
+                            id_first: if id_first == 0 { id(rx) } else { id_first },
+                            deadline,
+                        });
+                    }
+                }
+                Machine::Initialized {
+                    pos,
+                    state,
+                    len,
+                    start,
+                    deadline,
+                } => {
+                    if pos >= 2 * len {
+                        Machine::Initialized {
+                            pos: 0,
+                            state: state.transition(deadline),
+                            len,
+                            start,
+                            deadline,
+                        }
+                    } else if start <= pos && pos < start + len {
+                        match state.poll(rx) {
+                            Ok(t) => return Ok(t),
+                            Err(s) => {
+                                return Err(Machine::Initialized {
+                                    pos: pos + 1,
+                                    state: s,
+                                    len,
+                                    start,
+                                    deadline,
+                                })
+                            }
+                        }
+                    } else {
+                        return Err(Machine::Initialized {
+                            pos: pos + 1,
+                            state,
+                            len,
+                            start,
+                            deadline,
+                        });
+                    }
+                }
             }
         }
     }
 }
 
-fn poll_state<T>(state: State, config: Config, chan: &Channel<T>) -> Poll<State, T> {
-    match state {
-        State::TryRecv {
-            pos,
-            all_disconnected,
-        } => {
-            if config.is_end(pos) {
+#[derive(Clone, Copy)]
+enum State {
+    TryRecv { all_disconnected: bool },
+    Subscribe,
+    IsReady { any_ready: bool },
+    Unsubscribe { id_woken: usize },
+    FinalTryRecv { id_woken: usize },
+    TimedOut,
+    Disconnected,
+}
+
+impl State {
+    fn transition(self, deadline: Option<Instant>) -> State {
+        match self {
+            State::TryRecv { all_disconnected } => {
                 if all_disconnected {
-                    Poll::Skip(State::TimedOut)
+                    State::TimedOut
                 } else {
-                    Poll::Move(State::Subscribe { pos: 0 })
+                    State::Subscribe
                 }
-            } else {
-                let disconnected = if config.is_valid(pos) {
-                    match chan.try_recv() {
-                        Ok(t) => return Poll::Success(t),
-                        Err(TryRecvError::Disconnected) => true,
-                        Err(TryRecvError::Empty) => false,
-                    }
-                } else {
-                    false
-                };
-                Poll::Skip(State::TryRecv {
-                    pos: pos + 1,
-                    all_disconnected: all_disconnected && disconnected,
-                })
             }
-        }
-        State::Subscribe { pos } => {
-            if config.is_end(pos) {
-                Poll::Move(State::IsReady {
-                    pos: 0,
-                    any_ready: false,
-                })
-            } else {
-                if config.is_valid(pos) {
-                    chan.monitor().watch_start();
-                }
-                Poll::Skip(State::Subscribe { pos: pos + 1 })
-            }
-        }
-        State::IsReady { pos, any_ready } => {
-            if config.is_end(pos) {
+            State::Subscribe => State::IsReady { any_ready: false },
+            State::IsReady { any_ready } => {
                 if !any_ready {
                     let now = Instant::now();
-                    if let Some(end) = config.deadline {
+                    if let Some(end) = deadline {
                         if now < end {
                             thread::park_timeout(end - now);
                         }
@@ -212,66 +192,69 @@ fn poll_state<T>(state: State, config: Config, chan: &Channel<T>) -> Poll<State,
                         thread::park();
                     }
                 }
-                Poll::Move(State::Unsubscribe {
-                    pos: 0,
-                    id_woken: 0,
-                })
-            } else {
-                let ready = if config.is_valid(pos) {
-                    !chan.is_empty()
-                } else {
-                    false
+                State::Unsubscribe { id_woken: 0 }
+            }
+            State::Unsubscribe { id_woken } => State::FinalTryRecv { id_woken },
+            State::FinalTryRecv { id_woken } => {
+                if let Some(end) = deadline {
+                    if Instant::now() >= end {
+                        return State::TimedOut;
+                    }
+                }
+                State::TryRecv {
+                    all_disconnected: true,
+                }
+            }
+            State::TimedOut => State::TimedOut,
+            State::Disconnected => State::Disconnected,
+        }
+    }
+
+    fn poll<T>(self, rx: &Receiver<T>) -> Result<T, State> {
+        match self {
+            State::TryRecv { all_disconnected } => {
+                let disconnected = match rx.try_recv() {
+                    Ok(t) => return Ok(t),
+                    Err(TryRecvError::Disconnected) => true,
+                    Err(TryRecvError::Empty) => false,
                 };
-                Poll::Skip(State::IsReady {
-                    pos: pos + 1,
+                Err(State::TryRecv {
+                    all_disconnected: all_disconnected && disconnected,
+                })
+            }
+            State::Subscribe => {
+                rx.as_channel().monitor().watch_start();
+                Err(State::Subscribe)
+            }
+            State::IsReady { any_ready } => {
+                let ready = !rx.is_empty();
+                Err(State::IsReady {
                     any_ready: any_ready || ready,
                 })
             }
-        }
-        State::Unsubscribe { pos, id_woken } => {
-            if config.is_end(pos) {
-                Poll::Move(State::FinalTryRecv { pos: 0, id_woken })
-            } else {
-                if config.is_valid(pos) && id_woken != 0 {
-                    chan.monitor().watch_abort();
+            State::Unsubscribe { id_woken } => {
+                if id_woken != 0 {
+                    rx.as_channel().monitor().watch_abort();
                 }
-                Poll::Skip(State::Unsubscribe {
-                    pos: pos + 1,
-                    id_woken: if config.is_valid(pos) && id_woken == 0 &&
-                        !chan.monitor().watch_stop()
-                    {
-                        id(chan)
+                Err(State::Unsubscribe {
+                    id_woken: if id_woken == 0 && !rx.as_channel().monitor().watch_stop() {
+                        id(rx)
                     } else {
                         id_woken
                     },
                 })
             }
-        }
-        State::FinalTryRecv { pos, id_woken } => {
-            if config.is_end(pos) {
-                if let Some(end) = config.deadline {
-                    if Instant::now() >= end {
-                        return Poll::Skip(State::TimedOut);
+            State::FinalTryRecv { id_woken } => {
+                if id(rx) == id_woken {
+                    if let Ok(t) = rx.try_recv() {
+                        return Ok(t);
                     }
                 }
-                Poll::Move(State::TryRecv {
-                    pos: 0,
-                    all_disconnected: true,
-                })
-            } else {
-                if config.is_valid(pos) && id(chan) == id_woken {
-                    if let Ok(t) = chan.try_recv() {
-                        return Poll::Success(t);
-                    }
-                }
-                Poll::Skip(State::FinalTryRecv {
-                    pos: pos + 1,
-                    id_woken,
-                })
+                Err(State::FinalTryRecv { id_woken })
             }
+            State::TimedOut => Err(State::TimedOut),
+            State::Disconnected => Err(State::Disconnected),
         }
-        State::TimedOut => Poll::Skip(State::TimedOut),
-        State::Disconnected => Poll::Skip(State::Disconnected),
     }
 }
 
