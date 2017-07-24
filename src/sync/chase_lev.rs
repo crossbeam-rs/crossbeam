@@ -210,16 +210,14 @@ impl<T> Deque<T> {
             Some(data)
         } else {
             // racy case. race against steals.
-            let data = a.get(t);
             let success = self.top.compare_and_swap(t, t + 1, SeqCst) == t;
 
             // set the queue to a canonically empty state.
             self.bottom.store(b, Relaxed);
 
             if success {
-                Some(data)
+                Some(a.get(t))
             } else {
-                mem::forget(data); // someone else stole this value
                 None
             }
         }
