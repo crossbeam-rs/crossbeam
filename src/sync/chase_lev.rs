@@ -191,7 +191,8 @@ impl<T> Deque<T> {
             b = self.bottom.load(Relaxed);
         }
         a.put(b, data);
-        self.bottom.store(b + 1, Release);
+        fence(Release);
+        self.bottom.store(b + 1, Relaxed);
     }
 
     unsafe fn try_pop(&self) -> Option<T> {
@@ -234,7 +235,7 @@ impl<T> Deque<T> {
     fn steal(&self) -> Steal<T> {
         let guard = epoch::pin();
 
-        let t = self.top.load(Acquire);
+        let t = self.top.load(Relaxed);
         fence(SeqCst); // top must be loaded before bottom.
         let b = self.bottom.load(Acquire);
 
