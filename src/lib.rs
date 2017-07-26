@@ -14,6 +14,7 @@ pub use select::Select;
 
 use impls::Channel;
 
+mod actor;
 mod err;
 mod impls;
 mod monitor;
@@ -27,29 +28,6 @@ mod select;
 // TODO: The IsReady check must also check for closing (same in *_until methods)
 // TODO: Panic if two selects are running at the same time
 // TODO: Write CSP examples
-
-pub struct Wait<T> {
-    participant: Arc<Participant>,
-    data: UnsafeCell<Option<T>>,
-}
-
-pub struct Participant {
-    sel: AtomicUsize,
-    thread: Thread,
-    ptr: AtomicUsize,
-}
-
-thread_local! {
-    pub static PARTICIPANT: Arc<Participant> = Arc::new(Participant {
-        sel: AtomicUsize::new(0),
-        thread: thread::current(),
-        ptr: AtomicUsize::new(0),
-    });
-}
-
-// pub fn reset() {
-//     PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
-// }
 
 enum Flavor<T> {
     List(impls::list::Queue<T>),

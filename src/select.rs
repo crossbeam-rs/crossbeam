@@ -9,9 +9,8 @@ use Receiver;
 use Sender;
 use err::{TryRecvError, TrySendError};
 use impls::Channel;
-use PARTICIPANT;
+use actor::{self, ACTOR, Actor, Request};
 use Flavor;
-use Wait;
 
 pub struct Select {
     machine: Machine,
@@ -189,26 +188,14 @@ impl State {
                 if all_disconnected {
                     State::TimedOut
                 } else {
-                    PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
-                    PARTICIPANT.with(|p| p.ptr.store(0, SeqCst));
+                    actor::reset();
+                    ACTOR.with(|a| a.request_ptr.store(0, SeqCst));
                     State::Subscribe
                 }
             }
             State::Subscribe => State::IsReady,
             State::IsReady => {
-                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-                    let now = Instant::now();
-                    if let Some(end) = deadline {
-                        if now < end {
-                            thread::park_timeout(end - now);
-                        } else {
-                            // TODO: what ID should we use?
-                            PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst));
-                        }
-                    } else {
-                        thread::park();
-                    }
-                }
+                actor::wait_until(deadline);
                 State::Unsubscribe
             }
             State::Unsubscribe => {
@@ -254,7 +241,7 @@ impl State {
             State::IsReady => {
                 if !rx.is_empty() {
                     // TODO: || rx.is_closed() {
-                    PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst));
+                    ACTOR.with(|a| a.select_id.compare_and_swap(0, 1, SeqCst));
                 }
                 Err(State::IsReady)
             }
@@ -267,7 +254,7 @@ impl State {
                 Err(State::Unsubscribe)
             }
             State::FinalTryRecv => {
-                if id == PARTICIPANT.with(|p| p.sel.load(SeqCst)) {
+                if id == ACTOR.with(|a| a.select_id.load(SeqCst)) {
                     match rx.0.flavor {
                         Flavor::Array(..) | Flavor::List(..) => {
                             if let Ok(t) = rx.try_recv() {
@@ -275,14 +262,14 @@ impl State {
                             }
                         }
                         Flavor::Zero(ref q) => {
-                            let wait =
-                                PARTICIPANT.with(|p| p.ptr.swap(0, SeqCst)) as *const Wait<T>;
-                            assert!(!wait.is_null());
+                            let req =
+                                ACTOR.with(|a| a.request_ptr.swap(0, SeqCst)) as *const Request<T>;
+                            assert!(!req.is_null());
 
                             unsafe {
-                                let thread = (*wait).participant.thread.clone();
-                                let v = (*(*wait).data.get()).take().unwrap();
-                                (*wait).participant.sel.store(id, SeqCst);
+                                let thread = (*req).actor.thread.clone();
+                                let v = (*(*req).data.get()).take().unwrap();
+                                (*req).actor.select_id.store(id, SeqCst);
                                 thread.unpark();
                                 return Ok(v);
                             }

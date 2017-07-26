@@ -4,68 +4,65 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
 
-use Participant;
-use PARTICIPANT;
+use actor::{ACTOR, Actor};
 
 pub struct Monitor {
-    // threads: Mutex<VecDeque<Thread>>,
-    participants: Mutex<VecDeque<Arc<Participant>>>,
+    actors: Mutex<VecDeque<Arc<Actor>>>,
     len: AtomicUsize,
 }
 
 impl Monitor {
     pub fn new() -> Self {
         Monitor {
-            // threads: Mutex::new(VecDeque::new()),
-            participants: Mutex::new(VecDeque::new()),
+            actors: Mutex::new(VecDeque::new()),
             len: AtomicUsize::new(0),
         }
     }
 
     pub fn register(&self) {
-        let mut participants = self.participants.lock().unwrap();
-        PARTICIPANT.with(|p| participants.push_back(p.clone()));
-        self.len.store(participants.len(), SeqCst);
+        let mut actors = self.actors.lock().unwrap();
+        ACTOR.with(|a| actors.push_back(a.clone()));
+        self.len.store(actors.len(), SeqCst);
     }
 
     pub fn unregister(&self) {
-        let mut participants = self.participants.lock().unwrap();
+        let mut actors = self.actors.lock().unwrap();
 
-        PARTICIPANT.with(|p| {
+        ACTOR.with(|a| {
             let id = thread::current().id();
 
-            if let Some((i, _)) = participants
+            if let Some((i, _)) = actors
                 .iter()
                 .enumerate()
-                .find(|&(_, p)| p.thread.id() == id)
+                .find(|&(_, a)| a.thread.id() == id)
             {
-                participants.remove(i);
-                self.len.store(participants.len(), SeqCst);
+                actors.remove(i);
+                self.len.store(actors.len(), SeqCst);
             }
         });
     }
 
     pub fn wakeup_one(&self, id: usize) {
-        let mut participants = self.participants.lock().unwrap();
+        let mut actors = self.actors.lock().unwrap();
 
-        while let Some(p) = participants.pop_front() {
-            self.len.store(participants.len(), SeqCst);
+        while let Some(a) = actors.pop_front() {
+            self.len.store(actors.len(), SeqCst);
 
-            if p.sel.compare_and_swap(0, id, SeqCst) == 0 {
-                p.thread.unpark();
+            if a.select_id.compare_and_swap(0, id, SeqCst) == 0 {
+                a.thread.unpark();
                 break;
             }
         }
     }
 
     pub fn wakeup_all(&self, id: usize) {
-        let mut participants = self.participants.lock().unwrap();
+        let mut actors = self.actors.lock().unwrap();
 
-        while let Some(p) = participants.pop_front() {
-            self.len.store(participants.len(), SeqCst);
+        while let Some(a) = actors.pop_front() {
+            self.len.store(actors.len(), SeqCst);
 
-            if p.sel.compare_and_swap(0, id, SeqCst) == 0 {
-                p.thread.unpark();
+            if a.select_id.compare_and_swap(0, id, SeqCst) == 0 {
+                a.thread.unpark();
             }
         }
     }
@@ -145,8 +142,8 @@ impl Monitor {
 impl Drop for Monitor {
     fn drop(&mut self) {
         if cfg!(debug_assertions) {
-            let participants = self.participants.lock().unwrap();
-            debug_assert_eq!(participants.len(), 0);
+            let actors = self.actors.lock().unwrap();
+            debug_assert_eq!(actors.len(), 0);
             debug_assert_eq!(self.len.load(SeqCst), 0);
         }
     }

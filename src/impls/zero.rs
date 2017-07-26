@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::ptr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
@@ -10,13 +10,10 @@ use std::time::Instant;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use impls::Channel;
-use monitor::Monitor;
-use Participant;
-use PARTICIPANT;
-use Wait;
+use actor::{self, ACTOR, Actor, Request};
 
 struct Blocked<T> {
-    participant: Arc<Participant>,
+    actor: Arc<Actor>,
     data: Option<*const UnsafeCell<Option<T>>>,
 }
 
@@ -54,7 +51,7 @@ impl<T> Queue<T> {
         let mut lock = self.lock.lock().unwrap();
 
         lock.receivers.push_back(Blocked {
-            participant: PARTICIPANT.with(|p| p.clone()),
+            actor: actor::current(),
             data: None,
         });
         self.receivers_len.store(lock.receivers.len(), SeqCst);
@@ -62,10 +59,77 @@ impl<T> Queue<T> {
 
     pub fn unpromise_recv(&self) {
         let mut lock = self.lock.lock().unwrap();
-        PARTICIPANT.with(|p| {
-            lock.receivers.retain(|s| !ptr::eq(&*s.participant, &**p));
+        ACTOR.with(|a| {
+            lock.receivers.retain(|s| !ptr::eq(&*s.actor, &**a));
         });
         self.receivers_len.store(lock.receivers.len(), SeqCst);
+    }
+
+    fn meet_receiver<'a>(
+        &'a self,
+        value: T,
+        mut lock: MutexGuard<'a, Inner<T>>,
+    ) -> Result<MutexGuard<'a, Inner<T>>, (T, MutexGuard<'a, Inner<T>>)> {
+        while let Some(f) = lock.receivers.pop_front() {
+            self.receivers_len.store(lock.receivers.len(), SeqCst);
+            unsafe {
+                match f.data {
+                    None => {
+                        if f.actor.select_id.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                            let req = Request::new(Some(value));
+                            actor::reset();
+                            f.actor.request_ptr.store(&req as *const _ as usize, SeqCst);
+                            drop(lock);
+
+                            actor::wait();
+                            return Ok(self.lock.lock().unwrap());
+                        }
+                    }
+                    Some(data) => {
+                        if f.actor.select(self.id()) {
+                            *(*data).get().as_mut().unwrap() = Some(value);
+                            f.actor.unpark();
+                            return Ok(lock);
+                        }
+                    }
+                }
+            }
+        }
+        Err((value, lock))
+    }
+
+    fn meet_sender<'a>(
+        &'a self,
+        mut lock: MutexGuard<'a, Inner<T>>,
+    ) -> Result<(T, MutexGuard<'a, Inner<T>>), MutexGuard<'a, Inner<T>>> {
+        while let Some(f) = lock.senders.pop_front() {
+            self.senders_len.store(lock.senders.len(), SeqCst);
+            unsafe {
+                match f.data {
+                    None => {
+                        if f.actor.select_id.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                            let req = Request::new(None);
+                            actor::reset();
+                            f.actor.request_ptr.store(&req as *const _ as usize, SeqCst);
+                            drop(lock);
+
+                            actor::wait();
+                            let lock = self.lock.lock().unwrap();
+                            let v = req.data.get().as_mut().unwrap().take().unwrap();
+                            return Ok((v, lock));
+                        }
+                    }
+                    Some(data) => {
+                        if f.actor.select(self.id()) {
+                            let v = (*data).get().as_mut().unwrap().take().unwrap();
+                            f.actor.unpark();
+                            return Ok((v, lock));
+                        }
+                    }
+                }
+            }
+        }
+        Err(lock)
     }
 }
 
@@ -85,42 +149,17 @@ impl<T> Channel<T> for Queue<T> {
             return Err(TrySendError::Disconnected(value));
         }
 
-        while let Some(f) = lock.receivers.pop_front() {
-            self.receivers_len.store(lock.receivers.len(), SeqCst);
-            unsafe {
-                match f.data {
-                    None => {
-                        if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
-                            let wait = Wait {
-                                participant: PARTICIPANT.with(|p| p.clone()),
-                                data: UnsafeCell::new(Some(value)),
-                            };
-                            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
-                            f.participant.ptr.store(&wait as *const _ as usize, SeqCst);
-                            drop(lock);
-
-                            while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-                                thread::park();
-                            }
-                            self.lock.lock().unwrap();
-                            return Ok(());
-                        }
-                    }
-                    Some(data) => {
-                        if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
-                            *(*data).get().as_mut().unwrap() = Some(value);
-                            f.participant.thread.unpark();
-                            return Ok(());
-                        }
-                    }
-                }
-            }
+        match self.meet_receiver(value, lock) {
+            Ok(_) => Ok(()),
+            Err((v, _)) => Err(TrySendError::Full(v)),
         }
-
-        Err(TrySendError::Full(value))
     }
 
-    fn send_until(&self, value: T, deadline: Option<Instant>) -> Result<(), SendTimeoutError<T>> {
+    fn send_until(
+        &self,
+        mut value: T,
+        deadline: Option<Instant>,
+    ) -> Result<(), SendTimeoutError<T>> {
         if self.closed.load(SeqCst) {
             return Err(SendTimeoutError::Disconnected(value));
         }
@@ -133,68 +172,35 @@ impl<T> Channel<T> for Queue<T> {
                 return Err(SendTimeoutError::Disconnected(value));
             }
 
-            while let Some(f) = lock.receivers.pop_front() {
-                self.receivers_len.store(lock.receivers.len(), SeqCst);
-                unsafe {
-                    match f.data {
-                        None => {
-                            if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
-                                let wait = Wait {
-                                    participant: PARTICIPANT.with(|p| p.clone()),
-                                    data: UnsafeCell::new(Some(value)),
-                                };
-                                PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
-                                f.participant.ptr.store(&wait as *const _ as usize, SeqCst);
-                                drop(lock);
-
-                                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-                                    thread::park();
-                                }
-                                self.lock.lock().unwrap();
-                                return Ok(());
-                            }
-                        }
-                        Some(data) => {
-                            if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
-                                *(*data).get().as_mut().unwrap() = Some(value);
-                                f.participant.thread.unpark();
-                                return Ok(());
-                            }
-                        }
-                    }
+            match self.meet_receiver(value, lock) {
+                Ok(_) => return Ok(()),
+                Err((v, l)) => {
+                    value = v;
+                    lock = l;
                 }
             }
 
-            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            actor::reset();
             cell = UnsafeCell::new(Some(value));
             lock.senders.push_back(Blocked {
-                participant: PARTICIPANT.with(|p| p.clone()),
+                actor: actor::current(),
                 data: Some(&cell),
             });
             self.senders_len.store(lock.senders.len(), SeqCst);
         }
 
-        while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-            let now = Instant::now();
-            if let Some(end) = deadline {
-                if now < end {
-                    thread::park_timeout(end - now);
-                } else if PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst)) == 0 {
-                    let mut lock = self.lock.lock().unwrap();
+        if !actor::wait_until(deadline) {
+            let mut lock = self.lock.lock().unwrap();
 
-                    lock.senders
-                        .retain(|s| s.data.map_or(true, |x| !ptr::eq(x, &cell)));
-                    self.senders_len.store(lock.senders.len(), SeqCst);
+            lock.senders
+                .retain(|s| s.data.map_or(true, |x| !ptr::eq(x, &cell)));
+            self.senders_len.store(lock.senders.len(), SeqCst);
 
-                    let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
-                    return Err(SendTimeoutError::Timeout(v));
-                }
-            } else {
-                thread::park();
-            }
+            let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
+            return Err(SendTimeoutError::Timeout(v));
         }
 
-        if PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 1 {
+        if ACTOR.with(|a| a.select_id.load(SeqCst)) == 1 {
             let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
             return Err(SendTimeoutError::Disconnected(v));
         }
@@ -218,40 +224,10 @@ impl<T> Channel<T> for Queue<T> {
             return Err(TryRecvError::Disconnected);
         }
 
-        while let Some(f) = lock.senders.pop_front() {
-            self.senders_len.store(lock.senders.len(), SeqCst);
-            unsafe {
-                match f.data {
-                    None => {
-                        if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
-                            let wait = Wait {
-                                participant: PARTICIPANT.with(|p| p.clone()),
-                                data: UnsafeCell::new(None),
-                            };
-                            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
-                            f.participant.ptr.store(&wait as *const _ as usize, SeqCst);
-                            drop(lock);
-
-                            while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-                                thread::park();
-                            }
-                            self.lock.lock().unwrap();
-                            let v = wait.data.get().as_mut().unwrap().take().unwrap();
-                            return Ok(v);
-                        }
-                    }
-                    Some(data) => {
-                        if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
-                            let v = (*data).get().as_mut().unwrap().take().unwrap();
-                            f.participant.thread.unpark();
-                            return Ok(v);
-                        }
-                    }
-                }
-            }
+        match self.meet_sender(lock) {
+            Ok((v, _)) => Ok(v),
+            Err(_) => Err(TryRecvError::Empty),
         }
-
-        Err(TryRecvError::Empty)
     }
 
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
@@ -267,68 +243,31 @@ impl<T> Channel<T> for Queue<T> {
                 return Err(RecvTimeoutError::Disconnected);
             }
 
-            while let Some(f) = lock.senders.pop_front() {
-                self.senders_len.store(lock.senders.len(), SeqCst);
-                unsafe {
-                    match f.data {
-                        None => {
-                            if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
-                                let wait = Wait {
-                                    participant: PARTICIPANT.with(|p| p.clone()),
-                                    data: UnsafeCell::new(None),
-                                };
-                                PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
-                                f.participant.ptr.store(&wait as *const _ as usize, SeqCst);
-                                drop(lock);
-
-                                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-                                    thread::park();
-                                }
-                                self.lock.lock().unwrap();
-                                let v = wait.data.get().as_mut().unwrap().take().unwrap();
-                                return Ok(v);
-                            }
-                        }
-                        Some(data) => {
-                            if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
-                                let v = (*data).get().as_mut().unwrap().take().unwrap();
-                                f.participant.thread.unpark();
-                                return Ok(v);
-                            }
-                        }
-                    }
-                }
+            match self.meet_sender(lock) {
+                Ok((v, _)) => return Ok(v),
+                Err(l) => lock = l,
             }
 
-            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            actor::reset();
             cell = UnsafeCell::new(None);
             lock.receivers.push_back(Blocked {
-                participant: PARTICIPANT.with(|p| p.clone()),
+                actor: actor::current(),
                 data: Some(&cell),
             });
             self.receivers_len.store(lock.receivers.len(), SeqCst);
         }
 
-        while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-            let now = Instant::now();
-            if let Some(end) = deadline {
-                if now < end {
-                    thread::park_timeout(end - now);
-                } else if PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst)) == 0 {
-                    let mut lock = self.lock.lock().unwrap();
+        if !actor::wait_until(deadline) {
+            let mut lock = self.lock.lock().unwrap();
 
-                    lock.receivers
-                        .retain(|s| s.data.map_or(true, |x| !ptr::eq(x, &cell)));
-                    self.receivers_len.store(lock.receivers.len(), SeqCst);
+            lock.receivers
+                .retain(|s| s.data.map_or(true, |x| !ptr::eq(x, &cell)));
+            self.receivers_len.store(lock.receivers.len(), SeqCst);
 
-                    return Err(RecvTimeoutError::Timeout);
-                }
-            } else {
-                thread::park();
-            }
+            return Err(RecvTimeoutError::Timeout);
         }
 
-        if PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 1 {
+        if ACTOR.with(|a| a.select_id.load(SeqCst)) == 1 {
             return Err(RecvTimeoutError::Disconnected);
         }
 
@@ -376,8 +315,8 @@ impl<T> Channel<T> for Queue<T> {
                         unimplemented!();
                     }
                     Some(data) => {
-                        if t.participant.sel.compare_and_swap(0, 1, SeqCst) == 0 {
-                            t.participant.thread.unpark();
+                        if t.actor.select_id.compare_and_swap(0, 1, SeqCst) == 0 {
+                            t.actor.thread.unpark();
                         }
                     }
                 }
@@ -391,8 +330,8 @@ impl<T> Channel<T> for Queue<T> {
                         unimplemented!();
                     }
                     Some(data) => {
-                        if t.participant.sel.compare_and_swap(0, 1, SeqCst) == 0 {
-                            t.participant.thread.unpark();
+                        if t.actor.select_id.compare_and_swap(0, 1, SeqCst) == 0 {
+                            t.actor.thread.unpark();
                         }
                     }
                 }
@@ -405,14 +344,6 @@ impl<T> Channel<T> for Queue<T> {
     fn is_closed(&self) -> bool {
         let _lock = self.lock.lock().unwrap();
         self.closed.load(SeqCst)
-    }
-
-    fn monitor_tx(&self) -> &Monitor {
-        unimplemented!()
-    }
-
-    fn monitor_rx(&self) -> &Monitor {
-        unimplemented!()
     }
 }
 

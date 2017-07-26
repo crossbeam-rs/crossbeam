@@ -4,7 +4,6 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Release, Relaxed, SeqCst};
 use std::time::{Duration, Instant};
 
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use monitor::Monitor;
 
 pub mod array;
 pub mod list;
@@ -31,9 +30,6 @@ pub trait Channel<T> {
 
     fn close(&self) -> bool;
     fn is_closed(&self) -> bool;
-
-    fn monitor_tx(&self) -> &Monitor;
-    fn monitor_rx(&self) -> &Monitor;
 
     fn id(&self) -> usize {
         self as *const Self as *const u8 as usize

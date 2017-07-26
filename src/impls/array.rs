@@ -10,7 +10,7 @@ use std::time::{Instant, Duration};
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use impls::Channel;
 use monitor::Monitor;
-use PARTICIPANT;
+use actor;
 
 // TODO: Should we use Acquire-Release or SeqCst
 
@@ -145,6 +145,14 @@ impl<T> Queue<T> {
             thread::yield_now();
         }
     }
+
+    pub fn monitor_tx(&self) -> &Monitor {
+        &self.senders
+    }
+
+    pub fn monitor_rx(&self) -> &Monitor {
+        &self.receivers
+    }
 }
 
 impl<T> Channel<T> for Queue<T> {
@@ -174,21 +182,13 @@ impl<T> Channel<T> for Queue<T> {
                 Err(TrySendError::Full(v)) => value = v,
             }
 
-            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            actor::reset();
             self.senders.register();
+
             if !self.is_closed() && self.is_full() {
-                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-                    let now = Instant::now();
-                    if let Some(end) = deadline {
-                        if now < end {
-                            thread::park_timeout(end - now);
-                        } else if PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst)) == 0 {
-                            self.senders.unregister();
-                            return Err(SendTimeoutError::Timeout(value));
-                        }
-                    } else {
-                        thread::park();
-                    }
+                if !actor::wait_until(deadline) {
+                    self.senders.unregister();
+                    return Err(SendTimeoutError::Timeout(value));
                 }
             } else {
                 self.senders.unregister();
@@ -220,21 +220,13 @@ impl<T> Channel<T> for Queue<T> {
                 Err(TryRecvError::Empty) => {}
             }
 
-            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            actor::reset();
             self.receivers.register();
+
             if !self.is_closed() && self.is_empty() {
-                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
-                    let now = Instant::now();
-                    if let Some(end) = deadline {
-                        if now < end {
-                            thread::park_timeout(end - now);
-                        } else if PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst)) == 0 {
-                            self.receivers.unregister();
-                            return Err(RecvTimeoutError::Timeout);
-                        }
-                    } else {
-                        thread::park();
-                    }
+                if !actor::wait_until(deadline) {
+                    self.receivers.unregister();
+                    return Err(RecvTimeoutError::Timeout);
                 }
             } else {
                 self.receivers.unregister();
@@ -294,14 +286,6 @@ impl<T> Channel<T> for Queue<T> {
 
     fn is_closed(&self) -> bool {
         self.closed.load(SeqCst)
-    }
-
-    fn monitor_tx(&self) -> &Monitor {
-        &self.senders
-    }
-
-    fn monitor_rx(&self) -> &Monitor {
-        &self.receivers
     }
 }
 
