@@ -10,6 +10,7 @@ use std::time::{Instant, Duration};
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use impls::Channel;
 use monitor::Monitor;
+use PARTICIPANT;
 
 // TODO: Should we use Acquire-Release or SeqCst
 
@@ -153,7 +154,7 @@ impl<T> Channel<T> for Queue<T> {
         } else {
             match self.push(value) {
                 None => {
-                    self.receivers.notify_one();
+                    self.receivers.wakeup_one(self.id());
                     Ok(())
                 }
                 Some(v) => Err(TrySendError::Full(v)),
@@ -173,22 +174,25 @@ impl<T> Channel<T> for Queue<T> {
                 Err(TrySendError::Full(v)) => value = v,
             }
 
-            let now = Instant::now();
-            if let Some(end) = deadline {
-                if now >= end {
-                    return Err(SendTimeoutError::Timeout(value));
+            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            self.senders.register();
+            if !self.is_closed() && self.is_full() {
+                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+                    let now = Instant::now();
+                    if let Some(end) = deadline {
+                        if now < end {
+                            thread::park_timeout(end - now);
+                        } else if PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst)) == 0 {
+                            self.senders.unregister();
+                            return Err(SendTimeoutError::Timeout(value));
+                        }
+                    } else {
+                        thread::park();
+                    }
                 }
+            } else {
+                self.senders.unregister();
             }
-
-            self.senders.watch_start();
-            if self.is_full() && !self.closed.load(SeqCst) {
-                if let Some(end) = deadline {
-                    thread::park_timeout(end - now);
-                } else {
-                    thread::park();
-                }
-            }
-            self.senders.watch_abort();
         }
     }
 
@@ -202,7 +206,7 @@ impl<T> Channel<T> for Queue<T> {
                 }
             }
             Some(v) => {
-                self.senders.notify_one();
+                self.senders.wakeup_one(self.id());
                 Ok(v)
             }
         }
@@ -216,22 +220,25 @@ impl<T> Channel<T> for Queue<T> {
                 Err(TryRecvError::Empty) => {}
             }
 
-            let now = Instant::now();
-            if let Some(end) = deadline {
-                if now >= end {
-                    return Err(RecvTimeoutError::Timeout);
+            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            self.receivers.register();
+            if !self.is_closed() && self.is_empty() {
+                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+                    let now = Instant::now();
+                    if let Some(end) = deadline {
+                        if now < end {
+                            thread::park_timeout(end - now);
+                        } else if PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst)) == 0 {
+                            self.receivers.unregister();
+                            return Err(RecvTimeoutError::Timeout);
+                        }
+                    } else {
+                        thread::park();
+                    }
                 }
+            } else {
+                self.receivers.unregister();
             }
-
-            self.receivers.watch_start();
-            if self.is_empty() {
-                if let Some(end) = deadline {
-                    thread::park_timeout(end - now);
-                } else {
-                    thread::park();
-                }
-            }
-            self.receivers.watch_abort();
         }
     }
 
@@ -280,12 +287,20 @@ impl<T> Channel<T> for Queue<T> {
             return false;
         }
 
-        self.senders.notify_all();
-        self.receivers.notify_all();
+        self.senders.wakeup_all(1);
+        self.receivers.wakeup_all(1);
         true
     }
 
-    fn monitor(&self) -> &Monitor {
+    fn is_closed(&self) -> bool {
+        self.closed.load(SeqCst)
+    }
+
+    fn monitor_tx(&self) -> &Monitor {
+        &self.senders
+    }
+
+    fn monitor_rx(&self) -> &Monitor {
         &self.receivers
     }
 }

@@ -1,7 +1,8 @@
 use std::cell::UnsafeCell;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
-use std::sync::Mutex;
+use std::ptr;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread};
@@ -10,35 +11,18 @@ use std::time::Instant;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use impls::Channel;
 use monitor::Monitor;
+use Participant;
+use PARTICIPANT;
+use Wait;
 
 struct Blocked<T> {
-    thread: Thread,
-    data: UnsafeCell<Option<T>>,
-    ready: AtomicBool,
-}
-
-impl<T> Blocked<T> {
-    unsafe fn put(&self, t: T) {
-        *self.data.get().as_mut().unwrap() = Some(t);
-        self.notify();
-    }
-
-    unsafe fn take(&self) -> T {
-        let value = self.data.get().as_mut().unwrap().take().unwrap();
-        self.notify();
-        value
-    }
-
-    fn notify(&self) {
-        let thread = self.thread.clone();
-        self.ready.store(true, SeqCst);
-        thread.unpark();
-    }
+    participant: Arc<Participant>,
+    data: Option<*const UnsafeCell<Option<T>>>,
 }
 
 struct Inner<T> {
-    senders: VecDeque<*const Blocked<T>>,
-    receivers: VecDeque<*const Blocked<T>>,
+    senders: VecDeque<Blocked<T>>,
+    receivers: VecDeque<Blocked<T>>,
 }
 
 pub struct Queue<T> {
@@ -46,7 +30,6 @@ pub struct Queue<T> {
     closed: AtomicBool,
     senders_len: AtomicUsize,
     receivers_len: AtomicUsize,
-    monitor: Monitor,
     _marker: PhantomData<T>,
 }
 
@@ -63,9 +46,26 @@ impl<T> Queue<T> {
             closed: AtomicBool::new(false),
             senders_len: AtomicUsize::new(0),
             receivers_len: AtomicUsize::new(0),
-            monitor: Monitor::new(),
             _marker: PhantomData,
         }
+    }
+
+    pub fn promise_recv(&self) {
+        let mut lock = self.lock.lock().unwrap();
+
+        lock.receivers.push_back(Blocked {
+            participant: PARTICIPANT.with(|p| p.clone()),
+            data: None,
+        });
+        self.receivers_len.store(lock.receivers.len(), SeqCst);
+    }
+
+    pub fn unpromise_recv(&self) {
+        let mut lock = self.lock.lock().unwrap();
+        PARTICIPANT.with(|p| {
+            lock.receivers.retain(|s| !ptr::eq(&*s.participant, &**p));
+        });
+        self.receivers_len.store(lock.receivers.len(), SeqCst);
     }
 }
 
@@ -85,15 +85,39 @@ impl<T> Channel<T> for Queue<T> {
             return Err(TrySendError::Disconnected(value));
         }
 
-        if let Some(f) = lock.receivers.pop_front() {
+        while let Some(f) = lock.receivers.pop_front() {
             self.receivers_len.store(lock.receivers.len(), SeqCst);
             unsafe {
-                (*f).put(value);
+                match f.data {
+                    None => {
+                        if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                            let wait = Wait {
+                                participant: PARTICIPANT.with(|p| p.clone()),
+                                data: UnsafeCell::new(Some(value)),
+                            };
+                            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+                            f.participant.ptr.store(&wait as *const _ as usize, SeqCst);
+                            drop(lock);
+
+                            while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+                                thread::park();
+                            }
+                            self.lock.lock().unwrap();
+                            return Ok(());
+                        }
+                    }
+                    Some(data) => {
+                        if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                            *(*data).get().as_mut().unwrap() = Some(value);
+                            f.participant.thread.unpark();
+                            return Ok(());
+                        }
+                    }
+                }
             }
-            Ok(())
-        } else {
-            Err(TrySendError::Full(value))
         }
+
+        Err(TrySendError::Full(value))
     }
 
     fn send_until(&self, value: T, deadline: Option<Instant>) -> Result<(), SendTimeoutError<T>> {
@@ -101,7 +125,7 @@ impl<T> Channel<T> for Queue<T> {
             return Err(SendTimeoutError::Disconnected(value));
         }
 
-        let blocked;
+        let cell;
         {
             let mut lock = self.lock.lock().unwrap();
 
@@ -109,63 +133,74 @@ impl<T> Channel<T> for Queue<T> {
                 return Err(SendTimeoutError::Disconnected(value));
             }
 
-            if let Some(f) = lock.receivers.pop_front() {
+            while let Some(f) = lock.receivers.pop_front() {
                 self.receivers_len.store(lock.receivers.len(), SeqCst);
                 unsafe {
-                    (*f).put(value);
+                    match f.data {
+                        None => {
+                            if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                                let wait = Wait {
+                                    participant: PARTICIPANT.with(|p| p.clone()),
+                                    data: UnsafeCell::new(Some(value)),
+                                };
+                                PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+                                f.participant.ptr.store(&wait as *const _ as usize, SeqCst);
+                                drop(lock);
+
+                                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+                                    thread::park();
+                                }
+                                self.lock.lock().unwrap();
+                                return Ok(());
+                            }
+                        }
+                        Some(data) => {
+                            if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                                *(*data).get().as_mut().unwrap() = Some(value);
+                                f.participant.thread.unpark();
+                                return Ok(());
+                            }
+                        }
+                    }
                 }
-                return Ok(());
             }
 
-            blocked = Blocked {
-                thread: thread::current(),
-                data: UnsafeCell::new(Some(value)),
-                ready: AtomicBool::new(false),
-            };
-            lock.senders.push_back(&blocked);
+            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            cell = UnsafeCell::new(Some(value));
+            lock.senders.push_back(Blocked {
+                participant: PARTICIPANT.with(|p| p.clone()),
+                data: Some(&cell),
+            });
             self.senders_len.store(lock.senders.len(), SeqCst);
         }
 
-        loop {
-            if blocked.ready.load(SeqCst) {
-                return Ok(());
-            }
-
-            if self.closed.load(SeqCst) {
-                break;
-            }
-
-            self.monitor.notify_one();
-
+        while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+            let now = Instant::now();
             if let Some(end) = deadline {
-                let now = Instant::now();
-
-                if now >= end {
-                    break;
-                } else {
+                if now < end {
                     thread::park_timeout(end - now);
+                } else if PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst)) == 0 {
+                    let mut lock = self.lock.lock().unwrap();
+
+                    lock.senders
+                        .retain(|s| s.data.map_or(true, |x| !ptr::eq(x, &cell)));
+                    self.senders_len.store(lock.senders.len(), SeqCst);
+
+                    let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
+                    return Err(SendTimeoutError::Timeout(v));
                 }
             } else {
                 thread::park();
             }
         }
 
-        let mut lock = self.lock.lock().unwrap();
-
-        if blocked.ready.load(SeqCst) {
-            Ok(())
-        } else {
-            lock.senders.retain(|&s| s != &blocked);
-            self.senders_len.store(lock.senders.len(), SeqCst);
-
-            let v = unsafe { blocked.take() };
-
-            if self.closed.load(SeqCst) {
-                Err(SendTimeoutError::Disconnected(v))
-            } else {
-                Err(SendTimeoutError::Timeout(v))
-            }
+        if PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 1 {
+            let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
+            return Err(SendTimeoutError::Disconnected(v));
         }
+
+        self.lock.lock().unwrap();
+        Ok(())
     }
 
     fn try_recv(&self) -> Result<T, TryRecvError> {
@@ -183,12 +218,40 @@ impl<T> Channel<T> for Queue<T> {
             return Err(TryRecvError::Disconnected);
         }
 
-        if let Some(f) = lock.senders.pop_front() {
+        while let Some(f) = lock.senders.pop_front() {
             self.senders_len.store(lock.senders.len(), SeqCst);
-            unsafe { Ok((*f).take()) }
-        } else {
-            Err(TryRecvError::Empty)
+            unsafe {
+                match f.data {
+                    None => {
+                        if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                            let wait = Wait {
+                                participant: PARTICIPANT.with(|p| p.clone()),
+                                data: UnsafeCell::new(None),
+                            };
+                            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+                            f.participant.ptr.store(&wait as *const _ as usize, SeqCst);
+                            drop(lock);
+
+                            while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+                                thread::park();
+                            }
+                            self.lock.lock().unwrap();
+                            let v = wait.data.get().as_mut().unwrap().take().unwrap();
+                            return Ok(v);
+                        }
+                    }
+                    Some(data) => {
+                        if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                            let v = (*data).get().as_mut().unwrap().take().unwrap();
+                            f.participant.thread.unpark();
+                            return Ok(v);
+                        }
+                    }
+                }
+            }
         }
+
+        Err(TryRecvError::Empty)
     }
 
     fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
@@ -196,7 +259,7 @@ impl<T> Channel<T> for Queue<T> {
             return Err(RecvTimeoutError::Disconnected);
         }
 
-        let blocked;
+        let cell;
         {
             let mut lock = self.lock.lock().unwrap();
 
@@ -204,60 +267,74 @@ impl<T> Channel<T> for Queue<T> {
                 return Err(RecvTimeoutError::Disconnected);
             }
 
-            if let Some(f) = lock.senders.pop_front() {
+            while let Some(f) = lock.senders.pop_front() {
                 self.senders_len.store(lock.senders.len(), SeqCst);
                 unsafe {
-                    return Ok((*f).take());
+                    match f.data {
+                        None => {
+                            if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                                let wait = Wait {
+                                    participant: PARTICIPANT.with(|p| p.clone()),
+                                    data: UnsafeCell::new(None),
+                                };
+                                PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+                                f.participant.ptr.store(&wait as *const _ as usize, SeqCst);
+                                drop(lock);
+
+                                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+                                    thread::park();
+                                }
+                                self.lock.lock().unwrap();
+                                let v = wait.data.get().as_mut().unwrap().take().unwrap();
+                                return Ok(v);
+                            }
+                        }
+                        Some(data) => {
+                            if f.participant.sel.compare_and_swap(0, self.id(), SeqCst) == 0 {
+                                let v = (*data).get().as_mut().unwrap().take().unwrap();
+                                f.participant.thread.unpark();
+                                return Ok(v);
+                            }
+                        }
+                    }
                 }
             }
 
-            blocked = Blocked {
-                thread: thread::current(),
-                data: UnsafeCell::new(None),
-                ready: AtomicBool::new(false),
-            };
-            lock.receivers.push_back(&blocked);
+            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            cell = UnsafeCell::new(None);
+            lock.receivers.push_back(Blocked {
+                participant: PARTICIPANT.with(|p| p.clone()),
+                data: Some(&cell),
+            });
             self.receivers_len.store(lock.receivers.len(), SeqCst);
         }
 
-        loop {
-            if blocked.ready.load(SeqCst) {
-                unsafe {
-                    return Ok(blocked.take());
-                }
-            }
-
-            if self.closed.load(SeqCst) {
-                break;
-            }
-
+        while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+            let now = Instant::now();
             if let Some(end) = deadline {
-                let now = Instant::now();
-
-                if now >= end {
-                    break;
-                } else {
+                if now < end {
                     thread::park_timeout(end - now);
+                } else if PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst)) == 0 {
+                    let mut lock = self.lock.lock().unwrap();
+
+                    lock.receivers
+                        .retain(|s| s.data.map_or(true, |x| !ptr::eq(x, &cell)));
+                    self.receivers_len.store(lock.receivers.len(), SeqCst);
+
+                    return Err(RecvTimeoutError::Timeout);
                 }
             } else {
                 thread::park();
             }
         }
 
-        let mut lock = self.lock.lock().unwrap();
-
-        if blocked.ready.load(SeqCst) {
-            unsafe { Ok(blocked.take()) }
-        } else {
-            lock.receivers.retain(|&s| s != &blocked);
-            self.receivers_len.store(lock.receivers.len(), SeqCst);
-
-            if self.closed.load(SeqCst) {
-                Err(RecvTimeoutError::Disconnected)
-            } else {
-                Err(RecvTimeoutError::Timeout)
-            }
+        if PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 1 {
+            return Err(RecvTimeoutError::Disconnected);
         }
+
+        self.lock.lock().unwrap();
+        let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
+        Ok(v)
     }
 
     fn len(&self) -> usize {
@@ -294,20 +371,48 @@ impl<T> Channel<T> for Queue<T> {
 
         for t in lock.senders.drain(..) {
             unsafe {
-                (*t).thread.unpark();
+                match t.data {
+                    None => {
+                        unimplemented!();
+                    }
+                    Some(data) => {
+                        if t.participant.sel.compare_and_swap(0, 1, SeqCst) == 0 {
+                            t.participant.thread.unpark();
+                        }
+                    }
+                }
             }
         }
+
         for t in lock.receivers.drain(..) {
             unsafe {
-                (*t).thread.unpark();
+                match t.data {
+                    None => {
+                        unimplemented!();
+                    }
+                    Some(data) => {
+                        if t.participant.sel.compare_and_swap(0, 1, SeqCst) == 0 {
+                            t.participant.thread.unpark();
+                        }
+                    }
+                }
             }
         }
 
         true
     }
 
-    fn monitor(&self) -> &Monitor {
-        &self.monitor
+    fn is_closed(&self) -> bool {
+        let _lock = self.lock.lock().unwrap();
+        self.closed.load(SeqCst)
+    }
+
+    fn monitor_tx(&self) -> &Monitor {
+        unimplemented!()
+    }
+
+    fn monitor_rx(&self) -> &Monitor {
+        unimplemented!()
     }
 }
 

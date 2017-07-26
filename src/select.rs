@@ -1,12 +1,17 @@
 use std::marker::PhantomData;
+use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use rand::{Rng, thread_rng};
 
 use Receiver;
-use err::TryRecvError;
+use Sender;
+use err::{TryRecvError, TrySendError};
 use impls::Channel;
+use PARTICIPANT;
+use Flavor;
+use Wait;
 
 pub struct Select {
     machine: Machine,
@@ -58,19 +63,25 @@ impl Select {
         false
     }
 
-    pub fn poll<T>(&mut self, rx: &Receiver<T>) -> Option<T> {
-        match self.machine.poll(rx) {
-            Ok(t) => Some(t),
+    // pub fn poll_tx<T>(&mut self, tx: &Sender<T>, value: T) -> Result<(), T> {
+    //     match self.machine.poll_tx(tx, value) {
+    //         Ok(()) => Ok(()),
+    //         Err((v, m)) => {
+    //             self.machine = m;
+    //             Err(v)
+    //         }
+    //     }
+    // }
+
+    pub fn poll_rx<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
+        match self.machine.poll_rx(rx) {
+            Ok(t) => Ok(t),
             Err(m) => {
                 self.machine = m;
-                None
+                Err(())
             }
         }
     }
-}
-
-fn id<T>(rx: &Receiver<T>) -> usize {
-    rx.as_channel() as *const Channel<T> as *const u8 as usize
 }
 
 #[derive(Clone, Copy)]
@@ -90,7 +101,8 @@ enum Machine {
 }
 
 impl Machine {
-    fn poll<T>(mut self, rx: &Receiver<T>) -> Result<T, Machine> {
+    fn poll_rx<T>(mut self, rx: &Receiver<T>) -> Result<T, Machine> {
+        let id = rx.as_channel() as *const Channel<T> as *const u8 as usize;
         loop {
             self = match self {
                 Machine::Counting {
@@ -98,7 +110,7 @@ impl Machine {
                     id_first,
                     deadline,
                 } => {
-                    if id_first == id(rx) {
+                    if id_first == id {
                         Machine::Initialized {
                             pos: 0,
                             state: State::TryRecv {
@@ -111,7 +123,7 @@ impl Machine {
                     } else {
                         return Err(Machine::Counting {
                             len: len + 1,
-                            id_first: if id_first == 0 { id(rx) } else { id_first },
+                            id_first: if id_first == 0 { id } else { id_first },
                             deadline,
                         });
                     }
@@ -132,7 +144,7 @@ impl Machine {
                             deadline,
                         }
                     } else if start <= pos && pos < start + len {
-                        match state.poll(rx) {
+                        match state.poll_rx(rx) {
                             Ok(t) => return Ok(t),
                             Err(s) => {
                                 return Err(Machine::Initialized {
@@ -163,9 +175,9 @@ impl Machine {
 enum State {
     TryRecv { all_disconnected: bool },
     Subscribe,
-    IsReady { any_ready: bool },
-    Unsubscribe { id_woken: usize },
-    FinalTryRecv { id_woken: usize },
+    IsReady,
+    Unsubscribe,
+    FinalTryRecv,
     TimedOut,
     Disconnected,
 }
@@ -177,25 +189,33 @@ impl State {
                 if all_disconnected {
                     State::TimedOut
                 } else {
+                    PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+                    PARTICIPANT.with(|p| p.ptr.store(0, SeqCst));
                     State::Subscribe
                 }
             }
-            State::Subscribe => State::IsReady { any_ready: false },
-            State::IsReady { any_ready } => {
-                if !any_ready {
+            State::Subscribe => State::IsReady,
+            State::IsReady => {
+                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
                     let now = Instant::now();
                     if let Some(end) = deadline {
                         if now < end {
                             thread::park_timeout(end - now);
+                        } else {
+                            // TODO: what ID should we use?
+                            PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst));
                         }
                     } else {
                         thread::park();
                     }
                 }
-                State::Unsubscribe { id_woken: 0 }
+                State::Unsubscribe
             }
-            State::Unsubscribe { id_woken } => State::FinalTryRecv { id_woken },
-            State::FinalTryRecv { id_woken } => {
+            State::Unsubscribe => {
+                // TODO: final try only if sel != 1
+                State::FinalTryRecv
+            }
+            State::FinalTryRecv => {
                 if let Some(end) = deadline {
                     if Instant::now() >= end {
                         return State::TimedOut;
@@ -210,7 +230,8 @@ impl State {
         }
     }
 
-    fn poll<T>(self, rx: &Receiver<T>) -> Result<T, State> {
+    fn poll_rx<T>(self, rx: &Receiver<T>) -> Result<T, State> {
+        let id = rx.as_channel() as *const Channel<T> as *const u8 as usize;
         match self {
             State::TryRecv { all_disconnected } => {
                 let disconnected = match rx.try_recv() {
@@ -223,34 +244,52 @@ impl State {
                 })
             }
             State::Subscribe => {
-                rx.as_channel().monitor().watch_start();
+                match rx.0.flavor {
+                    Flavor::List(ref q) => q.monitor_rx().register(),
+                    Flavor::Array(ref q) => q.monitor_rx().register(),
+                    Flavor::Zero(ref q) => q.promise_recv(),
+                }
                 Err(State::Subscribe)
             }
-            State::IsReady { any_ready } => {
-                let ready = !rx.is_empty();
-                Err(State::IsReady {
-                    any_ready: any_ready || ready,
-                })
-            }
-            State::Unsubscribe { id_woken } => {
-                if id_woken != 0 {
-                    rx.as_channel().monitor().watch_abort();
+            State::IsReady => {
+                if !rx.is_empty() {
+                    // TODO: || rx.is_closed() {
+                    PARTICIPANT.with(|p| p.sel.compare_and_swap(0, 1, SeqCst));
                 }
-                Err(State::Unsubscribe {
-                    id_woken: if id_woken == 0 && !rx.as_channel().monitor().watch_stop() {
-                        id(rx)
-                    } else {
-                        id_woken
-                    },
-                })
+                Err(State::IsReady)
             }
-            State::FinalTryRecv { id_woken } => {
-                if id(rx) == id_woken {
-                    if let Ok(t) = rx.try_recv() {
-                        return Ok(t);
+            State::Unsubscribe => {
+                match rx.0.flavor {
+                    Flavor::List(ref q) => q.monitor_rx().unregister(),
+                    Flavor::Array(ref q) => q.monitor_rx().unregister(),
+                    Flavor::Zero(ref q) => q.unpromise_recv(),
+                }
+                Err(State::Unsubscribe)
+            }
+            State::FinalTryRecv => {
+                if id == PARTICIPANT.with(|p| p.sel.load(SeqCst)) {
+                    match rx.0.flavor {
+                        Flavor::Array(..) | Flavor::List(..) => {
+                            if let Ok(t) = rx.try_recv() {
+                                return Ok(t);
+                            }
+                        }
+                        Flavor::Zero(ref q) => {
+                            let wait =
+                                PARTICIPANT.with(|p| p.ptr.swap(0, SeqCst)) as *const Wait<T>;
+                            assert!(!wait.is_null());
+
+                            unsafe {
+                                let thread = (*wait).participant.thread.clone();
+                                let v = (*(*wait).data.get()).take().unwrap();
+                                (*wait).participant.sel.store(id, SeqCst);
+                                thread.unpark();
+                                return Ok(v);
+                            }
+                        }
                     }
                 }
-                Err(State::FinalTryRecv { id_woken })
+                Err(State::FinalTryRecv)
             }
             State::TimedOut => Err(State::TimedOut),
             State::Disconnected => Err(State::Disconnected),
@@ -271,29 +310,43 @@ mod tests {
     }
 
     #[test]
-    fn select() {
+    fn select_recv() {
         let (tx1, rx1) = bounded::<i32>(0);
         let (tx2, rx2) = bounded::<i32>(0);
 
         crossbeam::scope(|s| {
             s.spawn(|| {
-                thread::sleep(ms(150));
-                tx1.send_timeout(1, ms(200));
+                // thread::sleep(ms(150));
+                // tx1.send_timeout(1, ms(200));
+                loop {
+                    match tx1.try_send(1) {
+                        Ok(()) => break,
+                        Err(TrySendError::Disconnected(_)) => break,
+                        Err(TrySendError::Full(_)) => continue,
+                    }
+                }
             });
             s.spawn(|| {
-                thread::sleep(ms(150));
-                tx2.send_timeout(2, ms(200));
+                // thread::sleep(ms(150));
+                // tx2.send_timeout(2, ms(200));
+                loop {
+                    match tx2.try_send(2) {
+                        Ok(()) => break,
+                        Err(TrySendError::Disconnected(_)) => break,
+                        Err(TrySendError::Full(_)) => continue,
+                    }
+                }
             });
             s.spawn(|| {
                 thread::sleep(ms(100));
-                // let mut s = Select::new();
-                let mut s = Select::with_timeout(ms(100));
+                // let s = &mut Select::new();
+                let s = &mut Select::with_timeout(ms(100));
                 loop {
-                    if let Some(x) = s.poll(&rx1) {
+                    if let Ok(x) = rx1.poll_recv(s) {
                         println!("{}", x);
                         break;
                     }
-                    if let Some(x) = s.poll(&rx2) {
+                    if let Ok(x) = rx2.poll_recv(s) {
                         println!("{}", x);
                         break;
                     }
@@ -306,7 +359,49 @@ mod tests {
                         break;
                     }
                 }
+                drop(rx1);
+                drop(rx2);
             });
         });
     }
+
+    // #[test]
+    // fn select_send() {
+    //     let (tx1, rx1) = bounded::<i32>(0);
+    //     let (tx2, rx2) = bounded::<i32>(0);
+    //
+    //     crossbeam::scope(|s| {
+    //         s.spawn(|| {
+    //             thread::sleep(ms(150));
+    //             println!("got 1: {:?}", rx1.recv_timeout(ms(200)));
+    //         });
+    //         s.spawn(|| {
+    //             thread::sleep(ms(150));
+    //             println!("got 2: {:?}", rx2.recv_timeout(ms(200)));
+    //         });
+    //         s.spawn(|| {
+    //             thread::sleep(ms(100));
+    //             // let s = &mut Select::new();
+    //             let s = &mut Select::with_timeout(ms(100));
+    //             loop {
+    //                 if let Ok(()) = tx1.poll_send(1, s) {
+    //                     println!("sent 1");
+    //                     break;
+    //                 }
+    //                 if let Ok(()) = tx2.poll_send(2, s) {
+    //                     println!("sent 2");
+    //                     break;
+    //                 }
+    //                 if s.disconnected() {
+    //                     println!("DISCONNECTED!");
+    //                     break;
+    //                 }
+    //                 if s.timed_out() {
+    //                     println!("TIMEOUT!");
+    //                     break;
+    //                 }
+    //             }
+    //         });
+    //     });
+    // }
 }

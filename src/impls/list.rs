@@ -11,6 +11,7 @@ use coco::epoch::{self, Atomic, Owned};
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use impls::Channel;
 use monitor::Monitor;
+use PARTICIPANT;
 
 /// A single node in a queue.
 struct Node<T> {
@@ -171,7 +172,7 @@ impl<T> Channel<T> for Queue<T> {
             Err(TrySendError::Disconnected(value))
         } else {
             self.push(value);
-            self.receivers.notify_one();
+            self.receivers.wakeup_one(self.id());
             Ok(())
         }
     }
@@ -185,7 +186,7 @@ impl<T> Channel<T> for Queue<T> {
             Err(SendTimeoutError::Disconnected(value))
         } else {
             self.push(value);
-            self.receivers.notify_one();
+            self.receivers.wakeup_one(self.id());
             Ok(())
         }
     }
@@ -218,15 +219,26 @@ impl<T> Channel<T> for Queue<T> {
                 }
             }
 
-            self.receivers.watch_start();
-            if self.is_empty() {
-                if let Some(end) = deadline {
-                    thread::park_timeout(end - now);
-                } else {
-                    thread::park();
+            PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+            self.receivers.register();
+            if !self.is_closed() && self.is_empty() {
+                while PARTICIPANT.with(|p| p.sel.load(SeqCst)) == 0 {
+                    let now = Instant::now();
+                    if let Some(end) = deadline {
+                        if now < end {
+                            thread::park_timeout(end - now);
+                        } else if PARTICIPANT
+                                   .with(|p| p.sel.compare_and_swap(0, self.id(), SeqCst)) ==
+                                   0
+                        {
+                            return Err(RecvTimeoutError::Timeout);
+                        }
+                    } else {
+                        thread::park();
+                    }
                 }
             }
-            self.receivers.watch_abort();
+            self.receivers.unregister();
         }
     }
 
@@ -260,11 +272,19 @@ impl<T> Channel<T> for Queue<T> {
             return false;
         }
 
-        self.receivers.notify_all();
+        self.receivers.wakeup_all(self.id());
         true
     }
 
-    fn monitor(&self) -> &Monitor {
+    fn is_closed(&self) -> bool {
+        self.closed.load(SeqCst)
+    }
+
+    fn monitor_tx(&self) -> &Monitor {
+        unreachable!()
+    }
+
+    fn monitor_rx(&self) -> &Monitor {
         &self.receivers
     }
 }

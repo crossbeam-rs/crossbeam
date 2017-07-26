@@ -30,6 +30,12 @@ pub trait Channel<T> {
     fn capacity(&self) -> Option<usize>;
 
     fn close(&self) -> bool;
+    fn is_closed(&self) -> bool;
 
-    fn monitor(&self) -> &Monitor;
+    fn monitor_tx(&self) -> &Monitor;
+    fn monitor_rx(&self) -> &Monitor;
+
+    fn id(&self) -> usize {
+        self as *const Self as *const u8 as usize
+    }
 }

@@ -2,9 +2,11 @@ extern crate coco;
 extern crate crossbeam;
 extern crate rand;
 
+use std::cell::UnsafeCell;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
+use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
@@ -18,6 +20,36 @@ mod monitor;
 mod select;
 
 // TODO: iterators
+// TODO: Runtime selection checking (mark every participating tx/rx with current thread's selection id and index in the list)
+// TODO: Thread notification in spinning loops (with is_done) (CAS to id to tell which channel is ready)
+// TODO: Add Success state to selection. Or maybe start looping from scratch with a new random `start`?
+// TODO: Use xorshift generator?
+// TODO: The IsReady check must also check for closing (same in *_until methods)
+// TODO: Panic if two selects are running at the same time
+// TODO: Write CSP examples
+
+pub struct Wait<T> {
+    participant: Arc<Participant>,
+    data: UnsafeCell<Option<T>>,
+}
+
+pub struct Participant {
+    sel: AtomicUsize,
+    thread: Thread,
+    ptr: AtomicUsize,
+}
+
+thread_local! {
+    pub static PARTICIPANT: Arc<Participant> = Arc::new(Participant {
+        sel: AtomicUsize::new(0),
+        thread: thread::current(),
+        ptr: AtomicUsize::new(0),
+    });
+}
+
+// pub fn reset() {
+//     PARTICIPANT.with(|p| p.sel.store(0, SeqCst));
+// }
 
 enum Flavor<T> {
     List(impls::list::Queue<T>),
@@ -42,6 +74,26 @@ impl<T> Sender<T> {
         Sender(q)
     }
 
+    pub(crate) fn as_channel(&self) -> &impls::Channel<T> {
+        match self.0.flavor {
+            Flavor::List(ref q) => q,
+            Flavor::Array(ref q) => q,
+            Flavor::Zero(ref q) => q,
+        }
+    }
+
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        match self.0.flavor {
+            Flavor::List(ref q) => q.try_send(value),
+            Flavor::Array(ref q) => q.try_send(value),
+            Flavor::Zero(ref q) => q.try_send(value),
+        }
+    }
+
+    // pub fn poll_send(&self, value: T, s: &mut Select) -> Result<(), T> {
+    //     s.poll_tx(self, value)
+    // }
+
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
             Flavor::List(ref q) => q.send_until(value, None),
@@ -64,14 +116,6 @@ impl<T> Sender<T> {
         }
     }
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        match self.0.flavor {
-            Flavor::List(ref q) => q.try_send(value),
-            Flavor::Array(ref q) => q.try_send(value),
-            Flavor::Zero(ref q) => q.try_send(value),
-        }
-    }
-
     pub fn len(&self) -> usize {
         match self.0.flavor {
             Flavor::List(ref q) => q.len(),
@@ -86,6 +130,10 @@ impl<T> Sender<T> {
             Flavor::Array(ref q) => q.is_full(),
             Flavor::Zero(ref q) => q.is_full(),
         }
+    }
+
+    pub fn is_disconnected(&self) -> bool {
+        unimplemented!()
     }
 
     pub fn capacity(&self) -> Option<usize> {
@@ -134,6 +182,18 @@ impl<T> Receiver<T> {
         }
     }
 
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.0.flavor {
+            Flavor::List(ref q) => q.try_recv(),
+            Flavor::Array(ref q) => q.try_recv(),
+            Flavor::Zero(ref q) => q.try_recv(),
+        }
+    }
+
+    pub fn poll_recv(&self, s: &mut Select) -> Result<T, ()> {
+        s.poll_rx(self)
+    }
+
     pub fn recv(&self) -> Result<T, RecvError> {
         let res = match self.0.flavor {
             Flavor::List(ref q) => q.recv_until(None),
@@ -156,14 +216,6 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.0.flavor {
-            Flavor::List(ref q) => q.try_recv(),
-            Flavor::Array(ref q) => q.try_recv(),
-            Flavor::Zero(ref q) => q.try_recv(),
-        }
-    }
-
     pub fn len(&self) -> usize {
         match self.0.flavor {
             Flavor::List(ref q) => q.len(),
@@ -178,6 +230,10 @@ impl<T> Receiver<T> {
             Flavor::Array(ref q) => q.is_empty(),
             Flavor::Zero(ref q) => q.is_empty(),
         }
+    }
+
+    pub fn is_disconnected(&self) -> bool {
+        unimplemented!()
     }
 
     pub fn capacity(&self) -> Option<usize> {
