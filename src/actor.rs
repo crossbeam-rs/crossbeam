@@ -6,6 +6,7 @@ use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
 // TODO: hide all pub fields
+// TODO: type safe QueueId
 
 pub struct Request<T> {
     pub actor: Arc<Actor>,
@@ -25,9 +26,9 @@ impl<T> Request<T> {
 }
 
 pub struct Actor {
-    pub select_id: AtomicUsize,
-    pub request_ptr: AtomicUsize,
-    pub thread: Thread,
+    select_id: AtomicUsize,
+    request_ptr: AtomicUsize,
+    thread: Thread,
 }
 
 thread_local! {
@@ -43,7 +44,14 @@ pub fn current() -> Arc<Actor> {
 }
 
 pub fn reset() {
-    ACTOR.with(|a| a.select_id.store(0, SeqCst));
+    ACTOR.with(|a| {
+        a.select_id.store(0, SeqCst);
+        a.request_ptr.store(0, SeqCst);
+    });
+}
+
+pub fn selected() -> usize {
+    ACTOR.with(|a| a.select_id.load(SeqCst))
 }
 
 pub fn wait() {
@@ -52,8 +60,18 @@ pub fn wait() {
     }
 }
 
-pub fn selected() -> usize {
-    ACTOR.with(|a| a.select_id.load(SeqCst))
+pub fn request_take<T>(id: usize) -> T {
+    let req =
+        ACTOR.with(|a| a.request_ptr.swap(0, SeqCst)) as *const Request<T>;
+    assert!(!req.is_null());
+
+    unsafe {
+        let thread = (*req).actor.thread.clone();
+        let v = (*(*req).data.get()).take().unwrap();
+        (*req).actor.select(id);
+        thread.unpark();
+        v
+    }
 }
 
 pub fn wait_until(deadline: Option<Instant>) -> bool {
@@ -76,10 +94,6 @@ impl Actor {
     pub fn select(&self, id: usize) -> bool {
         self.select_id.compare_and_swap(0, id, SeqCst) == 0
     }
-
-    // pub fn selected(&self) -> usize {
-    //     self.select_id.load(SeqCst)
-    // }
 
     pub fn unpark(&self) {
         self.thread.unpark();

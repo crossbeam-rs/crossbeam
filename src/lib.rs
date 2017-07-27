@@ -66,10 +66,6 @@ impl<T> Sender<T> {
         }
     }
 
-    // pub fn poll_send(&self, value: T, s: &mut Select) -> Result<(), T> {
-    //     s.poll_tx(self, value)
-    // }
-
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
             Flavor::Array(ref q) => q.send_until(value, None),
@@ -110,7 +106,11 @@ impl<T> Sender<T> {
     }
 
     pub fn is_disconnected(&self) -> bool {
-        unimplemented!()
+        match self.0.flavor {
+            Flavor::Array(ref q) => q.is_closed(),
+            Flavor::List(ref q) => q.is_closed(),
+            Flavor::Zero(ref q) => q.is_closed(),
+        }
     }
 
     pub fn capacity(&self) -> Option<usize> {
@@ -167,10 +167,6 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn poll_recv(&self, s: &mut Select) -> Result<T, ()> {
-        s.poll_rx(self)
-    }
-
     pub fn recv(&self) -> Result<T, RecvError> {
         let res = match self.0.flavor {
             Flavor::Array(ref q) => q.recv_until(None),
@@ -211,7 +207,11 @@ impl<T> Receiver<T> {
     }
 
     pub fn is_disconnected(&self) -> bool {
-        unimplemented!()
+        match self.0.flavor {
+            Flavor::Array(ref q) => q.is_closed(),
+            Flavor::List(ref q) => q.is_closed(),
+            Flavor::Zero(ref q) => q.is_closed(),
+        }
     }
 
     pub fn capacity(&self) -> Option<usize> {

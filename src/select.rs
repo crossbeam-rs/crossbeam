@@ -11,6 +11,9 @@ use err::{TryRecvError, TrySendError};
 use actor::{self, ACTOR, Actor, Request};
 use Flavor;
 
+// TODO: What if send and receive go on the same channel? perhaps sender/receiver for the same
+// channel should have different ids!!!!
+
 pub struct Select {
     machine: Machine,
     _marker: PhantomData<*mut ()>,
@@ -19,23 +22,21 @@ pub struct Select {
 impl Select {
     #[inline]
     pub fn new() -> Self {
-        Select {
-            machine: Machine::Counting {
-                len: 0,
-                id_first: 0,
-                deadline: None,
-            },
-            _marker: PhantomData,
-        }
+        Select::with_deadline(None)
     }
 
     #[inline]
     pub fn with_timeout(dur: Duration) -> Self {
+        Select::with_deadline(Some(Instant::now() + dur))
+    }
+
+    #[inline]
+    fn with_deadline(deadline: Option<Instant>) -> Self {
         Select {
             machine: Machine::Counting {
                 len: 0,
                 id_first: 0,
-                deadline: Some(Instant::now() + dur),
+                deadline,
             },
             _marker: PhantomData,
         }
@@ -61,28 +62,23 @@ impl Select {
         false
     }
 
-    // pub fn poll_tx<T>(&mut self, tx: &Sender<T>, value: T) -> Result<(), T> {
-    //     match self.machine.poll_tx(tx, value) {
-    //         Ok(()) => Ok(()),
-    //         Err((v, m)) => {
-    //             self.machine = m;
-    //             Err(v)
-    //         }
-    //     }
-    // }
+    pub fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
+        if let Some(state) = self.machine.step(tx.id()) {
+            state.send(tx, value)
+        } else {
+            Err(value)
+        }
+    }
 
-    pub fn poll_rx<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
-        match self.machine.poll_rx(rx) {
-            Ok(t) => Ok(t),
-            Err(m) => {
-                self.machine = m;
-                Err(())
-            }
+    pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
+        if let Some(state) = self.machine.step(rx.id()) {
+            state.recv(rx)
+        } else {
+            Err(())
         }
     }
 }
 
-#[derive(Clone, Copy)]
 enum Machine {
     Counting {
         len: usize,
@@ -99,69 +95,63 @@ enum Machine {
 }
 
 impl Machine {
-    fn poll_rx<T>(mut self, rx: &Receiver<T>) -> Result<T, Machine> {
-        let id = rx.id();
+    #[inline]
+    fn step(&mut self, id: usize) -> Option<&mut State> {
         loop {
-            self = match self {
+            match *self {
                 Machine::Counting {
                     len,
                     id_first,
                     deadline,
                 } => {
                     if id_first == id {
-                        Machine::Initialized {
+                        *self = Machine::Initialized {
                             pos: 0,
-                            state: State::TryRecv {
-                                all_disconnected: true,
-                            },
+                            state: State::Try { any_open: false },
                             len,
                             start: thread_rng().gen_range(0, len),
                             deadline,
-                        }
+                        };
                     } else {
-                        return Err(Machine::Counting {
+                        *self = Machine::Counting {
                             len: len + 1,
                             id_first: if id_first == 0 { id } else { id_first },
                             deadline,
-                        });
+                        };
+                        return None;
                     }
                 }
                 Machine::Initialized {
                     pos,
-                    state,
+                    mut state,
                     len,
                     start,
                     deadline,
                 } => {
                     if pos >= 2 * len {
-                        Machine::Initialized {
+                        state.transition(deadline);
+                        *self = Machine::Initialized {
                             pos: 0,
-                            state: state.transition(deadline),
+                            state,
                             len,
                             start,
                             deadline,
-                        }
-                    } else if start <= pos && pos < start + len {
-                        match state.poll_rx(rx) {
-                            Ok(t) => return Ok(t),
-                            Err(s) => {
-                                return Err(Machine::Initialized {
-                                    pos: pos + 1,
-                                    state: s,
-                                    len,
-                                    start,
-                                    deadline,
-                                })
-                            }
-                        }
+                        };
                     } else {
-                        return Err(Machine::Initialized {
+                        *self = Machine::Initialized {
                             pos: pos + 1,
                             state,
                             len,
                             start,
                             deadline,
-                        });
+                        };
+                        if let Machine::Initialized { ref mut state, .. } = *self {
+                            if start <= pos && pos < start + len {
+                                return Some(state);
+                            } else {
+                                return None;
+                            }
+                        }
                     }
                 }
             }
@@ -171,63 +161,109 @@ impl Machine {
 
 #[derive(Clone, Copy)]
 enum State {
-    TryRecv { all_disconnected: bool },
+    Try { any_open: bool },
     Subscribe,
     IsReady,
     Unsubscribe,
-    FinalTryRecv,
+    FinalTry,
     TimedOut,
     Disconnected,
 }
 
 impl State {
-    fn transition(self, deadline: Option<Instant>) -> State {
-        match self {
-            State::TryRecv { all_disconnected } => {
-                if all_disconnected {
-                    State::TimedOut
-                } else {
+    #[inline]
+    fn transition(&mut self, deadline: Option<Instant>) {
+        match *self {
+            State::Try { any_open } => {
+                if any_open {
                     actor::reset();
-                    ACTOR.with(|a| a.request_ptr.store(0, SeqCst));
-                    State::Subscribe
+                    *self = State::Subscribe;
+                } else {
+                    *self = State::Disconnected;
                 }
             }
-            State::Subscribe => State::IsReady,
+            State::Subscribe => *self = State::IsReady,
             State::IsReady => {
                 actor::wait_until(deadline);
-                State::Unsubscribe
+                *self = State::Unsubscribe;
             }
-            State::Unsubscribe => {
-                // TODO: final try only if sel != 1
-                State::FinalTryRecv
-            }
-            State::FinalTryRecv => {
+            State::Unsubscribe => *self = State::FinalTry, // TODO: before going to finaltry we should reset and use FinalTry { selected_id: usize }
+            State::FinalTry => {
+                *self = State::Try { any_open: false };
+
                 if let Some(end) = deadline {
                     if Instant::now() >= end {
-                        return State::TimedOut;
+                        *self = State::TimedOut;
                     }
                 }
-                State::TryRecv {
-                    all_disconnected: true,
-                }
             }
-            State::TimedOut => State::TimedOut,
-            State::Disconnected => State::Disconnected,
+            State::TimedOut => {}
+            State::Disconnected => {}
         }
     }
 
-    fn poll_rx<T>(self, rx: &Receiver<T>) -> Result<T, State> {
-        let id = rx.id();
-        match self {
-            State::TryRecv { all_disconnected } => {
-                let disconnected = match rx.try_recv() {
+    fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
+        match *self {
+            State::Try { ref mut any_open } => {
+                match tx.try_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(TrySendError::Disconnected(v)) => value = v,
+                    Err(TrySendError::Full(v)) => {
+                        value = v;
+                        *any_open = true;
+                    }
+                }
+            }
+            State::Subscribe => {
+                match tx.0.flavor {
+                    Flavor::List(ref q) => unimplemented!(),//q.monitor_tx().register(), // TODO: rename to monitor_senders? mon_senders? send_monitor?
+                    Flavor::Array(ref q) => q.monitor_tx().register(),
+                    Flavor::Zero(ref q) => unimplemented!(),//q.promise_send(),
+                }
+            }
+            State::IsReady => {
+                if tx.is_disconnected() || !tx.is_full() {
+                    actor::current().select(1);
+                }
+            }
+            State::Unsubscribe => {
+                match tx.0.flavor {
+                    Flavor::List(ref q) => unimplemented!(),//q.monitor_tx().unregister(), // TODO: rename to monitor_send?
+                    Flavor::Array(ref q) => q.monitor_tx().unregister(),
+                    Flavor::Zero(ref q) => unimplemented!(),//q.unpromise_send(),
+                }
+            }
+            State::FinalTry => {
+                if tx.id() == actor::selected() {
+                    match tx.0.flavor {
+                        Flavor::Array(..) | Flavor::List(..) => {
+                            match tx.try_send(value) {
+                                Ok(()) => return Ok(()),
+                                Err(TrySendError::Full(v)) => value = v,
+                                Err(TrySendError::Disconnected(v)) => value = v,
+                            }
+                        }
+                        Flavor::Zero(ref q) => {
+                            unimplemented!(); //actor::request_put(tx.id());
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+            State::TimedOut => {}
+            State::Disconnected => {}
+        }
+        Err(value)
+    }
+
+    fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
+        match *self {
+            State::Try { ref mut any_open } => {
+                match rx.try_recv() {
                     Ok(t) => return Ok(t),
-                    Err(TryRecvError::Disconnected) => true,
-                    Err(TryRecvError::Empty) => false,
-                };
-                Err(State::TryRecv {
-                    all_disconnected: all_disconnected && disconnected,
-                })
+                    Err(TryRecvError::Disconnected) => {}
+                    Err(TryRecvError::Empty) => *any_open = true,
+                }
             }
             State::Subscribe => {
                 match rx.0.flavor {
@@ -235,14 +271,11 @@ impl State {
                     Flavor::Array(ref q) => q.monitor_rx().register(),
                     Flavor::Zero(ref q) => q.promise_recv(),
                 }
-                Err(State::Subscribe)
             }
             State::IsReady => {
-                if !rx.is_empty() {
-                    // TODO: || rx.is_closed() {
-                    ACTOR.with(|a| a.select_id.compare_and_swap(0, 1, SeqCst));
+                if rx.is_disconnected() || !rx.is_empty() {
+                    actor::current().select(1);
                 }
-                Err(State::IsReady)
             }
             State::Unsubscribe => {
                 match rx.0.flavor {
@@ -250,36 +283,23 @@ impl State {
                     Flavor::Array(ref q) => q.monitor_rx().unregister(),
                     Flavor::Zero(ref q) => q.unpromise_recv(),
                 }
-                Err(State::Unsubscribe)
             }
-            State::FinalTryRecv => {
-                if id == ACTOR.with(|a| a.select_id.load(SeqCst)) {
+            State::FinalTry => {
+                if rx.id() == actor::selected() {
                     match rx.0.flavor {
                         Flavor::Array(..) | Flavor::List(..) => {
                             if let Ok(t) = rx.try_recv() {
                                 return Ok(t);
                             }
                         }
-                        Flavor::Zero(ref q) => {
-                            let req =
-                                ACTOR.with(|a| a.request_ptr.swap(0, SeqCst)) as *const Request<T>;
-                            assert!(!req.is_null());
-
-                            unsafe {
-                                let thread = (*req).actor.thread.clone();
-                                let v = (*(*req).data.get()).take().unwrap();
-                                (*req).actor.select_id.store(id, SeqCst);
-                                thread.unpark();
-                                return Ok(v);
-                            }
-                        }
+                        Flavor::Zero(ref q) => return Ok(actor::request_take(rx.id())),
                     }
                 }
-                Err(State::FinalTryRecv)
             }
-            State::TimedOut => Err(State::TimedOut),
-            State::Disconnected => Err(State::Disconnected),
+            State::TimedOut => {}
+            State::Disconnected => {}
         }
+        Err(())
     }
 }
 
@@ -325,14 +345,14 @@ mod tests {
             });
             s.spawn(|| {
                 thread::sleep(ms(100));
-                // let s = &mut Select::new();
-                let s = &mut Select::with_timeout(ms(100));
+                // let mut s = Select::new();
+                let mut s = Select::with_timeout(ms(100));
                 loop {
-                    if let Ok(x) = rx1.poll_recv(s) {
+                    if let Ok(x) = s.recv(&rx1) {
                         println!("{}", x);
                         break;
                     }
-                    if let Ok(x) = rx2.poll_recv(s) {
+                    if let Ok(x) = s.recv(&rx2) {
                         println!("{}", x);
                         break;
                     }
@@ -367,14 +387,14 @@ mod tests {
     //         });
     //         s.spawn(|| {
     //             thread::sleep(ms(100));
-    //             // let s = &mut Select::new();
-    //             let s = &mut Select::with_timeout(ms(100));
+    //             // let mut s = Select::new();
+    //             let mut s = Select::with_timeout(ms(100));
     //             loop {
-    //                 if let Ok(()) = tx1.poll_send(1, s) {
+    //                 if let Ok(()) = s.send(&tx1, 1) {
     //                     println!("sent 1");
     //                     break;
     //                 }
-    //                 if let Ok(()) = tx2.poll_send(2, s) {
+    //                 if let Ok(()) = s.send(&tx2, 2) {
     //                     println!("sent 2");
     //                     break;
     //                 }

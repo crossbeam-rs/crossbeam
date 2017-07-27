@@ -173,7 +173,7 @@ impl<T> Queue<T> {
             Err(TrySendError::Disconnected(value))
         } else {
             self.push(value);
-            self.receivers.wakeup_one(self.id());
+            self.receivers.notify_one(self.id());
             Ok(())
         }
     }
@@ -187,7 +187,7 @@ impl<T> Queue<T> {
             Err(SendTimeoutError::Disconnected(value))
         } else {
             self.push(value);
-            self.receivers.wakeup_one(self.id());
+            self.receivers.notify_one(self.id());
             Ok(())
         }
     }
@@ -213,23 +213,13 @@ impl<T> Queue<T> {
                 Err(TryRecvError::Empty) => {}
             }
 
-            let now = Instant::now();
-            if let Some(end) = deadline {
-                if now >= end {
-                    return Err(RecvTimeoutError::Timeout);
-                }
-            }
-
             actor::reset();
             self.receivers.register();
+            let timed_out = !self.is_closed() && self.len() == 0 && !actor::wait_until(deadline);
+            self.receivers.unregister();
 
-            if !self.is_closed() && self.len() == 0 {
-                if !actor::wait_until(deadline) {
-                    self.receivers.unregister();
-                    return Err(RecvTimeoutError::Timeout);
-                }
-            } else {
-                self.receivers.unregister();
+            if timed_out {
+                return Err(RecvTimeoutError::Timeout);
             }
         }
     }
@@ -252,7 +242,7 @@ impl<T> Queue<T> {
             return false;
         }
 
-        self.receivers.wakeup_all(self.id());
+        self.receivers.notify_all(self.id());
         true
     }
 

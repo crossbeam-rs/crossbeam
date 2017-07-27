@@ -145,92 +145,6 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn monitor_tx(&self) -> &Monitor {
-        &self.senders
-    }
-
-    pub fn monitor_rx(&self) -> &Monitor {
-        &self.receivers
-    }
-
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(value))
-        } else {
-            match self.push(value) {
-                None => {
-                    self.receivers.wakeup_one(self.id());
-                    Ok(())
-                }
-                Some(v) => Err(TrySendError::Full(v)),
-            }
-        }
-    }
-
-    pub fn send_until(
-        &self,
-        mut value: T,
-        deadline: Option<Instant>,
-    ) -> Result<(), SendTimeoutError<T>> {
-        loop {
-            match self.try_send(value) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
-                Err(TrySendError::Full(v)) => value = v,
-            }
-
-            actor::reset();
-            self.senders.register();
-
-            if !self.is_closed() && self.len() == self.cap {
-                if !actor::wait_until(deadline) {
-                    self.senders.unregister();
-                    return Err(SendTimeoutError::Timeout(value));
-                }
-            } else {
-                self.senders.unregister();
-            }
-        }
-    }
-
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop() {
-            None => {
-                if self.closed.load(SeqCst) {
-                    Err(TryRecvError::Disconnected)
-                } else {
-                    Err(TryRecvError::Empty)
-                }
-            }
-            Some(v) => {
-                self.senders.wakeup_one(self.id());
-                Ok(v)
-            }
-        }
-    }
-
-    pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
-        loop {
-            match self.try_recv() {
-                Ok(v) => return Ok(v),
-                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
-                Err(TryRecvError::Empty) => {}
-            }
-
-            actor::reset();
-            self.receivers.register();
-
-            if !self.is_closed() && self.len() == 0 {
-                if !actor::wait_until(deadline) {
-                    self.receivers.unregister();
-                    return Err(RecvTimeoutError::Timeout);
-                }
-            } else {
-                self.receivers.unregister();
-            }
-        }
-    }
-
     pub fn len(&self) -> usize {
         let cap = self.cap;
         let power = self.power;
@@ -259,6 +173,79 @@ impl<T> Queue<T> {
         }
     }
 
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        if self.closed.load(SeqCst) {
+            Err(TrySendError::Disconnected(value))
+        } else {
+            match self.push(value) {
+                None => {
+                    self.receivers.notify_one(self.id());
+                    Ok(())
+                }
+                Some(v) => Err(TrySendError::Full(v)),
+            }
+        }
+    }
+
+    pub fn send_until(
+        &self,
+        mut value: T,
+        deadline: Option<Instant>,
+    ) -> Result<(), SendTimeoutError<T>> {
+        loop {
+            match self.try_send(value) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
+                Err(TrySendError::Full(v)) => value = v,
+            }
+
+            actor::reset();
+            self.senders.register();
+            let timed_out =
+                !self.is_closed() && self.len() == self.cap && !actor::wait_until(deadline);
+            self.senders.unregister();
+
+            if timed_out {
+                return Err(SendTimeoutError::Timeout(value));
+            }
+        }
+    }
+
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.pop() {
+            None => {
+                if self.closed.load(SeqCst) {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
+                }
+            }
+            Some(v) => {
+                self.senders.notify_one(self.id());
+                Ok(v)
+            }
+        }
+    }
+
+    pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+        loop {
+            match self.try_recv() {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
+                Err(TryRecvError::Empty) => {}
+            }
+
+            actor::reset();
+            self.receivers.register();
+            let timed_out = !self.is_closed() && self.len() == 0 && !actor::wait_until(deadline);
+            self.receivers.unregister();
+
+            if timed_out {
+                return Err(RecvTimeoutError::Timeout);
+            }
+        }
+    }
+
     pub fn capacity(&self) -> usize {
         self.cap
     }
@@ -268,13 +255,21 @@ impl<T> Queue<T> {
             return false;
         }
 
-        self.senders.wakeup_all(1);
-        self.receivers.wakeup_all(1);
+        self.senders.notify_all(1);
+        self.receivers.notify_all(1);
         true
     }
 
     pub fn is_closed(&self) -> bool {
         self.closed.load(SeqCst)
+    }
+
+    pub fn monitor_tx(&self) -> &Monitor {
+        &self.senders
+    }
+
+    pub fn monitor_rx(&self) -> &Monitor {
+        &self.receivers
     }
 
     pub fn id(&self) -> usize {

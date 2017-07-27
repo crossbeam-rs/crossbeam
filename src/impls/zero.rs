@@ -35,15 +35,16 @@ impl<T> Deque<T> {
     }
 
     fn unregister(&mut self) {
+        // TODO: data argument
         let id = thread::current().id();
-        self.0.retain(|s| s.actor.thread_id() != id);
+        self.0.retain(|s| s.actor.thread_id() != id); // TODO: use find, enumerate, remove with data argument?
     }
 
     fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    fn wake_all(&mut self) {
+    fn notify_all(&mut self) {
         for t in self.0.drain(..) {
             if t.actor.select(1) {
                 t.actor.unpark();
@@ -267,8 +268,8 @@ impl<T> Queue<T> {
             false
         } else {
             lock.closed = true;
-            lock.senders.wake_all();
-            lock.receivers.wake_all();
+            lock.senders.notify_all();
+            lock.receivers.notify_all();
             true
         }
     }
