@@ -2,8 +2,10 @@ use std::cell::UnsafeCell;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::thread::{self, Thread};
-use std::time::{Duration, Instant};
+use std::thread::{self, Thread, ThreadId};
+use std::time::Instant;
+
+// TODO: hide all pub fields
 
 pub struct Request<T> {
     pub actor: Arc<Actor>,
@@ -17,6 +19,9 @@ impl<T> Request<T> {
             data: UnsafeCell::new(data),
         }
     }
+
+    // TODO put(value: T)
+    // TODO take() -> T
 }
 
 pub struct Actor {
@@ -47,6 +52,10 @@ pub fn wait() {
     }
 }
 
+pub fn selected() -> usize {
+    ACTOR.with(|a| a.select_id.load(SeqCst))
+}
+
 pub fn wait_until(deadline: Option<Instant>) -> bool {
     while ACTOR.with(|a| a.select_id.load(SeqCst)) == 0 {
         let now = Instant::now();
@@ -68,7 +77,19 @@ impl Actor {
         self.select_id.compare_and_swap(0, id, SeqCst) == 0
     }
 
+    // pub fn selected(&self) -> usize {
+    //     self.select_id.load(SeqCst)
+    // }
+
     pub fn unpark(&self) {
         self.thread.unpark();
+    }
+
+    pub fn set_request<T>(&self, req: *const Request<T>) {
+        self.request_ptr.store(req as usize, SeqCst);
+    }
+
+    pub fn thread_id(&self) -> ThreadId {
+        self.thread.id()
     }
 }

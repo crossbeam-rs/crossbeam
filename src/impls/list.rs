@@ -9,7 +9,6 @@ use std::time::{Instant, Duration};
 use coco::epoch::{self, Atomic, Owned};
 
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use impls::Channel;
 use monitor::Monitor;
 use actor;
 
@@ -168,10 +167,8 @@ impl<T> Queue<T> {
     pub fn monitor_rx(&self) -> &Monitor {
         &self.receivers
     }
-}
 
-impl<T> Channel<T> for Queue<T> {
-    fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
@@ -181,7 +178,7 @@ impl<T> Channel<T> for Queue<T> {
         }
     }
 
-    fn send_until(
+    pub fn send_until(
         &self,
         mut value: T,
         deadline: Option<Instant>,
@@ -195,7 +192,7 @@ impl<T> Channel<T> for Queue<T> {
         }
     }
 
-    fn try_recv(&self) -> Result<T, TryRecvError> {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.pop() {
             None => {
                 if self.closed.load(SeqCst) {
@@ -208,7 +205,7 @@ impl<T> Channel<T> for Queue<T> {
         }
     }
 
-    fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+    pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
             match self.try_recv() {
                 Ok(v) => return Ok(v),
@@ -226,7 +223,7 @@ impl<T> Channel<T> for Queue<T> {
             actor::reset();
             self.receivers.register();
 
-            if !self.is_closed() && self.is_empty() {
+            if !self.is_closed() && self.len() == 0 {
                 if !actor::wait_until(deadline) {
                     self.receivers.unregister();
                     return Err(RecvTimeoutError::Timeout);
@@ -237,7 +234,7 @@ impl<T> Channel<T> for Queue<T> {
         }
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         loop {
             let sends = self.sends.load(SeqCst);
             let recvs = self.recvs.load(SeqCst);
@@ -250,19 +247,7 @@ impl<T> Channel<T> for Queue<T> {
         }
     }
 
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    fn is_full(&self) -> bool {
-        false
-    }
-
-    fn capacity(&self) -> Option<usize> {
-        None
-    }
-
-    fn close(&self) -> bool {
+    pub fn close(&self) -> bool {
         if self.closed.swap(true, SeqCst) {
             return false;
         }
@@ -271,8 +256,12 @@ impl<T> Channel<T> for Queue<T> {
         true
     }
 
-    fn is_closed(&self) -> bool {
+    pub fn is_closed(&self) -> bool {
         self.closed.load(SeqCst)
+    }
+
+    pub fn id(&self) -> usize {
+        self as *const _ as usize
     }
 }
 

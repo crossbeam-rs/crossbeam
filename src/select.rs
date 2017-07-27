@@ -8,7 +8,6 @@ use rand::{Rng, thread_rng};
 use Receiver;
 use Sender;
 use err::{TryRecvError, TrySendError};
-use impls::Channel;
 use actor::{self, ACTOR, Actor, Request};
 use Flavor;
 
@@ -101,7 +100,7 @@ enum Machine {
 
 impl Machine {
     fn poll_rx<T>(mut self, rx: &Receiver<T>) -> Result<T, Machine> {
-        let id = rx.as_channel() as *const Channel<T> as *const u8 as usize;
+        let id = rx.id();
         loop {
             self = match self {
                 Machine::Counting {
@@ -218,7 +217,7 @@ impl State {
     }
 
     fn poll_rx<T>(self, rx: &Receiver<T>) -> Result<T, State> {
-        let id = rx.as_channel() as *const Channel<T> as *const u8 as usize;
+        let id = rx.id();
         match self {
             State::TryRecv { all_disconnected } => {
                 let disconnected = match rx.try_recv() {

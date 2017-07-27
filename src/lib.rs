@@ -12,8 +12,6 @@ use std::time::{Duration, Instant};
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 pub use select::Select;
 
-use impls::Channel;
-
 mod actor;
 mod err;
 mod impls;
@@ -30,8 +28,8 @@ mod select;
 // TODO: Write CSP examples
 
 enum Flavor<T> {
-    List(impls::list::Queue<T>),
     Array(impls::array::Queue<T>),
+    List(impls::list::Queue<T>),
     Zero(impls::zero::Queue<T>),
 }
 
@@ -52,18 +50,18 @@ impl<T> Sender<T> {
         Sender(q)
     }
 
-    pub(crate) fn as_channel(&self) -> &impls::Channel<T> {
+    pub(crate) fn id(&self) -> usize {
         match self.0.flavor {
-            Flavor::List(ref q) => q,
-            Flavor::Array(ref q) => q,
-            Flavor::Zero(ref q) => q,
+            Flavor::Array(ref q) => q.id(),
+            Flavor::List(ref q) => q.id(),
+            Flavor::Zero(ref q) => q.id(),
         }
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
-            Flavor::List(ref q) => q.try_send(value),
             Flavor::Array(ref q) => q.try_send(value),
+            Flavor::List(ref q) => q.try_send(value),
             Flavor::Zero(ref q) => q.try_send(value),
         }
     }
@@ -74,8 +72,8 @@ impl<T> Sender<T> {
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
-            Flavor::List(ref q) => q.send_until(value, None),
             Flavor::Array(ref q) => q.send_until(value, None),
+            Flavor::List(ref q) => q.send_until(value, None),
             Flavor::Zero(ref q) => q.send_until(value, None),
         };
         match res {
@@ -88,25 +86,26 @@ impl<T> Sender<T> {
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
         let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
-            Flavor::List(ref q) => q.send_until(value, deadline),
             Flavor::Array(ref q) => q.send_until(value, deadline),
+            Flavor::List(ref q) => q.send_until(value, deadline),
             Flavor::Zero(ref q) => q.send_until(value, deadline),
         }
     }
 
     pub fn len(&self) -> usize {
         match self.0.flavor {
-            Flavor::List(ref q) => q.len(),
             Flavor::Array(ref q) => q.len(),
-            Flavor::Zero(ref q) => q.len(),
+            Flavor::List(ref q) => q.len(),
+            Flavor::Zero(ref q) => 0,
         }
     }
 
+    // `true` if `try_send` would fail with `TrySendErr::Full(_)`
     pub fn is_full(&self) -> bool {
         match self.0.flavor {
-            Flavor::List(ref q) => q.is_full(),
-            Flavor::Array(ref q) => q.is_full(),
-            Flavor::Zero(ref q) => q.is_full(),
+            Flavor::Array(ref q) => q.len() == q.capacity(),
+            Flavor::List(ref q) => false,
+            Flavor::Zero(ref q) => !q.has_receivers(),
         }
     }
 
@@ -116,9 +115,9 @@ impl<T> Sender<T> {
 
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
-            Flavor::List(ref q) => q.capacity(),
-            Flavor::Array(ref q) => q.capacity(),
-            Flavor::Zero(ref q) => q.capacity(),
+            Flavor::Array(ref q) => Some(q.capacity()),
+            Flavor::List(ref q) => None,
+            Flavor::Zero(ref q) => Some(0),
         }
     }
 }
@@ -127,8 +126,8 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.0.senders.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::List(ref q) => q.close(),
                 Flavor::Array(ref q) => q.close(),
+                Flavor::List(ref q) => q.close(),
                 Flavor::Zero(ref q) => q.close(),
             };
         }
@@ -152,18 +151,18 @@ impl<T> Receiver<T> {
         Receiver(q)
     }
 
-    pub(crate) fn as_channel(&self) -> &impls::Channel<T> {
+    pub(crate) fn id(&self) -> usize {
         match self.0.flavor {
-            Flavor::List(ref q) => q,
-            Flavor::Array(ref q) => q,
-            Flavor::Zero(ref q) => q,
+            Flavor::Array(ref q) => q.id(),
+            Flavor::List(ref q) => q.id(),
+            Flavor::Zero(ref q) => q.id(),
         }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.0.flavor {
-            Flavor::List(ref q) => q.try_recv(),
             Flavor::Array(ref q) => q.try_recv(),
+            Flavor::List(ref q) => q.try_recv(),
             Flavor::Zero(ref q) => q.try_recv(),
         }
     }
@@ -174,8 +173,8 @@ impl<T> Receiver<T> {
 
     pub fn recv(&self) -> Result<T, RecvError> {
         let res = match self.0.flavor {
-            Flavor::List(ref q) => q.recv_until(None),
             Flavor::Array(ref q) => q.recv_until(None),
+            Flavor::List(ref q) => q.recv_until(None),
             Flavor::Zero(ref q) => q.recv_until(None),
         };
         if let Ok(v) = res {
@@ -188,25 +187,26 @@ impl<T> Receiver<T> {
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
         let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
-            Flavor::List(ref q) => q.recv_until(deadline),
             Flavor::Array(ref q) => q.recv_until(deadline),
+            Flavor::List(ref q) => q.recv_until(deadline),
             Flavor::Zero(ref q) => q.recv_until(deadline),
         }
     }
 
     pub fn len(&self) -> usize {
         match self.0.flavor {
-            Flavor::List(ref q) => q.len(),
             Flavor::Array(ref q) => q.len(),
-            Flavor::Zero(ref q) => q.len(),
+            Flavor::List(ref q) => q.len(),
+            Flavor::Zero(ref q) => 0,
         }
     }
 
+    // `true` if `try_recv` would fail with `TryRecvError::Empty`
     pub fn is_empty(&self) -> bool {
         match self.0.flavor {
-            Flavor::List(ref q) => q.is_empty(),
-            Flavor::Array(ref q) => q.is_empty(),
-            Flavor::Zero(ref q) => q.is_empty(),
+            Flavor::Array(ref q) => q.len() == 0,
+            Flavor::List(ref q) => q.len() == 0,
+            Flavor::Zero(ref q) => !q.has_senders(),
         }
     }
 
@@ -216,9 +216,9 @@ impl<T> Receiver<T> {
 
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
-            Flavor::List(ref q) => q.capacity(),
-            Flavor::Array(ref q) => q.capacity(),
-            Flavor::Zero(ref q) => q.capacity(),
+            Flavor::Array(ref q) => Some(q.capacity()),
+            Flavor::List(ref q) => None,
+            Flavor::Zero(ref q) => Some(0),
         }
     }
 }
@@ -227,8 +227,8 @@ impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         if self.0.receivers.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::List(ref q) => q.close(),
                 Flavor::Array(ref q) => q.close(),
+                Flavor::List(ref q) => q.close(),
                 Flavor::Zero(ref q) => q.close(),
             };
         }
