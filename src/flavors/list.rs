@@ -164,8 +164,17 @@ impl<T> Queue<T> {
         };
     }
 
-    pub fn monitor_rx(&self) -> &Monitor {
-        &self.receivers
+    pub fn len(&self) -> usize {
+        loop {
+            let sends = self.sends.load(SeqCst);
+            let recvs = self.recvs.load(SeqCst);
+
+            if self.sends.load(SeqCst) == sends {
+                return sends.wrapping_sub(recvs);
+            }
+
+            thread::yield_now();
+        }
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -224,19 +233,6 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn len(&self) -> usize {
-        loop {
-            let sends = self.sends.load(SeqCst);
-            let recvs = self.recvs.load(SeqCst);
-
-            if self.sends.load(SeqCst) == sends {
-                return sends.wrapping_sub(recvs);
-            }
-
-            thread::yield_now();
-        }
-    }
-
     pub fn close(&self) -> bool {
         if self.closed.swap(true, SeqCst) {
             return false;
@@ -248,6 +244,10 @@ impl<T> Queue<T> {
 
     pub fn is_closed(&self) -> bool {
         self.closed.load(SeqCst)
+    }
+
+    pub fn monitor_rx(&self) -> &Monitor {
+        &self.receivers
     }
 
     pub fn id(&self) -> usize {

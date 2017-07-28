@@ -1,58 +1,11 @@
 use std::cell::UnsafeCell;
-use std::collections::VecDeque;
-use std::marker::PhantomData;
-use std::ptr;
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::Ordering::SeqCst;
-use std::thread::{self, Thread};
+use std::sync::{Mutex, MutexGuard};
+use std::thread;
 use std::time::Instant;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use actor::{self, Actor};
-use watch::dock::Request;
-
-struct Blocked<T> {
-    actor: Arc<Actor>,
-    data: Option<*const UnsafeCell<Option<T>>>,
-}
-
-struct Deque<T>(VecDeque<Blocked<T>>);
-
-impl<T> Deque<T> {
-    fn new() -> Self {
-        Deque(VecDeque::new())
-    }
-
-    fn pop(&mut self) -> Option<Blocked<T>> {
-        self.0.pop_front()
-    }
-
-    fn register(&mut self, data: Option<*const UnsafeCell<Option<T>>>) {
-        self.0.push_back(Blocked {
-            actor: actor::current(),
-            data,
-        });
-    }
-
-    fn unregister(&mut self) {
-        // TODO: data argument
-        let id = thread::current().id();
-        self.0.retain(|s| s.actor.thread_id() != id); // TODO: use find, enumerate, remove with data argument?
-    }
-
-    fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    fn notify_all(&mut self) {
-        for t in self.0.drain(..) {
-            if t.actor.select(1) {
-                t.actor.unpark();
-            }
-        }
-    }
-}
+use watch::dock::{Deque, Request};
 
 struct Inner<T> {
     senders: Deque<T>,
@@ -62,7 +15,6 @@ struct Inner<T> {
 
 pub struct Queue<T> {
     lock: Mutex<Inner<T>>,
-    _marker: PhantomData<T>,
 }
 
 unsafe impl<T: Send> Send for Queue<T> {}
@@ -76,7 +28,6 @@ impl<T> Queue<T> {
                 receivers: Deque::new(),
                 closed: false,
             }),
-            _marker: PhantomData,
         }
     }
 
@@ -85,7 +36,6 @@ impl<T> Queue<T> {
     }
 
     pub fn unpromise_recv(&self) {
-        let id = thread::current().id();
         self.lock.lock().unwrap().receivers.unregister();
     }
 
@@ -134,8 +84,7 @@ impl<T> Queue<T> {
 
                         actor::wait();
                         let lock = self.lock.lock().unwrap();
-                        let v = unsafe { req.data.get().as_mut().unwrap().take().unwrap() };
-                        return Ok((v, lock));
+                        return unsafe { Ok((req.take(), lock)) };
                     }
                 }
                 Some(data) => {
@@ -168,43 +117,37 @@ impl<T> Queue<T> {
         mut value: T,
         deadline: Option<Instant>,
     ) -> Result<(), SendTimeoutError<T>> {
-        let cell;
-        {
-            let mut lock = self.lock.lock().unwrap();
-
-            if lock.closed {
-                return Err(SendTimeoutError::Disconnected(value));
-            }
-
-            match self.meet_receiver(value, lock) {
-                Ok(_) => return Ok(()),
-                Err((v, l)) => {
-                    value = v;
-                    lock = l;
-                }
-            }
-
-            actor::reset();
-            cell = UnsafeCell::new(Some(value));
-            lock.senders.register(Some(&cell));
+        let mut lock = self.lock.lock().unwrap();
+        if lock.closed {
+            return Err(SendTimeoutError::Disconnected(value));
         }
 
-        if !actor::wait_until(deadline) {
-            let mut lock = self.lock.lock().unwrap();
+        match self.meet_receiver(value, lock) {
+            Ok(_) => return Ok(()),
+            Err((v, l)) => {
+                value = v;
+                lock = l;
+            }
+        }
+
+        actor::reset();
+        let cell = UnsafeCell::new(Some(value));
+        lock.senders.register(Some(&cell));
+        drop(lock);
+
+        let timed_out = !actor::wait_until(deadline);
+        let mut lock = self.lock.lock().unwrap();
+
+        if timed_out {
             lock.senders.unregister();
-
             let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
-            return Err(SendTimeoutError::Timeout(v));
-        }
-
-        let _lock = self.lock.lock().unwrap();
-
-        if actor::selected() == 1 {
+            Err(SendTimeoutError::Timeout(v))
+        } else if actor::selected() == 1 {
             let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
-            return Err(SendTimeoutError::Disconnected(v));
+            Err(SendTimeoutError::Disconnected(v))
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
@@ -221,36 +164,33 @@ impl<T> Queue<T> {
     }
 
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
-        let cell;
-        {
-            let mut lock = self.lock.lock().unwrap();
-
-            if lock.closed {
-                return Err(RecvTimeoutError::Disconnected);
-            }
-
-            match self.meet_sender(lock) {
-                Ok((v, _)) => return Ok(v),
-                Err(l) => lock = l,
-            }
-
-            actor::reset();
-            cell = UnsafeCell::new(None);
-            lock.receivers.register(Some(&cell));
-        }
-
-        if !actor::wait_until(deadline) {
-            self.lock.lock().unwrap().receivers.unregister();
-            return Err(RecvTimeoutError::Timeout);
-        }
-
-        if actor::selected() == 1 {
+        let mut lock = self.lock.lock().unwrap();
+        if lock.closed {
             return Err(RecvTimeoutError::Disconnected);
         }
 
-        let _lock = self.lock.lock().unwrap();
-        let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
-        Ok(v)
+        match self.meet_sender(lock) {
+            Ok((v, _)) => return Ok(v),
+            Err(l) => lock = l,
+        }
+
+        actor::reset();
+        let cell = UnsafeCell::new(None);
+        lock.receivers.register(Some(&cell));
+        drop(lock);
+
+        let timed_out = !actor::wait_until(deadline);
+        let mut lock = self.lock.lock().unwrap();
+
+        if timed_out {
+            lock.receivers.unregister();
+            Err(RecvTimeoutError::Timeout)
+        } else if actor::selected() == 1 {
+            Err(RecvTimeoutError::Disconnected)
+        } else {
+            let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
+            Ok(v)
+        }
     }
 
     pub fn has_senders(&self) -> bool {

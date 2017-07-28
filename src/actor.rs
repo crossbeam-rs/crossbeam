@@ -68,9 +68,9 @@ pub fn request_take<T>(id: usize) -> T {
     assert!(!req.is_null());
 
     unsafe {
-        let thread = (*req).actor.thread.clone();
-        let v = (*(*req).data.get()).take().unwrap();
-        (*req).actor.select(id);
+        let thread = (*req).actor().thread.clone();
+        let v = (*req).take();
+        (*req).actor().select(id);
         thread.unpark();
         v
     }

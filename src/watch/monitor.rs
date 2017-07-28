@@ -40,26 +40,30 @@ impl Monitor {
     }
 
     pub fn notify_one(&self, id: usize) {
-        let mut actors = self.actors.lock().unwrap();
+        if self.len.load(SeqCst) > 0 {
+            let mut actors = self.actors.lock().unwrap();
 
-        while let Some(a) = actors.pop_front() {
-            self.len.store(actors.len(), SeqCst);
+            while let Some(a) = actors.pop_front() {
+                self.len.store(actors.len(), SeqCst);
 
-            if a.select(id) {
-                a.unpark();
-                break;
+                if a.select(id) {
+                    a.unpark();
+                    break;
+                }
             }
         }
     }
 
     pub fn notify_all(&self, id: usize) {
-        let mut actors = self.actors.lock().unwrap();
+        if self.len.load(SeqCst) > 0 {
+            let mut actors = self.actors.lock().unwrap();
 
-        while let Some(a) = actors.pop_front() {
-            self.len.store(actors.len(), SeqCst);
+            while let Some(a) = actors.pop_front() {
+                self.len.store(actors.len(), SeqCst);
 
-            if a.select(id) {
-                a.unpark();
+                if a.select(id) {
+                    a.unpark();
+                }
             }
         }
     }

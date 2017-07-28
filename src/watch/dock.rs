@@ -8,11 +8,11 @@ use std::time::Instant;
 
 use actor::{self, Actor};
 
-// TODO: hide pub fields
+// TODO: Encapsulate data somehow...
 
 pub struct Request<T> {
-    pub actor: Arc<Actor>,
-    pub data: UnsafeCell<Option<T>>,
+    actor: Arc<Actor>,
+    data: UnsafeCell<Option<T>>,
 }
 
 impl<T> Request<T> {
@@ -23,16 +23,30 @@ impl<T> Request<T> {
         }
     }
 
-    // TODO put(value: T)
-    // TODO take() -> T
+    pub fn actor(&self) -> &Actor {
+        &*self.actor
+    }
+
+    pub unsafe fn put(&self, value: T) {
+        unimplemented!()
+    }
+
+    pub unsafe fn take(&self) -> T {
+        self.data.get().as_mut().unwrap().take().unwrap()
+    }
 }
 
 pub struct Blocked<T> {
-    actor: Arc<Actor>,
-    data: Option<*const UnsafeCell<Option<T>>>,
+    pub actor: Arc<Actor>,
+    pub data: Option<*const UnsafeCell<Option<T>>>,
 }
 
 pub struct Deque<T>(VecDeque<Blocked<T>>);
+
+pub enum Item<T> {
+    Promise,
+    Offer(*const UnsafeCell<Option<T>>),
+}
 
 impl<T> Deque<T> {
     pub fn new() -> Self {
