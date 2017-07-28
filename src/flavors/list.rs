@@ -8,9 +8,9 @@ use std::time::{Instant, Duration};
 
 use coco::epoch::{self, Atomic, Owned};
 
-use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use monitor::Monitor;
 use actor;
+use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use watch::monitor::Monitor;
 
 /// A single node in a queue.
 struct Node<T> {

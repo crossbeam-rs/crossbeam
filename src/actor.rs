@@ -5,25 +5,27 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
+use watch::dock::Request;
+
 // TODO: hide all pub fields
 // TODO: type safe QueueId
 
-pub struct Request<T> {
-    pub actor: Arc<Actor>,
-    pub data: UnsafeCell<Option<T>>,
-}
-
-impl<T> Request<T> {
-    pub fn new(data: Option<T>) -> Self {
-        Request {
-            actor: current(),
-            data: UnsafeCell::new(data),
-        }
-    }
-
-    // TODO put(value: T)
-    // TODO take() -> T
-}
+// pub struct Request<T> {
+//     actor: Arc<Actor>,
+//     pub data: UnsafeCell<Option<T>>,
+// }
+//
+// impl<T> Request<T> {
+//     pub fn new(data: Option<T>) -> Self {
+//         Request {
+//             actor: current(),
+//             data: UnsafeCell::new(data),
+//         }
+//     }
+//
+//     // TODO put(value: T)
+//     // TODO take() -> T
+// }
 
 pub struct Actor {
     select_id: AtomicUsize,

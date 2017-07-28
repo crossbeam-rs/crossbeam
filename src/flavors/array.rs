@@ -7,9 +7,9 @@ use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
 use std::thread;
 use std::time::{Instant, Duration};
 
-use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use monitor::Monitor;
 use actor;
+use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use watch::monitor::Monitor;
 
 // TODO: Should we use Acquire-Release or SeqCst
 

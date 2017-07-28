@@ -14,8 +14,8 @@ pub use select::Select;
 
 mod actor;
 mod err;
-mod impls;
-mod monitor;
+mod flavors;
+mod watch;
 mod select;
 
 // TODO: iterators
@@ -26,11 +26,12 @@ mod select;
 // TODO: The IsReady check must also check for closing (same in *_until methods)
 // TODO: Panic if two selects are running at the same time
 // TODO: Write CSP examples
+// TODO: Use parking_lot?
 
 enum Flavor<T> {
-    Array(impls::array::Queue<T>),
-    List(impls::list::Queue<T>),
-    Zero(impls::zero::Queue<T>),
+    Array(flavors::array::Queue<T>),
+    List(flavors::list::Queue<T>),
+    Zero(flavors::zero::Queue<T>),
 }
 
 struct Queue<T> {
@@ -245,7 +246,7 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let q = Arc::new(Queue {
         senders: AtomicUsize::new(0),
         receivers: AtomicUsize::new(0),
-        flavor: Flavor::List(impls::list::Queue::new()),
+        flavor: Flavor::List(flavors::list::Queue::new()),
     });
     (Sender::new(q.clone()), Receiver::new(q))
 }
@@ -255,9 +256,9 @@ pub fn bounded<T>(size: usize) -> (Sender<T>, Receiver<T>) {
         senders: AtomicUsize::new(0),
         receivers: AtomicUsize::new(0),
         flavor: if size == 0 {
-            Flavor::Zero(impls::zero::Queue::new())
+            Flavor::Zero(flavors::zero::Queue::new())
         } else {
-            Flavor::Array(impls::array::Queue::with_capacity(size))
+            Flavor::Array(flavors::array::Queue::with_capacity(size))
         },
     });
     (Sender::new(q.clone()), Receiver::new(q))

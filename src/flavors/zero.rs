@@ -9,7 +9,8 @@ use std::thread::{self, Thread};
 use std::time::Instant;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use actor::{self, Actor, Request};
+use actor::{self, Actor};
+use watch::dock::Request;
 
 struct Blocked<T> {
     actor: Arc<Actor>,
@@ -94,25 +95,23 @@ impl<T> Queue<T> {
         mut lock: MutexGuard<'a, Inner<T>>,
     ) -> Result<MutexGuard<'a, Inner<T>>, (T, MutexGuard<'a, Inner<T>>)> {
         while let Some(f) = lock.receivers.pop() {
-            unsafe {
-                match f.data {
-                    None => {
-                        if f.actor.select(self.id()) {
-                            let req = Request::new(Some(value));
-                            actor::reset();
-                            f.actor.set_request(&req);
-                            drop(lock);
+            match f.data {
+                None => {
+                    if f.actor.select(self.id()) {
+                        let req = Request::new(Some(value));
+                        actor::reset();
+                        f.actor.set_request(&req);
+                        drop(lock);
 
-                            actor::wait();
-                            return Ok(self.lock.lock().unwrap());
-                        }
+                        actor::wait();
+                        return Ok(self.lock.lock().unwrap());
                     }
-                    Some(data) => {
-                        if f.actor.select(self.id()) {
-                            *(*data).get().as_mut().unwrap() = Some(value);
-                            f.actor.unpark();
-                            return Ok(lock);
-                        }
+                }
+                Some(data) => {
+                    if f.actor.select(self.id()) {
+                        unsafe { *(*data).get().as_mut().unwrap() = Some(value) };
+                        f.actor.unpark();
+                        return Ok(lock);
                     }
                 }
             }
@@ -125,27 +124,25 @@ impl<T> Queue<T> {
         mut lock: MutexGuard<'a, Inner<T>>,
     ) -> Result<(T, MutexGuard<'a, Inner<T>>), MutexGuard<'a, Inner<T>>> {
         while let Some(f) = lock.senders.pop() {
-            unsafe {
-                match f.data {
-                    None => {
-                        if f.actor.select(self.id()) {
-                            let req = Request::new(None);
-                            actor::reset();
-                            f.actor.set_request(&req);
-                            drop(lock);
+            match f.data {
+                None => {
+                    if f.actor.select(self.id()) {
+                        let req = Request::new(None);
+                        actor::reset();
+                        f.actor.set_request(&req);
+                        drop(lock);
 
-                            actor::wait();
-                            let lock = self.lock.lock().unwrap();
-                            let v = req.data.get().as_mut().unwrap().take().unwrap();
-                            return Ok((v, lock));
-                        }
+                        actor::wait();
+                        let lock = self.lock.lock().unwrap();
+                        let v = unsafe { req.data.get().as_mut().unwrap().take().unwrap() };
+                        return Ok((v, lock));
                     }
-                    Some(data) => {
-                        if f.actor.select(self.id()) {
-                            let v = (*data).get().as_mut().unwrap().take().unwrap();
-                            f.actor.unpark();
-                            return Ok((v, lock));
-                        }
+                }
+                Some(data) => {
+                    if f.actor.select(self.id()) {
+                        let v = unsafe { (*data).get().as_mut().unwrap().take().unwrap() };
+                        f.actor.unpark();
+                        return Ok((v, lock));
                     }
                 }
             }
@@ -193,17 +190,20 @@ impl<T> Queue<T> {
         }
 
         if !actor::wait_until(deadline) {
-            self.lock.lock().unwrap().senders.unregister();
+            let mut lock = self.lock.lock().unwrap();
+            lock.senders.unregister();
+
             let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
             return Err(SendTimeoutError::Timeout(v));
         }
+
+        let _lock = self.lock.lock().unwrap();
 
         if actor::selected() == 1 {
             let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
             return Err(SendTimeoutError::Disconnected(v));
         }
 
-        self.lock.lock().unwrap();
         Ok(())
     }
 
@@ -248,7 +248,7 @@ impl<T> Queue<T> {
             return Err(RecvTimeoutError::Disconnected);
         }
 
-        self.lock.lock().unwrap();
+        let _lock = self.lock.lock().unwrap();
         let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
         Ok(v)
     }

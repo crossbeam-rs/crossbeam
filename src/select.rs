@@ -5,11 +5,10 @@ use std::time::{Duration, Instant};
 
 use rand::{Rng, thread_rng};
 
-use Receiver;
-use Sender;
+use {Flavor, Sender, Receiver};
+use actor::{self, ACTOR, Actor};
 use err::{TryRecvError, TrySendError};
-use actor::{self, ACTOR, Actor, Request};
-use Flavor;
+use watch::dock::Request;
 
 // TODO: What if send and receive go on the same channel? perhaps sender/receiver for the same
 // channel should have different ids!!!!
