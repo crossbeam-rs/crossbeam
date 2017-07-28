@@ -2,7 +2,6 @@ extern crate coco;
 extern crate crossbeam;
 extern crate rand;
 
-use std::cell::UnsafeCell;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
@@ -27,6 +26,7 @@ mod select;
 // TODO: Panic if two selects are running at the same time
 // TODO: Write CSP examples
 // TODO: Use parking_lot?
+// TODO: Use CachePadded
 
 enum Flavor<T> {
     Array(flavors::array::Queue<T>),

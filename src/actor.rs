@@ -1,4 +1,3 @@
-use std::cell::UnsafeCell;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
@@ -9,23 +8,6 @@ use watch::dock::Request;
 
 // TODO: hide all pub fields
 // TODO: type safe QueueId
-
-// pub struct Request<T> {
-//     actor: Arc<Actor>,
-//     pub data: UnsafeCell<Option<T>>,
-// }
-//
-// impl<T> Request<T> {
-//     pub fn new(data: Option<T>) -> Self {
-//         Request {
-//             actor: current(),
-//             data: UnsafeCell::new(data),
-//         }
-//     }
-//
-//     // TODO put(value: T)
-//     // TODO take() -> T
-// }
 
 pub struct Actor {
     select_id: AtomicUsize,
@@ -68,9 +50,9 @@ pub fn request_take<T>(id: usize) -> T {
     assert!(!req.is_null());
 
     unsafe {
-        let thread = (*req).actor().thread.clone();
-        let v = (*req).take();
-        (*req).actor().select(id);
+        let thread = (*req).actor.thread.clone();
+        let v = (*req).packet.take();
+        (*req).actor.select(id);
         thread.unpark();
         v
     }

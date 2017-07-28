@@ -1,73 +1,80 @@
-use std::cell::UnsafeCell;
 use std::collections::VecDeque;
-use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::SeqCst;
-use std::thread::{self, Thread, ThreadId};
-use std::time::Instant;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use actor::{self, Actor};
 
-// TODO: Encapsulate data somehow...
+pub struct Packet<T>(Mutex<Option<T>>);
+
+impl<T> Packet<T> {
+    pub fn new(data: Option<T>) -> Self {
+        Packet(Mutex::new(data))
+    }
+
+    pub fn put(&self, data: T) {
+        let mut opt = self.0.lock().unwrap();
+        assert!(opt.is_none());
+        *opt = Some(data);
+    }
+
+    pub fn take(&self) -> T {
+        self.0.lock().unwrap().take().unwrap()
+    }
+}
 
 pub struct Request<T> {
-    actor: Arc<Actor>,
-    data: UnsafeCell<Option<T>>,
+    pub actor: Arc<Actor>,
+    pub packet: Packet<T>,
 }
 
 impl<T> Request<T> {
     pub fn new(data: Option<T>) -> Self {
         Request {
             actor: actor::current(),
-            data: UnsafeCell::new(data),
+            packet: Packet::new(data),
         }
     }
-
-    pub fn actor(&self) -> &Actor {
-        &*self.actor
-    }
-
-    pub unsafe fn put(&self, value: T) {
-        unimplemented!()
-    }
-
-    pub unsafe fn take(&self) -> T {
-        self.data.get().as_mut().unwrap().take().unwrap()
-    }
 }
 
-pub struct Blocked<T> {
-    pub actor: Arc<Actor>,
-    pub data: Option<*const UnsafeCell<Option<T>>>,
+pub enum Entry<T> {
+    Promise { actor: Arc<Actor> },
+    Offer {
+        actor: Arc<Actor>,
+        packet: *const Packet<T>,
+    },
 }
 
-pub struct Deque<T>(VecDeque<Blocked<T>>);
+pub struct Dock<T>(VecDeque<Entry<T>>);
 
-pub enum Item<T> {
-    Promise,
-    Offer(*const UnsafeCell<Option<T>>),
-}
-
-impl<T> Deque<T> {
+impl<T> Dock<T> {
     pub fn new() -> Self {
-        Deque(VecDeque::new())
+        Dock(VecDeque::new())
     }
 
-    pub fn pop(&mut self) -> Option<Blocked<T>> {
+    pub fn pop(&mut self) -> Option<Entry<T>> {
         self.0.pop_front()
     }
 
-    pub fn register(&mut self, data: Option<*const UnsafeCell<Option<T>>>) {
-        self.0.push_back(Blocked {
+    pub fn register_offer(&mut self, packet: *const Packet<T>) {
+        self.0.push_back(Entry::Offer {
             actor: actor::current(),
-            data,
+            packet,
+        });
+    }
+
+    pub fn register_promise(&mut self) {
+        self.0.push_back(Entry::Promise {
+            actor: actor::current(),
         });
     }
 
     pub fn unregister(&mut self) {
-        // TODO: data argument
         let id = thread::current().id();
-        self.0.retain(|s| s.actor.thread_id() != id); // TODO: use find, enumerate, remove with data argument?
+        self.0.retain(|s| match *s {
+            Entry::Promise { ref actor } => actor.thread_id() != id,
+            Entry::Offer { ref actor, .. } => actor.thread_id() != id,
+        });
+        self.maybe_shrink();
     }
 
     pub fn is_empty(&self) -> bool {
@@ -76,9 +83,26 @@ impl<T> Deque<T> {
 
     pub fn notify_all(&mut self) {
         for t in self.0.drain(..) {
-            if t.actor.select(1) {
-                t.actor.unpark();
+            let actor = match t {
+                Entry::Promise { actor } => actor,
+                Entry::Offer { actor, .. } => actor,
+            };
+            if actor.select(1) {
+                actor.unpark();
             }
         }
+        self.maybe_shrink();
+    }
+
+    pub fn maybe_shrink(&mut self) {
+        if self.0.capacity() > 32 && self.0.capacity() / 2 > self.0.len() {
+            self.0.shrink_to_fit();
+        }
+    }
+}
+
+impl<T> Drop for Dock<T> {
+    fn drop(&mut self) {
+        debug_assert!(self.is_empty());
     }
 }

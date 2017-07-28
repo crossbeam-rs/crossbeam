@@ -5,11 +5,11 @@ use std::time::Instant;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use actor::{self, Actor};
-use watch::dock::{Deque, Request};
+use watch::dock::{Dock, Request, Entry, Packet};
 
 struct Inner<T> {
-    senders: Deque<T>,
-    receivers: Deque<T>,
+    senders: Dock<T>,
+    receivers: Dock<T>,
     closed: bool,
 }
 
@@ -17,22 +17,19 @@ pub struct Queue<T> {
     lock: Mutex<Inner<T>>,
 }
 
-unsafe impl<T: Send> Send for Queue<T> {}
-unsafe impl<T: Send> Sync for Queue<T> {}
-
 impl<T> Queue<T> {
     pub fn new() -> Self {
         Queue {
             lock: Mutex::new(Inner {
-                senders: Deque::new(),
-                receivers: Deque::new(),
+                senders: Dock::new(),
+                receivers: Dock::new(),
                 closed: false,
             }),
         }
     }
 
     pub fn promise_recv(&self) {
-        self.lock.lock().unwrap().receivers.register(None);
+        self.lock.lock().unwrap().receivers.register_promise();
     }
 
     pub fn unpromise_recv(&self) {
@@ -44,59 +41,60 @@ impl<T> Queue<T> {
         value: T,
         mut lock: MutexGuard<'a, Inner<T>>,
     ) -> Result<MutexGuard<'a, Inner<T>>, (T, MutexGuard<'a, Inner<T>>)> {
-        while let Some(f) = lock.receivers.pop() {
-            match f.data {
-                None => {
-                    if f.actor.select(self.id()) {
+        loop {
+            match lock.receivers.pop() {
+                None => return Err((value, lock)),
+                Some(Entry::Promise { actor: a }) => {
+                    if a.select(self.id()) {
                         let req = Request::new(Some(value));
                         actor::reset();
-                        f.actor.set_request(&req);
+                        a.set_request(&req);
                         drop(lock);
 
                         actor::wait();
                         return Ok(self.lock.lock().unwrap());
                     }
                 }
-                Some(data) => {
-                    if f.actor.select(self.id()) {
-                        unsafe { *(*data).get().as_mut().unwrap() = Some(value) };
-                        f.actor.unpark();
+                Some(Entry::Offer { actor: a, packet }) => {
+                    if a.select(self.id()) {
+                        unsafe { (*packet).put(value); }
+                        a.unpark();
                         return Ok(lock);
                     }
                 }
             }
         }
-        Err((value, lock))
     }
 
     fn meet_sender<'a>(
         &'a self,
         mut lock: MutexGuard<'a, Inner<T>>,
     ) -> Result<(T, MutexGuard<'a, Inner<T>>), MutexGuard<'a, Inner<T>>> {
-        while let Some(f) = lock.senders.pop() {
-            match f.data {
-                None => {
-                    if f.actor.select(self.id()) {
+        loop {
+            match lock.senders.pop() {
+                None => return Err(lock),
+                Some(Entry::Promise { actor: a }) => {
+                    if a.select(self.id()) {
                         let req = Request::new(None);
                         actor::reset();
-                        f.actor.set_request(&req);
+                        a.set_request(&req);
                         drop(lock);
 
                         actor::wait();
                         let lock = self.lock.lock().unwrap();
-                        return unsafe { Ok((req.take(), lock)) };
+                        let v = req.packet.take();
+                        return Ok((v, lock));
                     }
                 }
-                Some(data) => {
-                    if f.actor.select(self.id()) {
-                        let v = unsafe { (*data).get().as_mut().unwrap().take().unwrap() };
-                        f.actor.unpark();
+                Some(Entry::Offer { actor: a, packet }) => {
+                    if a.select(self.id()) {
+                        let v = unsafe { (*packet).take() };
+                        a.unpark();
                         return Ok((v, lock));
                     }
                 }
             }
         }
-        Err(lock)
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -131,20 +129,18 @@ impl<T> Queue<T> {
         }
 
         actor::reset();
-        let cell = UnsafeCell::new(Some(value));
-        lock.senders.register(Some(&cell));
+        let packet = Packet::new(Some(value));
+        lock.senders.register_offer(&packet);
         drop(lock);
 
         let timed_out = !actor::wait_until(deadline);
         let mut lock = self.lock.lock().unwrap();
+        lock.senders.unregister();
 
         if timed_out {
-            lock.senders.unregister();
-            let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
-            Err(SendTimeoutError::Timeout(v))
+            Err(SendTimeoutError::Timeout(packet.take()))
         } else if actor::selected() == 1 {
-            let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
-            Err(SendTimeoutError::Disconnected(v))
+            Err(SendTimeoutError::Disconnected(packet.take()))
         } else {
             Ok(())
         }
@@ -175,21 +171,20 @@ impl<T> Queue<T> {
         }
 
         actor::reset();
-        let cell = UnsafeCell::new(None);
-        lock.receivers.register(Some(&cell));
+        let packet = Packet::new(None);
+        lock.receivers.register_offer(&packet);
         drop(lock);
 
         let timed_out = !actor::wait_until(deadline);
         let mut lock = self.lock.lock().unwrap();
+        lock.receivers.unregister();
 
         if timed_out {
-            lock.receivers.unregister();
             Err(RecvTimeoutError::Timeout)
         } else if actor::selected() == 1 {
             Err(RecvTimeoutError::Disconnected)
         } else {
-            let v = unsafe { cell.get().as_mut().unwrap().take().unwrap() };
-            Ok(v)
+            Ok(packet.take())
         }
     }
 

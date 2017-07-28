@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::thread::{self, Thread};
+use std::thread;
 
 use actor::{self, Actor};
 
@@ -71,10 +71,7 @@ impl Monitor {
 
 impl Drop for Monitor {
     fn drop(&mut self) {
-        if cfg!(debug_assertions) {
-            let actors = self.actors.lock().unwrap();
-            debug_assert_eq!(actors.len(), 0);
-            debug_assert_eq!(self.len.load(SeqCst), 0);
-        }
+        debug_assert!(self.actors.lock().unwrap().is_empty());
+        debug_assert_eq!(self.len.load(SeqCst), 0);
     }
 }

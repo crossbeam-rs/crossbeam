@@ -11,8 +11,6 @@ use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use watch::monitor::Monitor;
 
-// TODO: Should we use Acquire-Release or SeqCst
-
 struct Node<T> {
     lap: AtomicUsize,
     value: T,
@@ -36,9 +34,6 @@ pub struct Queue<T> {
     _marker: PhantomData<T>,
 }
 
-unsafe impl<T: Send> Send for Queue<T> {}
-unsafe impl<T: Send> Sync for Queue<T> {}
-
 impl<T> Queue<T> {
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0);
@@ -49,22 +44,21 @@ impl<T> Queue<T> {
         let mut v = Vec::with_capacity(cap);
         let buffer = v.as_mut_ptr();
         mem::forget(v);
-        unsafe { ptr::write_bytes(buffer, 0, cap) }
+
+        unsafe { ptr::write_bytes(buffer, 0, cap); }
 
         Queue {
+            _pad0: [0; 64],
+            _pad1: [0; 64],
+            _pad2: [0; 64],
             buffer: buffer,
             cap: cap,
             power: power,
-            _pad0: unsafe { mem::uninitialized() },
             head: AtomicUsize::new(power),
-            _pad1: unsafe { mem::uninitialized() },
             tail: AtomicUsize::new(0),
-            _pad2: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
-
             senders: Monitor::new(),
             receivers: Monitor::new(),
-
             _marker: PhantomData,
         }
     }

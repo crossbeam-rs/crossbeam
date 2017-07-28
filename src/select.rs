@@ -215,7 +215,8 @@ impl State {
             }
             State::Subscribe => {
                 match tx.0.flavor {
-                    Flavor::List(ref q) => unimplemented!(),//q.monitor_tx().register(), // TODO: rename to monitor_senders? mon_senders? send_monitor?
+                    // TODO: rename to monitor_senders? mon_senders? send_monitor?
+                    Flavor::List(ref q) => {},
                     Flavor::Array(ref q) => q.monitor_tx().register(),
                     Flavor::Zero(ref q) => unimplemented!(),//q.promise_send(),
                 }
@@ -227,7 +228,8 @@ impl State {
             }
             State::Unsubscribe => {
                 match tx.0.flavor {
-                    Flavor::List(ref q) => unimplemented!(),//q.monitor_tx().unregister(), // TODO: rename to monitor_send?
+                    // TODO: rename to monitor_send?
+                    Flavor::List(ref q) => {},
                     Flavor::Array(ref q) => q.monitor_tx().unregister(),
                     Flavor::Zero(ref q) => unimplemented!(),//q.unpromise_send(),
                 }

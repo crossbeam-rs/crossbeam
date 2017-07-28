@@ -40,20 +40,18 @@ pub struct Queue<T> {
     _marker: PhantomData<T>,
 }
 
-unsafe impl<T: Send> Send for Queue<T> {}
-unsafe impl<T: Send> Sync for Queue<T> {}
-
 impl<T> Queue<T> {
     pub fn new() -> Self {
         // Initialize the internal representation of the queue.
         let queue = Queue {
+            _pad0: [0; 64],
+            _pad1: [0; 64],
             head: Atomic::null(),
-            _pad0: unsafe { mem::uninitialized() },
             tail: Atomic::null(),
-            _pad1: unsafe { mem::uninitialized() },
             closed: AtomicBool::new(false),
             receivers: Monitor::new(),
 
+            // TODO: rename these
             sends: AtomicUsize::new(0),
             recvs: AtomicUsize::new(0),
 
@@ -97,8 +95,9 @@ impl<T> Queue<T> {
         const USE: usize = 1;
         const MULTI: usize = 2;
 
+        // TODO: finer grained unsafe code
         return unsafe {
-            epoch::unprotected(|scope| unsafe {
+            epoch::unprotected(|scope| {
                 if self.head.load(Relaxed, scope).tag() & MULTI == 0 {
                     loop {
                         let head = self.head.fetch_or(USE, SeqCst, scope);
