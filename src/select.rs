@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use rand::{Rng, thread_rng};
 
 use {Flavor, Sender, Receiver};
-use actor::{self, ACTOR, Actor};
+use actor;
 use err::{TryRecvError, TrySendError};
 use watch::dock::Request;
 
@@ -175,7 +175,7 @@ impl State {
         match *self {
             State::Try { any_open } => {
                 if any_open {
-                    actor::reset();
+                    actor::current().reset();
                     *self = State::Subscribe;
                 } else {
                     *self = State::Disconnected;
@@ -183,7 +183,7 @@ impl State {
             }
             State::Subscribe => *self = State::IsReady,
             State::IsReady => {
-                actor::wait_until(deadline);
+                actor::current().wait_until(deadline);
                 *self = State::Unsubscribe;
             }
             State::Unsubscribe => *self = State::FinalTry, // TODO: before going to finaltry we should reset and use FinalTry { selected_id: usize }
@@ -216,7 +216,7 @@ impl State {
             State::Subscribe => {
                 match tx.0.flavor {
                     // TODO: rename to monitor_senders? mon_senders? send_monitor?
-                    Flavor::List(ref q) => {},
+                    Flavor::List(ref q) => {}
                     Flavor::Array(ref q) => q.monitor_tx().register(),
                     Flavor::Zero(ref q) => unimplemented!(),//q.promise_send(),
                 }
@@ -229,13 +229,13 @@ impl State {
             State::Unsubscribe => {
                 match tx.0.flavor {
                     // TODO: rename to monitor_send?
-                    Flavor::List(ref q) => {},
+                    Flavor::List(ref q) => {}
                     Flavor::Array(ref q) => q.monitor_tx().unregister(),
                     Flavor::Zero(ref q) => unimplemented!(),//q.unpromise_send(),
                 }
             }
             State::FinalTry => {
-                if tx.id() == actor::selected() {
+                if tx.id() == actor::current().selected() {
                     match tx.0.flavor {
                         Flavor::Array(..) | Flavor::List(..) => {
                             match tx.try_send(value) {
@@ -261,7 +261,7 @@ impl State {
         match *self {
             State::Try { ref mut any_open } => {
                 match rx.try_recv() {
-                    Ok(t) => return Ok(t),
+                    Ok(v) => return Ok(v),
                     Err(TryRecvError::Disconnected) => {}
                     Err(TryRecvError::Empty) => *any_open = true,
                 }
@@ -286,14 +286,17 @@ impl State {
                 }
             }
             State::FinalTry => {
-                if rx.id() == actor::selected() {
+                if rx.id() == actor::current().selected() {
                     match rx.0.flavor {
                         Flavor::Array(..) | Flavor::List(..) => {
-                            if let Ok(t) = rx.try_recv() {
-                                return Ok(t);
+                            if let Ok(v) = rx.try_recv() {
+                                return Ok(v);
                             }
                         }
-                        Flavor::Zero(ref q) => return Ok(actor::request_take(rx.id())),
+                        Flavor::Zero(ref q) => {
+                            let v = unsafe { actor::current().take_request(rx.id()) };
+                            return Ok(v);
+                        }
                     }
                 }
             }

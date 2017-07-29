@@ -15,65 +15,6 @@ pub struct Actor {
     thread: Thread,
 }
 
-thread_local! {
-    pub static ACTOR: Arc<Actor> = Arc::new(Actor {
-        select_id: AtomicUsize::new(0),
-        request_ptr: AtomicUsize::new(0),
-        thread: thread::current(),
-    });
-}
-
-pub fn current() -> Arc<Actor> {
-    ACTOR.with(|a| a.clone())
-}
-
-pub fn reset() {
-    ACTOR.with(|a| {
-        a.select_id.store(0, SeqCst);
-        a.request_ptr.store(0, SeqCst);
-    });
-}
-
-pub fn selected() -> usize {
-    ACTOR.with(|a| a.select_id.load(SeqCst))
-}
-
-pub fn wait() {
-    while ACTOR.with(|a| a.select_id.load(SeqCst)) == 0 {
-        thread::park();
-    }
-}
-
-pub fn request_take<T>(id: usize) -> T {
-    let req =
-        ACTOR.with(|a| a.request_ptr.swap(0, SeqCst)) as *const Request<T>;
-    assert!(!req.is_null());
-
-    unsafe {
-        let thread = (*req).actor.thread.clone();
-        let v = (*req).packet.take();
-        (*req).actor.select(id);
-        thread.unpark();
-        v
-    }
-}
-
-pub fn wait_until(deadline: Option<Instant>) -> bool {
-    while ACTOR.with(|a| a.select_id.load(SeqCst)) == 0 {
-        let now = Instant::now();
-        if let Some(end) = deadline {
-            if now < end {
-                thread::park_timeout(end - now);
-            } else if ACTOR.with(|a| a.select_id.compare_and_swap(0, 1, SeqCst)) == 0 {
-                return false;
-            }
-        } else {
-            thread::park();
-        }
-    }
-    true
-}
-
 impl Actor {
     pub fn select(&self, id: usize) -> bool {
         self.select_id.compare_and_swap(0, id, SeqCst) == 0
@@ -90,4 +31,56 @@ impl Actor {
     pub fn thread_id(&self) -> ThreadId {
         self.thread.id()
     }
+
+    pub fn reset(&self) {
+        self.select_id.store(0, SeqCst);
+        self.request_ptr.store(0, SeqCst);
+    }
+
+    pub fn selected(&self) -> usize {
+        self.select_id.load(SeqCst)
+    }
+
+    pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
+        while self.select_id.load(SeqCst) == 0 {
+            let now = Instant::now();
+
+            if let Some(end) = deadline {
+                if now < end {
+                    thread::park_timeout(end - now);
+                } else if self.select_id.compare_and_swap(0, 1, SeqCst) == 0 {
+                    return false;
+                }
+            } else {
+                thread::park();
+            }
+        }
+
+        true
+    }
+
+    pub unsafe fn take_request<T>(&self, id: usize) -> T {
+        let req = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
+        assert!(!req.is_null());
+
+        unsafe {
+            let thread = (*req).actor.thread.clone();
+            let v = (*req).packet.take();
+            (*req).actor.select(id);
+            thread.unpark();
+            v
+        }
+    }
+}
+
+thread_local! {
+    static ACTOR: Arc<Actor> = Arc::new(Actor {
+        select_id: AtomicUsize::new(0),
+        request_ptr: AtomicUsize::new(0),
+        thread: thread::current(),
+    });
+}
+
+pub fn current() -> Arc<Actor> {
+    ACTOR.with(|a| a.clone())
 }

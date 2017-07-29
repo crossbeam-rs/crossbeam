@@ -27,6 +27,7 @@ mod select;
 // TODO: Write CSP examples
 // TODO: Use parking_lot?
 // TODO: Use CachePadded
+// TODO: select with recv & send on the same channel (all flavors) should work. Perhaps notify_one() must skip the current thread
 
 enum Flavor<T> {
     Array(flavors::array::Queue<T>),

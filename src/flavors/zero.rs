@@ -28,65 +28,56 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn promise_recv(&self) {
-        self.lock.lock().unwrap().receivers.register_promise();
-    }
-
-    pub fn unpromise_recv(&self) {
-        self.lock.lock().unwrap().receivers.unregister();
-    }
-
     fn meet_receiver<'a>(
         &'a self,
         value: T,
         mut lock: MutexGuard<'a, Inner<T>>,
     ) -> Result<MutexGuard<'a, Inner<T>>, (T, MutexGuard<'a, Inner<T>>)> {
-        loop {
-            match lock.receivers.pop() {
-                None => return Err((value, lock)),
-                Some(Entry::Promise { actor: a }) => {
-                    if a.select(self.id()) {
+        while let Some(entry) = lock.receivers.pop() {
+            match entry {
+                Entry::Promise { actor } => {
+                    if actor.select(self.id()) {
                         let req = Request::new(Some(value));
-                        actor::reset();
-                        a.set_request(&req);
+                        actor::current().reset();
+                        actor.set_request(&req);
                         drop(lock);
 
-                        actor::wait();
+                        actor::current().wait_until(None);
                         return Ok(self.lock.lock().unwrap());
                     }
                 }
-                Some(Entry::Offer { actor: a, packet }) => {
-                    if a.select(self.id()) {
-                        unsafe { (*packet).put(value); }
-                        a.unpark();
+                Entry::Offer { actor, packet } => {
+                    if actor.select(self.id()) {
+                        unsafe { (*packet).put(value) }
+                        actor.unpark();
                         return Ok(lock);
                     }
                 }
             }
         }
+        Err((value, lock))
     }
 
     fn meet_sender<'a>(
         &'a self,
         mut lock: MutexGuard<'a, Inner<T>>,
     ) -> Result<(T, MutexGuard<'a, Inner<T>>), MutexGuard<'a, Inner<T>>> {
-        loop {
-            match lock.senders.pop() {
-                None => return Err(lock),
-                Some(Entry::Promise { actor: a }) => {
+        while let Some(entry) = lock.senders.pop() {
+            match entry {
+                Entry::Promise { actor: a } => {
                     if a.select(self.id()) {
                         let req = Request::new(None);
-                        actor::reset();
+                        actor::current().reset();
                         a.set_request(&req);
                         drop(lock);
 
-                        actor::wait();
+                        actor::current().wait_until(None);
                         let lock = self.lock.lock().unwrap();
                         let v = req.packet.take();
                         return Ok((v, lock));
                     }
                 }
-                Some(Entry::Offer { actor: a, packet }) => {
+                Entry::Offer { actor: a, packet } => {
                     if a.select(self.id()) {
                         let v = unsafe { (*packet).take() };
                         a.unpark();
@@ -95,6 +86,15 @@ impl<T> Queue<T> {
                 }
             }
         }
+        Err(lock)
+    }
+
+    pub fn promise_recv(&self) {
+        self.lock.lock().unwrap().receivers.register_promise();
+    }
+
+    pub fn unpromise_recv(&self) {
+        self.lock.lock().unwrap().receivers.unregister();
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -128,18 +128,18 @@ impl<T> Queue<T> {
             }
         }
 
-        actor::reset();
+        actor::current().reset();
         let packet = Packet::new(Some(value));
         lock.senders.register_offer(&packet);
         drop(lock);
 
-        let timed_out = !actor::wait_until(deadline);
+        let timed_out = !actor::current().wait_until(deadline);
         let mut lock = self.lock.lock().unwrap();
         lock.senders.unregister();
 
         if timed_out {
             Err(SendTimeoutError::Timeout(packet.take()))
-        } else if actor::selected() == 1 {
+        } else if actor::current().selected() == 1 {
             Err(SendTimeoutError::Disconnected(packet.take()))
         } else {
             Ok(())
@@ -170,18 +170,18 @@ impl<T> Queue<T> {
             Err(l) => lock = l,
         }
 
-        actor::reset();
+        actor::current().reset();
         let packet = Packet::new(None);
         lock.receivers.register_offer(&packet);
         drop(lock);
 
-        let timed_out = !actor::wait_until(deadline);
+        let timed_out = !actor::current().wait_until(deadline);
         let mut lock = self.lock.lock().unwrap();
         lock.receivers.unregister();
 
         if timed_out {
             Err(RecvTimeoutError::Timeout)
-        } else if actor::selected() == 1 {
+        } else if actor::current().selected() == 1 {
             Err(RecvTimeoutError::Disconnected)
         } else {
             Ok(packet.take())

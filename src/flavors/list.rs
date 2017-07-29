@@ -25,18 +25,17 @@ struct Node<T> {
 pub struct Queue<T> {
     /// Head of the queue.
     head: Atomic<Node<T>>,
-    recvs: AtomicUsize,
+    recv_count: AtomicUsize,
     /// Some padding to avoid false sharing.
     _pad0: [u8; 64],
     /// Tail ofthe queue.
     tail: Atomic<Node<T>>,
-    sends: AtomicUsize,
+    send_count: AtomicUsize,
     /// Some padding to avoid false sharing.
     _pad1: [u8; 64],
     /// TODO
     closed: AtomicBool,
     receivers: Monitor,
-
     _marker: PhantomData<T>,
 }
 
@@ -50,11 +49,8 @@ impl<T> Queue<T> {
             tail: Atomic::null(),
             closed: AtomicBool::new(false),
             receivers: Monitor::new(),
-
-            // TODO: rename these
-            sends: AtomicUsize::new(0),
-            recvs: AtomicUsize::new(0),
-
+            send_count: AtomicUsize::new(0),
+            recv_count: AtomicUsize::new(0),
             _marker: PhantomData,
         };
 
@@ -85,7 +81,7 @@ impl<T> Queue<T> {
             epoch::unprotected(|scope| {
                 let new = node.into_ptr(scope);
                 let old = self.tail.swap(new, SeqCst, scope);
-                self.sends.fetch_add(1, SeqCst);
+                self.send_count.fetch_add(1, SeqCst);
                 old.deref().next.store(new, SeqCst);
             })
         }
@@ -122,7 +118,7 @@ impl<T> Queue<T> {
                                 .compare_and_swap(head.with_tag(USE), next, SeqCst, scope)
                                 .is_ok()
                             {
-                                self.recvs.fetch_add(1, SeqCst);
+                                self.recv_count.fetch_add(1, SeqCst);
                                 Vec::from_raw_parts(head.as_raw() as *mut Node<T>, 0, 1);
                                 return Some(value);
                             }
@@ -151,7 +147,7 @@ impl<T> Queue<T> {
                             .compare_and_swap(head, next.with_tag(MULTI), SeqCst, scope)
                             .is_ok()
                         {
-                            self.recvs.fetch_add(1, SeqCst);
+                            self.recv_count.fetch_add(1, SeqCst);
                             scope.defer_free(head);
                             return Some(ptr::read(&next.deref().value));
                         }
@@ -165,11 +161,11 @@ impl<T> Queue<T> {
 
     pub fn len(&self) -> usize {
         loop {
-            let sends = self.sends.load(SeqCst);
-            let recvs = self.recvs.load(SeqCst);
+            let send_count = self.send_count.load(SeqCst);
+            let recv_count = self.recv_count.load(SeqCst);
 
-            if self.sends.load(SeqCst) == sends {
-                return sends.wrapping_sub(recvs);
+            if self.send_count.load(SeqCst) == send_count {
+                return send_count.wrapping_sub(recv_count);
             }
 
             thread::yield_now();
@@ -221,9 +217,10 @@ impl<T> Queue<T> {
                 Err(TryRecvError::Empty) => {}
             }
 
-            actor::reset();
+            actor::current().reset();
             self.receivers.register();
-            let timed_out = !self.is_closed() && self.len() == 0 && !actor::wait_until(deadline);
+            let timed_out =
+                !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
             self.receivers.unregister();
 
             if timed_out {
@@ -234,11 +231,11 @@ impl<T> Queue<T> {
 
     pub fn close(&self) -> bool {
         if self.closed.swap(true, SeqCst) {
-            return false;
+            false
+        } else {
+            self.receivers.notify_all(self.id());
+            true
         }
-
-        self.receivers.notify_all(self.id());
-        true
     }
 
     pub fn is_closed(&self) -> bool {

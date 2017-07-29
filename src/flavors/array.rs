@@ -27,10 +27,8 @@ pub struct Queue<T> {
     tail: AtomicUsize,
     _pad2: [u8; 64],
     closed: AtomicBool,
-
     senders: Monitor,
     receivers: Monitor,
-
     _marker: PhantomData<T>,
 }
 
@@ -45,7 +43,9 @@ impl<T> Queue<T> {
         let buffer = v.as_mut_ptr();
         mem::forget(v);
 
-        unsafe { ptr::write_bytes(buffer, 0, cap); }
+        unsafe {
+            ptr::write_bytes(buffer, 0, cap);
+        }
 
         Queue {
             _pad0: [0; 64],
@@ -193,10 +193,10 @@ impl<T> Queue<T> {
                 Err(TrySendError::Full(v)) => value = v,
             }
 
-            actor::reset();
+            actor::current().reset();
             self.senders.register();
-            let timed_out =
-                !self.is_closed() && self.len() == self.cap && !actor::wait_until(deadline);
+            let timed_out = !self.is_closed() && self.len() == self.cap &&
+                !actor::current().wait_until(deadline);
             self.senders.unregister();
 
             if timed_out {
@@ -229,9 +229,10 @@ impl<T> Queue<T> {
                 Err(TryRecvError::Empty) => {}
             }
 
-            actor::reset();
+            actor::current().reset();
             self.receivers.register();
-            let timed_out = !self.is_closed() && self.len() == 0 && !actor::wait_until(deadline);
+            let timed_out =
+                !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
             self.receivers.unregister();
 
             if timed_out {
@@ -246,12 +247,12 @@ impl<T> Queue<T> {
 
     pub fn close(&self) -> bool {
         if self.closed.swap(true, SeqCst) {
-            return false;
+            false
+        } else {
+            self.senders.notify_all(1);
+            self.receivers.notify_all(1);
+            true
         }
-
-        self.senders.notify_all(1);
-        self.receivers.notify_all(1);
-        true
     }
 
     pub fn is_closed(&self) -> bool {
@@ -278,13 +279,17 @@ impl<T> Drop for Queue<T> {
         let buffer = self.buffer;
 
         let head = self.head.load(Relaxed);
-        let pos = head & (power - 1);
+        let mut pos = head & (power - 1);
 
         unsafe {
-            for i in 0..self.len() {
-                let index = (pos + i) & (power - 1);
-                let cell = (*buffer.offset(index as isize)).get();
+            for _ in 0..self.len() {
+                let cell = (*buffer.offset(pos as isize)).get();
                 ptr::drop_in_place(cell);
+
+                pos += 1;
+                if pos == self.cap {
+                    pos = 0;
+                }
             }
 
             Vec::from_raw_parts(buffer, 0, cap);
