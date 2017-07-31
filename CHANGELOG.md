@@ -1,3 +1,14 @@
+# Version 0.3
+
+- Introduced `ScopedThreadBuilder` with the ability to name threads and set stack size
+- `Worker` methods don't require mutable access anymore
+- Fixed a bug when unblocking `pop()` in `MsQueue`
+- Implemented `Drop` for `MsQueue`, `SegQueue`, and `TreiberStack`
+- Implemented `Default` for `TreiberStack`
+- Added `is_empty` to `SegQueue`
+- Renamed `mem::epoch` to `epoch`
+- Other bug fixes
+
 # Version 0.2
 
 - Changed existing non-blocking `pop` methods to `try_pop`
