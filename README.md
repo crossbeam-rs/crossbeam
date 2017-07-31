@@ -28,7 +28,7 @@ To use Crossbeam, add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam = "0.2"
+crossbeam = "0.3"
 ```
 
 For examples of what Crossbeam is capable of, see the
