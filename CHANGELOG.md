@@ -1,7 +1,7 @@
 # Version 0.3
 
 - Introduced `ScopedThreadBuilder` with the ability to name threads and set stack size
-- `Worker` methods don't require mutable access anymore
+- `Worker` methods in the Chase-Lev deque don't require mutable access anymore
 - Fixed a bug when unblocking `pop()` in `MsQueue`
 - Implemented `Drop` for `MsQueue`, `SegQueue`, and `TreiberStack`
 - Implemented `Default` for `TreiberStack`
