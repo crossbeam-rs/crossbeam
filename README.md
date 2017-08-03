@@ -34,4 +34,4 @@ crossbeam = "0.3.0"
 For examples of what Crossbeam is capable of, see the
 [documentation][docs].
 
-[docs]: https://docs.rs/crate/crossbeam/
+[docs]: https://docs.rs/crossbeam/
