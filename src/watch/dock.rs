@@ -44,7 +44,16 @@ pub enum Entry<T> {
     },
 }
 
-pub struct Dock<T>(VecDeque<Entry<T>>);
+impl<T> Entry<T> {
+    pub fn is_current(&self) -> bool {
+        match *self {
+            Entry::Promise { ref actor } => actor.thread_id() == thread::current().id(),
+            Entry::Offer { ref actor, .. } => actor.thread_id() == thread::current().id(),
+        }
+    }
+}
+
+pub struct Dock<T>(pub VecDeque<Entry<T>>); // TODO
 
 impl<T> Dock<T> {
     pub fn new() -> Self {

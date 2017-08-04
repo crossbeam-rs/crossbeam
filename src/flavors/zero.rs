@@ -6,6 +6,7 @@ use std::time::Instant;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use actor::{self, Actor};
 use watch::dock::{Dock, Request, Entry, Packet};
+use Backoff;
 
 struct Inner<T> {
     senders: Dock<T>,
@@ -33,21 +34,23 @@ impl<T> Queue<T> {
         value: T,
         mut lock: MutexGuard<'a, Inner<T>>,
     ) -> Result<MutexGuard<'a, Inner<T>>, (T, MutexGuard<'a, Inner<T>>)> {
+        // TODO: should ignore the current thread here...
         while let Some(entry) = lock.receivers.pop() {
             match entry {
                 Entry::Promise { actor } => {
-                    if actor.select(self.id()) {
+                    if actor.select(self.rx_id()) {
                         let req = Request::new(Some(value));
                         actor::current().reset();
                         actor.set_request(&req);
                         drop(lock);
 
+                        actor.unpark();
                         actor::current().wait_until(None);
                         return Ok(self.lock.lock().unwrap());
                     }
                 }
                 Entry::Offer { actor, packet } => {
-                    if actor.select(self.id()) {
+                    if actor.select(self.rx_id()) {
                         unsafe { (*packet).put(value) }
                         actor.unpark();
                         return Ok(lock);
@@ -64,29 +67,38 @@ impl<T> Queue<T> {
     ) -> Result<(T, MutexGuard<'a, Inner<T>>), MutexGuard<'a, Inner<T>>> {
         while let Some(entry) = lock.senders.pop() {
             match entry {
-                Entry::Promise { actor: a } => {
-                    if a.select(self.id()) {
+                Entry::Promise { actor } => {
+                    if actor.select(self.tx_id()) {
                         let req = Request::new(None);
                         actor::current().reset();
-                        a.set_request(&req);
+                        actor.set_request(&req);
                         drop(lock);
 
+                        actor.unpark();
                         actor::current().wait_until(None);
                         let lock = self.lock.lock().unwrap();
                         let v = req.packet.take();
                         return Ok((v, lock));
                     }
                 }
-                Entry::Offer { actor: a, packet } => {
-                    if a.select(self.id()) {
+                Entry::Offer { actor, packet } => {
+                    if actor.select(self.tx_id()) {
                         let v = unsafe { (*packet).take() };
-                        a.unpark();
+                        actor.unpark();
                         return Ok((v, lock));
                     }
                 }
             }
         }
         Err(lock)
+    }
+
+    pub fn promise_send(&self) {
+        self.lock.lock().unwrap().senders.register_promise();
+    }
+
+    pub fn unpromise_send(&self) {
+        self.lock.lock().unwrap().senders.unregister();
     }
 
     pub fn promise_recv(&self) {
@@ -120,13 +132,23 @@ impl<T> Queue<T> {
             return Err(SendTimeoutError::Disconnected(value));
         }
 
-        match self.meet_receiver(value, lock) {
-            Ok(_) => return Ok(()),
-            Err((v, l)) => {
-                value = v;
-                lock = l;
+        // let mut backoff = Backoff::new();
+        // loop {
+            match self.meet_receiver(value, lock) {
+                Ok(_) => return Ok(()),
+                Err((v, l)) => {
+                    value = v;
+                    lock = l;
+                }
             }
-        }
+        //     drop(lock);
+        //
+        //     let done = !backoff.tick();
+        //     lock = self.lock.lock().unwrap();
+        //     if done {
+        //         break;
+        //     }
+        // }
 
         actor::current().reset();
         let packet = Packet::new(Some(value));
@@ -213,8 +235,38 @@ impl<T> Queue<T> {
         self.lock.lock().unwrap().closed
     }
 
-    pub fn id(&self) -> usize {
+    pub fn is_ready_tx(&self) -> bool {
+        let lock = self.lock.lock().unwrap();
+        if lock.closed {
+            true
+        } else {
+            match lock.receivers.0.len() {
+                0 => false,
+                1 => !lock.receivers.0[0].is_current(),
+                _ => true,
+            }
+        }
+    }
+
+    pub fn is_ready_rx(&self) -> bool {
+        let lock = self.lock.lock().unwrap();
+        if lock.closed {
+            true
+        } else {
+            match lock.senders.0.len() {
+                0 => false,
+                1 => !lock.senders.0[0].is_current(),
+                _ => true,
+            }
+        }
+    }
+
+    pub fn tx_id(&self) -> usize {
         self as *const _ as usize
+    }
+
+    pub fn rx_id(&self) -> usize {
+        (self as *const _ as usize) | 1
     }
 }
 

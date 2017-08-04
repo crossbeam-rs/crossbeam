@@ -9,9 +9,9 @@ use {Flavor, Sender, Receiver};
 use actor;
 use err::{TryRecvError, TrySendError};
 use watch::dock::Request;
+use Backoff;
 
-// TODO: What if send and receive go on the same channel? perhaps sender/receiver for the same
-// channel should have different ids!!!!
+// TODO: add backoff to select
 
 pub struct Select {
     machine: Machine,
@@ -183,7 +183,9 @@ impl State {
             }
             State::Subscribe => *self = State::IsReady,
             State::IsReady => {
+                // println!("went asleep");
                 actor::current().wait_until(deadline);
+                // println!("woke up");
                 *self = State::Unsubscribe;
             }
             State::Unsubscribe => *self = State::FinalTry, // TODO: before going to finaltry we should reset and use FinalTry { selected_id: usize }
@@ -204,12 +206,18 @@ impl State {
     fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
         match *self {
             State::Try { ref mut any_open } => {
-                match tx.try_send(value) {
-                    Ok(()) => return Ok(()),
-                    Err(TrySendError::Disconnected(v)) => value = v,
-                    Err(TrySendError::Full(v)) => {
-                        value = v;
-                        *any_open = true;
+                let mut backoff = Backoff::new();
+                loop {
+                    match tx.try_send(value) {
+                        Ok(()) => return Ok(()),
+                        Err(TrySendError::Disconnected(v)) => value = v,
+                        Err(TrySendError::Full(v)) => {
+                            value = v;
+                            *any_open = true;
+                        }
+                    }
+                    if !backoff.tick() {
+                        break;
                     }
                 }
             }
@@ -218,23 +226,32 @@ impl State {
                     // TODO: rename to monitor_senders? mon_senders? send_monitor?
                     Flavor::List(ref q) => {}
                     Flavor::Array(ref q) => q.monitor_tx().register(),
-                    Flavor::Zero(ref q) => unimplemented!(),//q.promise_send(),
+                    Flavor::Zero(ref q) => q.promise_send(),
                 }
             }
             State::IsReady => {
-                if tx.is_disconnected() || !tx.is_full() {
-                    actor::current().select(1);
-                }
+                // println!("check if send ready");
+                // TODO: skip it if this is a zero channel and the same thread only is registered
+                // if let Flavor::Zero(ref q) = tx.0.flavor {
+                //     if q.is_ready_tx() {
+                //         actor::current().select(1);
+                //     }
+                // } else {
+                    if tx.is_disconnected() || !tx.is_full() {
+                        actor::current().select(1);
+                    }
+                // }
             }
             State::Unsubscribe => {
                 match tx.0.flavor {
                     // TODO: rename to monitor_send?
                     Flavor::List(ref q) => {}
                     Flavor::Array(ref q) => q.monitor_tx().unregister(),
-                    Flavor::Zero(ref q) => unimplemented!(),//q.unpromise_send(),
+                    Flavor::Zero(ref q) => q.unpromise_send(),
                 }
             }
             State::FinalTry => {
+                // println!("final try send");
                 if tx.id() == actor::current().selected() {
                     match tx.0.flavor {
                         Flavor::Array(..) | Flavor::List(..) => {
@@ -245,7 +262,9 @@ impl State {
                             }
                         }
                         Flavor::Zero(ref q) => {
-                            unimplemented!(); //actor::request_put(tx.id());
+                            // TODO: This should be a try_put
+                            // println!("PUT REQUEST");
+                            unsafe { actor::current().put_request(value, tx.id()) };
                             return Ok(());
                         }
                     }
@@ -260,10 +279,16 @@ impl State {
     fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
         match *self {
             State::Try { ref mut any_open } => {
-                match rx.try_recv() {
-                    Ok(v) => return Ok(v),
-                    Err(TryRecvError::Disconnected) => {}
-                    Err(TryRecvError::Empty) => *any_open = true,
+                let mut backoff = Backoff::new();
+                loop {
+                    match rx.try_recv() {
+                        Ok(v) => return Ok(v),
+                        Err(TryRecvError::Disconnected) => {}
+                        Err(TryRecvError::Empty) => *any_open = true,
+                    }
+                    if !backoff.tick() {
+                        break;
+                    }
                 }
             }
             State::Subscribe => {
@@ -274,9 +299,17 @@ impl State {
                 }
             }
             State::IsReady => {
-                if rx.is_disconnected() || !rx.is_empty() {
-                    actor::current().select(1);
-                }
+                // println!("check if recv ready");
+                // TODO: skip it if this is a zero channel and the same thread only is registered
+                // if let Flavor::Zero(ref q) = rx.0.flavor {
+                //     if q.is_ready_rx() {
+                //         actor::current().select(1);
+                //     }
+                // } else {
+                    if rx.is_disconnected() || !rx.is_empty() {
+                        actor::current().select(1);
+                    }
+                // }
             }
             State::Unsubscribe => {
                 match rx.0.flavor {
@@ -286,6 +319,7 @@ impl State {
                 }
             }
             State::FinalTry => {
+                // println!("final try recv");
                 if rx.id() == actor::current().selected() {
                     match rx.0.flavor {
                         Flavor::Array(..) | Flavor::List(..) => {
@@ -294,6 +328,8 @@ impl State {
                             }
                         }
                         Flavor::Zero(ref q) => {
+                            // TODO: This should be a try_take
+                            // println!("TAKE REQUEST");
                             let v = unsafe { actor::current().take_request(rx.id()) };
                             return Ok(v);
                         }
@@ -375,43 +411,43 @@ mod tests {
         });
     }
 
-    // #[test]
-    // fn select_send() {
-    //     let (tx1, rx1) = bounded::<i32>(0);
-    //     let (tx2, rx2) = bounded::<i32>(0);
-    //
-    //     crossbeam::scope(|s| {
-    //         s.spawn(|| {
-    //             thread::sleep(ms(150));
-    //             println!("got 1: {:?}", rx1.recv_timeout(ms(200)));
-    //         });
-    //         s.spawn(|| {
-    //             thread::sleep(ms(150));
-    //             println!("got 2: {:?}", rx2.recv_timeout(ms(200)));
-    //         });
-    //         s.spawn(|| {
-    //             thread::sleep(ms(100));
-    //             // let mut s = Select::new();
-    //             let mut s = Select::with_timeout(ms(100));
-    //             loop {
-    //                 if let Ok(()) = s.send(&tx1, 1) {
-    //                     println!("sent 1");
-    //                     break;
-    //                 }
-    //                 if let Ok(()) = s.send(&tx2, 2) {
-    //                     println!("sent 2");
-    //                     break;
-    //                 }
-    //                 if s.disconnected() {
-    //                     println!("DISCONNECTED!");
-    //                     break;
-    //                 }
-    //                 if s.timed_out() {
-    //                     println!("TIMEOUT!");
-    //                     break;
-    //                 }
-    //             }
-    //         });
-    //     });
-    // }
+    #[test]
+    fn select_send() {
+        let (tx1, rx1) = bounded::<i32>(0);
+        let (tx2, rx2) = bounded::<i32>(0);
+
+        crossbeam::scope(|s| {
+            s.spawn(|| {
+                thread::sleep(ms(150));
+                println!("got 1: {:?}", rx1.recv_timeout(ms(200)));
+            });
+            s.spawn(|| {
+                thread::sleep(ms(150));
+                println!("got 2: {:?}", rx2.recv_timeout(ms(200)));
+            });
+            s.spawn(|| {
+                thread::sleep(ms(100));
+                // let mut s = Select::new();
+                let mut s = Select::with_timeout(ms(100));
+                loop {
+                    if let Ok(()) = s.send(&tx1, 1) {
+                        println!("sent 1");
+                        break;
+                    }
+                    if let Ok(()) = s.send(&tx2, 2) {
+                        println!("sent 2");
+                        break;
+                    }
+                    if s.disconnected() {
+                        println!("DISCONNECTED!");
+                        break;
+                    }
+                    if s.timed_out() {
+                        println!("TIMEOUT!");
+                        break;
+                    }
+                }
+            });
+        });
+    }
 }

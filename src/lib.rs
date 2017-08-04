@@ -1,3 +1,5 @@
+#![feature(hint_core_should_pause)]
+
 extern crate coco;
 extern crate crossbeam;
 extern crate rand;
@@ -17,17 +19,45 @@ mod flavors;
 mod watch;
 mod select;
 
-// TODO: iterators
-// TODO: Runtime selection checking (mark every participating tx/rx with current thread's selection id and index in the list)
-// TODO: Thread notification in spinning loops (with is_done) (CAS to id to tell which channel is ready)
 // TODO: Add Success state to selection. Or maybe start looping from scratch with a new random `start`?
 // TODO: Use xorshift generator?
 // TODO: The IsReady check must also check for closing (same in *_until methods)
 // TODO: Panic if two selects are running at the same time
-// TODO: Write CSP examples
-// TODO: Use parking_lot?
 // TODO: Use CachePadded
 // TODO: select with recv & send on the same channel (all flavors) should work. Perhaps notify_one() must skip the current thread
+// TODO: Perhaps a .wait_disconnect() method?
+// TODO: `default` case in Select (like in go and chan crate)
+// TODO: Instead of is_empty and is_full name methods can_send and can_recv
+
+#[derive(Clone, Copy)]
+struct Backoff(usize);
+
+// TODO: Move into a separate module
+impl Backoff {
+    #[inline]
+    fn new() -> Self {
+        Backoff(0)
+    }
+
+    #[inline]
+    fn tick(&mut self) -> bool {
+        if self.0 >= 20 {
+            return false;
+        }
+
+        self.0 += 1;
+
+        if self.0 <= 10 {
+            for _ in 0 .. 1 << self.0 {
+                ::std::sync::atomic::hint_core_should_pause();
+            }
+        } else {
+            thread::yield_now();
+        }
+
+        true
+    }
+}
 
 enum Flavor<T> {
     Array(flavors::array::Queue<T>),
@@ -54,9 +84,9 @@ impl<T> Sender<T> {
 
     pub(crate) fn id(&self) -> usize {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.id(),
-            Flavor::List(ref q) => q.id(),
-            Flavor::Zero(ref q) => q.id(),
+            Flavor::Array(ref q) => q.tx_id(),
+            Flavor::List(ref q) => q.tx_id(),
+            Flavor::Zero(ref q) => q.tx_id(),
         }
     }
 
@@ -155,9 +185,9 @@ impl<T> Receiver<T> {
 
     pub(crate) fn id(&self) -> usize {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.id(),
-            Flavor::List(ref q) => q.id(),
-            Flavor::Zero(ref q) => q.id(),
+            Flavor::Array(ref q) => q.rx_id(),
+            Flavor::List(ref q) => q.rx_id(),
+            Flavor::Zero(ref q) => q.rx_id(),
         }
     }
 
@@ -219,9 +249,17 @@ impl<T> Receiver<T> {
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
             Flavor::Array(ref q) => Some(q.capacity()),
-            Flavor::List(ref q) => None,
-            Flavor::Zero(ref q) => Some(0),
+            Flavor::List(_) => None,
+            Flavor::Zero(_) => Some(0),
         }
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter { rx: self }
+    }
+
+    pub fn try_iter(&self) -> TryIter<T> {
+        TryIter { rx: self }
     }
 }
 
@@ -240,6 +278,60 @@ impl<T> Drop for Receiver<T> {
 impl<T> Clone for Receiver<T> {
     fn clone(&self) -> Self {
         Receiver::new(self.0.clone())
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Receiver<T> {
+    type Item = T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<T> IntoIterator for Receiver<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { rx: self }
+    }
+}
+
+pub struct Iter<'a, T: 'a> {
+    rx: &'a Receiver<T>,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rx.recv().ok()
+    }
+}
+
+pub struct TryIter<'a, T: 'a> {
+    rx: &'a Receiver<T>,
+}
+
+impl<'a, T> Iterator for TryIter<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rx.try_recv().ok()
+    }
+}
+
+pub struct IntoIter<T> {
+    rx: Receiver<T>,
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rx.recv().ok()
     }
 }
 

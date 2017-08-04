@@ -11,6 +11,7 @@ use coco::epoch::{self, Atomic, Owned};
 use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use watch::monitor::Monitor;
+use Backoff;
 
 /// A single node in a queue.
 struct Node<T> {
@@ -95,6 +96,7 @@ impl<T> Queue<T> {
         return unsafe {
             epoch::unprotected(|scope| {
                 if self.head.load(Relaxed, scope).tag() & MULTI == 0 {
+                    let mut backoff = Backoff::new();
                     loop {
                         let head = self.head.fetch_or(USE, SeqCst, scope);
                         if head.tag() != 0 {
@@ -110,7 +112,7 @@ impl<T> Queue<T> {
                                 return None;
                             }
 
-                            thread::yield_now();
+                            backoff.tick();
                         } else {
                             let value = ptr::read(&next.deref().value);
 
@@ -134,6 +136,7 @@ impl<T> Queue<T> {
                     }
                 }
 
+                let mut backoff = Backoff::new();
                 epoch::pin(|scope| loop {
                     let head = self.head.load(SeqCst, scope);
                     let next = head.deref().next.load(SeqCst, scope);
@@ -153,7 +156,7 @@ impl<T> Queue<T> {
                         }
                     }
 
-                    thread::yield_now();
+                    backoff.tick();
                 })
             })
         };
@@ -177,7 +180,7 @@ impl<T> Queue<T> {
             Err(TrySendError::Disconnected(value))
         } else {
             self.push(value);
-            self.receivers.notify_one(self.id());
+            self.receivers.notify_one(self.rx_id());
             Ok(())
         }
     }
@@ -191,7 +194,7 @@ impl<T> Queue<T> {
             Err(SendTimeoutError::Disconnected(value))
         } else {
             self.push(value);
-            self.receivers.notify_one(self.id());
+            self.receivers.notify_one(self.rx_id());
             Ok(())
         }
     }
@@ -211,10 +214,16 @@ impl<T> Queue<T> {
 
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
-            match self.try_recv() {
-                Ok(v) => return Ok(v),
-                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
-                Err(TryRecvError::Empty) => {}
+            let mut backoff = Backoff::new();
+            loop {
+                match self.try_recv() {
+                    Ok(v) => return Ok(v),
+                    Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
+                    Err(TryRecvError::Empty) => {}
+                }
+                if !backoff.tick() {
+                    break;
+                }
             }
 
             actor::current().reset();
@@ -233,7 +242,7 @@ impl<T> Queue<T> {
         if self.closed.swap(true, SeqCst) {
             false
         } else {
-            self.receivers.notify_all(self.id());
+            self.receivers.notify_all(self.rx_id());
             true
         }
     }
@@ -246,8 +255,12 @@ impl<T> Queue<T> {
         &self.receivers
     }
 
-    pub fn id(&self) -> usize {
+    pub fn tx_id(&self) -> usize {
         self as *const _ as usize
+    }
+
+    pub fn rx_id(&self) -> usize {
+        (self as *const _ as usize) | 1
     }
 }
 

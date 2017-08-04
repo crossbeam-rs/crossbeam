@@ -10,6 +10,7 @@ use std::time::{Instant, Duration};
 use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use watch::monitor::Monitor;
+use Backoff;
 
 struct Node<T> {
     lap: AtomicUsize,
@@ -67,6 +68,7 @@ impl<T> Queue<T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
+        let mut backoff = Backoff::new();
 
         loop {
             let tail = self.tail.load(SeqCst);
@@ -97,7 +99,7 @@ impl<T> Queue<T> {
                 return Some(value);
             }
 
-            thread::yield_now();
+            backoff.tick();
         }
     }
 
@@ -105,6 +107,7 @@ impl<T> Queue<T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
+        let mut backoff = Backoff::new();
 
         loop {
             let head = self.head.load(SeqCst);
@@ -135,13 +138,14 @@ impl<T> Queue<T> {
                 return None;
             }
 
-            thread::yield_now();
+            backoff.tick();
         }
     }
 
     pub fn len(&self) -> usize {
         let cap = self.cap;
         let power = self.power;
+        let mut backoff = Backoff::new();
 
         loop {
             let tail = self.tail.load(SeqCst);
@@ -163,7 +167,7 @@ impl<T> Queue<T> {
                 }
             }
 
-            thread::yield_now();
+            backoff.tick();
         }
     }
 
@@ -173,7 +177,7 @@ impl<T> Queue<T> {
         } else {
             match self.push(value) {
                 None => {
-                    self.receivers.notify_one(self.id());
+                    self.receivers.notify_one(self.rx_id());
                     Ok(())
                 }
                 Some(v) => Err(TrySendError::Full(v)),
@@ -187,10 +191,18 @@ impl<T> Queue<T> {
         deadline: Option<Instant>,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
-            match self.try_send(value) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
-                Err(TrySendError::Full(v)) => value = v,
+            let mut backoff = Backoff::new();
+            loop {
+                match self.try_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(TrySendError::Full(v)) => value = v,
+                    Err(TrySendError::Disconnected(v)) => {
+                        return Err(SendTimeoutError::Disconnected(v))
+                    }
+                }
+                if !backoff.tick() {
+                    break;
+                }
             }
 
             actor::current().reset();
@@ -215,7 +227,7 @@ impl<T> Queue<T> {
                 }
             }
             Some(v) => {
-                self.senders.notify_one(self.id());
+                self.senders.notify_one(self.tx_id());
                 Ok(v)
             }
         }
@@ -223,10 +235,16 @@ impl<T> Queue<T> {
 
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
-            match self.try_recv() {
-                Ok(v) => return Ok(v),
-                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
-                Err(TryRecvError::Empty) => {}
+            let mut backoff = Backoff::new();
+            loop {
+                match self.try_recv() {
+                    Ok(v) => return Ok(v),
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
+                }
+                if !backoff.tick() {
+                    break;
+                }
             }
 
             actor::current().reset();
@@ -267,8 +285,12 @@ impl<T> Queue<T> {
         &self.receivers
     }
 
-    pub fn id(&self) -> usize {
+    pub fn tx_id(&self) -> usize {
         self as *const _ as usize
+    }
+
+    pub fn rx_id(&self) -> usize {
+        (self as *const _ as usize) | 1
     }
 }
 
