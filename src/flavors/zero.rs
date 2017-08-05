@@ -1,41 +1,59 @@
-use std::cell::UnsafeCell;
-use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::Instant;
+
+use parking_lot::Mutex;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use actor::{self, Actor};
 use watch::dock::{Dock, Request, Entry, Packet};
-use Backoff;
 
-struct Inner<T> {
-    senders: Dock<T>,
-    receivers: Dock<T>,
+struct Inner {
     closed: bool,
 }
 
 pub struct Queue<T> {
-    lock: Mutex<Inner<T>>,
+    lock: Mutex<Inner>,
+    senders: Dock<T>,
+    receivers: Dock<T>,
 }
 
 impl<T> Queue<T> {
     pub fn new() -> Self {
         Queue {
-            lock: Mutex::new(Inner {
-                senders: Dock::new(),
-                receivers: Dock::new(),
-                closed: false,
-            }),
+            lock: Mutex::new(Inner { closed: false }),
+            senders: Dock::new(),
+            receivers: Dock::new(),
         }
     }
 
-    fn meet_receiver<'a>(
-        &'a self,
-        value: T,
-        mut lock: MutexGuard<'a, Inner<T>>,
-    ) -> Result<MutexGuard<'a, Inner<T>>, (T, MutexGuard<'a, Inner<T>>)> {
+    pub fn promise_send(&self) {
+        let _lock = self.lock.lock();
+        self.senders.register_promise();
+    }
+
+    pub fn unpromise_send(&self) {
+        let _lock = self.lock.lock();
+        self.senders.unregister();
+    }
+
+    pub fn promise_recv(&self) {
+        let _lock = self.lock.lock();
+        self.receivers.register_promise();
+    }
+
+    pub fn unpromise_recv(&self) {
+        let _lock = self.lock.lock();
+        self.receivers.unregister();
+    }
+
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        let mut lock = self.lock.lock();
+        if lock.closed {
+            return Err(TrySendError::Disconnected(value));
+        }
+
         // TODO: should ignore the current thread here...
-        while let Some(entry) = lock.receivers.pop() {
+        while let Some(entry) = self.receivers.pop() {
             match entry {
                 Entry::Promise { actor } => {
                     if actor.select(self.rx_id()) {
@@ -46,26 +64,71 @@ impl<T> Queue<T> {
 
                         actor.unpark();
                         actor::current().wait_until(None);
-                        return Ok(self.lock.lock().unwrap());
+                        return Ok(());
                     }
                 }
                 Entry::Offer { actor, packet } => {
                     if actor.select(self.rx_id()) {
                         unsafe { (*packet).put(value) }
                         actor.unpark();
-                        return Ok(lock);
+                        return Ok(());
                     }
                 }
             }
         }
-        Err((value, lock))
+
+        Err(TrySendError::Full(value))
     }
 
-    fn meet_sender<'a>(
-        &'a self,
-        mut lock: MutexGuard<'a, Inner<T>>,
-    ) -> Result<(T, MutexGuard<'a, Inner<T>>), MutexGuard<'a, Inner<T>>> {
-        while let Some(entry) = lock.senders.pop() {
+    pub fn send_until(
+        &self,
+        mut value: T,
+        deadline: Option<Instant>,
+    ) -> Result<(), SendTimeoutError<T>> {
+        loop {
+            match self.try_send(value) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Full(v)) => value = v,
+                Err(TrySendError::Disconnected(v)) => {
+                    return Err(SendTimeoutError::Disconnected(v))
+                }
+            }
+
+            let packet;
+            {
+                let mut lock = self.lock.lock();
+                if lock.closed {
+                    return Err(SendTimeoutError::Disconnected(value));
+                }
+
+                actor::current().reset();
+                packet = Packet::new(Some(value));
+                self.senders.register_offer(&packet);
+
+                if lock.closed || !self.receivers.is_empty() {
+                    actor::current().select(1);
+                }
+            }
+
+            if !actor::current().wait_until(deadline) {
+                return Err(SendTimeoutError::Timeout(packet.take()));
+            } else if actor::current().selected() != 1 {
+                let mut lock = self.lock.lock();
+                return Ok(());
+            } else {
+                self.senders.unregister();
+                value = packet.take();
+            }
+        }
+    }
+
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        let mut lock = self.lock.lock();
+        if lock.closed {
+            return Err(TryRecvError::Disconnected);
+        }
+
+        while let Some(entry) = self.senders.pop() {
             match entry {
                 Entry::Promise { actor } => {
                     if actor.select(self.tx_id()) {
@@ -76,190 +139,111 @@ impl<T> Queue<T> {
 
                         actor.unpark();
                         actor::current().wait_until(None);
-                        let lock = self.lock.lock().unwrap();
+                        let lock = self.lock.lock();
                         let v = req.packet.take();
-                        return Ok((v, lock));
+                        return Ok(v);
                     }
                 }
                 Entry::Offer { actor, packet } => {
                     if actor.select(self.tx_id()) {
                         let v = unsafe { (*packet).take() };
                         actor.unpark();
-                        return Ok((v, lock));
+                        return Ok(v);
                     }
                 }
             }
         }
-        Err(lock)
-    }
 
-    pub fn promise_send(&self) {
-        self.lock.lock().unwrap().senders.register_promise();
-    }
-
-    pub fn unpromise_send(&self) {
-        self.lock.lock().unwrap().senders.unregister();
-    }
-
-    pub fn promise_recv(&self) {
-        self.lock.lock().unwrap().receivers.register_promise();
-    }
-
-    pub fn unpromise_recv(&self) {
-        self.lock.lock().unwrap().receivers.unregister();
-    }
-
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        let mut lock = self.lock.lock().unwrap();
-
-        if lock.closed {
-            Err(TrySendError::Disconnected(value))
-        } else {
-            match self.meet_receiver(value, lock) {
-                Ok(_) => Ok(()),
-                Err((v, _)) => Err(TrySendError::Full(v)),
-            }
-        }
-    }
-
-    pub fn send_until(
-        &self,
-        mut value: T,
-        deadline: Option<Instant>,
-    ) -> Result<(), SendTimeoutError<T>> {
-        let mut lock = self.lock.lock().unwrap();
-        if lock.closed {
-            return Err(SendTimeoutError::Disconnected(value));
-        }
-
-        // let mut backoff = Backoff::new();
-        // loop {
-            match self.meet_receiver(value, lock) {
-                Ok(_) => return Ok(()),
-                Err((v, l)) => {
-                    value = v;
-                    lock = l;
-                }
-            }
-        //     drop(lock);
-        //
-        //     let done = !backoff.tick();
-        //     lock = self.lock.lock().unwrap();
-        //     if done {
-        //         break;
-        //     }
-        // }
-
-        actor::current().reset();
-        let packet = Packet::new(Some(value));
-        lock.senders.register_offer(&packet);
-        drop(lock);
-
-        let timed_out = !actor::current().wait_until(deadline);
-        let mut lock = self.lock.lock().unwrap();
-        lock.senders.unregister();
-
-        if timed_out {
-            Err(SendTimeoutError::Timeout(packet.take()))
-        } else if actor::current().selected() == 1 {
-            Err(SendTimeoutError::Disconnected(packet.take()))
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let mut lock = self.lock.lock().unwrap();
-
-        if lock.closed {
-            Err(TryRecvError::Disconnected)
-        } else {
-            match self.meet_sender(lock) {
-                Ok((v, _)) => Ok(v),
-                Err(_) => Err(TryRecvError::Empty),
-            }
-        }
+        Err(TryRecvError::Empty)
     }
 
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
-        let mut lock = self.lock.lock().unwrap();
-        if lock.closed {
-            return Err(RecvTimeoutError::Disconnected);
-        }
+        loop {
+            match self.try_recv() {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
+            }
 
-        match self.meet_sender(lock) {
-            Ok((v, _)) => return Ok(v),
-            Err(l) => lock = l,
-        }
+            let packet;
+            {
+                let mut lock = self.lock.lock();
+                if lock.closed {
+                    return Err(RecvTimeoutError::Disconnected);
+                }
 
-        actor::current().reset();
-        let packet = Packet::new(None);
-        lock.receivers.register_offer(&packet);
-        drop(lock);
+                actor::current().reset();
+                packet = Packet::new(None);
+                self.receivers.register_offer(&packet);
 
-        let timed_out = !actor::current().wait_until(deadline);
-        let mut lock = self.lock.lock().unwrap();
-        lock.receivers.unregister();
+                if lock.closed || !self.senders.is_empty() {
+                    actor::current().select(1);
+                }
+            }
 
-        if timed_out {
-            Err(RecvTimeoutError::Timeout)
-        } else if actor::current().selected() == 1 {
-            Err(RecvTimeoutError::Disconnected)
-        } else {
-            Ok(packet.take())
+            if !actor::current().wait_until(deadline) {
+                return Err(RecvTimeoutError::Timeout);
+            } else if actor::current().selected() != 1 {
+                let mut lock = self.lock.lock();
+                return Ok(packet.take());
+            } else {
+                self.receivers.unregister();
+            }
         }
     }
 
     pub fn has_senders(&self) -> bool {
-        !self.lock.lock().unwrap().senders.is_empty()
+        let _lock = self.lock.lock();
+        !self.senders.is_empty()
     }
 
     pub fn has_receivers(&self) -> bool {
-        !self.lock.lock().unwrap().receivers.is_empty()
+        let _lock = self.lock.lock();
+        !self.receivers.is_empty()
     }
 
     pub fn close(&self) -> bool {
-        let mut lock = self.lock.lock().unwrap();
+        let mut lock = self.lock.lock();
 
         if lock.closed {
             false
         } else {
             lock.closed = true;
-            lock.senders.notify_all();
-            lock.receivers.notify_all();
+            self.senders.notify_all();
+            self.receivers.notify_all();
             true
         }
     }
 
     pub fn is_closed(&self) -> bool {
-        self.lock.lock().unwrap().closed
+        self.lock.lock().closed
     }
 
-    pub fn is_ready_tx(&self) -> bool {
-        let lock = self.lock.lock().unwrap();
-        if lock.closed {
-            true
-        } else {
-            match lock.receivers.0.len() {
-                0 => false,
-                1 => !lock.receivers.0[0].is_current(),
-                _ => true,
-            }
-        }
-    }
-
-    pub fn is_ready_rx(&self) -> bool {
-        let lock = self.lock.lock().unwrap();
-        if lock.closed {
-            true
-        } else {
-            match lock.senders.0.len() {
-                0 => false,
-                1 => !lock.senders.0[0].is_current(),
-                _ => true,
-            }
-        }
-    }
+    // pub fn is_ready_tx(&self) -> bool {
+    //     let lock = self.lock.lock();
+    //     if lock.closed {
+    //         true
+    //     } else {
+    //         match self.receivers.0.len() {
+    //             0 => false,
+    //             1 => !self.receivers.0[0].is_current(),
+    //             _ => true,
+    //         }
+    //     }
+    // }
+    //
+    // pub fn is_ready_rx(&self) -> bool {
+    //     let lock = self.lock.lock();
+    //     if lock.closed {
+    //         true
+    //     } else {
+    //         match self.senders.0.len() {
+    //             0 => false,
+    //             1 => !self.senders.0[0].is_current(),
+    //             _ => true,
+    //         }
+    //     }
+    // }
 
     pub fn tx_id(&self) -> usize {
         self as *const _ as usize
@@ -272,8 +256,8 @@ impl<T> Queue<T> {
 
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
-        debug_assert!(self.lock.get_mut().unwrap().senders.is_empty());
-        debug_assert!(self.lock.get_mut().unwrap().receivers.is_empty());
+        debug_assert!(self.senders.is_empty());
+        debug_assert!(self.receivers.is_empty());
     }
 }
 

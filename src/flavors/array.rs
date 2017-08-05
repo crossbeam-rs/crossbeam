@@ -145,7 +145,6 @@ impl<T> Queue<T> {
     pub fn len(&self) -> usize {
         let cap = self.cap;
         let power = self.power;
-        let mut backoff = Backoff::new();
 
         loop {
             let tail = self.tail.load(SeqCst);
@@ -166,8 +165,6 @@ impl<T> Queue<T> {
                     return tpos - hpos;
                 }
             }
-
-            backoff.tick();
         }
     }
 
@@ -206,10 +203,10 @@ impl<T> Queue<T> {
             }
 
             actor::current().reset();
-            self.senders.register();
+            self.senders.register(1);
             let timed_out = !self.is_closed() && self.len() == self.cap &&
                 !actor::current().wait_until(deadline);
-            self.senders.unregister();
+            self.senders.unregister(1);
 
             if timed_out {
                 return Err(SendTimeoutError::Timeout(value));
@@ -248,10 +245,10 @@ impl<T> Queue<T> {
             }
 
             actor::current().reset();
-            self.receivers.register();
+            self.receivers.register(1);
             let timed_out =
                 !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
-            self.receivers.unregister();
+            self.receivers.unregister(1);
 
             if timed_out {
                 return Err(RecvTimeoutError::Timeout);
@@ -277,11 +274,11 @@ impl<T> Queue<T> {
         self.closed.load(SeqCst)
     }
 
-    pub fn monitor_tx(&self) -> &Monitor {
+    pub fn senders(&self) -> &Monitor {
         &self.senders
     }
 
-    pub fn monitor_rx(&self) -> &Monitor {
+    pub fn receivers(&self) -> &Monitor {
         &self.receivers
     }
 

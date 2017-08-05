@@ -1,53 +1,67 @@
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 
+use parking_lot::Mutex;
+
 use actor::{self, Actor};
 
+// TODO: Explain that a single thread can be registered multiple times (that happens only in
+// select).  Unregister removes just entry belonging to the current thread.
+
+
+struct Entry {
+    actor: Arc<Actor>,
+    id: usize,
+}
+
 pub struct Monitor {
-    actors: Mutex<VecDeque<Arc<Actor>>>,
+    entries: Mutex<VecDeque<Entry>>,
     len: AtomicUsize,
 }
 
 impl Monitor {
     pub fn new() -> Self {
         Monitor {
-            actors: Mutex::new(VecDeque::new()),
+            entries: Mutex::new(VecDeque::new()),
             len: AtomicUsize::new(0),
         }
     }
 
-    pub fn register(&self) {
-        let mut actors = self.actors.lock().unwrap();
-        actors.push_back(actor::current());
-        self.len.store(actors.len(), SeqCst);
+    pub fn register(&self, id: usize) {
+        let mut entries = self.entries.lock();
+        entries.push_back(Entry {
+            actor: actor::current(),
+            id,
+        });
+        self.len.store(entries.len(), SeqCst);
     }
 
-    pub fn unregister(&self) {
-        let id = thread::current().id();
-        let mut actors = self.actors.lock().unwrap();
+    pub fn unregister(&self, id: usize) {
+        let thread_id = thread::current().id();
+        let mut entries = self.entries.lock();
 
-        if let Some((i, _)) = actors
+        if let Some((i, _)) = entries
             .iter()
             .enumerate()
-            .find(|&(_, a)| a.thread_id() == id)
+            .find(|&(_, e)| e.actor.thread_id() == thread_id && e.id == id)
         {
-            actors.remove(i);
-            self.len.store(actors.len(), SeqCst);
+            entries.remove(i);
+            self.len.store(entries.len(), SeqCst);
         }
     }
 
     pub fn notify_one(&self, id: usize) {
         if self.len.load(SeqCst) > 0 {
-            let mut actors = self.actors.lock().unwrap();
+            let mut entries = self.entries.lock();
 
-            while let Some(a) = actors.pop_front() {
-                self.len.store(actors.len(), SeqCst);
+            while let Some(e) = entries.pop_front() {
+                self.len.store(entries.len(), SeqCst);
 
-                if a.select(id) {
-                    a.unpark();
+                if e.actor.select(id) {
+                    e.actor.unpark();
                     break;
                 }
             }
@@ -56,13 +70,13 @@ impl Monitor {
 
     pub fn notify_all(&self, id: usize) {
         if self.len.load(SeqCst) > 0 {
-            let mut actors = self.actors.lock().unwrap();
+            let mut entries = self.entries.lock();
 
-            while let Some(a) = actors.pop_front() {
-                self.len.store(actors.len(), SeqCst);
+            while let Some(e) = entries.pop_front() {
+                self.len.store(entries.len(), SeqCst);
 
-                if a.select(id) {
-                    a.unpark();
+                if e.actor.select(id) {
+                    e.actor.unpark();
                 }
             }
         }
@@ -71,7 +85,7 @@ impl Monitor {
 
 impl Drop for Monitor {
     fn drop(&mut self) {
-        debug_assert!(self.actors.lock().unwrap().is_empty());
+        debug_assert!(self.entries.lock().is_empty());
         debug_assert_eq!(self.len.load(SeqCst), 0);
     }
 }

@@ -2,6 +2,7 @@
 
 extern crate coco;
 extern crate crossbeam;
+extern crate parking_lot;
 extern crate rand;
 
 use std::sync::Arc;
@@ -19,15 +20,14 @@ mod flavors;
 mod watch;
 mod select;
 
+// TODO: Use CachePadded
+// TODO: Instead of is_empty and is_full name methods can_send and can_recv
+
 // TODO: Add Success state to selection. Or maybe start looping from scratch with a new random `start`?
-// TODO: Use xorshift generator?
 // TODO: The IsReady check must also check for closing (same in *_until methods)
 // TODO: Panic if two selects are running at the same time
-// TODO: Use CachePadded
 // TODO: select with recv & send on the same channel (all flavors) should work. Perhaps notify_one() must skip the current thread
-// TODO: Perhaps a .wait_disconnect() method?
 // TODO: `default` case in Select (like in go and chan crate)
-// TODO: Instead of is_empty and is_full name methods can_send and can_recv
 
 #[derive(Clone, Copy)]
 struct Backoff(usize);

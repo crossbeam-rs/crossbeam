@@ -12,6 +12,7 @@ use watch::dock::Request;
 use Backoff;
 
 // TODO: add backoff to select
+// TODO: Use xorshift generator
 
 pub struct Select {
     machine: Machine,
@@ -223,9 +224,8 @@ impl State {
             }
             State::Subscribe => {
                 match tx.0.flavor {
-                    // TODO: rename to monitor_senders? mon_senders? send_monitor?
                     Flavor::List(ref q) => {}
-                    Flavor::Array(ref q) => q.monitor_tx().register(),
+                    Flavor::Array(ref q) => q.senders().register(tx.id()),
                     Flavor::Zero(ref q) => q.promise_send(),
                 }
             }
@@ -244,9 +244,8 @@ impl State {
             }
             State::Unsubscribe => {
                 match tx.0.flavor {
-                    // TODO: rename to monitor_send?
                     Flavor::List(ref q) => {}
-                    Flavor::Array(ref q) => q.monitor_tx().unregister(),
+                    Flavor::Array(ref q) => q.senders().unregister(tx.id()),
                     Flavor::Zero(ref q) => q.unpromise_send(),
                 }
             }
@@ -293,8 +292,8 @@ impl State {
             }
             State::Subscribe => {
                 match rx.0.flavor {
-                    Flavor::List(ref q) => q.monitor_rx().register(),
-                    Flavor::Array(ref q) => q.monitor_rx().register(),
+                    Flavor::List(ref q) => q.receivers().register(rx.id()),
+                    Flavor::Array(ref q) => q.receivers().register(rx.id()),
                     Flavor::Zero(ref q) => q.promise_recv(),
                 }
             }
@@ -313,8 +312,8 @@ impl State {
             }
             State::Unsubscribe => {
                 match rx.0.flavor {
-                    Flavor::List(ref q) => q.monitor_rx().unregister(),
-                    Flavor::Array(ref q) => q.monitor_rx().unregister(),
+                    Flavor::List(ref q) => q.receivers().unregister(rx.id()),
+                    Flavor::Array(ref q) => q.receivers().unregister(rx.id()),
                     Flavor::Zero(ref q) => q.unpromise_recv(),
                 }
             }

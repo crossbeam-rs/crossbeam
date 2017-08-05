@@ -4,6 +4,7 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
+use Backoff;
 use watch::dock::Request;
 
 // TODO: hide all pub fields
@@ -42,13 +43,20 @@ impl Actor {
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
+        let mut backoff = Backoff::new();
+        while self.select_id.load(SeqCst) == 0 {
+            if !backoff.tick() {
+                break;
+            }
+        }
+
         while self.select_id.load(SeqCst) == 0 {
             let now = Instant::now();
 
             if let Some(end) = deadline {
                 if now < end {
                     thread::park_timeout(end - now);
-                } else if self.select_id.compare_and_swap(0, 1, SeqCst) == 0 {
+                } else if self.select(1) {
                     return false;
                 }
             } else {

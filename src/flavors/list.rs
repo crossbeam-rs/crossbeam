@@ -170,8 +170,6 @@ impl<T> Queue<T> {
             if self.send_count.load(SeqCst) == send_count {
                 return send_count.wrapping_sub(recv_count);
             }
-
-            thread::yield_now();
         }
     }
 
@@ -227,10 +225,10 @@ impl<T> Queue<T> {
             }
 
             actor::current().reset();
-            self.receivers.register();
+            self.receivers.register(1);
             let timed_out =
                 !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
-            self.receivers.unregister();
+            self.receivers.unregister(1);
 
             if timed_out {
                 return Err(RecvTimeoutError::Timeout);
@@ -242,7 +240,7 @@ impl<T> Queue<T> {
         if self.closed.swap(true, SeqCst) {
             false
         } else {
-            self.receivers.notify_all(self.rx_id());
+            self.receivers.notify_all(1);
             true
         }
     }
@@ -251,7 +249,7 @@ impl<T> Queue<T> {
         self.closed.load(SeqCst)
     }
 
-    pub fn monitor_rx(&self) -> &Monitor {
+    pub fn receivers(&self) -> &Monitor {
         &self.receivers
     }
 
