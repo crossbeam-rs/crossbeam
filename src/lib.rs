@@ -21,7 +21,6 @@ mod watch;
 mod select;
 
 // TODO: Use CachePadded
-// TODO: Instead of is_empty and is_full name methods can_send and can_recv
 
 // TODO: Add Success state to selection. Or maybe start looping from scratch with a new random `start`?
 // TODO: The IsReady check must also check for closing (same in *_until methods)
@@ -40,22 +39,26 @@ impl Backoff {
     }
 
     #[inline]
+    fn abort(&mut self) {
+        self.0 = !0;
+    }
+
+    #[inline]
     fn tick(&mut self) -> bool {
         if self.0 >= 20 {
-            return false;
-        }
-
-        self.0 += 1;
-
-        if self.0 <= 10 {
-            for _ in 0 .. 1 << self.0 {
-                ::std::sync::atomic::hint_core_should_pause();
-            }
+            false
         } else {
-            thread::yield_now();
-        }
+            if self.0 <= 10 {
+                for _ in 0..1 << self.0 {
+                    ::std::sync::atomic::hint_core_should_pause();
+                }
+            } else {
+                thread::yield_now();
+            }
 
-        true
+            self.0 += 1;
+            true
+        }
     }
 }
 
@@ -83,19 +86,40 @@ impl<T> Sender<T> {
     }
 
     pub(crate) fn id(&self) -> usize {
+        let addr = match self.0.flavor {
+            Flavor::Array(ref q) => q as *const flavors::array::Queue<T> as usize,
+            Flavor::List(ref q) => q as *const flavors::list::Queue<T> as usize,
+            Flavor::Zero(ref q) => q as *const flavors::zero::Queue<T> as usize,
+        };
+        assert!(addr % 2 == 0);
+        addr
+    }
+
+    pub(crate) fn can_send(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.tx_id(),
-            Flavor::List(ref q) => q.tx_id(),
-            Flavor::Zero(ref q) => q.tx_id(),
+            Flavor::Array(ref q) => q.len() < q.capacity(),
+            Flavor::List(ref q) => false,
+            Flavor::Zero(ref q) => q.can_send(),
+        }
+    }
+
+    pub(crate) fn try_send_with_backoff(
+        &self,
+        value: T,
+        backoff: &mut Backoff,
+    ) -> Result<(), TrySendError<T>> {
+        match self.0.flavor {
+            Flavor::Array(ref q) => q.try_send_with_backoff(value, backoff),
+            Flavor::List(ref q) => q.try_send(value),
+            Flavor::Zero(ref q) => {
+                backoff.abort();
+                q.try_send(value)
+            }
         }
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        match self.0.flavor {
-            Flavor::Array(ref q) => q.try_send(value),
-            Flavor::List(ref q) => q.try_send(value),
-            Flavor::Zero(ref q) => q.try_send(value),
-        }
+        self.try_send_with_backoff(value, &mut Backoff::new())
     }
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
@@ -130,11 +154,7 @@ impl<T> Sender<T> {
 
     // `true` if `try_send` would fail with `TrySendErr::Full(_)`
     pub fn is_full(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref q) => q.len() == q.capacity(),
-            Flavor::List(ref q) => false,
-            Flavor::Zero(ref q) => !q.has_receivers(),
-        }
+        !self.can_send()
     }
 
     pub fn is_disconnected(&self) -> bool {
@@ -184,19 +204,36 @@ impl<T> Receiver<T> {
     }
 
     pub(crate) fn id(&self) -> usize {
+        let addr = match self.0.flavor {
+            Flavor::Array(ref q) => q as *const flavors::array::Queue<T> as usize,
+            Flavor::List(ref q) => q as *const flavors::list::Queue<T> as usize,
+            Flavor::Zero(ref q) => q as *const flavors::zero::Queue<T> as usize,
+        };
+        assert!(addr % 2 == 0);
+        addr | 1
+    }
+
+    pub(crate) fn can_recv(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.rx_id(),
-            Flavor::List(ref q) => q.rx_id(),
-            Flavor::Zero(ref q) => q.rx_id(),
+            Flavor::Array(ref q) => q.len() > 0,
+            Flavor::List(ref q) => q.len() > 0,
+            Flavor::Zero(ref q) => q.can_recv(),
+        }
+    }
+
+    pub(crate) fn try_recv_with_backoff(&self, backoff: &mut Backoff) -> Result<T, TryRecvError> {
+        match self.0.flavor {
+            Flavor::Array(ref q) => q.try_recv_with_backoff(backoff),
+            Flavor::List(ref q) => q.try_recv_with_backoff(backoff),
+            Flavor::Zero(ref q) => {
+                backoff.abort();
+                q.try_recv()
+            }
         }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.0.flavor {
-            Flavor::Array(ref q) => q.try_recv(),
-            Flavor::List(ref q) => q.try_recv(),
-            Flavor::Zero(ref q) => q.try_recv(),
-        }
+        self.try_recv_with_backoff(&mut Backoff::new())
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {
@@ -231,11 +268,7 @@ impl<T> Receiver<T> {
 
     // `true` if `try_recv` would fail with `TryRecvError::Empty`
     pub fn is_empty(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref q) => q.len() == 0,
-            Flavor::List(ref q) => q.len() == 0,
-            Flavor::Zero(ref q) => !q.has_senders(),
-        }
+        !self.can_recv()
     }
 
     pub fn is_disconnected(&self) -> bool {

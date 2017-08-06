@@ -71,25 +71,21 @@ impl Actor {
         let req = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
         assert!(!req.is_null());
 
-        unsafe {
-            let thread = (*req).actor.thread.clone();
-            (*req).packet.put(value);
-            (*req).actor.select(id);
-            thread.unpark();
-        }
+        let thread = (*req).actor.thread.clone();
+        (*req).packet.put(value);
+        (*req).actor.select(id);
+        thread.unpark();
     }
 
     pub unsafe fn take_request<T>(&self, id: usize) -> T {
         let req = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
         assert!(!req.is_null());
 
-        unsafe {
-            let thread = (*req).actor.thread.clone();
-            let v = (*req).packet.take();
-            (*req).actor.select(id);
-            thread.unpark();
-            v
-        }
+        let thread = (*req).actor.thread.clone();
+        let v = (*req).packet.take().unwrap();
+        (*req).actor.select(id);
+        thread.unpark();
+        v
     }
 }
 

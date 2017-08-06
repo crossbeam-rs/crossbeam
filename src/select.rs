@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::marker::PhantomData;
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
@@ -11,8 +12,29 @@ use err::{TryRecvError, TrySendError};
 use watch::dock::Request;
 use Backoff;
 
-// TODO: add backoff to select
-// TODO: Use xorshift generator
+fn gen_random(ceil: usize) -> usize {
+    thread_local! {
+        static RNG: Cell<u32> = Cell::new(1);
+    }
+
+    RNG.with(|rng| {
+        let mut x = ::std::num::Wrapping(rng.get());
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        rng.set(x.0);
+
+        let x = x.0 as usize;
+        match ceil {
+            0 => 0,
+            1 => x % 1,
+            2 => x % 2,
+            3 => x % 3,
+            4 => x % 4,
+            n => x % n,
+        }
+    })
+}
 
 pub struct Select {
     machine: Machine,
@@ -107,9 +129,9 @@ impl Machine {
                     if id_first == id {
                         *self = Machine::Initialized {
                             pos: 0,
-                            state: State::Try { any_open: false },
+                            state: State::Try { closed_count: 0 },
                             len,
-                            start: thread_rng().gen_range(0, len),
+                            start: gen_random(len),
                             deadline,
                         };
                     } else {
@@ -129,7 +151,7 @@ impl Machine {
                     deadline,
                 } => {
                     if pos >= 2 * len {
-                        state.transition(deadline);
+                        state.transition(len, deadline);
                         *self = Machine::Initialized {
                             pos: 0,
                             state,
@@ -161,37 +183,45 @@ impl Machine {
 
 #[derive(Clone, Copy)]
 enum State {
-    Try { any_open: bool },
-    Subscribe,
-    IsReady,
+    Try { closed_count: usize },
+    Subscribe { closed_countdown: isize },
     Unsubscribe,
-    FinalTry,
+    FinalTry { id: usize },
     TimedOut,
     Disconnected,
 }
 
 impl State {
     #[inline]
-    fn transition(&mut self, deadline: Option<Instant>) {
+    fn transition(&mut self, len: usize, deadline: Option<Instant>) {
         match *self {
-            State::Try { any_open } => {
-                if any_open {
+            State::Try { closed_count } => {
+                // println!("-------- TRY -------");
+                if closed_count < len {
                     actor::current().reset();
-                    *self = State::Subscribe;
+                    *self = State::Subscribe {
+                        closed_countdown: closed_count as isize,
+                    };
                 } else {
                     *self = State::Disconnected;
                 }
             }
-            State::Subscribe => *self = State::IsReady,
-            State::IsReady => {
+            State::Subscribe { closed_countdown } => {
                 // println!("went asleep");
+                if closed_countdown < 0 {
+                    actor::current().select(1);
+                }
                 actor::current().wait_until(deadline);
                 // println!("woke up");
                 *self = State::Unsubscribe;
             }
-            State::Unsubscribe => *self = State::FinalTry, // TODO: before going to finaltry we should reset and use FinalTry { selected_id: usize }
-            State::FinalTry => {
-                *self = State::Try { any_open: false };
+            State::Unsubscribe => {
+                *self = State::FinalTry {
+                    id: actor::current().selected(),
+                };
+            }
+            State::FinalTry { .. } => {
+                *self = State::Try { closed_count: 0 };
 
                 if let Some(end) = deadline {
                     if Instant::now() >= end {
@@ -206,15 +236,18 @@ impl State {
 
     fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
         match *self {
-            State::Try { ref mut any_open } => {
-                let mut backoff = Backoff::new();
+            State::Try {
+                ref mut closed_count,
+            } => {
+                let backoff = &mut Backoff::new();
                 loop {
-                    match tx.try_send(value) {
+                    match tx.try_send_with_backoff(value, backoff) {
                         Ok(()) => return Ok(()),
-                        Err(TrySendError::Disconnected(v)) => value = v,
-                        Err(TrySendError::Full(v)) => {
+                        Err(TrySendError::Full(v)) => value = v,
+                        Err(TrySendError::Disconnected(v)) => {
                             value = v;
-                            *any_open = true;
+                            *closed_count += 1;
+                            break;
                         }
                     }
                     if !backoff.tick() {
@@ -222,36 +255,31 @@ impl State {
                     }
                 }
             }
-            State::Subscribe => {
+            State::Subscribe {
+                ref mut closed_countdown,
+            } => {
                 match tx.0.flavor {
                     Flavor::List(ref q) => {}
                     Flavor::Array(ref q) => q.senders().register(tx.id()),
-                    Flavor::Zero(ref q) => q.promise_send(),
+                    Flavor::Zero(ref q) => q.promise_send(tx.id()),
                 }
-            }
-            State::IsReady => {
-                // println!("check if send ready");
-                // TODO: skip it if this is a zero channel and the same thread only is registered
-                // if let Flavor::Zero(ref q) = tx.0.flavor {
-                //     if q.is_ready_tx() {
-                //         actor::current().select(1);
-                //     }
-                // } else {
-                    if tx.is_disconnected() || !tx.is_full() {
-                        actor::current().select(1);
-                    }
-                // }
+                if tx.is_disconnected() {
+                    *closed_countdown -= 1;
+                }
+                if tx.can_send() {
+                    actor::current().select(1);
+                }
             }
             State::Unsubscribe => {
                 match tx.0.flavor {
                     Flavor::List(ref q) => {}
                     Flavor::Array(ref q) => q.senders().unregister(tx.id()),
-                    Flavor::Zero(ref q) => q.unpromise_send(),
+                    Flavor::Zero(ref q) => q.unpromise_send(tx.id()),
                 }
             }
-            State::FinalTry => {
+            State::FinalTry { id } => {
                 // println!("final try send");
-                if tx.id() == actor::current().selected() {
+                if tx.id() == id {
                     match tx.0.flavor {
                         Flavor::Array(..) | Flavor::List(..) => {
                             match tx.try_send(value) {
@@ -261,8 +289,6 @@ impl State {
                             }
                         }
                         Flavor::Zero(ref q) => {
-                            // TODO: This should be a try_put
-                            // println!("PUT REQUEST");
                             unsafe { actor::current().put_request(value, tx.id()) };
                             return Ok(());
                         }
@@ -277,49 +303,49 @@ impl State {
 
     fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
         match *self {
-            State::Try { ref mut any_open } => {
-                let mut backoff = Backoff::new();
+            State::Try {
+                ref mut closed_count,
+            } => {
+                let backoff = &mut Backoff::new();
                 loop {
-                    match rx.try_recv() {
+                    match rx.try_recv_with_backoff(backoff) {
                         Ok(v) => return Ok(v),
-                        Err(TryRecvError::Disconnected) => {}
-                        Err(TryRecvError::Empty) => *any_open = true,
+                        Err(TryRecvError::Empty) => {}
+                        Err(TryRecvError::Disconnected) => {
+                            *closed_count += 1;
+                            break;
+                        }
                     }
                     if !backoff.tick() {
                         break;
                     }
                 }
             }
-            State::Subscribe => {
+            State::Subscribe {
+                ref mut closed_countdown,
+            } => {
                 match rx.0.flavor {
                     Flavor::List(ref q) => q.receivers().register(rx.id()),
                     Flavor::Array(ref q) => q.receivers().register(rx.id()),
-                    Flavor::Zero(ref q) => q.promise_recv(),
+                    Flavor::Zero(ref q) => q.promise_recv(rx.id()),
                 }
-            }
-            State::IsReady => {
-                // println!("check if recv ready");
-                // TODO: skip it if this is a zero channel and the same thread only is registered
-                // if let Flavor::Zero(ref q) = rx.0.flavor {
-                //     if q.is_ready_rx() {
-                //         actor::current().select(1);
-                //     }
-                // } else {
-                    if rx.is_disconnected() || !rx.is_empty() {
-                        actor::current().select(1);
-                    }
-                // }
+                if rx.is_disconnected() {
+                    *closed_countdown -= 1;
+                }
+                if rx.can_recv() {
+                    actor::current().select(1);
+                }
             }
             State::Unsubscribe => {
                 match rx.0.flavor {
                     Flavor::List(ref q) => q.receivers().unregister(rx.id()),
                     Flavor::Array(ref q) => q.receivers().unregister(rx.id()),
-                    Flavor::Zero(ref q) => q.unpromise_recv(),
+                    Flavor::Zero(ref q) => q.unpromise_recv(rx.id()),
                 }
             }
-            State::FinalTry => {
+            State::FinalTry { id } => {
                 // println!("final try recv");
-                if rx.id() == actor::current().selected() {
+                if rx.id() == id {
                     match rx.0.flavor {
                         Flavor::Array(..) | Flavor::List(..) => {
                             if let Ok(v) = rx.try_recv() {
@@ -327,8 +353,6 @@ impl State {
                             }
                         }
                         Flavor::Zero(ref q) => {
-                            // TODO: This should be a try_take
-                            // println!("TAKE REQUEST");
                             let v = unsafe { actor::current().take_request(rx.id()) };
                             return Ok(v);
                         }

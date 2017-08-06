@@ -21,8 +21,8 @@ impl<T> Packet<T> {
         *opt = Some(data);
     }
 
-    pub fn take(&self) -> T {
-        self.0.lock().take().unwrap()
+    pub fn take(&self) -> Option<T> {
+        self.0.lock().take()
     }
 }
 
@@ -40,10 +40,12 @@ impl<T> Request<T> {
     }
 }
 
+// TODO: refactor this, it's awkward
 pub enum Entry<T> {
-    Promise { actor: Arc<Actor> },
+    Promise { actor: Arc<Actor>, id: usize },
     Offer {
         actor: Arc<Actor>,
+        id: usize,
         packet: *const Packet<T>,
     },
 }
@@ -51,7 +53,7 @@ pub enum Entry<T> {
 impl<T> Entry<T> {
     pub fn is_current(&self) -> bool {
         match *self {
-            Entry::Promise { ref actor } => actor.thread_id() == thread::current().id(),
+            Entry::Promise { ref actor, .. } => actor.thread_id() == thread::current().id(),
             Entry::Offer { ref actor, .. } => actor.thread_id() == thread::current().id(),
         }
     }
@@ -72,40 +74,50 @@ impl<T> Dock<T> {
 
     pub fn pop(&self) -> Option<Entry<T>> {
         if self.len.load(SeqCst) > 0 {
+            let thread_id = thread::current().id();
             let mut entries = self.entries.lock();
 
-            if let Some(e) = entries.pop_front() {
-                self.len.store(entries.len(), SeqCst);
-                return Some(e);
+            for i in 0..entries.len() {
+                let tid = match entries[i] {
+                    Entry::Promise { ref actor, .. } => actor.thread_id(),
+                    Entry::Offer { ref actor, .. } => actor.thread_id(),
+                };
+                if tid != thread_id {
+                    let e = entries.remove(i).unwrap();
+                    self.len.store(entries.len(), SeqCst);
+                    return Some(e);
+                }
             }
         }
         None
     }
 
-    pub fn register_offer(&self, packet: *const Packet<T>) {
+    pub fn register_offer(&self, packet: *const Packet<T>, id: usize) {
         let mut entries = self.entries.lock();
         entries.push_back(Entry::Offer {
             actor: actor::current(),
+            id,
             packet,
         });
         self.len.store(entries.len(), SeqCst);
     }
 
-    pub fn register_promise(&self) {
+    pub fn register_promise(&self, id: usize) {
         let mut entries = self.entries.lock();
         entries.push_back(Entry::Promise {
             actor: actor::current(),
+            id,
         });
         self.len.store(entries.len(), SeqCst);
     }
 
-    pub fn unregister(&self) {
-        let mut entries = self.entries.lock();
+    pub fn unregister(&self, my_id: usize) {
         let thread_id = thread::current().id();
+        let mut entries = self.entries.lock();
 
         entries.retain(|s| match *s {
-            Entry::Promise { ref actor } => actor.thread_id() != thread_id,
-            Entry::Offer { ref actor, .. } => actor.thread_id() != thread_id,
+            Entry::Promise { ref actor, id } => actor.thread_id() != thread_id || id != my_id,
+            Entry::Offer { ref actor, id, .. } => actor.thread_id() != thread_id || id != my_id,
         });
         // self.maybe_shrink();
         self.len.store(entries.len(), SeqCst);
@@ -115,17 +127,36 @@ impl<T> Dock<T> {
         self.len.load(SeqCst) == 0
     }
 
+    pub fn can_notify(&self) -> bool {
+        if self.len.load(SeqCst) > 0 {
+            let thread_id = thread::current().id();
+            let mut entries = self.entries.lock();
+
+            for i in 0..entries.len() {
+                let tid = match entries[i] {
+                    Entry::Promise { ref actor, .. } => actor.thread_id(),
+                    Entry::Offer { ref actor, .. } => actor.thread_id(),
+                };
+                if tid != thread_id {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn notify_all(&self) {
         if self.len.load(SeqCst) > 0 {
             let mut entries = self.entries.lock();
             self.len.store(0, SeqCst);
 
+            // TODO: should we ignore current thread? it's probably fine
             for t in entries.drain(..) {
-                let actor = match t {
-                    Entry::Promise { actor } => actor,
-                    Entry::Offer { actor, .. } => actor,
+                let (actor, id) = match t {
+                    Entry::Promise { actor, id } => (actor, id),
+                    Entry::Offer { actor, id, .. } => (actor, id),
                 };
-                actor.select(1);
+                actor.select(id);
                 actor.unpark();
             }
             // self.maybe_shrink();

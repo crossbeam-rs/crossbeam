@@ -88,7 +88,7 @@ impl<T> Queue<T> {
         }
     }
 
-    fn pop(&self) -> Option<T> {
+    fn pop(&self, backoff: &mut Backoff) -> Option<T> {
         const USE: usize = 1;
         const MULTI: usize = 2;
 
@@ -96,7 +96,6 @@ impl<T> Queue<T> {
         return unsafe {
             epoch::unprotected(|scope| {
                 if self.head.load(Relaxed, scope).tag() & MULTI == 0 {
-                    let mut backoff = Backoff::new();
                     loop {
                         let head = self.head.fetch_or(USE, SeqCst, scope);
                         if head.tag() != 0 {
@@ -136,7 +135,6 @@ impl<T> Queue<T> {
                     }
                 }
 
-                let mut backoff = Backoff::new();
                 epoch::pin(|scope| loop {
                     let head = self.head.load(SeqCst, scope);
                     let next = head.deref().next.load(SeqCst, scope);
@@ -178,7 +176,7 @@ impl<T> Queue<T> {
             Err(TrySendError::Disconnected(value))
         } else {
             self.push(value);
-            self.receivers.notify_one(self.rx_id());
+            self.receivers.notify_one();
             Ok(())
         }
     }
@@ -192,13 +190,13 @@ impl<T> Queue<T> {
             Err(SendTimeoutError::Disconnected(value))
         } else {
             self.push(value);
-            self.receivers.notify_one(self.rx_id());
+            self.receivers.notify_one();
             Ok(())
         }
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop() {
+    pub(crate) fn try_recv_with_backoff(&self, backoff: &mut Backoff) -> Result<T, TryRecvError> {
+        match self.pop(backoff) {
             None => {
                 if self.closed.load(SeqCst) {
                     Err(TryRecvError::Disconnected)
@@ -212,9 +210,9 @@ impl<T> Queue<T> {
 
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
-            let mut backoff = Backoff::new();
+            let backoff = &mut Backoff::new();
             loop {
-                match self.try_recv() {
+                match self.try_recv_with_backoff(backoff) {
                     Ok(v) => return Ok(v),
                     Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
                     Err(TryRecvError::Empty) => {}
@@ -240,7 +238,7 @@ impl<T> Queue<T> {
         if self.closed.swap(true, SeqCst) {
             false
         } else {
-            self.receivers.notify_all(1);
+            self.receivers.notify_all();
             true
         }
     }
@@ -251,14 +249,6 @@ impl<T> Queue<T> {
 
     pub fn receivers(&self) -> &Monitor {
         &self.receivers
-    }
-
-    pub fn tx_id(&self) -> usize {
-        self as *const _ as usize
-    }
-
-    pub fn rx_id(&self) -> usize {
-        (self as *const _ as usize) | 1
     }
 }
 

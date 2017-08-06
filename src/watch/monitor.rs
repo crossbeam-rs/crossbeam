@@ -53,30 +53,38 @@ impl Monitor {
         }
     }
 
-    pub fn notify_one(&self, id: usize) {
+    pub fn notify_one(&self) {
         if self.len.load(SeqCst) > 0 {
+            let thread_id = thread::current().id();
             let mut entries = self.entries.lock();
 
-            while let Some(e) = entries.pop_front() {
-                self.len.store(entries.len(), SeqCst);
+            for i in 0..entries.len() {
+                if entries[i].actor.thread_id() != thread_id {
+                    let e = entries.remove(i).unwrap();
+                    self.len.store(entries.len(), SeqCst);
 
-                if e.actor.select(id) {
-                    e.actor.unpark();
-                    break;
+                    if e.actor.select(e.id) {
+                        e.actor.unpark();
+                        break;
+                    }
                 }
             }
         }
     }
 
-    pub fn notify_all(&self, id: usize) {
+    pub fn notify_all(&self) {
         if self.len.load(SeqCst) > 0 {
+            let thread_id = thread::current().id();
             let mut entries = self.entries.lock();
 
-            while let Some(e) = entries.pop_front() {
-                self.len.store(entries.len(), SeqCst);
+            for i in 0..entries.len() {
+                if entries[i].actor.thread_id() != thread_id {
+                    let e = entries.remove(i).unwrap();
+                    self.len.store(entries.len(), SeqCst);
 
-                if e.actor.select(id) {
-                    e.actor.unpark();
+                    if e.actor.select(e.id) {
+                        e.actor.unpark();
+                    }
                 }
             }
         }

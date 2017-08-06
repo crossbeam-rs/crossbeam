@@ -26,24 +26,24 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn promise_send(&self) {
+    pub fn promise_send(&self, id: usize) {
         let _lock = self.lock.lock();
-        self.senders.register_promise();
+        self.senders.register_promise(id);
     }
 
-    pub fn unpromise_send(&self) {
+    pub fn unpromise_send(&self, id: usize) {
         let _lock = self.lock.lock();
-        self.senders.unregister();
+        self.senders.unregister(id);
     }
 
-    pub fn promise_recv(&self) {
+    pub fn promise_recv(&self, id: usize) {
         let _lock = self.lock.lock();
-        self.receivers.register_promise();
+        self.receivers.register_promise(id);
     }
 
-    pub fn unpromise_recv(&self) {
-        let _lock = self.lock.lock();
-        self.receivers.unregister();
+    pub fn unpromise_recv(&self, id: usize) {
+        let _lock = self.lock.lock(); // TODO: do we need these locks
+        self.receivers.unregister(id);
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -55,8 +55,8 @@ impl<T> Queue<T> {
         // TODO: should ignore the current thread here...
         while let Some(entry) = self.receivers.pop() {
             match entry {
-                Entry::Promise { actor } => {
-                    if actor.select(self.rx_id()) {
+                Entry::Promise { actor, id } => {
+                    if actor.select(id) {
                         let req = Request::new(Some(value));
                         actor::current().reset();
                         actor.set_request(&req);
@@ -67,8 +67,8 @@ impl<T> Queue<T> {
                         return Ok(());
                     }
                 }
-                Entry::Offer { actor, packet } => {
-                    if actor.select(self.rx_id()) {
+                Entry::Offer { actor, id, packet } => {
+                    if actor.select(id) {
                         unsafe { (*packet).put(value) }
                         actor.unpark();
                         return Ok(());
@@ -89,9 +89,7 @@ impl<T> Queue<T> {
             match self.try_send(value) {
                 Ok(()) => return Ok(()),
                 Err(TrySendError::Full(v)) => value = v,
-                Err(TrySendError::Disconnected(v)) => {
-                    return Err(SendTimeoutError::Disconnected(v))
-                }
+                Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
             }
 
             let packet;
@@ -103,21 +101,24 @@ impl<T> Queue<T> {
 
                 actor::current().reset();
                 packet = Packet::new(Some(value));
-                self.senders.register_offer(&packet);
+                self.senders.register_offer(&packet, 1);
 
                 if lock.closed || !self.receivers.is_empty() {
                     actor::current().select(1);
                 }
             }
 
-            if !actor::current().wait_until(deadline) {
-                return Err(SendTimeoutError::Timeout(packet.take()));
-            } else if actor::current().selected() != 1 {
-                let mut lock = self.lock.lock();
-                return Ok(());
-            } else {
-                self.senders.unregister();
-                value = packet.take();
+            let timed_out = !actor::current().wait_until(deadline);
+            let mut lock = self.lock.lock();
+            self.senders.unregister(1);
+
+            match packet.take() {
+                None => return Ok(()),
+                Some(v) => value = v,
+            }
+
+            if timed_out {
+                return Err(SendTimeoutError::Timeout(value));
             }
         }
     }
@@ -130,8 +131,8 @@ impl<T> Queue<T> {
 
         while let Some(entry) = self.senders.pop() {
             match entry {
-                Entry::Promise { actor } => {
-                    if actor.select(self.tx_id()) {
+                Entry::Promise { actor, id } => {
+                    if actor.select(id) {
                         let req = Request::new(None);
                         actor::current().reset();
                         actor.set_request(&req);
@@ -140,13 +141,13 @@ impl<T> Queue<T> {
                         actor.unpark();
                         actor::current().wait_until(None);
                         let lock = self.lock.lock();
-                        let v = req.packet.take();
+                        let v = req.packet.take().unwrap();
                         return Ok(v);
                     }
                 }
-                Entry::Offer { actor, packet } => {
-                    if actor.select(self.tx_id()) {
-                        let v = unsafe { (*packet).take() };
+                Entry::Offer { actor, id, packet } => {
+                    if actor.select(id) {
+                        let v = unsafe { (*packet).take().unwrap() };
                         actor.unpark();
                         return Ok(v);
                     }
@@ -174,32 +175,35 @@ impl<T> Queue<T> {
 
                 actor::current().reset();
                 packet = Packet::new(None);
-                self.receivers.register_offer(&packet);
+                self.receivers.register_offer(&packet, 1);
 
                 if lock.closed || !self.senders.is_empty() {
                     actor::current().select(1);
                 }
             }
 
-            if !actor::current().wait_until(deadline) {
+            let timed_out = !actor::current().wait_until(deadline);
+            let mut lock = self.lock.lock();
+            self.receivers.unregister(1);
+
+            if let Some(v) = packet.take() {
+                return Ok(v);
+            }
+
+            if timed_out {
                 return Err(RecvTimeoutError::Timeout);
-            } else if actor::current().selected() != 1 {
-                let mut lock = self.lock.lock();
-                return Ok(packet.take());
-            } else {
-                self.receivers.unregister();
             }
         }
     }
 
-    pub fn has_senders(&self) -> bool {
+    pub fn can_recv(&self) -> bool {
         let _lock = self.lock.lock();
-        !self.senders.is_empty()
+        self.senders.can_notify()
     }
 
-    pub fn has_receivers(&self) -> bool {
+    pub fn can_send(&self) -> bool {
         let _lock = self.lock.lock();
-        !self.receivers.is_empty()
+        self.receivers.can_notify()
     }
 
     pub fn close(&self) -> bool {
@@ -217,40 +221,6 @@ impl<T> Queue<T> {
 
     pub fn is_closed(&self) -> bool {
         self.lock.lock().closed
-    }
-
-    // pub fn is_ready_tx(&self) -> bool {
-    //     let lock = self.lock.lock();
-    //     if lock.closed {
-    //         true
-    //     } else {
-    //         match self.receivers.0.len() {
-    //             0 => false,
-    //             1 => !self.receivers.0[0].is_current(),
-    //             _ => true,
-    //         }
-    //     }
-    // }
-    //
-    // pub fn is_ready_rx(&self) -> bool {
-    //     let lock = self.lock.lock();
-    //     if lock.closed {
-    //         true
-    //     } else {
-    //         match self.senders.0.len() {
-    //             0 => false,
-    //             1 => !self.senders.0[0].is_current(),
-    //             _ => true,
-    //         }
-    //     }
-    // }
-
-    pub fn tx_id(&self) -> usize {
-        self as *const _ as usize
-    }
-
-    pub fn rx_id(&self) -> usize {
-        (self as *const _ as usize) | 1
     }
 }
 

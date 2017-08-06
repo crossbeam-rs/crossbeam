@@ -64,11 +64,10 @@ impl<T> Queue<T> {
         }
     }
 
-    fn push(&self, value: T) -> Option<T> {
+    fn push(&self, value: T, backoff: &mut Backoff) -> Option<T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
-        let mut backoff = Backoff::new();
 
         loop {
             let tail = self.tail.load(SeqCst);
@@ -99,15 +98,16 @@ impl<T> Queue<T> {
                 return Some(value);
             }
 
-            backoff.tick();
+            if !backoff.tick() {
+                thread::yield_now();
+            }
         }
     }
 
-    fn pop(&self) -> Option<T> {
+    fn pop(&self, backoff: &mut Backoff) -> Option<T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
-        let mut backoff = Backoff::new();
 
         loop {
             let head = self.head.load(SeqCst);
@@ -138,7 +138,9 @@ impl<T> Queue<T> {
                 return None;
             }
 
-            backoff.tick();
+            if !backoff.tick() {
+                thread::yield_now();
+            }
         }
     }
 
@@ -168,13 +170,17 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+    pub(crate) fn try_send_with_backoff(
+        &self,
+        value: T,
+        backoff: &mut Backoff,
+    ) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
-            match self.push(value) {
+            match self.push(value, backoff) {
                 None => {
-                    self.receivers.notify_one(self.rx_id());
+                    self.receivers.notify_one();
                     Ok(())
                 }
                 Some(v) => Err(TrySendError::Full(v)),
@@ -188,9 +194,9 @@ impl<T> Queue<T> {
         deadline: Option<Instant>,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
-            let mut backoff = Backoff::new();
+            let backoff = &mut Backoff::new();
             loop {
-                match self.try_send(value) {
+                match self.try_send_with_backoff(value, backoff) {
                     Ok(()) => return Ok(()),
                     Err(TrySendError::Full(v)) => value = v,
                     Err(TrySendError::Disconnected(v)) => {
@@ -214,8 +220,8 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop() {
+    pub(crate) fn try_recv_with_backoff(&self, backoff: &mut Backoff) -> Result<T, TryRecvError> {
+        match self.pop(backoff) {
             None => {
                 if self.closed.load(SeqCst) {
                     Err(TryRecvError::Disconnected)
@@ -224,7 +230,7 @@ impl<T> Queue<T> {
                 }
             }
             Some(v) => {
-                self.senders.notify_one(self.tx_id());
+                self.senders.notify_one();
                 Ok(v)
             }
         }
@@ -232,9 +238,9 @@ impl<T> Queue<T> {
 
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
-            let mut backoff = Backoff::new();
+            let backoff = &mut Backoff::new();
             loop {
-                match self.try_recv() {
+                match self.try_recv_with_backoff(backoff) {
                     Ok(v) => return Ok(v),
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
@@ -264,8 +270,8 @@ impl<T> Queue<T> {
         if self.closed.swap(true, SeqCst) {
             false
         } else {
-            self.senders.notify_all(1);
-            self.receivers.notify_all(1);
+            self.senders.notify_all();
+            self.receivers.notify_all();
             true
         }
     }
@@ -280,14 +286,6 @@ impl<T> Queue<T> {
 
     pub fn receivers(&self) -> &Monitor {
         &self.receivers
-    }
-
-    pub fn tx_id(&self) -> usize {
-        self as *const _ as usize
-    }
-
-    pub fn rx_id(&self) -> usize {
-        (self as *const _ as usize) | 1
     }
 }
 
