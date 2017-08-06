@@ -11,7 +11,6 @@ use actor::{self, Actor, HandleId};
 // TODO: Explain that a single thread can be registered multiple times (that happens only in
 // select).  Unregister removes just entry belonging to the current thread.
 
-
 struct Entry {
     actor: Arc<Actor>,
     id: HandleId,
@@ -58,7 +57,8 @@ impl Monitor {
             let thread_id = thread::current().id();
             let mut entries = self.entries.lock();
 
-            for i in 0..entries.len() {
+            let mut i = 0;
+            while i < entries.len() {
                 if entries[i].actor.thread_id() != thread_id {
                     let e = entries.remove(i).unwrap();
                     self.len.store(entries.len(), SeqCst);
@@ -68,6 +68,7 @@ impl Monitor {
                         break;
                     }
                 }
+                i += 1;
             }
         }
     }
@@ -77,14 +78,10 @@ impl Monitor {
             let thread_id = thread::current().id();
             let mut entries = self.entries.lock();
 
-            for i in 0..entries.len() {
-                if entries[i].actor.thread_id() != thread_id {
-                    let e = entries.remove(i).unwrap();
-                    self.len.store(entries.len(), SeqCst);
-
-                    if e.actor.select(e.id) {
-                        e.actor.unpark();
-                    }
+            self.len.store(0, SeqCst);
+            for e in entries.drain(..) {
+                if e.actor.select(e.id) {
+                    e.actor.unpark();
                 }
             }
         }

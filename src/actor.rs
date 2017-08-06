@@ -4,8 +4,9 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
+use parking_lot::Mutex;
+
 use Backoff;
-use watch::dock::Request;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct HandleId(usize);
@@ -109,4 +110,36 @@ thread_local! {
 
 pub fn current() -> Arc<Actor> {
     ACTOR.with(|a| a.clone())
+}
+
+pub struct Packet<T>(Mutex<Option<T>>);
+
+impl<T> Packet<T> {
+    pub fn new(data: Option<T>) -> Self {
+        Packet(Mutex::new(data))
+    }
+
+    pub fn put(&self, data: T) {
+        let mut opt = self.0.lock();
+        assert!(opt.is_none());
+        *opt = Some(data);
+    }
+
+    pub fn take(&self) -> Option<T> {
+        self.0.lock().take()
+    }
+}
+
+pub struct Request<T> {
+    pub actor: Arc<Actor>,
+    pub packet: Packet<T>,
+}
+
+impl<T> Request<T> {
+    pub fn new(data: Option<T>) -> Self {
+        Request {
+            actor: current(),
+            packet: Packet::new(data),
+        }
+    }
 }

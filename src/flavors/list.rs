@@ -10,7 +10,7 @@ use coco::epoch::{self, Atomic, Owned};
 
 use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use watch::monitor::Monitor;
+use monitor::Monitor;
 use Backoff;
 use actor::HandleId;
 
@@ -24,7 +24,7 @@ struct Node<T> {
 
 /// A lock-free multi-producer multi-consumer queue.
 #[repr(C)]
-pub struct Queue<T> {
+pub struct Channel<T> {
     /// Head of the queue.
     head: Atomic<Node<T>>,
     recv_count: AtomicUsize,
@@ -41,10 +41,10 @@ pub struct Queue<T> {
     _marker: PhantomData<T>,
 }
 
-impl<T> Queue<T> {
+impl<T> Channel<T> {
     pub fn new() -> Self {
         // Initialize the internal representation of the queue.
-        let queue = Queue {
+        let queue = Channel {
             _pad0: [0; 64],
             _pad1: [0; 64],
             head: Atomic::null(),
@@ -253,7 +253,7 @@ impl<T> Queue<T> {
     }
 }
 
-impl<T> Drop for Queue<T> {
+impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
         unsafe {
             epoch::unprotected(|scope| {

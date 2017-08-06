@@ -5,11 +5,11 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
 use std::thread;
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use watch::monitor::Monitor;
+use monitor::Monitor;
 use actor::HandleId;
 use Backoff;
 
@@ -19,7 +19,7 @@ struct Node<T> {
 }
 
 #[repr(C)]
-pub struct Queue<T> {
+pub struct Channel<T> {
     buffer: *mut UnsafeCell<Node<T>>,
     cap: usize,
     power: usize,
@@ -34,7 +34,7 @@ pub struct Queue<T> {
     _marker: PhantomData<T>,
 }
 
-impl<T> Queue<T> {
+impl<T> Channel<T> {
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0);
         assert!(cap <= ::std::isize::MAX as usize);
@@ -49,7 +49,7 @@ impl<T> Queue<T> {
             ptr::write_bytes(buffer, 0, cap);
         }
 
-        Queue {
+        Channel {
             _pad0: [0; 64],
             _pad1: [0; 64],
             _pad2: [0; 64],
@@ -290,7 +290,7 @@ impl<T> Queue<T> {
     }
 }
 
-impl<T> Drop for Queue<T> {
+impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
         let cap = self.cap;
         let power = self.power;

@@ -1,78 +1,74 @@
+use std::collections::VecDeque;
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
 use parking_lot::Mutex;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use actor::{self, Actor, HandleId};
-use watch::dock::{Dock, Request, Entry, Packet};
+use actor::{self, Actor, HandleId, Packet, Request};
 
-struct Inner {
+struct Inner<T> {
+    senders: Registry<T>,
+    receivers: Registry<T>,
     closed: bool,
 }
 
-// TODO: move senders and receivers inside inner
-
-pub struct Queue<T> {
-    lock: Mutex<Inner>,
-    senders: Dock<T>,
-    receivers: Dock<T>,
+pub struct Channel<T> {
+    inner: Mutex<Inner<T>>,
 }
 
-impl<T> Queue<T> {
+impl<T> Channel<T> {
     pub fn new() -> Self {
-        Queue {
-            lock: Mutex::new(Inner { closed: false }),
-            senders: Dock::new(),
-            receivers: Dock::new(),
+        Channel {
+            inner: Mutex::new(Inner {
+                senders: Registry::new(),
+                receivers: Registry::new(),
+                closed: false,
+            }),
         }
     }
 
     pub fn promise_send(&self, id: HandleId) {
-        let _lock = self.lock.lock();
-        self.senders.register_promise(id);
+        self.inner.lock().senders.register_promise(id);
     }
 
     pub fn unpromise_send(&self, id: HandleId) {
-        let _lock = self.lock.lock();
-        self.senders.unregister(id);
+        self.inner.lock().senders.unregister(id);
     }
 
     pub fn promise_recv(&self, id: HandleId) {
-        let _lock = self.lock.lock();
-        self.receivers.register_promise(id);
+        self.inner.lock().receivers.register_promise(id);
     }
 
     pub fn unpromise_recv(&self, id: HandleId) {
-        let _lock = self.lock.lock(); // TODO: do we need these locks
-        self.receivers.unregister(id);
+        self.inner.lock().receivers.unregister(id);
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        let mut lock = self.lock.lock();
-        if lock.closed {
+        let mut inner = self.inner.lock();
+        if inner.closed {
             return Err(TrySendError::Disconnected(value));
         }
 
-        // TODO: should ignore the current thread here...
-        while let Some(entry) = self.receivers.pop() {
-            match entry {
-                Entry::Promise { actor, id } => {
-                    if actor.select(id) {
+        while let Some(e) = inner.receivers.pop() {
+            match e.packet {
+                None => {
+                    if e.actor.select(e.id) {
                         let req = Request::new(Some(value));
                         actor::current().reset();
-                        actor.set_request(&req);
-                        drop(lock);
+                        e.actor.set_request(&req);
+                        drop(inner);
 
-                        actor.unpark();
+                        e.actor.unpark();
                         actor::current().wait_until(None);
                         return Ok(());
                     }
                 }
-                Entry::Offer { actor, id, packet } => {
-                    if actor.select(id) {
+                Some(packet) => {
+                    if e.actor.select(e.id) {
                         unsafe { (*packet).put(value) }
-                        actor.unpark();
+                        e.actor.unpark();
                         return Ok(());
                     }
                 }
@@ -96,23 +92,23 @@ impl<T> Queue<T> {
 
             let packet;
             {
-                let mut lock = self.lock.lock();
-                if lock.closed {
+                let mut inner = self.inner.lock();
+                if inner.closed {
                     return Err(SendTimeoutError::Disconnected(value));
                 }
 
-                if !self.receivers.is_empty() {
+                if inner.receivers.can_notify() {
                     continue;
                 }
 
                 actor::current().reset();
                 packet = Packet::new(Some(value));
-                self.senders.register_offer(&packet, HandleId::sentinel());
+                inner.senders.register_offer(&packet, HandleId::sentinel());
             }
 
             let timed_out = !actor::current().wait_until(deadline);
-            let mut lock = self.lock.lock();
-            self.senders.unregister(HandleId::sentinel());
+            let mut inner = self.inner.lock();
+            inner.senders.unregister(HandleId::sentinel());
 
             match packet.take() {
                 None => return Ok(()),
@@ -126,31 +122,31 @@ impl<T> Queue<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let mut lock = self.lock.lock();
-        if lock.closed {
+        let mut inner = self.inner.lock();
+        if inner.closed {
             return Err(TryRecvError::Disconnected);
         }
 
-        while let Some(entry) = self.senders.pop() {
-            match entry {
-                Entry::Promise { actor, id } => {
-                    if actor.select(id) {
+        while let Some(e) = inner.senders.pop() {
+            match e.packet {
+                None => {
+                    if e.actor.select(e.id) {
                         let req = Request::new(None);
                         actor::current().reset();
-                        actor.set_request(&req);
-                        drop(lock);
+                        e.actor.set_request(&req);
+                        drop(inner);
 
-                        actor.unpark();
+                        e.actor.unpark();
                         actor::current().wait_until(None);
-                        let lock = self.lock.lock();
+                        let _inner = self.inner.lock();
                         let v = req.packet.take().unwrap();
                         return Ok(v);
                     }
                 }
-                Entry::Offer { actor, id, packet } => {
-                    if actor.select(id) {
+                Some(packet) => {
+                    if e.actor.select(e.id) {
                         let v = unsafe { (*packet).take().unwrap() };
-                        actor.unpark();
+                        e.actor.unpark();
                         return Ok(v);
                     }
                 }
@@ -170,23 +166,25 @@ impl<T> Queue<T> {
 
             let packet;
             {
-                let mut lock = self.lock.lock();
-                if lock.closed {
+                let mut inner = self.inner.lock();
+                if inner.closed {
                     return Err(RecvTimeoutError::Disconnected);
                 }
 
-                if !self.senders.is_empty() {
+                if inner.senders.can_notify() {
                     continue;
                 }
 
                 actor::current().reset();
                 packet = Packet::new(None);
-                self.receivers.register_offer(&packet, HandleId::sentinel());
+                inner
+                    .receivers
+                    .register_offer(&packet, HandleId::sentinel());
             }
 
             let timed_out = !actor::current().wait_until(deadline);
-            let mut lock = self.lock.lock();
-            self.receivers.unregister(HandleId::sentinel());
+            let mut inner = self.inner.lock();
+            inner.receivers.unregister(HandleId::sentinel());
 
             if let Some(v) = packet.take() {
                 return Ok(v);
@@ -199,37 +197,107 @@ impl<T> Queue<T> {
     }
 
     pub fn can_recv(&self) -> bool {
-        let _lock = self.lock.lock();
-        self.senders.can_notify()
+        self.inner.lock().senders.can_notify()
     }
 
     pub fn can_send(&self) -> bool {
-        let _lock = self.lock.lock();
-        self.receivers.can_notify()
+        self.inner.lock().receivers.can_notify()
     }
 
     pub fn close(&self) -> bool {
-        let mut lock = self.lock.lock();
+        let mut inner = self.inner.lock();
 
-        if lock.closed {
+        if inner.closed {
             false
         } else {
-            lock.closed = true;
-            self.senders.notify_all();
-            self.receivers.notify_all();
+            inner.closed = true;
+            inner.senders.notify_all();
+            inner.receivers.notify_all();
             true
         }
     }
 
     pub fn is_closed(&self) -> bool {
-        self.lock.lock().closed
+        self.inner.lock().closed
     }
 }
 
-impl<T> Drop for Queue<T> {
-    fn drop(&mut self) {
-        debug_assert!(self.senders.is_empty());
-        debug_assert!(self.receivers.is_empty());
+pub struct Entry<T> {
+    actor: Arc<Actor>,
+    id: HandleId,
+    packet: Option<*const Packet<T>>,
+}
+
+struct Registry<T> {
+    entries: VecDeque<Entry<T>>,
+}
+
+impl<T> Registry<T> {
+    fn new() -> Self {
+        Registry {
+            entries: VecDeque::new(),
+        }
+    }
+
+    fn pop(&mut self) -> Option<Entry<T>> {
+        let thread_id = thread::current().id();
+
+        for i in 0..self.entries.len() {
+            if self.entries[i].actor.thread_id() != thread_id {
+                let e = self.entries.remove(i).unwrap();
+                return Some(e);
+            }
+        }
+
+        None
+    }
+
+    fn register_offer(&mut self, packet: *const Packet<T>, id: HandleId) {
+        self.entries.push_back(Entry {
+            actor: actor::current(),
+            id,
+            packet: Some(packet),
+        });
+    }
+
+    fn register_promise(&mut self, id: HandleId) {
+        self.entries.push_back(Entry {
+            actor: actor::current(),
+            id,
+            packet: None,
+        });
+    }
+
+    fn unregister(&mut self, id: HandleId) {
+        let thread_id = thread::current().id();
+        self.entries
+            .retain(|e| e.actor.thread_id() != thread_id || e.id != id);
+        self.maybe_shrink();
+    }
+
+    fn can_notify(&self) -> bool {
+        let thread_id = thread::current().id();
+
+        for i in 0..self.entries.len() {
+            if self.entries[i].actor.thread_id() != thread_id {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn notify_all(&mut self) {
+        for e in self.entries.drain(..) {
+            e.actor.select(e.id);
+            e.actor.unpark();
+        }
+        self.maybe_shrink();
+    }
+
+    fn maybe_shrink(&mut self) {
+        if self.entries.capacity() > 32 && self.entries.capacity() / 2 > self.entries.len() {
+            self.entries.shrink_to_fit();
+        }
     }
 }
 

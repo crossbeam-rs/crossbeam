@@ -1,5 +1,3 @@
-#![feature(hint_core_should_pause)]
-
 extern crate coco;
 extern crate crossbeam;
 extern crate parking_lot;
@@ -8,90 +6,90 @@ extern crate rand;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
+
+use actor::HandleId;
+use backoff::Backoff;
 
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 pub use select::Select;
 
 mod actor;
+mod backoff;
 mod err;
 mod flavors;
-mod watch;
+mod monitor;
 mod select;
 
-#[derive(Clone, Copy)]
-struct Backoff(usize);
-
-// TODO: Move into a separate module
-impl Backoff {
-    #[inline]
-    fn new() -> Self {
-        Backoff(0)
-    }
-
-    #[inline]
-    fn abort(&mut self) {
-        self.0 = !0;
-    }
-
-    #[inline]
-    fn tick(&mut self) -> bool {
-        if self.0 >= 20 {
-            false
-        } else {
-            if self.0 <= 10 {
-                for _ in 0..1 << self.0 {
-                    ::std::sync::atomic::hint_core_should_pause();
-                }
-            } else {
-                thread::yield_now();
-            }
-
-            self.0 += 1;
-            true
-        }
-    }
-}
-
-enum Flavor<T> {
-    Array(flavors::array::Queue<T>),
-    List(flavors::list::Queue<T>),
-    Zero(flavors::zero::Queue<T>),
-}
-
-struct Queue<T> {
+struct Channel<T> {
     senders: AtomicUsize,
     receivers: AtomicUsize,
     flavor: Flavor<T>,
 }
 
-pub struct Sender<T>(Arc<Queue<T>>);
+enum Flavor<T> {
+    Array(flavors::array::Channel<T>),
+    List(flavors::list::Channel<T>),
+    Zero(flavors::zero::Channel<T>),
+}
+
+pub struct Sender<T>(Arc<Channel<T>>);
 
 unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Sync for Sender<T> {}
 
 impl<T> Sender<T> {
-    fn new(q: Arc<Queue<T>>) -> Self {
-        q.senders.fetch_add(1, SeqCst);
-        Sender(q)
+    fn new(chan: Arc<Channel<T>>) -> Self {
+        chan.senders.fetch_add(1, SeqCst);
+        Sender(chan)
     }
 
-    pub(crate) fn id(&self) -> actor::HandleId {
+    pub(crate) fn id(&self) -> HandleId {
         let addr = match self.0.flavor {
-            Flavor::Array(ref q) => q as *const flavors::array::Queue<T> as usize,
-            Flavor::List(ref q) => q as *const flavors::list::Queue<T> as usize,
-            Flavor::Zero(ref q) => q as *const flavors::zero::Queue<T> as usize,
+            Flavor::Array(ref chan) => chan as *const flavors::array::Channel<T> as usize,
+            Flavor::List(ref chan) => chan as *const flavors::list::Channel<T> as usize,
+            Flavor::Zero(ref chan) => chan as *const flavors::zero::Channel<T> as usize,
         };
-        assert!(addr % 2 == 0);
-        actor::HandleId::new(addr)
+        HandleId::new(addr)
+    }
+
+    pub(crate) fn register(&self) {
+        match self.0.flavor {
+            Flavor::List(_) => {}
+            Flavor::Array(ref chan) => chan.senders().register(self.id()),
+            Flavor::Zero(ref chan) => chan.promise_send(self.id()),
+        }
+    }
+
+    pub(crate) fn unregister(&self) {
+        match self.0.flavor {
+            Flavor::List(_) => {}
+            Flavor::Array(ref chan) => chan.senders().unregister(self.id()),
+            Flavor::Zero(ref chan) => chan.unpromise_send(self.id()),
+        }
     }
 
     pub(crate) fn can_send(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.len() < q.capacity(),
-            Flavor::List(ref q) => false,
-            Flavor::Zero(ref q) => q.can_send(),
+            Flavor::Array(ref chan) => chan.len() < chan.capacity(),
+            Flavor::List(_) => false,
+            Flavor::Zero(ref chan) => chan.can_send(),
+        }
+    }
+
+    pub(crate) fn send_promised(&self, value: T) -> Result<(), T> {
+        match self.0.flavor {
+            Flavor::Array(..) | Flavor::List(..) => {
+                match self.try_send(value) {
+                    Ok(()) => Ok(()),
+                    Err(TrySendError::Full(v)) => Err(v),
+                    Err(TrySendError::Disconnected(v)) => Err(v),
+                }
+            }
+            Flavor::Zero(_) => {
+                unsafe { actor::current().put_request(value, self.id()) }
+                Ok(())
+            }
         }
     }
 
@@ -101,11 +99,11 @@ impl<T> Sender<T> {
         backoff: &mut Backoff,
     ) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.try_send_with_backoff(value, backoff),
-            Flavor::List(ref q) => q.try_send(value),
-            Flavor::Zero(ref q) => {
+            Flavor::Array(ref chan) => chan.try_send_with_backoff(value, backoff),
+            Flavor::List(ref chan) => chan.try_send(value),
+            Flavor::Zero(ref chan) => {
                 backoff.abort();
-                q.try_send(value)
+                chan.try_send(value)
             }
         }
     }
@@ -116,9 +114,9 @@ impl<T> Sender<T> {
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
-            Flavor::Array(ref q) => q.send_until(value, None),
-            Flavor::List(ref q) => q.send_until(value, None),
-            Flavor::Zero(ref q) => q.send_until(value, None),
+            Flavor::Array(ref chan) => chan.send_until(value, None),
+            Flavor::List(ref chan) => chan.send_until(value, None),
+            Flavor::Zero(ref chan) => chan.send_until(value, None),
         };
         match res {
             Ok(()) => Ok(()),
@@ -130,17 +128,17 @@ impl<T> Sender<T> {
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
         let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
-            Flavor::Array(ref q) => q.send_until(value, deadline),
-            Flavor::List(ref q) => q.send_until(value, deadline),
-            Flavor::Zero(ref q) => q.send_until(value, deadline),
+            Flavor::Array(ref chan) => chan.send_until(value, deadline),
+            Flavor::List(ref chan) => chan.send_until(value, deadline),
+            Flavor::Zero(ref chan) => chan.send_until(value, deadline),
         }
     }
 
     pub fn len(&self) -> usize {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.len(),
-            Flavor::List(ref q) => q.len(),
-            Flavor::Zero(ref q) => 0,
+            Flavor::Array(ref chan) => chan.len(),
+            Flavor::List(ref chan) => chan.len(),
+            Flavor::Zero(_) => 0,
         }
     }
 
@@ -151,17 +149,17 @@ impl<T> Sender<T> {
 
     pub fn is_disconnected(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.is_closed(),
-            Flavor::List(ref q) => q.is_closed(),
-            Flavor::Zero(ref q) => q.is_closed(),
+            Flavor::Array(ref chan) => chan.is_closed(),
+            Flavor::List(ref chan) => chan.is_closed(),
+            Flavor::Zero(ref chan) => chan.is_closed(),
         }
     }
 
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
-            Flavor::Array(ref q) => Some(q.capacity()),
-            Flavor::List(ref q) => None,
-            Flavor::Zero(ref q) => Some(0),
+            Flavor::Array(ref chan) => Some(chan.capacity()),
+            Flavor::List(_) => None,
+            Flavor::Zero(_) => Some(0),
         }
     }
 }
@@ -170,9 +168,9 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.0.senders.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::Array(ref q) => q.close(),
-                Flavor::List(ref q) => q.close(),
-                Flavor::Zero(ref q) => q.close(),
+                Flavor::Array(ref chan) => chan.close(),
+                Flavor::List(ref chan) => chan.close(),
+                Flavor::Zero(ref chan) => chan.close(),
             };
         }
     }
@@ -184,42 +182,64 @@ impl<T> Clone for Sender<T> {
     }
 }
 
-pub struct Receiver<T>(Arc<Queue<T>>);
+pub struct Receiver<T>(Arc<Channel<T>>);
 
 unsafe impl<T: Send> Send for Receiver<T> {}
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
 impl<T> Receiver<T> {
-    fn new(q: Arc<Queue<T>>) -> Self {
-        q.receivers.fetch_add(1, SeqCst);
-        Receiver(q)
+    fn new(chan: Arc<Channel<T>>) -> Self {
+        chan.receivers.fetch_add(1, SeqCst);
+        Receiver(chan)
     }
 
-    pub(crate) fn id(&self) -> actor::HandleId {
+    pub(crate) fn id(&self) -> HandleId {
         let addr = match self.0.flavor {
-            Flavor::Array(ref q) => q as *const flavors::array::Queue<T> as usize,
-            Flavor::List(ref q) => q as *const flavors::list::Queue<T> as usize,
-            Flavor::Zero(ref q) => q as *const flavors::zero::Queue<T> as usize,
+            Flavor::Array(ref chan) => chan as *const flavors::array::Channel<T> as usize,
+            Flavor::List(ref chan) => chan as *const flavors::list::Channel<T> as usize,
+            Flavor::Zero(ref chan) => chan as *const flavors::zero::Channel<T> as usize,
         };
-        assert!(addr % 2 == 0);
-        actor::HandleId::new(addr | 1)
+        HandleId::new(addr | 1)
+    }
+
+    pub(crate) fn register(&self) {
+        match self.0.flavor {
+            Flavor::List(ref chan) => chan.receivers().register(self.id()),
+            Flavor::Array(ref chan) => chan.receivers().register(self.id()),
+            Flavor::Zero(ref chan) => chan.promise_recv(self.id()),
+        }
+    }
+
+    pub(crate) fn unregister(&self) {
+        match self.0.flavor {
+            Flavor::List(ref chan) => chan.receivers().unregister(self.id()),
+            Flavor::Array(ref chan) => chan.receivers().unregister(self.id()),
+            Flavor::Zero(ref chan) => chan.unpromise_recv(self.id()),
+        }
     }
 
     pub(crate) fn can_recv(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.len() > 0,
-            Flavor::List(ref q) => q.len() > 0,
-            Flavor::Zero(ref q) => q.can_recv(),
+            Flavor::Array(ref chan) => chan.len() > 0,
+            Flavor::List(ref chan) => chan.len() > 0,
+            Flavor::Zero(ref chan) => chan.can_recv(),
+        }
+    }
+
+    pub(crate) fn recv_promised(&self) -> Result<T, ()> {
+        match self.0.flavor {
+            Flavor::Array(..) | Flavor::List(..) => self.try_recv().map_err(|_| ()),
+            Flavor::Zero(_) => unsafe { Ok(actor::current().take_request(self.id())) },
         }
     }
 
     pub(crate) fn try_recv_with_backoff(&self, backoff: &mut Backoff) -> Result<T, TryRecvError> {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.try_recv_with_backoff(backoff),
-            Flavor::List(ref q) => q.try_recv_with_backoff(backoff),
-            Flavor::Zero(ref q) => {
+            Flavor::Array(ref chan) => chan.try_recv_with_backoff(backoff),
+            Flavor::List(ref chan) => chan.try_recv_with_backoff(backoff),
+            Flavor::Zero(ref chan) => {
                 backoff.abort();
-                q.try_recv()
+                chan.try_recv()
             }
         }
     }
@@ -230,9 +250,9 @@ impl<T> Receiver<T> {
 
     pub fn recv(&self) -> Result<T, RecvError> {
         let res = match self.0.flavor {
-            Flavor::Array(ref q) => q.recv_until(None),
-            Flavor::List(ref q) => q.recv_until(None),
-            Flavor::Zero(ref q) => q.recv_until(None),
+            Flavor::Array(ref chan) => chan.recv_until(None),
+            Flavor::List(ref chan) => chan.recv_until(None),
+            Flavor::Zero(ref chan) => chan.recv_until(None),
         };
         if let Ok(v) = res {
             Ok(v)
@@ -244,17 +264,17 @@ impl<T> Receiver<T> {
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
         let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
-            Flavor::Array(ref q) => q.recv_until(deadline),
-            Flavor::List(ref q) => q.recv_until(deadline),
-            Flavor::Zero(ref q) => q.recv_until(deadline),
+            Flavor::Array(ref chan) => chan.recv_until(deadline),
+            Flavor::List(ref chan) => chan.recv_until(deadline),
+            Flavor::Zero(ref chan) => chan.recv_until(deadline),
         }
     }
 
     pub fn len(&self) -> usize {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.len(),
-            Flavor::List(ref q) => q.len(),
-            Flavor::Zero(ref q) => 0,
+            Flavor::Array(ref chan) => chan.len(),
+            Flavor::List(ref chan) => chan.len(),
+            Flavor::Zero(_) => 0,
         }
     }
 
@@ -265,15 +285,15 @@ impl<T> Receiver<T> {
 
     pub fn is_disconnected(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref q) => q.is_closed(),
-            Flavor::List(ref q) => q.is_closed(),
-            Flavor::Zero(ref q) => q.is_closed(),
+            Flavor::Array(ref chan) => chan.is_closed(),
+            Flavor::List(ref chan) => chan.is_closed(),
+            Flavor::Zero(ref chan) => chan.is_closed(),
         }
     }
 
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
-            Flavor::Array(ref q) => Some(q.capacity()),
+            Flavor::Array(ref chan) => Some(chan.capacity()),
             Flavor::List(_) => None,
             Flavor::Zero(_) => Some(0),
         }
@@ -292,9 +312,9 @@ impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         if self.0.receivers.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::Array(ref q) => q.close(),
-                Flavor::List(ref q) => q.close(),
-                Flavor::Zero(ref q) => q.close(),
+                Flavor::Array(ref chan) => chan.close(),
+                Flavor::List(ref chan) => chan.close(),
+                Flavor::Zero(ref chan) => chan.close(),
             };
         }
     }
@@ -361,23 +381,23 @@ impl<T> Iterator for IntoIter<T> {
 }
 
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
-    let q = Arc::new(Queue {
+    let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
         receivers: AtomicUsize::new(0),
-        flavor: Flavor::List(flavors::list::Queue::new()),
+        flavor: Flavor::List(flavors::list::Channel::new()),
     });
-    (Sender::new(q.clone()), Receiver::new(q))
+    (Sender::new(chan.clone()), Receiver::new(chan))
 }
 
 pub fn bounded<T>(size: usize) -> (Sender<T>, Receiver<T>) {
-    let q = Arc::new(Queue {
+    let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
         receivers: AtomicUsize::new(0),
         flavor: if size == 0 {
-            Flavor::Zero(flavors::zero::Queue::new())
+            Flavor::Zero(flavors::zero::Channel::new())
         } else {
-            Flavor::Array(flavors::array::Queue::with_capacity(size))
+            Flavor::Array(flavors::array::Channel::with_capacity(size))
         },
     });
-    (Sender::new(q.clone()), Receiver::new(q))
+    (Sender::new(chan.clone()), Receiver::new(chan))
 }

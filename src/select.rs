@@ -1,16 +1,10 @@
 use std::cell::Cell;
 use std::marker::PhantomData;
-use std::sync::atomic::Ordering::SeqCst;
-use std::thread;
 use std::time::{Duration, Instant};
 
-use rand::{Rng, thread_rng};
-
-use {Flavor, Sender, Receiver};
-use actor;
-use actor::HandleId;
+use {Sender, Receiver};
+use actor::{self, HandleId};
 use err::{TryRecvError, TrySendError};
-use watch::dock::Request;
 use Backoff;
 
 pub struct Select {
@@ -42,7 +36,7 @@ impl Select {
         }
     }
 
-    pub fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
+    pub fn send<T>(&mut self, tx: &Sender<T>, value: T) -> Result<(), T> {
         if let Some(state) = self.machine.step(tx.id()) {
             let res = state.send(tx, value);
             if res.is_ok() {
@@ -71,7 +65,10 @@ impl Select {
     #[inline]
     pub fn is_blocked(&mut self) -> bool {
         match self.machine {
-            Machine::Counting { ref mut has_blocked_case, .. } => {
+            Machine::Counting {
+                ref mut has_blocked_case,
+                ..
+            } => {
                 *has_blocked_case = true;
                 false
             }
@@ -144,7 +141,11 @@ impl Machine {
                     } else {
                         *self = Machine::Counting {
                             len: len + 1,
-                            first_id: if first_id == HandleId::sentinel() { id } else { first_id },
+                            first_id: if first_id == HandleId::sentinel() {
+                                id
+                            } else {
+                                first_id
+                            },
                             deadline,
                             has_blocked_case,
                         };
@@ -226,12 +227,10 @@ impl State {
                 }
             }
             State::Register { closed_countdown } => {
-                // println!("went asleep");
                 if closed_countdown < 0 {
                     actor::current().select(HandleId::sentinel());
                 }
                 actor::current().wait_until(deadline);
-                // println!("woke up");
                 *self = State::Unregister;
             }
             State::Unregister => {
@@ -280,11 +279,7 @@ impl State {
             State::Register {
                 ref mut closed_countdown,
             } => {
-                match tx.0.flavor {
-                    Flavor::List(ref q) => {}
-                    Flavor::Array(ref q) => q.senders().register(tx.id()),
-                    Flavor::Zero(ref q) => q.promise_send(tx.id()),
-                }
+                tx.register();
                 if tx.is_disconnected() {
                     *closed_countdown -= 1;
                 }
@@ -292,28 +287,12 @@ impl State {
                     actor::current().select(HandleId::sentinel());
                 }
             }
-            State::Unregister => {
-                match tx.0.flavor {
-                    Flavor::List(ref q) => {}
-                    Flavor::Array(ref q) => q.senders().unregister(tx.id()),
-                    Flavor::Zero(ref q) => q.unpromise_send(tx.id()),
-                }
-            }
+            State::Unregister => tx.unregister(),
             State::FinalTry { id } => {
-                // println!("final try send");
                 if tx.id() == id {
-                    match tx.0.flavor {
-                        Flavor::Array(..) | Flavor::List(..) => {
-                            match tx.try_send(value) {
-                                Ok(()) => return Ok(()),
-                                Err(TrySendError::Full(v)) => value = v,
-                                Err(TrySendError::Disconnected(v)) => value = v,
-                            }
-                        }
-                        Flavor::Zero(ref q) => {
-                            unsafe { actor::current().put_request(value, tx.id()) };
-                            return Ok(());
-                        }
+                    match tx.send_promised(value) {
+                        Ok(()) => return Ok(()),
+                        Err(v) => value = v,
                     }
                 }
             }
@@ -348,11 +327,7 @@ impl State {
             State::Register {
                 ref mut closed_countdown,
             } => {
-                match rx.0.flavor {
-                    Flavor::List(ref q) => q.receivers().register(rx.id()),
-                    Flavor::Array(ref q) => q.receivers().register(rx.id()),
-                    Flavor::Zero(ref q) => q.promise_recv(rx.id()),
-                }
+                rx.register();
                 if rx.is_disconnected() {
                     *closed_countdown -= 1;
                 }
@@ -360,26 +335,11 @@ impl State {
                     actor::current().select(HandleId::sentinel());
                 }
             }
-            State::Unregister => {
-                match rx.0.flavor {
-                    Flavor::List(ref q) => q.receivers().unregister(rx.id()),
-                    Flavor::Array(ref q) => q.receivers().unregister(rx.id()),
-                    Flavor::Zero(ref q) => q.unpromise_recv(rx.id()),
-                }
-            }
+            State::Unregister => rx.unregister(),
             State::FinalTry { id } => {
-                // println!("final try recv");
                 if rx.id() == id {
-                    match rx.0.flavor {
-                        Flavor::Array(..) | Flavor::List(..) => {
-                            if let Ok(v) = rx.try_recv() {
-                                return Ok(v);
-                            }
-                        }
-                        Flavor::Zero(ref q) => {
-                            let v = unsafe { actor::current().take_request(rx.id()) };
-                            return Ok(v);
-                        }
+                    if let Ok(v) = rx.recv_promised() {
+                        return Ok(v);
                     }
                 }
             }
@@ -434,11 +394,13 @@ fn gen_random(ceil: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::thread;
+    use std::time::Duration;
+
     use crossbeam;
 
-    use super::*;
-    use bounded;
-    use unbounded;
+    use {Select, bounded, unbounded};
+    use err::*;
 
     fn ms(ms: u64) -> Duration {
         Duration::from_millis(ms)
