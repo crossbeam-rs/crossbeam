@@ -57,25 +57,51 @@ impl Select {
         Select {
             machine: Machine::Counting {
                 len: 0,
-                id_first: 0,
+                first_id: 0,
                 deadline,
+                has_blocked_case: false,
             },
             _marker: PhantomData,
         }
     }
 
-    #[inline]
-    pub fn timed_out(&self) -> bool {
-        if let Machine::Initialized { state, .. } = self.machine {
-            if let State::TimedOut = state {
-                return true;
+    pub fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
+        if let Some(state) = self.machine.step(tx.id()) {
+            let res = state.send(tx, value);
+            if res.is_ok() {
+                *state = State::Finished;
             }
+            res
+        } else {
+            Err(value)
         }
-        false
+    }
+
+    pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
+        if let Some(state) = self.machine.step(rx.id()) {
+            let res = state.recv(rx);
+            if res.is_ok() {
+                *state = State::Finished;
+            }
+            res
+        } else {
+            Err(())
+        }
     }
 
     #[inline]
-    pub fn disconnected(&self) -> bool {
+    pub fn blocked(&mut self) -> bool {
+        match self.machine {
+            Machine::Counting { ref mut has_blocked_case, .. } => {
+                *has_blocked_case = true;
+                false
+            }
+            Machine::Initialized { state, .. } => state == State::Blocked,
+        }
+    }
+
+    #[inline]
+    pub fn disconnected(&mut self) -> bool {
         if let Machine::Initialized { state, .. } = self.machine {
             if let State::Disconnected = state {
                 return true;
@@ -84,28 +110,23 @@ impl Select {
         false
     }
 
-    pub fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
-        if let Some(state) = self.machine.step(tx.id()) {
-            state.send(tx, value)
-        } else {
-            Err(value)
+    #[inline]
+    pub fn timed_out(&mut self) -> bool {
+        if let Machine::Initialized { state, .. } = self.machine {
+            if let State::TimedOut = state {
+                return true;
+            }
         }
-    }
-
-    pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
-        if let Some(state) = self.machine.step(rx.id()) {
-            state.recv(rx)
-        } else {
-            Err(())
-        }
+        false
     }
 }
 
 enum Machine {
     Counting {
         len: usize,
-        id_first: usize,
+        first_id: usize,
         deadline: Option<Instant>,
+        has_blocked_case: bool,
     },
     Initialized {
         pos: usize,
@@ -113,6 +134,7 @@ enum Machine {
         len: usize,
         start: usize,
         deadline: Option<Instant>,
+        has_blocked_case: bool,
     },
 }
 
@@ -123,22 +145,25 @@ impl Machine {
             match *self {
                 Machine::Counting {
                     len,
-                    id_first,
+                    first_id,
                     deadline,
+                    has_blocked_case,
                 } => {
-                    if id_first == id {
+                    if first_id == id {
                         *self = Machine::Initialized {
                             pos: 0,
                             state: State::Try { closed_count: 0 },
                             len,
                             start: gen_random(len),
                             deadline,
+                            has_blocked_case,
                         };
                     } else {
                         *self = Machine::Counting {
                             len: len + 1,
-                            id_first: if id_first == 0 { id } else { id_first },
+                            first_id: if first_id == 0 { id } else { first_id },
                             deadline,
+                            has_blocked_case,
                         };
                         return None;
                     }
@@ -149,15 +174,17 @@ impl Machine {
                     len,
                     start,
                     deadline,
+                    has_blocked_case,
                 } => {
                     if pos >= 2 * len {
-                        state.transition(len, deadline);
+                        state.transition(len, deadline, has_blocked_case);
                         *self = Machine::Initialized {
                             pos: 0,
                             state,
                             len,
                             start,
                             deadline,
+                            has_blocked_case,
                         };
                     } else {
                         *self = Machine::Initialized {
@@ -166,6 +193,7 @@ impl Machine {
                             len,
                             start,
                             deadline,
+                            has_blocked_case,
                         };
                         if let Machine::Initialized { ref mut state, .. } = *self {
                             if start <= pos && pos < start + len {
@@ -181,41 +209,47 @@ impl Machine {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
     Try { closed_count: usize },
-    Subscribe { closed_countdown: isize },
-    Unsubscribe,
+    Register { closed_countdown: isize },
+    Unregister,
     FinalTry { id: usize },
-    TimedOut,
+    Finished,
+    Blocked,
     Disconnected,
+    TimedOut,
 }
 
 impl State {
     #[inline]
-    fn transition(&mut self, len: usize, deadline: Option<Instant>) {
+    fn transition(&mut self, len: usize, deadline: Option<Instant>, has_blocked_case: bool) {
         match *self {
             State::Try { closed_count } => {
-                // println!("-------- TRY -------");
                 if closed_count < len {
                     actor::current().reset();
-                    *self = State::Subscribe {
-                        closed_countdown: closed_count as isize,
-                    };
+
+                    if has_blocked_case {
+                        *self = State::Blocked;
+                    } else {
+                        *self = State::Register {
+                            closed_countdown: closed_count as isize,
+                        };
+                    }
                 } else {
                     *self = State::Disconnected;
                 }
             }
-            State::Subscribe { closed_countdown } => {
+            State::Register { closed_countdown } => {
                 // println!("went asleep");
                 if closed_countdown < 0 {
                     actor::current().select(1);
                 }
                 actor::current().wait_until(deadline);
                 // println!("woke up");
-                *self = State::Unsubscribe;
+                *self = State::Unregister;
             }
-            State::Unsubscribe => {
+            State::Unregister => {
                 *self = State::FinalTry {
                     id: actor::current().selected(),
                 };
@@ -229,8 +263,10 @@ impl State {
                     }
                 }
             }
-            State::TimedOut => {}
+            State::Finished => {}
+            State::Blocked => {}
             State::Disconnected => {}
+            State::TimedOut => {}
         }
     }
 
@@ -255,7 +291,7 @@ impl State {
                     }
                 }
             }
-            State::Subscribe {
+            State::Register {
                 ref mut closed_countdown,
             } => {
                 match tx.0.flavor {
@@ -270,7 +306,7 @@ impl State {
                     actor::current().select(1);
                 }
             }
-            State::Unsubscribe => {
+            State::Unregister => {
                 match tx.0.flavor {
                     Flavor::List(ref q) => {}
                     Flavor::Array(ref q) => q.senders().unregister(tx.id()),
@@ -295,8 +331,10 @@ impl State {
                     }
                 }
             }
-            State::TimedOut => {}
+            State::Finished => {}
+            State::Blocked => {}
             State::Disconnected => {}
+            State::TimedOut => {}
         }
         Err(value)
     }
@@ -321,7 +359,7 @@ impl State {
                     }
                 }
             }
-            State::Subscribe {
+            State::Register {
                 ref mut closed_countdown,
             } => {
                 match rx.0.flavor {
@@ -336,7 +374,7 @@ impl State {
                     actor::current().select(1);
                 }
             }
-            State::Unsubscribe => {
+            State::Unregister => {
                 match rx.0.flavor {
                     Flavor::List(ref q) => q.receivers().unregister(rx.id()),
                     Flavor::Array(ref q) => q.receivers().unregister(rx.id()),
@@ -359,8 +397,10 @@ impl State {
                     }
                 }
             }
-            State::TimedOut => {}
+            State::Finished => {}
+            State::Blocked => {}
             State::Disconnected => {}
+            State::TimedOut => {}
         }
         Err(())
     }

@@ -22,7 +22,6 @@ mod select;
 
 // TODO: Use CachePadded
 
-// TODO: Add Success state to selection. Or maybe start looping from scratch with a new random `start`?
 // TODO: The IsReady check must also check for closing (same in *_until methods)
 // TODO: Panic if two selects are running at the same time
 // TODO: select with recv & send on the same channel (all flavors) should work. Perhaps notify_one() must skip the current thread
