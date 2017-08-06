@@ -8,33 +8,10 @@ use rand::{Rng, thread_rng};
 
 use {Flavor, Sender, Receiver};
 use actor;
+use actor::HandleId;
 use err::{TryRecvError, TrySendError};
 use watch::dock::Request;
 use Backoff;
-
-fn gen_random(ceil: usize) -> usize {
-    thread_local! {
-        static RNG: Cell<u32> = Cell::new(1);
-    }
-
-    RNG.with(|rng| {
-        let mut x = ::std::num::Wrapping(rng.get());
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        rng.set(x.0);
-
-        let x = x.0 as usize;
-        match ceil {
-            0 => 0,
-            1 => x % 1,
-            2 => x % 2,
-            3 => x % 3,
-            4 => x % 4,
-            n => x % n,
-        }
-    })
-}
 
 pub struct Select {
     machine: Machine,
@@ -57,7 +34,7 @@ impl Select {
         Select {
             machine: Machine::Counting {
                 len: 0,
-                first_id: 0,
+                first_id: HandleId::sentinel(),
                 deadline,
                 has_blocked_case: false,
             },
@@ -70,6 +47,7 @@ impl Select {
             let res = state.send(tx, value);
             if res.is_ok() {
                 *state = State::Finished;
+                end_selection();
             }
             res
         } else {
@@ -82,6 +60,7 @@ impl Select {
             let res = state.recv(rx);
             if res.is_ok() {
                 *state = State::Finished;
+                end_selection();
             }
             res
         } else {
@@ -90,7 +69,7 @@ impl Select {
     }
 
     #[inline]
-    pub fn blocked(&mut self) -> bool {
+    pub fn is_blocked(&mut self) -> bool {
         match self.machine {
             Machine::Counting { ref mut has_blocked_case, .. } => {
                 *has_blocked_case = true;
@@ -101,7 +80,7 @@ impl Select {
     }
 
     #[inline]
-    pub fn disconnected(&mut self) -> bool {
+    pub fn is_disconnected(&mut self) -> bool {
         if let Machine::Initialized { state, .. } = self.machine {
             if let State::Disconnected = state {
                 return true;
@@ -124,7 +103,7 @@ impl Select {
 enum Machine {
     Counting {
         len: usize,
-        first_id: usize,
+        first_id: HandleId,
         deadline: Option<Instant>,
         has_blocked_case: bool,
     },
@@ -140,7 +119,7 @@ enum Machine {
 
 impl Machine {
     #[inline]
-    fn step(&mut self, id: usize) -> Option<&mut State> {
+    fn step(&mut self, id: HandleId) -> Option<&mut State> {
         loop {
             match *self {
                 Machine::Counting {
@@ -149,6 +128,10 @@ impl Machine {
                     deadline,
                     has_blocked_case,
                 } => {
+                    if first_id == HandleId::sentinel() {
+                        start_selection();
+                    }
+
                     if first_id == id {
                         *self = Machine::Initialized {
                             pos: 0,
@@ -161,7 +144,7 @@ impl Machine {
                     } else {
                         *self = Machine::Counting {
                             len: len + 1,
-                            first_id: if first_id == 0 { id } else { first_id },
+                            first_id: if first_id == HandleId::sentinel() { id } else { first_id },
                             deadline,
                             has_blocked_case,
                         };
@@ -214,7 +197,7 @@ enum State {
     Try { closed_count: usize },
     Register { closed_countdown: isize },
     Unregister,
-    FinalTry { id: usize },
+    FinalTry { id: HandleId },
     Finished,
     Blocked,
     Disconnected,
@@ -231,6 +214,7 @@ impl State {
 
                     if has_blocked_case {
                         *self = State::Blocked;
+                        end_selection();
                     } else {
                         *self = State::Register {
                             closed_countdown: closed_count as isize,
@@ -238,12 +222,13 @@ impl State {
                     }
                 } else {
                     *self = State::Disconnected;
+                    end_selection();
                 }
             }
             State::Register { closed_countdown } => {
                 // println!("went asleep");
                 if closed_countdown < 0 {
-                    actor::current().select(1);
+                    actor::current().select(HandleId::sentinel());
                 }
                 actor::current().wait_until(deadline);
                 // println!("woke up");
@@ -260,6 +245,7 @@ impl State {
                 if let Some(end) = deadline {
                     if Instant::now() >= end {
                         *self = State::TimedOut;
+                        end_selection();
                     }
                 }
             }
@@ -303,7 +289,7 @@ impl State {
                     *closed_countdown -= 1;
                 }
                 if tx.can_send() {
-                    actor::current().select(1);
+                    actor::current().select(HandleId::sentinel());
                 }
             }
             State::Unregister => {
@@ -371,7 +357,7 @@ impl State {
                     *closed_countdown -= 1;
                 }
                 if rx.can_recv() {
-                    actor::current().select(1);
+                    actor::current().select(HandleId::sentinel());
                 }
             }
             State::Unregister => {
@@ -404,6 +390,46 @@ impl State {
         }
         Err(())
     }
+}
+
+thread_local! {
+    static SELECTING: Cell<bool> = Cell::new(false);
+    static RNG: Cell<u32> = Cell::new(1);
+}
+
+fn start_selection() {
+    SELECTING.with(|s| {
+        if s.get() {
+            panic!("Illegal use of `Select` - multiple selections running at the same time!");
+        }
+        s.set(true);
+    });
+}
+
+fn end_selection() {
+    SELECTING.with(|s| s.set(false));
+}
+
+fn gen_random(ceil: usize) -> usize {
+    RNG.with(|rng| {
+        let mut x = ::std::num::Wrapping(rng.get());
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        rng.set(x.0);
+
+        let x = x.0 as usize;
+        match ceil {
+            1 => x % 1,
+            2 => x % 2,
+            3 => x % 3,
+            4 => x % 4,
+            5 => x % 5,
+            6 => x % 6,
+            7 => x % 7,
+            n => x % n,
+        }
+    })
 }
 
 #[cfg(test)]
@@ -459,7 +485,7 @@ mod tests {
                         println!("{}", x);
                         break;
                     }
-                    if s.disconnected() {
+                    if s.is_disconnected() {
                         println!("DISCONNECTED!");
                         break;
                     }
@@ -501,7 +527,7 @@ mod tests {
                         println!("sent 2");
                         break;
                     }
-                    if s.disconnected() {
+                    if s.is_disconnected() {
                         println!("DISCONNECTED!");
                         break;
                     }

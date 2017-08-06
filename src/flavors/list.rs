@@ -12,6 +12,7 @@ use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use watch::monitor::Monitor;
 use Backoff;
+use actor::HandleId;
 
 /// A single node in a queue.
 struct Node<T> {
@@ -223,10 +224,10 @@ impl<T> Queue<T> {
             }
 
             actor::current().reset();
-            self.receivers.register(1);
+            self.receivers.register(HandleId::sentinel());
             let timed_out =
                 !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
-            self.receivers.unregister(1);
+            self.receivers.unregister(HandleId::sentinel());
 
             if timed_out {
                 return Err(RecvTimeoutError::Timeout);

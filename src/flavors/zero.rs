@@ -4,12 +4,14 @@ use std::time::Instant;
 use parking_lot::Mutex;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use actor::{self, Actor};
+use actor::{self, Actor, HandleId};
 use watch::dock::{Dock, Request, Entry, Packet};
 
 struct Inner {
     closed: bool,
 }
+
+// TODO: move senders and receivers inside inner
 
 pub struct Queue<T> {
     lock: Mutex<Inner>,
@@ -26,22 +28,22 @@ impl<T> Queue<T> {
         }
     }
 
-    pub fn promise_send(&self, id: usize) {
+    pub fn promise_send(&self, id: HandleId) {
         let _lock = self.lock.lock();
         self.senders.register_promise(id);
     }
 
-    pub fn unpromise_send(&self, id: usize) {
+    pub fn unpromise_send(&self, id: HandleId) {
         let _lock = self.lock.lock();
         self.senders.unregister(id);
     }
 
-    pub fn promise_recv(&self, id: usize) {
+    pub fn promise_recv(&self, id: HandleId) {
         let _lock = self.lock.lock();
         self.receivers.register_promise(id);
     }
 
-    pub fn unpromise_recv(&self, id: usize) {
+    pub fn unpromise_recv(&self, id: HandleId) {
         let _lock = self.lock.lock(); // TODO: do we need these locks
         self.receivers.unregister(id);
     }
@@ -99,18 +101,18 @@ impl<T> Queue<T> {
                     return Err(SendTimeoutError::Disconnected(value));
                 }
 
+                if !self.receivers.is_empty() {
+                    continue;
+                }
+
                 actor::current().reset();
                 packet = Packet::new(Some(value));
-                self.senders.register_offer(&packet, 1);
-
-                if lock.closed || !self.receivers.is_empty() {
-                    actor::current().select(1);
-                }
+                self.senders.register_offer(&packet, HandleId::sentinel());
             }
 
             let timed_out = !actor::current().wait_until(deadline);
             let mut lock = self.lock.lock();
-            self.senders.unregister(1);
+            self.senders.unregister(HandleId::sentinel());
 
             match packet.take() {
                 None => return Ok(()),
@@ -173,18 +175,18 @@ impl<T> Queue<T> {
                     return Err(RecvTimeoutError::Disconnected);
                 }
 
+                if !self.senders.is_empty() {
+                    continue;
+                }
+
                 actor::current().reset();
                 packet = Packet::new(None);
-                self.receivers.register_offer(&packet, 1);
-
-                if lock.closed || !self.senders.is_empty() {
-                    actor::current().select(1);
-                }
+                self.receivers.register_offer(&packet, HandleId::sentinel());
             }
 
             let timed_out = !actor::current().wait_until(deadline);
             let mut lock = self.lock.lock();
-            self.receivers.unregister(1);
+            self.receivers.unregister(HandleId::sentinel());
 
             if let Some(v) = packet.take() {
                 return Ok(v);

@@ -10,6 +10,7 @@ use std::time::{Instant, Duration};
 use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use watch::monitor::Monitor;
+use actor::HandleId;
 use Backoff;
 
 struct Node<T> {
@@ -209,10 +210,10 @@ impl<T> Queue<T> {
             }
 
             actor::current().reset();
-            self.senders.register(1);
+            self.senders.register(HandleId::sentinel());
             let timed_out = !self.is_closed() && self.len() == self.cap &&
                 !actor::current().wait_until(deadline);
-            self.senders.unregister(1);
+            self.senders.unregister(HandleId::sentinel());
 
             if timed_out {
                 return Err(SendTimeoutError::Timeout(value));
@@ -251,10 +252,10 @@ impl<T> Queue<T> {
             }
 
             actor::current().reset();
-            self.receivers.register(1);
+            self.receivers.register(HandleId::sentinel());
             let timed_out =
                 !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
-            self.receivers.unregister(1);
+            self.receivers.unregister(HandleId::sentinel());
 
             if timed_out {
                 return Err(RecvTimeoutError::Timeout);

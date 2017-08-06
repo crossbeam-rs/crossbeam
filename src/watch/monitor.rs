@@ -6,7 +6,7 @@ use std::thread;
 
 use parking_lot::Mutex;
 
-use actor::{self, Actor};
+use actor::{self, Actor, HandleId};
 
 // TODO: Explain that a single thread can be registered multiple times (that happens only in
 // select).  Unregister removes just entry belonging to the current thread.
@@ -14,7 +14,7 @@ use actor::{self, Actor};
 
 struct Entry {
     actor: Arc<Actor>,
-    id: usize,
+    id: HandleId,
 }
 
 pub struct Monitor {
@@ -30,7 +30,7 @@ impl Monitor {
         }
     }
 
-    pub fn register(&self, id: usize) {
+    pub fn register(&self, id: HandleId) {
         let mut entries = self.entries.lock();
         entries.push_back(Entry {
             actor: actor::current(),
@@ -39,7 +39,7 @@ impl Monitor {
         self.len.store(entries.len(), SeqCst);
     }
 
-    pub fn unregister(&self, id: usize) {
+    pub fn unregister(&self, id: HandleId) {
         let thread_id = thread::current().id();
         let mut entries = self.entries.lock();
 

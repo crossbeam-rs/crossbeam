@@ -7,8 +7,18 @@ use std::time::Instant;
 use Backoff;
 use watch::dock::Request;
 
-// TODO: hide all pub fields
-// TODO: type safe QueueId
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct HandleId(usize);
+
+impl HandleId {
+    pub fn new(num: usize) -> Self {
+        HandleId(num)
+    }
+
+    pub fn sentinel() -> Self {
+        HandleId(1)
+    }
+}
 
 pub struct Actor {
     select_id: AtomicUsize,
@@ -17,8 +27,8 @@ pub struct Actor {
 }
 
 impl Actor {
-    pub fn select(&self, id: usize) -> bool {
-        self.select_id.compare_and_swap(0, id, SeqCst) == 0
+    pub fn select(&self, id: HandleId) -> bool {
+        self.select_id.compare_and_swap(0, id.0, SeqCst) == 0
     }
 
     pub fn unpark(&self) {
@@ -38,8 +48,8 @@ impl Actor {
         self.request_ptr.store(0, SeqCst);
     }
 
-    pub fn selected(&self) -> usize {
-        self.select_id.load(SeqCst)
+    pub fn selected(&self) -> HandleId {
+        HandleId::new(self.select_id.load(SeqCst))
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
@@ -56,7 +66,7 @@ impl Actor {
             if let Some(end) = deadline {
                 if now < end {
                     thread::park_timeout(end - now);
-                } else if self.select(1) {
+                } else if self.select(HandleId::sentinel()) {
                     return false;
                 }
             } else {
@@ -67,7 +77,7 @@ impl Actor {
         true
     }
 
-    pub unsafe fn put_request<T>(&self, value: T, id: usize) {
+    pub unsafe fn put_request<T>(&self, value: T, id: HandleId) {
         let req = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
         assert!(!req.is_null());
 
@@ -77,7 +87,7 @@ impl Actor {
         thread.unpark();
     }
 
-    pub unsafe fn take_request<T>(&self, id: usize) -> T {
+    pub unsafe fn take_request<T>(&self, id: HandleId) -> T {
         let req = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
         assert!(!req.is_null());
 

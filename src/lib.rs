@@ -20,13 +20,6 @@ mod flavors;
 mod watch;
 mod select;
 
-// TODO: Use CachePadded
-
-// TODO: The IsReady check must also check for closing (same in *_until methods)
-// TODO: Panic if two selects are running at the same time
-// TODO: select with recv & send on the same channel (all flavors) should work. Perhaps notify_one() must skip the current thread
-// TODO: `default` case in Select (like in go and chan crate)
-
 #[derive(Clone, Copy)]
 struct Backoff(usize);
 
@@ -84,14 +77,14 @@ impl<T> Sender<T> {
         Sender(q)
     }
 
-    pub(crate) fn id(&self) -> usize {
+    pub(crate) fn id(&self) -> actor::HandleId {
         let addr = match self.0.flavor {
             Flavor::Array(ref q) => q as *const flavors::array::Queue<T> as usize,
             Flavor::List(ref q) => q as *const flavors::list::Queue<T> as usize,
             Flavor::Zero(ref q) => q as *const flavors::zero::Queue<T> as usize,
         };
         assert!(addr % 2 == 0);
-        addr
+        actor::HandleId::new(addr)
     }
 
     pub(crate) fn can_send(&self) -> bool {
@@ -202,14 +195,14 @@ impl<T> Receiver<T> {
         Receiver(q)
     }
 
-    pub(crate) fn id(&self) -> usize {
+    pub(crate) fn id(&self) -> actor::HandleId {
         let addr = match self.0.flavor {
             Flavor::Array(ref q) => q as *const flavors::array::Queue<T> as usize,
             Flavor::List(ref q) => q as *const flavors::list::Queue<T> as usize,
             Flavor::Zero(ref q) => q as *const flavors::zero::Queue<T> as usize,
         };
         assert!(addr % 2 == 0);
-        addr | 1
+        actor::HandleId::new(addr | 1)
     }
 
     pub(crate) fn can_recv(&self) -> bool {

@@ -6,7 +6,7 @@ use std::thread;
 
 use parking_lot::Mutex;
 
-use actor::{self, Actor};
+use actor::{self, Actor, HandleId};
 
 pub struct Packet<T>(Mutex<Option<T>>);
 
@@ -42,10 +42,10 @@ impl<T> Request<T> {
 
 // TODO: refactor this, it's awkward
 pub enum Entry<T> {
-    Promise { actor: Arc<Actor>, id: usize },
+    Promise { actor: Arc<Actor>, id: HandleId },
     Offer {
         actor: Arc<Actor>,
-        id: usize,
+        id: HandleId,
         packet: *const Packet<T>,
     },
 }
@@ -92,7 +92,7 @@ impl<T> Dock<T> {
         None
     }
 
-    pub fn register_offer(&self, packet: *const Packet<T>, id: usize) {
+    pub fn register_offer(&self, packet: *const Packet<T>, id: HandleId) {
         let mut entries = self.entries.lock();
         entries.push_back(Entry::Offer {
             actor: actor::current(),
@@ -102,7 +102,7 @@ impl<T> Dock<T> {
         self.len.store(entries.len(), SeqCst);
     }
 
-    pub fn register_promise(&self, id: usize) {
+    pub fn register_promise(&self, id: HandleId) {
         let mut entries = self.entries.lock();
         entries.push_back(Entry::Promise {
             actor: actor::current(),
@@ -111,7 +111,7 @@ impl<T> Dock<T> {
         self.len.store(entries.len(), SeqCst);
     }
 
-    pub fn unregister(&self, my_id: usize) {
+    pub fn unregister(&self, my_id: HandleId) {
         let thread_id = thread::current().id();
         let mut entries = self.entries.lock();
 
