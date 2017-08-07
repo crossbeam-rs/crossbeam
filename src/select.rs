@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::time::{Duration, Instant};
 
@@ -7,6 +8,55 @@ use actor::{self, HandleId};
 use err::{TryRecvError, TrySendError};
 use Backoff;
 
+#[thread_local]
+static mut MACHINE: Select = Select::new();
+
+// thread_local! {
+//     static MACHINE: Cell<Select> = Cell::new(Select::new());
+// }
+
+#[inline]
+pub fn blocked() -> bool {
+    // MACHINE.with(|m| {
+    unsafe {
+        let mut t = MACHINE.clone();
+        if t.is_blocked() {
+            MACHINE = Select::new();
+            true
+        } else {
+            MACHINE = t;
+            false
+        }
+    }
+    // })
+}
+
+#[inline]
+pub fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
+    // MACHINE.with(|m| {
+        // let mut t = m.get();
+    unsafe {
+        let mut t = MACHINE.clone();
+        let res = t.send(tx, value);
+        MACHINE = t;
+        res
+    }
+    // })
+}
+
+#[inline]
+pub fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
+    // MACHINE.with(|m| {
+    unsafe {
+        let mut t = MACHINE.clone();
+        let res = t.recv(rx);
+        MACHINE = t;
+        res
+    }
+    // })
+}
+
+#[derive(Clone, Copy)]
 pub struct Select {
     machine: Machine,
     _marker: PhantomData<*mut ()>,
@@ -14,7 +64,7 @@ pub struct Select {
 
 impl Select {
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Select::with_deadline(None)
     }
 
@@ -24,7 +74,7 @@ impl Select {
     }
 
     #[inline]
-    fn with_deadline(deadline: Option<Instant>) -> Self {
+    const fn with_deadline(deadline: Option<Instant>) -> Self {
         Select {
             machine: Machine::Counting {
                 len: 0,
@@ -37,29 +87,37 @@ impl Select {
     }
 
     pub fn send<T>(&mut self, tx: &Sender<T>, value: T) -> Result<(), T> {
-        if let Some(state) = self.machine.step(tx.id()) {
-            let res = state.send(tx, value);
-            if res.is_ok() {
-                *state = State::Finished;
-                end_selection();
-            }
-            res
+        let res = if let Some(state) = self.machine.step(tx.id()) {
+            state.send(tx, value)
         } else {
             Err(value)
+        };
+        if res.is_ok() {
+            *self = Select::new();
         }
+        res
     }
 
     pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
-        if let Some(state) = self.machine.step(rx.id()) {
-            let res = state.recv(rx);
-            if res.is_ok() {
-                *state = State::Finished;
-                end_selection();
-            }
-            res
+        let res = if let Some(state) = self.machine.step(rx.id()) {
+            state.recv(rx)
         } else {
             Err(())
+        };
+        if res.is_ok() {
+            *self = Select::new();
         }
+        res
+    }
+
+    #[inline]
+    pub fn is_disconnected(&mut self) -> bool {
+        if let Machine::Initialized { state, .. } = self.machine {
+            if let State::Disconnected = state {
+                return true;
+            }
+        }
+        false
     }
 
     #[inline]
@@ -77,16 +135,6 @@ impl Select {
     }
 
     #[inline]
-    pub fn is_disconnected(&mut self) -> bool {
-        if let Machine::Initialized { state, .. } = self.machine {
-            if let State::Disconnected = state {
-                return true;
-            }
-        }
-        false
-    }
-
-    #[inline]
     pub fn timed_out(&mut self) -> bool {
         if let Machine::Initialized { state, .. } = self.machine {
             if let State::TimedOut = state {
@@ -97,6 +145,7 @@ impl Select {
     }
 }
 
+#[derive(Clone, Copy)]
 enum Machine {
     Counting {
         len: usize,
@@ -200,8 +249,8 @@ enum State {
     Unregister,
     FinalTry { id: HandleId },
     Finished,
-    Blocked,
     Disconnected,
+    Blocked,
     TimedOut,
 }
 
@@ -249,8 +298,8 @@ impl State {
                 }
             }
             State::Finished => {}
-            State::Blocked => {}
             State::Disconnected => {}
+            State::Blocked => {}
             State::TimedOut => {}
         }
     }
@@ -297,8 +346,8 @@ impl State {
                 }
             }
             State::Finished => {}
-            State::Blocked => {}
             State::Disconnected => {}
+            State::Blocked => {}
             State::TimedOut => {}
         }
         Err(value)
@@ -344,8 +393,8 @@ impl State {
                 }
             }
             State::Finished => {}
-            State::Blocked => {}
             State::Disconnected => {}
+            State::Blocked => {}
             State::TimedOut => {}
         }
         Err(())
@@ -358,16 +407,16 @@ thread_local! {
 }
 
 fn start_selection() {
-    SELECTING.with(|s| {
-        if s.get() {
-            panic!("Illegal use of `Select` - multiple selections running at the same time!");
-        }
-        s.set(true);
-    });
+    // SELECTING.with(|s| {
+    //     if s.get() {
+    //         panic!("Illegal use of `Select` - multiple selections running at the same time!");
+    //     }
+    //     s.set(true);
+    // });
 }
 
 fn end_selection() {
-    SELECTING.with(|s| s.set(false));
+    // SELECTING.with(|s| s.set(false));
 }
 
 fn gen_random(ceil: usize) -> usize {
@@ -404,6 +453,63 @@ mod tests {
 
     fn ms(ms: u64) -> Duration {
         Duration::from_millis(ms)
+    }
+
+    #[test]
+    fn smoke1() {
+        let (tx1, rx1) = unbounded::<i32>();
+        let (tx2, rx2) = unbounded::<i32>();
+        tx1.send(1).unwrap();
+
+        let mut s = Select::new();
+        loop {
+            if let Ok(v) = s.recv(&rx1) {
+                assert_eq!(v, 1);
+                break;
+            }
+            if let Ok(_) = s.recv(&rx2) {
+                panic!();
+                break;
+            }
+        }
+
+        tx2.send(2).unwrap();
+
+        let mut s = Select::new();
+        loop {
+            if let Ok(_) = s.recv(&rx1) {
+                panic!();
+                break;
+            }
+            if let Ok(v) = s.recv(&rx2) {
+                assert_eq!(v, 2);
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn disconnected() {
+        let (tx1, rx1) = unbounded::<i32>();
+        let (tx2, rx2) = unbounded::<i32>();
+
+        drop(tx1);
+        drop(tx2);
+
+        let mut s = Select::new();
+        loop {
+            if let Ok(_) = s.recv(&rx1) {
+                panic!();
+                break;
+            }
+            if let Ok(_) = s.recv(&rx2) {
+                panic!();
+                break;
+            }
+            if s.is_disconnected() {
+                break;
+            }
+        }
     }
 
     #[test]

@@ -50,9 +50,6 @@ impl<T> Channel<T> {
         }
 
         Channel {
-            _pad0: [0; 64],
-            _pad1: [0; 64],
-            _pad2: [0; 64],
             buffer: buffer,
             cap: cap,
             power: power,
@@ -61,6 +58,9 @@ impl<T> Channel<T> {
             closed: AtomicBool::new(false),
             senders: Monitor::new(),
             receivers: Monitor::new(),
+            _pad0: [0; 64],
+            _pad1: [0; 64],
+            _pad2: [0; 64],
             _marker: PhantomData,
         }
     }

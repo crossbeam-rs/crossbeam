@@ -14,28 +14,19 @@ use monitor::Monitor;
 use Backoff;
 use actor::HandleId;
 
-/// A single node in a queue.
 struct Node<T> {
-    /// The next node in the queue.
     next: Atomic<Node<T>>,
-    /// The payload. TODO
     value: T,
 }
 
-/// A lock-free multi-producer multi-consumer queue.
 #[repr(C)]
 pub struct Channel<T> {
-    /// Head of the queue.
     head: Atomic<Node<T>>,
     recv_count: AtomicUsize,
-    /// Some padding to avoid false sharing.
     _pad0: [u8; 64],
-    /// Tail ofthe queue.
     tail: Atomic<Node<T>>,
     send_count: AtomicUsize,
-    /// Some padding to avoid false sharing.
     _pad1: [u8; 64],
-    /// TODO
     closed: AtomicBool,
     receivers: Monitor,
     _marker: PhantomData<T>,
@@ -45,14 +36,14 @@ impl<T> Channel<T> {
     pub fn new() -> Self {
         // Initialize the internal representation of the queue.
         let queue = Channel {
-            _pad0: [0; 64],
-            _pad1: [0; 64],
             head: Atomic::null(),
             tail: Atomic::null(),
             closed: AtomicBool::new(false),
             receivers: Monitor::new(),
             send_count: AtomicUsize::new(0),
             recv_count: AtomicUsize::new(0),
+            _pad0: [0; 64],
+            _pad1: [0; 64],
             _marker: PhantomData,
         };
 
