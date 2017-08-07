@@ -20,11 +20,16 @@ impl Backoff {
         if self.0 >= 20 {
             false
         } else {
-            if self.0 >= 10 {
+            self.0 += 1;
+
+            if self.0 <= 10 {
+                for _ in 0 .. 4 << self.0 {
+                    ::std::sync::atomic::hint_core_should_pause();
+                }
+            } else {
                 thread::yield_now();
             }
 
-            self.0 += 1;
             true
         }
     }

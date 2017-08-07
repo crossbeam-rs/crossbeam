@@ -1,4 +1,4 @@
-#![feature(thread_local, const_fn)]
+#![feature(thread_local, const_fn, hint_core_should_pause)]
 
 extern crate coco;
 extern crate crossbeam;
