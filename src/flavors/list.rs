@@ -173,10 +173,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn send(
-        &self,
-        value: T,
-    ) -> Result<(), SendTimeoutError<T>> {
+    pub fn send(&self, value: T) -> Result<(), SendTimeoutError<T>> {
         if self.closed.load(SeqCst) {
             Err(SendTimeoutError::Disconnected(value))
         } else {

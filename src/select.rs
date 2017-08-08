@@ -11,7 +11,7 @@ thread_local! {
     static MACHINE: Cell<Machine> = Cell::new(Machine::new());
 }
 
-pub fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
+pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     MACHINE.with(|m| {
         let mut t = m.get();
 
@@ -29,7 +29,7 @@ pub fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     })
 }
 
-pub fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
+pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
     MACHINE.with(|m| {
         let mut t = m.get();
 

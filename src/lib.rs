@@ -1,5 +1,3 @@
-#![feature(const_fn, hint_core_should_pause)]
-
 extern crate coco;
 extern crate crossbeam;
 extern crate parking_lot;
@@ -31,6 +29,28 @@ enum Flavor<T> {
     Array(flavors::array::Channel<T>),
     List(flavors::list::Channel<T>),
     Zero(flavors::zero::Channel<T>),
+}
+
+pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
+    let chan = Arc::new(Channel {
+        senders: AtomicUsize::new(0),
+        receivers: AtomicUsize::new(0),
+        flavor: Flavor::List(flavors::list::Channel::new()),
+    });
+    (Sender::new(chan.clone()), Receiver::new(chan))
+}
+
+pub fn bounded<T>(size: usize) -> (Sender<T>, Receiver<T>) {
+    let chan = Arc::new(Channel {
+        senders: AtomicUsize::new(0),
+        receivers: AtomicUsize::new(0),
+        flavor: if size == 0 {
+            Flavor::Zero(flavors::zero::Channel::new())
+        } else {
+            Flavor::Array(flavors::array::Channel::with_capacity(size))
+        },
+    });
+    (Sender::new(chan.clone()), Receiver::new(chan))
 }
 
 pub struct Sender<T>(Arc<Channel<T>>);
@@ -72,7 +92,7 @@ impl<T> Sender<T> {
     pub(crate) fn can_send(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.len() < chan.capacity(),
-            Flavor::List(_) => false,
+            Flavor::List(_) => true,
             Flavor::Zero(ref chan) => chan.can_send(),
         }
     }
@@ -93,10 +113,7 @@ impl<T> Sender<T> {
         }
     }
 
-    pub(crate) fn spin_try_send(
-        &self,
-        value: T,
-    ) -> Result<(), TrySendError<T>> {
+    pub(crate) fn spin_try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.spin_try_send(value),
             Flavor::List(ref chan) => chan.try_send(value),
@@ -387,26 +404,4 @@ impl<T> Iterator for IntoIter<T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.rx.recv().ok()
     }
-}
-
-pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
-    let chan = Arc::new(Channel {
-        senders: AtomicUsize::new(0),
-        receivers: AtomicUsize::new(0),
-        flavor: Flavor::List(flavors::list::Channel::new()),
-    });
-    (Sender::new(chan.clone()), Receiver::new(chan))
-}
-
-pub fn bounded<T>(size: usize) -> (Sender<T>, Receiver<T>) {
-    let chan = Arc::new(Channel {
-        senders: AtomicUsize::new(0),
-        receivers: AtomicUsize::new(0),
-        flavor: if size == 0 {
-            Flavor::Zero(flavors::zero::Channel::new())
-        } else {
-            Flavor::Array(flavors::array::Channel::with_capacity(size))
-        },
-    });
-    (Sender::new(chan.clone()), Receiver::new(chan))
 }

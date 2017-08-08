@@ -14,7 +14,7 @@ impl HandleId {
         HandleId(num)
     }
 
-    pub const fn sentinel() -> Self {
+    pub fn sentinel() -> Self {
         HandleId(1)
     }
 }

@@ -171,10 +171,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn try_send(
-        &self,
-        value: T,
-    ) -> Result<(), TrySendError<T>> {
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
@@ -188,10 +185,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn spin_try_send(
-        &self,
-        mut value: T,
-    ) -> Result<(), TrySendError<T>> {
+    pub fn spin_try_send(&self, mut value: T) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
@@ -221,9 +215,7 @@ impl<T> Channel<T> {
             match self.spin_try_send(value) {
                 Ok(()) => return Ok(()),
                 Err(TrySendError::Full(v)) => value = v,
-                Err(TrySendError::Disconnected(v)) => {
-                    return Err(SendTimeoutError::Disconnected(v))
-                }
+                Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
             }
 
             actor::current().reset();

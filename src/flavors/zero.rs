@@ -30,19 +30,19 @@ impl<T> Channel<T> {
     }
 
     pub fn promise_send(&self, id: HandleId) {
-        self.inner.lock().senders.register_promise(id);
+        self.inner.lock().senders.promise(id);
     }
 
     pub fn revoke_send(&self, id: HandleId) {
-        self.inner.lock().senders.unregister(id);
+        self.inner.lock().senders.revoke(id);
     }
 
     pub fn promise_recv(&self, id: HandleId) {
-        self.inner.lock().receivers.register_promise(id);
+        self.inner.lock().receivers.promise(id);
     }
 
     pub fn revoke_recv(&self, id: HandleId) {
-        self.inner.lock().receivers.unregister(id);
+        self.inner.lock().receivers.revoke(id);
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -103,12 +103,12 @@ impl<T> Channel<T> {
 
                 actor::current().reset();
                 packet = Packet::new(Some(value));
-                inner.senders.register_offer(&packet, HandleId::sentinel());
+                inner.senders.offer(&packet, HandleId::sentinel());
             }
 
             let timed_out = !actor::current().wait_until(deadline);
             let mut inner = self.inner.lock();
-            inner.senders.unregister(HandleId::sentinel());
+            inner.senders.revoke(HandleId::sentinel());
 
             match packet.take() {
                 None => return Ok(()),
@@ -177,14 +177,12 @@ impl<T> Channel<T> {
 
                 actor::current().reset();
                 packet = Packet::new(None);
-                inner
-                    .receivers
-                    .register_offer(&packet, HandleId::sentinel());
+                inner.receivers.offer(&packet, HandleId::sentinel());
             }
 
             let timed_out = !actor::current().wait_until(deadline);
             let mut inner = self.inner.lock();
-            inner.receivers.unregister(HandleId::sentinel());
+            inner.receivers.revoke(HandleId::sentinel());
 
             if let Some(v) = packet.take() {
                 return Ok(v);
@@ -252,7 +250,7 @@ impl<T> Registry<T> {
         None
     }
 
-    fn register_offer(&mut self, packet: *const Packet<T>, id: HandleId) {
+    fn offer(&mut self, packet: *const Packet<T>, id: HandleId) {
         self.entries.push_back(Entry {
             actor: actor::current(),
             id,
@@ -260,7 +258,7 @@ impl<T> Registry<T> {
         });
     }
 
-    fn register_promise(&mut self, id: HandleId) {
+    fn promise(&mut self, id: HandleId) {
         self.entries.push_back(Entry {
             actor: actor::current(),
             id,
@@ -268,7 +266,7 @@ impl<T> Registry<T> {
         });
     }
 
-    fn unregister(&mut self, id: HandleId) {
+    fn revoke(&mut self, id: HandleId) {
         let thread_id = thread::current().id();
         self.entries
             .retain(|e| e.actor.thread_id() != thread_id || e.id != id);
