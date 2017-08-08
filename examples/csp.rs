@@ -59,7 +59,7 @@ fn seek<'a>(name: &'a str, tx: &Sender<&'a str>, rx: &Receiver<&'a str>) {
             println!("{} received a message from {}.", name, peer);
             break;
         }
-        if let Ok(_) = tx.select(name) {
+        if let Ok(()) = tx.select(name) {
             // Wait for someone to receive my message.
             break;
         }
