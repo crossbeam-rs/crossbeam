@@ -17,7 +17,7 @@ struct Entry {
 }
 
 pub struct Monitor {
-    entries: Mutex<VecDeque<Entry>>,
+    entries: Mutex<VecDeque<Entry>>, // TODO: shrink
     len: AtomicUsize,
 }
 

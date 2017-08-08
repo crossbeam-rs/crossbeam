@@ -6,143 +6,106 @@ use std::time::{Duration, Instant};
 use {Sender, Receiver};
 use actor::{self, HandleId};
 use err::{TryRecvError, TrySendError};
-use Backoff;
 
-#[thread_local]
-static mut MACHINE: Select = Select::new();
-
-// thread_local! {
-//     static MACHINE: Cell<Select> = Cell::new(Select::new());
-// }
-
-#[inline]
-pub fn blocked() -> bool {
-    // MACHINE.with(|m| {
-    unsafe {
-        let mut t = MACHINE.clone();
-        if t.is_blocked() {
-            MACHINE = Select::new();
-            true
-        } else {
-            MACHINE = t;
-            false
-        }
-    }
-    // })
+thread_local! {
+    static MACHINE: Cell<Machine> = Cell::new(Machine::new());
 }
 
-#[inline]
 pub fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
-    // MACHINE.with(|m| {
-        // let mut t = m.get();
-    unsafe {
-        let mut t = MACHINE.clone();
-        let res = t.send(tx, value);
-        MACHINE = t;
-        res
-    }
-    // })
-}
+    MACHINE.with(|m| {
+        let mut t = m.get();
 
-#[inline]
-pub fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
-    // MACHINE.with(|m| {
-    unsafe {
-        let mut t = MACHINE.clone();
-        let res = t.recv(rx);
-        MACHINE = t;
-        res
-    }
-    // })
-}
-
-#[derive(Clone, Copy)]
-pub struct Select {
-    machine: Machine,
-    _marker: PhantomData<*mut ()>,
-}
-
-impl Select {
-    #[inline]
-    pub const fn new() -> Self {
-        Select::with_deadline(None)
-    }
-
-    #[inline]
-    pub fn with_timeout(dur: Duration) -> Self {
-        Select::with_deadline(Some(Instant::now() + dur))
-    }
-
-    #[inline]
-    const fn with_deadline(deadline: Option<Instant>) -> Self {
-        Select {
-            machine: Machine::Counting {
-                len: 0,
-                first_id: HandleId::sentinel(),
-                deadline,
-                has_blocked_case: false,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn send<T>(&mut self, tx: &Sender<T>, value: T) -> Result<(), T> {
-        let res = if let Some(state) = self.machine.step(tx.id()) {
+        let res = if let Some(state) = t.step(tx.id()) {
             state.send(tx, value)
         } else {
             Err(value)
         };
         if res.is_ok() {
-            *self = Select::new();
+            t = Machine::new();
         }
-        res
-    }
 
-    pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
-        let res = if let Some(state) = self.machine.step(rx.id()) {
+        m.set(t);
+        res
+    })
+}
+
+pub fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
+    MACHINE.with(|m| {
+        let mut t = m.get();
+
+        let res = if let Some(state) = t.step(rx.id()) {
             state.recv(rx)
         } else {
             Err(())
         };
         if res.is_ok() {
-            *self = Select::new();
+            t = Machine::new();
         }
+
+        m.set(t);
         res
-    }
+    })
+}
 
-    #[inline]
-    pub fn is_disconnected(&mut self) -> bool {
-        if let Machine::Initialized { state, .. } = self.machine {
+#[inline]
+pub fn disconnected() -> bool {
+    MACHINE.with(|m| {
+        if let Machine::Initialized { state, .. } = m.get() {
             if let State::Disconnected = state {
+                m.set(Machine::new());
                 return true;
             }
         }
         false
-    }
+    })
+}
 
-    #[inline]
-    pub fn is_blocked(&mut self) -> bool {
-        match self.machine {
-            Machine::Counting {
-                ref mut has_blocked_case,
-                ..
-            } => {
-                *has_blocked_case = true;
-                false
-            }
-            Machine::Initialized { state, .. } => state == State::Blocked,
-        }
-    }
+#[inline]
+pub fn blocked() -> bool {
+    MACHINE.with(|m| {
+        let mut t = m.get();
 
-    #[inline]
-    pub fn timed_out(&mut self) -> bool {
-        if let Machine::Initialized { state, .. } = self.machine {
-            if let State::TimedOut = state {
+        if let Machine::Initialized { state, .. } = t {
+            if state == State::Blocked {
+                m.set(Machine::new());
                 return true;
             }
         }
+
+        if let Machine::Counting {
+            ref mut seen_blocked,
+            ..
+        } = t
+        {
+            *seen_blocked = true;
+        }
+
+        m.set(t);
         false
-    }
+    })
+}
+
+#[inline]
+pub fn timeout(dur: Duration) -> bool {
+    MACHINE.with(|m| {
+        let mut t = m.get();
+
+        if let Machine::Initialized { state, .. } = m.get() {
+            if let State::Timeout = state {
+                return true;
+            }
+        }
+
+        if let Machine::Counting {
+            ref mut deadline, ..
+        } = t
+        {
+            *deadline = Some(Instant::now() + dur);
+        }
+
+        m.set(t);
+        false
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -151,7 +114,7 @@ enum Machine {
         len: usize,
         first_id: HandleId,
         deadline: Option<Instant>,
-        has_blocked_case: bool,
+        seen_blocked: bool,
     },
     Initialized {
         pos: usize,
@@ -159,11 +122,26 @@ enum Machine {
         len: usize,
         start: usize,
         deadline: Option<Instant>,
-        has_blocked_case: bool,
     },
 }
 
+struct Config {
+    len: usize,
+    start: usize,
+    deadline: Option<Instant>,
+}
+
 impl Machine {
+    #[inline]
+    fn new() -> Self {
+        Machine::Counting {
+            len: 0,
+            first_id: HandleId::sentinel(),
+            deadline: None,
+            seen_blocked: false,
+        }
+    }
+
     #[inline]
     fn step(&mut self, id: HandleId) -> Option<&mut State> {
         loop {
@@ -172,20 +150,20 @@ impl Machine {
                     len,
                     first_id,
                     deadline,
-                    has_blocked_case,
+                    seen_blocked,
                 } => {
-                    if first_id == HandleId::sentinel() {
-                        start_selection();
-                    }
-
                     if first_id == id {
+                        actor::current().reset();
                         *self = Machine::Initialized {
                             pos: 0,
-                            state: State::Try { closed_count: 0 },
+                            state: if seen_blocked {
+                                State::TryOnce { closed_count: 0 }
+                            } else {
+                                State::SpinTry { closed_count: 0 }
+                            },
                             len,
                             start: gen_random(len),
                             deadline,
-                            has_blocked_case,
                         };
                     } else {
                         *self = Machine::Counting {
@@ -196,7 +174,7 @@ impl Machine {
                                 first_id
                             },
                             deadline,
-                            has_blocked_case,
+                            seen_blocked,
                         };
                         return None;
                     }
@@ -207,17 +185,15 @@ impl Machine {
                     len,
                     start,
                     deadline,
-                    has_blocked_case,
                 } => {
                     if pos >= 2 * len {
-                        state.transition(len, deadline, has_blocked_case);
+                        state.transition(len, deadline);
                         *self = Machine::Initialized {
                             pos: 0,
                             state,
                             len,
                             start,
                             deadline,
-                            has_blocked_case,
                         };
                     } else {
                         *self = Machine::Initialized {
@@ -226,7 +202,6 @@ impl Machine {
                             len,
                             start,
                             deadline,
-                            has_blocked_case,
                         };
                         if let Machine::Initialized { ref mut state, .. } = *self {
                             if start <= pos && pos < start + len {
@@ -244,188 +219,175 @@ impl Machine {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
-    Try { closed_count: usize },
-    Register { closed_countdown: isize },
-    Unregister,
-    FinalTry { id: HandleId },
-    Finished,
+    TryOnce { closed_count: usize },
+    SpinTry { closed_count: usize },
+    Promise { closed_count: usize },
+    Revoke,
+    Fulfill { id: HandleId },
     Disconnected,
     Blocked,
-    TimedOut,
+    Timeout,
 }
 
 impl State {
     #[inline]
-    fn transition(&mut self, len: usize, deadline: Option<Instant>, has_blocked_case: bool) {
+    fn transition(&mut self, len: usize, deadline: Option<Instant>) {
         match *self {
-            State::Try { closed_count } => {
+            State::TryOnce { closed_count } => {
                 if closed_count < len {
-                    actor::current().reset();
-
-                    if has_blocked_case {
-                        *self = State::Blocked;
-                        end_selection();
-                    } else {
-                        *self = State::Register {
-                            closed_countdown: closed_count as isize,
-                        };
-                    }
+                    *self = State::Blocked;
                 } else {
                     *self = State::Disconnected;
-                    end_selection();
                 }
             }
-            State::Register { closed_countdown } => {
-                if closed_countdown < 0 {
+            State::SpinTry { closed_count } => {
+                if closed_count < len {
+                    *self = State::Promise { closed_count: 0 };
+                } else {
+                    *self = State::Disconnected;
+                }
+            }
+            State::Promise { closed_count } => {
+                if closed_count < len {
+                    actor::current().wait_until(deadline);
+                } else {
                     actor::current().select(HandleId::sentinel());
                 }
-                actor::current().wait_until(deadline);
-                *self = State::Unregister;
+                *self = State::Revoke;
             }
-            State::Unregister => {
-                *self = State::FinalTry {
+            State::Revoke => {
+                *self = State::Fulfill {
                     id: actor::current().selected(),
                 };
             }
-            State::FinalTry { .. } => {
-                *self = State::Try { closed_count: 0 };
+            State::Fulfill { .. } => {
+                *self = State::SpinTry { closed_count: 0 };
 
                 if let Some(end) = deadline {
                     if Instant::now() >= end {
-                        *self = State::TimedOut;
-                        end_selection();
+                        *self = State::Timeout;
                     }
                 }
             }
-            State::Finished => {}
             State::Disconnected => {}
             State::Blocked => {}
-            State::TimedOut => {}
+            State::Timeout => {}
         }
     }
 
     fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
         match *self {
-            State::Try {
+            State::TryOnce {
                 ref mut closed_count,
             } => {
-                let backoff = &mut Backoff::new();
-                loop {
-                    match tx.try_send_with_backoff(value, backoff) {
-                        Ok(()) => return Ok(()),
-                        Err(TrySendError::Full(v)) => value = v,
-                        Err(TrySendError::Disconnected(v)) => {
-                            value = v;
-                            *closed_count += 1;
-                            break;
-                        }
-                    }
-                    if !backoff.tick() {
-                        break;
+                match tx.try_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(TrySendError::Full(v)) => value = v,
+                    Err(TrySendError::Disconnected(v)) => {
+                        value = v;
+                        *closed_count += 1;
                     }
                 }
             }
-            State::Register {
-                ref mut closed_countdown,
+            State::SpinTry {
+                ref mut closed_count,
             } => {
-                tx.register();
-                if tx.is_disconnected() {
-                    *closed_countdown -= 1;
+                match tx.spin_try_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(TrySendError::Full(v)) => value = v,
+                    Err(TrySendError::Disconnected(v)) => {
+                        value = v;
+                        *closed_count += 1;
+                    }
                 }
-                if tx.can_send() {
+            }
+            State::Promise {
+                ref mut closed_count,
+            } => {
+                tx.promise_send();
+
+                if tx.is_disconnected() {
+                    *closed_count += 1;
+                } else if tx.can_send() {
                     actor::current().select(HandleId::sentinel());
                 }
             }
-            State::Unregister => tx.unregister(),
-            State::FinalTry { id } => {
+            State::Revoke => tx.revoke_send(),
+            State::Fulfill { id } => {
                 if tx.id() == id {
-                    match tx.send_promised(value) {
+                    match tx.fulfill_send(value) {
                         Ok(()) => return Ok(()),
                         Err(v) => value = v,
                     }
                 }
             }
-            State::Finished => {}
             State::Disconnected => {}
             State::Blocked => {}
-            State::TimedOut => {}
+            State::Timeout => {}
         }
         Err(value)
     }
 
     fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
         match *self {
-            State::Try {
+            State::TryOnce {
                 ref mut closed_count,
             } => {
-                let backoff = &mut Backoff::new();
-                loop {
-                    match rx.try_recv_with_backoff(backoff) {
-                        Ok(v) => return Ok(v),
-                        Err(TryRecvError::Empty) => {}
-                        Err(TryRecvError::Disconnected) => {
-                            *closed_count += 1;
-                            break;
-                        }
-                    }
-                    if !backoff.tick() {
-                        break;
-                    }
+                match rx.try_recv() {
+                    Ok(v) => return Ok(v),
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => *closed_count += 1,
                 }
             }
-            State::Register {
-                ref mut closed_countdown,
+            State::SpinTry {
+                ref mut closed_count,
             } => {
-                rx.register();
-                if rx.is_disconnected() {
-                    *closed_countdown -= 1;
+                match rx.spin_try_recv() {
+                    Ok(v) => return Ok(v),
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => *closed_count += 1,
                 }
-                if rx.can_recv() {
+            }
+            State::Promise {
+                ref mut closed_count,
+            } => {
+                rx.promise_recv();
+
+                if rx.is_disconnected() {
+                    *closed_count += 1;
+                } else if rx.can_recv() {
                     actor::current().select(HandleId::sentinel());
                 }
             }
-            State::Unregister => rx.unregister(),
-            State::FinalTry { id } => {
+            State::Revoke => rx.revoke_recv(),
+            State::Fulfill { id } => {
                 if rx.id() == id {
-                    if let Ok(v) = rx.recv_promised() {
+                    if let Ok(v) = rx.fulfill_recv() {
                         return Ok(v);
                     }
                 }
             }
-            State::Finished => {}
             State::Disconnected => {}
             State::Blocked => {}
-            State::TimedOut => {}
+            State::Timeout => {}
         }
         Err(())
     }
 }
 
-thread_local! {
-    static SELECTING: Cell<bool> = Cell::new(false);
-    static RNG: Cell<u32> = Cell::new(1);
-}
-
-fn start_selection() {
-    // SELECTING.with(|s| {
-    //     if s.get() {
-    //         panic!("Illegal use of `Select` - multiple selections running at the same time!");
-    //     }
-    //     s.set(true);
-    // });
-}
-
-fn end_selection() {
-    // SELECTING.with(|s| s.set(false));
-}
-
 fn gen_random(ceil: usize) -> usize {
+    use std::num::Wrapping;
+
+    thread_local! {
+        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
+    }
+
     RNG.with(|rng| {
-        let mut x = ::std::num::Wrapping(rng.get());
+        let mut x = rng.get();
         x ^= x << 13;
         x ^= x >> 17;
         x ^= x << 5;
-        rng.set(x.0);
+        rng.set(x);
 
         let x = x.0 as usize;
         match ceil {
@@ -448,7 +410,7 @@ mod tests {
 
     use crossbeam;
 
-    use {Select, bounded, unbounded};
+    use {bounded, unbounded, select};
     use err::*;
 
     fn ms(ms: u64) -> Duration {
@@ -461,27 +423,23 @@ mod tests {
         let (tx2, rx2) = unbounded::<i32>();
         tx1.send(1).unwrap();
 
-        let mut s = Select::new();
         loop {
-            if let Ok(v) = s.recv(&rx1) {
+            if let Ok(v) = rx1.select() {
                 assert_eq!(v, 1);
                 break;
             }
-            if let Ok(_) = s.recv(&rx2) {
+            if let Ok(_) = rx2.select() {
                 panic!();
-                break;
             }
         }
 
         tx2.send(2).unwrap();
 
-        let mut s = Select::new();
         loop {
-            if let Ok(_) = s.recv(&rx1) {
+            if let Ok(_) = rx1.select() {
                 panic!();
-                break;
             }
-            if let Ok(v) = s.recv(&rx2) {
+            if let Ok(v) = rx2.select() {
                 assert_eq!(v, 2);
                 break;
             }
@@ -496,17 +454,14 @@ mod tests {
         drop(tx1);
         drop(tx2);
 
-        let mut s = Select::new();
         loop {
-            if let Ok(_) = s.recv(&rx1) {
+            if let Ok(_) = rx1.select() {
                 panic!();
-                break;
             }
-            if let Ok(_) = s.recv(&rx2) {
+            if let Ok(_) = rx2.select() {
                 panic!();
-                break;
             }
-            if s.is_disconnected() {
+            if select::disconnected() {
                 break;
             }
         }
@@ -542,22 +497,20 @@ mod tests {
             });
             s.spawn(|| {
                 thread::sleep(ms(100));
-                // let mut s = Select::new();
-                let mut s = Select::with_timeout(ms(100));
                 loop {
-                    if let Ok(x) = s.recv(&rx1) {
+                    if let Ok(x) = rx1.select() {
                         println!("{}", x);
                         break;
                     }
-                    if let Ok(x) = s.recv(&rx2) {
+                    if let Ok(x) = rx2.select() {
                         println!("{}", x);
                         break;
                     }
-                    if s.is_disconnected() {
+                    if select::disconnected() {
                         println!("DISCONNECTED!");
                         break;
                     }
-                    if s.timed_out() {
+                    if select::timeout(ms(100)) {
                         println!("TIMEOUT!");
                         break;
                     }
@@ -584,22 +537,20 @@ mod tests {
             });
             s.spawn(|| {
                 thread::sleep(ms(100));
-                // let mut s = Select::new();
-                let mut s = Select::with_timeout(ms(100));
                 loop {
-                    if let Ok(()) = s.send(&tx1, 1) {
+                    if let Ok(()) = tx1.select(1) {
                         println!("sent 1");
                         break;
                     }
-                    if let Ok(()) = s.send(&tx2, 2) {
+                    if let Ok(()) = tx2.select(2) {
                         println!("sent 2");
                         break;
                     }
-                    if s.is_disconnected() {
+                    if select::disconnected() {
                         println!("DISCONNECTED!");
                         break;
                     }
-                    if s.timed_out() {
+                    if select::timeout(ms(100)) {
                         println!("TIMEOUT!");
                         break;
                     }

@@ -1,4 +1,4 @@
-#![feature(thread_local, const_fn, hint_core_should_pause)]
+#![feature(const_fn, hint_core_should_pause)]
 
 extern crate coco;
 extern crate crossbeam;
@@ -11,10 +11,8 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
 
 use actor::HandleId;
-use backoff::Backoff;
 
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-pub use select::Select;
 
 mod actor;
 mod backoff;
@@ -55,7 +53,7 @@ impl<T> Sender<T> {
         HandleId::new(addr)
     }
 
-    pub(crate) fn register(&self) {
+    pub(crate) fn promise_send(&self) {
         match self.0.flavor {
             Flavor::List(_) => {}
             Flavor::Array(ref chan) => chan.senders().register(self.id()),
@@ -63,11 +61,11 @@ impl<T> Sender<T> {
         }
     }
 
-    pub(crate) fn unregister(&self) {
+    pub(crate) fn revoke_send(&self) {
         match self.0.flavor {
             Flavor::List(_) => {}
             Flavor::Array(ref chan) => chan.senders().unregister(self.id()),
-            Flavor::Zero(ref chan) => chan.unpromise_send(self.id()),
+            Flavor::Zero(ref chan) => chan.revoke_send(self.id()),
         }
     }
 
@@ -79,7 +77,7 @@ impl<T> Sender<T> {
         }
     }
 
-    pub(crate) fn send_promised(&self, value: T) -> Result<(), T> {
+    pub(crate) fn fulfill_send(&self, value: T) -> Result<(), T> {
         match self.0.flavor {
             Flavor::Array(..) | Flavor::List(..) => {
                 match self.try_send(value) {
@@ -95,29 +93,29 @@ impl<T> Sender<T> {
         }
     }
 
-    pub(crate) fn try_send_with_backoff(
+    pub(crate) fn spin_try_send(
         &self,
         value: T,
-        backoff: &mut Backoff,
     ) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.try_send_with_backoff(value, backoff),
+            Flavor::Array(ref chan) => chan.spin_try_send(value),
             Flavor::List(ref chan) => chan.try_send(value),
-            Flavor::Zero(ref chan) => {
-                backoff.abort();
-                chan.try_send(value)
-            }
+            Flavor::Zero(ref chan) => chan.try_send(value),
         }
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        self.try_send_with_backoff(value, &mut Backoff::new())
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.try_send(value),
+            Flavor::List(ref chan) => chan.try_send(value),
+            Flavor::Zero(ref chan) => chan.try_send(value),
+        }
     }
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
             Flavor::Array(ref chan) => chan.send_until(value, None),
-            Flavor::List(ref chan) => chan.send_until(value, None),
+            Flavor::List(ref chan) => chan.send(value),
             Flavor::Zero(ref chan) => chan.send_until(value, None),
         };
         match res {
@@ -131,7 +129,7 @@ impl<T> Sender<T> {
         let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.send_until(value, deadline),
-            Flavor::List(ref chan) => chan.send_until(value, deadline),
+            Flavor::List(ref chan) => chan.send(value),
             Flavor::Zero(ref chan) => chan.send_until(value, deadline),
         }
     }
@@ -208,7 +206,7 @@ impl<T> Receiver<T> {
         HandleId::new(addr | 1)
     }
 
-    pub(crate) fn register(&self) {
+    pub(crate) fn promise_recv(&self) {
         match self.0.flavor {
             Flavor::List(ref chan) => chan.receivers().register(self.id()),
             Flavor::Array(ref chan) => chan.receivers().register(self.id()),
@@ -216,11 +214,11 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub(crate) fn unregister(&self) {
+    pub(crate) fn revoke_recv(&self) {
         match self.0.flavor {
             Flavor::List(ref chan) => chan.receivers().unregister(self.id()),
             Flavor::Array(ref chan) => chan.receivers().unregister(self.id()),
-            Flavor::Zero(ref chan) => chan.unpromise_recv(self.id()),
+            Flavor::Zero(ref chan) => chan.revoke_recv(self.id()),
         }
     }
 
@@ -232,26 +230,27 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub(crate) fn recv_promised(&self) -> Result<T, ()> {
+    pub(crate) fn fulfill_recv(&self) -> Result<T, ()> {
         match self.0.flavor {
             Flavor::Array(..) | Flavor::List(..) => self.try_recv().map_err(|_| ()),
             Flavor::Zero(_) => unsafe { Ok(actor::current().take_request(self.id())) },
         }
     }
 
-    pub(crate) fn try_recv_with_backoff(&self, backoff: &mut Backoff) -> Result<T, TryRecvError> {
+    pub(crate) fn spin_try_recv(&self) -> Result<T, TryRecvError> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.try_recv_with_backoff(backoff),
-            Flavor::List(ref chan) => chan.try_recv_with_backoff(backoff),
-            Flavor::Zero(ref chan) => {
-                backoff.abort();
-                chan.try_recv()
-            }
+            Flavor::Array(ref chan) => chan.spin_try_recv(),
+            Flavor::List(ref chan) => chan.spin_try_recv(),
+            Flavor::Zero(ref chan) => chan.try_recv(),
         }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        self.try_recv_with_backoff(&mut Backoff::new())
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.try_recv(),
+            Flavor::List(ref chan) => chan.try_recv(),
+            Flavor::Zero(ref chan) => chan.try_recv(),
+        }
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {

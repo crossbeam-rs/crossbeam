@@ -11,7 +11,7 @@ use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 use actor::HandleId;
-use Backoff;
+use backoff::Backoff;
 
 struct Node<T> {
     lap: AtomicUsize,
@@ -171,15 +171,14 @@ impl<T> Channel<T> {
         }
     }
 
-    pub(crate) fn try_send_with_backoff(
+    pub fn try_send(
         &self,
         value: T,
-        backoff: &mut Backoff,
     ) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
-            match self.push(value, backoff) {
+            match self.push(value, &mut Backoff::new()) {
                 None => {
                     self.receivers.notify_one();
                     Ok(())
@@ -189,23 +188,41 @@ impl<T> Channel<T> {
         }
     }
 
+    pub fn spin_try_send(
+        &self,
+        mut value: T,
+    ) -> Result<(), TrySendError<T>> {
+        if self.closed.load(SeqCst) {
+            Err(TrySendError::Disconnected(value))
+        } else {
+            let backoff = &mut Backoff::new();
+            loop {
+                match self.push(value, backoff) {
+                    None => {
+                        self.receivers.notify_one();
+                        return Ok(());
+                    }
+                    Some(v) => value = v,
+                }
+                if !backoff.tick() {
+                    break;
+                }
+            }
+            Err(TrySendError::Full(value))
+        }
+    }
+
     pub fn send_until(
         &self,
         mut value: T,
         deadline: Option<Instant>,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
-            let backoff = &mut Backoff::new();
-            loop {
-                match self.try_send_with_backoff(value, backoff) {
-                    Ok(()) => return Ok(()),
-                    Err(TrySendError::Full(v)) => value = v,
-                    Err(TrySendError::Disconnected(v)) => {
-                        return Err(SendTimeoutError::Disconnected(v))
-                    }
-                }
-                if !backoff.tick() {
-                    break;
+            match self.spin_try_send(value) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Full(v)) => value = v,
+                Err(TrySendError::Disconnected(v)) => {
+                    return Err(SendTimeoutError::Disconnected(v))
                 }
             }
 
@@ -221,8 +238,8 @@ impl<T> Channel<T> {
         }
     }
 
-    pub(crate) fn try_recv_with_backoff(&self, backoff: &mut Backoff) -> Result<T, TryRecvError> {
-        match self.pop(backoff) {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.pop(&mut Backoff::new()) {
             None => {
                 if self.closed.load(SeqCst) {
                     Err(TryRecvError::Disconnected)
@@ -237,18 +254,31 @@ impl<T> Channel<T> {
         }
     }
 
+    pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
+        let backoff = &mut Backoff::new();
+        loop {
+            if let Some(v) = self.pop(backoff) {
+                self.senders.notify_one();
+                return Ok(v);
+            }
+            if !backoff.tick() {
+                break;
+            }
+        }
+
+        if self.closed.load(SeqCst) {
+            Err(TryRecvError::Disconnected)
+        } else {
+            Err(TryRecvError::Empty)
+        }
+    }
+
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
-            let backoff = &mut Backoff::new();
-            loop {
-                match self.try_recv_with_backoff(backoff) {
-                    Ok(v) => return Ok(v),
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
-                }
-                if !backoff.tick() {
-                    break;
-                }
+            match self.spin_try_recv() {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
             }
 
             actor::current().reset();

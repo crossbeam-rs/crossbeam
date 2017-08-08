@@ -33,7 +33,7 @@ impl<T> Channel<T> {
         self.inner.lock().senders.register_promise(id);
     }
 
-    pub fn unpromise_send(&self, id: HandleId) {
+    pub fn revoke_send(&self, id: HandleId) {
         self.inner.lock().senders.unregister(id);
     }
 
@@ -41,7 +41,7 @@ impl<T> Channel<T> {
         self.inner.lock().receivers.register_promise(id);
     }
 
-    pub fn unpromise_recv(&self, id: HandleId) {
+    pub fn revoke_recv(&self, id: HandleId) {
         self.inner.lock().receivers.unregister(id);
     }
 

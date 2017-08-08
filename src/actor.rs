@@ -6,8 +6,6 @@ use std::time::Instant;
 
 use parking_lot::Mutex;
 
-use Backoff;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct HandleId(usize);
 
@@ -36,6 +34,7 @@ impl Actor {
         self.thread.unpark();
     }
 
+    // TODO: maybe this needs to be unsafe and {put,take}_request safe?
     pub fn set_request<T>(&self, req: *const Request<T>) {
         self.request_ptr.store(req as usize, SeqCst);
     }
@@ -54,13 +53,6 @@ impl Actor {
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
-        let mut backoff = Backoff::new();
-        while self.select_id.load(SeqCst) == 0 {
-            if !backoff.tick() {
-                break;
-            }
-        }
-
         while self.select_id.load(SeqCst) == 0 {
             let now = Instant::now();
 

@@ -11,7 +11,7 @@ use coco::epoch::{self, Atomic, Owned};
 use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
-use Backoff;
+use backoff::Backoff;
 use actor::HandleId;
 
 struct Node<T> {
@@ -173,10 +173,9 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn send_until(
+    pub fn send(
         &self,
-        mut value: T,
-        deadline: Option<Instant>,
+        value: T,
     ) -> Result<(), SendTimeoutError<T>> {
         if self.closed.load(SeqCst) {
             Err(SendTimeoutError::Disconnected(value))
@@ -187,8 +186,8 @@ impl<T> Channel<T> {
         }
     }
 
-    pub(crate) fn try_recv_with_backoff(&self, backoff: &mut Backoff) -> Result<T, TryRecvError> {
-        match self.pop(backoff) {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        match self.pop(&mut Backoff::new()) {
             None => {
                 if self.closed.load(SeqCst) {
                     Err(TryRecvError::Disconnected)
@@ -200,18 +199,30 @@ impl<T> Channel<T> {
         }
     }
 
+    pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
+        let backoff = &mut Backoff::new();
+        loop {
+            if let Some(v) = self.pop(backoff) {
+                return Ok(v);
+            }
+            if !backoff.tick() {
+                break;
+            }
+        }
+
+        if self.closed.load(SeqCst) {
+            Err(TryRecvError::Disconnected)
+        } else {
+            Err(TryRecvError::Empty)
+        }
+    }
+
     pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         loop {
-            let backoff = &mut Backoff::new();
-            loop {
-                match self.try_recv_with_backoff(backoff) {
-                    Ok(v) => return Ok(v),
-                    Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
-                    Err(TryRecvError::Empty) => {}
-                }
-                if !backoff.tick() {
-                    break;
-                }
+            match self.spin_try_recv() {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
             }
 
             actor::current().reset();
