@@ -47,8 +47,8 @@ fn main() {
         s.spawn(move || seek(name, tx, rx));
     });
 
-    if let Ok(peer) = rx.try_recv() {
-        println!("No one received {}’s message.", peer);
+    if let Ok(name) = rx.try_recv() {
+        println!("No one received {}’s message.", name);
     }
 }
 
