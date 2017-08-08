@@ -11,7 +11,6 @@ use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 use actor::HandleId;
-use backoff::Backoff;
 
 struct Node<T> {
     lap: AtomicUsize,
@@ -65,7 +64,7 @@ impl<T> Channel<T> {
         }
     }
 
-    fn push(&self, value: T, backoff: &mut Backoff) -> Option<T> {
+    fn push(&self, value: T) -> Option<T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -99,13 +98,11 @@ impl<T> Channel<T> {
                 return Some(value);
             }
 
-            if !backoff.tick() {
-                thread::yield_now();
-            }
+            thread::yield_now();
         }
     }
 
-    fn pop(&self, backoff: &mut Backoff) -> Option<T> {
+    fn pop(&self) -> Option<T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -139,9 +136,7 @@ impl<T> Channel<T> {
                 return None;
             }
 
-            if !backoff.tick() {
-                thread::yield_now();
-            }
+            thread::yield_now();
         }
     }
 
@@ -175,7 +170,7 @@ impl<T> Channel<T> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
-            match self.push(value, &mut Backoff::new()) {
+            match self.push(value) {
                 None => {
                     self.receivers.notify_one();
                     Ok(())
@@ -189,17 +184,13 @@ impl<T> Channel<T> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
-            let backoff = &mut Backoff::new();
-            loop {
-                match self.push(value, backoff) {
+            for _ in 0..20 {
+                match self.push(value) {
                     None => {
                         self.receivers.notify_one();
                         return Ok(());
                     }
                     Some(v) => value = v,
-                }
-                if !backoff.tick() {
-                    break;
                 }
             }
             Err(TrySendError::Full(value))
@@ -231,7 +222,7 @@ impl<T> Channel<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop(&mut Backoff::new()) {
+        match self.pop() {
             None => {
                 if self.closed.load(SeqCst) {
                     Err(TryRecvError::Disconnected)
@@ -247,14 +238,10 @@ impl<T> Channel<T> {
     }
 
     pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
-        let backoff = &mut Backoff::new();
-        loop {
-            if let Some(v) = self.pop(backoff) {
+        for _ in 0..20 {
+            if let Some(v) = self.pop() {
                 self.senders.notify_one();
                 return Ok(v);
-            }
-            if !backoff.tick() {
-                break;
             }
         }
 

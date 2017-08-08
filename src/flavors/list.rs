@@ -11,7 +11,6 @@ use coco::epoch::{self, Atomic, Owned};
 use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
-use backoff::Backoff;
 use actor::HandleId;
 
 struct Node<T> {
@@ -80,7 +79,7 @@ impl<T> Channel<T> {
         }
     }
 
-    fn pop(&self, backoff: &mut Backoff) -> Option<T> {
+    fn pop(&self) -> Option<T> {
         const USE: usize = 1;
         const MULTI: usize = 2;
 
@@ -102,8 +101,6 @@ impl<T> Channel<T> {
                             if self.tail.load(SeqCst, scope).as_raw() == head.as_raw() {
                                 return None;
                             }
-
-                            backoff.tick();
                         } else {
                             let value = ptr::read(&next.deref().value);
 
@@ -145,8 +142,6 @@ impl<T> Channel<T> {
                             return Some(ptr::read(&next.deref().value));
                         }
                     }
-
-                    backoff.tick();
                 })
             })
         };
@@ -184,7 +179,7 @@ impl<T> Channel<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop(&mut Backoff::new()) {
+        match self.pop() {
             None => {
                 if self.closed.load(SeqCst) {
                     Err(TryRecvError::Disconnected)
@@ -197,13 +192,9 @@ impl<T> Channel<T> {
     }
 
     pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
-        let backoff = &mut Backoff::new();
-        loop {
-            if let Some(v) = self.pop(backoff) {
+        for i in 0..20 {
+            if let Some(v) = self.pop() {
                 return Ok(v);
-            }
-            if !backoff.tick() {
-                break;
             }
         }
 

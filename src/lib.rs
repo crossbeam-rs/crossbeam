@@ -13,7 +13,6 @@ use actor::HandleId;
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 mod actor;
-mod backoff;
 mod err;
 mod flavors;
 mod monitor;
