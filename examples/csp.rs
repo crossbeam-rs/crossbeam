@@ -47,15 +47,8 @@ fn main() {
         s.spawn(move || seek(name, tx, rx));
     });
 
-    loop {
-        if let Ok(peer) = rx.select() {
-            println!("No one received {}’s message.", peer);
-            break;
-        }
-        if select::blocked() {
-            // There was no pending send operation.
-            break;
-        }
+    if let Ok(peer) = rx.try_recv() {
+        println!("No one received {}’s message.", peer);
     }
 }
 
