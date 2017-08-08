@@ -98,13 +98,11 @@ impl<T> Sender<T> {
 
     pub(crate) fn fulfill_send(&self, value: T) -> Result<(), T> {
         match self.0.flavor {
-            Flavor::Array(..) | Flavor::List(..) => {
-                match self.try_send(value) {
-                    Ok(()) => Ok(()),
-                    Err(TrySendError::Full(v)) => Err(v),
-                    Err(TrySendError::Disconnected(v)) => Err(v),
-                }
-            }
+            Flavor::Array(..) | Flavor::List(..) => match self.try_send(value) {
+                Ok(()) => Ok(()),
+                Err(TrySendError::Full(v)) => Err(v),
+                Err(TrySendError::Disconnected(v)) => Err(v),
+            },
             Flavor::Zero(_) => {
                 unsafe { actor::current().put_request(value, self.id()) }
                 Ok(())

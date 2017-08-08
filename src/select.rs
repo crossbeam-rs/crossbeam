@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
-use {Sender, Receiver};
+use {Receiver, Sender};
 use actor::{self, HandleId};
 use err::{TryRecvError, TrySendError};
 
@@ -149,67 +149,63 @@ impl Machine {
                     first_id,
                     deadline,
                     seen_blocked,
-                } => {
-                    if first_id == id {
-                        actor::current().reset();
-                        *self = Machine::Initialized {
-                            pos: 0,
-                            state: if seen_blocked {
-                                State::TryOnce { closed_count: 0 }
-                            } else {
-                                State::SpinTry { closed_count: 0 }
-                            },
-                            len,
-                            start: gen_random(len),
-                            deadline,
-                        };
-                    } else {
-                        *self = Machine::Counting {
-                            len: len + 1,
-                            first_id: if first_id == HandleId::sentinel() {
-                                id
-                            } else {
-                                first_id
-                            },
-                            deadline,
-                            seen_blocked,
-                        };
-                        return None;
-                    }
-                }
+                } => if first_id == id {
+                    actor::current().reset();
+                    *self = Machine::Initialized {
+                        pos: 0,
+                        state: if seen_blocked {
+                            State::TryOnce { closed_count: 0 }
+                        } else {
+                            State::SpinTry { closed_count: 0 }
+                        },
+                        len,
+                        start: gen_random(len),
+                        deadline,
+                    };
+                } else {
+                    *self = Machine::Counting {
+                        len: len + 1,
+                        first_id: if first_id == HandleId::sentinel() {
+                            id
+                        } else {
+                            first_id
+                        },
+                        deadline,
+                        seen_blocked,
+                    };
+                    return None;
+                },
                 Machine::Initialized {
                     pos,
                     mut state,
                     len,
                     start,
                     deadline,
-                } => {
-                    if pos >= 2 * len {
-                        state.transition(len, deadline);
-                        *self = Machine::Initialized {
-                            pos: 0,
-                            state,
-                            len,
-                            start,
-                            deadline,
-                        };
-                    } else {
-                        *self = Machine::Initialized {
-                            pos: pos + 1,
-                            state,
-                            len,
-                            start,
-                            deadline,
-                        };
-                        if let Machine::Initialized { ref mut state, .. } = *self {
-                            if start <= pos && pos < start + len {
-                                return Some(state);
-                            } else {
-                                return None;
-                            }
+                } => if pos >= 2 * len {
+                    state.transition(len, deadline);
+                    *self = Machine::Initialized {
+                        pos: 0,
+                        state,
+                        len,
+                        start,
+                        deadline,
+                    };
+                } else {
+                    *self = Machine::Initialized {
+                        pos: pos + 1,
+                        state,
+                        len,
+                        start,
+                        deadline,
+                    };
+                    if let Machine::Initialized { ref mut state, .. } = *self {
+                        if start <= pos && pos < start + len {
+                            return Some(state);
+                        } else {
+                            return None;
                         }
                     }
-                }
+                },
             }
         }
     }
@@ -231,20 +227,16 @@ impl State {
     #[inline]
     fn transition(&mut self, len: usize, deadline: Option<Instant>) {
         match *self {
-            State::TryOnce { closed_count } => {
-                if closed_count < len {
-                    *self = State::Blocked;
-                } else {
-                    *self = State::Disconnected;
-                }
-            }
-            State::SpinTry { closed_count } => {
-                if closed_count < len {
-                    *self = State::Promise { closed_count: 0 };
-                } else {
-                    *self = State::Disconnected;
-                }
-            }
+            State::TryOnce { closed_count } => if closed_count < len {
+                *self = State::Blocked;
+            } else {
+                *self = State::Disconnected;
+            },
+            State::SpinTry { closed_count } => if closed_count < len {
+                *self = State::Promise { closed_count: 0 };
+            } else {
+                *self = State::Disconnected;
+            },
             State::Promise { closed_count } => {
                 if closed_count < len {
                     actor::current().wait_until(deadline);
@@ -277,28 +269,24 @@ impl State {
         match *self {
             State::TryOnce {
                 ref mut closed_count,
-            } => {
-                match tx.try_send(value) {
-                    Ok(()) => return Ok(()),
-                    Err(TrySendError::Full(v)) => value = v,
-                    Err(TrySendError::Disconnected(v)) => {
-                        value = v;
-                        *closed_count += 1;
-                    }
+            } => match tx.try_send(value) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Full(v)) => value = v,
+                Err(TrySendError::Disconnected(v)) => {
+                    value = v;
+                    *closed_count += 1;
                 }
-            }
+            },
             State::SpinTry {
                 ref mut closed_count,
-            } => {
-                match tx.spin_try_send(value) {
-                    Ok(()) => return Ok(()),
-                    Err(TrySendError::Full(v)) => value = v,
-                    Err(TrySendError::Disconnected(v)) => {
-                        value = v;
-                        *closed_count += 1;
-                    }
+            } => match tx.spin_try_send(value) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Full(v)) => value = v,
+                Err(TrySendError::Disconnected(v)) => {
+                    value = v;
+                    *closed_count += 1;
                 }
-            }
+            },
             State::Promise {
                 ref mut closed_count,
             } => {
@@ -311,14 +299,12 @@ impl State {
                 }
             }
             State::Revoke => tx.revoke_send(),
-            State::Fulfill { id } => {
-                if tx.id() == id {
-                    match tx.fulfill_send(value) {
-                        Ok(()) => return Ok(()),
-                        Err(v) => value = v,
-                    }
+            State::Fulfill { id } => if tx.id() == id {
+                match tx.fulfill_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(v) => value = v,
                 }
-            }
+            },
             State::Disconnected => {}
             State::Blocked => {}
             State::Timeout => {}
@@ -330,22 +316,18 @@ impl State {
         match *self {
             State::TryOnce {
                 ref mut closed_count,
-            } => {
-                match rx.try_recv() {
-                    Ok(v) => return Ok(v),
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => *closed_count += 1,
-                }
-            }
+            } => match rx.try_recv() {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => *closed_count += 1,
+            },
             State::SpinTry {
                 ref mut closed_count,
-            } => {
-                match rx.spin_try_recv() {
-                    Ok(v) => return Ok(v),
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => *closed_count += 1,
-                }
-            }
+            } => match rx.spin_try_recv() {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => *closed_count += 1,
+            },
             State::Promise {
                 ref mut closed_count,
             } => {
@@ -358,13 +340,11 @@ impl State {
                 }
             }
             State::Revoke => rx.revoke_recv(),
-            State::Fulfill { id } => {
-                if rx.id() == id {
-                    if let Ok(v) = rx.fulfill_recv() {
-                        return Ok(v);
-                    }
+            State::Fulfill { id } => if rx.id() == id {
+                if let Ok(v) = rx.fulfill_recv() {
+                    return Ok(v);
                 }
-            }
+            },
             State::Disconnected => {}
             State::Blocked => {}
             State::Timeout => {}

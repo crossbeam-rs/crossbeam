@@ -4,7 +4,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, SeqCst};
 use std::thread;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use coco::epoch::{self, Atomic, Owned};
 
@@ -180,13 +180,11 @@ impl<T> Channel<T> {
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.pop() {
-            None => {
-                if self.closed.load(SeqCst) {
-                    Err(TryRecvError::Disconnected)
-                } else {
-                    Err(TryRecvError::Empty)
-                }
-            }
+            None => if self.closed.load(SeqCst) {
+                Err(TryRecvError::Disconnected)
+            } else {
+                Err(TryRecvError::Empty)
+            },
             Some(v) => Ok(v),
         }
     }

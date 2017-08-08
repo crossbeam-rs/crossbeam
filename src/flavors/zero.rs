@@ -53,25 +53,21 @@ impl<T> Channel<T> {
 
         while let Some(e) = inner.receivers.pop() {
             match e.packet {
-                None => {
-                    if e.actor.select(e.id) {
-                        let req = Request::new(Some(value));
-                        actor::current().reset();
-                        e.actor.set_request(&req);
-                        drop(inner);
+                None => if e.actor.select(e.id) {
+                    let req = Request::new(Some(value));
+                    actor::current().reset();
+                    e.actor.set_request(&req);
+                    drop(inner);
 
-                        e.actor.unpark();
-                        actor::current().wait_until(None);
-                        return Ok(());
-                    }
-                }
-                Some(packet) => {
-                    if e.actor.select(e.id) {
-                        unsafe { (*packet).put(value) }
-                        e.actor.unpark();
-                        return Ok(());
-                    }
-                }
+                    e.actor.unpark();
+                    actor::current().wait_until(None);
+                    return Ok(());
+                },
+                Some(packet) => if e.actor.select(e.id) {
+                    unsafe { (*packet).put(value) }
+                    e.actor.unpark();
+                    return Ok(());
+                },
             }
         }
 
@@ -129,27 +125,23 @@ impl<T> Channel<T> {
 
         while let Some(e) = inner.senders.pop() {
             match e.packet {
-                None => {
-                    if e.actor.select(e.id) {
-                        let req = Request::new(None);
-                        actor::current().reset();
-                        e.actor.set_request(&req);
-                        drop(inner);
+                None => if e.actor.select(e.id) {
+                    let req = Request::new(None);
+                    actor::current().reset();
+                    e.actor.set_request(&req);
+                    drop(inner);
 
-                        e.actor.unpark();
-                        actor::current().wait_until(None);
-                        let _inner = self.inner.lock();
-                        let v = req.packet.take().unwrap();
-                        return Ok(v);
-                    }
-                }
-                Some(packet) => {
-                    if e.actor.select(e.id) {
-                        let v = unsafe { (*packet).take().unwrap() };
-                        e.actor.unpark();
-                        return Ok(v);
-                    }
-                }
+                    e.actor.unpark();
+                    actor::current().wait_until(None);
+                    let _inner = self.inner.lock();
+                    let v = req.packet.take().unwrap();
+                    return Ok(v);
+                },
+                Some(packet) => if e.actor.select(e.id) {
+                    let v = unsafe { (*packet).take().unwrap() };
+                    e.actor.unpark();
+                    return Ok(v);
+                },
             }
         }
 

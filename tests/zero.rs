@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use channel::select;
-use channel::{RecvError, SendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 // TODO: drop test
 

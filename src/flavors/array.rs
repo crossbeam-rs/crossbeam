@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::Ordering::{Acquire, Release, Relaxed, SeqCst};
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 use std::thread;
 use std::time::Instant;
 
@@ -223,13 +223,11 @@ impl<T> Channel<T> {
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.pop() {
-            None => {
-                if self.closed.load(SeqCst) {
-                    Err(TryRecvError::Disconnected)
-                } else {
-                    Err(TryRecvError::Empty)
-                }
-            }
+            None => if self.closed.load(SeqCst) {
+                Err(TryRecvError::Disconnected)
+            } else {
+                Err(TryRecvError::Empty)
+            },
             Some(v) => {
                 self.senders.notify_one();
                 Ok(v)

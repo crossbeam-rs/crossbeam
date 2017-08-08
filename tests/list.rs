@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use channel::select;
-use channel::{RecvError, SendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 // TODO: drop test
 
