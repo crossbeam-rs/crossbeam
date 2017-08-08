@@ -36,28 +36,15 @@
 extern crate crossbeam;
 extern crate channel;
 
-use channel::select;
+use channel::{select, Receiver, Sender};
 
 fn main() {
     let people = vec!["Anna", "Bob", "Cody", "Dave", "Eva"];
     let (tx, rx) = channel::bounded(1); // Make room for one unmatched send.
     let (tx, rx) = (&tx, &rx);
 
-    crossbeam::scope(|s| {
-        for name in people {
-            s.spawn(move || {
-                loop {
-                    if let Ok(peer) = rx.select() {
-                        println!("{} received a message from {}.", name, peer);
-                        break;
-                    }
-                    if let Ok(_) = tx.select(name) {
-                        // Wait for someone to receive my message.
-                        break;
-                    }
-                }
-            });
-        }
+    crossbeam::scope(|s| for name in people {
+        s.spawn(move || seek(name, tx, rx));
     });
 
     loop {
@@ -67,6 +54,20 @@ fn main() {
         }
         if select::blocked() {
             // There was no pending send operation.
+            break;
+        }
+    }
+}
+
+// Either sends or receives, whichever possible, a name on the channel.
+fn seek<'a>(name: &'a str, tx: &Sender<&'a str>, rx: &Receiver<&'a str>) {
+    loop {
+        if let Ok(peer) = rx.select() {
+            println!("{} received a message from {}.", name, peer);
+            break;
+        }
+        if let Ok(_) = tx.select(name) {
+            // Wait for someone to receive my message.
             break;
         }
     }
