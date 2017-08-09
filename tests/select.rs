@@ -326,6 +326,8 @@ fn both_ready() {
             }
         }
     });
+
+    assert!(iters < 50);
 }
 
 #[test]
@@ -438,7 +440,121 @@ fn loop_try() {
 }
 
 #[test]
-fn stress() {
+fn cloning1() {
+    crossbeam::scope(|s| {
+        let mut iters = 0;
+        let (tx1, rx1) = unbounded::<i32>();
+        let (_tx2, rx2) = unbounded::<i32>();
+        let (tx3, rx3) = unbounded::<()>();
+
+        s.spawn(move || {
+            rx3.recv().unwrap();
+            tx1.clone();
+            assert_eq!(rx3.try_recv(), Err(TryRecvError::Empty));
+            tx1.send(1).unwrap();
+            rx3.recv().unwrap();
+        });
+
+        tx3.send(()).unwrap();
+        loop {
+            iters += 1;
+            if let Ok(_) = rx1.select() {
+                break;
+            }
+            if let Ok(_) = rx2.select() {
+                panic!();
+            }
+        }
+
+        tx3.send(()).unwrap();
+        assert!(iters < 50);
+    });
+}
+
+#[test]
+fn cloning2() {
+    crossbeam::scope(|s| {
+        let mut iters = 0;
+        let (tx1, rx1) = unbounded::<()>();
+        let (tx2, rx2) = unbounded::<()>();
+        let (tx3, rx3) = unbounded::<()>();
+
+        s.spawn(move || {
+            loop {
+                iters += 1;
+                if let Ok(_) = rx1.select() {
+                    panic!();
+                }
+                if let Ok(_) = rx2.select() {
+                    break;
+                }
+            }
+        });
+
+        thread::sleep(ms(50));
+        drop(tx1.clone());
+        tx2.send(()).unwrap();
+
+        assert!(iters < 50);
+    })
+}
+
+#[test]
+fn preflight1() {
+    let (tx, rx) = unbounded();
+    tx.send(()).unwrap();
+
+    let mut iters = 0;
+    loop {
+        iters += 1;
+        if let Ok(_) = rx.select() {
+            break;
+        }
+    }
+    assert!(iters < 10);
+}
+
+#[test]
+fn preflight2() {
+    let (tx, rx) = unbounded();
+    drop(tx.clone());
+    tx.send(()).unwrap();
+    drop(tx);
+
+    let mut iters = 0;
+    loop {
+        iters += 1;
+        if let Ok(_) = rx.select() {
+            break;
+        }
+    }
+    assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+    assert!(iters < 10);
+}
+
+#[test]
+fn preflight3() {
+    let (tx, rx) = unbounded();
+    drop(tx.clone());
+    tx.send(()).unwrap();
+    drop(tx);
+    rx.recv().unwrap();
+
+    let mut iters = 0;
+    loop {
+        iters += 1;
+        if let Ok(_) = rx.select() {
+            panic!();
+        }
+        if select::disconnected() {
+            break;
+        }
+    }
+    assert!(iters < 10);
+}
+
+#[test]
+fn stress_recv() {
     let (tx1, rx1) = unbounded();
     let (tx2, rx2) = bounded(5);
     let (tx3, rx3) = bounded(100);
@@ -472,6 +588,79 @@ fn stress() {
 
                 tx3.send(()).unwrap();
             }
+
+            assert!(iters < 50);
+        }
+    });
+}
+
+#[test]
+fn stress_send() {
+    let (tx1, rx1) = bounded(0);
+    let (tx2, rx2) = bounded(0);
+    let (tx3, rx3) = bounded(100);
+
+    crossbeam::scope(|s| {
+        s.spawn(|| {
+            for i in 0..10_000 {
+                assert_eq!(rx1.recv().unwrap(), i);
+                assert_eq!(rx2.recv().unwrap(), i);
+                rx3.recv().unwrap();
+            }
+        });
+
+        for i in 0..10_000 {
+            let mut iters = 0;
+
+            for _ in 0..2 {
+                loop {
+                    iters += 1;
+                    if let Ok(()) = tx1.select(i) {
+                        break;
+                    }
+                    if let Ok(()) = tx2.select(i) {
+                        break;
+                    }
+                }
+            }
+            tx3.send(()).unwrap();
+
+            assert!(iters < 50);
+        }
+    });
+}
+
+#[test]
+fn stress_mixed() {
+    let (tx1, rx1) = bounded(0);
+    let (tx2, rx2) = bounded(0);
+    let (tx3, rx3) = bounded(100);
+
+    crossbeam::scope(|s| {
+        s.spawn(|| {
+            for i in 0..10_000 {
+                tx1.send(i).unwrap();
+                assert_eq!(rx2.recv().unwrap(), i);
+                rx3.recv().unwrap();
+            }
+        });
+
+        for i in 0..10_000 {
+            let mut iters = 0;
+
+            for _ in 0..2 {
+                loop {
+                    iters += 1;
+                    if let Ok(x) = rx1.select() {
+                        assert_eq!(x, i);
+                        break;
+                    }
+                    if let Ok(()) = tx2.select(i) {
+                        break;
+                    }
+                }
+            }
+            tx3.send(()).unwrap();
 
             assert!(iters < 50);
         }
