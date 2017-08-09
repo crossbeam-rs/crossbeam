@@ -7,10 +7,9 @@ use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 use std::thread;
 use std::time::Instant;
 
-use actor;
+use actor::{self, HandleId};
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
-use actor::HandleId;
 
 struct Node<T> {
     lap: AtomicUsize,
@@ -64,7 +63,7 @@ impl<T> Channel<T> {
         }
     }
 
-    fn push(&self, value: T) -> Option<T> {
+    fn push(&self, value: T, spinwait: &mut Spinwait) -> Result<(), T> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -91,18 +90,20 @@ impl<T> Channel<T> {
                     unsafe {
                         (*cell).value = value;
                         (*cell).lap.store(clap.wrapping_add(power), Release);
-                        return None;
+                        return Ok(());
                     }
                 }
             } else if clap.wrapping_add(power) == lap {
-                return Some(value);
+                return Err(value);
             }
 
-            thread::yield_now();
+            if !spinwait.spin() {
+                thread::yield_now();
+            }
         }
     }
 
-    fn pop(&self) -> Option<T> {
+    fn pop(&self, spinwait: &mut Spinwait) -> Result<T, ()> {
         let cap = self.cap;
         let power = self.power;
         let buffer = self.buffer;
@@ -129,14 +130,16 @@ impl<T> Channel<T> {
                     unsafe {
                         let value = ptr::read(&(*cell).value);
                         (*cell).lap.store(clap.wrapping_add(power), Release);
-                        return Some(value);
+                        return Ok(value);
                     }
                 }
             } else if clap.wrapping_add(power) == lap {
-                return None;
+                return Err(());
             }
 
-            thread::yield_now();
+            if !spinwait.spin() {
+                thread::yield_now();
+            }
         }
     }
 
@@ -170,12 +173,12 @@ impl<T> Channel<T> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
-            match self.push(value) {
-                None => {
+            match self.push(value, &mut Spinwait::new()) {
+                Ok(()) => {
                     self.receivers.notify_one();
                     Ok(())
                 }
-                Some(v) => Err(TrySendError::Full(v)),
+                Err(v) => Err(TrySendError::Full(v)),
             }
         }
     }
@@ -184,13 +187,17 @@ impl<T> Channel<T> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
         } else {
-            for _ in 0..20 {
-                match self.push(value) {
-                    None => {
+            let spinwait = &mut Spinwait::new();
+            loop {
+                match self.push(value, spinwait) {
+                    Ok(()) => {
                         self.receivers.notify_one();
                         return Ok(());
                     }
-                    Some(v) => value = v,
+                    Err(v) => value = v,
+                }
+                if !spinwait.spin() {
+                    break;
                 }
             }
             Err(TrySendError::Full(value))
@@ -222,24 +229,28 @@ impl<T> Channel<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop() {
-            None => if self.closed.load(SeqCst) {
+        match self.pop(&mut Spinwait::new()) {
+            Ok(v) => {
+                self.senders.notify_one();
+                Ok(v)
+            }
+            Err(()) => if self.closed.load(SeqCst) {
                 Err(TryRecvError::Disconnected)
             } else {
                 Err(TryRecvError::Empty)
-            },
-            Some(v) => {
-                self.senders.notify_one();
-                Ok(v)
             }
         }
     }
 
     pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
-        for _ in 0..20 {
-            if let Some(v) = self.pop() {
+        let spinwait = &mut Spinwait::new();
+        loop {
+            if let Ok(v) = self.pop(spinwait) {
                 self.senders.notify_one();
                 return Ok(v);
+            }
+            if !spinwait.spin() {
+                break;
             }
         }
 
@@ -318,6 +329,33 @@ impl<T> Drop for Channel<T> {
             }
 
             Vec::from_raw_parts(buffer, 0, cap);
+        }
+    }
+}
+
+struct Spinwait(u32);
+
+impl Spinwait {
+    #[inline]
+    fn new() -> Self {
+        Spinwait(0)
+    }
+
+    #[inline]
+    fn spin(&mut self) -> bool {
+        if self.0 >= 20 {
+            false
+        } else {
+            if self.0 < 10 {
+                for _ in 0 .. 1 << self.0 {
+                    // ::std::sync::atomic::hint_core_should_pause();
+                }
+            } else {
+                thread::yield_now();
+            }
+
+            self.0 += 1;
+            true
         }
     }
 }

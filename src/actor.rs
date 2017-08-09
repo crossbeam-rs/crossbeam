@@ -53,6 +53,22 @@ impl Actor {
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
+        for i in 0..10 {
+            if self.select_id.load(SeqCst) != 0 {
+                return true;
+            }
+            for _ in 0 .. 1 << i {
+                // ::std::sync::atomic::hint_core_should_pause();
+            }
+        }
+
+        for _ in 0..10 {
+            if self.select_id.load(SeqCst) != 0 {
+                return true;
+            }
+            thread::yield_now();
+        }
+
         while self.select_id.load(SeqCst) == 0 {
             let now = Instant::now();
 
