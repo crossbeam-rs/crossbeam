@@ -15,6 +15,7 @@ fn ms(ms: u64) -> Duration {
 }
 
 // TODO: drop test
+// TODO: len test
 
 #[test]
 fn smoke() {

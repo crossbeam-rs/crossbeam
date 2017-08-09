@@ -436,3 +436,44 @@ fn loop_try() {
         });
     }
 }
+
+#[test]
+fn stress() {
+    let (tx1, rx1) = unbounded();
+    let (tx2, rx2) = bounded(5);
+    let (tx3, rx3) = bounded(100);
+
+    crossbeam::scope(|s| {
+        s.spawn(|| {
+            for i in 0..10_000 {
+                tx1.send(i);
+                rx3.recv().unwrap();
+
+                tx2.send(i);
+                rx3.recv().unwrap();
+            }
+        });
+
+        for i in 0..10_000 {
+            let mut iters = 0;
+
+            for _ in 0..2 {
+                loop {
+                    iters += 1;
+                    if let Ok(x) = rx1.select() {
+                        assert_eq!(x, i);
+                        break;
+                    }
+                    if let Ok(x) = rx2.select() {
+                        assert_eq!(x, i);
+                        break;
+                    }
+                }
+
+                tx3.send(()).unwrap();
+            }
+
+            assert!(iters < 50);
+        }
+    });
+}

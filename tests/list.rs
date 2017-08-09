@@ -10,11 +10,12 @@ use std::time::{Duration, Instant};
 use channel::select;
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
-// TODO: drop test
-
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
+
+// TODO: drop test
+// TODO: len test
 
 #[test]
 fn smoke() {

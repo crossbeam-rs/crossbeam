@@ -10,6 +10,7 @@ use channel::select;
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 // TODO: drop test
+// TODO: len test
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
