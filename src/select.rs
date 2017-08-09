@@ -19,6 +19,7 @@ pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
             Err(value)
         };
         if res.is_ok() {
+            actor::current().reset();
             t = Machine::new();
         }
 
@@ -37,6 +38,7 @@ pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
             Err(())
         };
         if res.is_ok() {
+                actor::current().reset();
             t = Machine::new();
         }
 
@@ -50,6 +52,7 @@ pub fn disconnected() -> bool {
     MACHINE.with(|m| {
         if let Machine::Initialized { state, .. } = m.get() {
             if let State::Disconnected = state {
+                actor::current().reset();
                 m.set(Machine::new());
                 return true;
             }
@@ -65,6 +68,7 @@ pub fn blocked() -> bool {
 
         if let Machine::Initialized { state, .. } = t {
             if state == State::Blocked {
+                actor::current().reset();
                 m.set(Machine::new());
                 return true;
             }
@@ -90,6 +94,8 @@ pub fn timeout(dur: Duration) -> bool {
 
         if let Machine::Initialized { state, .. } = m.get() {
             if let State::Timeout = state {
+                actor::current().reset();
+                m.set(Machine::new());
                 return true;
             }
         }
@@ -151,6 +157,7 @@ impl Machine {
                     seen_blocked,
                 } => if first_id == id {
                     actor::current().reset();
+
                     *self = Machine::Initialized {
                         pos: 0,
                         state: if seen_blocked {
@@ -233,6 +240,7 @@ impl State {
                 *self = State::Disconnected;
             },
             State::SpinTry { closed_count } => if closed_count < len {
+                actor::current().reset();
                 *self = State::Promise { closed_count: 0 };
             } else {
                 *self = State::Disconnected;
@@ -251,6 +259,7 @@ impl State {
                 };
             }
             State::Fulfill { .. } => {
+                actor::current().reset();
                 *self = State::SpinTry { closed_count: 0 };
 
                 if let Some(end) = deadline {
@@ -269,22 +278,26 @@ impl State {
         match *self {
             State::TryOnce {
                 ref mut closed_count,
-            } => match tx.try_send(value) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Full(v)) => value = v,
-                Err(TrySendError::Disconnected(v)) => {
-                    value = v;
-                    *closed_count += 1;
+            } => {
+                match tx.try_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(TrySendError::Full(v)) => value = v,
+                    Err(TrySendError::Disconnected(v)) => {
+                        value = v;
+                        *closed_count += 1;
+                    }
                 }
-            },
+            }
             State::SpinTry {
                 ref mut closed_count,
-            } => match tx.spin_try_send(value) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Full(v)) => value = v,
-                Err(TrySendError::Disconnected(v)) => {
-                    value = v;
-                    *closed_count += 1;
+            } => {
+                match tx.spin_try_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(TrySendError::Full(v)) => value = v,
+                    Err(TrySendError::Disconnected(v)) => {
+                        value = v;
+                        *closed_count += 1;
+                    }
                 }
             },
             State::Promise {
