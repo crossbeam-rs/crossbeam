@@ -6,6 +6,8 @@ use std::time::Instant;
 
 use parking_lot::Mutex;
 
+// TODO: this is actually selection id. Should it be called SelectId, or maybe Case?
+// TODO: Note that this is non-zero
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct HandleId(usize);
 
@@ -87,8 +89,13 @@ impl Actor {
     }
 
     pub unsafe fn put_request<T>(&self, value: T, id: HandleId) {
-        let req = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
-        assert!(!req.is_null());
+        let req = loop {
+            let ptr = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
+            if !ptr.is_null() {
+                break ptr;
+            }
+            thread::yield_now();
+        };
 
         let thread = (*req).actor.thread.clone();
         (*req).packet.put(value);
@@ -97,8 +104,13 @@ impl Actor {
     }
 
     pub unsafe fn take_request<T>(&self, id: HandleId) -> T {
-        let req = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
-        assert!(!req.is_null());
+        let req = loop {
+            let ptr = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
+            if !ptr.is_null() {
+                break ptr;
+            }
+            thread::yield_now();
+        };
 
         let thread = (*req).actor.thread.clone();
         let v = (*req).packet.take().unwrap();
