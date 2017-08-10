@@ -1,8 +1,8 @@
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
-use {Receiver, Sender};
-use actor::{self, HandleId};
+use {CaseId, Receiver, Sender};
+use actor;
 use err::{TryRecvError, TrySendError};
 
 // TODO: registered threads should be ordered by the time when selection started, then write a
@@ -16,7 +16,7 @@ pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     MACHINE.with(|m| {
         let mut t = m.get();
 
-        let res = if let Some(state) = t.step(tx.id()) {
+        let res = if let Some(state) = t.step(tx.case_id()) {
             state.send(tx, value)
         } else {
             Err(value)
@@ -34,7 +34,7 @@ pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
     MACHINE.with(|m| {
         let mut t = m.get();
 
-        let res = if let Some(state) = t.step(rx.id()) {
+        let res = if let Some(state) = t.step(rx.case_id()) {
             state.recv(rx)
         } else {
             Err(())
@@ -115,7 +115,7 @@ pub fn timeout(dur: Duration) -> bool {
 enum Machine {
     Counting {
         len: usize,
-        first_id: HandleId,
+        first_id: CaseId,
         deadline: Option<Instant>,
         seen_blocked: bool,
     },
@@ -139,14 +139,14 @@ impl Machine {
     fn new() -> Self {
         Machine::Counting {
             len: 0,
-            first_id: HandleId::sentinel(),
+            first_id: CaseId::none(),
             deadline: None,
             seen_blocked: false,
         }
     }
 
     #[inline]
-    fn step(&mut self, id: HandleId) -> Option<&mut State> {
+    fn step(&mut self, case_id: CaseId) -> Option<&mut State> {
         loop {
             match *self {
                 Machine::Counting {
@@ -154,7 +154,7 @@ impl Machine {
                     first_id,
                     deadline,
                     seen_blocked,
-                } => if first_id == id {
+                } => if first_id == case_id {
                     actor::current().reset();
 
                     *self = Machine::Initialized {
@@ -171,8 +171,8 @@ impl Machine {
                 } else {
                     *self = Machine::Counting {
                         len: len + 1,
-                        first_id: if first_id == HandleId::sentinel() {
-                            id
+                        first_id: if first_id == CaseId::none() {
+                            case_id
                         } else {
                             first_id
                         },
@@ -223,7 +223,7 @@ enum State {
     SpinTry { closed_count: usize },
     Promise { closed_count: usize },
     Revoke,
-    Fulfill { id: HandleId },
+    Fulfill { case_id: CaseId },
     Disconnected,
     Blocked,
     Timeout,
@@ -248,13 +248,13 @@ impl State {
                 if closed_count < len {
                     actor::current().wait_until(deadline);
                 } else {
-                    actor::current().select(HandleId::sentinel());
+                    actor::current().select(CaseId::none());
                 }
                 *self = State::Revoke;
             }
             State::Revoke => {
                 *self = State::Fulfill {
-                    id: actor::current().selected(),
+                    case_id: actor::current().selected(),
                 };
             }
             State::Fulfill { .. } => {
@@ -303,11 +303,11 @@ impl State {
                 if tx.is_disconnected() {
                     *closed_count += 1;
                 } else if tx.can_send() {
-                    actor::current().select(HandleId::sentinel());
+                    actor::current().select(CaseId::none());
                 }
             }
             State::Revoke => tx.revoke_send(),
-            State::Fulfill { id } => if tx.id() == id {
+            State::Fulfill { case_id } => if tx.case_id() == case_id {
                 match tx.fulfill_send(value) {
                     Ok(()) => return Ok(()),
                     Err(v) => value = v,
@@ -344,11 +344,11 @@ impl State {
                 if rx.is_disconnected() {
                     *closed_count += 1;
                 } else if rx.can_recv() {
-                    actor::current().select(HandleId::sentinel());
+                    actor::current().select(CaseId::none());
                 }
             }
             State::Revoke => rx.revoke_recv(),
-            State::Fulfill { id } => if rx.id() == id {
+            State::Fulfill { case_id } => if rx.case_id() == case_id {
                 if let Ok(v) = rx.fulfill_recv() {
                     return Ok(v);
                 }

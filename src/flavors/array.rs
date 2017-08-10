@@ -1,3 +1,6 @@
+// Based on Dmitry Vyukov's MPMC queue:
+// http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
+
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem;
@@ -7,7 +10,8 @@ use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 use std::thread;
 use std::time::Instant;
 
-use actor::{self, HandleId};
+use CaseId;
+use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
@@ -17,7 +21,7 @@ struct Node<T> {
 }
 
 #[repr(C)]
-pub struct Channel<T> {
+pub(crate) struct Channel<T> {
     buffer: *mut UnsafeCell<Node<T>>,
     cap: usize,
     power: usize,
@@ -208,6 +212,7 @@ impl<T> Channel<T> {
         &self,
         mut value: T,
         deadline: Option<Instant>,
+        case_id: CaseId,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
             match self.spin_try_send(value) {
@@ -217,10 +222,10 @@ impl<T> Channel<T> {
             }
 
             actor::current().reset();
-            self.senders.register(HandleId::sentinel());
+            self.senders.register(case_id);
             let timed_out = !self.is_closed() && self.len() == self.cap &&
                 !actor::current().wait_until(deadline);
-            self.senders.unregister(HandleId::sentinel());
+            self.senders.unregister(case_id);
 
             if timed_out {
                 return Err(SendTimeoutError::Timeout(value));
@@ -238,7 +243,7 @@ impl<T> Channel<T> {
                 Err(TryRecvError::Disconnected)
             } else {
                 Err(TryRecvError::Empty)
-            }
+            },
         }
     }
 
@@ -261,7 +266,11 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+    pub fn recv_until(
+        &self,
+        deadline: Option<Instant>,
+        case_id: CaseId,
+    ) -> Result<T, RecvTimeoutError> {
         loop {
             match self.spin_try_recv() {
                 Ok(v) => return Ok(v),
@@ -270,10 +279,10 @@ impl<T> Channel<T> {
             }
 
             actor::current().reset();
-            self.receivers.register(HandleId::sentinel());
+            self.receivers.register(case_id);
             let timed_out =
                 !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
-            self.receivers.unregister(HandleId::sentinel());
+            self.receivers.unregister(case_id);
 
             if timed_out {
                 return Err(RecvTimeoutError::Timeout);
@@ -289,8 +298,8 @@ impl<T> Channel<T> {
         if self.closed.swap(true, SeqCst) {
             false
         } else {
-            self.senders.notify_all();
-            self.receivers.notify_all();
+            self.senders.abort_all();
+            self.receivers.abort_all();
             true
         }
     }
@@ -347,7 +356,7 @@ impl Spinwait {
             false
         } else {
             if self.0 < 10 {
-                for _ in 0 .. 1 << self.0 {
+                for _ in 0..1 << self.0 {
                     // ::std::sync::atomic::hint_core_should_pause();
                 }
             } else {

@@ -8,8 +8,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
 
-use actor::HandleId;
-
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 mod actor;
@@ -28,6 +26,24 @@ enum Flavor<T> {
     Array(flavors::array::Channel<T>),
     List(flavors::list::Channel<T>),
     Zero(flavors::zero::Channel<T>),
+}
+
+// TODO: Note that this is non-zero
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct CaseId(usize);
+
+impl CaseId {
+    pub fn none() -> Self {
+        CaseId(1)
+    }
+
+    pub fn from_usize(num: usize) -> Self {
+        CaseId(num)
+    }
+
+    pub fn into_usize(&self) -> usize {
+        self.0
+    }
 }
 
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
@@ -63,28 +79,23 @@ impl<T> Sender<T> {
         Sender(chan)
     }
 
-    pub(crate) fn id(&self) -> HandleId {
-        let addr = match self.0.flavor {
-            Flavor::Array(ref chan) => chan as *const flavors::array::Channel<T> as usize,
-            Flavor::List(ref chan) => chan as *const flavors::list::Channel<T> as usize,
-            Flavor::Zero(ref chan) => chan as *const flavors::zero::Channel<T> as usize,
-        };
-        HandleId::new(addr)
+    pub(crate) fn case_id(&self) -> CaseId {
+        CaseId::from_usize(self as *const _ as usize)
     }
 
     pub(crate) fn promise_send(&self) {
         match self.0.flavor {
             Flavor::List(_) => {}
-            Flavor::Array(ref chan) => chan.senders().register(self.id()),
-            Flavor::Zero(ref chan) => chan.promise_send(self.id()),
+            Flavor::Array(ref chan) => chan.senders().register(self.case_id()),
+            Flavor::Zero(ref chan) => chan.promise_send(self.case_id()),
         }
     }
 
     pub(crate) fn revoke_send(&self) {
         match self.0.flavor {
             Flavor::List(_) => {}
-            Flavor::Array(ref chan) => chan.senders().unregister(self.id()),
-            Flavor::Zero(ref chan) => chan.revoke_send(self.id()),
+            Flavor::Array(ref chan) => chan.senders().unregister(self.case_id()),
+            Flavor::Zero(ref chan) => chan.revoke_send(self.case_id()),
         }
     }
 
@@ -102,9 +113,9 @@ impl<T> Sender<T> {
                 Ok(()) => Ok(()),
                 Err(TrySendError::Full(v)) => Err(v),
                 Err(TrySendError::Disconnected(v)) => Err(v),
-            },
-            Flavor::Zero(_) => {
-                unsafe { actor::current().put_request(value, self.id()) }
+            }
+            Flavor::Zero(ref chan) => {
+                unsafe { chan.fulfill_send(value) }
                 Ok(())
             }
         }
@@ -128,9 +139,9 @@ impl<T> Sender<T> {
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
-            Flavor::Array(ref chan) => chan.send_until(value, None),
+            Flavor::Array(ref chan) => chan.send_until(value, None, self.case_id()),
             Flavor::List(ref chan) => chan.send(value),
-            Flavor::Zero(ref chan) => chan.send_until(value, None),
+            Flavor::Zero(ref chan) => chan.send_until(value, None, self.case_id()),
         };
         match res {
             Ok(()) => Ok(()),
@@ -142,9 +153,9 @@ impl<T> Sender<T> {
     pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
         let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.send_until(value, deadline),
+            Flavor::Array(ref chan) => chan.send_until(value, deadline, self.case_id()),
             Flavor::List(ref chan) => chan.send(value),
-            Flavor::Zero(ref chan) => chan.send_until(value, deadline),
+            Flavor::Zero(ref chan) => chan.send_until(value, deadline, self.case_id()),
         }
     }
 
@@ -206,28 +217,23 @@ impl<T> Receiver<T> {
         Receiver(chan)
     }
 
-    pub(crate) fn id(&self) -> HandleId {
-        let addr = match self.0.flavor {
-            Flavor::Array(ref chan) => chan as *const flavors::array::Channel<T> as usize,
-            Flavor::List(ref chan) => chan as *const flavors::list::Channel<T> as usize,
-            Flavor::Zero(ref chan) => chan as *const flavors::zero::Channel<T> as usize,
-        };
-        HandleId::new(addr | 1)
+    pub(crate) fn case_id(&self) -> CaseId {
+        CaseId::from_usize(self as *const _ as usize)
     }
 
     pub(crate) fn promise_recv(&self) {
         match self.0.flavor {
-            Flavor::List(ref chan) => chan.receivers().register(self.id()),
-            Flavor::Array(ref chan) => chan.receivers().register(self.id()),
-            Flavor::Zero(ref chan) => chan.promise_recv(self.id()),
+            Flavor::List(ref chan) => chan.receivers().register(self.case_id()),
+            Flavor::Array(ref chan) => chan.receivers().register(self.case_id()),
+            Flavor::Zero(ref chan) => chan.promise_recv(self.case_id()),
         }
     }
 
     pub(crate) fn revoke_recv(&self) {
         match self.0.flavor {
-            Flavor::List(ref chan) => chan.receivers().unregister(self.id()),
-            Flavor::Array(ref chan) => chan.receivers().unregister(self.id()),
-            Flavor::Zero(ref chan) => chan.revoke_recv(self.id()),
+            Flavor::List(ref chan) => chan.receivers().unregister(self.case_id()),
+            Flavor::Array(ref chan) => chan.receivers().unregister(self.case_id()),
+            Flavor::Zero(ref chan) => chan.revoke_recv(self.case_id()),
         }
     }
 
@@ -242,7 +248,7 @@ impl<T> Receiver<T> {
     pub(crate) fn fulfill_recv(&self) -> Result<T, ()> {
         match self.0.flavor {
             Flavor::Array(_) | Flavor::List(_) => self.try_recv().map_err(|_| ()),
-            Flavor::Zero(_) => unsafe { Ok(actor::current().take_request(self.id())) },
+            Flavor::Zero(ref chan) => unsafe { Ok(chan.fulfill_recv()) },
         }
     }
 
@@ -264,9 +270,9 @@ impl<T> Receiver<T> {
 
     pub fn recv(&self) -> Result<T, RecvError> {
         let res = match self.0.flavor {
-            Flavor::Array(ref chan) => chan.recv_until(None),
-            Flavor::List(ref chan) => chan.recv_until(None),
-            Flavor::Zero(ref chan) => chan.recv_until(None),
+            Flavor::Array(ref chan) => chan.recv_until(None, self.case_id()),
+            Flavor::List(ref chan) => chan.recv_until(None, self.case_id()),
+            Flavor::Zero(ref chan) => chan.recv_until(None, self.case_id()),
         };
         if let Ok(v) = res {
             Ok(v)
@@ -278,9 +284,9 @@ impl<T> Receiver<T> {
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
         let deadline = Some(Instant::now() + dur);
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.recv_until(deadline),
-            Flavor::List(ref chan) => chan.recv_until(deadline),
-            Flavor::Zero(ref chan) => chan.recv_until(deadline),
+            Flavor::Array(ref chan) => chan.recv_until(deadline, self.case_id()),
+            Flavor::List(ref chan) => chan.recv_until(deadline, self.case_id()),
+            Flavor::Zero(ref chan) => chan.recv_until(deadline, self.case_id()),
         }
     }
 

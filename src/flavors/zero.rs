@@ -5,8 +5,9 @@ use std::time::Instant;
 
 use parking_lot::Mutex;
 
+use CaseId;
+use actor::{self, Actor, Packet};
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use actor::{self, Actor, HandleId, Packet, Request};
 
 struct Inner<T> {
     senders: Registry<T>,
@@ -14,7 +15,7 @@ struct Inner<T> {
     closed: bool,
 }
 
-pub struct Channel<T> {
+pub(crate) struct Channel<T> {
     inner: Mutex<Inner<T>>,
 }
 
@@ -29,20 +30,30 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn promise_send(&self, id: HandleId) {
-        self.inner.lock().senders.promise(id);
+    pub fn promise_send(&self, case_id: CaseId) {
+        self.inner.lock().senders.promise(case_id);
     }
 
-    pub fn revoke_send(&self, id: HandleId) {
-        self.inner.lock().senders.revoke(id);
+    pub fn revoke_send(&self, case_id: CaseId) {
+        self.inner.lock().senders.revoke(case_id);
     }
 
-    pub fn promise_recv(&self, id: HandleId) {
-        self.inner.lock().receivers.promise(id);
+    pub fn promise_recv(&self, case_id: CaseId) {
+        self.inner.lock().receivers.promise(case_id);
     }
 
-    pub fn revoke_recv(&self, id: HandleId) {
-        self.inner.lock().receivers.revoke(id);
+    pub fn revoke_recv(&self, case_id: CaseId) {
+        self.inner.lock().receivers.revoke(case_id);
+    }
+
+    pub unsafe fn fulfill_send(&self, value: T) {
+        drop(self.inner.lock());
+        actor::current().finish_send(value)
+    }
+
+    pub unsafe fn fulfill_recv(&self) -> T {
+        drop(self.inner.lock());
+        actor::current().finish_recv()
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -51,33 +62,28 @@ impl<T> Channel<T> {
             return Err(TrySendError::Disconnected(value));
         }
 
-        while let Some(e) = inner.receivers.pop() {
+        if let Some(e) = inner.receivers.pop() {
             match e.packet {
-                None => if e.actor.select(e.id) {
-                    let req = Request::new(Some(value));
-                    actor::current().reset();
-                    e.actor.set_request(&req);
+                None => {
                     drop(inner);
-
-                    e.actor.unpark();
-                    actor::current().wait_until(None);
-                    return Ok(());
-                },
-                Some(packet) => if e.actor.select(e.id) {
+                    e.actor.send(value);
+                }
+                Some(packet) => {
                     unsafe { (*packet).put(value) }
                     e.actor.unpark();
-                    return Ok(());
-                },
+                }
             }
+            Ok(())
+        } else {
+            Err(TrySendError::Full(value))
         }
-
-        Err(TrySendError::Full(value))
     }
 
     pub fn send_until(
         &self,
         mut value: T,
         deadline: Option<Instant>,
+        case_id: CaseId,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
             match self.try_send(value) {
@@ -99,12 +105,12 @@ impl<T> Channel<T> {
 
                 actor::current().reset();
                 packet = Packet::new(Some(value));
-                inner.senders.offer(&packet, HandleId::sentinel());
+                inner.senders.offer(&packet, case_id);
             }
 
             let timed_out = !actor::current().wait_until(deadline);
             let mut inner = self.inner.lock();
-            inner.senders.revoke(HandleId::sentinel());
+            inner.senders.revoke(case_id);
 
             match packet.take() {
                 None => return Ok(()),
@@ -123,32 +129,28 @@ impl<T> Channel<T> {
             return Err(TryRecvError::Disconnected);
         }
 
-        while let Some(e) = inner.senders.pop() {
+        if let Some(e) = inner.senders.pop() {
             match e.packet {
-                None => if e.actor.select(e.id) {
-                    let req = Request::new(None);
-                    actor::current().reset();
-                    e.actor.set_request(&req);
+                None => {
                     drop(inner);
-
-                    e.actor.unpark();
-                    actor::current().wait_until(None);
-                    let _inner = self.inner.lock();
-                    let v = req.packet.take().unwrap();
-                    return Ok(v);
-                },
-                Some(packet) => if e.actor.select(e.id) {
+                    Ok(e.actor.recv())
+                }
+                Some(packet) => {
                     let v = unsafe { (*packet).take().unwrap() };
                     e.actor.unpark();
-                    return Ok(v);
-                },
+                    Ok(v)
+                }
             }
+        } else {
+            Err(TryRecvError::Empty)
         }
-
-        Err(TryRecvError::Empty)
     }
 
-    pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+    pub fn recv_until(
+        &self,
+        deadline: Option<Instant>,
+        case_id: CaseId,
+    ) -> Result<T, RecvTimeoutError> {
         loop {
             match self.try_recv() {
                 Ok(v) => return Ok(v),
@@ -169,12 +171,12 @@ impl<T> Channel<T> {
 
                 actor::current().reset();
                 packet = Packet::new(None);
-                inner.receivers.offer(&packet, HandleId::sentinel());
+                inner.receivers.offer(&packet, case_id);
             }
 
             let timed_out = !actor::current().wait_until(deadline);
             let mut inner = self.inner.lock();
-            inner.receivers.revoke(HandleId::sentinel());
+            inner.receivers.revoke(case_id);
 
             if let Some(v) = packet.take() {
                 return Ok(v);
@@ -201,8 +203,8 @@ impl<T> Channel<T> {
             false
         } else {
             inner.closed = true;
-            inner.senders.notify_all();
-            inner.receivers.notify_all();
+            inner.senders.abort_all();
+            inner.receivers.abort_all();
             true
         }
     }
@@ -214,7 +216,7 @@ impl<T> Channel<T> {
 
 pub struct Entry<T> {
     actor: Arc<Actor>,
-    id: HandleId,
+    case_id: CaseId,
     packet: Option<*const Packet<T>>,
 }
 
@@ -234,35 +236,42 @@ impl<T> Registry<T> {
 
         for i in 0..self.entries.len() {
             if self.entries[i].actor.thread_id() != thread_id {
-                let e = self.entries.remove(i).unwrap();
-                return Some(e);
+                if self.entries[i].actor.select(self.entries[i].case_id) {
+                    return Some(self.entries.remove(i).unwrap());
+                }
             }
         }
 
         None
     }
 
-    fn offer(&mut self, packet: *const Packet<T>, id: HandleId) {
+    fn offer(&mut self, packet: *const Packet<T>, case_id: CaseId) {
         self.entries.push_back(Entry {
             actor: actor::current(),
-            id,
+            case_id,
             packet: Some(packet),
         });
     }
 
-    fn promise(&mut self, id: HandleId) {
+    fn promise(&mut self, case_id: CaseId) {
         self.entries.push_back(Entry {
             actor: actor::current(),
-            id,
+            case_id,
             packet: None,
         });
     }
 
-    fn revoke(&mut self, id: HandleId) {
+    fn revoke(&mut self, case_id: CaseId) {
         let thread_id = thread::current().id();
-        self.entries
-            .retain(|e| e.actor.thread_id() != thread_id || e.id != id);
-        self.maybe_shrink();
+
+        if let Some((i, _)) = self.entries
+            .iter()
+            .enumerate()
+            .find(|&(_, e)| e.actor.thread_id() == thread_id && e.case_id == case_id)
+        {
+            self.entries.remove(i);
+            self.maybe_shrink();
+        }
     }
 
     fn can_notify(&self) -> bool {
@@ -276,9 +285,9 @@ impl<T> Registry<T> {
         false
     }
 
-    fn notify_all(&mut self) { // TODO: Rename to abort_all?
+    fn abort_all(&mut self) {
         for e in self.entries.drain(..) {
-            e.actor.select(HandleId::sentinel());
+            e.actor.select(CaseId::none());
             e.actor.unpark();
         }
         self.maybe_shrink();
@@ -288,5 +297,11 @@ impl<T> Registry<T> {
         if self.entries.capacity() > 32 && self.entries.capacity() / 2 > self.entries.len() {
             self.entries.shrink_to_fit();
         }
+    }
+}
+
+impl<T> Drop for Registry<T> {
+    fn drop(&mut self) {
+        debug_assert!(self.entries.is_empty());
     }
 }

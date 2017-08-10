@@ -1,3 +1,6 @@
+// Based on Dmitry Vyukov's MPSC queue:
+// http://www.1024cores.net/home/lock-free-algorithms/queues/non-intrusive-mpsc-node-based-queue
+
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
@@ -8,10 +11,10 @@ use std::time::{Duration, Instant};
 
 use coco::epoch::{self, Atomic, Owned};
 
+use CaseId;
 use actor;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
-use actor::HandleId;
 
 struct Node<T> {
     next: Atomic<Node<T>>,
@@ -19,7 +22,7 @@ struct Node<T> {
 }
 
 #[repr(C)]
-pub struct Channel<T> {
+pub(crate) struct Channel<T> {
     head: Atomic<Node<T>>,
     recv_count: AtomicUsize,
     _pad0: [u8; 64],
@@ -46,7 +49,7 @@ impl<T> Channel<T> {
             _marker: PhantomData,
         };
 
-        // Create a sentinel node.
+        // Create a none node.
         let node = Owned::new(Node {
             value: unsafe { mem::uninitialized() },
             next: Atomic::null(),
@@ -203,7 +206,11 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn recv_until(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+    pub fn recv_until(
+        &self,
+        deadline: Option<Instant>,
+        case_id: CaseId,
+    ) -> Result<T, RecvTimeoutError> {
         loop {
             match self.spin_try_recv() {
                 Ok(v) => return Ok(v),
@@ -212,10 +219,10 @@ impl<T> Channel<T> {
             }
 
             actor::current().reset();
-            self.receivers.register(HandleId::sentinel());
+            self.receivers.register(case_id);
             let timed_out =
                 !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
-            self.receivers.unregister(HandleId::sentinel());
+            self.receivers.unregister(case_id);
 
             if timed_out {
                 return Err(RecvTimeoutError::Timeout);
@@ -227,7 +234,7 @@ impl<T> Channel<T> {
         if self.closed.swap(true, SeqCst) {
             false
         } else {
-            self.receivers.notify_all();
+            self.receivers.abort_all();
             true
         }
     }

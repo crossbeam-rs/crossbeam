@@ -1,44 +1,26 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, AtomicBool};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
 use parking_lot::Mutex;
 
-// TODO: this is actually selection id. Should it be called SelectId, or maybe Case?
-// TODO: Note that this is non-zero
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct HandleId(usize);
+use CaseId;
 
-impl HandleId {
-    pub fn new(num: usize) -> Self {
-        HandleId(num)
-    }
-
-    pub fn sentinel() -> Self {
-        HandleId(1)
-    }
-}
-
-pub struct Actor {
+pub(crate) struct Actor {
     select_id: AtomicUsize,
     request_ptr: AtomicUsize,
     thread: Thread,
 }
 
 impl Actor {
-    pub fn select(&self, id: HandleId) -> bool {
-        self.select_id.compare_and_swap(0, id.0, SeqCst) == 0
+    pub fn select(&self, case_id: CaseId) -> bool {
+        self.select_id.compare_and_swap(0, case_id.into_usize(), SeqCst) == 0
     }
 
     pub fn unpark(&self) {
         self.thread.unpark();
-    }
-
-    // TODO: maybe this needs to be unsafe and {put,take}_request safe?
-    pub fn set_request<T>(&self, req: *const Request<T>) {
-        self.request_ptr.store(req as usize, SeqCst);
     }
 
     pub fn thread_id(&self) -> ThreadId {
@@ -50,8 +32,8 @@ impl Actor {
         self.request_ptr.store(0, SeqCst);
     }
 
-    pub fn selected(&self) -> HandleId {
-        HandleId::new(self.select_id.load(SeqCst))
+    pub fn selected(&self) -> CaseId {
+        CaseId::from_usize(self.select_id.load(SeqCst))
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
@@ -77,7 +59,7 @@ impl Actor {
             if let Some(end) = deadline {
                 if now < end {
                     thread::park_timeout(end - now);
-                } else if self.select(HandleId::sentinel()) {
+                } else if self.select(CaseId::none()) {
                     return false;
                 }
             } else {
@@ -88,7 +70,7 @@ impl Actor {
         true
     }
 
-    pub unsafe fn put_request<T>(&self, value: T, id: HandleId) {
+    pub unsafe fn finish_send<T>(&self, value: T) {
         let req = loop {
             let ptr = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
             if !ptr.is_null() {
@@ -99,11 +81,11 @@ impl Actor {
 
         let thread = (*req).actor.thread.clone();
         (*req).packet.put(value);
-        (*req).actor.select(id);
+        (*req).actor.select(CaseId::none());
         thread.unpark();
     }
 
-    pub unsafe fn take_request<T>(&self, id: HandleId) -> T {
+    pub unsafe fn finish_recv<T>(&self) -> T {
         let req = loop {
             let ptr = self.request_ptr.swap(0, SeqCst) as *const Request<T>;
             if !ptr.is_null() {
@@ -114,9 +96,26 @@ impl Actor {
 
         let thread = (*req).actor.thread.clone();
         let v = (*req).packet.take().unwrap();
-        (*req).actor.select(id);
+        (*req).actor.select(CaseId::none());
         thread.unpark();
         v
+    }
+
+    pub fn recv<T>(&self) -> T {
+        current().reset();
+        let req = Request::new(None);
+        self.request_ptr.store(&req as *const _ as usize, SeqCst);
+        self.unpark();
+        current().wait_until(None);
+        req.packet.take().unwrap()
+    }
+
+    pub fn send<T>(&self, value: T) {
+        current().reset();
+        let req = Request::new(Some(value));
+        self.request_ptr.store(&req as *const _ as usize, SeqCst);
+        self.unpark();
+        current().wait_until(None);
     }
 }
 
@@ -128,11 +127,11 @@ thread_local! {
     });
 }
 
-pub fn current() -> Arc<Actor> {
+pub(crate) fn current() -> Arc<Actor> {
     ACTOR.with(|a| a.clone())
 }
 
-pub struct Packet<T>(Mutex<Option<T>>);
+pub(crate) struct Packet<T>(Mutex<Option<T>>);
 
 impl<T> Packet<T> {
     pub fn new(data: Option<T>) -> Self {
@@ -140,19 +139,19 @@ impl<T> Packet<T> {
     }
 
     pub fn put(&self, data: T) {
-        let mut opt = self.0.lock();
+        let mut opt = self.0.try_lock().unwrap();
         assert!(opt.is_none());
         *opt = Some(data);
     }
 
     pub fn take(&self) -> Option<T> {
-        self.0.lock().take()
+        self.0.try_lock().unwrap().take()
     }
 }
 
-pub struct Request<T> {
-    pub actor: Arc<Actor>,
-    pub packet: Packet<T>,
+struct Request<T> {
+    actor: Arc<Actor>,
+    packet: Packet<T>,
 }
 
 impl<T> Request<T> {
