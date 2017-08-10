@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
-use channel::{bounded, select, unbounded};
+use channel::{bounded, select, unbounded, Sender, Receiver};
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 fn ms(ms: u64) -> Duration {
@@ -665,4 +665,329 @@ fn stress_mixed() {
             assert!(iters < 50);
         }
     });
+}
+
+#[test]
+fn stress_timeout_two_threads() {
+    const COUNT: usize = 20;
+
+    let (tx, rx) = bounded(2);
+
+    crossbeam::scope(|s| {
+        s.spawn(|| {
+            for i in 0..COUNT {
+                if i % 2 == 0 {
+                    thread::sleep(ms(50));
+                }
+                'outer: loop {
+                    loop {
+                        if let Ok(()) = tx.select(i) {
+                            break 'outer;
+                        }
+                        if select::timeout(ms(10)) {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        s.spawn(|| {
+            for i in 0..COUNT {
+                if i % 2 == 0 {
+                    thread::sleep(ms(50));
+                }
+                'outer: loop {
+                    loop {
+                        if let Ok(x) = rx.select() {
+                            assert_eq!(x, i);
+                            break 'outer;
+                        }
+                        if select::timeout(ms(10)) {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    });
+}
+
+struct WrappedSender<T>(Sender<T>);
+
+impl<T> WrappedSender<T> {
+    pub fn try_send(&self, mut value: T) -> Result<(), TrySendError<T>> {
+        let mut iters = 0;
+        loop {
+            iters += 1;
+            assert!(iters < 20);
+
+            if let Err(v) = self.0.select(value) {
+                value = v;
+            } else {
+                return Ok(());
+            }
+            if select::disconnected() {
+                return Err(TrySendError::Disconnected(value));
+            }
+            if select::blocked() {
+                return Err(TrySendError::Full(value));
+            }
+        }
+    }
+
+    pub fn send(&self, mut value: T) -> Result<(), SendError<T>> {
+        let mut iters = 0;
+        loop {
+            iters += 1;
+            assert!(iters < 20);
+
+            if let Err(v) = self.0.select(value) {
+                value = v;
+            } else {
+                return Ok(());
+            }
+            if select::disconnected() {
+                return Err(SendError(value));
+            }
+        }
+    }
+
+    pub fn send_timeout(&self, mut value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
+        let mut iters = 0;
+        loop {
+            iters += 1;
+            assert!(iters < 20);
+
+            if let Err(v) = self.0.select(value) {
+                value = v;
+            } else {
+                return Ok(());
+            }
+            if select::disconnected() {
+                return Err(SendTimeoutError::Disconnected(value));
+            }
+            if select::timeout(dur) {
+                return Err(SendTimeoutError::Timeout(value));
+            }
+        }
+    }
+}
+
+struct WrappedReceiver<T>(Receiver<T>);
+
+impl<T> WrappedReceiver<T> {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        let mut iters = 0;
+        loop {
+            iters += 1;
+            assert!(iters < 20);
+
+            if let Ok(v) = self.0.select() {
+                return Ok(v);
+            }
+            if select::disconnected() {
+                return Err(TryRecvError::Disconnected);
+            }
+            if select::blocked() {
+                return Err(TryRecvError::Empty);
+            }
+        }
+    }
+
+    pub fn recv(&self) -> Result<T, RecvError> {
+        let mut iters = 0;
+        loop {
+            iters += 1;
+            assert!(iters < 20);
+
+            if let Ok(v) = self.0.select() {
+                return Ok(v);
+            }
+            if select::disconnected() {
+                return Err(RecvError);
+            }
+        }
+    }
+
+    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
+        let mut iters = 0;
+        loop {
+            iters += 1;
+            assert!(iters < 20);
+
+            if let Ok(v) = self.0.select() {
+                return Ok(v);
+            }
+            if select::disconnected() {
+                return Err(RecvTimeoutError::Disconnected);
+            }
+            if select::timeout(dur) {
+                return Err(RecvTimeoutError::Timeout);
+            }
+        }
+    }
+}
+
+#[test]
+fn recv() {
+    let (tx, rx) = bounded(100);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(rx.recv(), Ok(7));
+            thread::sleep(ms(100));
+            assert_eq!(rx.recv(), Ok(8));
+            thread::sleep(ms(100));
+            assert_eq!(rx.recv(), Ok(9));
+            assert_eq!(rx.recv(), Err(RecvError));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(150));
+            assert_eq!(tx.send(7), Ok(()));
+            assert_eq!(tx.send(8), Ok(()));
+            assert_eq!(tx.send(9), Ok(()));
+        });
+    });
+}
+
+#[test]
+fn recv_timeout() {
+    let (tx, rx) = bounded(100);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(rx.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
+            assert_eq!(rx.recv_timeout(ms(100)), Ok(7));
+            assert_eq!(
+                rx.recv_timeout(ms(100)),
+                Err(RecvTimeoutError::Disconnected)
+            );
+        });
+        s.spawn(move || {
+            thread::sleep(ms(150));
+            assert_eq!(tx.send(7), Ok(()));
+        });
+    });
+}
+
+#[test]
+fn try_recv() {
+    let (tx, rx) = bounded(100);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+            thread::sleep(ms(150));
+            assert_eq!(rx.try_recv(), Ok(7));
+            thread::sleep(ms(50));
+            assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(100));
+            assert_eq!(tx.send(7), Ok(()));
+        });
+    });
+}
+
+#[test]
+fn send() {
+    let (tx, rx) = bounded(1);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(tx.send(7), Ok(()));
+            thread::sleep(ms(100));
+            assert_eq!(tx.send(8), Ok(()));
+            thread::sleep(ms(100));
+            assert_eq!(tx.send(9), Ok(()));
+            thread::sleep(ms(100));
+            assert_eq!(tx.send(10), Err(SendError(10)));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(150));
+            assert_eq!(rx.recv(), Ok(7));
+            assert_eq!(rx.recv(), Ok(8));
+            assert_eq!(rx.recv(), Ok(9));
+        });
+    });
+}
+
+#[test]
+fn send_timeout() {
+    let (tx, rx) = bounded(2);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(tx.send_timeout(1, ms(100)), Ok(()));
+            assert_eq!(tx.send_timeout(2, ms(100)), Ok(()));
+            assert_eq!(
+                tx.send_timeout(3, ms(50)),
+                Err(SendTimeoutError::Timeout(3))
+            );
+            thread::sleep(ms(100));
+            assert_eq!(tx.send_timeout(4, ms(100)), Ok(()));
+            thread::sleep(ms(100));
+            assert_eq!(tx.send(5), Err(SendError(5)));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(100));
+            assert_eq!(rx.recv(), Ok(1));
+            thread::sleep(ms(100));
+            assert_eq!(rx.recv(), Ok(2));
+            assert_eq!(rx.recv(), Ok(4));
+        });
+    });
+}
+
+#[test]
+fn try_send() {
+    let (tx, rx) = bounded(1);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(tx.try_send(1), Ok(()));
+            assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
+            thread::sleep(ms(150));
+            assert_eq!(tx.try_send(3), Ok(()));
+            thread::sleep(ms(50));
+            assert_eq!(tx.try_send(4), Err(TrySendError::Disconnected(4)));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(100));
+            assert_eq!(rx.try_recv(), Ok(1));
+            assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+            assert_eq!(rx.recv(), Ok(3));
+        });
+    });
+}
+
+#[test]
+fn recv_after_close() {
+    let (tx, rx) = bounded(100);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    tx.send(1).unwrap();
+    tx.send(2).unwrap();
+    tx.send(3).unwrap();
+
+    drop(tx);
+
+    assert_eq!(rx.recv(), Ok(1));
+    assert_eq!(rx.recv(), Ok(2));
+    assert_eq!(rx.recv(), Ok(3));
+    assert_eq!(rx.recv(), Err(RecvError));
 }
