@@ -88,7 +88,7 @@ impl<T> Channel<T> {
                     .is_ok()
                 {
                     unsafe {
-                        (*cell).value = value;
+                        ptr::write(&mut (*cell).value, value);
                         (*cell).lap.store(clap.wrapping_add(power), Release);
                         return Ok(());
                     }
