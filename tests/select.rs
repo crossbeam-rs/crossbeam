@@ -13,8 +13,6 @@ fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
 
-// TODO: clone rx/tx, then drop and check disconnected
-
 #[test]
 fn smoke1() {
     let mut iters = 0;
@@ -851,6 +849,27 @@ fn recv() {
             assert_eq!(tx.send(9), Ok(()));
         });
     });
+
+    let (tx, rx) = bounded(0);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(rx.recv(), Ok(7));
+            thread::sleep(ms(100));
+            assert_eq!(rx.recv(), Ok(8));
+            thread::sleep(ms(100));
+            assert_eq!(rx.recv(), Ok(9));
+            assert_eq!(rx.recv(), Err(RecvError));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(150));
+            assert_eq!(tx.send(7), Ok(()));
+            assert_eq!(tx.send(8), Ok(()));
+            assert_eq!(tx.send(9), Ok(()));
+        });
+    });
 }
 
 #[test]
@@ -894,6 +913,25 @@ fn try_recv() {
             assert_eq!(tx.send(7), Ok(()));
         });
     });
+
+    let (tx, rx) = bounded(0);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(rx.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
+            assert_eq!(rx.recv_timeout(ms(100)), Ok(7));
+            assert_eq!(
+                rx.recv_timeout(ms(100)),
+                Err(RecvTimeoutError::Disconnected)
+            );
+        });
+        s.spawn(move || {
+            thread::sleep(ms(150));
+            assert_eq!(tx.send(7), Ok(()));
+        });
+    });
 }
 
 #[test]
@@ -910,6 +948,27 @@ fn send() {
             thread::sleep(ms(100));
             assert_eq!(tx.send(9), Ok(()));
             thread::sleep(ms(100));
+            assert_eq!(tx.send(10), Err(SendError(10)));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(150));
+            assert_eq!(rx.recv(), Ok(7));
+            assert_eq!(rx.recv(), Ok(8));
+            assert_eq!(rx.recv(), Ok(9));
+        });
+    });
+
+    let (tx, rx) = bounded(0);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(tx.send(7), Ok(()));
+            thread::sleep(ms(100));
+            assert_eq!(tx.send(8), Ok(()));
+            thread::sleep(ms(100));
+            assert_eq!(tx.send(9), Ok(()));
             assert_eq!(tx.send(10), Err(SendError(10)));
         });
         s.spawn(move || {
@@ -948,6 +1007,28 @@ fn send_timeout() {
             assert_eq!(rx.recv(), Ok(4));
         });
     });
+
+    let (tx, rx) = bounded(0);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(
+                tx.send_timeout(7, ms(100)),
+                Err(SendTimeoutError::Timeout(7))
+            );
+            assert_eq!(tx.send_timeout(8, ms(100)), Ok(()));
+            assert_eq!(
+                tx.send_timeout(9, ms(100)),
+                Err(SendTimeoutError::Disconnected(9))
+            );
+        });
+        s.spawn(move || {
+            thread::sleep(ms(150));
+            assert_eq!(rx.recv(), Ok(8));
+        });
+    });
 }
 
 #[test]
@@ -970,6 +1051,24 @@ fn try_send() {
             assert_eq!(rx.try_recv(), Ok(1));
             assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
             assert_eq!(rx.recv(), Ok(3));
+        });
+    });
+
+    let (tx, rx) = bounded(0);
+    let tx = WrappedSender(tx);
+    let rx = WrappedReceiver(rx);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(tx.try_send(7), Err(TrySendError::Full(7)));
+            thread::sleep(ms(150));
+            assert_eq!(tx.try_send(8), Ok(()));
+            thread::sleep(ms(50));
+            assert_eq!(tx.try_send(9), Err(TrySendError::Disconnected(9)));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(100));
+            assert_eq!(rx.recv(), Ok(8));
         });
     });
 }

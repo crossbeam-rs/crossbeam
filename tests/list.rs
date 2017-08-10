@@ -1,25 +1,24 @@
 extern crate channel;
 extern crate crossbeam;
+extern crate rand;
 
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use channel::select;
+use channel::{select, unbounded};
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
 
-// TODO: drop test
-// TODO: len test
-
 #[test]
 fn smoke() {
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = unbounded();
     tx.try_send(7).unwrap();
     assert_eq!(rx.try_recv().unwrap(), 7);
 
@@ -28,11 +27,14 @@ fn smoke() {
 
     assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
     assert_eq!(rx.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
+
+    assert_eq!(tx.capacity(), None);
+    assert_eq!(rx.capacity(), None);
 }
 
 #[test]
 fn recv() {
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = unbounded();
 
     crossbeam::scope(|s| {
         s.spawn(move || {
@@ -54,7 +56,7 @@ fn recv() {
 
 #[test]
 fn recv_timeout() {
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = unbounded();
 
     crossbeam::scope(|s| {
         s.spawn(move || {
@@ -74,7 +76,7 @@ fn recv_timeout() {
 
 #[test]
 fn try_recv() {
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = unbounded();
 
     crossbeam::scope(|s| {
         s.spawn(move || {
@@ -93,7 +95,7 @@ fn try_recv() {
 
 #[test]
 fn recv_after_close() {
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = unbounded();
 
     tx.send(1).unwrap();
     tx.send(2).unwrap();
@@ -108,8 +110,66 @@ fn recv_after_close() {
 }
 
 #[test]
+fn is_disconnected() {
+    let (tx, rx) = unbounded::<()>();
+    assert!(!tx.is_disconnected());
+    assert!(!rx.is_disconnected());
+
+    let tx2 = tx.clone();
+    drop(tx);
+    let tx3 = tx2.clone();
+    assert!(!tx2.is_disconnected());
+    assert!(!rx.is_disconnected());
+
+    drop(tx2);
+    assert!(!tx3.is_disconnected());
+    assert!(!rx.is_disconnected());
+
+    drop(tx3);
+    assert!(rx.is_disconnected());
+
+    let (tx, rx) = unbounded::<()>();
+    assert!(!tx.is_disconnected());
+    assert!(!rx.is_disconnected());
+
+    let rx2 = rx.clone();
+    drop(rx);
+    let rx3 = rx2.clone();
+    assert!(!rx2.is_disconnected());
+    assert!(!tx.is_disconnected());
+
+    drop(rx2);
+    assert!(!rx3.is_disconnected());
+    assert!(!tx.is_disconnected());
+
+    drop(rx3);
+    assert!(tx.is_disconnected());
+}
+
+#[test]
+fn len() {
+    let (tx, rx) = unbounded();
+
+    assert_eq!(tx.len(), 0);
+    assert_eq!(rx.len(), 0);
+
+    for i in 0..50 {
+        tx.send(i).unwrap();
+        assert_eq!(tx.len(), i + 1);
+    }
+
+    for i in 0..50 {
+        rx.recv().unwrap();
+        assert_eq!(rx.len(), 50 - i - 1);
+    }
+
+    assert_eq!(tx.len(), 0);
+    assert_eq!(rx.len(), 0);
+}
+
+#[test]
 fn close_signals_receiver() {
-    let (tx, rx) = channel::unbounded::<()>();
+    let (tx, rx) = unbounded::<()>();
 
     crossbeam::scope(|s| {
         s.spawn(move || {
@@ -126,7 +186,7 @@ fn close_signals_receiver() {
 fn spsc() {
     const COUNT: usize = 100_000;
 
-    let (tx, rx) = channel::unbounded();
+    let (tx, rx) = unbounded();
 
     crossbeam::scope(|s| {
         s.spawn(move || {
@@ -146,7 +206,7 @@ fn mpmc() {
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
-    let (tx, rx) = channel::unbounded::<usize>();
+    let (tx, rx) = unbounded::<usize>();
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
@@ -165,5 +225,75 @@ fn mpmc() {
 
     for c in v {
         assert_eq!(c.load(SeqCst), THREADS);
+    }
+}
+
+#[test]
+fn stress_timeout_two_threads() {
+    const COUNT: usize = 20;
+
+    let (tx, rx) = unbounded();
+
+    crossbeam::scope(|s| {
+        s.spawn(|| for i in 0..COUNT {
+            if i % 2 == 0 {
+                thread::sleep(ms(50));
+            }
+            tx.send(i).unwrap();
+        });
+
+        s.spawn(|| for i in 0..COUNT {
+            if i % 2 == 0 {
+                thread::sleep(ms(50));
+            }
+            loop {
+                if let Ok(x) = rx.recv_timeout(ms(10)) {
+                    assert_eq!(x, i);
+                    break;
+                }
+            }
+        });
+    });
+}
+
+#[test]
+fn drops() {
+    static DROPS: AtomicUsize = ATOMIC_USIZE_INIT;
+
+    struct DropCounter;
+
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            DROPS.fetch_add(1, SeqCst);
+        }
+    }
+
+    let mut rng = thread_rng();
+
+    for _ in 0..100 {
+        let steps = rng.gen_range(0, 10_000);
+        let additional = rng.gen_range(0, 1000);
+
+        DROPS.store(0, SeqCst);
+        let (tx, rx) = unbounded::<DropCounter>();
+
+        crossbeam::scope(|s| {
+            s.spawn(|| for _ in 0..steps {
+                rx.recv().unwrap();
+            });
+
+            s.spawn(|| for _ in 0..steps {
+                tx.send(DropCounter).unwrap();
+            });
+        });
+
+        for _ in 0..additional {
+            tx.try_send(DropCounter);
+        }
+
+        assert_eq!(DROPS.load(SeqCst), steps);
+        drop(tx);
+        drop(rx);
+        assert_eq!(DROPS.load(SeqCst), steps + additional);
     }
 }
