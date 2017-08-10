@@ -276,9 +276,9 @@ impl<T> Registry<T> {
         false
     }
 
-    fn notify_all(&mut self) {
+    fn notify_all(&mut self) { // TODO: Rename to abort_all?
         for e in self.entries.drain(..) {
-            e.actor.select(e.id);
+            e.actor.select(HandleId::sentinel());
             e.actor.unpark();
         }
         self.maybe_shrink();

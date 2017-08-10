@@ -73,14 +73,14 @@ impl Monitor {
         }
     }
 
-    pub fn notify_all(&self) {
+    pub fn notify_all(&self) { // TODO: rename to abort_all?
         if self.len.load(SeqCst) > 0 {
             let thread_id = thread::current().id();
             let mut entries = self.entries.lock();
 
             self.len.store(0, SeqCst);
             for e in entries.drain(..) {
-                if e.actor.select(e.id) {
+                if e.actor.select(HandleId::sentinel()) {
                     e.actor.unpark();
                 }
             }
