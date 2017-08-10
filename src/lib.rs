@@ -98,7 +98,7 @@ impl<T> Sender<T> {
 
     pub(crate) fn fulfill_send(&self, value: T) -> Result<(), T> {
         match self.0.flavor {
-            Flavor::Array(..) | Flavor::List(..) => match self.try_send(value) {
+            Flavor::Array(_) | Flavor::List(_) => match self.try_send(value) {
                 Ok(()) => Ok(()),
                 Err(TrySendError::Full(v)) => Err(v),
                 Err(TrySendError::Disconnected(v)) => Err(v),
@@ -158,11 +158,6 @@ impl<T> Sender<T> {
             Flavor::List(ref chan) => chan.len(),
             Flavor::Zero(_) => 0,
         }
-    }
-
-    // `true` if `try_send` would fail with `TrySendErr::Full(_)`
-    pub fn is_full(&self) -> bool {
-        !self.can_send()
     }
 
     pub fn is_disconnected(&self) -> bool {
@@ -246,7 +241,7 @@ impl<T> Receiver<T> {
 
     pub(crate) fn fulfill_recv(&self) -> Result<T, ()> {
         match self.0.flavor {
-            Flavor::Array(..) | Flavor::List(..) => self.try_recv().map_err(|_| ()),
+            Flavor::Array(_) | Flavor::List(_) => self.try_recv().map_err(|_| ()),
             Flavor::Zero(_) => unsafe { Ok(actor::current().take_request(self.id())) },
         }
     }
@@ -299,11 +294,6 @@ impl<T> Receiver<T> {
             Flavor::List(ref chan) => chan.len(),
             Flavor::Zero(_) => 0,
         }
-    }
-
-    // `true` if `try_recv` would fail with `TryRecvError::Empty`
-    pub fn is_empty(&self) -> bool {
-        !self.can_recv()
     }
 
     pub fn is_disconnected(&self) -> bool {

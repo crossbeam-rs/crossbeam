@@ -5,6 +5,9 @@ use {Receiver, Sender};
 use actor::{self, HandleId};
 use err::{TryRecvError, TrySendError};
 
+// TODO: registered threads should be ordered by the time when selection started, then write a
+// fairness test
+
 thread_local! {
     static MACHINE: Cell<Machine> = Cell::new(Machine::new());
 }
@@ -19,7 +22,6 @@ pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
             Err(value)
         };
         if res.is_ok() {
-            actor::current().reset();
             t = Machine::new();
         }
 
@@ -38,7 +40,6 @@ pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
             Err(())
         };
         if res.is_ok() {
-                actor::current().reset();
             t = Machine::new();
         }
 
@@ -52,7 +53,6 @@ pub fn disconnected() -> bool {
     MACHINE.with(|m| {
         if let Machine::Initialized { state, .. } = m.get() {
             if let State::Disconnected = state {
-                actor::current().reset();
                 m.set(Machine::new());
                 return true;
             }
@@ -68,7 +68,6 @@ pub fn blocked() -> bool {
 
         if let Machine::Initialized { state, .. } = t {
             if state == State::Blocked {
-                actor::current().reset();
                 m.set(Machine::new());
                 return true;
             }
@@ -278,26 +277,22 @@ impl State {
         match *self {
             State::TryOnce {
                 ref mut closed_count,
-            } => {
-                match tx.try_send(value) {
-                    Ok(()) => return Ok(()),
-                    Err(TrySendError::Full(v)) => value = v,
-                    Err(TrySendError::Disconnected(v)) => {
-                        value = v;
-                        *closed_count += 1;
-                    }
+            } => match tx.try_send(value) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Full(v)) => value = v,
+                Err(TrySendError::Disconnected(v)) => {
+                    value = v;
+                    *closed_count += 1;
                 }
-            }
+            },
             State::SpinTry {
                 ref mut closed_count,
-            } => {
-                match tx.spin_try_send(value) {
-                    Ok(()) => return Ok(()),
-                    Err(TrySendError::Full(v)) => value = v,
-                    Err(TrySendError::Disconnected(v)) => {
-                        value = v;
-                        *closed_count += 1;
-                    }
+            } => match tx.spin_try_send(value) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Full(v)) => value = v,
+                Err(TrySendError::Disconnected(v)) => {
+                    value = v;
+                    *closed_count += 1;
                 }
             },
             State::Promise {
