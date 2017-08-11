@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, AtomicBool};
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
@@ -16,7 +16,8 @@ pub(crate) struct Actor {
 
 impl Actor {
     pub fn select(&self, case_id: CaseId) -> bool {
-        self.select_id.compare_and_swap(0, case_id.into_usize(), SeqCst) == 0
+        self.select_id
+            .compare_and_swap(CaseId::none().0, case_id.0, SeqCst) == CaseId::none().0
     }
 
     pub fn unpark(&self) {
@@ -33,33 +34,33 @@ impl Actor {
     }
 
     pub fn selected(&self) -> CaseId {
-        CaseId::from_usize(self.select_id.load(SeqCst))
+        CaseId(self.select_id.load(SeqCst))
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
         for i in 0..10 {
-            if self.select_id.load(SeqCst) != 0 {
+            if self.selected() != CaseId::none() {
                 return true;
             }
-            for _ in 0 .. 1 << i {
+            for _ in 0..1 << i {
                 // ::std::sync::atomic::hint_core_should_pause();
             }
         }
 
         for _ in 0..10 {
-            if self.select_id.load(SeqCst) != 0 {
+            if self.selected() != CaseId::none() {
                 return true;
             }
             thread::yield_now();
         }
 
-        while self.select_id.load(SeqCst) == 0 {
+        while self.selected() == CaseId::none() {
             let now = Instant::now();
 
             if let Some(end) = deadline {
                 if now < end {
                     thread::park_timeout(end - now);
-                } else if self.select(CaseId::none()) {
+                } else if self.select(CaseId::abort()) {
                     return false;
                 }
             } else {
@@ -81,7 +82,7 @@ impl Actor {
 
         let thread = (*req).actor.thread.clone();
         (*req).packet.put(value);
-        (*req).actor.select(CaseId::none());
+        (*req).actor.select(CaseId::abort());
         thread.unpark();
     }
 
@@ -96,7 +97,7 @@ impl Actor {
 
         let thread = (*req).actor.thread.clone();
         let v = (*req).packet.take().unwrap();
-        (*req).actor.select(CaseId::none());
+        (*req).actor.select(CaseId::abort());
         thread.unpark();
         v
     }
@@ -121,7 +122,7 @@ impl Actor {
 
 thread_local! {
     static ACTOR: Arc<Actor> = Arc::new(Actor {
-        select_id: AtomicUsize::new(0),
+        select_id: AtomicUsize::new(CaseId::none().0),
         request_ptr: AtomicUsize::new(0),
         thread: thread::current(),
     });

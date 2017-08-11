@@ -28,21 +28,16 @@ enum Flavor<T> {
     Zero(flavors::zero::Channel<T>),
 }
 
-// TODO: Note that this is non-zero
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct CaseId(usize);
 
 impl CaseId {
     pub fn none() -> Self {
+        CaseId(0)
+    }
+
+    pub fn abort() -> Self {
         CaseId(1)
-    }
-
-    pub fn from_usize(num: usize) -> Self {
-        CaseId(num)
-    }
-
-    pub fn into_usize(&self) -> usize {
-        self.0
     }
 }
 
@@ -80,7 +75,7 @@ impl<T> Sender<T> {
     }
 
     pub(crate) fn case_id(&self) -> CaseId {
-        CaseId::from_usize(self as *const _ as usize)
+        CaseId(self as *const _ as usize)
     }
 
     pub(crate) fn promise_send(&self) {
@@ -218,7 +213,7 @@ impl<T> Receiver<T> {
     }
 
     pub(crate) fn case_id(&self) -> CaseId {
-        CaseId::from_usize(self as *const _ as usize)
+        CaseId(self as *const _ as usize)
     }
 
     pub(crate) fn promise_recv(&self) {

@@ -82,7 +82,7 @@ impl Monitor {
 
             self.len.store(0, SeqCst);
             for e in entries.drain(..) {
-                if e.actor.select(CaseId::none()) {
+                if e.actor.select(CaseId::abort()) {
                     e.actor.unpark();
                 }
             }

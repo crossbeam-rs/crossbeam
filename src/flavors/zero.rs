@@ -38,17 +38,17 @@ impl<T> Channel<T> {
         self.inner.lock().senders.revoke(case_id);
     }
 
+    pub unsafe fn fulfill_send(&self, value: T) {
+        drop(self.inner.lock());
+        actor::current().finish_send(value)
+    }
+
     pub fn promise_recv(&self, case_id: CaseId) {
         self.inner.lock().receivers.promise(case_id);
     }
 
     pub fn revoke_recv(&self, case_id: CaseId) {
         self.inner.lock().receivers.revoke(case_id);
-    }
-
-    pub unsafe fn fulfill_send(&self, value: T) {
-        drop(self.inner.lock());
-        actor::current().finish_send(value)
     }
 
     pub unsafe fn fulfill_recv(&self) -> T {
@@ -70,6 +70,7 @@ impl<T> Channel<T> {
                 }
                 Some(packet) => {
                     unsafe { (*packet).put(value) }
+                    // The actor has to lock `self.inner` before taking the value.
                     e.actor.unpark();
                 }
             }
@@ -137,6 +138,7 @@ impl<T> Channel<T> {
                 }
                 Some(packet) => {
                     let v = unsafe { (*packet).take().unwrap() };
+                    // The actor has to lock `self.inner` before continuing.
                     e.actor.unpark();
                     Ok(v)
                 }
@@ -287,7 +289,7 @@ impl<T> Registry<T> {
 
     fn abort_all(&mut self) {
         for e in self.entries.drain(..) {
-            e.actor.select(CaseId::none());
+            e.actor.select(CaseId::abort());
             e.actor.unpark();
         }
         self.maybe_shrink();
