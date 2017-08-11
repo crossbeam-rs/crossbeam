@@ -222,7 +222,7 @@ enum State {
     TryOnce { closed_count: usize },
     SpinTry { closed_count: usize },
     Promise { closed_count: usize },
-    Revoke,
+    Revoke { case_id: CaseId },
     Fulfill { case_id: CaseId },
     Disconnected,
     Blocked,
@@ -250,12 +250,12 @@ impl State {
                 } else {
                     actor::current().select(CaseId::none());
                 }
-                *self = State::Revoke;
-            }
-            State::Revoke => {
-                *self = State::Fulfill {
+                *self = State::Revoke {
                     case_id: actor::current().selected(),
                 };
+            }
+            State::Revoke { case_id } => {
+                *self = State::Fulfill { case_id };
             }
             State::Fulfill { .. } => {
                 actor::current().reset();
@@ -306,7 +306,9 @@ impl State {
                     actor::current().select(CaseId::none());
                 }
             }
-            State::Revoke => tx.revoke_send(),
+            State::Revoke { case_id } => if tx.case_id() != case_id {
+                tx.revoke_send();
+            },
             State::Fulfill { case_id } => if tx.case_id() == case_id {
                 match tx.fulfill_send(value) {
                     Ok(()) => return Ok(()),
@@ -347,7 +349,9 @@ impl State {
                     actor::current().select(CaseId::none());
                 }
             }
-            State::Revoke => rx.revoke_recv(),
+            State::Revoke { case_id } => if rx.case_id() != case_id {
+                rx.revoke_recv()
+            },
             State::Fulfill { case_id } => if rx.case_id() == case_id {
                 if let Ok(v) = rx.fulfill_recv() {
                     return Ok(v);
