@@ -96,7 +96,7 @@ impl Actor {
         };
 
         let thread = (*req).actor.thread.clone();
-        let v = (*req).packet.take().unwrap();
+        let v = (*req).packet.take();
         (*req).actor.select(CaseId::abort());
         thread.unpark();
         v
@@ -108,7 +108,7 @@ impl Actor {
         self.request_ptr.store(&req as *const _ as usize, SeqCst);
         self.unpark();
         current().wait_until(None);
-        req.packet.take().unwrap()
+        req.packet.take()
     }
 
     pub fn send<T>(&self, value: T) {
@@ -132,21 +132,60 @@ pub(crate) fn current() -> Arc<Actor> {
     ACTOR.with(|a| a.clone())
 }
 
-pub(crate) struct Packet<T>(Mutex<Option<T>>);
+pub(crate) fn current_select(case_id: CaseId) -> bool {
+    ACTOR.with(|a| a.select(case_id))
+}
+
+pub(crate) fn current_selected() -> CaseId {
+    ACTOR.with(|a| a.selected())
+}
+
+pub(crate) fn current_reset() {
+    ACTOR.with(|a| a.reset())
+}
+
+pub(crate) fn current_wait_until(deadline: Option<Instant>) -> bool {
+    ACTOR.with(|a| a.wait_until(deadline))
+}
+
+pub(crate) struct Packet<T>(Mutex<Option<T>>, AtomicBool);
 
 impl<T> Packet<T> {
     pub fn new(data: Option<T>) -> Self {
-        Packet(Mutex::new(data))
+        Packet(Mutex::new(data), AtomicBool::new(false))
     }
 
     pub fn put(&self, data: T) {
+        {
         let mut opt = self.0.try_lock().unwrap();
         assert!(opt.is_none());
         *opt = Some(data);
+        }
+        self.1.store(true, SeqCst);
     }
 
-    pub fn take(&self) -> Option<T> {
-        self.0.try_lock().unwrap().take()
+    pub fn take(&self) -> T {
+        let t = self.0.try_lock().unwrap().take().unwrap();
+        self.1.store(true, SeqCst);
+        t
+    }
+
+    pub fn wait(&self) {
+        for i in 0..10 {
+            if self.1.load(SeqCst) {
+                return;
+            }
+            for _ in 0..1 << i {
+                // ::std::sync::atomic::hint_core_should_pause();
+            }
+        }
+
+        loop {
+            if self.1.load(SeqCst) {
+                return;
+            }
+            thread::yield_now();
+        }
     }
 }
 

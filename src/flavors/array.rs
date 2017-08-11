@@ -221,10 +221,10 @@ impl<T> Channel<T> {
                 Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
             }
 
-            actor::current().reset();
+            actor::current_reset();
             self.senders.register(case_id);
             let timed_out = !self.is_closed() && self.len() == self.cap &&
-                !actor::current().wait_until(deadline);
+                !actor::current_wait_until(deadline);
             self.senders.unregister(case_id);
 
             if timed_out {
@@ -278,10 +278,10 @@ impl<T> Channel<T> {
                 Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
             }
 
-            actor::current().reset();
+            actor::current_reset();
             self.receivers.register(case_id);
             let timed_out =
-                !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
+                !self.is_closed() && self.len() == 0 && !actor::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
             if timed_out {

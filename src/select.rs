@@ -93,7 +93,6 @@ pub fn timeout(dur: Duration) -> bool {
 
         if let Machine::Initialized { state, .. } = m.get() {
             if let State::Timeout = state {
-                actor::current().reset();
                 m.set(Machine::new());
                 return true;
             }
@@ -155,8 +154,6 @@ impl Machine {
                     deadline,
                     seen_blocked,
                 } => if first_id == case_id {
-                    actor::current().reset();
-
                     *self = Machine::Initialized {
                         pos: 0,
                         state: if seen_blocked {
@@ -239,26 +236,25 @@ impl State {
                 *self = State::Disconnected;
             },
             State::SpinTry { closed_count } => if closed_count < len {
-                actor::current().reset();
+                actor::current_reset();
                 *self = State::Promise { closed_count: 0 };
             } else {
                 *self = State::Disconnected;
             },
             State::Promise { closed_count } => {
                 if closed_count < len {
-                    actor::current().wait_until(deadline);
+                    actor::current_wait_until(deadline);
                 } else {
-                    actor::current().select(CaseId::abort());
+                    actor::current_select(CaseId::abort());
                 }
                 *self = State::Revoke {
-                    case_id: actor::current().selected(),
+                    case_id: actor::current_selected(),
                 };
             }
             State::Revoke { case_id } => {
                 *self = State::Fulfill { case_id };
             }
             State::Fulfill { .. } => {
-                actor::current().reset();
                 *self = State::SpinTry { closed_count: 0 };
 
                 if let Some(end) = deadline {
@@ -303,7 +299,7 @@ impl State {
                 if tx.is_disconnected() {
                     *closed_count += 1;
                 } else if tx.can_send() {
-                    actor::current().select(CaseId::abort());
+                    actor::current_select(CaseId::abort());
                 }
             }
             State::Revoke { case_id } => if tx.case_id() != case_id {
@@ -346,7 +342,7 @@ impl State {
                 if rx.is_disconnected() {
                     *closed_count += 1;
                 } else if rx.can_recv() {
-                    actor::current().select(CaseId::abort());
+                    actor::current_select(CaseId::abort());
                 }
             }
             State::Revoke { case_id } => if rx.case_id() != case_id {

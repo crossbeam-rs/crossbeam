@@ -218,10 +218,10 @@ impl<T> Channel<T> {
                 Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
             }
 
-            actor::current().reset();
+            actor::current_reset();
             self.receivers.register(case_id);
             let timed_out =
-                !self.is_closed() && self.len() == 0 && !actor::current().wait_until(deadline);
+                !self.is_closed() && self.len() == 0 && !actor::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
             if timed_out {

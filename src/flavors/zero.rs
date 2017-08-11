@@ -39,8 +39,7 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn fulfill_send(&self, value: T) {
-        drop(self.inner.lock());
-        actor::current().finish_send(value)
+        actor::current().finish_send(value) // TODO: current_finish_send
     }
 
     pub fn promise_recv(&self, case_id: CaseId) {
@@ -52,8 +51,7 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn fulfill_recv(&self) -> T {
-        drop(self.inner.lock());
-        actor::current().finish_recv()
+        actor::current().finish_recv() // TODO: current_finish_recv
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -63,14 +61,13 @@ impl<T> Channel<T> {
         }
 
         if let Some(e) = inner.receivers.pop() {
+            drop(inner);
             match e.packet {
                 None => {
-                    drop(inner);
                     e.actor.send(value);
                 }
                 Some(packet) => {
                     unsafe { (*packet).put(value) }
-                    // The actor has to lock `self.inner` before taking the value.
                     e.actor.unpark();
                 }
             }
@@ -87,12 +84,6 @@ impl<T> Channel<T> {
         case_id: CaseId,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
-            match self.try_send(value) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Full(v)) => value = v,
-                Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
-            }
-
             let packet;
             {
                 let mut inner = self.inner.lock();
@@ -100,23 +91,35 @@ impl<T> Channel<T> {
                     return Err(SendTimeoutError::Disconnected(value));
                 }
 
-                if inner.receivers.can_notify() {
-                    continue;
+                if let Some(e) = inner.receivers.pop() {
+                    drop(inner);
+                    match e.packet {
+                        None => {
+                            e.actor.send(value);
+                        }
+                        Some(packet) => {
+                            unsafe { (*packet).put(value) }
+                            e.actor.unpark();
+                        }
+                    }
+                    return Ok(());
                 }
 
-                actor::current().reset();
+                actor::current_reset();
                 packet = Packet::new(Some(value));
                 inner.senders.offer(&packet, case_id);
             }
 
-            let timed_out = !actor::current().wait_until(deadline);
+            let timed_out = !actor::current_wait_until(deadline);
+
+            if actor::current_selected() != CaseId::abort() {
+                packet.wait();
+                return Ok(());
+            }
+
             let mut inner = self.inner.lock();
             inner.senders.revoke(case_id);
-
-            match packet.take() {
-                None => return Ok(()),
-                Some(v) => value = v,
-            }
+            value = packet.take();
 
             if timed_out {
                 return Err(SendTimeoutError::Timeout(value));
@@ -131,13 +134,13 @@ impl<T> Channel<T> {
         }
 
         if let Some(e) = inner.senders.pop() {
+            drop(inner);
             match e.packet {
                 None => {
-                    drop(inner);
                     Ok(e.actor.recv())
                 }
                 Some(packet) => {
-                    let v = unsafe { (*packet).take().unwrap() };
+                    let v = unsafe { (*packet).take() };
                     // The actor has to lock `self.inner` before continuing.
                     e.actor.unpark();
                     Ok(v)
@@ -154,12 +157,6 @@ impl<T> Channel<T> {
         case_id: CaseId,
     ) -> Result<T, RecvTimeoutError> {
         loop {
-            match self.try_recv() {
-                Ok(v) => return Ok(v),
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
-            }
-
             let packet;
             {
                 let mut inner = self.inner.lock();
@@ -167,22 +164,35 @@ impl<T> Channel<T> {
                     return Err(RecvTimeoutError::Disconnected);
                 }
 
-                if inner.senders.can_notify() {
-                    continue;
+                if let Some(e) = inner.senders.pop() {
+                    drop(inner);
+                    match e.packet {
+                        None => {
+                            return Ok(e.actor.recv())
+                        }
+                        Some(packet) => {
+                            let v = unsafe { (*packet).take() };
+                            // The actor has to lock `self.inner` before continuing.
+                            e.actor.unpark();
+                            return Ok(v)
+                        }
+                    }
                 }
 
-                actor::current().reset();
+                actor::current_reset();
                 packet = Packet::new(None);
                 inner.receivers.offer(&packet, case_id);
             }
 
-            let timed_out = !actor::current().wait_until(deadline);
+            let timed_out = !actor::current_wait_until(deadline);
+
+            if actor::current_selected() != CaseId::abort() {
+                packet.wait();
+                return Ok(packet.take());
+            }
+
             let mut inner = self.inner.lock();
             inner.receivers.revoke(case_id);
-
-            if let Some(v) = packet.take() {
-                return Ok(v);
-            }
 
             if timed_out {
                 return Err(RecvTimeoutError::Timeout);
