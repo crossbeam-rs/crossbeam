@@ -223,6 +223,8 @@ fn mpmc() {
         }
     });
 
+    assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+
     for c in v {
         assert_eq!(c.load(SeqCst), THREADS);
     }

@@ -1,7 +1,14 @@
 extern crate channel;
 extern crate crossbeam;
 
-use channel::unbounded;
+use channel::{bounded, unbounded};
+
+#[test]
+fn smoke() {
+    channel::unbounded::<i32>();
+    channel::bounded::<i32>(7);
+    channel::bounded::<i32>(0);
+}
 
 #[test]
 fn nested_recv_iter() {
