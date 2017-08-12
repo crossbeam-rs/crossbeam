@@ -223,8 +223,8 @@ impl<T> Channel<T> {
 
             actor::current_reset();
             self.senders.register(case_id);
-            let timed_out = !self.is_closed() && self.len() == self.cap &&
-                !actor::current_wait_until(deadline);
+            let timed_out =
+                !self.is_closed() && self.len() == self.cap && !actor::current_wait_until(deadline);
             self.senders.unregister(case_id);
 
             if timed_out {

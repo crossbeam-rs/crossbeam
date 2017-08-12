@@ -43,11 +43,9 @@ impl Monitor {
         let thread_id = thread::current().id();
         let mut entries = self.entries.lock();
 
-        if let Some((i, _)) = entries
-            .iter()
-            .enumerate()
-            .find(|&(_, e)| e.actor.thread_id() == thread_id && e.case_id == case_id)
-        {
+        if let Some((i, _)) = entries.iter().enumerate().find(|&(_, e)| {
+            e.case_id == case_id && e.actor.thread_id() == thread_id
+        }) {
             entries.remove(i);
             self.len.store(entries.len(), SeqCst);
             self.maybe_shrink(&mut entries);

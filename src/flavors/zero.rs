@@ -1,12 +1,14 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 use std::time::Instant;
 
 use parking_lot::Mutex;
 
 use CaseId;
-use actor::{self, Actor, Packet};
+use actor::{self, Actor};
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 
 struct Inner<T> {
@@ -38,8 +40,8 @@ impl<T> Channel<T> {
         self.inner.lock().senders.revoke(case_id);
     }
 
-    pub unsafe fn fulfill_send(&self, value: T) {
-        actor::current().finish_send(value) // TODO: current_finish_send
+    pub fn fulfill_send(&self, value: T) {
+        finish_send(value, self) // TODO: current_finish_send
     }
 
     pub fn promise_recv(&self, case_id: CaseId) {
@@ -50,8 +52,8 @@ impl<T> Channel<T> {
         self.inner.lock().receivers.revoke(case_id);
     }
 
-    pub unsafe fn fulfill_recv(&self) -> T {
-        actor::current().finish_recv() // TODO: current_finish_recv
+    pub fn fulfill_recv(&self) -> T {
+        finish_recv(self) // TODO: current_finish_recv
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -64,11 +66,11 @@ impl<T> Channel<T> {
             drop(inner);
             match e.packet {
                 None => {
-                    e.actor.send(value);
+                    send(&e.local, value, self);
                 }
                 Some(packet) => {
                     unsafe { (*packet).put(value) }
-                    e.actor.unpark();
+                    e.local.actor.unpark();
                 }
             }
             Ok(())
@@ -95,11 +97,11 @@ impl<T> Channel<T> {
                     drop(inner);
                     match e.packet {
                         None => {
-                            e.actor.send(value);
+                            send(&e.local, value, self);
                         }
                         Some(packet) => {
                             unsafe { (*packet).put(value) }
-                            e.actor.unpark();
+                            e.local.actor.unpark();
                         }
                     }
                     return Ok(());
@@ -136,13 +138,11 @@ impl<T> Channel<T> {
         if let Some(e) = inner.senders.pop() {
             drop(inner);
             match e.packet {
-                None => {
-                    Ok(e.actor.recv())
-                }
+                None => Ok(recv(&e.local, self)),
                 Some(packet) => {
                     let v = unsafe { (*packet).take() };
                     // The actor has to lock `self.inner` before continuing.
-                    e.actor.unpark();
+                    e.local.actor.unpark();
                     Ok(v)
                 }
             }
@@ -167,14 +167,12 @@ impl<T> Channel<T> {
                 if let Some(e) = inner.senders.pop() {
                     drop(inner);
                     match e.packet {
-                        None => {
-                            return Ok(e.actor.recv())
-                        }
+                        None => return Ok(recv(&e.local, self)),
                         Some(packet) => {
                             let v = unsafe { (*packet).take() };
                             // The actor has to lock `self.inner` before continuing.
-                            e.actor.unpark();
-                            return Ok(v)
+                            e.local.actor.unpark();
+                            return Ok(v);
                         }
                     }
                 }
@@ -227,7 +225,7 @@ impl<T> Channel<T> {
 }
 
 pub struct Entry<T> {
-    actor: Arc<Actor>,
+    local: Arc<Local>,
     case_id: CaseId,
     packet: Option<*const Packet<T>>,
 }
@@ -247,8 +245,8 @@ impl<T> Registry<T> {
         let thread_id = thread::current().id();
 
         for i in 0..self.entries.len() {
-            if self.entries[i].actor.thread_id() != thread_id {
-                if self.entries[i].actor.select(self.entries[i].case_id) {
+            if self.entries[i].local.actor.thread_id() != thread_id {
+                if self.entries[i].local.actor.select(self.entries[i].case_id) {
                     return Some(self.entries.remove(i).unwrap());
                 }
             }
@@ -259,7 +257,7 @@ impl<T> Registry<T> {
 
     fn offer(&mut self, packet: *const Packet<T>, case_id: CaseId) {
         self.entries.push_back(Entry {
-            actor: actor::current(),
+            local: LOCAL.with(|l| l.clone()),
             case_id,
             packet: Some(packet),
         });
@@ -267,7 +265,7 @@ impl<T> Registry<T> {
 
     fn promise(&mut self, case_id: CaseId) {
         self.entries.push_back(Entry {
-            actor: actor::current(),
+            local: LOCAL.with(|l| l.clone()),
             case_id,
             packet: None,
         });
@@ -276,11 +274,9 @@ impl<T> Registry<T> {
     fn revoke(&mut self, case_id: CaseId) {
         let thread_id = thread::current().id();
 
-        if let Some((i, _)) = self.entries
-            .iter()
-            .enumerate()
-            .find(|&(_, e)| e.actor.thread_id() == thread_id && e.case_id == case_id)
-        {
+        if let Some((i, _)) = self.entries.iter().enumerate().find(|&(_, e)| {
+            e.case_id == case_id && e.local.actor.thread_id() == thread_id
+        }) {
             self.entries.remove(i);
             self.maybe_shrink();
         }
@@ -290,7 +286,7 @@ impl<T> Registry<T> {
         let thread_id = thread::current().id();
 
         for i in 0..self.entries.len() {
-            if self.entries[i].actor.thread_id() != thread_id {
+            if self.entries[i].local.actor.thread_id() != thread_id {
                 return true;
             }
         }
@@ -299,8 +295,8 @@ impl<T> Registry<T> {
 
     fn abort_all(&mut self) {
         for e in self.entries.drain(..) {
-            e.actor.select(CaseId::abort());
-            e.actor.unpark();
+            e.local.actor.select(CaseId::abort());
+            e.local.actor.unpark();
         }
         self.maybe_shrink();
     }
@@ -315,5 +311,130 @@ impl<T> Registry<T> {
 impl<T> Drop for Registry<T> {
     fn drop(&mut self) {
         debug_assert!(self.entries.is_empty());
+    }
+}
+
+thread_local! {
+    static LOCAL: Arc<Local> = Arc::new(Local {
+        actor: actor::current(),
+        request_ptr: AtomicUsize::new(0),
+    });
+}
+
+struct Local {
+    actor: Arc<Actor>,
+    request_ptr: AtomicUsize,
+}
+
+fn finish_send<T>(value: T, chan: &Channel<T>) {
+    let req = loop {
+        let ptr = LOCAL.with(|l| l.request_ptr.swap(0, SeqCst) as *const Request<T>);
+        if !ptr.is_null() {
+            break ptr;
+        }
+        thread::yield_now();
+    };
+
+    unsafe {
+        assert!((*req).chan == chan);
+
+        let actor = (*req).actor.clone();
+        (*req).packet.put(value);
+        (*req).actor.select(CaseId::abort());
+        actor.unpark();
+    }
+}
+
+fn finish_recv<T>(chan: &Channel<T>) -> T {
+    let req = loop {
+        let ptr = LOCAL.with(|l| l.request_ptr.swap(0, SeqCst) as *const Request<T>);
+        if !ptr.is_null() {
+            break ptr;
+        }
+        thread::yield_now();
+    };
+
+    unsafe {
+        assert!((*req).chan == chan);
+
+        let actor = (*req).actor.clone();
+        let v = (*req).packet.take();
+        (*req).actor.select(CaseId::abort());
+        actor.unpark();
+        v
+    }
+}
+
+fn recv<T>(other: &Local, chan: &Channel<T>) -> T {
+    actor::current_reset();
+    let req = Request::new(None, chan);
+    other.request_ptr.store(&req as *const _ as usize, SeqCst);
+    other.actor.unpark();
+    actor::current_wait_until(None);
+    req.packet.take()
+}
+
+fn send<T>(other: &Local, value: T, chan: &Channel<T>) {
+    actor::current_reset();
+    let req = Request::new(Some(value), chan);
+    other.request_ptr.store(&req as *const _ as usize, SeqCst);
+    other.actor.unpark();
+    actor::current_wait_until(None);
+}
+
+struct Request<T> {
+    actor: Arc<Actor>,
+    packet: Packet<T>,
+    chan: *const Channel<T>,
+}
+
+impl<T> Request<T> {
+    fn new(data: Option<T>, chan: &Channel<T>) -> Self {
+        Request {
+            actor: actor::current(),
+            packet: Packet::new(data),
+            chan,
+        }
+    }
+}
+
+struct Packet<T>(Mutex<Option<T>>, AtomicBool);
+
+impl<T> Packet<T> {
+    fn new(data: Option<T>) -> Self {
+        Packet(Mutex::new(data), AtomicBool::new(false))
+    }
+
+    fn put(&self, data: T) {
+        {
+            let mut opt = self.0.try_lock().unwrap();
+            assert!(opt.is_none());
+            *opt = Some(data);
+        }
+        self.1.store(true, SeqCst);
+    }
+
+    fn take(&self) -> T {
+        let t = self.0.try_lock().unwrap().take().unwrap();
+        self.1.store(true, SeqCst);
+        t
+    }
+
+    fn wait(&self) {
+        for i in 0..10 {
+            if self.1.load(SeqCst) {
+                return;
+            }
+            for _ in 0..1 << i {
+                // ::std::sync::atomic::hint_core_should_pause();
+            }
+        }
+
+        loop {
+            if self.1.load(SeqCst) {
+                return;
+            }
+            thread::yield_now();
+        }
     }
 }

@@ -32,11 +32,11 @@ enum Flavor<T> {
 struct CaseId(usize);
 
 impl CaseId {
-    pub fn none() -> Self {
+    fn none() -> Self {
         CaseId(0)
     }
 
-    pub fn abort() -> Self {
+    fn abort() -> Self {
         CaseId(1)
     }
 }
@@ -80,16 +80,16 @@ impl<T> Sender<T> {
 
     pub(crate) fn promise_send(&self) {
         match self.0.flavor {
-            Flavor::List(_) => {}
             Flavor::Array(ref chan) => chan.senders().register(self.case_id()),
+            Flavor::List(_) => {}
             Flavor::Zero(ref chan) => chan.promise_send(self.case_id()),
         }
     }
 
     pub(crate) fn revoke_send(&self) {
         match self.0.flavor {
-            Flavor::List(_) => {}
             Flavor::Array(ref chan) => chan.senders().unregister(self.case_id()),
+            Flavor::List(_) => {}
             Flavor::Zero(ref chan) => chan.revoke_send(self.case_id()),
         }
     }
@@ -108,9 +108,9 @@ impl<T> Sender<T> {
                 Ok(()) => Ok(()),
                 Err(TrySendError::Full(v)) => Err(v),
                 Err(TrySendError::Disconnected(v)) => Err(v),
-            }
+            },
             Flavor::Zero(ref chan) => {
-                unsafe { chan.fulfill_send(value) }
+                chan.fulfill_send(value);
                 Ok(())
             }
         }
@@ -218,16 +218,16 @@ impl<T> Receiver<T> {
 
     pub(crate) fn promise_recv(&self) {
         match self.0.flavor {
-            Flavor::List(ref chan) => chan.receivers().register(self.case_id()),
             Flavor::Array(ref chan) => chan.receivers().register(self.case_id()),
+            Flavor::List(ref chan) => chan.receivers().register(self.case_id()),
             Flavor::Zero(ref chan) => chan.promise_recv(self.case_id()),
         }
     }
 
     pub(crate) fn revoke_recv(&self) {
         match self.0.flavor {
-            Flavor::List(ref chan) => chan.receivers().unregister(self.case_id()),
             Flavor::Array(ref chan) => chan.receivers().unregister(self.case_id()),
+            Flavor::List(ref chan) => chan.receivers().unregister(self.case_id()),
             Flavor::Zero(ref chan) => chan.revoke_recv(self.case_id()),
         }
     }
@@ -243,7 +243,7 @@ impl<T> Receiver<T> {
     pub(crate) fn fulfill_recv(&self) -> Result<T, ()> {
         match self.0.flavor {
             Flavor::Array(_) | Flavor::List(_) => self.try_recv().map_err(|_| ()),
-            Flavor::Zero(ref chan) => unsafe { Ok(chan.fulfill_recv()) },
+            Flavor::Zero(ref chan) => Ok(chan.fulfill_recv()),
         }
     }
 
