@@ -41,7 +41,7 @@ impl<T> Channel<T> {
     }
 
     pub fn fulfill_send(&self, value: T) {
-        finish_send(value, self) // TODO: current_finish_send
+        finish_send(value, self)
     }
 
     pub fn promise_recv(&self, case_id: CaseId) {
@@ -53,26 +53,20 @@ impl<T> Channel<T> {
     }
 
     pub fn fulfill_recv(&self) -> T {
-        finish_recv(self) // TODO: current_finish_recv
+        finish_recv(self)
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        let mut inner = self.inner.lock();
-        if inner.closed {
-            return Err(TrySendError::Disconnected(value));
-        }
-
-        if let Some(e) = inner.receivers.pop() {
-            drop(inner);
-            match e.packet {
-                None => {
-                    send(&e.local, value, self);
-                }
-                Some(packet) => {
-                    unsafe { (*packet).put(value) }
-                    e.local.actor.unpark();
-                }
+        let entry = {
+            let mut inner = self.inner.lock();
+            if inner.closed {
+                return Err(TrySendError::Disconnected(value));
             }
+            inner.receivers.pop()
+        };
+
+        if let Some(e) = entry {
+            e.send(value, self);
             Ok(())
         } else {
             Err(TrySendError::Full(value))
@@ -95,15 +89,7 @@ impl<T> Channel<T> {
 
                 if let Some(e) = inner.receivers.pop() {
                     drop(inner);
-                    match e.packet {
-                        None => {
-                            send(&e.local, value, self);
-                        }
-                        Some(packet) => {
-                            unsafe { (*packet).put(value) }
-                            e.local.actor.unpark();
-                        }
-                    }
+                    e.send(value, self);
                     return Ok(());
                 }
 
@@ -130,22 +116,16 @@ impl<T> Channel<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let mut inner = self.inner.lock();
-        if inner.closed {
-            return Err(TryRecvError::Disconnected);
-        }
-
-        if let Some(e) = inner.senders.pop() {
-            drop(inner);
-            match e.packet {
-                None => Ok(recv(&e.local, self)),
-                Some(packet) => {
-                    let v = unsafe { (*packet).take() };
-                    // The actor has to lock `self.inner` before continuing.
-                    e.local.actor.unpark();
-                    Ok(v)
-                }
+        let entry = {
+            let mut inner = self.inner.lock();
+            if inner.closed {
+                return Err(TryRecvError::Disconnected);
             }
+            inner.senders.pop()
+        };
+
+        if let Some(e) = entry {
+            Ok(e.recv(self))
         } else {
             Err(TryRecvError::Empty)
         }
@@ -166,15 +146,7 @@ impl<T> Channel<T> {
 
                 if let Some(e) = inner.senders.pop() {
                     drop(inner);
-                    match e.packet {
-                        None => return Ok(recv(&e.local, self)),
-                        Some(packet) => {
-                            let v = unsafe { (*packet).take() };
-                            // The actor has to lock `self.inner` before continuing.
-                            e.local.actor.unpark();
-                            return Ok(v);
-                        }
-                    }
+                    return Ok(e.recv(self));
                 }
 
                 actor::current_reset();
@@ -224,106 +196,68 @@ impl<T> Channel<T> {
     }
 }
 
-pub struct Entry<T> {
-    local: Arc<Local>,
-    case_id: CaseId,
-    packet: Option<*const Packet<T>>,
+enum Entry<T> {
+    Offer {
+        actor: Arc<Actor>,
+        packet: *const Packet<T>,
+        case_id: CaseId,
+    },
+    Promise { local: Arc<Local>, case_id: CaseId },
 }
 
-struct Registry<T> {
-    entries: VecDeque<Entry<T>>,
-}
-
-impl<T> Registry<T> {
-    fn new() -> Self {
-        Registry {
-            entries: VecDeque::new(),
-        }
-    }
-
-    fn pop(&mut self) -> Option<Entry<T>> {
-        let thread_id = thread::current().id();
-
-        for i in 0..self.entries.len() {
-            if self.entries[i].local.actor.thread_id() != thread_id {
-                if self.entries[i].local.actor.select(self.entries[i].case_id) {
-                    return Some(self.entries.remove(i).unwrap());
-                }
+impl<T> Entry<T> {
+    fn send(&self, value: T, chan: &Channel<T>) {
+        match *self {
+            Entry::Offer {
+                ref actor, packet, ..
+            } => {
+                unsafe { (*packet).put(value) }
+                actor.unpark();
+            }
+            Entry::Promise { ref local, case_id } => {
+                actor::current_reset();
+                let req = Request::new(Some(value), chan);
+                local.request_ptr.store(&req as *const _ as usize, SeqCst);
+                local.actor.unpark();
+                actor::current_wait_until(None);
             }
         }
-
-        None
     }
 
-    fn offer(&mut self, packet: *const Packet<T>, case_id: CaseId) {
-        self.entries.push_back(Entry {
-            local: LOCAL.with(|l| l.clone()),
-            case_id,
-            packet: Some(packet),
-        });
-    }
-
-    fn promise(&mut self, case_id: CaseId) {
-        self.entries.push_back(Entry {
-            local: LOCAL.with(|l| l.clone()),
-            case_id,
-            packet: None,
-        });
-    }
-
-    fn revoke(&mut self, case_id: CaseId) {
-        let thread_id = thread::current().id();
-
-        if let Some((i, _)) = self.entries.iter().enumerate().find(|&(_, e)| {
-            e.case_id == case_id && e.local.actor.thread_id() == thread_id
-        }) {
-            self.entries.remove(i);
-            self.maybe_shrink();
-        }
-    }
-
-    fn can_notify(&self) -> bool {
-        let thread_id = thread::current().id();
-
-        for i in 0..self.entries.len() {
-            if self.entries[i].local.actor.thread_id() != thread_id {
-                return true;
+    fn recv(&self, chan: &Channel<T>) -> T {
+        match *self {
+            Entry::Offer {
+                ref actor, packet, ..
+            } => {
+                let v = unsafe { (*packet).take() };
+                // The actor has to lock `self.inner` before continuing.
+                actor.unpark();
+                v
+            }
+            Entry::Promise { ref local, case_id } => {
+                actor::current_reset();
+                let req = Request::new(None, chan);
+                local.request_ptr.store(&req as *const _ as usize, SeqCst);
+                local.actor.unpark();
+                actor::current_wait_until(None);
+                req.packet.take()
             }
         }
-        false
     }
 
-    fn abort_all(&mut self) {
-        for e in self.entries.drain(..) {
-            e.local.actor.select(CaseId::abort());
-            e.local.actor.unpark();
-        }
-        self.maybe_shrink();
-    }
-
-    fn maybe_shrink(&mut self) {
-        if self.entries.capacity() > 32 && self.entries.capacity() / 2 > self.entries.len() {
-            self.entries.shrink_to_fit();
+    fn actor(&self) -> &Actor {
+        match *self {
+            Entry::Offer { ref actor, .. } => actor,
+            Entry::Promise { ref local, .. } => &local.actor,
         }
     }
-}
 
-impl<T> Drop for Registry<T> {
-    fn drop(&mut self) {
-        debug_assert!(self.entries.is_empty());
+    fn case_id(&self) -> CaseId {
+        match *self {
+            Entry::Offer { case_id, .. } => case_id,
+            Entry::Promise { case_id, .. } => case_id,
+        }
     }
-}
-
-thread_local! {
-    static LOCAL: Arc<Local> = Arc::new(Local {
-        actor: actor::current(),
-        request_ptr: AtomicUsize::new(0),
-    });
-}
-
-struct Local {
-    actor: Arc<Actor>,
-    request_ptr: AtomicUsize,
 }
 
 fn finish_send<T>(value: T, chan: &Channel<T>) {
@@ -365,21 +299,99 @@ fn finish_recv<T>(chan: &Channel<T>) -> T {
     }
 }
 
-fn recv<T>(other: &Local, chan: &Channel<T>) -> T {
-    actor::current_reset();
-    let req = Request::new(None, chan);
-    other.request_ptr.store(&req as *const _ as usize, SeqCst);
-    other.actor.unpark();
-    actor::current_wait_until(None);
-    req.packet.take()
+struct Registry<T> {
+    entries: VecDeque<Entry<T>>,
 }
 
-fn send<T>(other: &Local, value: T, chan: &Channel<T>) {
-    actor::current_reset();
-    let req = Request::new(Some(value), chan);
-    other.request_ptr.store(&req as *const _ as usize, SeqCst);
-    other.actor.unpark();
-    actor::current_wait_until(None);
+impl<T> Registry<T> {
+    fn new() -> Self {
+        Registry {
+            entries: VecDeque::new(),
+        }
+    }
+
+    fn pop(&mut self) -> Option<Entry<T>> {
+        let thread_id = thread::current().id();
+
+        for i in 0..self.entries.len() {
+            if self.entries[i].actor().thread_id() != thread_id {
+                if self.entries[i].actor().select(self.entries[i].case_id()) {
+                    return Some(self.entries.remove(i).unwrap());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn offer(&mut self, packet: *const Packet<T>, case_id: CaseId) {
+        self.entries.push_back(Entry::Offer {
+            actor: actor::current(),
+            packet,
+            case_id,
+        });
+    }
+
+    fn promise(&mut self, case_id: CaseId) {
+        self.entries.push_back(Entry::Promise {
+            local: LOCAL.with(|l| l.clone()),
+            case_id,
+        });
+    }
+
+    fn revoke(&mut self, case_id: CaseId) {
+        let thread_id = thread::current().id();
+
+        if let Some((i, _)) = self.entries.iter().enumerate().find(|&(_, e)| {
+            e.case_id() == case_id && e.actor().thread_id() == thread_id
+        }) {
+            self.entries.remove(i);
+            self.maybe_shrink();
+        }
+    }
+
+    fn can_notify(&self) -> bool {
+        let thread_id = thread::current().id();
+
+        for i in 0..self.entries.len() {
+            if self.entries[i].actor().thread_id() != thread_id {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn abort_all(&mut self) {
+        for e in self.entries.drain(..) {
+            e.actor().select(CaseId::abort());
+            e.actor().unpark();
+        }
+        self.maybe_shrink();
+    }
+
+    fn maybe_shrink(&mut self) {
+        if self.entries.capacity() > 32 && self.entries.capacity() / 2 > self.entries.len() {
+            self.entries.shrink_to_fit();
+        }
+    }
+}
+
+impl<T> Drop for Registry<T> {
+    fn drop(&mut self) {
+        debug_assert!(self.entries.is_empty());
+    }
+}
+
+thread_local! {
+    static LOCAL: Arc<Local> = Arc::new(Local {
+        actor: actor::current(),
+        request_ptr: AtomicUsize::new(0),
+    });
+}
+
+struct Local {
+    actor: Arc<Actor>,
+    request_ptr: AtomicUsize,
 }
 
 struct Request<T> {
