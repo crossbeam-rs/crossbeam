@@ -341,7 +341,7 @@ fn drops() {
     let mut rng = thread_rng();
 
     for _ in 0..100 {
-        let steps = rng.gen_range(0, 10_000);
+        let steps = rng.gen_range(0, 3_000);
 
         DROPS.store(0, SeqCst);
         let (tx, rx) = bounded::<DropCounter>(0);
