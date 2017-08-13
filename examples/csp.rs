@@ -35,7 +35,7 @@ func Seek(name string, match chan string, wg *sync.WaitGroup) {
 extern crate crossbeam;
 extern crate channel;
 
-use channel::{select, Receiver, Sender};
+use channel::{Receiver, Sender};
 
 fn main() {
     let people = vec!["Anna", "Bob", "Cody", "Dave", "Eva"];
