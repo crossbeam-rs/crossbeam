@@ -1,0 +1,25 @@
+[package]
+name = "benchmark"
+version = "0.1.0"
+
+[dependencies]
+chan = "0.1.19"
+channel = { path = ".." }
+crossbeam = "0.3.0"
+multiqueue = "0.3.2"
+
+[[bin]]
+name = "channel"
+path = "channel.rs"
+
+[[bin]]
+name = "chan"
+path = "chan.rs"
+
+[[bin]]
+name = "mpsc"
+path = "mpsc.rs"
+
+[[bin]]
+name = "multiqueue"
+path = "multiqueue.rs"
