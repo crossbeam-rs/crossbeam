@@ -5,8 +5,7 @@ authors = ["Stjepan Glavina <stjepang@gmail.com>"]
 license = "Apache-2.0/MIT"
 
 [dependencies]
-coco = { path = "../coco" }
-crossbeam = { path = "../crossbeam" }
+coco = "0.2.0"
+crossbeam = "0.3.0"
+parking_lot = "0.4.4"
 rand = "0.3"
-chan = "*"
-parking_lot = "*"
