@@ -5,9 +5,9 @@ use channel::{bounded, unbounded};
 
 #[test]
 fn smoke() {
-    channel::unbounded::<i32>();
-    channel::bounded::<i32>(7);
-    channel::bounded::<i32>(0);
+    unbounded::<i32>();
+    bounded::<i32>(7);
+    bounded::<i32>(0);
 }
 
 #[test]
