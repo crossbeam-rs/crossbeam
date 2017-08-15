@@ -157,7 +157,7 @@ fn blocked() {
         if select::blocked() {
             break;
         }
-        if select::timeout(ms(00)) {
+        if select::timeout(ms(0)) {
             panic!();
         }
     }
@@ -178,7 +178,7 @@ fn blocked() {
         if select::blocked() {
             panic!();
         }
-        if select::timeout(ms(00)) {
+        if select::timeout(ms(0)) {
             panic!();
         }
     }
@@ -198,7 +198,7 @@ fn blocked() {
         if select::blocked() {
             panic!();
         }
-        if select::timeout(ms(00)) {
+        if select::timeout(ms(0)) {
             panic!();
         }
     }
