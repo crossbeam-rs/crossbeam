@@ -89,7 +89,7 @@ fn disconnected() {
 
     crossbeam::scope(|s| {
         s.spawn(|| {
-            thread::sleep(ms(50));
+            thread::sleep(ms(500));
             drop(tx1);
         });
 
@@ -104,7 +104,7 @@ fn disconnected() {
             if select::disconnected() {
                 panic!();
             }
-            if select::timeout(ms(100)) {
+            if select::timeout(ms(1000)) {
                 break;
             }
         }
@@ -112,7 +112,7 @@ fn disconnected() {
 
     crossbeam::scope(|s| {
         s.spawn(|| {
-            thread::sleep(ms(50));
+            thread::sleep(ms(500));
             drop(tx2);
         });
 
@@ -127,7 +127,7 @@ fn disconnected() {
             if select::disconnected() {
                 break;
             }
-            if select::timeout(ms(100)) {
+            if select::timeout(ms(1000)) {
                 panic!();
             }
         }
@@ -157,7 +157,7 @@ fn blocked() {
         if select::blocked() {
             break;
         }
-        if select::timeout(ms(0)) {
+        if select::timeout(ms(00)) {
             panic!();
         }
     }
@@ -178,7 +178,7 @@ fn blocked() {
         if select::blocked() {
             panic!();
         }
-        if select::timeout(ms(0)) {
+        if select::timeout(ms(00)) {
             panic!();
         }
     }
@@ -198,7 +198,7 @@ fn blocked() {
         if select::blocked() {
             panic!();
         }
-        if select::timeout(ms(0)) {
+        if select::timeout(ms(00)) {
             panic!();
         }
     }
@@ -214,7 +214,7 @@ fn timeout() {
 
     crossbeam::scope(|s| {
         s.spawn(|| {
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             tx2.send(2);
         });
 
@@ -226,7 +226,7 @@ fn timeout() {
             if let Ok(_) = rx2.select() {
                 panic!();
             }
-            if select::timeout(ms(100)) {
+            if select::timeout(ms(1000)) {
                 break;
             }
         }
@@ -240,7 +240,7 @@ fn timeout() {
                 assert_eq!(x, 2);
                 break;
             }
-            if select::timeout(ms(100)) {
+            if select::timeout(ms(1000)) {
                 panic!();
             }
         }
@@ -257,7 +257,7 @@ fn unblocks() {
 
     crossbeam::scope(|s| {
         s.spawn(|| {
-            thread::sleep(ms(50));
+            thread::sleep(ms(500));
             tx2.send(2);
         });
 
@@ -270,7 +270,7 @@ fn unblocks() {
                 assert_eq!(x, 2);
                 break;
             }
-            if select::timeout(ms(100)) {
+            if select::timeout(ms(1000)) {
                 panic!();
             }
         }
@@ -278,7 +278,7 @@ fn unblocks() {
 
     crossbeam::scope(|s| {
         s.spawn(|| {
-            thread::sleep(ms(50));
+            thread::sleep(ms(500));
             assert_eq!(rx1.recv().unwrap(), 1);
         });
 
@@ -290,7 +290,7 @@ fn unblocks() {
             if let Ok(()) = tx2.select(2) {
                 panic!();
             }
-            if select::timeout(ms(100)) {
+            if select::timeout(ms(1000)) {
                 panic!();
             }
         }
@@ -307,7 +307,7 @@ fn both_ready() {
 
     crossbeam::scope(|s| {
         s.spawn(|| {
-            thread::sleep(ms(50));
+            thread::sleep(ms(500));
             tx1.send(1).unwrap();
             assert_eq!(rx2.recv().unwrap(), 2);
         });
@@ -409,7 +409,7 @@ fn loop_try() {
 
             s.spawn(|| {
                 let mut iters = 0;
-                thread::sleep(ms(50));
+                thread::sleep(ms(500));
 
                 loop {
                     iters += 1;
@@ -423,7 +423,7 @@ fn loop_try() {
                     if select::disconnected() {
                         panic!();
                     }
-                    if select::timeout(ms(50)) {
+                    if select::timeout(ms(500)) {
                         panic!();
                     }
                 }
@@ -486,7 +486,7 @@ fn cloning2() {
             }
         });
 
-        thread::sleep(ms(50));
+        thread::sleep(ms(500));
         drop(tx1.clone());
         tx2.send(()).unwrap();
 
@@ -665,14 +665,14 @@ fn stress_timeout_two_threads() {
     crossbeam::scope(|s| {
         s.spawn(|| for i in 0..COUNT {
             if i % 2 == 0 {
-                thread::sleep(ms(50));
+                thread::sleep(ms(500));
             }
             'outer: loop {
                 loop {
                     if let Ok(()) = tx.select(i) {
                             break 'outer;
                         }
-                    if select::timeout(ms(10)) {
+                    if select::timeout(ms(100)) {
                         break;
                     }
                 }
@@ -681,7 +681,7 @@ fn stress_timeout_two_threads() {
 
         s.spawn(|| for i in 0..COUNT {
             if i % 2 == 0 {
-                thread::sleep(ms(50));
+                thread::sleep(ms(500));
             }
             'outer: loop {
                 loop {
@@ -689,7 +689,7 @@ fn stress_timeout_two_threads() {
                         assert_eq!(x, i);
                         break 'outer;
                     }
-                    if select::timeout(ms(10)) {
+                    if select::timeout(ms(100)) {
                         break;
                     }
                 }
@@ -823,14 +823,14 @@ fn recv() {
     crossbeam::scope(|s| {
         s.spawn(move || {
             assert_eq!(rx.recv(), Ok(7));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(rx.recv(), Ok(8));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(rx.recv(), Ok(9));
             assert_eq!(rx.recv(), Err(RecvError));
         });
         s.spawn(move || {
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(tx.send(7), Ok(()));
             assert_eq!(tx.send(8), Ok(()));
             assert_eq!(tx.send(9), Ok(()));
@@ -844,14 +844,14 @@ fn recv() {
     crossbeam::scope(|s| {
         s.spawn(move || {
             assert_eq!(rx.recv(), Ok(7));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(rx.recv(), Ok(8));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(rx.recv(), Ok(9));
             assert_eq!(rx.recv(), Err(RecvError));
         });
         s.spawn(move || {
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(tx.send(7), Ok(()));
             assert_eq!(tx.send(8), Ok(()));
             assert_eq!(tx.send(9), Ok(()));
@@ -867,15 +867,15 @@ fn recv_timeout() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
-            assert_eq!(rx.recv_timeout(ms(100)), Ok(7));
+            assert_eq!(rx.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
+            assert_eq!(rx.recv_timeout(ms(1000)), Ok(7));
             assert_eq!(
-                rx.recv_timeout(ms(100)),
+                rx.recv_timeout(ms(1000)),
                 Err(RecvTimeoutError::Disconnected)
             );
         });
         s.spawn(move || {
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(tx.send(7), Ok(()));
         });
     });
@@ -890,13 +890,13 @@ fn try_recv() {
     crossbeam::scope(|s| {
         s.spawn(move || {
             assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(rx.try_recv(), Ok(7));
-            thread::sleep(ms(50));
+            thread::sleep(ms(500));
             assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
         });
         s.spawn(move || {
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(tx.send(7), Ok(()));
         });
     });
@@ -907,15 +907,15 @@ fn try_recv() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.recv_timeout(ms(100)), Err(RecvTimeoutError::Timeout));
-            assert_eq!(rx.recv_timeout(ms(100)), Ok(7));
+            assert_eq!(rx.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
+            assert_eq!(rx.recv_timeout(ms(1000)), Ok(7));
             assert_eq!(
-                rx.recv_timeout(ms(100)),
+                rx.recv_timeout(ms(1000)),
                 Err(RecvTimeoutError::Disconnected)
             );
         });
         s.spawn(move || {
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(tx.send(7), Ok(()));
         });
     });
@@ -930,15 +930,15 @@ fn send() {
     crossbeam::scope(|s| {
         s.spawn(move || {
             assert_eq!(tx.send(7), Ok(()));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(tx.send(8), Ok(()));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(tx.send(9), Ok(()));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(tx.send(10), Err(SendError(10)));
         });
         s.spawn(move || {
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(rx.recv(), Ok(7));
             assert_eq!(rx.recv(), Ok(8));
             assert_eq!(rx.recv(), Ok(9));
@@ -952,14 +952,14 @@ fn send() {
     crossbeam::scope(|s| {
         s.spawn(move || {
             assert_eq!(tx.send(7), Ok(()));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(tx.send(8), Ok(()));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(tx.send(9), Ok(()));
             assert_eq!(tx.send(10), Err(SendError(10)));
         });
         s.spawn(move || {
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(rx.recv(), Ok(7));
             assert_eq!(rx.recv(), Ok(8));
             assert_eq!(rx.recv(), Ok(9));
@@ -975,21 +975,21 @@ fn send_timeout() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(tx.send_timeout(1, ms(100)), Ok(()));
-            assert_eq!(tx.send_timeout(2, ms(100)), Ok(()));
+            assert_eq!(tx.send_timeout(1, ms(1000)), Ok(()));
+            assert_eq!(tx.send_timeout(2, ms(1000)), Ok(()));
             assert_eq!(
-                tx.send_timeout(3, ms(50)),
+                tx.send_timeout(3, ms(500)),
                 Err(SendTimeoutError::Timeout(3))
             );
-            thread::sleep(ms(100));
-            assert_eq!(tx.send_timeout(4, ms(100)), Ok(()));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
+            assert_eq!(tx.send_timeout(4, ms(1000)), Ok(()));
+            thread::sleep(ms(1000));
             assert_eq!(tx.send(5), Err(SendError(5)));
         });
         s.spawn(move || {
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(rx.recv(), Ok(1));
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(rx.recv(), Ok(2));
             assert_eq!(rx.recv(), Ok(4));
         });
@@ -1002,17 +1002,17 @@ fn send_timeout() {
     crossbeam::scope(|s| {
         s.spawn(move || {
             assert_eq!(
-                tx.send_timeout(7, ms(100)),
+                tx.send_timeout(7, ms(1000)),
                 Err(SendTimeoutError::Timeout(7))
             );
-            assert_eq!(tx.send_timeout(8, ms(100)), Ok(()));
+            assert_eq!(tx.send_timeout(8, ms(1000)), Ok(()));
             assert_eq!(
-                tx.send_timeout(9, ms(100)),
+                tx.send_timeout(9, ms(1000)),
                 Err(SendTimeoutError::Disconnected(9))
             );
         });
         s.spawn(move || {
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(rx.recv(), Ok(8));
         });
     });
@@ -1028,13 +1028,13 @@ fn try_send() {
         s.spawn(move || {
             assert_eq!(tx.try_send(1), Ok(()));
             assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(tx.try_send(3), Ok(()));
-            thread::sleep(ms(50));
+            thread::sleep(ms(500));
             assert_eq!(tx.try_send(4), Err(TrySendError::Disconnected(4)));
         });
         s.spawn(move || {
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(rx.try_recv(), Ok(1));
             assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
             assert_eq!(rx.recv(), Ok(3));
@@ -1048,13 +1048,13 @@ fn try_send() {
     crossbeam::scope(|s| {
         s.spawn(move || {
             assert_eq!(tx.try_send(7), Err(TrySendError::Full(7)));
-            thread::sleep(ms(150));
+            thread::sleep(ms(1500));
             assert_eq!(tx.try_send(8), Ok(()));
-            thread::sleep(ms(50));
+            thread::sleep(ms(500));
             assert_eq!(tx.try_send(9), Err(TrySendError::Disconnected(9)));
         });
         s.spawn(move || {
-            thread::sleep(ms(100));
+            thread::sleep(ms(1000));
             assert_eq!(rx.recv(), Ok(8));
         });
     });
