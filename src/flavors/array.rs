@@ -1,5 +1,6 @@
 // Based on Dmitry Vyukov's MPMC queue:
 // http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
+// https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -234,12 +235,13 @@ impl<T> Channel<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        let closed = self.closed.load(SeqCst);
         match self.pop(&mut Spinwait::new()) {
             Ok(v) => {
                 self.senders.notify_one();
                 Ok(v)
             }
-            Err(()) => if self.closed.load(SeqCst) {
+            Err(()) => if closed {
                 Err(TryRecvError::Disconnected)
             } else {
                 Err(TryRecvError::Empty)
@@ -250,20 +252,19 @@ impl<T> Channel<T> {
     pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
         let spinwait = &mut Spinwait::new();
         loop {
+            let closed = self.closed.load(SeqCst);
             if let Ok(v) = self.pop(spinwait) {
                 self.senders.notify_one();
                 return Ok(v);
+            }
+            if closed {
+                return Err(TryRecvError::Disconnected);
             }
             if !spinwait.spin() {
                 break;
             }
         }
-
-        if self.closed.load(SeqCst) {
-            Err(TryRecvError::Disconnected)
-        } else {
-            Err(TryRecvError::Empty)
-        }
+        Err(TryRecvError::Empty)
     }
 
     pub fn recv_until(

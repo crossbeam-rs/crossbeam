@@ -157,9 +157,9 @@ impl Machine {
                     *self = Machine::Initialized {
                         pos: 0,
                         state: if seen_blocked {
-                            State::TryOnce { closed_count: 0 }
+                            State::TryOnce { disconn_count: 0 }
                         } else {
-                            State::SpinTry { closed_count: 0 }
+                            State::SpinTry { disconn_count: 0 }
                         },
                         len,
                         start: gen_random(len),
@@ -216,9 +216,9 @@ impl Machine {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
-    TryOnce { closed_count: usize },
-    SpinTry { closed_count: usize },
-    Promise { closed_count: usize },
+    TryOnce { disconn_count: usize },
+    SpinTry { disconn_count: usize },
+    Promise { disconn_count: usize },
     Revoke { case_id: CaseId },
     Fulfill { case_id: CaseId },
     Disconnected,
@@ -230,19 +230,19 @@ impl State {
     #[inline]
     fn transition(&mut self, len: usize, deadline: Option<Instant>) {
         match *self {
-            State::TryOnce { closed_count } => if closed_count < len {
+            State::TryOnce { disconn_count } => if disconn_count < len {
                 *self = State::Blocked;
             } else {
                 *self = State::Disconnected;
             },
-            State::SpinTry { closed_count } => if closed_count < len {
+            State::SpinTry { disconn_count } => if disconn_count < len {
                 actor::current_reset();
-                *self = State::Promise { closed_count: 0 };
+                *self = State::Promise { disconn_count: 0 };
             } else {
                 *self = State::Disconnected;
             },
-            State::Promise { closed_count } => {
-                if closed_count < len {
+            State::Promise { disconn_count } => {
+                if disconn_count < len {
                     actor::current_wait_until(deadline);
                 } else {
                     actor::current_select(CaseId::abort());
@@ -255,7 +255,7 @@ impl State {
                 *self = State::Fulfill { case_id };
             }
             State::Fulfill { .. } => {
-                *self = State::SpinTry { closed_count: 0 };
+                *self = State::SpinTry { disconn_count: 0 };
 
                 if let Some(end) = deadline {
                     if Instant::now() >= end {
@@ -272,32 +272,32 @@ impl State {
     fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
         match *self {
             State::TryOnce {
-                ref mut closed_count,
+                ref mut disconn_count,
             } => match tx.try_send(value) {
                 Ok(()) => return Ok(()),
                 Err(TrySendError::Full(v)) => value = v,
                 Err(TrySendError::Disconnected(v)) => {
                     value = v;
-                    *closed_count += 1;
+                    *disconn_count += 1;
                 }
             },
             State::SpinTry {
-                ref mut closed_count,
+                ref mut disconn_count,
             } => match tx.spin_try_send(value) {
                 Ok(()) => return Ok(()),
                 Err(TrySendError::Full(v)) => value = v,
                 Err(TrySendError::Disconnected(v)) => {
                     value = v;
-                    *closed_count += 1;
+                    *disconn_count += 1;
                 }
             },
             State::Promise {
-                ref mut closed_count,
+                ref mut disconn_count,
             } => {
                 tx.promise_send();
 
                 if tx.is_disconnected() {
-                    *closed_count += 1;
+                    *disconn_count += 1;
                 } else if tx.can_send() {
                     actor::current_select(CaseId::abort());
                 }
@@ -321,27 +321,30 @@ impl State {
     fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
         match *self {
             State::TryOnce {
-                ref mut closed_count,
+                ref mut disconn_count,
             } => match rx.try_recv() {
                 Ok(v) => return Ok(v),
                 Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => *closed_count += 1,
+                Err(TryRecvError::Disconnected) => *disconn_count += 1,
             },
             State::SpinTry {
-                ref mut closed_count,
+                ref mut disconn_count,
             } => match rx.spin_try_recv() {
                 Ok(v) => return Ok(v),
                 Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => *closed_count += 1,
+                Err(TryRecvError::Disconnected) => *disconn_count += 1,
             },
             State::Promise {
-                ref mut closed_count,
+                ref mut disconn_count,
             } => {
                 rx.promise_recv();
 
-                if rx.is_disconnected() {
-                    *closed_count += 1;
-                } else if rx.can_recv() {
+                let is_disconn = rx.is_disconnected();
+                let can_recv = rx.can_recv();
+
+                if is_disconn && !can_recv {
+                    *disconn_count += 1;
+                } else if can_recv {
                     actor::current_select(CaseId::abort());
                 }
             }

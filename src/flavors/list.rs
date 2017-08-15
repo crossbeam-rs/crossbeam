@@ -182,8 +182,9 @@ impl<T> Channel<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        let closed = self.closed.load(SeqCst);
         match self.pop() {
-            None => if self.closed.load(SeqCst) {
+            None => if closed {
                 Err(TryRecvError::Disconnected)
             } else {
                 Err(TryRecvError::Empty)
@@ -194,16 +195,15 @@ impl<T> Channel<T> {
 
     pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
         for i in 0..20 {
+            let closed = self.closed.load(SeqCst);
             if let Some(v) = self.pop() {
                 return Ok(v);
             }
+            if closed {
+                return Err(TryRecvError::Disconnected);
+            }
         }
-
-        if self.closed.load(SeqCst) {
-            Err(TryRecvError::Disconnected)
-        } else {
-            Err(TryRecvError::Empty)
-        }
+        Err(TryRecvError::Empty)
     }
 
     pub fn recv_until(
