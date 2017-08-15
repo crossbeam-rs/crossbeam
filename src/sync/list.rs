@@ -1,125 +1,173 @@
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use {Atomic, Owned, Ptr, Scope};
+use {Atomic, Owned, Ptr, Scope, unprotected};
+use util::cache_padded::CachePadded;
+
 
 /// An entry in the linked list.
-pub struct Entry<T> {
+struct NodeInner<T> {
     /// The data in the entry.
     data: T,
 
     /// The next entry in the linked list.
     /// If the tag is 1, this entry is marked as deleted.
-    next: Atomic<Entry<T>>,
+    next: Atomic<Node<T>>,
 }
 
+pub struct Node<T>(CachePadded<NodeInner<T>>);
+
 pub struct List<T> {
-    head: Atomic<Entry<T>>,
+    head: Atomic<Node<T>>,
 }
 
 pub struct Iter<'scope, T: 'scope> {
     /// The scope in which the iterator is operating.
     scope: &'scope Scope,
 
-    /// Pointer to the head.
-    head: &'scope Atomic<Entry<T>>,
-
     /// Pointer from the predecessor to the current entry.
-    pred: &'scope Atomic<Entry<T>>,
+    pred: &'scope Atomic<Node<T>>,
 
     /// The current entry.
-    curr: Ptr<'scope, Entry<T>>,
+    curr: Ptr<'scope, Node<T>>,
 }
 
-impl<T> Entry<T> {
+pub enum IterResult<'scope, T: 'scope> {
+    Some(&'scope T),
+    None,
+    Abort,
+}
+
+impl<T> Node<T> {
     /// Returns the data in this entry.
+    fn new(data: T) -> Self {
+        Node(CachePadded::new(NodeInner {
+            data: data,
+            next: Atomic::null(),
+        }))
+    }
+
     pub fn get(&self) -> &T {
-        &self.data
+        &self.0.data
     }
 
     /// Marks this entry as deleted.
-    pub fn delete(&self, scope: &Scope) {
-        self.next.fetch_or(1, Release, scope);
+    pub fn delete<'scope>(&self, scope: &Scope) {
+        self.0.next.fetch_or(1, Release, scope);
     }
 }
 
 impl<T> List<T> {
     /// Returns a new, empty linked list.
-    pub fn new() -> List<T> {
+    pub fn new() -> Self {
         List { head: Atomic::null() }
     }
 
     /// Inserts `data` into the list.
-    pub fn insert<'scope>(&self, data: T, scope: &'scope Scope) -> Ptr<'scope, Entry<T>> {
-        let mut new = Owned::new(Entry {
-            data: data,
-            next: Atomic::null(),
-        });
-        let mut head = self.head.load(Relaxed, scope);
+    pub fn insert<'scope>(
+        &'scope self,
+        to: &'scope Atomic<Node<T>>,
+        data: T,
+        scope: &'scope Scope,
+    ) -> Ptr<'scope, Node<T>> {
+        let mut cur = Owned::new(Node::new(data));
+        let mut next = to.load(Relaxed, scope);
 
         loop {
-            new.next.store(head, Relaxed);
-            match self.head.compare_and_set_weak_owned(head, new, Release, scope) {
-                Ok(n) => return n,
-                Err((h, n)) => {
-                    head = h;
-                    new = n;
+            cur.0.next.store(next, Relaxed);
+            match to.compare_and_set_weak_owned(next, cur, Release, scope) {
+                Ok(cur) => return cur,
+                Err((n, c)) => {
+                    next = n;
+                    cur = c;
                 }
             }
         }
+    }
+
+    pub fn insert_head<'scope>(
+        &'scope self,
+        data: T,
+        scope: &'scope Scope,
+    ) -> Ptr<'scope, Node<T>> {
+        self.insert(&self.head, data, scope)
     }
 
     /// Returns an iterator over all data.
     ///
     /// Every datum that is inserted at the moment this function is called and persists at least
-    /// until the end of iteration will be returned. Since this iterator traverses a lock-free linked
-    /// list that may be concurrently modified, some additional caveats apply:
+    /// until the end of iteration will be returned. Since this iterator traverses a lock-free
+    /// linked list that may be concurrently modified, some additional caveats apply:
     ///
     /// 1. If a new datum is inserted during iteration, it may or may not be returned.
     /// 2. If a datum is deleted during iteration, it may or may not be returned.
-    /// 3. Any datum that gets returned may be returned multiple times.
+    /// 3. It may not return all data if a concurrent thread continues to iterate the same list.
     pub fn iter<'scope>(&'scope self, scope: &'scope Scope) -> Iter<'scope, T> {
-        let head = &self.head;
-        let pred = head;
+        let pred = &self.head;
         let curr = pred.load(Acquire, scope);
-        Iter { scope, head, pred, curr }
+        Iter { scope, pred, curr }
     }
 }
 
-impl<'scope, T> Iterator for Iter<'scope, T> {
-    type Item = &'scope T;
+impl<T> Drop for List<T> {
+    fn drop(&mut self) {
+        unsafe {
+            unprotected(|scope| {
+                let mut curr = self.head.load(Relaxed, scope);
+                while let Some(c) = curr.as_ref() {
+                    let succ = c.0.next.load(Relaxed, scope);
+                    drop(Box::from_raw(curr.as_raw() as *mut Node<T>));
+                    curr = succ;
+                }
+            });
+        }
+    }
+}
 
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'scope, T> Iter<'scope, T> {
+    pub fn next(&mut self) -> IterResult<T> {
         while let Some(c) = unsafe { self.curr.as_ref() } {
-            let succ = c.next.load(Acquire, self.scope);
+            let succ = c.0.next.load(Acquire, self.scope);
 
             if succ.tag() == 1 {
                 // This entry was removed. Try unlinking it from the list.
                 let succ = succ.with_tag(0);
 
-                if self.pred
-                    .compare_and_set(self.curr, succ, Release, self.scope)
-                    .is_err()
-                {
-                    // We lost the race to unlink this entry - let's start over from the beginning.
-                    self.pred = self.head;
-                    self.curr = self.pred.load(Acquire, self.scope);
-                    continue;
+                match self.pred.compare_and_set_weak(
+                    self.curr,
+                    succ,
+                    Acquire,
+                    self.scope,
+                ) {
+                    Ok(_) => {
+                        unsafe {
+                            self.scope.defer_free(self.curr);
+                        }
+                        self.curr = succ;
+                    }
+                    Err(_) => {
+                        // We lost the race to delete the entry.  Since another thread trying
+                        // to iterate the list has won the race, we return early.
+                        return IterResult::Abort;
+                    }
                 }
 
-                // FIXME(jeehoonkang): call `drop` for the unlinked entry.
-
-                // Move forward, but don't change the predecessor.
-                self.curr = succ;
-            } else {
-                // Move one step forward.
-                self.pred = &c.next;
-                self.curr = succ;
-
-                return Some(&c.data);
+                continue;
             }
+
+            // Move one step forward.
+            self.pred = &c.0.next;
+            self.curr = succ;
+
+            return IterResult::Some(&c.0.data);
         }
 
         // We reached the end of the list.
-        None
+        IterResult::None
+    }
+}
+
+impl<T> Default for List<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
