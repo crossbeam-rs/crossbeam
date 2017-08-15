@@ -114,16 +114,16 @@ fn select_both<F: Fn() -> RxTx>(make: F) {
         for _ in 0..THREADS {
             let chans = chans.clone();
             s.spawn(move || {
-                let rx0 = &chans[0].0;
-                let rx1 = &chans[1].0;
-                let rx2 = &chans[2].0;
-                let rx3 = &chans[3].0;
+                let tx0 = &chans[0].0;
+                let tx1 = &chans[1].0;
+                let tx2 = &chans[2].0;
+                let tx3 = &chans[3].0;
                 for i in 0..MESSAGES / THREADS {
                     chan_select! {
-                        rx0.send(i as i32) => {},
-                        rx1.send(i as i32) => {},
-                        rx2.send(i as i32) => {},
-                        rx3.send(i as i32) => {},
+                        tx0.send(i as i32) => {},
+                        tx1.send(i as i32) => {},
+                        tx2.send(i as i32) => {},
+                        tx3.send(i as i32) => {},
                     }
                 }
             });
@@ -132,16 +132,16 @@ fn select_both<F: Fn() -> RxTx>(make: F) {
         for _ in 0..THREADS {
             let chans = chans.clone();
             s.spawn(move || {
-                let tx0 = &chans[0].1;
-                let tx1 = &chans[1].1;
-                let tx2 = &chans[2].1;
-                let tx3 = &chans[3].1;
+                let rx0 = &chans[0].1;
+                let rx1 = &chans[1].1;
+                let rx2 = &chans[2].1;
+                let rx3 = &chans[3].1;
                 for _ in 0..MESSAGES / THREADS {
                     chan_select! {
-                        tx0.recv() => {},
-                        tx1.recv() => {},
-                        tx2.recv() => {},
-                        tx3.recv() => {},
+                        rx0.recv() => {},
+                        rx1.recv() => {},
+                        rx2.recv() => {},
+                        rx3.recv() => {},
                     }
                 }
             });
