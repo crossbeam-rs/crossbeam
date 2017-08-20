@@ -71,36 +71,24 @@ fn ensure_aligned<T>(raw: *const T) {
     assert_eq!(raw as usize & low_bits::<T>(), 0, "unaligned pointer");
 }
 
-/// Panics if the tag doesn't fit into the unused bits of an aligned pointer to `T`.
-#[inline]
-fn validate_tag<T>(tag: usize) {
-    let mask = low_bits::<T>();
-    assert!(
-        tag <= mask,
-        "tag too large to fit into the unused bits: {} > {}",
-        tag,
-        mask
-    );
-}
-
 /// Returns a bitmask containing the unused least significant bits of an aligned pointer to `T`.
 #[inline]
 fn low_bits<T>() -> usize {
     (1 << mem::align_of::<T>().trailing_zeros()) - 1
 }
 
-/// Given a tagged pointer `data`, returns the same pointer, but tagged with `tag`.
-/// Panics if the tag doesn't fit into the unused bits of the pointer.
+/// Given a tagged pointer `data`, returns the same pointer, but tagged with `tag`.  `tag` is
+/// truncated to be fit into the unused bits of the pointer to `T`.
 #[inline]
 fn data_with_tag<T>(data: usize, tag: usize) -> usize {
-    validate_tag::<T>(tag);
-    (data & !low_bits::<T>()) | tag
+    (data & !low_bits::<T>()) | (tag & low_bits::<T>())
 }
 
 /// An atomic pointer that can be safely shared between threads.
 ///
 /// The pointer must be properly aligned. Since it is aligned, a tag can be stored into the unused
-/// least significant bits of the address.
+/// least significant bits of the address.  More precisely, a tag should be less than `(1 <<
+/// mem::align_of::<T>().trailing_zeros())`.
 ///
 /// Any method that loads the pointer must be passed a reference to a [`Scope`].
 ///
@@ -516,8 +504,7 @@ impl<T> Atomic<T> {
     /// });
     /// ```
     pub fn fetch_and<'scope>(&self, val: usize, ord: Ordering, _: &'scope Scope) -> Ptr<'scope, T> {
-        validate_tag::<T>(val);
-        Ptr::from_data(self.data.fetch_and(val, ord))
+        Ptr::from_data(self.data.fetch_and(val | !low_bits::<T>(), ord))
     }
 
     /// Bitwise "or" with the current tag.
@@ -543,8 +530,7 @@ impl<T> Atomic<T> {
     /// });
     /// ```
     pub fn fetch_or<'scope>(&self, val: usize, ord: Ordering, _: &'scope Scope) -> Ptr<'scope, T> {
-        validate_tag::<T>(val);
-        Ptr::from_data(self.data.fetch_or(val, ord))
+        Ptr::from_data(self.data.fetch_or(val & low_bits::<T>(), ord))
     }
 
     /// Bitwise "xor" with the current tag.
@@ -570,8 +556,7 @@ impl<T> Atomic<T> {
     /// });
     /// ```
     pub fn fetch_xor<'scope>(&self, val: usize, ord: Ordering, _: &'scope Scope) -> Ptr<'scope, T> {
-        validate_tag::<T>(val);
-        Ptr::from_data(self.data.fetch_xor(val, ord))
+        Ptr::from_data(self.data.fetch_xor(val & low_bits::<T>(), ord))
     }
 }
 
@@ -711,7 +696,8 @@ impl<T> Owned<T> {
         self.data & low_bits::<T>()
     }
 
-    /// Returns the same pointer, but tagged with `tag`.
+    /// Returns the same pointer, but tagged with `tag`. `tag` is truncated to be fit into the
+    /// unused bits of the pointer to `T`.
     ///
     /// # Examples
     ///
@@ -981,7 +967,8 @@ impl<'scope, T> Ptr<'scope, T> {
         self.data & low_bits::<T>()
     }
 
-    /// Returns the same pointer, but tagged with `tag`.
+    /// Returns the same pointer, but tagged with `tag`. `tag` is truncated to be fit into the
+    /// unused bits of the pointer to `T`.
     ///
     /// # Examples
     ///
@@ -1020,19 +1007,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn invalid_tag_i8() {
-        Ptr::<i8>::null().with_tag(1);
-    }
-
-    #[test]
     fn valid_tag_i64() {
         Ptr::<i64>::null().with_tag(7);
-    }
-
-    #[test]
-    #[should_panic]
-    fn invalid_tag_i64() {
-        Ptr::<i64>::null().with_tag(8);
     }
 }
