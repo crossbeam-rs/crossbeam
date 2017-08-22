@@ -273,7 +273,7 @@ fn mpmc() {
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
-            s.spawn(|| for i in 0..COUNT {
+            s.spawn(|| for _ in 0..COUNT {
                 let n = rx.recv().unwrap();
                 v[n].fetch_add(1, SeqCst);
             });

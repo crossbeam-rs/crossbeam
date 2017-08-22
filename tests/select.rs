@@ -162,7 +162,7 @@ fn blocked() {
         }
     }
 
-    tx2.send(2);
+    tx2.send(2).unwrap();
     loop {
         iters += 1;
         if let Ok(_) = rx1.select() {
@@ -189,7 +189,7 @@ fn blocked() {
         if let Ok(_) = rx1.select() {
             panic!();
         }
-        if let Ok(x) = rx2.select() {
+        if let Ok(_) = rx2.select() {
             panic!();
         }
         if select::disconnected() {
@@ -209,13 +209,13 @@ fn blocked() {
 #[test]
 fn timeout() {
     let mut iters = 0;
-    let (tx1, rx1) = unbounded::<i32>();
+    let (_tx1, rx1) = unbounded::<i32>();
     let (tx2, rx2) = unbounded::<i32>();
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             thread::sleep(ms(1500));
-            tx2.send(2);
+            tx2.send(2).unwrap();
         });
 
         loop {
@@ -258,7 +258,7 @@ fn unblocks() {
     crossbeam::scope(|s| {
         s.spawn(|| {
             thread::sleep(ms(500));
-            tx2.send(2);
+            tx2.send(2).unwrap();
         });
 
         loop {
@@ -417,7 +417,7 @@ fn loop_try() {
                         assert_eq!(x, 1);
                         break;
                     }
-                    if let Ok(x) = tx2.select(2) {
+                    if let Ok(_) = tx2.select(2) {
                         break;
                     }
                     if select::disconnected() {
@@ -474,7 +474,7 @@ fn cloning2() {
         let mut iters = 0;
         let (tx1, rx1) = unbounded::<()>();
         let (tx2, rx2) = unbounded::<()>();
-        let (tx3, rx3) = unbounded::<()>();
+        let (_tx3, _rx3) = unbounded::<()>();
 
         s.spawn(move || loop {
             iters += 1;
@@ -556,10 +556,10 @@ fn stress_recv() {
 
     crossbeam::scope(|s| {
         s.spawn(|| for i in 0..10_000 {
-            tx1.send(i);
+            tx1.send(i).unwrap();
             rx3.recv().unwrap();
 
-            tx2.send(i);
+            tx2.send(i).unwrap();
             rx3.recv().unwrap();
         });
 

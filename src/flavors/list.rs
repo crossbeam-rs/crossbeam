@@ -5,15 +5,15 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, SeqCst};
+use std::sync::atomic::Ordering::{Relaxed, SeqCst};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use coco::epoch::{self, Atomic, Owned};
 
 use CaseId;
 use actor;
-use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
 struct Node<T> {
@@ -67,7 +67,7 @@ impl<T> Channel<T> {
     }
 
     fn push(&self, value: T) {
-        let mut node = Owned::new(Node {
+        let node = Owned::new(Node {
             value: value,
             next: Atomic::null(),
         });
@@ -194,7 +194,7 @@ impl<T> Channel<T> {
     }
 
     pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
-        for i in 0..20 {
+        for _ in 0..20 {
             let closed = self.closed.load(SeqCst);
             if let Some(v) = self.pop() {
                 return Ok(v);

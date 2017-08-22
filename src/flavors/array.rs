@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use CaseId;
 use actor;
-use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
 struct Node<T> {

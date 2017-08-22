@@ -2,14 +2,13 @@ extern crate channel;
 extern crate crossbeam;
 extern crate rand;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
 
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use channel::{bounded, select};
+use channel::bounded;
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use rand::{thread_rng, Rng};
 
@@ -23,7 +22,7 @@ fn smoke() {
     tx.try_send(7).unwrap();
     assert_eq!(rx.try_recv().unwrap(), 7);
 
-    tx.send(8);
+    tx.send(8).unwrap();
     assert_eq!(rx.recv().unwrap(), 8);
 
     assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
@@ -252,13 +251,13 @@ fn len() {
         s.spawn(|| for i in 0..COUNT {
             assert_eq!(rx.recv(), Ok(i));
             let len = rx.len();
-            assert!(0 <= len && len <= CAP);
+            assert!(len <= CAP);
         });
 
         s.spawn(|| for i in 0..COUNT {
             tx.send(i).unwrap();
             let len = tx.len();
-            assert!(0 <= len && len <= CAP);
+            assert!(len <= CAP);
         });
     });
 
@@ -326,7 +325,7 @@ fn mpmc() {
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
-            s.spawn(|| for i in 0..COUNT {
+            s.spawn(|| for _ in 0..COUNT {
                 let n = rx.recv().unwrap();
                 v[n].fetch_add(1, SeqCst);
             });
@@ -407,7 +406,7 @@ fn drops() {
         });
 
         for _ in 0..additional {
-            tx.try_send(DropCounter);
+            tx.try_send(DropCounter).unwrap();
         }
 
         assert_eq!(DROPS.load(SeqCst), steps);

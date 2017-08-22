@@ -127,7 +127,7 @@ enum Machine {
     },
 }
 
-struct Config {
+struct Config { // TODO: use this
     len: usize,
     start: usize,
     deadline: Option<Instant>,
