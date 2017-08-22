@@ -21,5 +21,13 @@ name = "mpsc"
 path = "mpsc.rs"
 
 [[bin]]
+name = "ms_queue"
+path = "ms_queue.rs"
+
+[[bin]]
 name = "multiqueue"
 path = "multiqueue.rs"
+
+[[bin]]
+name = "seg_queue"
+path = "seg_queue.rs"
