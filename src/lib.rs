@@ -120,7 +120,7 @@ impl<T> Sender<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.spin_try_send(value),
             Flavor::List(ref chan) => chan.try_send(value),
-            Flavor::Zero(ref chan) => chan.try_send(value),
+            Flavor::Zero(ref chan) => chan.spin_try_send(value, self.case_id()),
         }
     }
 
@@ -128,7 +128,7 @@ impl<T> Sender<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.try_send(value),
             Flavor::List(ref chan) => chan.try_send(value),
-            Flavor::Zero(ref chan) => chan.try_send(value),
+            Flavor::Zero(ref chan) => chan.try_send(value, self.case_id()),
         }
     }
 
@@ -251,7 +251,7 @@ impl<T> Receiver<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.spin_try_recv(),
             Flavor::List(ref chan) => chan.spin_try_recv(),
-            Flavor::Zero(ref chan) => chan.try_recv(),
+            Flavor::Zero(ref chan) => chan.spin_try_recv(self.case_id()),
         }
     }
 
@@ -259,7 +259,7 @@ impl<T> Receiver<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.try_recv(),
             Flavor::List(ref chan) => chan.try_recv(),
-            Flavor::Zero(ref chan) => chan.try_recv(),
+            Flavor::Zero(ref chan) => chan.try_recv(self.case_id()),
         }
     }
 

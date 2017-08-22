@@ -11,6 +11,13 @@ use CaseId;
 use actor::{self, Actor};
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 
+#[derive(PartialEq, Eq)]
+enum Operation {
+    Try,
+    Spin,
+    Until(Option<Instant>),
+}
+
 struct Inner<T> {
     senders: Registry<T>,
     receivers: Registry<T>,
@@ -56,27 +63,35 @@ impl<T> Channel<T> {
         finish_recv(self)
     }
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        let entry = {
-            let mut inner = self.inner.lock();
-            if inner.closed {
-                return Err(TrySendError::Disconnected(value));
-            }
-            inner.receivers.pop()
-        };
+    pub fn try_send(&self, value: T, case_id: CaseId) -> Result<(), TrySendError<T>> {
+        match self.send(value, Operation::Try, case_id) {
+            Ok(()) => Ok(()),
+            Err(SendTimeoutError::Disconnected(v)) => Err(TrySendError::Disconnected(v)),
+            Err(SendTimeoutError::Timeout(v)) => Err(TrySendError::Full(v)),
+        }
+    }
 
-        if let Some(e) = entry {
-            e.send(value, self);
-            Ok(())
-        } else {
-            Err(TrySendError::Full(value))
+    pub fn spin_try_send(&self, value: T, case_id: CaseId) -> Result<(), TrySendError<T>> {
+        match self.send(value, Operation::Spin, case_id) {
+            Ok(()) => Ok(()),
+            Err(SendTimeoutError::Disconnected(v)) => Err(TrySendError::Disconnected(v)),
+            Err(SendTimeoutError::Timeout(v)) => Err(TrySendError::Full(v)),
         }
     }
 
     pub fn send_until(
         &self,
-        mut value: T,
+        value: T,
         deadline: Option<Instant>,
+        case_id: CaseId,
+    ) -> Result<(), SendTimeoutError<T>> {
+        self.send(value, Operation::Until(deadline), case_id)
+    }
+
+    fn send(
+        &self,
+        mut value: T,
+        oper: Operation,
         case_id: CaseId,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
@@ -93,12 +108,21 @@ impl<T> Channel<T> {
                     return Ok(());
                 }
 
+                if oper == Operation::Try {
+                    return Err(SendTimeoutError::Timeout(value));
+                }
+
                 actor::current_reset();
                 packet = Packet::new(Some(value));
                 inner.senders.offer(&packet, case_id);
             }
 
-            let timed_out = !actor::current_wait_until(deadline);
+            let timed_out = if let Operation::Until(deadline) = oper {
+                !actor::current_wait_until(deadline)
+            } else {
+                thread::yield_now();
+                actor::current_select(CaseId::abort())
+            };
 
             if actor::current_selected() != CaseId::abort() {
                 packet.wait();
@@ -115,25 +139,33 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let entry = {
-            let mut inner = self.inner.lock();
-            if inner.closed {
-                return Err(TryRecvError::Disconnected);
-            }
-            inner.senders.pop()
-        };
+    pub fn try_recv(&self, case_id: CaseId) -> Result<T, TryRecvError> {
+        match self.recv(Operation::Try, case_id) {
+            Ok(v) => Ok(v),
+            Err(RecvTimeoutError::Disconnected) => Err(TryRecvError::Disconnected),
+            Err(RecvTimeoutError::Timeout) => Err(TryRecvError::Empty),
+        }
+    }
 
-        if let Some(e) = entry {
-            Ok(e.recv(self))
-        } else {
-            Err(TryRecvError::Empty)
+    pub fn spin_try_recv(&self, case_id: CaseId) -> Result<T, TryRecvError> {
+        match self.recv(Operation::Spin, case_id) {
+            Ok(v) => Ok(v),
+            Err(RecvTimeoutError::Disconnected) => Err(TryRecvError::Disconnected),
+            Err(RecvTimeoutError::Timeout) => Err(TryRecvError::Empty),
         }
     }
 
     pub fn recv_until(
         &self,
         deadline: Option<Instant>,
+        case_id: CaseId,
+    ) -> Result<T, RecvTimeoutError> {
+        self.recv(Operation::Until(deadline), case_id)
+    }
+
+    fn recv(
+        &self,
+        oper: Operation,
         case_id: CaseId,
     ) -> Result<T, RecvTimeoutError> {
         loop {
@@ -149,12 +181,21 @@ impl<T> Channel<T> {
                     return Ok(e.recv(self));
                 }
 
+                if oper == Operation::Try {
+                    return Err(RecvTimeoutError::Timeout);
+                }
+
                 actor::current_reset();
                 packet = Packet::new(None);
                 inner.receivers.offer(&packet, case_id);
             }
 
-            let timed_out = !actor::current_wait_until(deadline);
+            let timed_out = if let Operation::Until(deadline) = oper {
+                !actor::current_wait_until(deadline)
+            } else {
+                thread::yield_now();
+                actor::current_select(CaseId::abort())
+            };
 
             if actor::current_selected() != CaseId::abort() {
                 packet.wait();
@@ -214,7 +255,7 @@ impl<T> Entry<T> {
                 unsafe { (*packet).put(value) }
                 actor.unpark();
             }
-            Entry::Promise { ref local, case_id } => {
+            Entry::Promise { ref local, .. } => {
                 actor::current_reset();
                 let req = Request::new(Some(value), chan);
                 local.request_ptr.store(&req as *const _ as usize, SeqCst);
@@ -234,7 +275,7 @@ impl<T> Entry<T> {
                 actor.unpark();
                 v
             }
-            Entry::Promise { ref local, case_id } => {
+            Entry::Promise { ref local, .. } => {
                 actor::current_reset();
                 let req = Request::new(None, chan);
                 local.request_ptr.store(&req as *const _ as usize, SeqCst);
@@ -311,7 +352,7 @@ impl<T> Registry<T> {
     }
 
     fn pop(&mut self) -> Option<Entry<T>> {
-        let thread_id = thread::current().id();
+        let thread_id = current_thread_id();
 
         for i in 0..self.entries.len() {
             if self.entries[i].actor().thread_id() != thread_id {
@@ -340,7 +381,7 @@ impl<T> Registry<T> {
     }
 
     fn revoke(&mut self, case_id: CaseId) {
-        let thread_id = thread::current().id();
+        let thread_id = current_thread_id();
 
         if let Some((i, _)) = self.entries.iter().enumerate().find(|&(_, e)| {
             e.case_id() == case_id && e.actor().thread_id() == thread_id
@@ -351,7 +392,7 @@ impl<T> Registry<T> {
     }
 
     fn can_notify(&self) -> bool {
-        let thread_id = thread::current().id();
+        let thread_id = current_thread_id();
 
         for i in 0..self.entries.len() {
             if self.entries[i].actor().thread_id() != thread_id {
@@ -380,6 +421,14 @@ impl<T> Drop for Registry<T> {
     fn drop(&mut self) {
         debug_assert!(self.entries.is_empty());
     }
+}
+
+thread_local! {
+    static THREAD_ID: thread::ThreadId = thread::current().id();
+}
+
+fn current_thread_id() -> thread::ThreadId {
+    THREAD_ID.with(|id| *id)
 }
 
 thread_local! {
