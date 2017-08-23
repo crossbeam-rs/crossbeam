@@ -9,6 +9,17 @@ pub struct AtomicOption<T> {
     inner: AtomicPtr<T>,
 }
 
+impl<T> Drop for AtomicOption<T> {
+    fn drop(&mut self) {
+        let inner = self.inner.load(Ordering::Relaxed);
+        if !inner.is_null() {
+            unsafe {
+                Box::from_raw(inner);
+            }
+        }
+    }
+}
+
 impl<T> AtomicOption<T> {
     pub fn new() -> AtomicOption<T> {
         AtomicOption { inner: AtomicPtr::new(ptr::null_mut()) }
