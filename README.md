@@ -12,7 +12,7 @@ and maps.
 
 - **Memory management**. Because non-blocking data structures avoid global
 synchronization, it is not easy to tell when internal data can be safely
-freed. The `mem` module provides generic, easy to use, and high-performance APIs
+freed. The `epoch` module provides generic, easy to use, and high-performance APIs
 for managing memory in these cases.
 
 - **Synchronization**. The standard library provides a few synchronization
