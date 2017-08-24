@@ -14,7 +14,7 @@ impl<T> Drop for AtomicOption<T> {
         let inner = self.inner.load(Ordering::Relaxed);
         if !inner.is_null() {
             unsafe {
-                Box::from_raw(inner);
+                drop(Box::from_raw(inner));
             }
         }
     }
