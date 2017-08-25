@@ -604,7 +604,7 @@ pub struct Owned<T> {
 
 impl<T> Owned<T> {
     /// Returns a new owned pointer pointing to the tagged pointer `data`.
-    fn from_data(data: usize) -> Self {
+    unsafe fn from_data(data: usize) -> Self {
         Owned {
             data: data,
             _marker: PhantomData,
@@ -638,7 +638,7 @@ impl<T> Owned<T> {
     /// let o = unsafe { Owned::from_raw(Box::into_raw(Box::new(1234))) };
     /// ```
     pub fn from_box(b: Box<T>) -> Self {
-        Self::from_raw(Box::into_raw(b))
+        unsafe { Self::from_raw(Box::into_raw(b)) }
     }
 
     /// Returns a new owned pointer pointing to `raw`.
@@ -658,7 +658,7 @@ impl<T> Owned<T> {
     ///
     /// let o = unsafe { Owned::from_raw(Box::into_raw(Box::new(1234))) };
     /// ```
-    pub fn from_raw(raw: *mut T) -> Self {
+    pub unsafe fn from_raw(raw: *mut T) -> Self {
         ensure_aligned(raw);
         Self::from_data(raw as usize)
     }
@@ -712,7 +712,18 @@ impl<T> Owned<T> {
     pub fn with_tag(self, tag: usize) -> Self {
         let data = self.data;
         mem::forget(self);
-        Self::from_data(data_with_tag::<T>(data, tag))
+        unsafe {
+            Self::from_data(data_with_tag::<T>(data, tag))
+        }
+    }
+}
+
+impl<T> Drop for Owned<T> {
+    fn drop(&mut self) {
+        let raw = (self.data & !low_bits::<T>()) as *mut T;
+        unsafe {
+            drop(Box::from_raw(raw));
+        }
     }
 }
 
