@@ -712,9 +712,7 @@ impl<T> Owned<T> {
     pub fn with_tag(self, tag: usize) -> Self {
         let data = self.data;
         mem::forget(self);
-        unsafe {
-            Self::from_data(data_with_tag::<T>(data, tag))
-        }
+        unsafe { Self::from_data(data_with_tag::<T>(data, tag)) }
     }
 }
 

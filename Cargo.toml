@@ -16,6 +16,9 @@ strict_gc = []
 [dependencies]
 scopeguard = "0.3"
 lazy_static = "0.2"
+boxfnonce = "0.0.3"
+arrayvec = "0.4"
+crossbeam-utils = "0.1"
 
 [dev-dependencies]
 rand = "0.3"

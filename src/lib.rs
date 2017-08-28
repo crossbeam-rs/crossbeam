@@ -34,15 +34,17 @@
 extern crate scopeguard;
 #[macro_use]
 extern crate lazy_static;
+extern crate arrayvec;
+extern crate boxfnonce;
+extern crate crossbeam_utils;
 
-#[macro_use]
-pub mod util;
 mod atomic;
 mod mutator;
+mod garbage;
 mod epoch;
 mod global;
 mod sync;
 
 pub use self::atomic::{Atomic, CompareAndSetOrdering, Owned, Ptr};
-pub use self::global::{pin, is_pinned};
-pub use self::mutator::{Scope, unprotected};
+pub use self::global::{pin, is_pinned, unprotected};
+pub use self::mutator::Scope;
