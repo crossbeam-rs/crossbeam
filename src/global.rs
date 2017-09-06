@@ -8,7 +8,7 @@
 
 use std::cmp;
 use std::sync::atomic::Ordering::{Relaxed, SeqCst};
-use mutator::{Mutator, LocalEpoch, Scope, unprotected_with_bag};
+use mutator::{Mutator, LocalEpoch, Scope};
 use garbage::Bag;
 use epoch::Epoch;
 use sync::list::List;
@@ -82,30 +82,6 @@ where
 /// Check if the current thread is pinned.
 pub fn is_pinned() -> bool {
     MUTATOR.with(|mutator| mutator.is_pinned())
-}
-
-/// Returns a [`Scope`] without pinning any mutator.
-///
-/// Sometimes, we'd like to have longer-lived scopes in which we know our thread is the only one
-/// accessing atomics. This is true e.g. when destructing a big data structure, or when constructing
-/// it from a long iterator. In such cases we don't need to be overprotective because there is no
-/// fear of other threads concurrently destroying objects.
-///
-/// Function `unprotected` is *unsafe* because we must promise that no other thread is accessing the
-/// Atomics and objects at the same time. The function is safe to use only if (1) the locations that
-/// we access should not be deallocated by concurrent mutators, and (2) the locations that we
-/// deallocate should not be accessed by concurrent mutators.
-///
-/// Just like with the safe epoch::pin function, unprotected use of atomics is enclosed within a
-/// scope so that pointers created within it don't leak out or get mixed with pointers from other
-/// scopes.
-pub unsafe fn unprotected<F, R>(f: F) -> R
-where
-    F: FnOnce(&Scope) -> R,
-{
-    let mut bag = Bag::new();
-    let result = unprotected_with_bag(&mut bag, f);
-    result
 }
 
 

@@ -46,5 +46,5 @@ mod global;
 mod sync;
 
 pub use self::atomic::{Atomic, CompareAndSetOrdering, Owned, Ptr};
-pub use self::global::{pin, is_pinned, unprotected};
-pub use self::mutator::Scope;
+pub use self::mutator::{Scope, unprotected};
+pub use self::global::{pin, is_pinned};

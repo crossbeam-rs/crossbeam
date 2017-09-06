@@ -16,6 +16,7 @@
 //! are necessary for performing atomic operations, and for freeing/dropping locations.
 
 use std::cell::{Cell, UnsafeCell};
+use std::ptr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{Relaxed, Release, SeqCst};
 
@@ -70,10 +71,8 @@ impl<'scope> Mutator<'scope> {
         Mutator {
             bag: UnsafeCell::new(Bag::new()),
             local_epoch: unsafe {
-                // Since we dereference no pointers in this block and create no garbages, it is safe
-                // to use `unprotected_with_bag` with an invalid bag.
-                let mut bag = ::std::mem::zeroed::<Bag>();
-                unprotected_with_bag(&mut bag, |scope| {
+                // Since we dereference no pointers in this block, it is safe to use `unprotected`.
+                unprotected(|scope| {
                     &*global::REGISTRIES
                         .insert_head(LocalEpoch::new(), scope)
                         .as_raw()
@@ -163,13 +162,26 @@ impl<'scope> Drop for Mutator<'scope> {
     }
 }
 
-/// Returns a [`Scope`] without pinning any mutator, with arbitrary bag.
+/// Returns a [`Scope`] without pinning any mutator.
+///
+/// Sometimes, we'd like to have longer-lived scopes in which we know our thread can access atomics
+/// without protection. This is true e.g. when deallocating a big data structure, or when
+/// constructing it from a long iterator. In such cases we don't need to be overprotective because
+/// there is no fear of other threads concurrently destroying objects.
+///
+/// Function `unprotected` is *unsafe* because we must promise that (1) the locations that we access
+/// should not be deallocated by concurrent mutators, and (2) the locations that we deallocate
+/// should not be accessed by concurrent mutators.
+///
+/// Just like with the safe epoch::pin function, unprotected use of atomics is enclosed within a
+/// scope so that pointers created within it don't leak out or get mixed with pointers from other
+/// scopes.
 #[inline]
-pub unsafe fn unprotected_with_bag<F, R>(bag: &mut Bag, f: F) -> R
+pub unsafe fn unprotected<F, R>(f: F) -> R
 where
     F: FnOnce(&Scope) -> R,
 {
-    let scope = &Scope { bag: bag };
+    let scope = &Scope { bag: ptr::null_mut() };
     f(scope)
 }
 
@@ -226,17 +238,13 @@ impl LocalEpoch {
 }
 
 impl Scope {
-    unsafe fn get_bag(&self) -> &mut Bag {
-        &mut *self.bag
-    }
-
     unsafe fn defer_garbage(&self, mut garbage: Garbage) {
-        let bag = self.get_bag();
-
-        while let Err(g) = bag.try_push(garbage) {
-            global::push_bag(bag, self);
-            garbage = g;
-        }
+        self.bag.as_mut().map(|bag| {
+            while let Err(g) = bag.try_push(garbage) {
+                global::push_bag(bag, self);
+                garbage = g;
+            }
+        });
     }
 
     /// Deferred deallocation of heap-allocated object `ptr`.
@@ -276,13 +284,14 @@ impl Scope {
     /// [`defer_free`]: fn.defer_free.html [`defer_drop`]: fn.defer_drop.html
     pub fn flush(&self) {
         unsafe {
-            let bag = self.get_bag();
-            if !bag.is_empty() {
-                global::push_bag(bag, self);
-            }
-        }
+            self.bag.as_mut().map(|bag| {
+                if !bag.is_empty() {
+                    global::push_bag(bag, self);
+                }
 
-        global::collect(self);
+                global::collect(self);
+            });
+        }
     }
 }
 
