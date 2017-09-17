@@ -292,7 +292,7 @@ fn mpmc() {
 
 #[test]
 fn stress_timeout_two_threads() {
-    const COUNT: usize = 20;
+    const COUNT: usize = 100;
 
     let (tx, rx) = bounded(0);
 
@@ -300,10 +300,10 @@ fn stress_timeout_two_threads() {
         s.spawn(|| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
-                    thread::sleep(ms(500));
+                    thread::sleep(ms(50));
                 }
                 loop {
-                    if let Ok(()) = tx.send_timeout(i, ms(100)) {
+                    if let Ok(()) = tx.send_timeout(i, ms(10)) {
                         break;
                     }
                 }
@@ -313,10 +313,10 @@ fn stress_timeout_two_threads() {
         s.spawn(|| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
-                    thread::sleep(ms(500));
+                    thread::sleep(ms(50));
                 }
                 loop {
-                    if let Ok(x) = rx.recv_timeout(ms(100)) {
+                    if let Ok(x) = rx.recv_timeout(ms(10)) {
                         assert_eq!(x, i);
                         break;
                     }
