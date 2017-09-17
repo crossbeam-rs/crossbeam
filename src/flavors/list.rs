@@ -1,11 +1,10 @@
-// Based on Dmitry Vyukov's MPSC queue:
-// http://www.1024cores.net/home/lock-free-algorithms/queues/non-intrusive-mpsc-node-based-queue
-
+use std::cell::UnsafeCell;
+use std::cmp;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::Ordering::{Relaxed, SeqCst};
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 use std::thread;
 use std::time::Instant;
 
@@ -16,18 +15,45 @@ use actor;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
-struct Node<T> {
-    next: Atomic<Node<T>>,
+const NODE_LEN: usize = 32;
+
+struct Entry<T> {
     value: T,
+    ready: AtomicBool,
+}
+
+#[repr(C)]
+struct Node<T> {
+    seq: usize,
+    low: AtomicUsize,
+    entries: [UnsafeCell<Entry<T>>; NODE_LEN],
+    high: AtomicUsize,
+    next: Atomic<Node<T>>,
+}
+
+impl<T> Node<T> {
+    fn new(seq: usize) -> Node<T> {
+        let node = Node {
+            seq,
+            entries: unsafe { mem::uninitialized() },
+            low: AtomicUsize::new(0),
+            high: AtomicUsize::new(0),
+            next: Atomic::null(),
+        };
+        for entry in node.entries.iter() {
+            unsafe {
+                (*entry.get()).ready = AtomicBool::new(false);
+            }
+        }
+        node
+    }
 }
 
 #[repr(C)]
 pub(crate) struct Channel<T> {
     head: Atomic<Node<T>>,
-    recv_count: AtomicUsize,
     _pad0: [u8; 64],
     tail: Atomic<Node<T>>,
-    send_count: AtomicUsize,
     _pad1: [u8; 64],
     closed: AtomicBool,
     receivers: Monitor,
@@ -36,28 +62,19 @@ pub(crate) struct Channel<T> {
 
 impl<T> Channel<T> {
     pub fn new() -> Self {
-        // Initialize the internal representation of the queue.
         let queue = Channel {
             head: Atomic::null(),
             tail: Atomic::null(),
             closed: AtomicBool::new(false),
             receivers: Monitor::new(),
-            send_count: AtomicUsize::new(0),
-            recv_count: AtomicUsize::new(0),
             _pad0: [0; 64],
             _pad1: [0; 64],
             _marker: PhantomData,
         };
 
-        // Create a none node.
-        let node = Owned::new(Node {
-            value: unsafe { mem::uninitialized() },
-            next: Atomic::null(),
-        });
-
         unsafe {
             epoch::unprotected(|scope| {
-                let node = node.into_ptr(scope);
+                let node = Owned::new(Node::new(0)).into_ptr(scope);
                 queue.head.store(node, Relaxed);
                 queue.tail.store(node, Relaxed);
             })
@@ -67,98 +84,104 @@ impl<T> Channel<T> {
     }
 
     fn push(&self, value: T) {
-        let node = Owned::new(Node {
-            value: value,
-            next: Atomic::null(),
-        });
+        epoch::pin(|scope| {
+            loop {
+                let tail = unsafe { self.tail.load(SeqCst, scope).deref() };
 
-        unsafe {
-            epoch::unprotected(|scope| {
-                let new = node.into_ptr(scope);
-                let old = self.tail.swap(new, SeqCst, scope);
-                self.send_count.fetch_add(1, SeqCst);
-                old.deref().next.store(new, SeqCst);
-            })
-        }
+                if tail.high.load(SeqCst) >= NODE_LEN {
+                    thread::yield_now();
+                    continue;
+                }
+                let i = tail.high.fetch_add(1, SeqCst);
+                unsafe {
+                    if i < NODE_LEN {
+                        let entry = tail.entries.get_unchecked(i).get();
+                        ptr::write(&mut (*entry).value, value);
+                        (*entry).ready.store(true, SeqCst);
+
+                        if i + 1 == NODE_LEN {
+                            let new_seq = tail.seq.wrapping_add(1);
+                            let new = Owned::new(Node::new(new_seq)).into_ptr(scope);
+                            tail.next.store(new, SeqCst);
+                            self.tail.store(new, SeqCst);
+                        }
+
+                        return;
+                    }
+                }
+                thread::yield_now();
+            }
+        })
     }
 
     fn pop(&self) -> Option<T> {
-        const USE: usize = 1;
-        const MULTI: usize = 2;
+        epoch::pin(|scope| {
+            loop {
+                let head = self.head.load(SeqCst, scope);
+                let h = unsafe { head.deref() };
 
-        // TODO: finer grained unsafe code
-        return unsafe {
-            epoch::unprotected(|scope| {
-                if self.head.load(Relaxed, scope).tag() & MULTI == 0 {
-                    loop {
-                        let head = self.head.fetch_or(USE, SeqCst, scope);
-                        if head.tag() != 0 {
-                            break;
-                        }
-
-                        let next = head.deref().next.load(SeqCst, scope);
-
-                        if next.is_null() {
-                            self.head.fetch_and(!USE, SeqCst, scope);
-
-                            if self.tail.load(SeqCst, scope).as_raw() == head.as_raw() {
-                                return None;
-                            }
-                        } else {
-                            let value = ptr::read(&next.deref().value);
-
-                            if self.head
-                                .compare_and_swap(head.with_tag(USE), next, SeqCst, scope)
-                                .is_ok()
-                            {
-                                self.recv_count.fetch_add(1, SeqCst);
-                                Vec::from_raw_parts(head.as_raw() as *mut Node<T>, 0, 1);
-                                return Some(value);
-                            }
-                            mem::forget(value);
-
-                            self.head.fetch_and(!USE, SeqCst, scope);
-                        }
-                    }
-
-                    self.head.fetch_or(MULTI, SeqCst, scope);
-                    while self.head.load(SeqCst, scope).tag() & USE != 0 {
+                loop {
+                    let low = h.low.load(SeqCst);
+                    if low >= cmp::min(h.high.load(SeqCst), NODE_LEN) {
                         thread::yield_now();
+                        break
                     }
+                    if h.low.compare_and_swap(low, low+1, SeqCst) == low {
+                        unsafe {
+                            let entry = h.entries.get_unchecked(low).get();
+                            let mut i = 0;
+                            loop {
+                                if (*entry).ready.load(SeqCst) { break }
+                                i += 1;
+                                if i >= 50 { // TODO
+                                    thread::yield_now();
+                                }
+                            }
+                            if low + 1 == NODE_LEN {
+                                loop {
+                                    let next = h.next.load(SeqCst, scope);
+                                    if !next.is_null() {
+                                        self.head.store(next, SeqCst);
+                                        scope.defer_free(head);
+                                        break;
+                                    }
+                                    thread::yield_now();
+                                }
+                            }
+                            return Some(ptr::read(&(*entry).value))
+                        }
+                    }
+                    thread::yield_now();
                 }
-
-                epoch::pin(|scope| loop {
-                    let head = self.head.load(SeqCst, scope);
-                    let next = head.deref().next.load(SeqCst, scope);
-
-                    if next.is_null() {
-                        if self.tail.load(SeqCst, scope).as_raw() == head.as_raw() {
-                            return None;
-                        }
-                    } else {
-                        if self.head
-                            .compare_and_swap(head, next.with_tag(MULTI), SeqCst, scope)
-                            .is_ok()
-                        {
-                            self.recv_count.fetch_add(1, SeqCst);
-                            scope.defer_free(head);
-                            return Some(ptr::read(&next.deref().value));
-                        }
-                    }
-                })
-            })
-        };
+                if h.next.load(SeqCst, scope).is_null() { return None }
+            }
+        })
     }
 
     pub fn len(&self) -> usize {
-        loop {
-            let send_count = self.send_count.load(SeqCst);
-            let recv_count = self.recv_count.load(SeqCst);
+        epoch::pin(|scope| {
+            loop {
+                let head = self.head.load(SeqCst, scope);
+                let tail = self.tail.load(SeqCst, scope);
 
-            if self.send_count.load(SeqCst) == send_count {
-                return send_count.wrapping_sub(recv_count);
+                let h = unsafe { head.deref() };
+                let t = unsafe { tail.deref() };
+
+                let low = h.low.load(SeqCst);
+                let high = t.high.load(SeqCst);
+
+                if self.head.load(SeqCst, scope).as_raw() == head.as_raw() &&
+                    self.tail.load(SeqCst, scope).as_raw() == tail.as_raw() &&
+                    low == h.low.load(SeqCst) &&
+                    high == t.high.load(SeqCst)
+                {
+                    let low = cmp::min(low, NODE_LEN);
+                    let high = cmp::min(high, NODE_LEN);
+                    let node_count = t.seq.wrapping_sub(h.seq);
+                    return node_count * NODE_LEN + high - low;
+                }
             }
-        }
+        })
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -253,17 +276,24 @@ impl<T> Drop for Channel<T> {
         unsafe {
             epoch::unprotected(|scope| {
                 let mut head = self.head.load(Relaxed, scope);
-                while !head.is_null() {
-                    let next = head.deref().next.load(Relaxed, scope);
+                loop {
+                    match head.as_ref() {
+                        None => break,
+                        Some(h) => {
+                            let low = h.low.load(Relaxed);
+                            let high = h.high.load(Relaxed);
+                            let next = h.next.load(Relaxed, scope);
 
-                    if let Some(n) = next.as_ref() {
-                        ptr::drop_in_place(&n.value as *const _ as *mut Node<T>)
+                            for i in low..cmp::min(high, NODE_LEN) {
+                                ptr::drop_in_place(head.deref().entries.get_unchecked(i).get());
+                            }
+
+                            Vec::from_raw_parts(head.as_raw() as *mut Node<T>, 0, 1);
+                            head = next;
+                        }
                     }
-
-                    Vec::from_raw_parts(head.as_raw() as *mut Node<T>, 0, 1);
-                    head = next;
                 }
-            });
+            })
         }
     }
 }
