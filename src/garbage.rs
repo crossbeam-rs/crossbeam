@@ -24,8 +24,8 @@
 //! dropped.
 
 use std::mem;
-use boxfnonce::SendBoxFnOnce;
 use arrayvec::ArrayVec;
+use deferred::Deferred;
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(feature = "strict_gc"))]
@@ -34,14 +34,8 @@ const MAX_OBJECTS: usize = 64;
 const MAX_OBJECTS: usize = 4;
 
 
-pub enum Garbage {
-    Destroy {
-        object: *mut u8,
-        size: usize,
-        destroy: unsafe fn(*mut u8, usize),
-    },
-    Free { object: *mut u8, size: usize },
-    Fn { f: Option<SendBoxFnOnce<(), ()>> },
+pub struct Garbage {
+    func: Deferred,
 }
 
 unsafe impl Sync for Garbage {}
@@ -55,12 +49,12 @@ impl Garbage {
     ///
     /// Note: The object must be `Send + 'static`.
     pub fn new_destroy<T>(object: *mut T, size: usize, destroy: unsafe fn(*mut T, usize)) -> Self {
-        Garbage::Destroy {
-            object: object as *mut u8,
-            size: size,
-            // FIXME(jeehoonkang): here we unsafely assume that `fn(*mut T, usize)` and `fn(*mut u8,
-            // usize)` have the same size.
-            destroy: unsafe { mem::transmute(destroy) },
+        let object = object as usize;
+        let destroy: unsafe fn(*mut u8, usize) = unsafe { mem::transmute(destroy) };
+        Garbage {
+            func: Deferred::new(move || unsafe {
+                destroy(object as *mut u8, size);
+            }),
         }
     }
 
@@ -69,9 +63,11 @@ impl Garbage {
     /// The specified object is an array allocated at address `object` and consists of `size`
     /// elements of type `T`.
     pub fn new_free<T>(object: *mut T, size: usize) -> Self {
-        Garbage::Free {
-            object: object as *mut u8,
-            size: mem::size_of::<T>() * size,
+        let object = object as usize;
+        Garbage {
+            func: Deferred::new(move || unsafe {
+                drop(Vec::from_raw_parts(object as *mut T, 0, size));
+            }),
         }
     }
 
@@ -91,26 +87,15 @@ impl Garbage {
 
     /// Make a closure that will later be called.
     pub fn new<F: FnOnce() + Send + 'static>(f: F) -> Self {
-        Garbage::Fn { f: Some(SendBoxFnOnce::from(f)) }
+        Garbage {
+            func: Deferred::new(move || f()),
+        }
     }
 }
 
 impl Drop for Garbage {
     fn drop(&mut self) {
-        match *self {
-            Garbage::Destroy {
-                destroy,
-                object,
-                size,
-            } => unsafe {
-                (destroy)(object, size);
-            },
-            Garbage::Free { object, size } => unsafe { drop(Vec::from_raw_parts(object, 0, size)) },
-            Garbage::Fn { ref mut f } => {
-                let f = f.take().unwrap();
-                f.call();
-            }
-        }
+        self.func.call();
     }
 }
 
