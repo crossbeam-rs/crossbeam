@@ -784,8 +784,10 @@ impl<T> AsMut<T> for Owned<T> {
 #[derive(Debug)]
 pub struct Ptr<'scope, T: 'scope> {
     data: usize,
-    _marker: PhantomData<&'scope T>,
+    _marker: PhantomData<(&'scope (), *const T)>,
 }
+
+unsafe impl<'scope, T: Send> Send for Ptr<'scope, T> {}
 
 impl<'scope, T> Clone for Ptr<'scope, T> {
     fn clone(&self) -> Self {
@@ -956,6 +958,31 @@ impl<'scope, T> Ptr<'scope, T> {
     /// ```
     pub unsafe fn as_ref(&self) -> Option<&'scope T> {
         self.as_raw().as_ref()
+    }
+
+    /// Takes ownership of the pointee.
+    ///
+    /// # Safety
+    ///
+    /// This method may be called only if the pointer is valid and nobody else is holding a
+    /// reference to the same object.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Atomic};
+    /// use std::sync::atomic::Ordering::SeqCst;
+    ///
+    /// let a = Atomic::new(1234);
+    /// unsafe {
+    ///     epoch::unprotected(|scope| {
+    ///         let p = a.load(SeqCst, scope);
+    ///         drop(p.into_owned());
+    ///     });
+    /// }
+    /// ```
+    pub unsafe fn into_owned(self) -> Owned<T> {
+        Owned::from_data(self.data)
     }
 
     /// Returns the tag stored within the pointer.

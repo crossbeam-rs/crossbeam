@@ -120,7 +120,7 @@ impl<T> Drop for List<T> {
                 let mut curr = self.head.load(Relaxed, scope);
                 while let Some(c) = curr.as_ref() {
                     let succ = c.0.next.load(Relaxed, scope);
-                    drop(Box::from_raw(curr.as_raw() as *mut Node<T>));
+                    drop(curr.into_owned());
                     curr = succ;
                 }
             });
