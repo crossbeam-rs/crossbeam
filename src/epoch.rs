@@ -33,6 +33,8 @@ impl Epoch {
     /// current epoch.
     ///
     /// Returns the current global epoch.
+    ///
+    /// `try_advance()` is annotated `#[cold]` because it is rarely called.
     #[cold]
     pub fn try_advance<'scope>(&self, registries: &List<LocalEpoch>, scope: &Scope) -> usize {
         let epoch = self.epoch.load(Relaxed);

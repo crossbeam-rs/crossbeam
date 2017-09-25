@@ -46,6 +46,11 @@ pub fn push_bag<'scope>(bag: &mut Bag, scope: &'scope Scope) {
 /// Collect several bags from the global old garbage queue and destroys their objects.
 ///
 /// Note: This may itself produce garbage and in turn allocate new bags.
+///
+/// `pin()` rarely calls `collect()`, so we want the compiler to place that call on a cold path. In
+/// other words, we want the compiler to optimize branching for the case when `collect()` is not
+/// called.
+#[cold]
 pub fn collect(scope: &Scope) {
     let epoch = EPOCH.try_advance(&REGISTRIES, scope);
 
