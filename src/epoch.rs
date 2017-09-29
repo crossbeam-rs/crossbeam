@@ -13,7 +13,7 @@ use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
 
 use mutator::LocalEpoch;
 use mutator::Scope;
-use sync::list::{List, IterResult};
+use sync::list::{List, IterError};
 use crossbeam_utils::cache_padded::CachePadded;
 
 /// The global epoch is a (cache-padded) integer.
@@ -41,16 +41,15 @@ impl Epoch {
         ::std::sync::atomic::fence(SeqCst);
 
         // Traverse the linked list of mutator registries.
-        let mut registries = registries.iter(scope);
-        loop {
-            match registries.next() {
-                IterResult::Abort => {
-                    // We leave the job to the mutator that also tries to advance to epoch and
-                    // continues to iterate the registries.
+        for registry in registries.iter(scope) {
+            match registry {
+                Err(IterError::LostRace) => {
+                    // We leave the job to the mutator that won the race, which continues to iterate
+                    // the registries and tries to advance to epoch.
                     return epoch;
                 }
-                IterResult::None => break,
-                IterResult::Some(local_epoch) => {
+                Ok(local_epoch) => {
+                    let local_epoch = local_epoch.get();
                     let (mutator_is_pinned, mutator_epoch) = local_epoch.get_state();
 
                     // If the mutator was pinned in a different epoch, we cannot advance the global

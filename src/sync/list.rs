@@ -38,10 +38,9 @@ pub struct Iter<'scope, T: 'scope> {
     curr: Ptr<'scope, Node<T>>,
 }
 
-pub enum IterResult<'scope, T: 'scope> {
-    Some(&'scope T),
-    None,
-    Abort,
+pub enum IterError {
+    /// Iterator lost a race in deleting a node by a concurrent iterator.
+    LostRace,
 }
 
 impl<T> Node<T> {
@@ -72,8 +71,8 @@ impl<T> List<T> {
     }
 
     /// Inserts `data` into the list.
-    pub fn insert<'scope>(
-        &'scope self,
+    #[inline]
+    fn insert_internal<'scope>(
         to: &'scope Atomic<Node<T>>,
         data: T,
         scope: &'scope Scope,
@@ -93,15 +92,23 @@ impl<T> List<T> {
         }
     }
 
-    pub fn insert_head<'scope>(
-        &'scope self,
+    /// Inserts `data` into the head of the list.
+    pub fn insert<'scope>(&'scope self, data: T, scope: &'scope Scope) -> Ptr<'scope, Node<T>> {
+        Self::insert_internal(&self.head, data, scope)
+    }
+
+    /// Inserts `data` after `to`.
+    pub fn insert_after<'scope>(
+        to: &'scope Node<T>,
         data: T,
         scope: &'scope Scope,
     ) -> Ptr<'scope, Node<T>> {
-        self.insert(&self.head, data, scope)
+        Self::insert_internal(&to.0.next, data, scope)
     }
 
     /// Returns an iterator over all data.
+    ///
+    /// # Caveat
     ///
     /// Every datum that is inserted at the moment this function is called and persists at least
     /// until the end of iteration will be returned. Since this iterator traverses a lock-free
@@ -132,8 +139,10 @@ impl<T> Drop for List<T> {
     }
 }
 
-impl<'scope, T> Iter<'scope, T> {
-    pub fn next(&mut self) -> IterResult<T> {
+impl<'scope, T> Iterator for Iter<'scope, T> {
+    type Item = Result<&'scope Node<T>, IterError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         while let Some(c) = unsafe { self.curr.as_ref() } {
             let succ = c.0.next.load(Acquire, self.scope);
 
@@ -156,10 +165,11 @@ impl<'scope, T> Iter<'scope, T> {
                         }
                         self.curr = succ;
                     }
-                    Err(_) => {
-                        // We lost the race to delete the entry.  Since another thread trying
-                        // to iterate the list has won the race, we return early.
-                        return IterResult::Abort;
+                    Err(succ) => {
+                        // We lost the race to delete the entry by a concurrent iterator. Set
+                        // `self.curr` to the updated pointer, and report the lost.
+                        self.curr = succ;
+                        return Some(Err(IterError::LostRace));
                     }
                 }
 
@@ -170,11 +180,11 @@ impl<'scope, T> Iter<'scope, T> {
             self.pred = &c.0.next;
             self.curr = succ;
 
-            return IterResult::Some(&c.0.data);
+            return Some(Ok(&c));
         }
 
         // We reached the end of the list.
-        IterResult::None
+        None
     }
 }
 

@@ -73,9 +73,7 @@ impl<'scope> Mutator<'scope> {
             local_epoch: unsafe {
                 // Since we dereference no pointers in this block, it is safe to use `unprotected`.
                 unprotected(|scope| {
-                    &*global::REGISTRIES
-                        .insert_head(LocalEpoch::new(), scope)
-                        .as_raw()
+                    &*global::REGISTRIES.insert(LocalEpoch::new(), scope).as_raw()
                 })
             },
             is_pinned: Cell::new(false),
