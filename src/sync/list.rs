@@ -19,6 +19,8 @@ struct NodeInner<T> {
     next: Atomic<Node<T>>,
 }
 
+unsafe impl<T> Send for NodeInner<T> {}
+
 pub struct Node<T>(CachePadded<NodeInner<T>>);
 
 pub struct List<T> {
@@ -46,7 +48,7 @@ impl<T> Node<T> {
     /// Returns the data in this entry.
     fn new(data: T) -> Self {
         Node(CachePadded::new(NodeInner {
-            data: data,
+            data,
             next: Atomic::null(),
         }))
     }
@@ -54,7 +56,9 @@ impl<T> Node<T> {
     pub fn get(&self) -> &T {
         &self.0.data
     }
+}
 
+impl<T: 'static> Node<T> {
     /// Marks this entry as deleted.
     pub fn delete<'scope>(&self, scope: &Scope) {
         self.0.next.fetch_or(1, Release, scope);
@@ -145,7 +149,10 @@ impl<'scope, T> Iter<'scope, T> {
                 ) {
                     Ok(_) => {
                         unsafe {
-                            self.scope.defer_free(self.curr);
+                            // Deferred drop of `T` is scheduled here.
+                            // This is okay because `.delete()` can be called only if `T: 'static`.
+                            let p = self.curr;
+                            self.scope.defer(move || p.into_owned());
                         }
                         self.curr = succ;
                     }

@@ -5,7 +5,8 @@
 //! Michael and Scott.  Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue
 //! Algorithms.  PODC 1996.  http://dl.acm.org/citation.cfm?id=248106
 
-use std::{mem, ptr};
+use std::mem::{self, ManuallyDrop};
+use std::ptr;
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release};
 
 use {Atomic, Owned, Ptr, Scope, pin, unprotected};
@@ -22,11 +23,20 @@ pub struct Queue<T> {
 
 #[derive(Debug)]
 struct Node<T> {
-    data: T,
+    /// The slot in which a value of type `T` can be stored.
+    ///
+    /// The type of `data` is `ManuallyDrop<T>` because a `Node<T>` doesn't always contain a `T`.
+    /// For example, the sentinel node in a queue never contains a value: its slot is always empty.
+    /// Other nodes start their life with a push operation and contain a value until it gets popped
+    /// out. After that such empty nodes get added to the collector for destruction.
+    data: ManuallyDrop<T>,
+
     next: Atomic<Node<T>>,
 }
 
-// Any particular `T` should never be accessed concurrently, so no need for Sync.
+unsafe impl<T> Send for Node<T> {}
+
+// Any particular `T` should never be accessed concurrently, so no need for `Sync`.
 unsafe impl<T: Send> Sync for Queue<T> {}
 unsafe impl<T: Send> Send for Queue<T> {}
 
@@ -52,9 +62,9 @@ impl<T> Queue<T> {
         }
     }
 
+    /// Attempts to atomically place `n` into the `next` pointer of `onto`, and returns `true` on
+    /// success. The queue's `tail` pointer may be updated.
     #[inline(always)]
-    /// Attempt to atomically place `n` into the `next` pointer of `onto`, and return if it
-    /// succeeded. the queue's `tail` pointer may be updated.
     fn push_internal(&self, onto: Ptr<Node<T>>, new: Ptr<Node<T>>, scope: &Scope) -> bool {
         // is `onto` the actual tail?
         let o = unsafe { onto.deref() };
@@ -76,10 +86,10 @@ impl<T> Queue<T> {
         }
     }
 
-    /// Add `t` to the back of the queue, possibly waking up threads blocked on `pop`.
+    /// Adds `t` to the back of the queue, possibly waking up threads blocked on `pop`.
     pub fn push(&self, t: T, scope: &Scope) {
         let new = Owned::new(Node {
-            data: t,
+            data: ManuallyDrop::new(t),
             next: Atomic::null(),
         });
         let new = Owned::into_ptr(new, scope);
@@ -95,8 +105,8 @@ impl<T> Queue<T> {
         }
     }
 
+    /// Attempts to pop a data node. `Ok(None)` if queue is empty; `Err(())` if lost race to pop.
     #[inline(always)]
-    // Attempt to pop a data node. `Ok(None)` if queue is empty; `Err(())` if lost race to pop.
     fn pop_internal(&self, scope: &Scope) -> Result<Option<T>, ()> {
         let head = self.head.load(Acquire, scope);
         let h = unsafe { head.deref() };
@@ -106,8 +116,8 @@ impl<T> Queue<T> {
                 self.head
                     .compare_and_set(head, next, Release, scope)
                     .map(|_| {
-                        scope.defer_free(head);
-                        Some(ptr::read(&n.data))
+                        scope.defer(move || drop(head.into_owned()));
+                        Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
                     })
                     .map_err(|_| ())
             },
@@ -115,9 +125,9 @@ impl<T> Queue<T> {
         }
     }
 
+    /// Attempts to pop a data node, if the data satisfies the given condition. `Ok(None)` if queue
+    /// is empty or the data does not satisfy the condition; `Err(())` if lost race to pop.
     #[inline(always)]
-    // Attempt to pop a data node, if the data satisfies the given condition. `Ok(None)` if queue is
-    // empty or the data does not satisfy the condition; `Err(())` if lost race to pop.
     fn pop_if_internal<F>(&self, condition: F, scope: &Scope) -> Result<Option<T>, ()>
     where
         T: Sync,
@@ -131,8 +141,8 @@ impl<T> Queue<T> {
                 self.head
                     .compare_and_set(head, next, Release, scope)
                     .map(|_| {
-                        scope.defer_free(head);
-                        Some(ptr::read(&n.data))
+                        scope.defer(move || drop(head.into_owned()));
+                        Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
                     })
                     .map_err(|_| ())
             },
@@ -140,7 +150,7 @@ impl<T> Queue<T> {
         }
     }
 
-    /// Check if this queue is empty.
+    /// Returns `true` if the queue is empty.
     pub fn is_empty(&self) -> bool {
         pin(|scope| {
             let head = self.head.load(Acquire, scope);
@@ -149,7 +159,7 @@ impl<T> Queue<T> {
         })
     }
 
-    /// Attempt to dequeue from the front.
+    /// Attempts to dequeue from the front.
     ///
     /// Returns `None` if the queue is observed to be empty.
     pub fn try_pop(&self, scope: &Scope) -> Option<T> {
@@ -160,7 +170,7 @@ impl<T> Queue<T> {
         }
     }
 
-    /// Attempt to dequeue from the front, if the item satisfies the given condition.
+    /// Attempts to dequeue from the front, if the item satisfies the given condition.
     ///
     /// Returns `None` if the queue is observed to be empty, or the head does not satisfy the given
     /// condition.
@@ -184,8 +194,8 @@ impl<T> Drop for Queue<T> {
                 while let Some(_) = self.try_pop(scope) {}
 
                 // Destroy the remaining sentinel node.
-                let sentinel = self.head.load(Relaxed, scope).as_raw() as *mut Node<T>;
-                drop(Vec::from_raw_parts(sentinel, 0, 1));
+                let sentinel = self.head.load(Relaxed, scope);
+                drop(sentinel.into_owned());
             })
         }
     }

@@ -86,7 +86,7 @@ impl Garbage {
     }
 
     /// Make a closure that will later be called.
-    pub fn new<F: FnOnce() + Send + 'static>(f: F) -> Self {
+    pub fn new<F: FnOnce() + Send>(f: F) -> Self {
         Garbage {
             func: Deferred::new(move || f()),
         }

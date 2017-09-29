@@ -247,29 +247,18 @@ impl Scope {
         });
     }
 
-    /// Deferred deallocation of heap-allocated object `ptr`.
+    /// Deferred execution of an arbitrary function `f`.
     ///
-    /// This function inserts the object into a mutator-local [`Bag`]. When the bag becomes full,
+    /// This function inserts the function into a mutator-local [`Bag`]. When the bag becomes full,
     /// the bag is flushed into the globally shared queue of bags.
     ///
-    /// If the object is unusually large, it is wise to follow up with a call to [`flush`] so that
-    /// it doesn't get stuck waiting in the local bag for a long time.
+    /// If this function is destroying a particularly large object, it is wise to follow up with a
+    /// call to [`flush`] so that it doesn't get stuck waiting in the local bag for a long time.
     ///
     /// [`Bag`]: struct.Bag.html
     /// [`flush`]: fn.flush.html
-    pub unsafe fn defer_free<T>(&self, ptr: Ptr<T>) {
-        self.defer_garbage(Garbage::new_free(ptr.as_raw() as *mut T, 1))
-    }
-
-    /// Deferred destruction and deallocation of heap-allocated object `ptr`.
-    // FIXME(jeehoonkang): `T: 'static` may be too restrictive.
-    pub unsafe fn defer_drop<T: Send + 'static>(&self, ptr: Ptr<T>) {
-        self.defer_garbage(Garbage::new_drop(ptr.as_raw() as *mut T, 1))
-    }
-
-    /// Deferred execution of an arbitrary function `f`.
-    pub unsafe fn defer<F: FnOnce() + Send + 'static>(&self, f: F) {
-        self.defer_garbage(Garbage::new(f))
+    pub unsafe fn defer<R, F: FnOnce() -> R + Send>(&self, f: F) {
+        self.defer_garbage(Garbage::new(|| drop(f())))
     }
 
     /// Flushes all garbage in the thread-local storage into the global garbage queue, attempts to
