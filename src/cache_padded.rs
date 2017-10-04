@@ -5,7 +5,15 @@ use std::mem;
 use std::ptr;
 use std::ops::{Deref, DerefMut};
 
-// For now, treat this as an arch-independent constant.
+// x86_64 has a 64byte cache alignment, so set this to 8 * sizeof(usize)
+// which happens to be 8, ie 64 bytes. However, the tests fail, so we set
+// this to 16 for 128 bytes to allow dwcas (which is likely the issue)
+#[cfg(target_arch = "x86_64")]
+const CACHE_LINE: usize = 16;
+// Other arches may not - for example, x86 may vary, ppc64 is 128, ppc32 is 32.
+// To be safe, we set a minimum of 32 * sizeof(usize) here, but specific
+// processor versions could be added later.
+#[cfg(not(target_arch = "x86_64"))]
 const CACHE_LINE: usize = 32;
 
 #[cfg_attr(feature = "nightly",
