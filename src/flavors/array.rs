@@ -16,14 +16,14 @@ use actor;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
-struct Node<T> {
+struct Entry<T> {
     lap: AtomicUsize,
     value: T,
 }
 
 #[repr(C)]
 pub(crate) struct Channel<T> {
-    buffer: *mut UnsafeCell<Node<T>>,
+    buffer: *mut UnsafeCell<Entry<T>>,
     cap: usize,
     power: usize,
     _pad0: [u8; 64],

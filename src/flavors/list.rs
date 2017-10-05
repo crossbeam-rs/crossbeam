@@ -1,7 +1,7 @@
 use std::cell::UnsafeCell;
 use std::cmp;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
@@ -18,41 +18,32 @@ use monitor::Monitor;
 const NODE_LEN: usize = 32;
 
 struct Entry<T> {
-    value: T,
+    value: ManuallyDrop<T>,
     ready: AtomicBool,
 }
 
-#[repr(C)]
 struct Node<T> {
-    seq: usize,
-    low: AtomicUsize,
+    start: usize,
     entries: [UnsafeCell<Entry<T>>; NODE_LEN],
-    high: AtomicUsize,
     next: Atomic<Node<T>>,
 }
 
 impl<T> Node<T> {
-    fn new(seq: usize) -> Node<T> {
-        let node = Node {
-            seq,
-            entries: unsafe { mem::uninitialized() },
-            low: AtomicUsize::new(0),
-            high: AtomicUsize::new(0),
+    fn new(start: usize) -> Node<T> {
+        Node {
+            start,
+            entries: unsafe { mem::zeroed() },
             next: Atomic::null(),
-        };
-        for entry in node.entries.iter() {
-            unsafe {
-                (*entry.get()).ready = AtomicBool::new(false);
-            }
         }
-        node
     }
 }
 
 #[repr(C)]
 pub(crate) struct Channel<T> {
+    low: AtomicUsize,
     head: Atomic<Node<T>>,
     _pad0: [u8; 64],
+    high: AtomicUsize,
     tail: Atomic<Node<T>>,
     _pad1: [u8; 64],
     closed: AtomicBool,
@@ -65,6 +56,8 @@ impl<T> Channel<T> {
         let queue = Channel {
             head: Atomic::null(),
             tail: Atomic::null(),
+            low: AtomicUsize::new(0),
+            high: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
             receivers: Monitor::new(),
             _pad0: [0; 64],
@@ -87,29 +80,30 @@ impl<T> Channel<T> {
         epoch::pin(|scope| {
             loop {
                 let tail = unsafe { self.tail.load(SeqCst, scope).deref() };
+                let high = self.high.load(SeqCst);
+                let new_high = high.wrapping_add(1);
+                let offset = high.wrapping_sub(tail.start);
 
-                if tail.high.load(SeqCst) >= NODE_LEN {
+                if offset >= NODE_LEN {
                     thread::yield_now();
                     continue;
                 }
-                let i = tail.high.fetch_add(1, SeqCst);
-                unsafe {
-                    if i < NODE_LEN {
-                        let entry = tail.entries.get_unchecked(i).get();
-                        ptr::write(&mut (*entry).value, value);
+
+                if self.high.compare_and_swap(high, new_high, SeqCst) == high {
+                    unsafe {
+                        let entry = tail.entries.get_unchecked(offset).get();
+                        ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
                         (*entry).ready.store(true, SeqCst);
-
-                        if i + 1 == NODE_LEN {
-                            let new_seq = tail.seq.wrapping_add(1);
-                            let new = Owned::new(Node::new(new_seq)).into_ptr(scope);
-                            tail.next.store(new, SeqCst);
-                            self.tail.store(new, SeqCst);
-                        }
-
-                        return;
                     }
+
+                    if offset + 1 == NODE_LEN {
+                        let new = Owned::new(Node::new(new_high)).into_ptr(scope);
+                        tail.next.store(new, SeqCst);
+                        self.tail.store(new, SeqCst);
+                    }
+
+                    return;
                 }
-                thread::yield_now();
             }
         })
     }
@@ -119,69 +113,56 @@ impl<T> Channel<T> {
             loop {
                 let head = self.head.load(SeqCst, scope);
                 let h = unsafe { head.deref() };
+                let low = self.low.load(SeqCst);
+                let new_low = low.wrapping_add(1);
+                let offset = low.wrapping_sub(h.start);
 
-                loop {
-                    let low = h.low.load(SeqCst);
-                    if low >= cmp::min(h.high.load(SeqCst), NODE_LEN) {
+                if offset >= NODE_LEN {
+                    thread::yield_now();
+                    continue;
+                }
+
+                let entry = unsafe { &*h.entries.get_unchecked(offset).get() };
+
+                if !entry.ready.load(Relaxed) && self.high.load(SeqCst) == low {
+                    return None;
+                }
+
+                if self.low.compare_and_swap(low, new_low, SeqCst) == low {
+                    while !entry.ready.load(SeqCst) {
                         thread::yield_now();
-                        break
                     }
-                    if h.low.compare_and_swap(low, low+1, SeqCst) == low {
-                        unsafe {
-                            let entry = h.entries.get_unchecked(low).get();
-                            let mut i = 0;
-                            loop {
-                                if (*entry).ready.load(SeqCst) { break }
-                                i += 1;
-                                if i >= 50 { // TODO
-                                    thread::yield_now();
+
+                    if offset + 1 == NODE_LEN {
+                        loop {
+                            let next = h.next.load(SeqCst, scope);
+                            if !next.is_null() {
+                                self.head.store(next, SeqCst);
+                                unsafe {
+                                    scope.defer_free(head);
                                 }
+                                break;
                             }
-                            if low + 1 == NODE_LEN {
-                                loop {
-                                    let next = h.next.load(SeqCst, scope);
-                                    if !next.is_null() {
-                                        self.head.store(next, SeqCst);
-                                        scope.defer_free(head);
-                                        break;
-                                    }
-                                    thread::yield_now();
-                                }
-                            }
-                            return Some(ptr::read(&(*entry).value))
+                            thread::yield_now();
                         }
                     }
-                    thread::yield_now();
+
+                    let v = unsafe { ptr::read(&(*entry).value) };
+                    return Some(ManuallyDrop::into_inner(v));
                 }
-                if h.next.load(SeqCst, scope).is_null() { return None }
             }
         })
     }
 
     pub fn len(&self) -> usize {
-        epoch::pin(|scope| {
-            loop {
-                let head = self.head.load(SeqCst, scope);
-                let tail = self.tail.load(SeqCst, scope);
+        loop {
+            let high = self.high.load(SeqCst);
+            let low = self.low.load(SeqCst);
 
-                let h = unsafe { head.deref() };
-                let t = unsafe { tail.deref() };
-
-                let low = h.low.load(SeqCst);
-                let high = t.high.load(SeqCst);
-
-                if self.head.load(SeqCst, scope).as_raw() == head.as_raw() &&
-                    self.tail.load(SeqCst, scope).as_raw() == tail.as_raw() &&
-                    low == h.low.load(SeqCst) &&
-                    high == t.high.load(SeqCst)
-                {
-                    let low = cmp::min(low, NODE_LEN);
-                    let high = cmp::min(high, NODE_LEN);
-                    let node_count = t.seq.wrapping_sub(h.seq);
-                    return node_count * NODE_LEN + high - low;
-                }
+            if self.high.load(SeqCst) == high {
+                return high.wrapping_sub(low);
             }
-        })
+        }
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -275,23 +256,25 @@ impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
         unsafe {
             epoch::unprotected(|scope| {
-                let mut head = self.head.load(Relaxed, scope);
-                loop {
-                    match head.as_ref() {
-                        None => break,
-                        Some(h) => {
-                            let low = h.low.load(Relaxed);
-                            let high = h.high.load(Relaxed);
-                            let next = h.next.load(Relaxed, scope);
+                let high = self.high.load(Relaxed);
+                let mut low = self.low.load(Relaxed);
+                let mut node = self.head.load(Relaxed, scope);
 
-                            for i in low..cmp::min(high, NODE_LEN) {
-                                ptr::drop_in_place(head.deref().entries.get_unchecked(i).get());
-                            }
+                while low != high {
+                    let n = node.deref();
+                    let offset = low.wrapping_sub(n.start);
+                    let entry = &mut *n.entries.get_unchecked(offset).get();
 
-                            Vec::from_raw_parts(head.as_raw() as *mut Node<T>, 0, 1);
-                            head = next;
-                        }
+                    let v = ptr::read(&mut (*entry).value);
+                    drop(ManuallyDrop::into_inner(v));
+
+                    if offset + 1 == NODE_LEN {
+                        let next = n.next.load(Relaxed, scope);
+                        node.destroy();
+                        node = next;
                     }
+
+                    low = low.wrapping_add(1);
                 }
             })
         }
