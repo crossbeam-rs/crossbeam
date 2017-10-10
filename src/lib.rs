@@ -1,5 +1,8 @@
+#![cfg_attr(feature = "nightly", feature(hint_core_should_pause))]
+
 extern crate coco;
 extern crate crossbeam;
+extern crate crossbeam_utils;
 extern crate parking_lot;
 extern crate rand;
 
@@ -11,6 +14,7 @@ use std::time::{Duration, Instant};
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 mod actor;
+mod backoff;
 mod err;
 mod flavors;
 mod monitor;
@@ -96,7 +100,7 @@ impl<T> Sender<T> {
 
     pub(crate) fn can_send(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.len() < chan.capacity(),
+            Flavor::Array(ref chan) => !chan.is_full(),
             Flavor::List(_) => true,
             Flavor::Zero(ref chan) => chan.can_send(),
         }
@@ -234,8 +238,8 @@ impl<T> Receiver<T> {
 
     pub(crate) fn can_recv(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.len() > 0,
-            Flavor::List(ref chan) => chan.len() > 0,
+            Flavor::Array(ref chan) => !chan.is_empty(),
+            Flavor::List(ref chan) => !chan.is_empty(),
             Flavor::Zero(ref chan) => chan.can_recv(),
         }
     }

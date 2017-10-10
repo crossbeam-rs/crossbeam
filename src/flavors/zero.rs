@@ -9,6 +9,7 @@ use parking_lot::Mutex;
 
 use CaseId;
 use actor::{self, Actor};
+use backoff::Backoff;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 
 #[derive(PartialEq, Eq)]
@@ -482,20 +483,12 @@ impl<T> Packet<T> {
     }
 
     fn wait(&self) {
-        for i in 0..10 {
-            if self.1.load(SeqCst) {
-                return;
-            }
-            for _ in 0..1 << i {
-                // ::std::sync::atomic::hint_core_should_pause();
-            }
-        }
-
+        let mut backoff = Backoff::new();
         loop {
             if self.1.load(SeqCst) {
-                return;
+                break;
             }
-            thread::yield_now();
+            backoff.step();
         }
     }
 }

@@ -8,8 +8,6 @@ use err::{TryRecvError, TrySendError};
 // TODO: registered threads should be ordered by the time when selection started, then write a
 // fairness test
 
-// TODO: fairer select: first try, then spin, then register
-
 thread_local! {
     static MACHINE: Cell<Machine> = Cell::new(Machine::new());
 }
