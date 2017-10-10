@@ -4,8 +4,12 @@ version = "0.1.0"
 authors = ["Stjepan Glavina <stjepang@gmail.com>"]
 license = "Apache-2.0/MIT"
 
+[features]
+nightly = []
+
 [dependencies]
 coco = "0.2.0"
 crossbeam = "0.3.0"
+crossbeam-utils = "*"
 parking_lot = "0.4.4"
 rand = "0.3"
