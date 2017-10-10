@@ -234,14 +234,28 @@ fn len() {
     assert_eq!(tx.len(), 0);
     assert_eq!(rx.len(), 0);
 
-    for i in 0..50 {
+    for _ in 0..CAP / 10 {
+        for i in 0..50 {
+            tx.send(i).unwrap();
+            assert_eq!(tx.len(), i + 1);
+        }
+
+        for i in 0..50 {
+            rx.recv().unwrap();
+            assert_eq!(rx.len(), 50 - i - 1);
+        }
+    }
+
+    assert_eq!(tx.len(), 0);
+    assert_eq!(rx.len(), 0);
+
+    for i in 0..CAP {
         tx.send(i).unwrap();
         assert_eq!(tx.len(), i + 1);
     }
 
-    for i in 0..50 {
+    for i in 0..CAP {
         rx.recv().unwrap();
-        assert_eq!(rx.len(), 50 - i - 1);
     }
 
     assert_eq!(tx.len(), 0);
@@ -414,4 +428,23 @@ fn drops() {
         drop(rx);
         assert_eq!(DROPS.load(SeqCst), steps + additional);
     }
+}
+
+#[test]
+fn linearizable() {
+    const COUNT: usize = 25_000;
+    const THREADS: usize = 4;
+
+    let (tx, rx) = bounded(THREADS);
+
+    crossbeam::scope(|s| {
+        for _ in 0..THREADS {
+            s.spawn(|| {
+                for _ in 0..COUNT {
+                    tx.send(0).unwrap();
+                    rx.try_recv().unwrap();
+                }
+            });
+        }
+    });
 }

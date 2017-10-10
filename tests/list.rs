@@ -298,3 +298,22 @@ fn drops() {
         assert_eq!(DROPS.load(SeqCst), steps + additional);
     }
 }
+
+#[test]
+fn linearizable() {
+    const COUNT: usize = 25_000;
+    const THREADS: usize = 4;
+
+    let (tx, rx) = unbounded();
+
+    crossbeam::scope(|s| {
+        for _ in 0..THREADS {
+            s.spawn(|| {
+                for _ in 0..COUNT {
+                    tx.send(0).unwrap();
+                    rx.try_recv().unwrap();
+                }
+            });
+        }
+    });
+}
