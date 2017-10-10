@@ -5,6 +5,7 @@ use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
 use CaseId;
+use backoff::Backoff;
 
 pub(crate) struct Actor {
     case_id: AtomicUsize,
@@ -34,20 +35,14 @@ impl Actor {
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
-        for i in 0..10 {
+        let mut backoff = Backoff::new();
+        loop {
             if self.selected() != CaseId::none() {
                 return true;
             }
-            for _ in 0..1 << i {
-                // ::std::sync::atomic::hint_core_should_pause();
+            if !backoff.step() {
+                break;
             }
-        }
-
-        for _ in 0..10 {
-            if self.selected() != CaseId::none() {
-                return true;
-            }
-            thread::yield_now();
         }
 
         while self.selected() == CaseId::none() {
