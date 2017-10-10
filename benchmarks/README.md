@@ -131,4 +131,5 @@ unbounded_spsc            Rust MsQueue      0.413 sec
 unbounded_spsc            Rust SegQueue     0.292 sec
 unbounded_spsc            Rust chan         2.420 sec
 unbounded_spsc            Rust channel      0.637 sec
-```unbounded_spsc            Rust mpsc         0.833 sec
+unbounded_spsc            Rust mpsc         0.833 sec
+```
