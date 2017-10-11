@@ -1,3 +1,7 @@
+//! Linked list-based channel implementation.
+//!
+//! This flavor is unbounded.
+
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
@@ -7,6 +11,7 @@ use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 use std::time::Instant;
 
 use coco::epoch::{self, Atomic, Owned};
+use crossbeam_utils::cache_padded::CachePadded;
 
 use CaseId;
 use actor;
@@ -37,14 +42,14 @@ impl<T> Node<T> {
     }
 }
 
-#[repr(C)]
-pub(crate) struct Channel<T> {
-    low: AtomicUsize,
-    head: Atomic<Node<T>>,
-    _pad0: [u8; 64],
-    high: AtomicUsize,
-    tail: Atomic<Node<T>>,
-    _pad1: [u8; 64],
+struct Position<T> {
+    index: AtomicUsize,
+    node: Atomic<Node<T>>,
+}
+
+pub struct Channel<T> {
+    head: CachePadded<Position<T>>,
+    tail: CachePadded<Position<T>>,
     closed: AtomicBool,
     receivers: Monitor,
     _marker: PhantomData<T>,
@@ -53,22 +58,24 @@ pub(crate) struct Channel<T> {
 impl<T> Channel<T> {
     pub fn new() -> Self {
         let queue = Channel {
-            head: Atomic::null(),
-            tail: Atomic::null(),
-            low: AtomicUsize::new(0),
-            high: AtomicUsize::new(0),
+            head: CachePadded::new(Position {
+                index: AtomicUsize::new(0),
+                node: Atomic::null(),
+            }),
+            tail: CachePadded::new(Position {
+                index: AtomicUsize::new(0),
+                node: Atomic::null(),
+            }),
             closed: AtomicBool::new(false),
             receivers: Monitor::new(),
-            _pad0: [0; 64],
-            _pad1: [0; 64],
             _marker: PhantomData,
         };
 
         unsafe {
             epoch::unprotected(|scope| {
                 let node = Owned::new(Node::new(0)).into_ptr(scope);
-                queue.head.store(node, Relaxed);
-                queue.tail.store(node, Relaxed);
+                queue.head.node.store(node, Relaxed);
+                queue.tail.node.store(node, Relaxed);
             })
         }
 
@@ -79,17 +86,17 @@ impl<T> Channel<T> {
         epoch::pin(|scope| {
             let mut backoff = Backoff::new();
             loop {
-                let tail = unsafe { self.tail.load(SeqCst, scope).deref() };
-                let high = self.high.load(SeqCst);
-                let new_high = high.wrapping_add(1);
-                let offset = high.wrapping_sub(tail.start);
+                let tail = unsafe { self.tail.node.load(SeqCst, scope).deref() };
+                let index = self.tail.index.load(SeqCst);
+                let new_index = index.wrapping_add(1);
+                let offset = index.wrapping_sub(tail.start);
 
                 if offset >= NODE_LEN {
                     backoff.step();
                     continue;
                 }
 
-                if self.high.compare_and_swap(high, new_high, SeqCst) == high {
+                if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
                     unsafe {
                         let entry = tail.entries.get_unchecked(offset).get();
                         ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
@@ -97,9 +104,9 @@ impl<T> Channel<T> {
                     }
 
                     if offset + 1 == NODE_LEN {
-                        let new = Owned::new(Node::new(new_high)).into_ptr(scope);
+                        let new = Owned::new(Node::new(new_index)).into_ptr(scope);
                         tail.next.store(new, SeqCst);
-                        self.tail.store(new, SeqCst);
+                        self.tail.node.store(new, SeqCst);
                     }
 
                     return;
@@ -112,11 +119,11 @@ impl<T> Channel<T> {
         epoch::pin(|scope| {
             let mut backoff = Backoff::new();
             loop {
-                let head = self.head.load(SeqCst, scope);
+                let head = self.head.node.load(SeqCst, scope);
                 let h = unsafe { head.deref() };
-                let low = self.low.load(SeqCst);
-                let new_low = low.wrapping_add(1);
-                let offset = low.wrapping_sub(h.start);
+                let index = self.head.index.load(SeqCst);
+                let new_index = index.wrapping_add(1);
+                let offset = index.wrapping_sub(h.start);
 
                 if offset >= NODE_LEN {
                     backoff.step();
@@ -125,11 +132,11 @@ impl<T> Channel<T> {
 
                 let entry = unsafe { &*h.entries.get_unchecked(offset).get() };
 
-                if !entry.ready.load(Relaxed) && self.high.load(SeqCst) == low {
+                if !entry.ready.load(Relaxed) && self.tail.index.load(SeqCst) == index {
                     return None;
                 }
 
-                if self.low.compare_and_swap(low, new_low, SeqCst) == low {
+                if self.head.index.compare_and_swap(index, new_index, SeqCst) == index {
                     while !entry.ready.load(SeqCst) {
                         backoff.step();
                     }
@@ -138,7 +145,7 @@ impl<T> Channel<T> {
                         loop {
                             let next = h.next.load(SeqCst, scope);
                             if !next.is_null() {
-                                self.head.store(next, SeqCst);
+                                self.head.node.store(next, SeqCst);
                                 unsafe {
                                     scope.defer_free(head);
                                 }
@@ -157,11 +164,11 @@ impl<T> Channel<T> {
 
     pub fn len(&self) -> usize {
         loop {
-            let high = self.high.load(SeqCst);
-            let low = self.low.load(SeqCst);
+            let tail_index = self.tail.index.load(SeqCst);
+            let head_index = self.head.index.load(SeqCst);
 
-            if self.high.load(SeqCst) == high {
-                return high.wrapping_sub(low);
+            if self.tail.index.load(SeqCst) == tail_index {
+                return tail_index.wrapping_sub(head_index);
             }
         }
     }
@@ -266,13 +273,13 @@ impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
         unsafe {
             epoch::unprotected(|scope| {
-                let high = self.high.load(Relaxed);
-                let mut low = self.low.load(Relaxed);
-                let mut node = self.head.load(Relaxed, scope);
+                let tail_index = self.tail.index.load(Relaxed);
+                let mut head_index = self.head.index.load(Relaxed);
+                let mut node = self.head.node.load(Relaxed, scope);
 
-                while low != high {
+                while head_index != tail_index {
                     let n = node.deref();
-                    let offset = low.wrapping_sub(n.start);
+                    let offset = head_index.wrapping_sub(n.start);
                     let entry = &mut *n.entries.get_unchecked(offset).get();
 
                     let v = ptr::read(&mut (*entry).value);
@@ -284,7 +291,7 @@ impl<T> Drop for Channel<T> {
                         node = next;
                     }
 
-                    low = low.wrapping_add(1);
+                    head_index = head_index.wrapping_add(1);
                 }
             })
         }
