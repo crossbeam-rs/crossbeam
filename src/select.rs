@@ -1,49 +1,68 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::num::Wrapping;
 use std::time::{Duration, Instant};
 
-use {CaseId, Receiver, Sender};
+use {Receiver, Sender};
 use actor;
 use err::{TryRecvError, TrySendError};
 
-// TODO: registered threads should be ordered by the time when selection started, then write a
-// fairness test
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct CaseId {
+    pub id: usize,
+}
+
+impl CaseId {
+    #[inline]
+    pub fn new(id: usize) -> Self {
+        CaseId { id }
+    }
+
+    #[inline]
+    pub fn none() -> Self {
+        CaseId { id: 0 }
+    }
+
+    #[inline]
+    pub fn abort() -> Self {
+        CaseId { id: 1 }
+    }
+}
 
 thread_local! {
-    static MACHINE: Cell<Machine> = Cell::new(Machine::new());
+    /// The thread-local selection state machine.
+    static MACHINE: RefCell<Machine> = RefCell::new(Machine::new());
 }
 
 pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     MACHINE.with(|m| {
-        let mut t = m.get();
+        let mut t = m.borrow_mut();
 
         let res = if let Some(state) = t.step(tx.case_id()) {
             state.send(tx, value)
         } else {
             Err(value)
         };
-        if res.is_ok() {
-            t = Machine::new();
-        }
 
-        m.set(t);
+        if res.is_ok() {
+            *t = Machine::new();
+        }
         res
     })
 }
 
 pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
     MACHINE.with(|m| {
-        let mut t = m.get();
+        let mut m = m.borrow_mut();
 
-        let res = if let Some(state) = t.step(rx.case_id()) {
+        let res = if let Some(state) = m.step(rx.case_id()) {
             state.recv(rx)
         } else {
             Err(())
         };
-        if res.is_ok() {
-            t = Machine::new();
-        }
 
-        m.set(t);
+        if res.is_ok() {
+            *m = Machine::new();
+        }
         res
     })
 }
@@ -51,37 +70,42 @@ pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
 #[inline]
 pub fn disconnected() -> bool {
     MACHINE.with(|m| {
-        if let Machine::Initialized { state, .. } = m.get() {
-            if let State::Disconnected = state {
-                m.set(Machine::new());
-                return true;
-            }
+        let mut m = m.borrow_mut();
+
+        if let Machine::Initialized {
+            state: State::Disconnected,
+            ..
+        } = *m {
+            *m = Machine::new();
+            true
+        } else {
+            false
         }
-        false
     })
 }
 
 #[inline]
 pub fn blocked() -> bool {
     MACHINE.with(|m| {
-        let mut t = m.get();
+        let mut m = m.borrow_mut();
 
-        if let Machine::Initialized { state, .. } = t {
-            if state == State::Blocked {
-                m.set(Machine::new());
-                return true;
-            }
+        if let Machine::Initialized {
+            state: State::Blocked,
+            ..
+        } = *m
+        {
+            *m = Machine::new();
+            return true;
         }
 
         if let Machine::Counting {
             ref mut seen_blocked,
             ..
-        } = t
+        } = *m
         {
             *seen_blocked = true;
         }
 
-        m.set(t);
         false
     })
 }
@@ -89,28 +113,27 @@ pub fn blocked() -> bool {
 #[inline]
 pub fn timeout(dur: Duration) -> bool {
     MACHINE.with(|m| {
-        let mut t = m.get();
+        let mut m = m.borrow_mut();
 
-        if let Machine::Initialized { state, .. } = m.get() {
-            if let State::Timeout = state {
-                m.set(Machine::new());
-                return true;
-            }
+        if let Machine::Initialized {
+            state: State::Timeout,
+            ..
+        } = *m {
+            *m = Machine::new();
+            return true;
         }
 
         if let Machine::Counting {
             ref mut deadline, ..
-        } = t
+        } = *m
         {
             *deadline = Some(Instant::now() + dur);
         }
 
-        m.set(t);
         false
     })
 }
 
-#[derive(Clone, Copy)]
 enum Machine {
     Counting {
         len: usize,
@@ -127,12 +150,6 @@ enum Machine {
     },
 }
 
-struct Config { // TODO: use this
-    len: usize,
-    start: usize,
-    deadline: Option<Instant>,
-}
-
 impl Machine {
     #[inline]
     fn new() -> Self {
@@ -146,6 +163,7 @@ impl Machine {
 
     #[inline]
     fn step(&mut self, case_id: CaseId) -> Option<&mut State> {
+        // Non-lexical lifetimes will make all this much easier...
         loop {
             match *self {
                 Machine::Counting {
@@ -153,30 +171,36 @@ impl Machine {
                     first_id,
                     deadline,
                     seen_blocked,
-                } => if first_id == case_id {
-                    *self = Machine::Initialized {
-                        pos: 0,
-                        state: if seen_blocked {
-                            State::TryOnce { disconn_count: 0 }
-                        } else {
-                            State::SpinTry { disconn_count: 0 }
-                        },
-                        len,
-                        start: gen_random(len),
-                        deadline,
-                    };
-                } else {
-                    *self = Machine::Counting {
-                        len: len + 1,
-                        first_id: if first_id == CaseId::none() {
-                            case_id
-                        } else {
-                            first_id
-                        },
-                        deadline,
-                        seen_blocked,
-                    };
-                    return None;
+                } => {
+                    if first_id == case_id {
+                        *self = Machine::Initialized {
+                            pos: 0,
+                            state: {
+                                if seen_blocked {
+                                    State::TryOnce { disconn_count: 0 }
+                                } else {
+                                    State::SpinTry { disconn_count: 0 }
+                                }
+                            },
+                            len,
+                            start: gen_random(len),
+                            deadline,
+                        };
+                    } else {
+                        *self = Machine::Counting {
+                            len: len + 1,
+                            first_id: {
+                                if first_id == CaseId::none() {
+                                    case_id
+                                } else {
+                                    first_id
+                                }
+                            },
+                            deadline,
+                            seen_blocked,
+                        };
+                        return None;
+                    }
                 },
                 Machine::Initialized {
                     pos,
@@ -184,28 +208,30 @@ impl Machine {
                     len,
                     start,
                     deadline,
-                } => if pos >= 2 * len {
-                    state.transition(len, deadline);
-                    *self = Machine::Initialized {
-                        pos: 0,
-                        state,
-                        len,
-                        start,
-                        deadline,
-                    };
-                } else {
-                    *self = Machine::Initialized {
-                        pos: pos + 1,
-                        state,
-                        len,
-                        start,
-                        deadline,
-                    };
-                    if let Machine::Initialized { ref mut state, .. } = *self {
-                        if start <= pos && pos < start + len {
-                            return Some(state);
-                        } else {
-                            return None;
+                } => {
+                    if pos >= 2 * len {
+                        state.transition(len, deadline);
+                        *self = Machine::Initialized {
+                            pos: 0,
+                            state,
+                            len,
+                            start,
+                            deadline,
+                        };
+                    } else {
+                        *self = Machine::Initialized {
+                            pos: pos + 1,
+                            state,
+                            len,
+                            start,
+                            deadline,
+                        };
+                        if let Machine::Initialized { ref mut state, .. } = *self {
+                            if start <= pos && pos < start + len {
+                                return Some(state);
+                            } else {
+                                return None;
+                            }
                         }
                     }
                 },
@@ -214,7 +240,7 @@ impl Machine {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 enum State {
     TryOnce { disconn_count: usize },
     SpinTry { disconn_count: usize },
@@ -230,16 +256,20 @@ impl State {
     #[inline]
     fn transition(&mut self, len: usize, deadline: Option<Instant>) {
         match *self {
-            State::TryOnce { disconn_count } => if disconn_count < len {
-                *self = State::Blocked;
-            } else {
-                *self = State::Disconnected;
+            State::TryOnce { disconn_count } => {
+                if disconn_count < len {
+                    *self = State::Blocked;
+                } else {
+                    *self = State::Disconnected;
+                }
             },
-            State::SpinTry { disconn_count } => if disconn_count < len {
-                actor::current_reset();
-                *self = State::Promise { disconn_count: 0 };
-            } else {
-                *self = State::Disconnected;
+            State::SpinTry { disconn_count } => {
+                if disconn_count < len {
+                    actor::current_reset();
+                    *self = State::Promise { disconn_count: 0 };
+                } else {
+                    *self = State::Disconnected;
+                }
             },
             State::Promise { disconn_count } => {
                 if disconn_count < len {
@@ -273,22 +303,26 @@ impl State {
         match *self {
             State::TryOnce {
                 ref mut disconn_count,
-            } => match tx.try_send(value) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Full(v)) => value = v,
-                Err(TrySendError::Disconnected(v)) => {
-                    value = v;
-                    *disconn_count += 1;
+            } => {
+                match tx.try_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(TrySendError::Full(v)) => value = v,
+                    Err(TrySendError::Disconnected(v)) => {
+                        value = v;
+                        *disconn_count += 1;
+                    }
                 }
             },
             State::SpinTry {
                 ref mut disconn_count,
-            } => match tx.spin_try_send(value) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Full(v)) => value = v,
-                Err(TrySendError::Disconnected(v)) => {
-                    value = v;
-                    *disconn_count += 1;
+            } => {
+                match tx.spin_try_send(value) {
+                    Ok(()) => return Ok(()),
+                    Err(TrySendError::Full(v)) => value = v,
+                    Err(TrySendError::Disconnected(v)) => {
+                        value = v;
+                        *disconn_count += 1;
+                    }
                 }
             },
             State::Promise {
@@ -302,13 +336,17 @@ impl State {
                     actor::current_select(CaseId::abort());
                 }
             }
-            State::Revoke { case_id } => if tx.case_id() != case_id {
-                tx.revoke_send();
+            State::Revoke { case_id } => {
+                if tx.case_id() != case_id {
+                    tx.revoke_send();
+                }
             },
-            State::Fulfill { case_id } => if tx.case_id() == case_id {
-                match tx.fulfill_send(value) {
-                    Ok(()) => return Ok(()),
-                    Err(v) => value = v,
+            State::Fulfill { case_id } => {
+                if tx.case_id() == case_id {
+                    match tx.fulfill_send(value) {
+                        Ok(()) => return Ok(()),
+                        Err(v) => value = v,
+                    }
                 }
             },
             State::Disconnected => {}
@@ -322,17 +360,21 @@ impl State {
         match *self {
             State::TryOnce {
                 ref mut disconn_count,
-            } => match rx.try_recv() {
-                Ok(v) => return Ok(v),
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => *disconn_count += 1,
+            } => {
+                match rx.try_recv() {
+                    Ok(v) => return Ok(v),
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => *disconn_count += 1,
+                }
             },
             State::SpinTry {
                 ref mut disconn_count,
-            } => match rx.spin_try_recv() {
-                Ok(v) => return Ok(v),
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => *disconn_count += 1,
+            } => {
+                match rx.spin_try_recv() {
+                    Ok(v) => return Ok(v),
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => *disconn_count += 1,
+                }
             },
             State::Promise {
                 ref mut disconn_count,
@@ -348,12 +390,16 @@ impl State {
                     actor::current_select(CaseId::abort());
                 }
             }
-            State::Revoke { case_id } => if rx.case_id() != case_id {
-                rx.revoke_recv()
+            State::Revoke { case_id } => {
+                if rx.case_id() != case_id {
+                    rx.revoke_recv();
+                }
             },
-            State::Fulfill { case_id } => if rx.case_id() == case_id {
-                if let Ok(v) = rx.fulfill_recv() {
-                    return Ok(v);
+            State::Fulfill { case_id } => {
+                if rx.case_id() == case_id {
+                    if let Ok(v) = rx.fulfill_recv() {
+                        return Ok(v);
+                    }
                 }
             },
             State::Disconnected => {}
@@ -364,20 +410,23 @@ impl State {
     }
 }
 
+/// Returns a random number in range `0..ceil`.
 fn gen_random(ceil: usize) -> usize {
-    use std::num::Wrapping;
-
     thread_local! {
         static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
     }
 
     RNG.with(|rng| {
+        // This is the 32-bit variant of Xorshift.
         let mut x = rng.get();
         x ^= x << 13;
         x ^= x >> 17;
         x ^= x << 5;
         rng.set(x);
 
+        // A modulo operation by a constant gets compiled to simple multiplication. The general
+        // modulo instruction is in comparison much more expensive, so here we match on the most
+        // common moduli in order to avoid it.
         let x = x.0 as usize;
         match ceil {
             1 => x % 1,

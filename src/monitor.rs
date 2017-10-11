@@ -17,7 +17,7 @@ struct Entry {
     case_id: CaseId,
 }
 
-pub(crate) struct Monitor {
+pub struct Monitor {
     entries: Mutex<VecDeque<Entry>>,
     len: AtomicUsize,
 }

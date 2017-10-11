@@ -12,13 +12,14 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
 
 pub use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use select::CaseId;
 
-mod actor;
 mod backoff;
 mod err;
-mod flavors;
-mod monitor;
 pub mod select;
+pub(crate) mod actor;
+pub(crate) mod flavors;
+pub(crate) mod monitor;
 
 struct Channel<T> {
     senders: AtomicUsize,
@@ -30,19 +31,6 @@ enum Flavor<T> {
     Array(flavors::array::Channel<T>),
     List(flavors::list::Channel<T>),
     Zero(flavors::zero::Channel<T>),
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct CaseId(usize);
-
-impl CaseId {
-    fn none() -> Self {
-        CaseId(0)
-    }
-
-    fn abort() -> Self {
-        CaseId(1)
-    }
 }
 
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
@@ -79,7 +67,7 @@ impl<T> Sender<T> {
     }
 
     pub(crate) fn case_id(&self) -> CaseId {
-        CaseId(self as *const _ as usize)
+        CaseId::new(self as *const _ as usize)
     }
 
     pub(crate) fn promise_send(&self) {
@@ -217,7 +205,7 @@ impl<T> Receiver<T> {
     }
 
     pub(crate) fn case_id(&self) -> CaseId {
-        CaseId(self as *const _ as usize)
+        CaseId::new(self as *const _ as usize)
     }
 
     pub(crate) fn promise_recv(&self) {
