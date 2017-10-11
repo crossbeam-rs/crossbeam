@@ -1,3 +1,7 @@
+//! Array-based channel implementation.
+//!
+//! This flavor has a fixed capacity (a positive number).
+
 use std::cell::UnsafeCell;
 use std::usize;
 use std::marker::PhantomData;
@@ -34,7 +38,7 @@ struct Entry<T> {
 ///
 /// * http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
 /// * https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
-pub(crate) struct Channel<T> {
+pub struct Channel<T> {
     /// Buffer holding entries in the queue.
     buffer: *mut Entry<T>,
 
