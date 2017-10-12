@@ -9,7 +9,7 @@ use std::mem::{self, ManuallyDrop};
 use std::ptr;
 use std::sync::atomic::Ordering::{Relaxed, Acquire, Release};
 
-use {Atomic, Owned, Ptr, Scope, pin, unprotected};
+use {Atomic, Owned, Ptr, Scope, unprotected};
 use crossbeam_utils::cache_padded::CachePadded;
 
 // The representation here is a singly-linked list, with a sentinel node at the front. In general
@@ -150,15 +150,6 @@ impl<T> Queue<T> {
         }
     }
 
-    /// Returns `true` if the queue is empty.
-    pub fn is_empty(&self) -> bool {
-        pin(|scope| {
-            let head = self.head.load(Acquire, scope);
-            let h = unsafe { head.deref() };
-            h.next.load(Acquire, scope).is_null()
-        })
-    }
-
     /// Attempts to dequeue from the front.
     ///
     /// Returns `None` if the queue is observed to be empty.
@@ -206,6 +197,7 @@ impl<T> Drop for Queue<T> {
 mod test {
     use super::*;
     use crossbeam_utils::scoped;
+    use pin;
 
     struct Queue<T> {
         queue: super::Queue<T>,
@@ -221,7 +213,11 @@ mod test {
         }
 
         pub fn is_empty(&self) -> bool {
-            self.queue.is_empty()
+            pin(|scope| {
+                let head = self.queue.head.load(Acquire, scope);
+                let h = unsafe { head.deref() };
+                h.next.load(Acquire, scope).is_null()
+            })
         }
 
         pub fn try_pop(&self) -> Option<T> {

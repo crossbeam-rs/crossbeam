@@ -34,7 +34,10 @@ impl Deferred {
                     f();
                 }
 
-                Deferred { call: call::<F>, data }
+                Deferred {
+                    call: call::<F>,
+                    data,
+                }
             } else {
                 let b: Box<F> = Box::new(f);
                 let mut data: Data = mem::uninitialized();
@@ -45,7 +48,10 @@ impl Deferred {
                     (*b)();
                 }
 
-                Deferred { call: call::<F>, data }
+                Deferred {
+                    call: call::<F>,
+                    data,
+                }
             }
         }
     }

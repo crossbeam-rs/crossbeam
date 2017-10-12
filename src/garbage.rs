@@ -23,7 +23,7 @@
 //! structure may have its own queue that gets fully destroyed as soon as the data structure gets
 //! dropped.
 
-use std::mem;
+use std::fmt;
 use arrayvec::ArrayVec;
 use deferred::Deferred;
 
@@ -41,55 +41,16 @@ pub struct Garbage {
 unsafe impl Sync for Garbage {}
 unsafe impl Send for Garbage {}
 
+impl fmt::Debug for Garbage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "garbage {{ ... }}")
+    }
+}
+
 impl Garbage {
-    /// Make a garbage object that will later be destroyed using `destroy`.
-    ///
-    /// The specified object is an array allocated at address `object` and consists of `size`
-    /// elements of type `T`.
-    ///
-    /// Note: The object must be `Send + 'static`.
-    pub fn new_destroy<T>(object: *mut T, size: usize, destroy: unsafe fn(*mut T, usize)) -> Self {
-        let object = object as usize;
-        let destroy: unsafe fn(*mut u8, usize) = unsafe { mem::transmute(destroy) };
-        Garbage {
-            func: Deferred::new(move || unsafe {
-                destroy(object as *mut u8, size);
-            }),
-        }
-    }
-
-    /// Make a garbage object that will later be freed.
-    ///
-    /// The specified object is an array allocated at address `object` and consists of `size`
-    /// elements of type `T`.
-    pub fn new_free<T>(object: *mut T, size: usize) -> Self {
-        let object = object as usize;
-        Garbage {
-            func: Deferred::new(move || unsafe {
-                drop(Vec::from_raw_parts(object as *mut T, 0, size));
-            }),
-        }
-    }
-
-    /// Make a garbage object that will later be dropped and freed.
-    ///
-    /// The specified object is an array allocated at address `object` and consists of `size`
-    /// elements of type `T`.
-    ///
-    /// Note: The object must be `Send + 'static`.
-    pub fn new_drop<T>(object: *mut T, size: usize) -> Self {
-        unsafe fn destruct<T>(object: *mut T, size: usize) {
-            // Run the destructors and free the memory.
-            drop(Vec::from_raw_parts(object, size, size));
-        }
-        Self::new_destroy(object, size, destruct)
-    }
-
     /// Make a closure that will later be called.
     pub fn new<F: FnOnce() + Send>(f: F) -> Self {
-        Garbage {
-            func: Deferred::new(move || f()),
-        }
+        Garbage { func: Deferred::new(move || f()) }
     }
 }
 
@@ -101,7 +62,7 @@ impl Drop for Garbage {
 
 
 /// Bag of garbages.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Bag {
     /// Removed objects.
     objects: ArrayVec<[Garbage; MAX_OBJECTS]>,

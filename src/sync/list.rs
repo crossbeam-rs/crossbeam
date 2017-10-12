@@ -21,8 +21,10 @@ struct NodeInner<T> {
 
 unsafe impl<T> Send for NodeInner<T> {}
 
+#[derive(Debug)]
 pub struct Node<T>(CachePadded<NodeInner<T>>);
 
+#[derive(Debug)]
 pub struct List<T> {
     head: Atomic<Node<T>>,
 }
@@ -59,7 +61,7 @@ impl<T> Node<T> {
 
 impl<T: 'static> Node<T> {
     /// Marks this entry as deleted.
-    pub fn delete<'scope>(&self, scope: &Scope) {
+    pub fn delete(&self, scope: &Scope) {
         self.0.next.fetch_or(1, Release, scope);
     }
 }
@@ -95,15 +97,6 @@ impl<T> List<T> {
     /// Inserts `data` into the head of the list.
     pub fn insert<'scope>(&'scope self, data: T, scope: &'scope Scope) -> Ptr<'scope, Node<T>> {
         Self::insert_internal(&self.head, data, scope)
-    }
-
-    /// Inserts `data` after `to`.
-    pub fn insert_after<'scope>(
-        to: &'scope Node<T>,
-        data: T,
-        scope: &'scope Scope,
-    ) -> Ptr<'scope, Node<T>> {
-        Self::insert_internal(&to.0.next, data, scope)
     }
 
     /// Returns an iterator over all data.

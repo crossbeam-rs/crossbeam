@@ -8,24 +8,30 @@
 //!
 //! # Pinning
 //!
-//! Before an [`Atomic`] can be loaded, the current mutator must be [`pin`]ned. By pinning a mutator
+//! Before an [`Atomic`] can be loaded, a participant must be [`pin`]ned. By pinning a participant
 //! we declare that any object that gets removed from now on must not be destructed just
-//! yet. Garbage collection of newly removed objects is suspended until the mutator gets unpinned.
+//! yet. Garbage collection of newly removed objects is suspended until the participant gets
+//! unpinned.
 //!
 //! # Garbage
 //!
 //! Objects that get removed from concurrent collections must be stashed away until all currently
-//! pinned mutators get unpinned. Such objects can be stored into a [`Garbage`], where they are kept
-//! until the right time for their destruction comes.
+//! pinned participants get unpinned. Such objects can be stored into a [`Garbage`], where they are
+//! kept until the right time for their destruction comes.
 //!
-//! There is a global shared instance of garbage queue, which can deallocate ([`defer_free`]) or
-//! drop ([`defer_drop`]) objects, or even run arbitrary destruction procedures ([`defer`]).
+//! There is a global shared instance of garbage queue. You can [`defer`] the execution of an
+//! arbitrary function until the global epoch is advanced enough. Most notably, concurrent data
+//! structures may defer the deallocation of an object.
+//!
+//! # APIs
+//!
+//! For majority of use cases, just use the default garbage collector by invoking [`pin`]. If you
+//! want to create your own garbage collector, use the [`Collector`] API.
 //!
 //! [`Atomic`]: struct.Atomic.html
+//! [`Collector`]: struct.Collector.html
 //! [`Ptr`]: struct.Ptr.html
 //! [`pin`]: fn.pin.html
-//! [`defer_free`]: fn.defer_free.html
-//! [`defer_drop`]: fn.defer_drop.html
 //! [`defer`]: fn.defer.html
 
 #![cfg_attr(feature = "nightly", feature(const_fn))]
@@ -41,10 +47,13 @@ mod atomic;
 mod deferred;
 mod epoch;
 mod garbage;
-mod global;
-mod mutator;
+mod internal;
+mod collector;
+mod scope;
+mod default;
 mod sync;
 
 pub use self::atomic::{Atomic, CompareAndSetOrdering, Owned, Ptr};
-pub use self::mutator::{Scope, unprotected};
-pub use self::global::{pin, is_pinned};
+pub use self::scope::{Scope, unprotected};
+pub use self::default::{pin, is_pinned};
+pub use self::collector::{Collector, Handle};
