@@ -131,18 +131,22 @@ impl<T> Channel<T> {
                 let new_index = index.wrapping_add(1);
                 let offset = index.wrapping_sub(tail.start_index);
 
+                // If `index` is not pointing into `tail`, try again.
                 if offset >= NODE_CAP {
                     backoff.step();
                     continue;
                 }
 
+                // Try moving the tail index forward.
                 if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
+                    // Write `value` into the corresponding entry.
                     unsafe {
                         let entry = tail.entries.get_unchecked(offset).get();
                         ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
                         (*entry).ready.store(true, SeqCst);
                     }
 
+                    // If this was the last entry in the node, allocate a new one.
                     if offset + 1 == NODE_CAP {
                         let new = Owned::new(Node::new(new_index)).into_ptr(scope);
                         tail.next.store(new, SeqCst);
@@ -168,6 +172,7 @@ impl<T> Channel<T> {
                 let new_index = index.wrapping_add(1);
                 let offset = index.wrapping_sub(head.start_index);
 
+                // If `index` is not pointing into `head`, try again.
                 if offset >= NODE_CAP {
                     backoff.step();
                     continue;
@@ -175,31 +180,39 @@ impl<T> Channel<T> {
 
                 let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
 
+                // If this entry does not contain the value and the tail equals the head, then the
+                // queue is empty.
                 if !entry.ready.load(Relaxed) && self.tail.index.load(SeqCst) == index {
                     return None;
                 }
 
+                // Try moving the head index forward.
                 if self.head.index.compare_and_swap(index, new_index, SeqCst) == index {
                     while !entry.ready.load(SeqCst) {
                         backoff.step();
                     }
 
+                    let v = unsafe { ptr::read(&(*entry).value) };
+                    let value = ManuallyDrop::into_inner(v);
+
+                    // If this was the last entry in the node, defer its destruction.
                     if offset + 1 == NODE_CAP {
+                        // Wait until the next pointer becomes non-null.
                         loop {
                             let next = head.next.load(SeqCst, scope);
                             if !next.is_null() {
                                 self.head.node.store(next, SeqCst);
-                                unsafe {
-                                    scope.defer_free(head_ptr);
-                                }
                                 break;
                             }
                             backoff.step();
                         }
+
+                        unsafe {
+                            scope.defer_free(head_ptr);
+                        }
                     }
 
-                    let v = unsafe { ptr::read(&(*entry).value) };
-                    return Some(ManuallyDrop::into_inner(v));
+                    return Some(value);
                 }
             }
         })
@@ -211,6 +224,7 @@ impl<T> Channel<T> {
             let tail_index = self.tail.index.load(SeqCst);
             let head_index = self.head.index.load(SeqCst);
 
+            // If the tail index didn't change, we've got consistent indices to work with.
             if self.tail.index.load(SeqCst) == tail_index {
                 return tail_index.wrapping_sub(head_index);
             }
