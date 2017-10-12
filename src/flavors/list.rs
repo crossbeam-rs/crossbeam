@@ -1,6 +1,6 @@
-//! Linked list-based channel implementation.
+//! Channel implementation based on a linked list.
 //!
-//! This flavor is unbounded.
+//! This flavor has unbounded capacity.
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -19,39 +19,77 @@ use backoff::Backoff;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 
-const NODE_LEN: usize = 32;
+/// Number of values a node can hold.
+const NODE_CAP: usize = 32;
 
+/// An entry in a node of the linked list.
 struct Entry<T> {
+    /// The value in this entry.
     value: ManuallyDrop<T>,
+
+    /// Whether the value is ready for reading.
     ready: AtomicBool,
 }
 
+/// A node in the linked list.
+///
+/// Each node in the list can hold up to `NODE_CAP` values. Storing multiple values in a node
+/// improves cache locality and reduces the total amount of allocation.
 struct Node<T> {
-    start: usize,
-    entries: [UnsafeCell<Entry<T>>; NODE_LEN],
+    /// Start index of this node.
+    /// Indices span the range `start_index .. start_index + NODE_CAP`.
+    start_index: usize,
+
+    /// Entries containing values.
+    entries: [UnsafeCell<Entry<T>>; NODE_CAP],
+
+    /// The next node in the linked list.
     next: Atomic<Node<T>>,
 }
 
 impl<T> Node<T> {
-    fn new(start: usize) -> Node<T> {
+    /// Returns a new, empty node that starts at `start_index`.
+    fn new(start_index: usize) -> Node<T> {
         Node {
-            start,
+            start_index,
             entries: unsafe { mem::zeroed() },
             next: Atomic::null(),
         }
     }
 }
 
+/// A position in the queue (index and node).
+///
+/// This struct marks the current position of the head or the tail in a linked list.
 struct Position<T> {
+    /// The index in the queue.
+    ///
+    /// Indices wrap around on overflow.
     index: AtomicUsize,
+
+    /// The node in the linked list.
     node: Atomic<Node<T>>,
 }
 
+/// A channel of unbounded capacity based on a linked list.
+///
+/// The internal queue can be thought of as an array of infinite length. Head and tail indices
+/// point into the array and wrap around on overflow. This infinite array is implemented as a
+/// linked list of nodes, each of which has enough space to contain a few dozen values.
 pub struct Channel<T> {
+    /// The current head index and the node containing it.
     head: CachePadded<Position<T>>,
+
+    /// The current tail index and the node containing it.
     tail: CachePadded<Position<T>>,
+
+    /// Equals `true` if the queue is closed.
     closed: AtomicBool,
+
+    /// Receivers waiting on empty queue.
     receivers: Monitor,
+
+    /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
 }
 
@@ -72,6 +110,7 @@ impl<T> Channel<T> {
         };
 
         unsafe {
+            // Create an empty node, into which both head and tail point at the beginning.
             epoch::unprotected(|scope| {
                 let node = Owned::new(Node::new(0)).into_ptr(scope);
                 queue.head.node.store(node, Relaxed);
@@ -82,6 +121,7 @@ impl<T> Channel<T> {
         queue
     }
 
+    /// Pushes `value` into the queue.
     fn push(&self, value: T) {
         epoch::pin(|scope| {
             let mut backoff = Backoff::new();
@@ -89,9 +129,9 @@ impl<T> Channel<T> {
                 let tail = unsafe { self.tail.node.load(SeqCst, scope).deref() };
                 let index = self.tail.index.load(SeqCst);
                 let new_index = index.wrapping_add(1);
-                let offset = index.wrapping_sub(tail.start);
+                let offset = index.wrapping_sub(tail.start_index);
 
-                if offset >= NODE_LEN {
+                if offset >= NODE_CAP {
                     backoff.step();
                     continue;
                 }
@@ -103,7 +143,7 @@ impl<T> Channel<T> {
                         (*entry).ready.store(true, SeqCst);
                     }
 
-                    if offset + 1 == NODE_LEN {
+                    if offset + 1 == NODE_CAP {
                         let new = Owned::new(Node::new(new_index)).into_ptr(scope);
                         tail.next.store(new, SeqCst);
                         self.tail.node.store(new, SeqCst);
@@ -115,22 +155,25 @@ impl<T> Channel<T> {
         })
     }
 
+    /// Attempts to pop a value from the queue.
+    ///
+    /// Returns `None` if the queue is empty.
     fn pop(&self) -> Option<T> {
         epoch::pin(|scope| {
             let mut backoff = Backoff::new();
             loop {
-                let head = self.head.node.load(SeqCst, scope);
-                let h = unsafe { head.deref() };
+                let head_ptr = self.head.node.load(SeqCst, scope);
+                let head = unsafe { head_ptr.deref() };
                 let index = self.head.index.load(SeqCst);
                 let new_index = index.wrapping_add(1);
-                let offset = index.wrapping_sub(h.start);
+                let offset = index.wrapping_sub(head.start_index);
 
-                if offset >= NODE_LEN {
+                if offset >= NODE_CAP {
                     backoff.step();
                     continue;
                 }
 
-                let entry = unsafe { &*h.entries.get_unchecked(offset).get() };
+                let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
 
                 if !entry.ready.load(Relaxed) && self.tail.index.load(SeqCst) == index {
                     return None;
@@ -141,13 +184,13 @@ impl<T> Channel<T> {
                         backoff.step();
                     }
 
-                    if offset + 1 == NODE_LEN {
+                    if offset + 1 == NODE_CAP {
                         loop {
-                            let next = h.next.load(SeqCst, scope);
+                            let next = head.next.load(SeqCst, scope);
                             if !next.is_null() {
                                 self.head.node.store(next, SeqCst);
                                 unsafe {
-                                    scope.defer_free(head);
+                                    scope.defer_free(head_ptr);
                                 }
                                 break;
                             }
@@ -162,6 +205,7 @@ impl<T> Channel<T> {
         })
     }
 
+    /// Returns the current number of values inside the channel.
     pub fn len(&self) -> usize {
         loop {
             let tail_index = self.tail.index.load(SeqCst);
@@ -173,6 +217,7 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Attempts to send `value` into the channel.
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
             Err(TrySendError::Disconnected(value))
@@ -183,6 +228,7 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Send `value` into the channel.
     pub fn send(&self, value: T) -> Result<(), SendTimeoutError<T>> {
         if self.closed.load(SeqCst) {
             Err(SendTimeoutError::Disconnected(value))
@@ -193,6 +239,7 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Attempts to receive a value from channel.
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let closed = self.closed.load(SeqCst);
         match self.pop() {
@@ -205,6 +252,7 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Attempts to receive a value from channel, retrying several times if it is empty.
     pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
         for _ in 0..20 {
             let closed = self.closed.load(SeqCst);
@@ -218,6 +266,7 @@ impl<T> Channel<T> {
         Err(TryRecvError::Empty)
     }
 
+    /// Attempts to receive a value from the channel until the specified `deadline`.
     pub fn recv_until(
         &self,
         deadline: Option<Instant>,
@@ -236,7 +285,7 @@ impl<T> Channel<T> {
             let timed_out = !is_closed && self.is_empty() && !actor::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
-            if is_closed {
+            if is_closed && self.is_empty() {
                 return Err(RecvTimeoutError::Disconnected);
             } else if timed_out {
                 return Err(RecvTimeoutError::Timeout);
@@ -271,27 +320,34 @@ impl<T> Channel<T> {
 
 impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
+        let tail_index = self.tail.index.load(Relaxed);
+        let mut head_index = self.head.index.load(Relaxed);
+
         unsafe {
             epoch::unprotected(|scope| {
-                let tail_index = self.tail.index.load(Relaxed);
-                let mut head_index = self.head.index.load(Relaxed);
-                let mut node = self.head.node.load(Relaxed, scope);
+                let mut head_ptr = self.head.node.load(Relaxed, scope);
 
+                // Manually drop all values between `head_index` and `tail_index` and destroy the
+                // heap-allocated nodes along the way.
                 while head_index != tail_index {
-                    let n = node.deref();
-                    let offset = head_index.wrapping_sub(n.start);
-                    let entry = &mut *n.entries.get_unchecked(offset).get();
+                    let head = head_ptr.deref();
+                    let offset = head_index.wrapping_sub(head.start_index);
 
-                    let v = ptr::read(&mut (*entry).value);
-                    drop(ManuallyDrop::into_inner(v));
+                    let entry = &mut *head.entries.get_unchecked(offset).get();
+                    ManuallyDrop::drop(&mut (*entry).value);
 
-                    if offset + 1 == NODE_LEN {
-                        let next = n.next.load(Relaxed, scope);
-                        node.destroy();
-                        node = next;
+                    if offset + 1 == NODE_CAP {
+                        let next = head.next.load(Relaxed, scope);
+                        head_ptr.destroy();
+                        head_ptr = next;
                     }
 
                     head_index = head_index.wrapping_add(1);
+                }
+
+                // If there is one last remaining node in the end, destroy it.
+                if !head_ptr.is_null() {
+                    head_ptr.destroy();
                 }
             })
         }

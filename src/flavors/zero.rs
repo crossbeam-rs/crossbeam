@@ -25,7 +25,7 @@ struct Inner<T> {
     closed: bool,
 }
 
-pub(crate) struct Channel<T> {
+pub struct Channel<T> {
     inner: Mutex<Inner<T>>,
 }
 

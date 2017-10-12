@@ -1,9 +1,8 @@
-//! Array-based channel implementation.
+//! Channel implementation based on an array.
 //!
 //! This flavor has a fixed capacity (a positive number).
 
 use std::cell::UnsafeCell;
-use std::usize;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
@@ -39,15 +38,6 @@ struct Entry<T> {
 /// * http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
 /// * https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
 pub struct Channel<T> {
-    /// Buffer holding entries in the queue.
-    buffer: *mut Entry<T>,
-
-    /// Channel capacity.
-    cap: usize,
-
-    /// The next power of two greater than or equal to the capacity.
-    power: usize,
-
     /// Head of the queue (the next index to read from).
     ///
     /// The lower `log2(power)` bits hold the index into the buffer, and the upper bits hold the
@@ -59,6 +49,15 @@ pub struct Channel<T> {
     /// The lower `log2(power)` bits hold the index into the buffer, and the upper bits hold the
     /// current lap, which is always even for `tail`.
     tail: CachePadded<AtomicUsize>,
+
+    /// Buffer holding entries in the queue.
+    buffer: *mut Entry<T>,
+
+    /// Channel capacity.
+    cap: usize,
+
+    /// The next power of two greater than or equal to the capacity.
+    power: usize,
 
     /// Equals `true` if the queue is closed.
     closed: AtomicBool,
@@ -82,19 +81,13 @@ impl<T> Channel<T> {
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
-        // On 8-bit and 16-bit platforms head and tail might wrap around on overflow too quickly,
-        // which would make the queue implementation unsafe. For that reason we require minimum
-        // pointer width of 32 bits (4 bytes).
-        //
-        // This requirement has a useful consequence. Since every entry contains an `AtomicUsize`,
-        // the capacity will be less than `usize::MAX / 4` (because otherwise allocation would
-        // surely fail). This means that there are at least two most significant bits in `head` and
-        // `tail` reserved to encode laps, so there are at least two even and two odd laps. Methods
-        // like `push`, `pop`, and `len` compare laps, so it's important that we have at least two
-        // distinguishable odd and even laps.
+        // Make sure there are at least two most significant bits to encode laps. If this limit is
+        // hit, the buffer is most likely too large to allocate anyway.
+        let cap_limit = usize::max_value() / 4;
         assert!(
-            mem::size_of::<usize>() >= 4,
-            "8-bit and 16-bit platforms are not supported"
+            cap <= cap_limit,
+            "channel capacity is too large: {} > {}",
+            cap, cap_limit
         );
 
         // Allocate a buffer of `cap` entries.
@@ -241,7 +234,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns the current number of elements inside the queue.
+    /// Returns the current number of values inside the channel.
     pub fn len(&self) -> usize {
         loop {
             // Load the tail, then load the head.
@@ -385,7 +378,7 @@ impl<T> Channel<T> {
             let timed_out = !is_closed && self.is_empty() && !actor::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
-            if is_closed {
+            if is_closed && self.is_empty() {
                 return Err(RecvTimeoutError::Disconnected);
             } else if timed_out {
                 return Err(RecvTimeoutError::Timeout);
