@@ -40,6 +40,7 @@ pub struct Iter<'scope, T: 'scope> {
     curr: Ptr<'scope, Node<T>>,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum IterError {
     /// Iterator lost a race in deleting a node by a concurrent iterator.
     LostRace,
@@ -95,8 +96,21 @@ impl<T> List<T> {
     }
 
     /// Inserts `data` into the head of the list.
+    #[inline]
     pub fn insert<'scope>(&'scope self, data: T, scope: &'scope Scope) -> Ptr<'scope, Node<T>> {
         Self::insert_internal(&self.head, data, scope)
+    }
+
+    /// Inserts `data` after `after` into the list.
+    #[inline]
+    #[allow(dead_code)]
+    pub fn insert_after<'scope>(
+        &'scope self,
+        after: &'scope Atomic<Node<T>>,
+        data: T,
+        scope: &'scope Scope,
+    ) -> Ptr<'scope, Node<T>> {
+        Self::insert_internal(after, data, scope)
     }
 
     /// Returns an iterator over all data.
@@ -184,5 +198,39 @@ impl<'scope, T> Iterator for Iter<'scope, T> {
 impl<T> Default for List<T> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use Collector;
+    use super::*;
+
+    #[test]
+    fn insert_iter_delete_iter() {
+        let l: List<i64> = List::new();
+
+        let collector = Collector::new();
+        let handle = collector.handle();
+
+        handle.pin(|scope| {
+            let p2 = l.insert(2, scope);
+            let n2 = unsafe { p2.as_ref().unwrap() };
+            let _p3 = l.insert_after(&n2.0.next, 3, scope);
+            let _p1 = l.insert(1, scope);
+
+            let mut iter = l.iter(scope);
+            assert!(iter.next().is_some());
+            assert!(iter.next().is_some());
+            assert!(iter.next().is_some());
+            assert!(iter.next().is_none());
+
+            n2.delete(scope);
+
+            let mut iter = l.iter(scope);
+            assert!(iter.next().is_some());
+            assert!(iter.next().is_some());
+            assert!(iter.next().is_none());
+        });
     }
 }

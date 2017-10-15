@@ -18,10 +18,11 @@
 //! # Garbage queues
 //!
 //! Whenever a bag is pushed into a queue, some garbage in the queue is collected and destroyed
-//! along the way.  Garbage collection can also be manually triggered by calling `collect()`.  This
-//! design reduces contention on data structures.  Ideally each instance of concurrent data
-//! structure may have its own queue that gets fully destroyed as soon as the data structure gets
-//! dropped.
+//! along the way.  This design reduces contention on data structures.  The global queue cannot be
+//! explicitly accessed: the only way to interact with it is by calling functions `defer*()`, or
+//! calling `collect()` that manually triggers garbage collection.  Ideally each instance of
+//! concurrent data structure may have its own queue that gets fully destroyed as soon as the data
+//! structure gets dropped.
 
 use std::fmt;
 use arrayvec::ArrayVec;
@@ -64,7 +65,7 @@ impl Drop for Garbage {
 /// Bag of garbages.
 #[derive(Default, Debug)]
 pub struct Bag {
-    /// Removed objects.
+    /// Stashed objects.
     objects: ArrayVec<[Garbage; MAX_OBJECTS]>,
 }
 
@@ -82,5 +83,51 @@ impl Bag {
     /// Attempts to insert a garbage object into the bag and returns `true` if succeeded.
     pub fn try_push(&mut self, garbage: Garbage) -> Result<(), Garbage> {
         self.objects.try_push(garbage).map_err(|e| e.element())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
+    use std::sync::atomic::Ordering;
+
+    use super::*;
+
+    #[test]
+    fn check_defer() {
+        static FLAG: AtomicUsize = ATOMIC_USIZE_INIT;
+        fn set() {
+            FLAG.store(42, Ordering::Relaxed);
+        }
+
+        let g = Garbage::new(set);
+        assert_eq!(FLAG.load(Ordering::Relaxed), 0);
+        drop(g);
+        assert_eq!(FLAG.load(Ordering::Relaxed), 42);
+    }
+
+    #[test]
+    fn check_bag() {
+        static FLAG: AtomicUsize = ATOMIC_USIZE_INIT;
+        fn incr() {
+            FLAG.fetch_add(1, Ordering::Relaxed);
+        }
+
+        let mut bag = Bag::new();
+        assert!(bag.is_empty());
+
+        for _ in 0..MAX_OBJECTS {
+            assert!(bag.try_push(Garbage::new(incr)).is_ok());
+            assert!(!bag.is_empty());
+            assert_eq!(FLAG.load(Ordering::Relaxed), 0);
+        }
+
+        let result = bag.try_push(Garbage::new(incr));
+        assert!(result.is_err());
+        assert!(!bag.is_empty());
+        assert_eq!(FLAG.load(Ordering::Relaxed), 0);
+
+        drop(bag);
+        assert_eq!(FLAG.load(Ordering::Relaxed), MAX_OBJECTS);
     }
 }
