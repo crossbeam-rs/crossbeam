@@ -6,14 +6,14 @@ use std::thread;
 
 use parking_lot::Mutex;
 
-use CaseId;
-use actor::{self, Actor};
+use select::CaseId;
+use select::handle::{self, Handle};
 
 // TODO: Explain that a single thread can be registered multiple times (that happens only in
 // select).  Unregister removes just entry belonging to the current thread.
 
 struct Entry {
-    actor: Arc<Actor>,
+    handle: Arc<Handle>,
     case_id: CaseId,
 }
 
@@ -33,7 +33,7 @@ impl Monitor {
     pub fn register(&self, case_id: CaseId) {
         let mut entries = self.entries.lock();
         entries.push_back(Entry {
-            actor: actor::current(),
+            handle: handle::current(),
             case_id,
         });
         self.len.store(entries.len(), SeqCst);
@@ -44,7 +44,7 @@ impl Monitor {
         let mut entries = self.entries.lock();
 
         if let Some((i, _)) = entries.iter().enumerate().find(|&(_, e)| {
-            e.case_id == case_id && e.actor.thread_id() == thread_id
+            e.case_id == case_id && e.handle.thread_id() == thread_id
         }) {
             entries.remove(i);
             self.len.store(entries.len(), SeqCst);
@@ -59,13 +59,13 @@ impl Monitor {
 
             let mut i = 0;
             while i < entries.len() {
-                if entries[i].actor.thread_id() != thread_id {
+                if entries[i].handle.thread_id() != thread_id {
                     let e = entries.remove(i).unwrap();
                     self.len.store(entries.len(), SeqCst);
                     self.maybe_shrink(&mut entries);
 
-                    if e.actor.select(e.case_id) {
-                        e.actor.unpark();
+                    if e.handle.select(e.case_id) {
+                        e.handle.unpark();
                         break;
                     }
                 }
@@ -80,8 +80,8 @@ impl Monitor {
 
             self.len.store(0, SeqCst);
             for e in entries.drain(..) {
-                if e.actor.select(CaseId::abort()) {
-                    e.actor.unpark();
+                if e.handle.select(CaseId::abort()) {
+                    e.handle.unpark();
                 }
             }
 

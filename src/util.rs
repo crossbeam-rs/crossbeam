@@ -1,3 +1,5 @@
+use std::cell::Cell;
+use std::num::Wrapping;
 use std::thread;
 
 /// A counter that performs exponential backoff in spin loops.
@@ -34,4 +36,33 @@ impl Backoff {
             false
         }
     }
+}
+
+/// Returns a random number in range `0..ceil`.
+pub fn small_random(ceil: usize) -> usize {
+    thread_local! {
+        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
+    }
+
+    RNG.with(|rng| {
+        // This is the 32-bit variant of Xorshift.
+        let mut x = rng.get();
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        rng.set(x);
+
+        // A modulo operation by a constant gets compiled to simple multiplication. The general
+        // modulo instruction is in comparison much more expensive, so here we match on the most
+        // common moduli in order to avoid it.
+        let x = x.0 as usize;
+        match ceil {
+            1 => x % 1,
+            2 => x % 2,
+            3 => x % 3,
+            4 => x % 4,
+            5 => x % 5,
+            n => x % n,
+        }
+    })
 }

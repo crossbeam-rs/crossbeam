@@ -4,15 +4,15 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
-use backoff::Backoff;
 use select::CaseId;
+use util::Backoff;
 
-pub struct Actor {
+pub struct Handle {
     case_id: AtomicUsize,
     thread: Thread,
 }
 
-impl Actor {
+impl Handle {
     pub fn select(&self, case_id: CaseId) -> bool {
         self.case_id
             .compare_and_swap(CaseId::none().id, case_id.id, SeqCst) == CaseId::none().id
@@ -64,28 +64,28 @@ impl Actor {
 }
 
 thread_local! {
-    static ACTOR: Arc<Actor> = Arc::new(Actor {
+    static HANDLE: Arc<Handle> = Arc::new(Handle {
         case_id: AtomicUsize::new(CaseId::none().id),
         thread: thread::current(),
     });
 }
 
-pub fn current() -> Arc<Actor> {
-    ACTOR.with(|a| a.clone())
+pub fn current() -> Arc<Handle> {
+    HANDLE.with(|a| a.clone())
 }
 
 pub fn current_select(case_id: CaseId) -> bool {
-    ACTOR.with(|a| a.select(case_id))
+    HANDLE.with(|a| a.select(case_id))
 }
 
 pub fn current_selected() -> CaseId {
-    ACTOR.with(|a| a.selected())
+    HANDLE.with(|a| a.selected())
 }
 
 pub fn current_reset() {
-    ACTOR.with(|a| a.reset())
+    HANDLE.with(|a| a.reset())
 }
 
 pub fn current_wait_until(deadline: Option<Instant>) -> bool {
-    ACTOR.with(|a| a.wait_until(deadline))
+    HANDLE.with(|a| a.wait_until(deadline))
 }

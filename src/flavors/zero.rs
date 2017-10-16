@@ -7,12 +7,11 @@ use std::time::Instant;
 
 use parking_lot::Mutex;
 
-use CaseId;
-use actor::{self, Actor};
-use backoff::Backoff;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use select::CaseId;
+use select::handle::{self, Handle};
+use util::Backoff;
 
-#[derive(PartialEq, Eq)]
 enum Operation {
     Try,
     Spin,
@@ -109,23 +108,23 @@ impl<T> Channel<T> {
                     return Ok(());
                 }
 
-                if oper == Operation::Try {
+                if let Operation::Try = oper {
                     return Err(SendTimeoutError::Timeout(value));
                 }
 
-                actor::current_reset();
+                handle::current_reset();
                 packet = Packet::new(Some(value));
                 inner.senders.offer(&packet, case_id);
             }
 
             let timed_out = if let Operation::Until(deadline) = oper {
-                !actor::current_wait_until(deadline)
+                !handle::current_wait_until(deadline)
             } else {
                 thread::yield_now();
-                actor::current_select(CaseId::abort())
+                handle::current_select(CaseId::abort())
             };
 
-            if actor::current_selected() != CaseId::abort() {
+            if handle::current_selected() != CaseId::abort() {
                 packet.wait();
                 return Ok(());
             }
@@ -182,23 +181,23 @@ impl<T> Channel<T> {
                     return Ok(e.recv(self));
                 }
 
-                if oper == Operation::Try {
+                if let Operation::Try = oper {
                     return Err(RecvTimeoutError::Timeout);
                 }
 
-                actor::current_reset();
+                handle::current_reset();
                 packet = Packet::new(None);
                 inner.receivers.offer(&packet, case_id);
             }
 
             let timed_out = if let Operation::Until(deadline) = oper {
-                !actor::current_wait_until(deadline)
+                !handle::current_wait_until(deadline)
             } else {
                 thread::yield_now();
-                actor::current_select(CaseId::abort())
+                handle::current_select(CaseId::abort())
             };
 
-            if actor::current_selected() != CaseId::abort() {
+            if handle::current_selected() != CaseId::abort() {
                 packet.wait();
                 return Ok(packet.take());
             }
@@ -240,7 +239,7 @@ impl<T> Channel<T> {
 
 enum Entry<T> {
     Offer {
-        actor: Arc<Actor>,
+        handle: Arc<Handle>,
         packet: *const Packet<T>,
         case_id: CaseId,
     },
@@ -251,17 +250,17 @@ impl<T> Entry<T> {
     fn send(&self, value: T, chan: &Channel<T>) {
         match *self {
             Entry::Offer {
-                ref actor, packet, ..
+                ref handle, packet, ..
             } => {
                 unsafe { (*packet).put(value) }
-                actor.unpark();
+                handle.unpark();
             }
             Entry::Promise { ref local, .. } => {
-                actor::current_reset();
+                handle::current_reset();
                 let req = Request::new(Some(value), chan);
                 local.request_ptr.store(&req as *const _ as usize, SeqCst);
-                local.actor.unpark();
-                actor::current_wait_until(None);
+                local.handle.unpark();
+                handle::current_wait_until(None);
             }
         }
     }
@@ -269,28 +268,28 @@ impl<T> Entry<T> {
     fn recv(&self, chan: &Channel<T>) -> T {
         match *self {
             Entry::Offer {
-                ref actor, packet, ..
+                ref handle, packet, ..
             } => {
                 let v = unsafe { (*packet).take() };
-                // The actor has to lock `self.inner` before continuing.
-                actor.unpark();
+                // The handle has to lock `self.inner` before continuing.
+                handle.unpark();
                 v
             }
             Entry::Promise { ref local, .. } => {
-                actor::current_reset();
+                handle::current_reset();
                 let req = Request::new(None, chan);
                 local.request_ptr.store(&req as *const _ as usize, SeqCst);
-                local.actor.unpark();
-                actor::current_wait_until(None);
+                local.handle.unpark();
+                handle::current_wait_until(None);
                 req.packet.take()
             }
         }
     }
 
-    fn actor(&self) -> &Actor {
+    fn handle(&self) -> &Handle {
         match *self {
-            Entry::Offer { ref actor, .. } => actor,
-            Entry::Promise { ref local, .. } => &local.actor,
+            Entry::Offer { ref handle, .. } => handle,
+            Entry::Promise { ref local, .. } => &local.handle,
         }
     }
 
@@ -314,10 +313,10 @@ fn finish_send<T>(value: T, chan: &Channel<T>) {
     unsafe {
         assert!((*req).chan == chan);
 
-        let actor = (*req).actor.clone();
+        let handle = (*req).handle.clone();
         (*req).packet.put(value);
-        (*req).actor.select(CaseId::abort());
-        actor.unpark();
+        (*req).handle.select(CaseId::abort());
+        handle.unpark();
     }
 }
 
@@ -333,10 +332,10 @@ fn finish_recv<T>(chan: &Channel<T>) -> T {
     unsafe {
         assert!((*req).chan == chan);
 
-        let actor = (*req).actor.clone();
+        let handle = (*req).handle.clone();
         let v = (*req).packet.take();
-        (*req).actor.select(CaseId::abort());
-        actor.unpark();
+        (*req).handle.select(CaseId::abort());
+        handle.unpark();
         v
     }
 }
@@ -356,8 +355,8 @@ impl<T> Registry<T> {
         let thread_id = current_thread_id();
 
         for i in 0..self.entries.len() {
-            if self.entries[i].actor().thread_id() != thread_id {
-                if self.entries[i].actor().select(self.entries[i].case_id()) {
+            if self.entries[i].handle().thread_id() != thread_id {
+                if self.entries[i].handle().select(self.entries[i].case_id()) {
                     return Some(self.entries.remove(i).unwrap());
                 }
             }
@@ -368,7 +367,7 @@ impl<T> Registry<T> {
 
     fn offer(&mut self, packet: *const Packet<T>, case_id: CaseId) {
         self.entries.push_back(Entry::Offer {
-            actor: actor::current(),
+            handle: handle::current(),
             packet,
             case_id,
         });
@@ -385,7 +384,7 @@ impl<T> Registry<T> {
         let thread_id = current_thread_id();
 
         if let Some((i, _)) = self.entries.iter().enumerate().find(|&(_, e)| {
-            e.case_id() == case_id && e.actor().thread_id() == thread_id
+            e.case_id() == case_id && e.handle().thread_id() == thread_id
         }) {
             self.entries.remove(i);
             self.maybe_shrink();
@@ -396,7 +395,7 @@ impl<T> Registry<T> {
         let thread_id = current_thread_id();
 
         for i in 0..self.entries.len() {
-            if self.entries[i].actor().thread_id() != thread_id {
+            if self.entries[i].handle().thread_id() != thread_id {
                 return true;
             }
         }
@@ -405,8 +404,8 @@ impl<T> Registry<T> {
 
     fn abort_all(&mut self) {
         for e in self.entries.drain(..) {
-            e.actor().select(CaseId::abort());
-            e.actor().unpark();
+            e.handle().select(CaseId::abort());
+            e.handle().unpark();
         }
         self.maybe_shrink();
     }
@@ -434,18 +433,18 @@ fn current_thread_id() -> thread::ThreadId {
 
 thread_local! {
     static LOCAL: Arc<Local> = Arc::new(Local {
-        actor: actor::current(),
+        handle: handle::current(),
         request_ptr: AtomicUsize::new(0),
     });
 }
 
 struct Local {
-    actor: Arc<Actor>,
+    handle: Arc<Handle>,
     request_ptr: AtomicUsize,
 }
 
 struct Request<T> {
-    actor: Arc<Actor>,
+    handle: Arc<Handle>,
     packet: Packet<T>,
     chan: *const Channel<T>,
 }
@@ -453,7 +452,7 @@ struct Request<T> {
 impl<T> Request<T> {
     fn new(data: Option<T>, chan: &Channel<T>) -> Self {
         Request {
-            actor: actor::current(),
+            handle: handle::current(),
             packet: Packet::new(data),
             chan,
         }

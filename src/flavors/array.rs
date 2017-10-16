@@ -7,16 +7,16 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
+use std::sync::atomic::Ordering::{Relaxed, Release, SeqCst};
 use std::time::Instant;
 
 use crossbeam_utils::cache_padded::CachePadded;
 
-use CaseId;
-use actor;
-use backoff::Backoff;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use monitor::Monitor;
+use select::CaseId;
+use select::Monitor;
+use select::handle;
+use util::Backoff;
 
 /// An entry in the queue.
 ///
@@ -132,7 +132,7 @@ impl<T> Channel<T> {
     /// The index must be valid, i.e. less than the capacity.
     #[inline]
     unsafe fn entry_at(&self, index: usize) -> &Entry<T> {
-        unsafe { &*self.buffer.offset(index as isize) }
+        &*self.buffer.offset(index as isize)
     }
 
     /// Attempts to push `value` into the queue.
@@ -310,10 +310,10 @@ impl<T> Channel<T> {
                 Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
             }
 
-            actor::current_reset();
+            handle::current_reset();
             self.senders.register(case_id);
             let is_closed = self.is_closed();
-            let timed_out = !is_closed && self.is_full() && !actor::current_wait_until(deadline);
+            let timed_out = !is_closed && self.is_full() && !handle::current_wait_until(deadline);
             self.senders.unregister(case_id);
 
             if is_closed {
@@ -374,10 +374,10 @@ impl<T> Channel<T> {
                 Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
             }
 
-            actor::current_reset();
+            handle::current_reset();
             self.receivers.register(case_id);
             let is_closed = self.is_closed();
-            let timed_out = !is_closed && self.is_empty() && !actor::current_wait_until(deadline);
+            let timed_out = !is_closed && self.is_empty() && !handle::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
             if is_closed && self.is_empty() {

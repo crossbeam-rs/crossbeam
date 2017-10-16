@@ -1,140 +1,18 @@
-use std::cell::{Cell, RefCell};
-use std::num::Wrapping;
-use std::time::{Duration, Instant};
+use std::cell::RefCell;
+use std::time::Instant;
 
 use {Receiver, Sender};
-use actor;
 use err::{TryRecvError, TrySendError};
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct CaseId {
-    pub id: usize,
-}
-
-impl CaseId {
-    #[inline]
-    pub fn new(id: usize) -> Self {
-        CaseId { id }
-    }
-
-    #[inline]
-    pub fn none() -> Self {
-        CaseId { id: 0 }
-    }
-
-    #[inline]
-    pub fn abort() -> Self {
-        CaseId { id: 1 }
-    }
-}
+use select::handle;
+use select::CaseId;
+use util;
 
 thread_local! {
     /// The thread-local selection state machine.
-    static MACHINE: RefCell<Machine> = RefCell::new(Machine::new());
+    pub static MACHINE: RefCell<Machine> = RefCell::new(Machine::new());
 }
 
-pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
-    MACHINE.with(|m| {
-        let mut t = m.borrow_mut();
-
-        let res = if let Some(state) = t.step(tx.case_id()) {
-            state.send(tx, value)
-        } else {
-            Err(value)
-        };
-
-        if res.is_ok() {
-            *t = Machine::new();
-        }
-        res
-    })
-}
-
-pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
-    MACHINE.with(|m| {
-        let mut m = m.borrow_mut();
-
-        let res = if let Some(state) = m.step(rx.case_id()) {
-            state.recv(rx)
-        } else {
-            Err(())
-        };
-
-        if res.is_ok() {
-            *m = Machine::new();
-        }
-        res
-    })
-}
-
-#[inline]
-pub fn disconnected() -> bool {
-    MACHINE.with(|m| {
-        let mut m = m.borrow_mut();
-
-        if let Machine::Initialized {
-            state: State::Disconnected,
-            ..
-        } = *m {
-            *m = Machine::new();
-            true
-        } else {
-            false
-        }
-    })
-}
-
-#[inline]
-pub fn blocked() -> bool {
-    MACHINE.with(|m| {
-        let mut m = m.borrow_mut();
-
-        if let Machine::Initialized {
-            state: State::Blocked,
-            ..
-        } = *m
-        {
-            *m = Machine::new();
-            return true;
-        }
-
-        if let Machine::Counting {
-            ref mut seen_blocked,
-            ..
-        } = *m
-        {
-            *seen_blocked = true;
-        }
-
-        false
-    })
-}
-
-#[inline]
-pub fn timeout(dur: Duration) -> bool {
-    MACHINE.with(|m| {
-        let mut m = m.borrow_mut();
-
-        if let Machine::Initialized {
-            state: State::Timeout,
-            ..
-        } = *m {
-            *m = Machine::new();
-            return true;
-        }
-
-        if let Machine::Counting {
-            ref mut deadline, ..
-        } = *m
-        {
-            *deadline = Some(Instant::now() + dur);
-        }
-
-        false
-    })
-}
-
-enum Machine {
+pub enum Machine {
     Counting {
         len: usize,
         first_id: CaseId,
@@ -152,7 +30,7 @@ enum Machine {
 
 impl Machine {
     #[inline]
-    fn new() -> Self {
+    pub fn new() -> Self {
         Machine::Counting {
             len: 0,
             first_id: CaseId::none(),
@@ -162,7 +40,7 @@ impl Machine {
     }
 
     #[inline]
-    fn step(&mut self, case_id: CaseId) -> Option<&mut State> {
+    pub fn step(&mut self, case_id: CaseId) -> Option<&mut State> {
         // Non-lexical lifetimes will make all this much easier...
         loop {
             match *self {
@@ -183,7 +61,7 @@ impl Machine {
                                 }
                             },
                             len,
-                            start: gen_random(len),
+                            start: util::small_random(len),
                             deadline,
                         };
                     } else {
@@ -241,7 +119,7 @@ impl Machine {
 }
 
 #[derive(Clone, Copy)]
-enum State {
+pub enum State {
     TryOnce { disconn_count: usize },
     SpinTry { disconn_count: usize },
     Promise { disconn_count: usize },
@@ -254,7 +132,7 @@ enum State {
 
 impl State {
     #[inline]
-    fn transition(&mut self, len: usize, deadline: Option<Instant>) {
+    pub fn transition(&mut self, len: usize, deadline: Option<Instant>) {
         match *self {
             State::TryOnce { disconn_count } => {
                 if disconn_count < len {
@@ -265,7 +143,7 @@ impl State {
             },
             State::SpinTry { disconn_count } => {
                 if disconn_count < len {
-                    actor::current_reset();
+                    handle::current_reset();
                     *self = State::Promise { disconn_count: 0 };
                 } else {
                     *self = State::Disconnected;
@@ -273,12 +151,12 @@ impl State {
             },
             State::Promise { disconn_count } => {
                 if disconn_count < len {
-                    actor::current_wait_until(deadline);
+                    handle::current_wait_until(deadline);
                 } else {
-                    actor::current_select(CaseId::abort());
+                    handle::current_select(CaseId::abort());
                 }
                 *self = State::Revoke {
-                    case_id: actor::current_selected(),
+                    case_id: handle::current_selected(),
                 };
             }
             State::Revoke { case_id } => {
@@ -299,7 +177,7 @@ impl State {
         }
     }
 
-    fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
+    pub fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
         match *self {
             State::TryOnce {
                 ref mut disconn_count,
@@ -333,7 +211,7 @@ impl State {
                 if tx.is_disconnected() {
                     *disconn_count += 1;
                 } else if tx.can_send() {
-                    actor::current_select(CaseId::abort());
+                    handle::current_select(CaseId::abort());
                 }
             }
             State::Revoke { case_id } => {
@@ -356,7 +234,7 @@ impl State {
         Err(value)
     }
 
-    fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
+    pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
         match *self {
             State::TryOnce {
                 ref mut disconn_count,
@@ -387,7 +265,7 @@ impl State {
                 if is_disconn && !can_recv {
                     *disconn_count += 1;
                 } else if can_recv {
-                    actor::current_select(CaseId::abort());
+                    handle::current_select(CaseId::abort());
                 }
             }
             State::Revoke { case_id } => {
@@ -408,35 +286,4 @@ impl State {
         }
         Err(())
     }
-}
-
-/// Returns a random number in range `0..ceil`.
-fn gen_random(ceil: usize) -> usize {
-    thread_local! {
-        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
-    }
-
-    RNG.with(|rng| {
-        // This is the 32-bit variant of Xorshift.
-        let mut x = rng.get();
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        rng.set(x);
-
-        // A modulo operation by a constant gets compiled to simple multiplication. The general
-        // modulo instruction is in comparison much more expensive, so here we match on the most
-        // common moduli in order to avoid it.
-        let x = x.0 as usize;
-        match ceil {
-            1 => x % 1,
-            2 => x % 2,
-            3 => x % 3,
-            4 => x % 4,
-            5 => x % 5,
-            6 => x % 6,
-            7 => x % 7,
-            n => x % n,
-        }
-    })
 }
