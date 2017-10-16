@@ -332,10 +332,12 @@ impl<T> Channel<T> {
                 self.senders.notify_one();
                 Ok(v)
             }
-            None => if closed {
-                Err(TryRecvError::Disconnected)
-            } else {
-                Err(TryRecvError::Empty)
+            None => {
+                if closed {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
+                }
             },
         }
     }

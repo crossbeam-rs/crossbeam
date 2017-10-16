@@ -139,13 +139,6 @@ impl<T> Channel<T> {
 
                 // Try moving the tail index forward.
                 if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
-                    // Write `value` into the corresponding entry.
-                    unsafe {
-                        let entry = tail.entries.get_unchecked(offset).get();
-                        ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
-                        (*entry).ready.store(true, SeqCst);
-                    }
-
                     // If this was the last entry in the node, allocate a new one.
                     if offset + 1 == NODE_CAP {
                         let new = Owned::new(Node::new(new_index)).into_ptr(scope);
@@ -153,6 +146,12 @@ impl<T> Channel<T> {
                         self.tail.node.store(new, SeqCst);
                     }
 
+                    // Write `value` into the corresponding entry.
+                    unsafe {
+                        let entry = tail.entries.get_unchecked(offset).get();
+                        ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
+                        (*entry).ready.store(true, SeqCst);
+                    }
                     return;
                 }
             }
@@ -188,13 +187,6 @@ impl<T> Channel<T> {
 
                 // Try moving the head index forward.
                 if self.head.index.compare_and_swap(index, new_index, SeqCst) == index {
-                    while !entry.ready.load(SeqCst) {
-                        backoff.step();
-                    }
-
-                    let v = unsafe { ptr::read(&(*entry).value) };
-                    let value = ManuallyDrop::into_inner(v);
-
                     // If this was the last entry in the node, defer its destruction.
                     if offset + 1 == NODE_CAP {
                         // Wait until the next pointer becomes non-null.
@@ -212,6 +204,12 @@ impl<T> Channel<T> {
                         }
                     }
 
+                    while !entry.ready.load(SeqCst) {
+                        backoff.step();
+                    }
+
+                    let v = unsafe { ptr::read(&(*entry).value) };
+                    let value = ManuallyDrop::into_inner(v);
                     return Some(value);
                 }
             }
@@ -257,10 +255,12 @@ impl<T> Channel<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let closed = self.closed.load(SeqCst);
         match self.pop() {
-            None => if closed {
-                Err(TryRecvError::Disconnected)
-            } else {
-                Err(TryRecvError::Empty)
+            None => {
+                if closed {
+                    Err(TryRecvError::Disconnected)
+                } else {
+                    Err(TryRecvError::Empty)
+                }
             },
             Some(v) => Ok(v),
         }
