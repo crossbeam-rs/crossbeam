@@ -6,7 +6,6 @@ version = "0.1.0"
 chan = "0.1.19"
 channel = { path = ".." }
 crossbeam = "0.3.0"
-multiqueue = "0.3.2"
 
 [[bin]]
 name = "channel"
@@ -23,10 +22,6 @@ path = "mpsc.rs"
 [[bin]]
 name = "ms_queue"
 path = "ms_queue.rs"
-
-[[bin]]
-name = "multiqueue"
-path = "multiqueue.rs"
 
 [[bin]]
 name = "seg_queue"
