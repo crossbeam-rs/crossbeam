@@ -126,8 +126,8 @@ impl<T> Channel<T> {
         epoch::pin(|scope| {
             let mut backoff = Backoff::new();
             loop {
-                let tail = unsafe { self.tail.node.load(SeqCst, scope).deref() };
-                let index = self.tail.index.load(SeqCst);
+                let tail = unsafe { self.tail.node.load(Acquire, scope).deref() };
+                let index = self.tail.index.load(Relaxed);
                 let new_index = index.wrapping_add(1);
                 let offset = index.wrapping_sub(tail.start_index);
 
@@ -142,15 +142,15 @@ impl<T> Channel<T> {
                     // If this was the last entry in the node, allocate a new one.
                     if offset + 1 == NODE_CAP {
                         let new = Owned::new(Node::new(new_index)).into_ptr(scope);
-                        tail.next.store(new, SeqCst);
-                        self.tail.node.store(new, SeqCst);
+                        tail.next.store(new, Release);
+                        self.tail.node.store(new, Release);
                     }
 
                     // Write `value` into the corresponding entry.
                     unsafe {
                         let entry = tail.entries.get_unchecked(offset).get();
                         ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
-                        (*entry).ready.store(true, SeqCst);
+                        (*entry).ready.store(true, Release);
                     }
                     return;
                 }
@@ -165,7 +165,7 @@ impl<T> Channel<T> {
         epoch::pin(|scope| {
             let mut backoff = Backoff::new();
             loop {
-                let head_ptr = self.head.node.load(SeqCst, scope);
+                let head_ptr = self.head.node.load(Acquire, scope);
                 let head = unsafe { head_ptr.deref() };
                 let index = self.head.index.load(SeqCst);
                 let new_index = index.wrapping_add(1);
@@ -191,9 +191,9 @@ impl<T> Channel<T> {
                     if offset + 1 == NODE_CAP {
                         // Wait until the next pointer becomes non-null.
                         loop {
-                            let next = head.next.load(SeqCst, scope);
+                            let next = head.next.load(Acquire, scope);
                             if !next.is_null() {
-                                self.head.node.store(next, SeqCst);
+                                self.head.node.store(next, Release);
                                 break;
                             }
                             backoff.step();
@@ -204,7 +204,7 @@ impl<T> Channel<T> {
                         }
                     }
 
-                    while !entry.ready.load(SeqCst) {
+                    while !entry.ready.load(Acquire) {
                         backoff.step();
                     }
 
@@ -268,13 +268,17 @@ impl<T> Channel<T> {
 
     /// Attempts to receive a value from channel, retrying several times if it is empty.
     pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
-        for _ in 0..20 {
+        let backoff = &mut Backoff::new();
+        loop {
             let closed = self.closed.load(SeqCst);
             if let Some(v) = self.pop() {
                 return Ok(v);
             }
             if closed {
                 return Err(TryRecvError::Disconnected);
+            }
+            if !backoff.step() {
+                break;
             }
         }
         Err(TryRecvError::Empty)
