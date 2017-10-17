@@ -7,31 +7,37 @@ use std::time::Instant;
 use select::CaseId;
 use util::Backoff;
 
-pub struct Handle {
+struct Inner {
     case_id: AtomicUsize,
     thread: Thread,
 }
 
+#[derive(Clone)]
+pub struct Handle {
+    inner: Arc<Inner>,
+}
+
 impl Handle {
     pub fn select(&self, case_id: CaseId) -> bool {
-        self.case_id
+        self.inner
+            .case_id
             .compare_and_swap(CaseId::none().id, case_id.id, SeqCst) == CaseId::none().id
     }
 
     pub fn unpark(&self) {
-        self.thread.unpark();
+        self.inner.thread.unpark();
     }
 
     pub fn thread_id(&self) -> ThreadId {
-        self.thread.id()
+        self.inner.thread.id()
     }
 
     pub fn reset(&self) {
-        self.case_id.store(0, SeqCst);
+        self.inner.case_id.store(0, SeqCst);
     }
 
     pub fn selected(&self) -> CaseId {
-        CaseId::new(self.case_id.load(SeqCst))
+        CaseId::new(self.inner.case_id.load(SeqCst))
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
@@ -64,13 +70,15 @@ impl Handle {
 }
 
 thread_local! {
-    static HANDLE: Arc<Handle> = Arc::new(Handle {
-        case_id: AtomicUsize::new(CaseId::none().id),
-        thread: thread::current(),
-    });
+    static HANDLE: Handle = Handle {
+        inner: Arc::new(Inner {
+            case_id: AtomicUsize::new(CaseId::none().id),
+            thread: thread::current(),
+        })
+    };
 }
 
-pub fn current() -> Arc<Handle> {
+pub fn current() -> Handle {
     HANDLE.with(|a| a.clone())
 }
 

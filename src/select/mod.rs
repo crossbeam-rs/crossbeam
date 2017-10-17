@@ -4,13 +4,11 @@ use {Receiver, Sender};
 use self::machine::{MACHINE, Machine, State};
 
 pub(crate) use self::case_id::CaseId;
-pub(crate) use self::monitor::Monitor;
 
 mod case_id;
 mod machine;
 
 pub(crate) mod handle; // TODO: make private
-mod monitor;
 
 pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     MACHINE.with(|m| {

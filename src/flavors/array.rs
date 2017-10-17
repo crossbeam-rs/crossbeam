@@ -13,8 +13,8 @@ use std::time::Instant;
 use crossbeam_utils::cache_padded::CachePadded;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use monitor::Monitor;
 use select::CaseId;
-use select::Monitor;
 use select::handle;
 use util::Backoff;
 
@@ -59,13 +59,13 @@ pub struct Channel<T> {
     /// The next power of two greater than or equal to the capacity.
     power: usize,
 
-    /// Equals `true` if the queue is closed.
+    /// Equals `true` if the channel is closed.
     closed: AtomicBool,
 
-    /// Senders waiting on full queue.
+    /// Senders waiting on full channel.
     senders: Monitor,
 
-    /// Receivers waiting on empty queue.
+    /// Receivers waiting on empty channel.
     receivers: Monitor,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.

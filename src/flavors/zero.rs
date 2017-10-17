@@ -239,7 +239,7 @@ impl<T> Channel<T> {
 
 enum Entry<T> {
     Offer {
-        handle: Arc<Handle>,
+        handle: Handle,
         packet: *const Packet<T>,
         case_id: CaseId,
     },
@@ -439,12 +439,12 @@ thread_local! {
 }
 
 struct Local {
-    handle: Arc<Handle>,
+    handle: Handle,
     request_ptr: AtomicUsize,
 }
 
 struct Request<T> {
-    handle: Arc<Handle>,
+    handle: Handle,
     packet: Packet<T>,
     chan: *const Channel<T>,
 }

@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
@@ -13,7 +12,7 @@ use select::handle::{self, Handle};
 // select).  Unregister removes just entry belonging to the current thread.
 
 struct Entry {
-    handle: Arc<Handle>,
+    handle: Handle,
     case_id: CaseId,
 }
 
@@ -90,7 +89,7 @@ impl Monitor {
     }
 
     fn maybe_shrink(&self, entries: &mut VecDeque<Entry>) {
-        if entries.capacity() > 32 && entries.capacity() / 2 > entries.len() {
+        if entries.capacity() > 32 && entries.len() < entries.capacity() / 2 {
             entries.shrink_to_fit();
         }
     }

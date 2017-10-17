@@ -9,6 +9,7 @@ extern crate rand;
 mod channel;
 mod err;
 mod flavors;
+mod monitor;
 mod util;
 
 pub mod select;
