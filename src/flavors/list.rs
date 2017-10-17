@@ -14,8 +14,8 @@ use coco::epoch::{self, Atomic, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use monitor::Monitor;
 use select::CaseId;
-use select::Monitor;
 use select::handle;
 use util::Backoff;
 
@@ -83,10 +83,10 @@ pub struct Channel<T> {
     /// The current tail index and the node containing it.
     tail: CachePadded<Position<T>>,
 
-    /// Equals `true` if the queue is closed.
+    /// Equals `true` if the channel is closed.
     closed: AtomicBool,
 
-    /// Receivers waiting on empty queue.
+    /// Receivers waiting on empty channel.
     receivers: Monitor,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
@@ -95,7 +95,7 @@ pub struct Channel<T> {
 
 impl<T> Channel<T> {
     pub fn new() -> Self {
-        let queue = Channel {
+        let channel = Channel {
             head: CachePadded::new(Position {
                 index: AtomicUsize::new(0),
                 node: Atomic::null(),
@@ -113,12 +113,12 @@ impl<T> Channel<T> {
             // Create an empty node, into which both head and tail point at the beginning.
             epoch::unprotected(|scope| {
                 let node = Owned::new(Node::new(0)).into_ptr(scope);
-                queue.head.node.store(node, Relaxed);
-                queue.tail.node.store(node, Relaxed);
+                channel.head.node.store(node, Relaxed);
+                channel.tail.node.store(node, Relaxed);
             })
         }
 
-        queue
+        channel
     }
 
     /// Pushes `value` into the queue.
@@ -131,29 +131,28 @@ impl<T> Channel<T> {
                 let new_index = index.wrapping_add(1);
                 let offset = index.wrapping_sub(tail.start_index);
 
-                // If `index` is not pointing into `tail`, try again.
-                if offset >= NODE_CAP {
-                    backoff.step();
-                    continue;
+                // If `index` is pointing into `tail`...
+                if offset < NODE_CAP {
+                    // if `index` is pointing into `tail`, try moving the tail index forward.
+                    if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
+                        // If this was the last entry in the node, allocate a new one.
+                        if offset + 1 == NODE_CAP {
+                            let new = Owned::new(Node::new(new_index)).into_ptr(scope);
+                            tail.next.store(new, Release);
+                            self.tail.node.store(new, Release);
+                        }
+
+                        // Write `value` into the corresponding entry.
+                        unsafe {
+                            let entry = tail.entries.get_unchecked(offset).get();
+                            ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
+                            (*entry).ready.store(true, Release);
+                        }
+                        return;
+                    }
                 }
 
-                // Try moving the tail index forward.
-                if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
-                    // If this was the last entry in the node, allocate a new one.
-                    if offset + 1 == NODE_CAP {
-                        let new = Owned::new(Node::new(new_index)).into_ptr(scope);
-                        tail.next.store(new, Release);
-                        self.tail.node.store(new, Release);
-                    }
-
-                    // Write `value` into the corresponding entry.
-                    unsafe {
-                        let entry = tail.entries.get_unchecked(offset).get();
-                        ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
-                        (*entry).ready.store(true, Release);
-                    }
-                    return;
-                }
+                backoff.step();
             }
         })
     }
@@ -171,47 +170,46 @@ impl<T> Channel<T> {
                 let new_index = index.wrapping_add(1);
                 let offset = index.wrapping_sub(head.start_index);
 
-                // If `index` is not pointing into `head`, try again.
-                if offset >= NODE_CAP {
-                    backoff.step();
-                    continue;
-                }
+                // If `index` is pointing into `head`...
+                if offset < NODE_CAP {
+                    let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
 
-                let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
+                    // If this entry does not contain the value and the tail equals the head, then
+                    // the queue is empty.
+                    if !entry.ready.load(Relaxed) && self.tail.index.load(SeqCst) == index {
+                        return None;
+                    }
 
-                // If this entry does not contain the value and the tail equals the head, then the
-                // queue is empty.
-                if !entry.ready.load(Relaxed) && self.tail.index.load(SeqCst) == index {
-                    return None;
-                }
-
-                // Try moving the head index forward.
-                if self.head.index.compare_and_swap(index, new_index, SeqCst) == index {
-                    // If this was the last entry in the node, defer its destruction.
-                    if offset + 1 == NODE_CAP {
-                        // Wait until the next pointer becomes non-null.
-                        loop {
-                            let next = head.next.load(Acquire, scope);
-                            if !next.is_null() {
-                                self.head.node.store(next, Release);
-                                break;
+                    // Try moving the head index forward.
+                    if self.head.index.compare_and_swap(index, new_index, SeqCst) == index {
+                        // If this was the last entry in the node, defer its destruction.
+                        if offset + 1 == NODE_CAP {
+                            // Wait until the next pointer becomes non-null.
+                            loop {
+                                let next = head.next.load(Acquire, scope);
+                                if !next.is_null() {
+                                    self.head.node.store(next, Release);
+                                    break;
+                                }
+                                backoff.step();
                             }
+
+                            unsafe {
+                                scope.defer_free(head_ptr);
+                            }
+                        }
+
+                        while !entry.ready.load(Acquire) {
                             backoff.step();
                         }
 
-                        unsafe {
-                            scope.defer_free(head_ptr);
-                        }
+                        let v = unsafe { ptr::read(&(*entry).value) };
+                        let value = ManuallyDrop::into_inner(v);
+                        return Some(value);
                     }
-
-                    while !entry.ready.load(Acquire) {
-                        backoff.step();
-                    }
-
-                    let v = unsafe { ptr::read(&(*entry).value) };
-                    let value = ManuallyDrop::into_inner(v);
-                    return Some(value);
                 }
+
+                backoff.step();
             }
         })
     }
