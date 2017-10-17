@@ -3,7 +3,6 @@
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import plotly.plotly as py
 
 results = []
 for f in sys.argv[1:]:
@@ -13,6 +12,7 @@ for f in sys.argv[1:]:
             results.append((test, lang, impl, float(secs)))
 
 fig = plt.figure(figsize=(10, 10))
+
 
 def plot(subplot, title, prefix, runs):
     runs.reverse()
@@ -48,20 +48,41 @@ def plot(subplot, title, prefix, runs):
                 if lang == 'Rust' and impl == 'channel':
                     channel[i] = secs
 
-    h = ax.barh([y-3 for y in ys], go, height=0.9, color='skyblue', align='center')
-    h = ax.barh([y-2 for y in ys], channel, height=0.9, color='red', align='center')
-    h = ax.barh([y-1 for y in ys], mpsc, height=0.9, color='black', align='center')
-    h = ax.barh([y+0 for y in ys], chan, height=0.9, color='orange', align='center')
-    h = ax.barh([y+1 for y in ys], msqueue, height=0.9, color='blue', align='center')
-    h = ax.barh([y+2 for y in ys], segqueue, height=0.9, color='green', align='center')
+    opts = dict(height=0.7, align='center')
+    ax.barh([y-3 for y in ys], go, color='skyblue', **opts)
+    ax.barh([y-2 for y in ys], channel, color='red', **opts)
+    ax.barh([y-1 for y in ys], mpsc, color='black', **opts)
+    ax.barh([y+0 for y in ys], chan, color='orange', **opts)
+    ax.barh([y+1 for y in ys], msqueue, color='blue', **opts)
+    ax.barh([y+2 for y in ys], segqueue, color='green', **opts)
 
-    m = int(max(go + mpsc + msqueue + segqueue + chan + channel) * 1.1 + 1)
+    m = int(max(go + mpsc + msqueue + segqueue + chan + channel) * 1.2)
     if m < 10:
         ax.set_xticks(range(m + 1))
     elif m < 50:
         ax.set_xticks([x*5 for x in range(m / 5 + 1)])
     else:
         ax.set_xticks([x*10 for x in range(m / 10 + 1)])
+
+    for (x, y) in zip(go, ys):
+        if x > 0:
+            ax.text(x+m/200., y-3-0.3, 'Go', fontsize=7)
+    for (x, y) in zip(channel, ys):
+        if x > 0:
+            ax.text(x+m/200., y-2-0.3, 'crossbeam-channel', fontsize=7)
+    for (x, y) in zip(mpsc, ys):
+        if x > 0:
+            ax.text(x+m/200., y-1-0.3, 'mpsc', fontsize=7)
+    for (x, y) in zip(chan, ys):
+        if x > 0:
+            ax.text(x+m/200., y+0-0.3, 'chan', fontsize=7)
+    for (x, y) in zip(msqueue, ys):
+        if x > 0:
+            ax.text(x+m/200., y+1-0.3, 'MsQueue', fontsize=7)
+    for (x, y) in zip(segqueue, ys):
+        if x > 0:
+            ax.text(x+m/200., y+2-0.3, 'SegQueue', fontsize=7)
+
 
 plot(
    221,
@@ -102,11 +123,18 @@ legend = [
 legend.reverse()
 fig.legend(
     [mpatches.Patch(label=label, color=color) for (label, color) in legend],
-    [label for (label, _) in legend],
+    [label for (label, color) in legend],
     'upper center',
     ncol=2,
 )
 
-plt.subplots_adjust(top=0.88, bottom=0.05, wspace=0.3, hspace=0.2, left=0.1, right=0.95)
+plt.subplots_adjust(
+    top=0.88,
+    bottom=0.05,
+    left=0.1,
+    right=0.95,
+    wspace=0.3,
+    hspace=0.2,
+)
 plt.savefig('plot.png')
 # plt.show()
