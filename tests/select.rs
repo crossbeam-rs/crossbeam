@@ -10,6 +10,8 @@ use std::time::Duration;
 use channel::{bounded, select, unbounded, Receiver, Sender};
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
+// TODO: fairness test (for all three variants)
+
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }

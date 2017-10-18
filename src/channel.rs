@@ -32,10 +32,12 @@ pub fn bounded<T>(size: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
         receivers: AtomicUsize::new(0),
-        flavor: if size == 0 {
-            Flavor::Zero(flavors::zero::Channel::new())
-        } else {
-            Flavor::Array(flavors::array::Channel::with_capacity(size))
+        flavor: {
+            if size == 0 {
+                Flavor::Zero(flavors::zero::Channel::new())
+            } else {
+                Flavor::Array(flavors::array::Channel::with_capacity(size))
+            }
         },
     });
     (Sender::new(chan.clone()), Receiver::new(chan))
@@ -110,6 +112,7 @@ impl<T> Sender<T> {
         }
     }
 
+    // TODO: explain that a zero-capacity channel is always full and empty.
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
             Flavor::Array(ref chan) => chan.send_until(value, None, self.case_id()),

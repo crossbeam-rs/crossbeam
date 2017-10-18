@@ -39,7 +39,7 @@ impl Machine {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn step(&mut self, case_id: CaseId) -> Option<&mut State> {
         // Non-lexical lifetimes will make all this much easier...
         loop {
@@ -131,7 +131,7 @@ pub enum State {
 }
 
 impl State {
-    #[inline]
+    #[inline(always)]
     pub fn transition(&mut self, len: usize, deadline: Option<Instant>) {
         match *self {
             State::TryOnce { disconn_count } => {
@@ -177,6 +177,7 @@ impl State {
         }
     }
 
+    #[inline(always)]
     pub fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
         match *self {
             State::TryOnce {
@@ -234,6 +235,7 @@ impl State {
         Err(value)
     }
 
+    #[inline(always)]
     pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
         match *self {
             State::TryOnce {

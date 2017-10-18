@@ -39,6 +39,7 @@ impl Backoff {
 }
 
 /// Returns a random number in range `0..ceil`.
+#[inline]
 pub fn small_random(ceil: usize) -> usize {
     thread_local! {
         static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));

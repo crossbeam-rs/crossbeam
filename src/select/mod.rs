@@ -10,6 +10,7 @@ mod machine;
 
 pub(crate) mod handle; // TODO: make private
 
+#[inline(never)]
 pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     MACHINE.with(|m| {
         let mut t = m.borrow_mut();
@@ -27,6 +28,7 @@ pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     })
 }
 
+#[inline(never)]
 pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
     MACHINE.with(|m| {
         let mut m = m.borrow_mut();
@@ -44,7 +46,6 @@ pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
     })
 }
 
-#[inline]
 pub fn disconnected() -> bool {
     MACHINE.with(|m| {
         let mut m = m.borrow_mut();
@@ -61,7 +62,6 @@ pub fn disconnected() -> bool {
     })
 }
 
-#[inline]
 pub fn blocked() -> bool {
     MACHINE.with(|m| {
         let mut m = m.borrow_mut();
@@ -87,7 +87,6 @@ pub fn blocked() -> bool {
     })
 }
 
-#[inline]
 pub fn timeout(dur: Duration) -> bool {
     MACHINE.with(|m| {
         let mut m = m.borrow_mut();

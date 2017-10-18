@@ -254,7 +254,7 @@ fn len() {
         assert_eq!(tx.len(), i + 1);
     }
 
-    for i in 0..CAP {
+    for _ in 0..CAP {
         rx.recv().unwrap();
     }
 
