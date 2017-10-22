@@ -1,120 +1,121 @@
-use std::marker;
-use std::cell::UnsafeCell;
 use std::fmt;
 use std::mem;
-use std::ptr;
 use std::ops::{Deref, DerefMut};
+use std::ptr;
 
-// For now, treat this as an arch-independent constant.
-const CACHE_LINE: usize = 32;
+cfg_if! {
+    if #[cfg(feature = "nightly")] {
+        #[derive(Clone)]
+        #[repr(align(64))]
+        struct Inner<T> {
+            value: T,
+        }
 
-#[cfg_attr(feature = "nightly", repr(simd))]
-#[derive(Debug)]
-struct Padding(u64, u64, u64, u64);
+        impl<T> Deref for Inner<T> {
+            type Target = T;
 
-/// Pad `T` to the length of a cacheline.
-///
-/// Sometimes concurrent programming requires a piece of data to be padded out
-/// to the size of a cacheline to avoid "false sharing": cachelines being
-/// invalidated due to unrelated concurrent activity. Use the `CachePadded` type
-/// when you want to *avoid* cache locality.
-///
-/// At the moment, cache lines are assumed to be 32 * sizeof(usize) on all
-/// architectures.
-///
-/// **Warning**: the wrapped data is never dropped; move out using `ptr::read`
-/// if you need to run dtors.
-pub struct CachePadded<T> {
-    data: UnsafeCell<[usize; CACHE_LINE]>,
-    _marker: ([Padding; 0], marker::PhantomData<T>),
+            fn deref(&self) -> &T {
+                &self.value
+            }
+        }
+
+        impl<T> DerefMut for Inner<T> {
+            fn deref_mut(&mut self) -> &mut T {
+                &mut self.value
+            }
+        }
+    } else {
+        use std::marker::PhantomData;
+
+        #[derive(Clone)]
+        struct Inner<T> {
+            bytes: [u8; 64],
+
+            /// `[T; 0]` ensures correct alignment.
+            /// `PhantomData<T>` signals that `CachePadded<T>` contains a `T`.
+            _marker: ([T; 0], PhantomData<T>),
+        }
+
+        impl<T> Deref for Inner<T> {
+            type Target = T;
+
+            fn deref(&self) -> &T {
+                unsafe { &*(self.bytes.as_ptr() as *const T) }
+            }
+        }
+
+        impl<T> DerefMut for Inner<T> {
+            fn deref_mut(&mut self) -> &mut T {
+                unsafe { &mut *(self.bytes.as_ptr() as *mut T) }
+            }
+        }
+
+        impl<T> Drop for CachePadded<T> {
+            fn drop(&mut self) {
+                let p: *mut T = self.deref_mut();
+                unsafe {
+                    ptr::drop_in_place(p);
+                }
+            }
+        }
+    }
 }
 
-impl<T> fmt::Debug for CachePadded<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CachePadded {{ ... }}")
-    }
+/// Pads `T` to the length of a cache line.
+///
+/// Sometimes concurrent programming requires a piece of data to be padded out to the size of a
+/// cacheline to avoid "false sharing": cache lines being invalidated due to unrelated concurrent
+/// activity. Use this type when you want to *avoid* cache locality.
+///
+/// At the moment, cache lines are assumed to be 64 bytes on all architectures.
+///
+/// # Size and alignment
+///
+/// By default, the size of `CachePadded<T>` is 64 bytes. If `T` is larger than that, then
+/// `CachePadded::<T>::new` will panic. Alignment of `CachePadded<T>` is the same as that of `T`.
+///
+/// However, if the `nightly` feature is enabled, arbitrarily large types `T` can be stored inside
+/// a `CachePadded<T>`. The size will then be a multiple of 64 at least the size of `T`, and the
+/// alignment will be the maximum of 64 and the alignment of `T`.
+pub struct CachePadded<T> {
+    inner: Inner<T>,
 }
 
 unsafe impl<T: Send> Send for CachePadded<T> {}
 unsafe impl<T: Sync> Sync for CachePadded<T> {}
 
-/// Types for which `mem::zeroed()` is safe.
-///
-/// If a type `T: ZerosValid`, then a sequence of zeros the size of `T` must be
-/// a valid member of the type `T`.
-pub unsafe trait ZerosValid {}
-
-#[cfg(feature = "nightly")]
-unsafe impl ZerosValid for .. {}
-
-macro_rules! zeros_valid { ($( $T:ty )*) => ($(
-    unsafe impl ZerosValid for $T {}
-)*)}
-
-zeros_valid!(u8 u16 u32 u64 usize);
-zeros_valid!(i8 i16 i32 i64 isize);
-
-unsafe impl ZerosValid for ::std::sync::atomic::AtomicUsize {}
-unsafe impl<T> ZerosValid for ::std::sync::atomic::AtomicPtr<T> {}
-
-impl<T: ZerosValid> CachePadded<T> {
-    /// A const fn equivalent to mem::zeroed().
-    #[cfg(not(feature = "nightly"))]
-    pub fn zeroed() -> CachePadded<T> {
-        CachePadded {
-            data: UnsafeCell::new([0; CACHE_LINE]),
-            _marker: ([], marker::PhantomData),
-        }
-    }
-
-    /// A const fn equivalent to mem::zeroed().
-    #[cfg(feature = "nightly")]
-    pub const fn zeroed() -> CachePadded<T> {
-        CachePadded {
-            data: UnsafeCell::new([0; CACHE_LINE]),
-            _marker: ([], marker::PhantomData),
-        }
-    }
-}
-
-#[inline]
-/// Assert that the size and alignment of `T` are consistent with `CachePadded<T>`.
-fn assert_valid<T>() {
-    assert!(mem::size_of::<T>() <= mem::size_of::<CachePadded<T>>());
-    assert!(mem::align_of::<T>() <= mem::align_of::<CachePadded<T>>());
-}
-
 impl<T> CachePadded<T> {
-    /// Wrap `t` with cacheline padding.
+    /// Pads a value to the length of a cache line.
     ///
-    /// **Warning**: the wrapped data is never dropped; move out using
-    /// `ptr:read` if you need to run dtors.
+    /// # Panics
+    ///
+    /// If `nightly` is not enabled and `T` is larger than 64 bytes, this function will panic.
     pub fn new(t: T) -> CachePadded<T> {
-        assert_valid::<T>();
-        let ret = CachePadded {
-            data: UnsafeCell::new([0; CACHE_LINE]),
-            _marker: ([], marker::PhantomData),
-        };
+        assert!(mem::size_of::<T>() <= mem::size_of::<CachePadded<T>>());
+        assert!(mem::align_of::<T>() <= mem::align_of::<CachePadded<T>>());
+
         unsafe {
-            let p: *mut T = &ret.data as *const UnsafeCell<[usize; CACHE_LINE]> as *mut T;
+            let mut padded = CachePadded {
+                inner: mem::uninitialized(),
+            };
+            let p: *mut T = &mut *padded;
             ptr::write(p, t);
+            padded
         }
-        ret
     }
 }
 
 impl<T> Deref for CachePadded<T> {
     type Target = T;
+
     fn deref(&self) -> &T {
-        assert_valid::<T>();
-        unsafe { mem::transmute(&self.data) }
+        self.inner.deref()
     }
 }
 
 impl<T> DerefMut for CachePadded<T> {
     fn deref_mut(&mut self) -> &mut T {
-        assert_valid::<T>();
-        unsafe { mem::transmute(&mut self.data) }
+        self.inner.deref_mut()
     }
 }
 
@@ -124,31 +125,117 @@ impl<T: Default> Default for CachePadded<T> {
     }
 }
 
-// FIXME: support Drop by pulling out a version usable for statics
-/*
-impl<T> Drop for CachePadded<T> {
-    fn drop(&mut self) {
-        assert_valid::<T>();
-        let p: *mut T = mem::transmute(&self.data);
-        mem::drop(ptr::read(p));
+impl<T: Clone> Clone for CachePadded<T> {
+    fn clone(&self) -> Self {
+        CachePadded {
+            inner: self.inner.clone(),
+        }
     }
 }
-*/
+
+impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let inner: &T = &*self;
+        write!(f, "CachePadded {{ {:?} }}", inner)
+    }
+}
+
+impl<T> From<T> for CachePadded<T> {
+    fn from(t: T) -> Self {
+        CachePadded::new(t)
+    }
+}
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::cell::Cell;
 
     #[test]
-    fn cache_padded_store_u64() {
+    fn store_u64() {
         let x: CachePadded<u64> = CachePadded::new(17);
         assert_eq!(*x, 17);
     }
 
     #[test]
-    fn cache_padded_store_pair() {
+    fn store_pair() {
         let x: CachePadded<(u64, u64)> = CachePadded::new((17, 37));
         assert_eq!(x.0, 17);
         assert_eq!(x.1, 37);
+    }
+
+    #[test]
+    fn distance() {
+        let arr = [CachePadded::new(17u8), CachePadded::new(37u8)];
+        let a = &*arr[0] as *const u8;
+        let b = &*arr[1] as *const u8;
+        assert_eq!(a.wrapping_offset(64), b);
+    }
+
+    #[test]
+    fn different_sizes() {
+        CachePadded::new(17u8);
+        CachePadded::new(17u16);
+        CachePadded::new(17u32);
+        CachePadded::new([17u64; 0]);
+        CachePadded::new([17u64; 1]);
+        CachePadded::new([17u64; 2]);
+        CachePadded::new([17u64; 3]);
+        CachePadded::new([17u64; 4]);
+        CachePadded::new([17u64; 5]);
+        CachePadded::new([17u64; 6]);
+        CachePadded::new([17u64; 7]);
+        CachePadded::new([17u64; 8]);
+    }
+
+    cfg_if! {
+        if #[cfg(feature = "nightly")] {
+            #[test]
+            fn large() {
+                let a = [17u64; 9];
+                let b = CachePadded::new(a);
+                assert!(mem::size_of_val(&a) <= mem::size_of_val(&b));
+            }
+        } else {
+            #[test]
+            #[should_panic]
+            fn large() {
+                CachePadded::new([17u64; 9]);
+            }
+        }
+    }
+
+    #[test]
+    fn debug() {
+        assert_eq!(format!("{:?}", CachePadded::new(17u64)), "CachePadded { 17 }");
+    }
+
+    #[test]
+    fn drops() {
+        let count = Cell::new(0);
+
+        struct Foo<'a>(&'a Cell<usize>);
+
+        impl<'a> Drop for Foo<'a> {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let a = CachePadded::new(Foo(&count));
+        let b = CachePadded::new(Foo(&count));
+
+        assert_eq!(count.get(), 0);
+        drop(a);
+        assert_eq!(count.get(), 1);
+        drop(b);
+        assert_eq!(count.get(), 2);
+    }
+
+    #[test]
+    fn clone() {
+        let a = CachePadded::new(17);
+        let b = a.clone();
+        assert_eq!(*a, *b);
     }
 }
