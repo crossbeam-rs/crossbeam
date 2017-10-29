@@ -63,6 +63,14 @@ impl Handle {
     }
 }
 
+impl Clone for Handle {
+    fn clone(&self) -> Self {
+        Self::new(self.global.clone())
+    }
+}
+
+unsafe impl Send for Handle {}
+
 impl Drop for Handle {
     fn drop(&mut self) {
         unsafe { self.local.unregister(&self.global) }
@@ -384,5 +392,25 @@ mod tests {
             handle.pin(|scope| collector.0.collect(scope));
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT * THREADS);
+    }
+
+    #[test]
+    fn send_handle() {
+        let ref collector = Collector::new();
+        let handle_global = collector.handle();
+
+        let threads = (0..NUM_THREADS)
+            .map(|_| {
+                scoped::scope(|scope| {
+                    let handle = handle_global.clone();
+                    scope.spawn(move || handle.pin(|scope| scope.flush()))
+                })
+            })
+            .collect::<Vec<_>>();
+        drop(collector);
+
+        for t in threads {
+            t.join();
+        }
     }
 }
