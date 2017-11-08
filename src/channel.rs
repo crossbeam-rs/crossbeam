@@ -28,15 +28,15 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     (Sender::new(chan.clone()), Receiver::new(chan))
 }
 
-pub fn bounded<T>(size: usize) -> (Sender<T>, Receiver<T>) {
+pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
         receivers: AtomicUsize::new(0),
         flavor: {
-            if size == 0 {
+            if cap == 0 {
                 Flavor::Zero(flavors::zero::Channel::new())
             } else {
-                Flavor::Array(flavors::array::Channel::with_capacity(size))
+                Flavor::Array(flavors::array::Channel::with_capacity(cap))
             }
         },
     });
@@ -96,14 +96,6 @@ impl<T> Sender<T> {
         }
     }
 
-    pub(crate) fn spin_try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.spin_try_send(value),
-            Flavor::List(ref chan) => chan.try_send(value),
-            Flavor::Zero(ref chan) => chan.spin_try_send(value, self.case_id()),
-        }
-    }
-
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.try_send(value),
@@ -139,6 +131,10 @@ impl<T> Sender<T> {
         select::send(self, value)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn len(&self) -> usize {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.len(),
@@ -147,19 +143,19 @@ impl<T> Sender<T> {
         }
     }
 
-    pub fn is_disconnected(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_closed(),
-            Flavor::Zero(ref chan) => chan.is_closed(),
-        }
-    }
-
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
             Flavor::Array(ref chan) => Some(chan.capacity()),
             Flavor::List(_) => None,
             Flavor::Zero(_) => Some(0),
+        }
+    }
+
+    pub fn is_disconnected(&self) -> bool {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.is_closed(),
+            Flavor::List(ref chan) => chan.is_closed(),
+            Flavor::Zero(ref chan) => chan.is_closed(),
         }
     }
 }
@@ -228,14 +224,6 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub(crate) fn spin_try_recv(&self) -> Result<T, TryRecvError> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.spin_try_recv(),
-            Flavor::List(ref chan) => chan.spin_try_recv(),
-            Flavor::Zero(ref chan) => chan.spin_try_recv(self.case_id()),
-        }
-    }
-
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.try_recv(),
@@ -270,6 +258,10 @@ impl<T> Receiver<T> {
         select::recv(self)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn len(&self) -> usize {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.len(),
@@ -278,19 +270,19 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn is_disconnected(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_closed(),
-            Flavor::Zero(ref chan) => chan.is_closed(),
-        }
-    }
-
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
             Flavor::Array(ref chan) => Some(chan.capacity()),
             Flavor::List(_) => None,
             Flavor::Zero(_) => Some(0),
+        }
+    }
+
+    pub fn is_disconnected(&self) -> bool {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.is_closed(),
+            Flavor::List(ref chan) => chan.is_closed(),
+            Flavor::Zero(ref chan) => chan.is_closed(),
         }
     }
 

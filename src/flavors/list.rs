@@ -264,24 +264,6 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to receive a value from channel, retrying several times if it is empty.
-    pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
-        let backoff = &mut Backoff::new();
-        loop {
-            let closed = self.closed.load(SeqCst);
-            if let Some(v) = self.pop() {
-                return Ok(v);
-            }
-            if closed {
-                return Err(TryRecvError::Disconnected);
-            }
-            if !backoff.step() {
-                break;
-            }
-        }
-        Err(TryRecvError::Empty)
-    }
-
     /// Attempts to receive a value from the channel until the specified `deadline`.
     pub fn recv_until(
         &self,
@@ -289,10 +271,18 @@ impl<T> Channel<T> {
         case_id: CaseId,
     ) -> Result<T, RecvTimeoutError> {
         loop {
-            match self.spin_try_recv() {
-                Ok(v) => return Ok(v),
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
+            let backoff = &mut Backoff::new();
+            loop {
+                let closed = self.closed.load(SeqCst);
+                if let Some(v) = self.pop() {
+                    return Ok(v);
+                }
+                if closed {
+                    return Err(RecvTimeoutError::Disconnected);
+                }
+                if !backoff.step() {
+                    break;
+                }
             }
 
             handle::current_reset();

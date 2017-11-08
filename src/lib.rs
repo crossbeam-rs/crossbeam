@@ -10,6 +10,7 @@ mod channel;
 mod err;
 mod flavors;
 mod monitor;
+mod exchanger;
 mod util;
 
 pub mod select;

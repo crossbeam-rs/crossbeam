@@ -10,8 +10,6 @@ use std::time::Duration;
 use channel::{bounded, select, unbounded, Receiver, Sender};
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
-// TODO: fairness test (for all three variants)
-
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
@@ -139,7 +137,7 @@ fn disconnected() {
 }
 
 #[test]
-fn blocked() {
+fn would_block() {
     let mut iters = 0;
     let (tx1, rx1) = unbounded::<i32>();
     let (tx2, rx2) = unbounded::<i32>();
@@ -156,7 +154,7 @@ fn blocked() {
         if select::disconnected() {
             panic!();
         }
-        if select::blocked() {
+        if select::would_block() {
             break;
         }
         if select::timeout(ms(0)) {
@@ -177,7 +175,7 @@ fn blocked() {
         if select::disconnected() {
             panic!();
         }
-        if select::blocked() {
+        if select::would_block() {
             panic!();
         }
         if select::timeout(ms(0)) {
@@ -197,7 +195,7 @@ fn blocked() {
         if select::disconnected() {
             break;
         }
-        if select::blocked() {
+        if select::would_block() {
             panic!();
         }
         if select::timeout(ms(0)) {
@@ -432,7 +430,7 @@ fn loop_try() {
 
                 drop(rx1);
                 drop(tx2);
-                assert!(iters < 50);
+                assert!(iters < 1000);
             });
         });
     }
@@ -717,7 +715,7 @@ impl<T> WrappedSender<T> {
             if select::disconnected() {
                 return Err(TrySendError::Disconnected(value));
             }
-            if select::blocked() {
+            if select::would_block() {
                 return Err(TrySendError::Full(value));
             }
         }
@@ -776,7 +774,7 @@ impl<T> WrappedReceiver<T> {
             if select::disconnected() {
                 return Err(TryRecvError::Disconnected);
             }
-            if select::blocked() {
+            if select::would_block() {
                 return Err(TryRecvError::Empty);
             }
         }

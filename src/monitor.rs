@@ -70,7 +70,7 @@ impl Monitor {
                     self.len.store(cases.len(), SeqCst);
                     self.maybe_shrink(&mut cases);
 
-                    if case.handle.select(case.case_id) {
+                    if case.handle.try_select(case.case_id) {
                         case.handle.unpark();
                         break;
                     }
@@ -87,7 +87,7 @@ impl Monitor {
 
             self.len.store(0, SeqCst);
             for case in cases.drain(..) {
-                if case.handle.select(CaseId::abort()) {
+                if case.handle.try_select(CaseId::abort()) {
                     case.handle.unpark();
                 }
             }

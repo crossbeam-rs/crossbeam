@@ -10,6 +10,8 @@ mod machine;
 
 pub(crate) mod handle; // TODO: make private
 
+// TODO: explain that selection cannot have repeated cases on the same side of a channel.
+
 #[inline(never)]
 pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     MACHINE.with(|m| {
@@ -62,12 +64,12 @@ pub fn disconnected() -> bool {
     })
 }
 
-pub fn blocked() -> bool {
+pub fn would_block() -> bool {
     MACHINE.with(|m| {
         let mut m = m.borrow_mut();
 
         if let Machine::Initialized {
-            state: State::Blocked,
+            state: State::WouldBlock,
             ..
         } = *m
         {
@@ -76,11 +78,11 @@ pub fn blocked() -> bool {
         }
 
         if let Machine::Counting {
-            ref mut seen_blocked,
+            ref mut dont_block,
             ..
         } = *m
         {
-            *seen_blocked = true;
+            *dont_block = true;
         }
 
         false

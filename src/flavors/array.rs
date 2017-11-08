@@ -1,6 +1,6 @@
 //! Channel implementation based on an array.
 //!
-//! This flavor has a fixed capacity (a positive number).
+//! This flavor has a fixed, positive capacity.
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -175,7 +175,6 @@ impl<T> Channel<T> {
                 let head = self.head.load(SeqCst);
                 // ...and if head lags one lap behind tail as well...
                 if head.wrapping_add(self.power) == tail {
-                    // println!("foo");
                     // ...then the queue is full.
                     return Some(value);
                 }
@@ -274,28 +273,6 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to send `value` into the channel, retrying several times if it is full.
-    pub fn spin_try_send(&self, mut value: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(value))
-        } else {
-            let backoff = &mut Backoff::new();
-            loop {
-                match self.push(value, backoff) {
-                    None => {
-                        self.receivers.notify_one();
-                        return Ok(());
-                    }
-                    Some(v) => value = v,
-                }
-                if !backoff.step() {
-                    break;
-                }
-            }
-            Err(TrySendError::Full(value))
-        }
-    }
-
     /// Attempts to send `value` into the channel until the specified `deadline`.
     pub fn send_until(
         &self,
@@ -304,10 +281,22 @@ impl<T> Channel<T> {
         case_id: CaseId,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
-            match self.spin_try_send(value) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Full(v)) => value = v,
-                Err(TrySendError::Disconnected(v)) => return Err(SendTimeoutError::Disconnected(v)),
+            if self.closed.load(SeqCst) {
+                return Err(SendTimeoutError::Disconnected(value))
+            } else {
+                let backoff = &mut Backoff::new();
+                loop {
+                    match self.push(value, backoff) {
+                        None => {
+                            self.receivers.notify_one();
+                            return Ok(());
+                        }
+                        Some(v) => value = v,
+                    }
+                    if !backoff.step() {
+                        break;
+                    }
+                }
             }
 
             handle::current_reset();
@@ -342,25 +331,6 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to receive a value from channel, retrying several times if it is empty.
-    pub fn spin_try_recv(&self) -> Result<T, TryRecvError> {
-        let backoff = &mut Backoff::new();
-        loop {
-            let closed = self.closed.load(SeqCst);
-            if let Some(v) = self.pop(backoff) {
-                self.senders.notify_one();
-                return Ok(v);
-            }
-            if closed {
-                return Err(TryRecvError::Disconnected);
-            }
-            if !backoff.step() {
-                break;
-            }
-        }
-        Err(TryRecvError::Empty)
-    }
-
     /// Attempts to receive a value from the channel until the specified `deadline`.
     pub fn recv_until(
         &self,
@@ -368,10 +338,19 @@ impl<T> Channel<T> {
         case_id: CaseId,
     ) -> Result<T, RecvTimeoutError> {
         loop {
-            match self.spin_try_recv() {
-                Ok(v) => return Ok(v),
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
+            let backoff = &mut Backoff::new();
+            loop {
+                let closed = self.closed.load(SeqCst);
+                if let Some(v) = self.pop(backoff) {
+                    self.senders.notify_one();
+                    return Ok(v);
+                }
+                if closed {
+                    return Err(RecvTimeoutError::Disconnected);
+                }
+                if !backoff.step() {
+                    break;
+                }
             }
 
             handle::current_reset();

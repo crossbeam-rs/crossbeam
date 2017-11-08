@@ -17,7 +17,7 @@ pub enum Machine {
         len: usize,
         first_id: CaseId,
         deadline: Option<Instant>,
-        seen_blocked: bool,
+        dont_block: bool,
     },
     Initialized {
         pos: usize,
@@ -35,7 +35,7 @@ impl Machine {
             len: 0,
             first_id: CaseId::none(),
             deadline: None,
-            seen_blocked: false,
+            dont_block: false,
         }
     }
 
@@ -48,17 +48,14 @@ impl Machine {
                     len,
                     first_id,
                     deadline,
-                    seen_blocked,
+                    dont_block,
                 } => {
                     if first_id == case_id {
                         *self = Machine::Initialized {
                             pos: 0,
-                            state: {
-                                if seen_blocked {
-                                    State::TryOnce { disconn_count: 0 }
-                                } else {
-                                    State::SpinTry { disconn_count: 0 }
-                                }
+                            state: State::Try {
+                                disconn_count: 0,
+                                dont_block,
                             },
                             len,
                             start: util::small_random(len),
@@ -75,7 +72,7 @@ impl Machine {
                                 }
                             },
                             deadline,
-                            seen_blocked,
+                            dont_block,
                         };
                         return None;
                     }
@@ -120,13 +117,15 @@ impl Machine {
 
 #[derive(Clone, Copy)]
 pub enum State {
-    TryOnce { disconn_count: usize },
-    SpinTry { disconn_count: usize },
+    Try {
+        disconn_count: usize,
+        dont_block: bool,
+    },
     Promise { disconn_count: usize },
     Revoke { case_id: CaseId },
     Fulfill { case_id: CaseId },
     Disconnected,
-    Blocked,
+    WouldBlock,
     Timeout,
 }
 
@@ -134,26 +133,24 @@ impl State {
     #[inline(always)]
     pub fn transition(&mut self, len: usize, deadline: Option<Instant>) {
         match *self {
-            State::TryOnce { disconn_count } => {
-                if disconn_count < len {
-                    *self = State::Blocked;
-                } else {
+            State::Try {
+                disconn_count,
+                dont_block,
+            } => {
+                if disconn_count == len {
                     *self = State::Disconnected;
-                }
-            },
-            State::SpinTry { disconn_count } => {
-                if disconn_count < len {
+                } else if dont_block {
+                    *self = State::WouldBlock;
+                } else {
                     handle::current_reset();
                     *self = State::Promise { disconn_count: 0 };
-                } else {
-                    *self = State::Disconnected;
                 }
             },
             State::Promise { disconn_count } => {
                 if disconn_count < len {
                     handle::current_wait_until(deadline);
                 } else {
-                    handle::current_select(CaseId::abort());
+                    handle::current_try_select(CaseId::abort());
                 }
                 *self = State::Revoke {
                     case_id: handle::current_selected(),
@@ -163,7 +160,10 @@ impl State {
                 *self = State::Fulfill { case_id };
             }
             State::Fulfill { .. } => {
-                *self = State::SpinTry { disconn_count: 0 };
+                *self = State::Try {
+                    disconn_count: 0,
+                    dont_block: false,
+                };
 
                 if let Some(end) = deadline {
                     if Instant::now() >= end {
@@ -172,7 +172,7 @@ impl State {
                 }
             }
             State::Disconnected => {}
-            State::Blocked => {}
+            State::WouldBlock => {}
             State::Timeout => {}
         }
     }
@@ -180,22 +180,11 @@ impl State {
     #[inline(always)]
     pub fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
         match *self {
-            State::TryOnce {
+            State::Try {
                 ref mut disconn_count,
+                ..
             } => {
                 match tx.try_send(value) {
-                    Ok(()) => return Ok(()),
-                    Err(TrySendError::Full(v)) => value = v,
-                    Err(TrySendError::Disconnected(v)) => {
-                        value = v;
-                        *disconn_count += 1;
-                    }
-                }
-            },
-            State::SpinTry {
-                ref mut disconn_count,
-            } => {
-                match tx.spin_try_send(value) {
                     Ok(()) => return Ok(()),
                     Err(TrySendError::Full(v)) => value = v,
                     Err(TrySendError::Disconnected(v)) => {
@@ -212,7 +201,7 @@ impl State {
                 if tx.is_disconnected() {
                     *disconn_count += 1;
                 } else if tx.can_send() {
-                    handle::current_select(CaseId::abort());
+                    handle::current_try_select(CaseId::abort());
                 }
             }
             State::Revoke { case_id } => {
@@ -229,7 +218,7 @@ impl State {
                 }
             },
             State::Disconnected => {}
-            State::Blocked => {}
+            State::WouldBlock => {}
             State::Timeout => {}
         }
         Err(value)
@@ -238,19 +227,11 @@ impl State {
     #[inline(always)]
     pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, ()> {
         match *self {
-            State::TryOnce {
+            State::Try {
                 ref mut disconn_count,
+                ..
             } => {
                 match rx.try_recv() {
-                    Ok(v) => return Ok(v),
-                    Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => *disconn_count += 1,
-                }
-            },
-            State::SpinTry {
-                ref mut disconn_count,
-            } => {
-                match rx.spin_try_recv() {
                     Ok(v) => return Ok(v),
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => *disconn_count += 1,
@@ -267,7 +248,7 @@ impl State {
                 if is_disconn && !can_recv {
                     *disconn_count += 1;
                 } else if can_recv {
-                    handle::current_select(CaseId::abort());
+                    handle::current_try_select(CaseId::abort());
                 }
             }
             State::Revoke { case_id } => {
@@ -283,7 +264,7 @@ impl State {
                 }
             },
             State::Disconnected => {}
-            State::Blocked => {}
+            State::WouldBlock => {}
             State::Timeout => {}
         }
         Err(())

@@ -20,14 +20,14 @@ impl Backoff {
     /// This method may yield the current processor or the current thread.
     #[inline]
     pub fn step(&mut self) -> bool {
-        if self.0 < 10 {
+        if self.0 <= 6 {
             #[cfg(feature = "nightly")]
             for _ in 0..1 << self.0 {
                 ::std::sync::atomic::hint_core_should_pause();
             }
             self.0 += 1;
             true
-        } else if self.0 < 20 {
+        } else if self.0 <= 10 {
             thread::yield_now();
             self.0 += 1;
             true

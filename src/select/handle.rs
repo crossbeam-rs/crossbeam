@@ -18,7 +18,7 @@ pub struct Handle {
 }
 
 impl Handle {
-    pub fn select(&self, case_id: CaseId) -> bool {
+    pub fn try_select(&self, case_id: CaseId) -> bool {
         self.inner
             .case_id
             .compare_and_swap(CaseId::none().id, case_id.id, SeqCst) == CaseId::none().id
@@ -57,7 +57,7 @@ impl Handle {
             if let Some(end) = deadline {
                 if now < end {
                     thread::park_timeout(end - now);
-                } else if self.select(CaseId::abort()) {
+                } else if self.try_select(CaseId::abort()) {
                     return false;
                 }
             } else {
@@ -82,8 +82,8 @@ pub fn current() -> Handle {
     HANDLE.with(|a| a.clone())
 }
 
-pub fn current_select(case_id: CaseId) -> bool {
-    HANDLE.with(|a| a.select(case_id))
+pub fn current_try_select(case_id: CaseId) -> bool {
+    HANDLE.with(|a| a.try_select(case_id))
 }
 
 pub fn current_selected() -> CaseId {
