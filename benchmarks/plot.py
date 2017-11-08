@@ -86,21 +86,21 @@ def plot(subplot, title, prefix, runs):
 
 plot(
    221,
-   "Bounded channel with capacity 0",
+   "Bounded channel of capacity 0",
    'bounded0',
    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plot(
    222,
-   "Bounded channel with capacity 1",
+   "Bounded channel of capacity 1",
    'bounded1',
    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plot(
    223,
-   "Bounded channel with capacity N",
+   "Bounded channel of capacity N",
    'bounded',
    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )

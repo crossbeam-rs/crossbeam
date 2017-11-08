@@ -7,9 +7,9 @@ use chan::{Sender, Receiver};
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
-type RxTx = (Sender<i32>, Receiver<i32>);
+type TxRx = (Sender<i32>, Receiver<i32>);
 
-fn seq<F: Fn() -> RxTx>(make: F) {
+fn seq<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     for i in 0..MESSAGES {
@@ -20,7 +20,7 @@ fn seq<F: Fn() -> RxTx>(make: F) {
     }
 }
 
-fn spsc<F: Fn() -> RxTx>(make: F) {
+fn spsc<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     crossbeam::scope(|s| {
@@ -37,7 +37,7 @@ fn spsc<F: Fn() -> RxTx>(make: F) {
     });
 }
 
-fn mpsc<F: Fn() -> RxTx>(make: F) {
+fn mpsc<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     crossbeam::scope(|s| {
@@ -56,7 +56,7 @@ fn mpsc<F: Fn() -> RxTx>(make: F) {
     });
 }
 
-fn mpmc<F: Fn() -> RxTx>(make: F) {
+fn mpmc<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     crossbeam::scope(|s| {
@@ -77,7 +77,7 @@ fn mpmc<F: Fn() -> RxTx>(make: F) {
     });
 }
 
-fn select_rx<F: Fn() -> RxTx>(make: F) {
+fn select_rx<F: Fn() -> TxRx>(make: F) {
     let chans = (0..THREADS).map(|_| make()).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
@@ -107,7 +107,7 @@ fn select_rx<F: Fn() -> RxTx>(make: F) {
     });
 }
 
-fn select_both<F: Fn() -> RxTx>(make: F) {
+fn select_both<F: Fn() -> TxRx>(make: F) {
     let chans = (0..THREADS).map(|_| make()).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {

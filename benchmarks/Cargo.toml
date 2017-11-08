@@ -4,7 +4,7 @@ version = "0.1.0"
 
 [dependencies]
 chan = "0.1.19"
-channel = { path = ".." }
+channel = { path = "..", features = ["nightly"] }
 crossbeam = "0.3.0"
 
 [[bin]]
