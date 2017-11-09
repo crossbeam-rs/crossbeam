@@ -1,7 +1,7 @@
 extern crate channel;
 extern crate crossbeam;
 
-use channel::{Sender, Receiver};
+use channel::{select, Receiver, Sender};
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -92,7 +92,7 @@ fn select_rx<F: Fn() -> TxRx>(make: F) {
             for _ in 0..MESSAGES {
                 'select: loop {
                     for &(_, ref rx) in &chans {
-                        if let Ok(_) = rx.select() {
+                        if let Ok(_) = select::recv(&rx) {
                             break 'select;
                         }
                     }
@@ -111,7 +111,7 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
                 for i in 0..MESSAGES / THREADS {
                     'select: loop {
                         for &(ref tx, _) in &chans {
-                            if let Ok(_) = tx.select(i as i32) {
+                            if let Ok(_) = select::send(&tx, i as i32) {
                                 break 'select;
                             }
                         }
@@ -125,7 +125,7 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
                 for _ in 0..MESSAGES / THREADS {
                     'select: loop {
                         for &(_, ref rx) in &chans {
-                            if let Ok(_) = rx.select() {
+                            if let Ok(_) = select::recv(&rx) {
                                 break 'select;
                             }
                         }

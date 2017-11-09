@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::Ordering::{Acquire, Release, SeqCst};
+use std::sync::atomic::Ordering::{Acquire, Release};
 use std::thread;
 use std::time::Instant;
 
@@ -11,8 +11,6 @@ use parking_lot::Mutex;
 use select::CaseId;
 use select::handle::{self, Handle};
 use util::Backoff;
-
-// TODO: check seqcst orderings
 
 enum Spin {
     Once,
@@ -195,7 +193,7 @@ impl<T> Case<T> {
             Case::Promise { ref local, .. } => {
                 handle::current_reset();
                 let req = Request::new(value, exchanger);
-                local.request_ptr.store(&req as *const _ as usize, SeqCst);
+                local.request_ptr.store(&req as *const _ as usize, Release);
                 local.handle.unpark();
                 handle::current_wait_until(None);
                 req.packet.into_inner()
@@ -220,7 +218,7 @@ impl<T> Case<T> {
 
 fn finish_exchange<T>(value: T, exchanger: &Exchanger<T>) -> T {
     let req = loop {
-        let ptr = LOCAL.with(|l| l.request_ptr.swap(0, SeqCst) as *const Request<T>);
+        let ptr = LOCAL.with(|l| l.request_ptr.swap(0, Acquire) as *const Request<T>);
         if !ptr.is_null() {
             break ptr;
         }

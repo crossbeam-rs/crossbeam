@@ -32,10 +32,10 @@ func Seek(name string, match chan string, wg *sync.WaitGroup) {
 }
 */
 
-extern crate crossbeam;
 extern crate channel;
+extern crate crossbeam;
 
-use channel::{Receiver, Sender};
+use channel::{select, Receiver, Sender};
 
 fn main() {
     let people = vec!["Anna", "Bob", "Cody", "Dave", "Eva"];
@@ -54,11 +54,11 @@ fn main() {
 // Either sends or receives, whichever possible, a name on the channel.
 fn seek<'a>(name: &'a str, tx: &Sender<&'a str>, rx: &Receiver<&'a str>) {
     loop {
-        if let Ok(peer) = rx.select() {
+        if let Ok(peer) = select::recv(rx) {
             println!("{} received a message from {}.", name, peer);
             break;
         }
-        if let Ok(()) = tx.select(name) {
+        if let Ok(()) = select::send(tx, name) {
             // Wait for someone to receive my message.
             break;
         }

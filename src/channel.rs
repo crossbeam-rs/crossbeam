@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use flavors;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use select::{self, CaseId};
+use select::CaseId;
 
 pub struct Channel<T> {
     senders: AtomicUsize,
@@ -125,10 +125,6 @@ impl<T> Sender<T> {
             Flavor::List(ref chan) => chan.send(value),
             Flavor::Zero(ref chan) => chan.send_until(value, deadline, self.case_id()),
         }
-    }
-
-    pub fn select(&self, value: T) -> Result<(), T> {
-        select::send(self, value)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -252,10 +248,6 @@ impl<T> Receiver<T> {
             Flavor::List(ref chan) => chan.recv_until(deadline, self.case_id()),
             Flavor::Zero(ref chan) => chan.recv_until(deadline, self.case_id()),
         }
-    }
-
-    pub fn select(&self) -> Result<T, ()> {
-        select::recv(self)
     }
 
     pub fn is_empty(&self) -> bool {

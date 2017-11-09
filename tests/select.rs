@@ -23,11 +23,11 @@ fn smoke1() {
     tx1.send(1).unwrap();
     loop {
         iters += 1;
-        if let Ok(v) = rx1.select() {
+        if let Ok(v) = select::recv(&rx1) {
             assert_eq!(v, 1);
             break;
         }
-        if let Ok(_) = rx2.select() {
+        if let Ok(_) = select::recv(&rx2) {
             panic!();
         }
     }
@@ -35,10 +35,10 @@ fn smoke1() {
     tx2.send(2).unwrap();
     loop {
         iters += 1;
-        if let Ok(_) = rx1.select() {
+        if let Ok(_) = select::recv(&rx1) {
             panic!();
         }
-        if let Ok(v) = rx2.select() {
+        if let Ok(v) = select::recv(&rx2) {
             assert_eq!(v, 2);
             break;
         }
@@ -60,19 +60,19 @@ fn smoke2() {
 
     loop {
         iters += 1;
-        if let Ok(_) = rx1.select() {
+        if let Ok(_) = select::recv(&rx1) {
             panic!();
         }
-        if let Ok(_) = rx2.select() {
+        if let Ok(_) = select::recv(&rx2) {
             panic!();
         }
-        if let Ok(_) = rx3.select() {
+        if let Ok(_) = select::recv(&rx3) {
             panic!();
         }
-        if let Ok(_) = rx4.select() {
+        if let Ok(_) = select::recv(&rx4) {
             panic!();
         }
-        if let Ok(x) = rx5.select() {
+        if let Ok(x) = select::recv(&rx5) {
             assert_eq!(x, 5);
             break;
         }
@@ -95,10 +95,10 @@ fn disconnected() {
 
         loop {
             iters += 1;
-            if let Ok(_) = rx1.select() {
+            if let Ok(_) = select::recv(&rx1) {
                 panic!();
             }
-            if let Ok(_) = rx2.select() {
+            if let Ok(_) = select::recv(&rx2) {
                 panic!();
             }
             if select::disconnected() {
@@ -118,10 +118,10 @@ fn disconnected() {
 
         loop {
             iters += 1;
-            if let Ok(_) = rx1.select() {
+            if let Ok(_) = select::recv(&rx1) {
                 panic!();
             }
-            if let Ok(_) = rx2.select() {
+            if let Ok(_) = select::recv(&rx2) {
                 panic!();
             }
             if select::disconnected() {
@@ -145,10 +145,10 @@ fn would_block() {
     drop(tx1);
     loop {
         iters += 1;
-        if let Ok(_) = rx1.select() {
+        if let Ok(_) = select::recv(&rx1) {
             panic!();
         }
-        if let Ok(_) = rx2.select() {
+        if let Ok(_) = select::recv(&rx2) {
             panic!();
         }
         if select::disconnected() {
@@ -165,10 +165,10 @@ fn would_block() {
     tx2.send(2).unwrap();
     loop {
         iters += 1;
-        if let Ok(_) = rx1.select() {
+        if let Ok(_) = select::recv(&rx1) {
             panic!();
         }
-        if let Ok(x) = rx2.select() {
+        if let Ok(x) = select::recv(&rx2) {
             assert_eq!(x, 2);
             break;
         }
@@ -186,10 +186,10 @@ fn would_block() {
     drop(tx2);
     loop {
         iters += 1;
-        if let Ok(_) = rx1.select() {
+        if let Ok(_) = select::recv(&rx1) {
             panic!();
         }
-        if let Ok(_) = rx2.select() {
+        if let Ok(_) = select::recv(&rx2) {
             panic!();
         }
         if select::disconnected() {
@@ -220,10 +220,10 @@ fn timeout() {
 
         loop {
             iters += 1;
-            if let Ok(_) = rx1.select() {
+            if let Ok(_) = select::recv(&rx1) {
                 panic!();
             }
-            if let Ok(_) = rx2.select() {
+            if let Ok(_) = select::recv(&rx2) {
                 panic!();
             }
             if select::timeout(ms(1000)) {
@@ -233,10 +233,10 @@ fn timeout() {
 
         loop {
             iters += 1;
-            if let Ok(_) = rx1.select() {
+            if let Ok(_) = select::recv(&rx1) {
                 panic!();
             }
-            if let Ok(x) = rx2.select() {
+            if let Ok(x) = select::recv(&rx2) {
                 assert_eq!(x, 2);
                 break;
             }
@@ -263,10 +263,10 @@ fn unblocks() {
 
         loop {
             iters += 1;
-            if let Ok(_) = rx1.select() {
+            if let Ok(_) = select::recv(&rx1) {
                 panic!();
             }
-            if let Ok(x) = rx2.select() {
+            if let Ok(x) = select::recv(&rx2) {
                 assert_eq!(x, 2);
                 break;
             }
@@ -284,10 +284,10 @@ fn unblocks() {
 
         loop {
             iters += 1;
-            if let Ok(()) = tx1.select(1) {
+            if let Ok(()) = select::send(&tx1, 1) {
                 break;
             }
-            if let Ok(()) = tx2.select(2) {
+            if let Ok(()) = select::send(&tx2, 2) {
                 panic!();
             }
             if select::timeout(ms(1000)) {
@@ -315,11 +315,11 @@ fn both_ready() {
         for _ in 0..2 {
             loop {
                 iters += 1;
-                if let Ok(x) = rx1.select() {
+                if let Ok(x) = select::recv(&rx1) {
                     assert_eq!(x, 1);
                     break;
                 }
-                if let Ok(()) = tx2.select(2) {
+                if let Ok(()) = select::send(&tx2, 2) {
                     break;
                 }
             }
@@ -363,14 +363,14 @@ fn no_starvation() {
                 iters += 1;
 
                 for rx in &rxs {
-                    if let Ok(x) = rx.select() {
+                    if let Ok(x) = select::recv(&rx) {
                         done_rx[x].store(true, SeqCst);
                         break 'select;
                     }
                 }
 
                 for (i, tx) in txs.iter().enumerate() {
-                    if let Ok(()) = tx.select(i) {
+                    if let Ok(()) = select::send(&tx, i) {
                         break 'select;
                     }
                 }
@@ -413,11 +413,11 @@ fn loop_try() {
 
                 loop {
                     iters += 1;
-                    if let Ok(x) = rx1.select() {
+                    if let Ok(x) = select::recv(&rx1) {
                         assert_eq!(x, 1);
                         break;
                     }
-                    if let Ok(_) = tx2.select(2) {
+                    if let Ok(_) = select::send(&tx2, 2) {
                         break;
                     }
                     if select::disconnected() {
@@ -455,10 +455,10 @@ fn cloning1() {
         tx3.send(()).unwrap();
         loop {
             iters += 1;
-            if let Ok(_) = rx1.select() {
+            if let Ok(_) = select::recv(&rx1) {
                 break;
             }
-            if let Ok(_) = rx2.select() {
+            if let Ok(_) = select::recv(&rx2) {
                 panic!();
             }
         }
@@ -478,10 +478,10 @@ fn cloning2() {
 
         s.spawn(move || loop {
             iters += 1;
-            if let Ok(_) = rx1.select() {
+            if let Ok(_) = select::recv(&rx1) {
                 panic!();
             }
-            if let Ok(_) = rx2.select() {
+            if let Ok(_) = select::recv(&rx2) {
                 break;
             }
         });
@@ -502,7 +502,7 @@ fn preflight1() {
     let mut iters = 0;
     loop {
         iters += 1;
-        if let Ok(_) = rx.select() {
+        if let Ok(_) = select::recv(&rx) {
             break;
         }
     }
@@ -519,7 +519,7 @@ fn preflight2() {
     let mut iters = 0;
     loop {
         iters += 1;
-        if let Ok(_) = rx.select() {
+        if let Ok(_) = select::recv(&rx) {
             break;
         }
     }
@@ -538,7 +538,7 @@ fn preflight3() {
     let mut iters = 0;
     loop {
         iters += 1;
-        if let Ok(_) = rx.select() {
+        if let Ok(_) = select::recv(&rx) {
             panic!();
         }
         if select::disconnected() {
@@ -569,11 +569,11 @@ fn stress_recv() {
             for _ in 0..2 {
                 loop {
                     iters += 1;
-                    if let Ok(x) = rx1.select() {
+                    if let Ok(x) = select::recv(&rx1) {
                         assert_eq!(x, i);
                         break;
                     }
-                    if let Ok(x) = rx2.select() {
+                    if let Ok(x) = select::recv(&rx2) {
                         assert_eq!(x, i);
                         break;
                     }
@@ -606,10 +606,10 @@ fn stress_send() {
             for _ in 0..2 {
                 loop {
                     iters += 1;
-                    if let Ok(()) = tx1.select(i) {
+                    if let Ok(()) = select::send(&tx1, i) {
                         break;
                     }
-                    if let Ok(()) = tx2.select(i) {
+                    if let Ok(()) = select::send(&tx2, i) {
                         break;
                     }
                 }
@@ -640,11 +640,11 @@ fn stress_mixed() {
             for _ in 0..2 {
                 loop {
                     iters += 1;
-                    if let Ok(x) = rx1.select() {
+                    if let Ok(x) = select::recv(&rx1) {
                         assert_eq!(x, i);
                         break;
                     }
-                    if let Ok(()) = tx2.select(i) {
+                    if let Ok(()) = select::send(&tx2, i) {
                         break;
                     }
                 }
@@ -669,7 +669,7 @@ fn stress_timeout_two_threads() {
             }
             'outer: loop {
                 loop {
-                    if let Ok(()) = tx.select(i) {
+                    if let Ok(()) = select::send(&tx, i) {
                             break 'outer;
                         }
                     if select::timeout(ms(100)) {
@@ -685,7 +685,7 @@ fn stress_timeout_two_threads() {
             }
             'outer: loop {
                 loop {
-                    if let Ok(x) = rx.select() {
+                    if let Ok(x) = select::recv(&rx) {
                         assert_eq!(x, i);
                         break 'outer;
                     }
@@ -707,7 +707,7 @@ impl<T> WrappedSender<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = self.0.select(value) {
+            if let Err(v) = select::send(&self.0, value) {
                 value = v;
             } else {
                 return Ok(());
@@ -727,7 +727,7 @@ impl<T> WrappedSender<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = self.0.select(value) {
+            if let Err(v) = select::send(&self.0, value) {
                 value = v;
             } else {
                 return Ok(());
@@ -744,7 +744,7 @@ impl<T> WrappedSender<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = self.0.select(value) {
+            if let Err(v) = select::send(&self.0, value) {
                 value = v;
             } else {
                 return Ok(());
@@ -768,7 +768,7 @@ impl<T> WrappedReceiver<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Ok(v) = self.0.select() {
+            if let Ok(v) = select::recv(&self.0) {
                 return Ok(v);
             }
             if select::disconnected() {
@@ -786,7 +786,7 @@ impl<T> WrappedReceiver<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Ok(v) = self.0.select() {
+            if let Ok(v) = select::recv(&self.0) {
                 return Ok(v);
             }
             if select::disconnected() {
@@ -801,7 +801,7 @@ impl<T> WrappedReceiver<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Ok(v) = self.0.select() {
+            if let Ok(v) = select::recv(&self.0) {
                 return Ok(v);
             }
             if select::disconnected() {
@@ -1085,11 +1085,11 @@ fn matching() {
 
     crossbeam::scope(|s| for i in 0..44 {
         s.spawn(move || loop {
-            if let Ok(x) = rx.select() {
+            if let Ok(x) = select::recv(rx) {
                 assert_ne!(i, x);
                 break;
             }
-            if let Ok(()) = tx.select(i) {
+            if let Ok(()) = select::send(tx, i) {
                 break;
             }
         });
@@ -1106,11 +1106,11 @@ fn matching_with_leftover() {
     crossbeam::scope(|s| {
         for i in 0..55 {
             s.spawn(move || loop {
-                if let Ok(x) = rx.select() {
+                if let Ok(x) = select::recv(&rx) {
                     assert_ne!(i, x);
                     break;
                 }
-                if let Ok(()) = tx.select(i) {
+                if let Ok(()) = select::send(&tx, i) {
                     break;
                 }
             });
@@ -1139,7 +1139,7 @@ fn channel_through_channel() {
                     let mut new_rx: T = Box::new(Some(new_rx));
 
                     loop {
-                        if let Err(r) = tx.select(new_rx) {
+                        if let Err(r) = select::send(&tx, new_rx) {
                             new_rx = r;
                         } else {
                             break;
@@ -1155,7 +1155,7 @@ fn channel_through_channel() {
 
                 for _ in 0..COUNT {
                     loop {
-                        if let Ok(mut r) = rx.select() {
+                        if let Ok(mut r) = select::recv(&rx) {
                             rx = r.downcast_mut::<Option<Receiver<T>>>()
                                 .unwrap()
                                 .take()

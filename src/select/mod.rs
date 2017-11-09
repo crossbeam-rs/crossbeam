@@ -13,7 +13,7 @@ pub(crate) mod handle; // TODO: make private
 // TODO: explain that selection cannot have repeated cases on the same side of a channel.
 
 #[inline(never)]
-pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
+pub fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
     MACHINE.with(|m| {
         let mut t = m.borrow_mut();
 
@@ -31,7 +31,7 @@ pub(crate) fn send<T>(tx: &Sender<T>, value: T) -> Result<(), T> {
 }
 
 #[inline(never)]
-pub(crate) fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
+pub fn recv<T>(rx: &Receiver<T>) -> Result<T, ()> {
     MACHINE.with(|m| {
         let mut m = m.borrow_mut();
 
