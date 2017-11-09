@@ -55,7 +55,9 @@ impl<T> Sender<T> {
     }
 
     pub(crate) fn case_id(&self) -> CaseId {
-        CaseId::new(self as *const _ as usize)
+        let chan: &Channel<T> = &self.0;
+        let addr = chan as *const Channel<T> as usize;
+        CaseId::new(addr)
     }
 
     pub(crate) fn promise_send(&self) {
@@ -186,7 +188,9 @@ impl<T> Receiver<T> {
     }
 
     pub(crate) fn case_id(&self) -> CaseId {
-        CaseId::new(self as *const _ as usize)
+        let chan: &Channel<T> = &self.0;
+        let addr = chan as *const Channel<T> as usize;
+        CaseId::new(addr | 1)
     }
 
     pub(crate) fn promise_recv(&self) {
