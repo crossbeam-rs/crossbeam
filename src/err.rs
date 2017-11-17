@@ -45,8 +45,8 @@ pub enum SendTimeoutError<T> {
 
 /// An error returned from the [`recv`] method on a [`Receiver`].
 ///
-/// The [`recv`] operation can only fail if the sending half of a channel is disconnected, implying
-/// that no further messages will ever be received.
+/// The [`recv`] operation can only fail if the sending half of a channel is disconnected and the
+/// channel is empty, implying that no further messages will ever be received.
 ///
 /// [`recv`]: struct.Receiver.html#method.recv
 /// [`Receiver`]: struct.Receiver.html
@@ -82,6 +82,15 @@ pub enum RecvTimeoutError {
     /// received on it.
     Disconnected,
 }
+
+/// An error returned from the [`Select::recv`] method.
+///
+/// This error occurs when the selection case doesn't receive a message from the channel. Note that
+/// cases enumerated in a selection loop are sometimes simply skipped, so they might fail even if
+/// the channel is currently not empty.
+///
+/// [`Select::recv`]: struct.Select.html#method.recv
+pub struct SelectRecvError;
 
 impl<T> fmt::Debug for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -214,6 +223,28 @@ impl error::Error for RecvTimeoutError {
             RecvTimeoutError::Timeout => "timed out waiting on channel",
             RecvTimeoutError::Disconnected => "channel is empty and sending half is closed",
         }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        None
+    }
+}
+
+impl fmt::Debug for SelectRecvError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        "SelectRecvError".fmt(f)
+    }
+}
+
+impl fmt::Display for SelectRecvError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        "selection case is not ready".fmt(f)
+    }
+}
+
+impl error::Error for SelectRecvError {
+    fn description(&self) -> &str {
+        "selection case is not ready"
     }
 
     fn cause(&self) -> Option<&error::Error> {
