@@ -8,15 +8,15 @@ extern crate rand;
 
 mod channel;
 mod err;
+mod exchanger;
 mod flavors;
 mod monitor;
-mod exchanger;
+mod select;
 mod util;
-
-pub mod select;
 
 pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};
 pub use channel::{IntoIter, Iter, TryIter};
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
 pub use err::{SendError, SendTimeoutError, TrySendError};
+pub use select::Select;

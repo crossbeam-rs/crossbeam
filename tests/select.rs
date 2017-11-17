@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
-use channel::{bounded, select, unbounded, Receiver, Sender};
+use channel::{bounded, unbounded, Receiver, Select, Sender};
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
 fn ms(ms: u64) -> Duration {
@@ -21,24 +21,28 @@ fn smoke1() {
     let (tx2, rx2) = unbounded();
 
     tx1.send(1).unwrap();
+
+    let mut sel = Select::new();
     loop {
         iters += 1;
-        if let Ok(v) = select::recv(&rx1) {
+        if let Ok(v) = sel.recv(&rx1) {
             assert_eq!(v, 1);
             break;
         }
-        if let Ok(_) = select::recv(&rx2) {
+        if let Ok(_) = sel.recv(&rx2) {
             panic!();
         }
     }
 
     tx2.send(2).unwrap();
+
+    let mut sel = Select::new();
     loop {
         iters += 1;
-        if let Ok(_) = select::recv(&rx1) {
+        if let Ok(_) = sel.recv(&rx1) {
             panic!();
         }
-        if let Ok(v) = select::recv(&rx2) {
+        if let Ok(v) = sel.recv(&rx2) {
             assert_eq!(v, 2);
             break;
         }
@@ -58,21 +62,22 @@ fn smoke2() {
 
     tx5.send(5).unwrap();
 
+    let mut sel = Select::new();
     loop {
         iters += 1;
-        if let Ok(_) = select::recv(&rx1) {
+        if let Ok(_) = sel.recv(&rx1) {
             panic!();
         }
-        if let Ok(_) = select::recv(&rx2) {
+        if let Ok(_) = sel.recv(&rx2) {
             panic!();
         }
-        if let Ok(_) = select::recv(&rx3) {
+        if let Ok(_) = sel.recv(&rx3) {
             panic!();
         }
-        if let Ok(_) = select::recv(&rx4) {
+        if let Ok(_) = sel.recv(&rx4) {
             panic!();
         }
-        if let Ok(x) = select::recv(&rx5) {
+        if let Ok(x) = sel.recv(&rx5) {
             assert_eq!(x, 5);
             break;
         }
@@ -93,18 +98,19 @@ fn disconnected() {
             drop(tx1);
         });
 
+        let mut sel = Select::with_timeout(ms(1000));
         loop {
             iters += 1;
-            if let Ok(_) = select::recv(&rx1) {
+            if let Ok(_) = sel.recv(&rx1) {
                 panic!();
             }
-            if let Ok(_) = select::recv(&rx2) {
+            if let Ok(_) = sel.recv(&rx2) {
                 panic!();
             }
-            if select::disconnected() {
+            if sel.disconnected() {
                 panic!();
             }
-            if select::timeout(ms(1000)) {
+            if sel.timed_out() {
                 break;
             }
         }
@@ -116,18 +122,19 @@ fn disconnected() {
             drop(tx2);
         });
 
+        let mut sel = Select::with_timeout(ms(1000));
         loop {
             iters += 1;
-            if let Ok(_) = select::recv(&rx1) {
+            if let Ok(_) = sel.recv(&rx1) {
                 panic!();
             }
-            if let Ok(_) = select::recv(&rx2) {
+            if let Ok(_) = sel.recv(&rx2) {
                 panic!();
             }
-            if select::disconnected() {
+            if sel.disconnected() {
                 break;
             }
-            if select::timeout(ms(1000)) {
+            if sel.timed_out() {
                 panic!();
             }
         }
@@ -143,62 +150,68 @@ fn would_block() {
     let (tx2, rx2) = unbounded::<i32>();
 
     drop(tx1);
+
+    let mut sel = Select::with_timeout(ms(0));
     loop {
         iters += 1;
-        if let Ok(_) = select::recv(&rx1) {
+        if let Ok(_) = sel.recv(&rx1) {
             panic!();
         }
-        if let Ok(_) = select::recv(&rx2) {
+        if let Ok(_) = sel.recv(&rx2) {
             panic!();
         }
-        if select::disconnected() {
+        if sel.disconnected() {
             panic!();
         }
-        if select::would_block() {
+        if sel.would_block() {
             break;
         }
-        if select::timeout(ms(0)) {
+        if sel.timed_out() {
             panic!();
         }
     }
 
     tx2.send(2).unwrap();
+
+    let mut sel = Select::with_timeout(ms(0));
     loop {
         iters += 1;
-        if let Ok(_) = select::recv(&rx1) {
+        if let Ok(_) = sel.recv(&rx1) {
             panic!();
         }
-        if let Ok(x) = select::recv(&rx2) {
+        if let Ok(x) = sel.recv(&rx2) {
             assert_eq!(x, 2);
             break;
         }
-        if select::disconnected() {
+        if sel.disconnected() {
             panic!();
         }
-        if select::would_block() {
+        if sel.would_block() {
             panic!();
         }
-        if select::timeout(ms(0)) {
+        if sel.timed_out() {
             panic!();
         }
     }
 
     drop(tx2);
+
+    let mut sel = Select::with_timeout(ms(0));
     loop {
         iters += 1;
-        if let Ok(_) = select::recv(&rx1) {
+        if let Ok(_) = sel.recv(&rx1) {
             panic!();
         }
-        if let Ok(_) = select::recv(&rx2) {
+        if let Ok(_) = sel.recv(&rx2) {
             panic!();
         }
-        if select::disconnected() {
+        if sel.disconnected() {
             break;
         }
-        if select::would_block() {
+        if sel.would_block() {
             panic!();
         }
-        if select::timeout(ms(0)) {
+        if sel.timed_out() {
             panic!();
         }
     }
@@ -218,29 +231,31 @@ fn timeout() {
             tx2.send(2).unwrap();
         });
 
+        let mut sel = Select::with_timeout(ms(1000));
         loop {
             iters += 1;
-            if let Ok(_) = select::recv(&rx1) {
+            if let Ok(_) = sel.recv(&rx1) {
                 panic!();
             }
-            if let Ok(_) = select::recv(&rx2) {
+            if let Ok(_) = sel.recv(&rx2) {
                 panic!();
             }
-            if select::timeout(ms(1000)) {
+            if sel.timed_out() {
                 break;
             }
         }
 
+        let mut sel = Select::with_timeout(ms(1000));
         loop {
             iters += 1;
-            if let Ok(_) = select::recv(&rx1) {
+            if let Ok(_) = sel.recv(&rx1) {
                 panic!();
             }
-            if let Ok(x) = select::recv(&rx2) {
+            if let Ok(x) = sel.recv(&rx2) {
                 assert_eq!(x, 2);
                 break;
             }
-            if select::timeout(ms(1000)) {
+            if sel.timed_out() {
                 panic!();
             }
         }
@@ -261,16 +276,17 @@ fn unblocks() {
             tx2.send(2).unwrap();
         });
 
+        let mut sel = Select::with_timeout(ms(1000));
         loop {
             iters += 1;
-            if let Ok(_) = select::recv(&rx1) {
+            if let Ok(_) = sel.recv(&rx1) {
                 panic!();
             }
-            if let Ok(x) = select::recv(&rx2) {
+            if let Ok(x) = sel.recv(&rx2) {
                 assert_eq!(x, 2);
                 break;
             }
-            if select::timeout(ms(1000)) {
+            if sel.timed_out() {
                 panic!();
             }
         }
@@ -282,15 +298,16 @@ fn unblocks() {
             assert_eq!(rx1.recv().unwrap(), 1);
         });
 
+        let mut sel = Select::with_timeout(ms(1000));
         loop {
             iters += 1;
-            if let Ok(()) = select::send(&tx1, 1) {
+            if let Ok(()) = sel.send(&tx1, 1) {
                 break;
             }
-            if let Ok(()) = select::send(&tx2, 2) {
+            if let Ok(()) = sel.send(&tx2, 2) {
                 panic!();
             }
-            if select::timeout(ms(1000)) {
+            if sel.timed_out() {
                 panic!();
             }
         }
@@ -313,13 +330,14 @@ fn both_ready() {
         });
 
         for _ in 0..2 {
+            let mut sel = Select::new();
             loop {
                 iters += 1;
-                if let Ok(x) = select::recv(&rx1) {
+                if let Ok(x) = sel.recv(&rx1) {
                     assert_eq!(x, 1);
                     break;
                 }
-                if let Ok(()) = select::send(&tx2, 2) {
+                if let Ok(()) = sel.send(&tx2, 2) {
                     break;
                 }
             }
@@ -359,18 +377,19 @@ fn no_starvation() {
 
             let mut iters = 0;
 
+            let mut sel = Select::new();
             'select: loop {
                 iters += 1;
 
                 for rx in &rxs {
-                    if let Ok(x) = select::recv(&rx) {
+                    if let Ok(x) = sel.recv(&rx) {
                         done_rx[x].store(true, SeqCst);
                         break 'select;
                     }
                 }
 
                 for (i, tx) in txs.iter().enumerate() {
-                    if let Ok(()) = select::send(&tx, i) {
+                    if let Ok(()) = sel.send(&tx, i) {
                         break 'select;
                     }
                 }
@@ -411,19 +430,20 @@ fn loop_try() {
                 let mut iters = 0;
                 thread::sleep(ms(500));
 
+                let mut sel = Select::with_timeout(ms(500));
                 loop {
                     iters += 1;
-                    if let Ok(x) = select::recv(&rx1) {
+                    if let Ok(x) = sel.recv(&rx1) {
                         assert_eq!(x, 1);
                         break;
                     }
-                    if let Ok(_) = select::send(&tx2, 2) {
+                    if let Ok(_) = sel.send(&tx2, 2) {
                         break;
                     }
-                    if select::disconnected() {
+                    if sel.disconnected() {
                         panic!();
                     }
-                    if select::timeout(ms(500)) {
+                    if sel.timed_out() {
                         panic!();
                     }
                 }
@@ -453,12 +473,14 @@ fn cloning1() {
         });
 
         tx3.send(()).unwrap();
+
+        let mut sel = Select::new();
         loop {
             iters += 1;
-            if let Ok(_) = select::recv(&rx1) {
+            if let Ok(_) = sel.recv(&rx1) {
                 break;
             }
-            if let Ok(_) = select::recv(&rx2) {
+            if let Ok(_) = sel.recv(&rx2) {
                 panic!();
             }
         }
@@ -476,13 +498,16 @@ fn cloning2() {
         let (tx2, rx2) = unbounded::<()>();
         let (_tx3, _rx3) = unbounded::<()>();
 
-        s.spawn(move || loop {
-            iters += 1;
-            if let Ok(_) = select::recv(&rx1) {
-                panic!();
-            }
-            if let Ok(_) = select::recv(&rx2) {
-                break;
+        s.spawn(move || {
+            let mut sel = Select::new();
+            loop {
+                iters += 1;
+                if let Ok(_) = sel.recv(&rx1) {
+                    panic!();
+                }
+                if let Ok(_) = sel.recv(&rx2) {
+                    break;
+                }
             }
         });
 
@@ -500,9 +525,10 @@ fn preflight1() {
     tx.send(()).unwrap();
 
     let mut iters = 0;
+    let mut sel = Select::new();
     loop {
         iters += 1;
-        if let Ok(_) = select::recv(&rx) {
+        if let Ok(_) = sel.recv(&rx) {
             break;
         }
     }
@@ -517,9 +543,10 @@ fn preflight2() {
     drop(tx);
 
     let mut iters = 0;
+    let mut sel = Select::new();
     loop {
         iters += 1;
-        if let Ok(_) = select::recv(&rx) {
+        if let Ok(_) = sel.recv(&rx) {
             break;
         }
     }
@@ -536,12 +563,13 @@ fn preflight3() {
     rx.recv().unwrap();
 
     let mut iters = 0;
+    let mut sel = Select::new();
     loop {
         iters += 1;
-        if let Ok(_) = select::recv(&rx) {
+        if let Ok(_) = sel.recv(&rx) {
             panic!();
         }
-        if select::disconnected() {
+        if sel.disconnected() {
             break;
         }
     }
@@ -567,13 +595,14 @@ fn stress_recv() {
             let mut iters = 0;
 
             for _ in 0..2 {
+                let mut sel = Select::new();
                 loop {
                     iters += 1;
-                    if let Ok(x) = select::recv(&rx1) {
+                    if let Ok(x) = sel.recv(&rx1) {
                         assert_eq!(x, i);
                         break;
                     }
-                    if let Ok(x) = select::recv(&rx2) {
+                    if let Ok(x) = sel.recv(&rx2) {
                         assert_eq!(x, i);
                         break;
                     }
@@ -604,12 +633,13 @@ fn stress_send() {
             let mut iters = 0;
 
             for _ in 0..2 {
+                let mut sel = Select::new();
                 loop {
                     iters += 1;
-                    if let Ok(()) = select::send(&tx1, i) {
+                    if let Ok(()) = sel.send(&tx1, i) {
                         break;
                     }
-                    if let Ok(()) = select::send(&tx2, i) {
+                    if let Ok(()) = sel.send(&tx2, i) {
                         break;
                     }
                 }
@@ -638,13 +668,14 @@ fn stress_mixed() {
             let mut iters = 0;
 
             for _ in 0..2 {
+                let mut sel = Select::new();
                 loop {
                     iters += 1;
-                    if let Ok(x) = select::recv(&rx1) {
+                    if let Ok(x) = sel.recv(&rx1) {
                         assert_eq!(x, i);
                         break;
                     }
-                    if let Ok(()) = select::send(&tx2, i) {
+                    if let Ok(()) = sel.send(&tx2, i) {
                         break;
                     }
                 }
@@ -667,12 +698,14 @@ fn stress_timeout_two_threads() {
             if i % 2 == 0 {
                 thread::sleep(ms(500));
             }
+
+            let mut sel = Select::with_timeout(ms(100));
             'outer: loop {
                 loop {
-                    if let Ok(()) = select::send(&tx, i) {
+                    if let Ok(()) = sel.send(&tx, i) {
                             break 'outer;
                         }
-                    if select::timeout(ms(100)) {
+                    if sel.timed_out() {
                         break;
                     }
                 }
@@ -683,13 +716,15 @@ fn stress_timeout_two_threads() {
             if i % 2 == 0 {
                 thread::sleep(ms(500));
             }
+
+            let mut sel = Select::with_timeout(ms(100));
             'outer: loop {
                 loop {
-                    if let Ok(x) = select::recv(&rx) {
+                    if let Ok(x) = sel.recv(&rx) {
                         assert_eq!(x, i);
                         break 'outer;
                     }
-                    if select::timeout(ms(100)) {
+                    if sel.timed_out() {
                         break;
                     }
                 }
@@ -703,19 +738,20 @@ struct WrappedSender<T>(Sender<T>);
 impl<T> WrappedSender<T> {
     pub fn try_send(&self, mut value: T) -> Result<(), TrySendError<T>> {
         let mut iters = 0;
+        let mut sel = Select::new();
         loop {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = select::send(&self.0, value) {
+            if let Err(v) = sel.send(&self.0, value) {
                 value = v;
             } else {
                 return Ok(());
             }
-            if select::disconnected() {
+            if sel.disconnected() {
                 return Err(TrySendError::Disconnected(value));
             }
-            if select::would_block() {
+            if sel.would_block() {
                 return Err(TrySendError::Full(value));
             }
         }
@@ -723,16 +759,17 @@ impl<T> WrappedSender<T> {
 
     pub fn send(&self, mut value: T) -> Result<(), SendError<T>> {
         let mut iters = 0;
+        let mut sel = Select::new();
         loop {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = select::send(&self.0, value) {
+            if let Err(v) = sel.send(&self.0, value) {
                 value = v;
             } else {
                 return Ok(());
             }
-            if select::disconnected() {
+            if sel.disconnected() {
                 return Err(SendError(value));
             }
         }
@@ -740,19 +777,20 @@ impl<T> WrappedSender<T> {
 
     pub fn send_timeout(&self, mut value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
         let mut iters = 0;
+        let mut sel = Select::with_timeout(dur);
         loop {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = select::send(&self.0, value) {
+            if let Err(v) = sel.send(&self.0, value) {
                 value = v;
             } else {
                 return Ok(());
             }
-            if select::disconnected() {
+            if sel.disconnected() {
                 return Err(SendTimeoutError::Disconnected(value));
             }
-            if select::timeout(dur) {
+            if sel.timed_out() {
                 return Err(SendTimeoutError::Timeout(value));
             }
         }
@@ -764,17 +802,18 @@ struct WrappedReceiver<T>(Receiver<T>);
 impl<T> WrappedReceiver<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let mut iters = 0;
+        let mut sel = Select::new();
         loop {
             iters += 1;
             assert!(iters < 20);
 
-            if let Ok(v) = select::recv(&self.0) {
+            if let Ok(v) = sel.recv(&self.0) {
                 return Ok(v);
             }
-            if select::disconnected() {
+            if sel.disconnected() {
                 return Err(TryRecvError::Disconnected);
             }
-            if select::would_block() {
+            if sel.would_block() {
                 return Err(TryRecvError::Empty);
             }
         }
@@ -782,14 +821,15 @@ impl<T> WrappedReceiver<T> {
 
     pub fn recv(&self) -> Result<T, RecvError> {
         let mut iters = 0;
+        let mut sel = Select::new();
         loop {
             iters += 1;
             assert!(iters < 20);
 
-            if let Ok(v) = select::recv(&self.0) {
+            if let Ok(v) = sel.recv(&self.0) {
                 return Ok(v);
             }
-            if select::disconnected() {
+            if sel.disconnected() {
                 return Err(RecvError);
             }
         }
@@ -797,17 +837,18 @@ impl<T> WrappedReceiver<T> {
 
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
         let mut iters = 0;
+        let mut sel = Select::with_timeout(dur);
         loop {
             iters += 1;
             assert!(iters < 20);
 
-            if let Ok(v) = select::recv(&self.0) {
+            if let Ok(v) = sel.recv(&self.0) {
                 return Ok(v);
             }
-            if select::disconnected() {
+            if sel.disconnected() {
                 return Err(RecvTimeoutError::Disconnected);
             }
-            if select::timeout(dur) {
+            if sel.timed_out() {
                 return Err(RecvTimeoutError::Timeout);
             }
         }
@@ -1084,13 +1125,16 @@ fn matching() {
     let (tx, rx) = (&tx, &rx);
 
     crossbeam::scope(|s| for i in 0..44 {
-        s.spawn(move || loop {
-            if let Ok(x) = select::recv(rx) {
-                assert_ne!(i, x);
-                break;
-            }
-            if let Ok(()) = select::send(tx, i) {
-                break;
+        s.spawn(move || {
+            let mut sel = Select::new();
+            loop {
+                if let Ok(x) = sel.recv(rx) {
+                    assert_ne!(i, x);
+                    break;
+                }
+                if let Ok(()) = sel.send(tx, i) {
+                    break;
+                }
             }
         });
     });
@@ -1105,13 +1149,16 @@ fn matching_with_leftover() {
 
     crossbeam::scope(|s| {
         for i in 0..55 {
-            s.spawn(move || loop {
-                if let Ok(x) = select::recv(&rx) {
-                    assert_ne!(i, x);
-                    break;
-                }
-                if let Ok(()) = select::send(&tx, i) {
-                    break;
+            s.spawn(move || {
+                let mut sel = Select::new();
+                loop {
+                    if let Ok(x) = sel.recv(&rx) {
+                        assert_ne!(i, x);
+                        break;
+                    }
+                    if let Ok(()) = sel.send(&tx, i) {
+                        break;
+                    }
                 }
             });
         }
@@ -1138,8 +1185,9 @@ fn channel_through_channel() {
                     let (new_tx, new_rx) = channel::bounded(cap);
                     let mut new_rx: T = Box::new(Some(new_rx));
 
+                    let mut sel = Select::new();
                     loop {
-                        if let Err(r) = select::send(&tx, new_rx) {
+                        if let Err(r) = sel.send(&tx, new_rx) {
                             new_rx = r;
                         } else {
                             break;
@@ -1154,8 +1202,9 @@ fn channel_through_channel() {
                 let mut rx = rx;
 
                 for _ in 0..COUNT {
+                    let mut sel = Select::new();
                     loop {
-                        if let Ok(mut r) = select::recv(&rx) {
+                        if let Ok(mut r) = sel.recv(&rx) {
                             rx = r.downcast_mut::<Option<Receiver<T>>>()
                                 .unwrap()
                                 .take()

@@ -3,7 +3,7 @@ use std::num::Wrapping;
 use std::thread;
 
 /// A counter that performs exponential backoff in spin loops.
-pub struct Backoff(u32);
+pub struct Backoff(u32); // TODO: maybe it should use a Cell?
 
 impl Backoff {
     /// Returns a new `Backoff`.

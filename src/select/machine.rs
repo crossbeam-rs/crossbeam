@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::time::Instant;
 
 use {Receiver, Sender};
@@ -6,11 +5,6 @@ use err::{TryRecvError, TrySendError};
 use select::handle;
 use select::CaseId;
 use util;
-
-thread_local! {
-    /// The thread-local selection state machine.
-    pub static MACHINE: RefCell<Machine> = RefCell::new(Machine::new());
-}
 
 pub enum Machine {
     Counting {
@@ -31,10 +25,15 @@ pub enum Machine {
 impl Machine {
     #[inline]
     pub fn new() -> Self {
+        Self::with_deadline(None)
+    }
+
+    #[inline]
+    pub fn with_deadline(deadline: Option<Instant>) -> Self {
         Machine::Counting {
             len: 0,
             first_id: CaseId::none(),
-            deadline: None,
+            deadline,
             dont_block: false,
         }
     }
