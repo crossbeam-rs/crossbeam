@@ -27,5 +27,5 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Old implementation of `CachePadded` from `crossbeam` version 0.3.0
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-utils/compare/0.2.0...HEAD
-[0.2.0]: https://github.com/crossbeam-rs/crossbeam-utils/compare/0.1.0...0.2.0
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.1.0...v0.2.0
