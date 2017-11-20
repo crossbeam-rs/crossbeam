@@ -1,157 +1,212 @@
-//! Michael's lock-free linked list.
+//! Lock-free intrusive linked list.
 //!
-//! Michael.  High Performance Dynamic Lock-Free Hash Tables and List-Based Sets.  SPAA 2002.
-//! http://dl.acm.org/citation.cfm?id=564870.564881
+//! Ideas from Michael.  High Performance Dynamic Lock-Free Hash Tables and List-Based Sets.  SPAA
+//! 2002.  http://dl.acm.org/citation.cfm?id=564870.564881
 
+use std::marker::PhantomData;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use {Atomic, Owned, Ptr, Scope, unprotected};
-use crossbeam_utils::cache_padded::CachePadded;
+use {Atomic, Ptr, Guard, unprotected};
 
-
-/// An entry in the linked list.
-struct NodeInner<T> {
-    /// The data in the entry.
-    data: T,
-
+/// An entry in a linked list.
+///
+/// An Entry is accessed from multiple threads, so it would be beneficial to put it in a different
+/// cache-line than thread-local data in terms of performance.
+#[derive(Debug)]
+pub struct Entry {
     /// The next entry in the linked list.
     /// If the tag is 1, this entry is marked as deleted.
-    next: Atomic<Node<T>>,
+    next: Atomic<Entry>,
 }
 
-unsafe impl<T> Send for NodeInner<T> {}
-
-#[derive(Debug)]
-pub struct Node<T>(CachePadded<NodeInner<T>>);
-
-#[derive(Debug)]
-pub struct List<T> {
-    head: Atomic<Node<T>>,
+/// An evidence that the type `T` contains an entry.
+///
+/// Suppose we'll maintain an intrusive linked list of type `T`. Since `List` and `Entry` types do
+/// not provide any information on `T`, we need to specify how to interact with the containing
+/// objects of type `T`. A struct of this trait provides such information.
+///
+/// `container_of()` is given a pointer to an entry, and returns the pointer to its container. On
+/// the other hand, `entry_of()` is given a pointer to a container, and returns the pointer to its
+/// corresponding entry. `finalize()` is called when an element is actually removed from the list.
+///
+/// # Example
+///
+/// ```ignore
+/// struct A {
+///     entry: Entry,
+///     data: usize,
+/// }
+///
+/// struct AEntry {}
+///
+/// impl Container<A> for AEntry {
+///     fn container_of(entry: *const Entry) -> *const A {
+///         ((entry as usize) - offset_of!(A, entry)) as *const _
+///     }
+///
+///     fn entry_of(a: *const A) -> *const Entry {
+///         ((a as usize) + offset_of!(A, entry)) as *const _
+///     }
+///
+///     fn finalize(entry: *const Entry) {
+///         // drop the box of the container
+///         unsafe { drop(Box::from_raw(Self::container_of(entry) as *mut A)) }
+///     }
+/// }
+/// ```
+///
+/// Note that there can be multiple structs that implement `Container<T>`. In most cases, each
+/// struct will represent a distinct entry in `T` so that the container can be inserted into
+/// multiple lists. For example, we can insert the following struct into two lists using `entry1`
+/// and `entry2` ans its entry:
+///
+/// ```ignore
+/// struct B {
+///     entry1: Entry,
+///     entry2: Entry,
+///     data: usize,
+/// }
+/// ```
+pub trait Container<T> {
+    fn container_of(*const Entry) -> *const T;
+    fn entry_of(*const T) -> *const Entry;
+    fn finalize(*const Entry);
 }
 
-pub struct Iter<'scope, T: 'scope> {
-    /// The scope in which the iterator is operating.
-    scope: &'scope Scope,
+/// A lock-free, intrusive linked list of type `T`.
+#[derive(Debug)]
+pub struct List<T, C: Container<T>> {
+    /// The head of the linked list.
+    head: Atomic<Entry>,
+
+    /// The phantom data for using `T` and `E`.
+    _marker: PhantomData<(T, C)>,
+}
+
+/// An auxiliary data for iterating over a linked list.
+pub struct Iter<'g, T: 'g, C: Container<T>> {
+    /// The guard that protects the iteration.
+    guard: &'g Guard,
 
     /// Pointer from the predecessor to the current entry.
-    pred: &'scope Atomic<Node<T>>,
+    pred: &'g Atomic<Entry>,
 
     /// The current entry.
-    curr: Ptr<'scope, Node<T>>,
+    curr: Ptr<'g, Entry>,
+
+    /// The phantom data for container.
+    _marker: PhantomData<(&'g T, C)>,
 }
 
+/// An enum for iteration error.
 #[derive(PartialEq, Debug)]
 pub enum IterError {
-    /// Iterator lost a race in deleting a node by a concurrent iterator.
-    LostRace,
+    /// Iterator was stalled by another iterator. Internally, the thread lost a race in deleting a
+    /// node by a concurrent thread.
+    Stalled,
 }
 
-impl<T> Node<T> {
-    /// Returns the data in this entry.
-    fn new(data: T) -> Self {
-        Node(CachePadded::new(NodeInner {
-            data,
-            next: Atomic::null(),
-        }))
-    }
-
-    pub fn get(&self) -> &T {
-        &self.0.data
+impl Default for Entry {
+    /// Returns the empty entry.
+    fn default() -> Self {
+        Self { next: Atomic::null() }
     }
 }
 
-impl<T: 'static> Node<T> {
-    /// Marks this entry as deleted.
-    pub fn delete(&self, scope: &Scope) {
-        self.0.next.fetch_or(1, Release, scope);
+impl Entry {
+    /// Marks this entry as deleted, deferring the actual deallocation to a later iteration.
+    ///
+    /// # Safety
+    ///
+    /// The entry should be a member of a linked list, and it should not have been deleted. It
+    /// should be safe to call `C::finalize` on the entry after the `guard` is dropped, where `C` is
+    /// the associated helper for the linked list.
+    pub unsafe fn delete(&self, guard: &Guard) {
+        self.next.fetch_or(1, Release, guard);
     }
 }
 
-impl<T> List<T> {
+impl<T, C: Container<T>> List<T, C> {
     /// Returns a new, empty linked list.
     pub fn new() -> Self {
-        List { head: Atomic::null() }
+        Self {
+            head: Atomic::null(),
+            _marker: PhantomData,
+        }
     }
 
-    /// Inserts `data` into the list.
-    #[inline]
-    fn insert_internal<'scope>(
-        to: &'scope Atomic<Node<T>>,
-        data: T,
-        scope: &'scope Scope,
-    ) -> Ptr<'scope, Node<T>> {
-        let mut cur = Owned::new(Node::new(data));
-        let mut next = to.load(Relaxed, scope);
+    /// Inserts `entry` into the head of the list.
+    ///
+    /// # Safety
+    ///
+    /// You should guarantee that:
+    ///
+    /// - `C::entry_of()` properly accesses an `Entry` in the container;
+    /// - `C::container_of()` properly accesses the object containing the entry;
+    /// - `container` is immovable, e.g. inside a `Box`;
+    /// - An entry is not inserted twice; and
+    /// - The inserted object will be removed before the list is dropped.
+    pub unsafe fn insert<'g>(&'g self, container: Ptr<'g, T>, guard: &'g Guard) {
+        let to = &self.head;
+        let entry = &*C::entry_of(container.as_raw());
+        let entry_ptr = Ptr::from_raw(entry);
+        let mut next = to.load(Relaxed, guard);
 
         loop {
-            cur.0.next.store(next, Relaxed);
-            match to.compare_and_set_weak_owned(next, cur, Release, scope) {
-                Ok(cur) => return cur,
-                Err((n, c)) => {
-                    next = n;
-                    cur = c;
-                }
+            entry.next.store(next, Relaxed);
+            match to.compare_and_set_weak(next, entry_ptr, Release, guard) {
+                Ok(_) => break,
+                Err(n) => next = n,
             }
         }
     }
 
-    /// Inserts `data` into the head of the list.
-    #[inline]
-    pub fn insert<'scope>(&'scope self, data: T, scope: &'scope Scope) -> Ptr<'scope, Node<T>> {
-        Self::insert_internal(&self.head, data, scope)
-    }
-
-    /// Inserts `data` after `after` into the list.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn insert_after<'scope>(
-        &'scope self,
-        after: &'scope Atomic<Node<T>>,
-        data: T,
-        scope: &'scope Scope,
-    ) -> Ptr<'scope, Node<T>> {
-        Self::insert_internal(after, data, scope)
-    }
-
-    /// Returns an iterator over all data.
+    /// Returns an iterator over all objects.
     ///
     /// # Caveat
     ///
-    /// Every datum that is inserted at the moment this function is called and persists at least
+    /// Every object that is inserted at the moment this function is called and persists at least
     /// until the end of iteration will be returned. Since this iterator traverses a lock-free
     /// linked list that may be concurrently modified, some additional caveats apply:
     ///
-    /// 1. If a new datum is inserted during iteration, it may or may not be returned.
-    /// 2. If a datum is deleted during iteration, it may or may not be returned.
-    /// 3. It may not return all data if a concurrent thread continues to iterate the same list.
-    pub fn iter<'scope>(&'scope self, scope: &'scope Scope) -> Iter<'scope, T> {
+    /// 1. If a new object is inserted during iteration, it may or may not be returned.
+    /// 2. If an object is deleted during iteration, it may or may not be returned.
+    /// 3. The iteration may be aborted when it lost in a race condition. In this case, the winning
+    ///    thread will continue to iterate over the same list.
+    pub fn iter<'g>(&'g self, guard: &'g Guard) -> Iter<'g, T, C> {
         let pred = &self.head;
-        let curr = pred.load(Acquire, scope);
-        Iter { scope, pred, curr }
-    }
-}
-
-impl<T> Drop for List<T> {
-    fn drop(&mut self) {
-        unsafe {
-            unprotected(|scope| {
-                let mut curr = self.head.load(Relaxed, scope);
-                while let Some(c) = curr.as_ref() {
-                    let succ = c.0.next.load(Relaxed, scope);
-                    drop(curr.into_owned());
-                    curr = succ;
-                }
-            });
+        let curr = pred.load(Acquire, guard);
+        Iter {
+            guard,
+            pred,
+            curr,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'scope, T> Iterator for Iter<'scope, T> {
-    type Item = Result<&'scope Node<T>, IterError>;
+impl<T, C: Container<T>> Drop for List<T, C> {
+    fn drop(&mut self) {
+        unsafe {
+            let guard = &unprotected();
+            let mut curr = self.head.load(Relaxed, guard);
+            while let Some(c) = curr.as_ref() {
+                let succ = c.next.load(Relaxed, guard);
+                assert_eq!(succ.tag(), 1);
+
+                C::finalize(curr.as_raw());
+                curr = succ;
+            }
+        }
+    }
+}
+
+impl<'g, T: 'g, C: Container<T>> Iterator for Iter<'g, T, C> {
+    type Item = Result<&'g T, IterError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(c) = unsafe { self.curr.as_ref() } {
-            let succ = c.0.next.load(Acquire, self.scope);
+            let succ = c.next.load(Acquire, self.guard);
 
             if succ.tag() == 1 {
                 // This entry was removed. Try unlinking it from the list.
@@ -161,22 +216,22 @@ impl<'scope, T> Iterator for Iter<'scope, T> {
                     self.curr,
                     succ,
                     Acquire,
-                    self.scope,
+                    self.guard,
                 ) {
                     Ok(_) => {
                         unsafe {
                             // Deferred drop of `T` is scheduled here.
                             // This is okay because `.delete()` can be called only if `T: 'static`.
                             let p = self.curr;
-                            self.scope.defer(move || p.into_owned());
+                            self.guard.defer(move || C::finalize(p.as_raw()));
                         }
                         self.curr = succ;
                     }
                     Err(succ) => {
                         // We lost the race to delete the entry by a concurrent iterator. Set
-                        // `self.curr` to the updated pointer, and report the lost.
+                        // `self.curr` to the updated pointer, and report that we are stalled.
                         self.curr = succ;
-                        return Some(Err(IterError::LostRace));
+                        return Some(Err(IterError::Stalled));
                     }
                 }
 
@@ -184,10 +239,10 @@ impl<'scope, T> Iterator for Iter<'scope, T> {
             }
 
             // Move one step forward.
-            self.pred = &c.0.next;
+            self.pred = &c.next;
             self.curr = succ;
 
-            return Some(Ok(&c));
+            return Some(Ok(unsafe { &*C::container_of(c as *const _) }));
         }
 
         // We reached the end of the list.
@@ -195,42 +250,66 @@ impl<'scope, T> Iterator for Iter<'scope, T> {
     }
 }
 
-impl<T> Default for List<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use Collector;
+    use {Collector, Owned};
     use super::*;
 
     #[test]
     fn insert_iter_delete_iter() {
-        let l: List<i64> = List::new();
-
         let collector = Collector::new();
         let handle = collector.handle();
+        let guard = handle.pin();
 
-        handle.pin(|scope| {
-            let p2 = l.insert(2, scope);
-            let n2 = unsafe { p2.as_ref().unwrap() };
-            let _p3 = l.insert_after(&n2.0.next, 3, scope);
-            let _p1 = l.insert(1, scope);
+        struct EntryContainer {}
 
-            let mut iter = l.iter(scope);
-            assert!(iter.next().is_some());
-            assert!(iter.next().is_some());
-            assert!(iter.next().is_some());
-            assert!(iter.next().is_none());
+        impl Container<Entry> for EntryContainer {
+            fn container_of(entry: *const Entry) -> *const Entry {
+                entry
+            }
 
-            n2.delete(scope);
+            fn entry_of(entry: *const Entry) -> *const Entry {
+                entry
+            }
 
-            let mut iter = l.iter(scope);
-            assert!(iter.next().is_some());
-            assert!(iter.next().is_some());
-            assert!(iter.next().is_none());
-        });
+            fn finalize(entry: *const Entry) {
+                unsafe {
+                    drop(Box::from_raw(entry as *mut Entry))
+                }
+            }
+        }
+
+        let l: List<Entry, EntryContainer> = List::new();
+
+        let n1 = Owned::new(Entry::default()).into_ptr(&guard);
+        let n2 = Owned::new(Entry::default()).into_ptr(&guard);
+        let n3 = Owned::new(Entry::default()).into_ptr(&guard);
+
+        unsafe {
+            l.insert(n3, &guard);
+            l.insert(n2, &guard);
+            l.insert(n1, &guard);
+        }
+
+        let mut iter = l.iter(&guard);
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_none());
+
+        unsafe { n2.as_ref().unwrap().delete(&guard); }
+
+        let mut iter = l.iter(&guard);
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_none());
+
+        unsafe {
+            n1.as_ref().unwrap().delete(&guard);
+            n3.as_ref().unwrap().delete(&guard);
+        }
+
+        let mut iter = l.iter(&guard);
+        assert!(iter.next().is_none());
     }
 }

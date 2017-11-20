@@ -5,7 +5,7 @@
 //! destructed on thread exit, which in turn unregisters the thread.
 
 use collector::{Collector, Handle};
-use scope::Scope;
+use guard::Guard;
 
 lazy_static! {
     /// The global data for the default garbage collector.
@@ -17,19 +17,24 @@ thread_local! {
     static HANDLE: Handle = COLLECTOR.handle();
 }
 
-/// Pin the current thread.
-pub fn pin<F, R>(f: F) -> R
-where
-    F: FnOnce(&Scope) -> R,
-{
+/// Pins the current thread.
+#[inline]
+pub fn pin() -> Guard {
     // FIXME(jeehoonkang): thread-local storage may be destructed at the time `pin()` is called. For
     // that case, we should use `HANDLE.try_with()` instead.
-    HANDLE.with(|handle| handle.pin(f))
+    HANDLE.with(|handle| handle.pin())
 }
 
-/// Check if the current thread is pinned.
+/// Returns `true` if the current thread is pinned.
+#[inline]
 pub fn is_pinned() -> bool {
     // FIXME(jeehoonkang): thread-local storage may be destructed at the time `pin()` is called. For
     // that case, we should use `HANDLE.try_with()` instead.
     HANDLE.with(|handle| handle.is_pinned())
+}
+
+/// Returns the default handle associated with the current thread.
+#[inline]
+pub fn default_handle() -> Handle {
+    HANDLE.with(|handle| handle.clone())
 }

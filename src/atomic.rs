@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use scope::Scope;
+use guard::Guard;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
 /// appropriate ordering for the failure case.
@@ -101,9 +101,9 @@ fn decompose_data<T>(data: usize) -> (*mut T, usize) {
 /// least significant bits of the address.  More precisely, a tag should be less than `(1 <<
 /// mem::align_of::<T>().trailing_zeros())`.
 ///
-/// Any method that loads the pointer must be passed a reference to a [`Scope`].
+/// Any method that loads the pointer must be passed a reference to a [`Guard`].
 ///
-/// [`Scope`]: struct.Scope.html
+/// [`Guard`]: struct.Guard.html
 pub struct Atomic<T> {
     data: AtomicUsize,
     _marker: PhantomData<*mut T>,
@@ -224,11 +224,10 @@ impl<T> Atomic<T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
-    /// epoch::pin(|scope| {
-    ///     let p = a.load(SeqCst, scope);
-    /// });
+    /// let guard = &epoch::pin();
+    /// let p = a.load(SeqCst, guard);
     /// ```
-    pub fn load<'scope>(&self, ord: Ordering, _: &'scope Scope) -> Ptr<'scope, T> {
+    pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
         Ptr::from_data(self.data.load(ord))
     }
 
@@ -288,11 +287,10 @@ impl<T> Atomic<T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
-    /// epoch::pin(|scope| {
-    ///     let p = a.swap(Ptr::null(), SeqCst, scope);
-    /// });
+    /// let guard = &epoch::pin();
+    /// let p = a.swap(Ptr::null(), SeqCst, guard);
     /// ```
-    pub fn swap<'scope>(&self, new: Ptr<T>, ord: Ordering, _: &'scope Scope) -> Ptr<'scope, T> {
+    pub fn swap<'g>(&self, new: Ptr<T>, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
         Ptr::from_data(self.data.swap(new.data, ord))
     }
 
@@ -314,27 +312,23 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::new(1234);
     ///
-    /// epoch::pin(|scope| {
-    ///     let mut curr = a.load(SeqCst, scope);
-    ///     let res = a.compare_and_set(curr, Ptr::null(), SeqCst, scope);
-    /// });
+    /// let guard = &epoch::pin();
+    /// let mut curr = a.load(SeqCst, guard);
+    /// let res = a.compare_and_set(curr, Ptr::null(), SeqCst, guard);
     /// ```
-    pub fn compare_and_set<'scope, O>(
+    pub fn compare_and_set<'g, O>(
         &self,
         current: Ptr<T>,
         new: Ptr<T>,
         ord: O,
-        _: &'scope Scope,
-    ) -> Result<(), Ptr<'scope, T>>
+        _: &'g Guard,
+    ) -> Result<(), Ptr<'g, T>>
     where
         O: CompareAndSetOrdering,
     {
-        match self.data.compare_exchange(
-            current.data,
-            new.data,
-            ord.success(),
-            ord.failure(),
-        ) {
+        match self.data
+            .compare_exchange(current.data, new.data, ord.success(), ord.failure())
+        {
             Ok(_) => Ok(()),
             Err(previous) => Err(Ptr::from_data(previous)),
         }
@@ -361,32 +355,28 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::new(1234);
     ///
-    /// epoch::pin(|scope| {
-    ///     let mut curr = a.load(SeqCst, scope);
-    ///     loop {
-    ///         match a.compare_and_set_weak(curr, Ptr::null(), SeqCst, scope) {
-    ///             Ok(()) => break,
-    ///             Err(c) => curr = c,
-    ///         }
+    /// let guard = &epoch::pin();
+    /// let mut curr = a.load(SeqCst, guard);
+    /// loop {
+    ///     match a.compare_and_set_weak(curr, Ptr::null(), SeqCst, guard) {
+    ///         Ok(()) => break,
+    ///         Err(c) => curr = c,
     ///     }
-    /// });
+    /// }
     /// ```
-    pub fn compare_and_set_weak<'scope, O>(
+    pub fn compare_and_set_weak<'g, O>(
         &self,
         current: Ptr<T>,
         new: Ptr<T>,
         ord: O,
-        _: &'scope Scope,
-    ) -> Result<(), Ptr<'scope, T>>
+        _: &'g Guard,
+    ) -> Result<(), Ptr<'g, T>>
     where
         O: CompareAndSetOrdering,
     {
-        match self.data.compare_exchange_weak(
-            current.data,
-            new.data,
-            ord.success(),
-            ord.failure(),
-        ) {
+        match self.data
+            .compare_exchange_weak(current.data, new.data, ord.success(), ord.failure())
+        {
             Ok(_) => Ok(()),
             Err(previous) => Err(Ptr::from_data(previous)),
         }
@@ -411,27 +401,23 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::new(1234);
     ///
-    /// epoch::pin(|scope| {
-    ///     let mut curr = a.load(SeqCst, scope);
-    ///     let res = a.compare_and_set_owned(curr, Owned::new(5678), SeqCst, scope);
-    /// });
+    /// let guard = &epoch::pin();
+    /// let mut curr = a.load(SeqCst, guard);
+    /// let res = a.compare_and_set_owned(curr, Owned::new(5678), SeqCst, guard);
     /// ```
-    pub fn compare_and_set_owned<'scope, O>(
+    pub fn compare_and_set_owned<'g, O>(
         &self,
         current: Ptr<T>,
         new: Owned<T>,
         ord: O,
-        _: &'scope Scope,
-    ) -> Result<Ptr<'scope, T>, (Ptr<'scope, T>, Owned<T>)>
+        _: &'g Guard,
+    ) -> Result<Ptr<'g, T>, (Ptr<'g, T>, Owned<T>)>
     where
         O: CompareAndSetOrdering,
     {
-        match self.data.compare_exchange(
-            current.data,
-            new.data,
-            ord.success(),
-            ord.failure(),
-        ) {
+        match self.data
+            .compare_exchange(current.data, new.data, ord.success(), ord.failure())
+        {
             Ok(_) => {
                 let data = new.data;
                 mem::forget(new);
@@ -463,39 +449,35 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::new(1234);
     ///
-    /// epoch::pin(|scope| {
-    ///     let mut new = Owned::new(5678);
-    ///     let mut ptr = a.load(SeqCst, scope);
-    ///     loop {
-    ///         match a.compare_and_set_weak_owned(ptr, new, SeqCst, scope) {
-    ///             Ok(p) => {
-    ///                 ptr = p;
-    ///                 break;
-    ///             }
-    ///             Err((p, n)) => {
-    ///                 ptr = p;
-    ///                 new = n;
-    ///             }
+    /// let guard = &epoch::pin();
+    /// let mut new = Owned::new(5678);
+    /// let mut ptr = a.load(SeqCst, guard);
+    /// loop {
+    ///     match a.compare_and_set_weak_owned(ptr, new, SeqCst, guard) {
+    ///         Ok(p) => {
+    ///             ptr = p;
+    ///             break;
+    ///         }
+    ///         Err((p, n)) => {
+    ///             ptr = p;
+    ///             new = n;
     ///         }
     ///     }
-    /// });
+    /// }
     /// ```
-    pub fn compare_and_set_weak_owned<'scope, O>(
+    pub fn compare_and_set_weak_owned<'g, O>(
         &self,
         current: Ptr<T>,
         new: Owned<T>,
         ord: O,
-        _: &'scope Scope,
-    ) -> Result<Ptr<'scope, T>, (Ptr<'scope, T>, Owned<T>)>
+        _: &'g Guard,
+    ) -> Result<Ptr<'g, T>, (Ptr<'g, T>, Owned<T>)>
     where
         O: CompareAndSetOrdering,
     {
-        match self.data.compare_exchange_weak(
-            current.data,
-            new.data,
-            ord.success(),
-            ord.failure(),
-        ) {
+        match self.data
+            .compare_exchange_weak(current.data, new.data, ord.success(), ord.failure())
+        {
             Ok(_) => {
                 let data = new.data;
                 mem::forget(new);
@@ -522,12 +504,11 @@ impl<T> Atomic<T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::<i32>::from_ptr(Ptr::null().with_tag(3));
-    /// epoch::pin(|scope| {
-    ///     assert_eq!(a.fetch_and(2, SeqCst, scope).tag(), 3);
-    ///     assert_eq!(a.load(SeqCst, scope).tag(), 2);
-    /// });
+    /// let guard = &epoch::pin();
+    /// assert_eq!(a.fetch_and(2, SeqCst, guard).tag(), 3);
+    /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
-    pub fn fetch_and<'scope>(&self, val: usize, ord: Ordering, _: &'scope Scope) -> Ptr<'scope, T> {
+    pub fn fetch_and<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
         Ptr::from_data(self.data.fetch_and(val | !low_bits::<T>(), ord))
     }
 
@@ -548,12 +529,11 @@ impl<T> Atomic<T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::<i32>::from_ptr(Ptr::null().with_tag(1));
-    /// epoch::pin(|scope| {
-    ///     assert_eq!(a.fetch_or(2, SeqCst, scope).tag(), 1);
-    ///     assert_eq!(a.load(SeqCst, scope).tag(), 3);
-    /// });
+    /// let guard = &epoch::pin();
+    /// assert_eq!(a.fetch_or(2, SeqCst, guard).tag(), 1);
+    /// assert_eq!(a.load(SeqCst, guard).tag(), 3);
     /// ```
-    pub fn fetch_or<'scope>(&self, val: usize, ord: Ordering, _: &'scope Scope) -> Ptr<'scope, T> {
+    pub fn fetch_or<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
         Ptr::from_data(self.data.fetch_or(val & low_bits::<T>(), ord))
     }
 
@@ -574,12 +554,11 @@ impl<T> Atomic<T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::<i32>::from_ptr(Ptr::null().with_tag(1));
-    /// epoch::pin(|scope| {
-    ///     assert_eq!(a.fetch_xor(3, SeqCst, scope).tag(), 1);
-    ///     assert_eq!(a.load(SeqCst, scope).tag(), 2);
-    /// });
+    /// let guard = &epoch::pin();
+    /// assert_eq!(a.fetch_xor(3, SeqCst, guard).tag(), 1);
+    /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
-    pub fn fetch_xor<'scope>(&self, val: usize, ord: Ordering, _: &'scope Scope) -> Ptr<'scope, T> {
+    pub fn fetch_xor<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
         Ptr::from_data(self.data.fetch_xor(val & low_bits::<T>(), ord))
     }
 }
@@ -639,7 +618,7 @@ impl<T> From<Owned<T>> for Atomic<T> {
     }
 }
 
-impl<'scope, T> From<Ptr<'scope, T>> for Atomic<T> {
+impl<'g, T> From<Ptr<'g, T>> for Atomic<T> {
     fn from(ptr: Ptr<T>) -> Self {
         Atomic::from_ptr(ptr)
     }
@@ -725,13 +704,12 @@ impl<T> Owned<T> {
     /// use crossbeam_epoch::{self as epoch, Owned};
     ///
     /// let o = Owned::new(1234);
-    /// epoch::pin(|scope| {
-    ///     let p = o.into_ptr(scope);
-    /// });
+    /// let guard = &epoch::pin();
+    /// let p = o.into_ptr(guard);
     /// ```
     ///
     /// [`Ptr`]: struct.Ptr.html
-    pub fn into_ptr<'scope>(self, _: &'scope Scope) -> Ptr<'scope, T> {
+    pub fn into_ptr<'g>(self, _: &'g Guard) -> Ptr<'g, T> {
         let data = self.data;
         mem::forget(self);
         Ptr::from_data(data)
@@ -868,18 +846,18 @@ impl<T> AsMut<T> for Owned<T> {
 
 /// A pointer to an object protected by the epoch GC.
 ///
-/// The pointer is valid for use only within `'scope`.
+/// The pointer is valid for use only during the lifetime `'g`.
 ///
 /// The pointer must be properly aligned. Since it is aligned, a tag can be stored into the unused
 /// least significant bits of the address.
-pub struct Ptr<'scope, T: 'scope> {
+pub struct Ptr<'g, T: 'g> {
     data: usize,
-    _marker: PhantomData<(&'scope (), *const T)>,
+    _marker: PhantomData<(&'g (), *const T)>,
 }
 
-unsafe impl<'scope, T: Send> Send for Ptr<'scope, T> {}
+unsafe impl<'g, T: Send> Send for Ptr<'g, T> {}
 
-impl<'scope, T> Clone for Ptr<'scope, T> {
+impl<'g, T> Clone for Ptr<'g, T> {
     fn clone(&self) -> Self {
         Ptr {
             data: self.data,
@@ -888,9 +866,9 @@ impl<'scope, T> Clone for Ptr<'scope, T> {
     }
 }
 
-impl<'scope, T> Copy for Ptr<'scope, T> {}
+impl<'g, T> Copy for Ptr<'g, T> {}
 
-impl<'scope, T> Ptr<'scope, T> {
+impl<'g, T> Ptr<'g, T> {
     /// Returns a new pointer pointing to the tagged pointer `data`.
     fn from_data(data: usize) -> Self {
         Ptr {
@@ -947,11 +925,10 @@ impl<'scope, T> Ptr<'scope, T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::null();
-    /// epoch::pin(|scope| {
-    ///     assert!(a.load(SeqCst, scope).is_null());
-    ///     a.store_owned(Owned::new(1234), SeqCst);
-    ///     assert!(!a.load(SeqCst, scope).is_null());
-    /// });
+    /// let guard = &epoch::pin();
+    /// assert!(a.load(SeqCst, guard).is_null());
+    /// a.store_owned(Owned::new(1234), SeqCst);
+    /// assert!(!a.load(SeqCst, guard).is_null());
     /// ```
     pub fn is_null(&self) -> bool {
         self.as_raw().is_null()
@@ -969,10 +946,9 @@ impl<'scope, T> Ptr<'scope, T> {
     /// let raw = &*o as *const _;
     /// let a = Atomic::from_owned(o);
     ///
-    /// epoch::pin(|scope| {
-    ///     let p = a.load(SeqCst, scope);
-    ///     assert_eq!(p.as_raw(), raw);
-    /// });
+    /// let guard = &epoch::pin();
+    /// let p = a.load(SeqCst, guard);
+    /// assert_eq!(p.as_raw(), raw);
     /// ```
     pub fn as_raw(&self) -> *const T {
         let (raw, _) = decompose_data::<T>(self.data);
@@ -981,7 +957,7 @@ impl<'scope, T> Ptr<'scope, T> {
 
     /// Dereferences the pointer.
     ///
-    /// Returns a reference to the pointee that is valid in `'scope`.
+    /// Returns a reference to the pointee that is valid during the lifetime `'g`.
     ///
     /// # Safety
     ///
@@ -991,7 +967,7 @@ impl<'scope, T> Ptr<'scope, T> {
     /// For example, consider the following scenario:
     ///
     /// 1. A thread creates a new object: `a.store_owned(Owned::new(10), Relaxed)`
-    /// 2. Another thread reads it: `*a.load(Relaxed, scope).as_ref().unwrap()`
+    /// 2. Another thread reads it: `*a.load(Relaxed, guard).as_ref().unwrap()`
     ///
     /// The problem is that relaxed orderings don't synchronize initialization of the object with
     /// the read from the second thread. This is a data race. A possible solution would be to use
@@ -1004,14 +980,13 @@ impl<'scope, T> Ptr<'scope, T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
-    /// epoch::pin(|scope| {
-    ///     let p = a.load(SeqCst, scope);
-    ///     unsafe {
-    ///         assert_eq!(p.deref(), &1234);
-    ///     }
-    /// });
+    /// let guard = &epoch::pin();
+    /// let p = a.load(SeqCst, guard);
+    /// unsafe {
+    ///     assert_eq!(p.deref(), &1234);
+    /// }
     /// ```
-    pub unsafe fn deref(&self) -> &'scope T {
+    pub unsafe fn deref(&self) -> &'g T {
         &*self.as_raw()
     }
 
@@ -1027,7 +1002,7 @@ impl<'scope, T> Ptr<'scope, T> {
     /// For example, consider the following scenario:
     ///
     /// 1. A thread creates a new object: `a.store_owned(Owned::new(10), Relaxed)`
-    /// 2. Another thread reads it: `*a.load(Relaxed, scope).as_ref().unwrap()`
+    /// 2. Another thread reads it: `*a.load(Relaxed, guard).as_ref().unwrap()`
     ///
     /// The problem is that relaxed orderings don't synchronize initialization of the object with
     /// the read from the second thread. This is a data race. A possible solution would be to use
@@ -1040,14 +1015,13 @@ impl<'scope, T> Ptr<'scope, T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
-    /// epoch::pin(|scope| {
-    ///     let p = a.load(SeqCst, scope);
-    ///     unsafe {
-    ///         assert_eq!(p.as_ref(), Some(&1234));
-    ///     }
-    /// });
+    /// let guard = &epoch::pin();
+    /// let p = a.load(SeqCst, guard);
+    /// unsafe {
+    ///     assert_eq!(p.as_ref(), Some(&1234));
+    /// }
     /// ```
-    pub unsafe fn as_ref(&self) -> Option<&'scope T> {
+    pub unsafe fn as_ref(&self) -> Option<&'g T> {
         self.as_raw().as_ref()
     }
 
@@ -1066,10 +1040,9 @@ impl<'scope, T> Ptr<'scope, T> {
     ///
     /// let a = Atomic::new(1234);
     /// unsafe {
-    ///     epoch::unprotected(|scope| {
-    ///         let p = a.load(SeqCst, scope);
-    ///         drop(p.into_owned());
-    ///     });
+    ///     let guard = &epoch::unprotected();
+    ///     let p = a.load(SeqCst, guard);
+    ///     drop(p.into_owned());
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
@@ -1085,10 +1058,9 @@ impl<'scope, T> Ptr<'scope, T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::from_owned(Owned::new(0u64).with_tag(5));
-    /// epoch::pin(|scope| {
-    ///     let p = a.load(SeqCst, scope);
-    ///     assert_eq!(p.tag(), 5);
-    /// });
+    /// let guard = &epoch::pin();
+    /// let p = a.load(SeqCst, guard);
+    /// assert_eq!(p.tag(), 5);
     /// ```
     pub fn tag(&self) -> usize {
         let (_, tag) = decompose_data::<T>(self.data);
@@ -1105,41 +1077,40 @@ impl<'scope, T> Ptr<'scope, T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(0u64);
-    /// epoch::pin(|scope| {
-    ///     let p1 = a.load(SeqCst, scope);
-    ///     let p2 = p1.with_tag(5);
+    /// let guard = &epoch::pin();
+    /// let p1 = a.load(SeqCst, guard);
+    /// let p2 = p1.with_tag(5);
     ///
-    ///     assert_eq!(p1.tag(), 0);
-    ///     assert_eq!(p2.tag(), 5);
-    ///     assert_eq!(p1.as_raw(), p2.as_raw());
-    /// });
+    /// assert_eq!(p1.tag(), 0);
+    /// assert_eq!(p2.tag(), 5);
+    /// assert_eq!(p1.as_raw(), p2.as_raw());
     /// ```
     pub fn with_tag(&self, tag: usize) -> Self {
         Self::from_data(data_with_tag::<T>(self.data, tag))
     }
 }
 
-impl<'scope, T> PartialEq<Ptr<'scope, T>> for Ptr<'scope, T> {
+impl<'g, T> PartialEq<Ptr<'g, T>> for Ptr<'g, T> {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
     }
 }
 
-impl<'scope, T> Eq for Ptr<'scope, T> {}
+impl<'g, T> Eq for Ptr<'g, T> {}
 
-impl<'scope, T> PartialOrd<Ptr<'scope, T>> for Ptr<'scope, T> {
+impl<'g, T> PartialOrd<Ptr<'g, T>> for Ptr<'g, T> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.data.partial_cmp(&other.data)
     }
 }
 
-impl<'scope, T> Ord for Ptr<'scope, T> {
+impl<'g, T> Ord for Ptr<'g, T> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.data.cmp(&other.data)
     }
 }
 
-impl<'scope, T> fmt::Debug for Ptr<'scope, T> {
+impl<'g, T> fmt::Debug for Ptr<'g, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let (raw, tag) = decompose_data::<T>(self.data);
 
@@ -1150,13 +1121,13 @@ impl<'scope, T> fmt::Debug for Ptr<'scope, T> {
     }
 }
 
-impl<'scope, T> fmt::Pointer for Ptr<'scope, T> {
+impl<'g, T> fmt::Pointer for Ptr<'g, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Pointer::fmt(&self.as_raw(), f)
     }
 }
 
-impl<'scope, T> Default for Ptr<'scope, T> {
+impl<'g, T> Default for Ptr<'g, T> {
     fn default() -> Self {
         Ptr::null()
     }

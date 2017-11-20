@@ -55,24 +55,24 @@
 
 #![cfg_attr(feature = "nightly", feature(const_fn))]
 
-#[macro_use(defer)]
-extern crate scopeguard;
-#[macro_use]
-extern crate lazy_static;
 extern crate arrayvec;
 extern crate crossbeam_utils;
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate memoffset;
 
 mod atomic;
+mod collector;
+mod default;
 mod deferred;
 mod epoch;
 mod garbage;
+mod guard;
 mod internal;
-mod collector;
-mod scope;
-mod default;
 mod sync;
 
 pub use self::atomic::{Atomic, CompareAndSetOrdering, Owned, Ptr};
-pub use self::scope::{Scope, unprotected};
-pub use self::default::{pin, is_pinned};
+pub use self::guard::{unprotected, Guard};
+pub use self::default::{default_handle, is_pinned, pin};
 pub use self::collector::{Collector, Handle};

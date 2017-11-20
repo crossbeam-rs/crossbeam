@@ -7,77 +7,116 @@
 //! If an object became garbage in some epoch, then we can be sure that after two advancements no
 //! participant will hold a reference to it. That is the crux of safe memory reclamation.
 
-use std::ops::Deref;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::{Relaxed, Acquire, Release, SeqCst};
+use std::cmp;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use internal::LocalEpoch;
-use scope::Scope;
-use sync::list::{List, IterError};
-use crossbeam_utils::cache_padded::CachePadded;
-
-/// The global epoch is a (cache-padded) integer.
-#[derive(Default, Debug)]
+/// An epoch that can be marked as pinned or unpinned.
+///
+/// Internally, the epoch is represented as an integer that wraps around at some unspecified point
+/// and a flag that represents whether it is pinned or unpinned.
+#[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
 pub struct Epoch {
-    epoch: CachePadded<AtomicUsize>,
+    /// The least significant bit is set if pinned. The rest of the bits hold the epoch.
+    data: usize,
 }
 
 impl Epoch {
-    pub fn new() -> Self {
+    /// Returns the starting epoch in unpinned state.
+    #[inline]
+    pub fn starting() -> Self {
         Self::default()
     }
 
-    /// Attempts to advance the global epoch.
+    /// Returns the number of steps between two epochs.
     ///
-    /// The global epoch can advance only if all currently pinned participants have been pinned in
-    /// the current epoch.
-    ///
-    /// Returns the current global epoch.
-    ///
-    /// `try_advance()` is annotated `#[cold]` because it is rarely called.
-    #[cold]
-    pub fn try_advance(&self, registries: &List<LocalEpoch>, scope: &Scope) -> usize {
-        let epoch = self.epoch.load(Relaxed);
-        ::std::sync::atomic::fence(SeqCst);
+    /// An epoch is internally represented as an integer that wraps around at some unspecified
+    /// point. The returned distance between two epochs is the minimum number of steps required to
+    /// go from `self` to `other` or go from `other` to `self`.
+    #[inline]
+    pub fn distance(&self, other: Self) -> usize {
+        let (e1, _) = self.decompose();
+        let (e2, _) = other.decompose();
+        cmp::min(e1.wrapping_sub(e2), e2.wrapping_sub(e1))
+    }
 
-        // Traverse the linked list of participant registries.
-        for participant in registries.iter(scope) {
-            match participant {
-                Err(IterError::LostRace) => {
-                    // We leave the job to the participant that won the race, which continues to
-                    // iterate the registries and tries to advance to epoch.
-                    return epoch;
-                }
-                Ok(local_epoch) => {
-                    let local_epoch = local_epoch.get();
-                    let (participant_is_pinned, participant_epoch) = local_epoch.get_state();
+    /// Returns `true` if the epoch is marked as pinned.
+    #[inline]
+    pub fn is_pinned(&self) -> bool {
+        self.decompose().1
+    }
 
-                    // If the participant was pinned in a different epoch, we cannot advance the
-                    // global epoch just yet.
-                    if participant_is_pinned && participant_epoch != epoch {
-                        return epoch;
-                    }
-                }
-            }
+    /// Returns the same epoch, but marked as pinned.
+    #[inline]
+    pub fn pinned(&self) -> Epoch {
+        Epoch {
+            data: self.data | 1,
         }
-        ::std::sync::atomic::fence(Acquire);
+    }
 
-        // All pinned participants were pinned in the current global epoch.  Try advancing the
-        // epoch. We increment by 2 and simply wrap around on overflow.
-        let epoch_new = epoch.wrapping_add(2);
-        self.epoch.store(epoch_new, Release);
-        epoch_new
+    /// Returns the same epoch, but marked as unpinned.
+    #[inline]
+    pub fn unpinned(&self) -> Epoch {
+        Epoch {
+            data: self.data & !1,
+        }
+    }
+
+    /// Returns the successor epoch.
+    ///
+    /// The returned epoch will be marked as pinned only if the previous one was as well.
+    #[inline]
+    pub fn successor(&self) -> Epoch {
+        Epoch {
+            data: self.data.wrapping_add(2),
+        }
+    }
+
+    /// Decomposes the internal data into the epoch and the pin state.
+    #[inline]
+    fn decompose(&self) -> (usize, bool) {
+        (self.data >> 1, (self.data & 1) == 1)
     }
 }
 
-impl Deref for Epoch {
-    type Target = AtomicUsize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.epoch
-    }
+/// An atomic value that holds an `Epoch`.
+#[derive(Default, Debug)]
+pub struct AtomicEpoch {
+    /// Since `Epoch` is just a wrapper around `usize`, an `AtomicEpoch` is similarly represented
+    /// using an `AtomicUsize`.
+    data: AtomicUsize,
 }
 
+impl AtomicEpoch {
+    /// Creates a new atomic epoch.
+    #[inline]
+    pub fn new(epoch: Epoch) -> Self {
+        let data = AtomicUsize::new(epoch.data);
+        AtomicEpoch { data }
+    }
 
-#[cfg(test)]
-mod tests {}
+    /// Loads a value from the atomic epoch.
+    #[inline]
+    pub fn load(&self, ord: Ordering) -> Epoch {
+        Epoch {
+            data: self.data.load(ord),
+        }
+    }
+
+    /// Stores a value into the atomic epoch.
+    #[inline]
+    pub fn store(&self, epoch: Epoch, ord: Ordering) {
+        self.data.store(epoch.data, ord);
+    }
+
+    /// Stores a value into the atomic epoch if the current value is the same as `current`.
+    ///
+    /// The return value is always the previous value. If it is equal to `current`, then the value
+    /// is updated.
+    ///
+    /// The `Ordering` argument describes the memory ordering of this operation.
+    #[inline]
+    pub fn compare_and_swap(&self, current: Epoch, new: Epoch, ord: Ordering) -> Epoch {
+        let data = self.data.compare_and_swap(current.data, new.data, ord);
+        Epoch { data }
+    }
+}

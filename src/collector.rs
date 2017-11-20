@@ -10,79 +10,91 @@
 /// let handle = collector.handle();
 /// drop(collector); // `handle` still works after dropping `collector`
 ///
-/// handle.pin(|scope| {
-///     scope.flush();
-/// });
+/// handle.pin().flush();
 /// ```
 
 use std::sync::Arc;
+
 use internal::{Global, Local};
-use scope::Scope;
+use guard::Guard;
 
 /// An epoch-based garbage collector.
-pub struct Collector(Arc<Global>);
-
-/// A handle to a garbage collector.
-pub struct Handle {
+pub struct Collector {
     global: Arc<Global>,
-    local: Local,
 }
+
+unsafe impl Send for Collector {}
+unsafe impl Sync for Collector {}
 
 impl Collector {
     /// Creates a new collector.
     pub fn new() -> Self {
-        Self { 0: Arc::new(Global::new()) }
+        Collector {
+            global: Arc::new(Global::new()),
+        }
     }
 
     /// Creates a new handle for the collector.
-    #[inline]
     pub fn handle(&self) -> Handle {
-        Handle::new(self.0.clone())
+        Local::register(self.global.clone())
     }
+}
+
+impl Clone for Collector {
+    /// Creates another reference to the same garbage collector.
+    fn clone(&self) -> Self {
+        Collector {
+            global: self.global.clone(),
+        }
+    }
+}
+
+/// A handle to a garbage collector.
+pub struct Handle {
+    pub(crate) local: *const Local,
 }
 
 impl Handle {
-    fn new(global: Arc<Global>) -> Self {
-        let local = Local::new(&global);
-        Self { global, local }
-    }
-
-    /// Pin the current handle.
+    /// Pins the handle.
     #[inline]
-    pub fn pin<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&Scope) -> R,
-    {
-        unsafe { self.local.pin(&self.global, f) }
+    pub fn pin(&self) -> Guard {
+        unsafe { (*self.local).pin() }
     }
 
-    /// Check if the current handle is pinned.
+    /// Returns `true` if the handle is pinned.
     #[inline]
     pub fn is_pinned(&self) -> bool {
-        self.local.is_pinned()
-    }
-}
-
-impl Clone for Handle {
-    fn clone(&self) -> Self {
-        Self::new(self.global.clone())
+        unsafe { (*self.local).is_pinned() }
     }
 }
 
 unsafe impl Send for Handle {}
 
 impl Drop for Handle {
+    #[inline]
     fn drop(&mut self) {
-        unsafe { self.local.unregister(&self.global) }
+        unsafe {
+            Local::release_handle(&*self.local);
+        }
     }
 }
 
+impl Clone for Handle {
+    #[inline]
+    fn clone(&self) -> Self {
+        unsafe {
+            Local::acquire_handle(&*self.local);
+        }
+        Handle { local: self.local }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use std::mem;
     use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
     use std::sync::atomic::Ordering;
+
     use crossbeam_utils::scoped;
 
     use {Collector, Owned};
@@ -96,13 +108,15 @@ mod tests {
         drop(collector);
 
         assert!(!handle.is_pinned());
-        handle.pin(|_| {
+        {
+            let _guard = &handle.pin();
             assert!(handle.is_pinned());
-            handle.pin(|_| {
+            {
+                let _guard = &handle.pin();
                 assert!(handle.is_pinned());
-            });
+            }
             assert!(handle.is_pinned());
-        });
+        }
         assert!(!handle.is_pinned());
     }
 
@@ -113,16 +127,17 @@ mod tests {
         drop(collector);
 
         for _ in 0..100 {
-            handle.pin(|scope| unsafe {
-                let a = Owned::new(7).into_ptr(scope);
-                scope.defer(move || a.into_owned());
+            let guard = &handle.pin();
+            unsafe {
+                let a = Owned::new(7).into_ptr(guard);
+                guard.defer(move || a.into_owned());
 
-                assert!(!(*scope.bag).is_empty());
+                assert!(!(*(*guard.local).bag.get()).is_empty());
 
-                while !(*scope.bag).is_empty() {
-                    scope.flush();
+                while !(*(*guard.local).bag.get()).is_empty() {
+                    guard.flush();
                 }
-            });
+            }
         }
     }
 
@@ -132,13 +147,14 @@ mod tests {
         let handle = collector.handle();
         drop(collector);
 
-        handle.pin(|scope| unsafe {
+        let guard = &handle.pin();
+        unsafe {
             for _ in 0..10 {
-                let a = Owned::new(7).into_ptr(scope);
-                scope.defer(move || a.into_owned());
+                let a = Owned::new(7).into_ptr(guard);
+                guard.defer(move || a.into_owned());
             }
-            assert!(!(*scope.bag).is_empty());
-        });
+            assert!(!(*(*guard.local).bag.get()).is_empty());
+        }
     }
 
     #[test]
@@ -151,13 +167,13 @@ mod tests {
                     scope.spawn(|| {
                         let handle = collector.handle();
                         for _ in 0..500_000 {
-                            handle.pin(|scope| {
-                                let before = collector.0.get_epoch();
-                                collector.0.collect(scope);
-                                let after = collector.0.get_epoch();
+                            let guard = &handle.pin();
 
-                                assert!(after.wrapping_sub(before) <= 2);
-                            });
+                            let before = collector.global.epoch.load(Ordering::Relaxed);
+                            collector.global.collect(guard);
+                            let after = collector.global.epoch.load(Ordering::Relaxed);
+
+                            assert!(after.distance(before) <= 2);
                         }
                     })
                 })
@@ -178,16 +194,17 @@ mod tests {
         let collector = Collector::new();
         let handle = collector.handle();
 
-        handle.pin(|scope| unsafe {
+        unsafe {
+            let guard = &handle.pin();
             for _ in 0..COUNT {
-                let a = Owned::new(7i32).into_ptr(scope);
-                scope.defer(move || {
+                let a = Owned::new(7i32).into_ptr(guard);
+                guard.defer(move || {
                     drop(a.into_owned());
                     DESTROYS.fetch_add(1, Ordering::Relaxed);
                 });
             }
-            scope.flush();
-        });
+            guard.flush();
+        }
 
         let mut last = 0;
 
@@ -196,7 +213,8 @@ mod tests {
             assert!(curr - last <= 1024);
             last = curr;
 
-            handle.pin(|scope| collector.0.collect(scope));
+            let guard = &handle.pin();
+            collector.global.collect(guard);
         }
         assert!(DESTROYS.load(Ordering::Relaxed) == 100_000);
     }
@@ -209,25 +227,27 @@ mod tests {
         let collector = Collector::new();
         let handle = collector.handle();
 
-        handle.pin(|scope| unsafe {
+        unsafe {
+            let guard = &handle.pin();
             for _ in 0..COUNT {
-                let a = Owned::new(7i32).into_ptr(scope);
-                scope.defer(move || {
+                let a = Owned::new(7i32).into_ptr(guard);
+                guard.defer(move || {
                     drop(a.into_owned());
                     DESTROYS.fetch_add(1, Ordering::Relaxed);
                 });
             }
-        });
+        }
 
         for _ in 0..100_000 {
-            handle.pin(|scope| { collector.0.collect(scope); });
+            collector.global.collect(&handle.pin());
         }
         assert!(DESTROYS.load(Ordering::Relaxed) < COUNT);
 
-        handle.pin(|scope| scope.flush());
+        handle.pin().flush();
 
         while DESTROYS.load(Ordering::Relaxed) < COUNT {
-            handle.pin(|scope| collector.0.collect(scope));
+            let guard = &handle.pin();
+            collector.global.collect(guard);
         }
         assert_eq!(DESTROYS.load(Ordering::Relaxed), COUNT);
     }
@@ -248,16 +268,19 @@ mod tests {
         let collector = Collector::new();
         let handle = collector.handle();
 
-        handle.pin(|scope| unsafe {
+        unsafe {
+            let guard = &handle.pin();
+
             for _ in 0..COUNT {
-                let a = Owned::new(Elem(7i32)).into_ptr(scope);
-                scope.defer(move || a.into_owned());
+                let a = Owned::new(Elem(7i32)).into_ptr(guard);
+                guard.defer(move || a.into_owned());
             }
-            scope.flush();
-        });
+            guard.flush();
+        }
 
         while DROPS.load(Ordering::Relaxed) < COUNT {
-            handle.pin(|scope| collector.0.collect(scope));
+            let guard = &handle.pin();
+            collector.global.collect(guard);
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT);
     }
@@ -270,19 +293,22 @@ mod tests {
         let collector = Collector::new();
         let handle = collector.handle();
 
-        handle.pin(|scope| unsafe {
+        unsafe {
+            let guard = &handle.pin();
+
             for _ in 0..COUNT {
-                let a = Owned::new(7i32).into_ptr(scope);
-                scope.defer(move || {
+                let a = Owned::new(7i32).into_ptr(guard);
+                guard.defer(move || {
                     drop(a.into_owned());
                     DESTROYS.fetch_add(1, Ordering::Relaxed);
                 });
             }
-            scope.flush();
-        });
+            guard.flush();
+        }
 
         while DESTROYS.load(Ordering::Relaxed) < COUNT {
-            handle.pin(|scope| collector.0.collect(scope));
+            let guard = &handle.pin();
+            collector.global.collect(guard);
         }
         assert_eq!(DESTROYS.load(Ordering::Relaxed), COUNT);
     }
@@ -303,19 +329,22 @@ mod tests {
         let collector = Collector::new();
         let handle = collector.handle();
 
-        handle.pin(|scope| unsafe {
+        unsafe {
+            let guard = &handle.pin();
+
             let mut v = Vec::with_capacity(COUNT);
             for i in 0..COUNT {
                 v.push(Elem(i as i32));
             }
 
-            let a = Owned::new(v).into_ptr(scope);
-            scope.defer(move || a.into_owned());
-            scope.flush();
-        });
+            let a = Owned::new(v).into_ptr(guard);
+            guard.defer(move || a.into_owned());
+            guard.flush();
+        }
 
         while DROPS.load(Ordering::Relaxed) < COUNT {
-            handle.pin(|scope| collector.0.collect(scope));
+            let guard = &handle.pin();
+            collector.global.collect(guard);
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT);
     }
@@ -328,7 +357,9 @@ mod tests {
         let collector = Collector::new();
         let handle = collector.handle();
 
-        handle.pin(|scope| unsafe {
+        unsafe {
+            let guard = &handle.pin();
+
             let mut v = Vec::with_capacity(COUNT);
             for i in 0..COUNT {
                 v.push(i as i32);
@@ -336,17 +367,18 @@ mod tests {
 
             let ptr = v.as_mut_ptr() as usize;
             let len = v.len();
-            scope.defer(move || {
+            guard.defer(move || {
                 drop(Vec::from_raw_parts(ptr as *const u8 as *mut u8, len, len));
                 DESTROYS.fetch_add(len, Ordering::Relaxed);
             });
-            scope.flush();
+            guard.flush();
 
             mem::forget(v);
-        });
+        }
 
         while DESTROYS.load(Ordering::Relaxed) < COUNT {
-            handle.pin(|scope| collector.0.collect(scope));
+            let guard = &handle.pin();
+            collector.global.collect(guard);
         }
         assert_eq!(DESTROYS.load(Ordering::Relaxed), COUNT);
     }
@@ -373,10 +405,11 @@ mod tests {
                     scope.spawn(|| {
                         let handle = collector.handle();
                         for _ in 0..COUNT {
-                            handle.pin(|scope| unsafe {
-                                let a = Owned::new(Elem(7i32)).into_ptr(scope);
-                                scope.defer(move || a.into_owned());
-                            });
+                            let guard = &handle.pin();
+                            unsafe {
+                                let a = Owned::new(Elem(7i32)).into_ptr(guard);
+                                guard.defer(move || a.into_owned());
+                            }
                         }
                     })
                 })
@@ -389,28 +422,9 @@ mod tests {
 
         let handle = collector.handle();
         while DROPS.load(Ordering::Relaxed) < COUNT * THREADS {
-            handle.pin(|scope| collector.0.collect(scope));
+            let guard = &handle.pin();
+            collector.global.collect(guard);
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT * THREADS);
-    }
-
-    #[test]
-    fn send_handle() {
-        let ref collector = Collector::new();
-        let handle_global = collector.handle();
-
-        let threads = (0..NUM_THREADS)
-            .map(|_| {
-                scoped::scope(|scope| {
-                    let handle = handle_global.clone();
-                    scope.spawn(move || handle.pin(|scope| scope.flush()))
-                })
-            })
-            .collect::<Vec<_>>();
-        drop(collector);
-
-        for t in threads {
-            t.join();
-        }
     }
 }

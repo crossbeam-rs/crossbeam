@@ -14,10 +14,10 @@ nightly = []
 strict_gc = []
 
 [dependencies]
-scopeguard = "0.3"
-lazy_static = "0.2"
 arrayvec = "0.4"
 crossbeam-utils = "0.1"
+lazy_static = "0.2"
+memoffset = "0.1.0"
 
 [dev-dependencies]
 rand = "0.3"
