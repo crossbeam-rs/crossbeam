@@ -4,3 +4,14 @@ rust:
   - stable
   - beta
   - nightly
+
+script:
+  - cargo build
+  - cargo build --release
+  - cargo test
+  - cargo test --release
+  - |
+    if [ $TRAVIS_RUST_VERSION == nightly ]; then
+      cargo test --features nightly
+      cargo test --features nightly --release
+    fi
