@@ -4,7 +4,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize};
 use std::sync::atomic::Ordering;
 
 use guard::Guard;
@@ -150,7 +150,7 @@ impl<T> Atomic<T> {
     #[cfg(feature = "nightly")]
     pub const fn null() -> Self {
         Atomic {
-            data: AtomicUsize::new(0),
+            data: ATOMIC_USIZE_INIT,
             _marker: PhantomData,
         }
     }
