@@ -8,6 +8,8 @@ repository = "https://github.com/crossbeam-rs/crossbeam-utils"
 homepage = "https://github.com/crossbeam-rs/crossbeam-utils"
 documentation = "https://docs.rs/crossbeam-utils"
 description = "Utilities for concurrent programming"
+keywords = ["scoped", "thread", "atomic", "cache"]
+categories = ["algorithms", "concurrency", "data-structures"]
 
 [features]
 nightly = []
