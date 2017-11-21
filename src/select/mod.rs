@@ -8,6 +8,7 @@ pub(crate) use self::case_id::CaseId;
 
 mod case_id;
 mod machine;
+mod select_loop;
 
 pub(crate) mod handle;
 
