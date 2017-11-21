@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use {Receiver, Sender};
-use err::SelectRecvError;
+use err::{SelectRecvError, SelectSendError};
 use self::machine::{Machine, State};
 
 pub(crate) use self::case_id::CaseId;
@@ -32,11 +32,11 @@ impl Select {
         }
     }
 
-    pub fn send<T>(&mut self, tx: &Sender<T>, value: T) -> Result<(), T> {
+    pub fn send<T>(&mut self, tx: &Sender<T>, value: T) -> Result<(), SelectSendError<T>> {
         if let Some(state) = self.machine.step(tx.case_id()) {
-            state.send(tx, value)
+            state.send(tx, value).map_err(|v| SelectSendError(v))
         } else {
-            Err(value)
+            Err(SelectSendError(value))
         }
     }
 

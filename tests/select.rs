@@ -743,8 +743,8 @@ impl<T> WrappedSender<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = sel.send(&self.0, value) {
-                value = v;
+            if let Err(err) = sel.send(&self.0, value) {
+                value = err.into_inner();
             } else {
                 return Ok(());
             }
@@ -764,8 +764,8 @@ impl<T> WrappedSender<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = sel.send(&self.0, value) {
-                value = v;
+            if let Err(err) = sel.send(&self.0, value) {
+                value = err.into_inner();
             } else {
                 return Ok(());
             }
@@ -782,8 +782,8 @@ impl<T> WrappedSender<T> {
             iters += 1;
             assert!(iters < 20);
 
-            if let Err(v) = sel.send(&self.0, value) {
-                value = v;
+            if let Err(err) = sel.send(&self.0, value) {
+                value = err.into_inner();
             } else {
                 return Ok(());
             }
@@ -1187,8 +1187,8 @@ fn channel_through_channel() {
 
                     let mut sel = Select::new();
                     loop {
-                        if let Err(r) = sel.send(&tx, new_rx) {
-                            new_rx = r;
+                        if let Err(err) = sel.send(&tx, new_rx) {
+                            new_rx = err.into_inner();
                         } else {
                             break;
                         }

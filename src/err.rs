@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt;
 
-/// An error returned from the [`Sender::send`] method on channels.
+/// An error returned from the [`Sender::send`] method.
 ///
 /// A send operation can only fail if the receiving end of a channel is disconnected, implying that
 /// the data could never be received. The error contains the data being sent as a payload so it can
@@ -42,6 +42,16 @@ pub enum SendTimeoutError<T> {
     /// The channel's receiving half has become disconnected.
     Disconnected(T),
 }
+
+/// An error returned from the [`Select::recv`] method.
+///
+/// This error occurs when the selection case doesn't send a message into the channel. Note that
+/// cases enumerated in a selection loop are sometimes simply skipped, so they might fail even if
+/// the channel is currently not full.
+///
+/// [`Select::recv`]: struct.Select.html#method.recv
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct SelectSendError<T>(pub T);
 
 /// An error returned from the [`recv`] method on a [`Receiver`].
 ///
@@ -90,6 +100,7 @@ pub enum RecvTimeoutError {
 /// the channel is currently not empty.
 ///
 /// [`Select::recv`]: struct.Select.html#method.recv
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct SelectRecvError;
 
 impl<T> fmt::Debug for SendError<T> {
@@ -111,6 +122,24 @@ impl<T: Send> error::Error for SendError<T> {
 
     fn cause(&self) -> Option<&error::Error> {
         None
+    }
+}
+
+impl<T> SendError<T> {
+    /// Unwraps the value.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let (tx, rx) = channel::unbounded();
+    /// drop(rx);
+    ///
+    /// if let Err(err) = tx.send("foo") {
+    ///     assert_eq!(err.into_inner(), "foo");
+    /// }
+    /// ```
+    pub fn into_inner(self) -> T {
+        self.0
     }
 }
 
@@ -145,6 +174,26 @@ impl<T: Send> error::Error for TrySendError<T> {
     }
 }
 
+impl<T> TrySendError<T> {
+    /// Unwraps the value.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let (tx, rx) = channel::bounded(0);
+    ///
+    /// if let Err(err) = tx.try_send("foo") {
+    ///     assert_eq!(err.into_inner(), "foo");
+    /// }
+    /// ```
+    pub fn into_inner(self) -> T {
+        match self {
+            TrySendError::Full(v) => v,
+            TrySendError::Disconnected(v) => v,
+        }
+    }
+}
+
 impl<T> fmt::Debug for SendTimeoutError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         "SendTimeoutError(..)".fmt(f)
@@ -167,6 +216,75 @@ impl<T: Send> error::Error for SendTimeoutError<T> {
 
     fn cause(&self) -> Option<&error::Error> {
         None
+    }
+}
+
+impl<T> SendTimeoutError<T> {
+    /// Unwraps the value.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::time::Duration;
+    ///
+    /// let (tx, rx) = channel::unbounded();
+    ///
+    /// if let Err(err) = tx.send_timeout("foo", Duration::from_secs(0)) {
+    ///     assert_eq!(err.into_inner(), "foo");
+    /// }
+    /// ```
+    pub fn into_inner(self) -> T {
+        match self {
+            SendTimeoutError::Timeout(v) => v,
+            SendTimeoutError::Disconnected(v) => v,
+        }
+    }
+}
+
+impl<T: Send> fmt::Debug for SelectSendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        "SelectSendError(..)".fmt(f)
+    }
+}
+
+impl<T: Send> fmt::Display for SelectSendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        "selection `send` case is not ready".fmt(f)
+    }
+}
+
+impl<T: Send> error::Error for SelectSendError<T> {
+    fn description(&self) -> &str {
+        "selection `send` case is not ready"
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        None
+    }
+}
+
+impl<T> SelectSendError<T> {
+    /// Unwraps the value.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use channel::Select;
+    ///
+    /// let (tx, rx) = channel::unbounded();
+    ///
+    /// let mut msg = "message".to_string();
+    /// let mut sel = Select::new();
+    /// loop {
+    ///     if let Err(err) = sel.send(&tx, msg) {
+    ///         msg = err.into_inner();
+    ///     } else {
+    ///         break;
+    ///     }
+    /// }
+    /// ```
+    pub fn into_inner(self) -> T {
+        self.0
     }
 }
 
@@ -230,21 +348,15 @@ impl error::Error for RecvTimeoutError {
     }
 }
 
-impl fmt::Debug for SelectRecvError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "SelectRecvError".fmt(f)
-    }
-}
-
 impl fmt::Display for SelectRecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "selection case is not ready".fmt(f)
+        "selection `recv` case is not ready".fmt(f)
     }
 }
 
 impl error::Error for SelectRecvError {
     fn description(&self) -> &str {
-        "selection case is not ready"
+        "selection `recv` case is not ready"
     }
 
     fn cause(&self) -> Option<&error::Error> {
