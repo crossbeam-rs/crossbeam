@@ -256,11 +256,7 @@ impl Local {
                 // that the second one makes pinning faster in this particular case.
                 let current = Epoch::starting();
                 let previous = self.epoch.compare_and_swap(current, new_epoch, SeqCst);
-                debug_assert_eq!(
-                    current,
-                    previous,
-                    "participant was expected to be unpinned"
-                );
+                debug_assert_eq!(current, previous, "participant was expected to be unpinned");
             } else {
                 self.epoch.store(new_epoch, Relaxed);
                 atomic::fence(SeqCst);

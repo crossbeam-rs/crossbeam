@@ -23,7 +23,8 @@
 //!
 //! Concurrent collections are built using atomic pointers. This module provides [`Atomic`], which
 //! is just a shared atomic pointer to a heap-allocated object. Loading an [`Atomic`] yields a
-//! [`Ptr`], which is an epoch-protected pointer through which the loaded object can be safely read.
+//! [`Shared`], which is an epoch-protected pointer through which the loaded object can be safely
+//! read.
 //!
 //! # Pinning
 //!
@@ -49,7 +50,7 @@
 //!
 //! [`Atomic`]: struct.Atomic.html
 //! [`Collector`]: struct.Collector.html
-//! [`Ptr`]: struct.Ptr.html
+//! [`Shared`]: struct.Shared.html
 //! [`pin`]: fn.pin.html
 //! [`defer`]: fn.defer.html
 
@@ -72,7 +73,7 @@ mod guard;
 mod internal;
 mod sync;
 
-pub use self::atomic::{Atomic, CompareAndSetOrdering, Owned, Ptr};
+pub use self::atomic::{Atomic, CompareAndSetOrdering, Owned, Shared};
 pub use self::guard::{unprotected, Guard};
 pub use self::default::{default_handle, is_pinned, pin};
 pub use self::collector::{Collector, Handle};

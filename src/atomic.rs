@@ -134,7 +134,7 @@ impl<T> Atomic<T> {
     #[cfg(not(feature = "nightly"))]
     pub fn null() -> Self {
         Atomic {
-            data: AtomicUsize::new(0),
+            data: ATOMIC_USIZE_INIT,
             _marker: PhantomData,
         }
     }
@@ -179,8 +179,7 @@ impl<T> Atomic<T> {
     /// let a = Atomic::from_owned(Owned::new(1234));
     /// ```
     pub fn from_owned(owned: Owned<T>) -> Self {
-        let data = owned.data;
-        mem::forget(owned);
+        let data = owned.into_data();
         Self::from_data(data)
     }
 
@@ -189,12 +188,12 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{Atomic, Ptr};
+    /// use crossbeam_epoch::{Atomic, Shared};
     ///
-    /// let a = Atomic::from_ptr(Ptr::<i32>::null());
+    /// let a = Atomic::from_ptr(Shared::<i32>::null());
     /// ```
-    pub fn from_ptr(ptr: Ptr<T>) -> Self {
-        Self::from_data(ptr.data)
+    pub fn from_ptr(ptr: Shared<T>) -> Self {
+        Self::from_data(ptr.into_data())
     }
 
     /// Returns a new atomic pointer pointing to `raw`.
@@ -203,7 +202,7 @@ impl<T> Atomic<T> {
     ///
     /// ```
     /// use std::ptr;
-    /// use crossbeam_epoch::{Atomic, Ptr};
+    /// use crossbeam_epoch::{Atomic, Shared};
     ///
     /// let a = Atomic::from_raw(ptr::null::<i32>());
     /// ```
@@ -211,7 +210,7 @@ impl<T> Atomic<T> {
         Self::from_data(raw as usize)
     }
 
-    /// Loads a `Ptr` from the atomic pointer.
+    /// Loads a `Shared` from the atomic pointer.
     ///
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
@@ -228,11 +227,11 @@ impl<T> Atomic<T> {
     /// let guard = &epoch::pin();
     /// let p = a.load(SeqCst, guard);
     /// ```
-    pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
-        Ptr::from_data(self.data.load(ord))
+    pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_data(self.data.load(ord)) }
     }
 
-    /// Stores a `Ptr` into the atomic pointer.
+    /// Stores a `Shared` or `Owned` pointer into the atomic pointer.
     ///
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
@@ -242,17 +241,19 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Ptr};
+    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
-    /// a.store(Ptr::null(), SeqCst);
+    /// a.store(Shared::null(), SeqCst);
+    /// a.store(Owned::new(1234), SeqCst);
     /// ```
-    pub fn store(&self, new: Ptr<T>, ord: Ordering) {
-        self.data.store(new.data, ord);
+    pub fn store<'g, P: Pointer<T>>(&self, new: P, ord: Ordering) {
+        self.data.store(new.into_data(), ord);
     }
 
-    /// Stores an `Owned` into the atomic pointer.
+    /// Stores a `Shared` or `Owned` pointer into the atomic pointer, returning the previous
+    /// `Shared`.
     ///
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
@@ -262,43 +263,23 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
-    /// use std::sync::atomic::Ordering::SeqCst;
-    ///
-    /// let a = Atomic::null();
-    /// a.store_owned(Owned::new(1234), SeqCst);
-    /// ```
-    pub fn store_owned(&self, new: Owned<T>, ord: Ordering) {
-        let data = new.data;
-        mem::forget(new);
-        self.data.store(data, ord);
-    }
-
-    /// Stores a `Ptr` into the atomic pointer, returning the previous `Ptr`.
-    ///
-    /// This method takes an [`Ordering`] argument which describes the memory ordering of this
-    /// operation.
-    ///
-    /// [`Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Ptr};
+    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
     /// let guard = &epoch::pin();
-    /// let p = a.swap(Ptr::null(), SeqCst, guard);
+    /// let p = a.swap(Shared::null(), SeqCst, guard);
     /// ```
-    pub fn swap<'g>(&self, new: Ptr<T>, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
-        Ptr::from_data(self.data.swap(new.data, ord))
+    pub fn swap<'g, P: Pointer<T>>(&self, new: P, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_data(self.data.swap(new.into_data(), ord)) }
     }
 
-    /// Stores `new` into the atomic pointer if the current value is the same as `current`.
+    /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
+    /// value is the same as `current`.
     ///
-    /// The return value is a result indicating whether the new pointer was written. On failure the
-    /// actual current value is returned.
+    /// The return value is a result indicating whether the new pointer was written. On success the
+    /// pointer that was written is returned. On failure the actual current value and `new` are
+    /// returned.
     ///
     /// This method takes a [`CompareAndSetOrdering`] argument which describes the memory
     /// ordering of this operation.
@@ -308,39 +289,43 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Ptr};
+    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
     ///
     /// let guard = &epoch::pin();
     /// let mut curr = a.load(SeqCst, guard);
-    /// let res = a.compare_and_set(curr, Ptr::null(), SeqCst, guard);
+    /// let res1 = a.compare_and_set(curr, Shared::null(), SeqCst, guard);
+    /// let res2 = a.compare_and_set(curr, Owned::new(5678), SeqCst, guard);
     /// ```
-    pub fn compare_and_set<'g, O>(
+    pub fn compare_and_set<'g, O, P>(
         &self,
-        current: Ptr<T>,
-        new: Ptr<T>,
+        current: Shared<T>,
+        new: P,
         ord: O,
         _: &'g Guard,
-    ) -> Result<(), Ptr<'g, T>>
+    ) -> Result<Shared<'g, T>, (Shared<'g, T>, P)>
     where
         O: CompareAndSetOrdering,
+        P: Pointer<T>,
     {
-        match self.data
-            .compare_exchange(current.data, new.data, ord.success(), ord.failure())
-        {
-            Ok(_) => Ok(()),
-            Err(previous) => Err(Ptr::from_data(previous)),
-        }
+        let new = new.into_data();
+        self.data
+            .compare_exchange(current.into_data(), new, ord.success(), ord.failure())
+            .map(|_| unsafe { Shared::from_data(new) })
+            .map_err(|previous| unsafe {
+                (Shared::from_data(previous), P::from_data(new))
+            })
     }
 
-    /// Stores `new` into the atomic pointer if the current value is the same as `current`.
+    /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
+    /// value is the same as `current`.
     ///
-    /// Unlike [`compare_and_set`], this method is allowed to spuriously fail even when
-    /// comparison succeeds, which can result in more efficient code on some platforms.
-    /// The return value is a result indicating whether the new pointer was written. On failure the
-    /// actual current value is returned.
+    /// Unlike [`compare_and_set`], this method is allowed to spuriously fail even when comparison
+    /// succeeds, which can result in more efficient code on some platforms.  The return value is a
+    /// result indicating whether the new pointer was written. On success the pointer that was
+    /// written is returned. On failure the actual current value and `new` are returned.
     ///
     /// This method takes a [`CompareAndSetOrdering`] argument which describes the memory
     /// ordering of this operation.
@@ -351,110 +336,16 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Ptr};
+    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
-    ///
     /// let guard = &epoch::pin();
-    /// let mut curr = a.load(SeqCst, guard);
-    /// loop {
-    ///     match a.compare_and_set_weak(curr, Ptr::null(), SeqCst, guard) {
-    ///         Ok(()) => break,
-    ///         Err(c) => curr = c,
-    ///     }
-    /// }
-    /// ```
-    pub fn compare_and_set_weak<'g, O>(
-        &self,
-        current: Ptr<T>,
-        new: Ptr<T>,
-        ord: O,
-        _: &'g Guard,
-    ) -> Result<(), Ptr<'g, T>>
-    where
-        O: CompareAndSetOrdering,
-    {
-        match self.data
-            .compare_exchange_weak(current.data, new.data, ord.success(), ord.failure())
-        {
-            Ok(_) => Ok(()),
-            Err(previous) => Err(Ptr::from_data(previous)),
-        }
-    }
-
-    /// Stores `new` into the atomic pointer if the current value is the same as `current`.
     ///
-    /// The return value is a result indicating whether the new pointer was written. On success the
-    /// pointer that was written is returned. On failure `new` and the actual current value are
-    /// returned.
-    ///
-    /// This method takes a [`CompareAndSetOrdering`] argument which describes the memory
-    /// ordering of this operation.
-    ///
-    /// [`CompareAndSetOrdering`]: trait.CompareAndSetOrdering.html
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
-    /// use std::sync::atomic::Ordering::SeqCst;
-    ///
-    /// let a = Atomic::new(1234);
-    ///
-    /// let guard = &epoch::pin();
-    /// let mut curr = a.load(SeqCst, guard);
-    /// let res = a.compare_and_set_owned(curr, Owned::new(5678), SeqCst, guard);
-    /// ```
-    pub fn compare_and_set_owned<'g, O>(
-        &self,
-        current: Ptr<T>,
-        new: Owned<T>,
-        ord: O,
-        _: &'g Guard,
-    ) -> Result<Ptr<'g, T>, (Ptr<'g, T>, Owned<T>)>
-    where
-        O: CompareAndSetOrdering,
-    {
-        match self.data
-            .compare_exchange(current.data, new.data, ord.success(), ord.failure())
-        {
-            Ok(_) => {
-                let data = new.data;
-                mem::forget(new);
-                Ok(Ptr::from_data(data))
-            }
-            Err(previous) => Err((Ptr::from_data(previous), new)),
-        }
-    }
-
-    /// Stores `new` into the atomic pointer if the current value is the same as `current`.
-    ///
-    /// Unlike [`compare_and_set_owned`], this method is allowed to spuriously fail even when
-    /// comparison succeeds, which can result in more efficient code on some platforms.
-    /// The return value is a result indicating whether the new pointer was written. On success the
-    /// pointer that was written is returned. On failure `new` and the actual current value are
-    /// returned.
-    ///
-    /// This method takes a [`CompareAndSetOrdering`] argument which describes the memory
-    /// ordering of this operation.
-    ///
-    /// [`compare_and_set_owned`]: struct.Atomic.html#method.compare_and_set_owned
-    /// [`CompareAndSetOrdering`]: trait.CompareAndSetOrdering.html
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
-    /// use std::sync::atomic::Ordering::SeqCst;
-    ///
-    /// let a = Atomic::new(1234);
-    ///
-    /// let guard = &epoch::pin();
     /// let mut new = Owned::new(5678);
     /// let mut ptr = a.load(SeqCst, guard);
     /// loop {
-    ///     match a.compare_and_set_weak_owned(ptr, new, SeqCst, guard) {
+    ///     match a.compare_and_set_weak(ptr, new, SeqCst, guard) {
     ///         Ok(p) => {
     ///             ptr = p;
     ///             break;
@@ -465,27 +356,33 @@ impl<T> Atomic<T> {
     ///         }
     ///     }
     /// }
+    ///
+    /// let mut curr = a.load(SeqCst, guard);
+    /// loop {
+    ///     match a.compare_and_set_weak(curr, Shared::null(), SeqCst, guard) {
+    ///         Ok(_) => break,
+    ///         Err((c, _)) => curr = c,
+    ///     }
+    /// }
     /// ```
-    pub fn compare_and_set_weak_owned<'g, O>(
+    pub fn compare_and_set_weak<'g, O, P>(
         &self,
-        current: Ptr<T>,
-        new: Owned<T>,
+        current: Shared<T>,
+        new: P,
         ord: O,
         _: &'g Guard,
-    ) -> Result<Ptr<'g, T>, (Ptr<'g, T>, Owned<T>)>
+    ) -> Result<Shared<'g, T>, (Shared<'g, T>, P)>
     where
         O: CompareAndSetOrdering,
+        P: Pointer<T>,
     {
-        match self.data
-            .compare_exchange_weak(current.data, new.data, ord.success(), ord.failure())
-        {
-            Ok(_) => {
-                let data = new.data;
-                mem::forget(new);
-                Ok(Ptr::from_data(data))
-            }
-            Err(previous) => Err((Ptr::from_data(previous), new)),
-        }
+        let new = new.into_data();
+        self.data
+            .compare_exchange_weak(current.into_data(), new, ord.success(), ord.failure())
+            .map(|_| unsafe { Shared::from_data(new) })
+            .map_err(|previous| unsafe {
+                (Shared::from_data(previous), P::from_data(new))
+            })
     }
 
     /// Bitwise "and" with the current tag.
@@ -501,16 +398,16 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Ptr};
+    /// use crossbeam_epoch::{self as epoch, Atomic, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
-    /// let a = Atomic::<i32>::from_ptr(Ptr::null().with_tag(3));
+    /// let a = Atomic::<i32>::from_ptr(Shared::null().with_tag(3));
     /// let guard = &epoch::pin();
     /// assert_eq!(a.fetch_and(2, SeqCst, guard).tag(), 3);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
-    pub fn fetch_and<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
-        Ptr::from_data(self.data.fetch_and(val | !low_bits::<T>(), ord))
+    pub fn fetch_and<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_data(self.data.fetch_and(val | !low_bits::<T>(), ord)) }
     }
 
     /// Bitwise "or" with the current tag.
@@ -526,16 +423,16 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Ptr};
+    /// use crossbeam_epoch::{self as epoch, Atomic, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
-    /// let a = Atomic::<i32>::from_ptr(Ptr::null().with_tag(1));
+    /// let a = Atomic::<i32>::from_ptr(Shared::null().with_tag(1));
     /// let guard = &epoch::pin();
     /// assert_eq!(a.fetch_or(2, SeqCst, guard).tag(), 1);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 3);
     /// ```
-    pub fn fetch_or<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
-        Ptr::from_data(self.data.fetch_or(val & low_bits::<T>(), ord))
+    pub fn fetch_or<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_data(self.data.fetch_or(val & low_bits::<T>(), ord)) }
     }
 
     /// Bitwise "xor" with the current tag.
@@ -551,16 +448,16 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Ptr};
+    /// use crossbeam_epoch::{self as epoch, Atomic, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
-    /// let a = Atomic::<i32>::from_ptr(Ptr::null().with_tag(1));
+    /// let a = Atomic::<i32>::from_ptr(Shared::null().with_tag(1));
     /// let guard = &epoch::pin();
     /// assert_eq!(a.fetch_xor(3, SeqCst, guard).tag(), 1);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
-    pub fn fetch_xor<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Ptr<'g, T> {
-        Ptr::from_data(self.data.fetch_xor(val & low_bits::<T>(), ord))
+    pub fn fetch_xor<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_data(self.data.fetch_xor(val & low_bits::<T>(), ord)) }
     }
 }
 
@@ -619,10 +516,18 @@ impl<T> From<Owned<T>> for Atomic<T> {
     }
 }
 
-impl<'g, T> From<Ptr<'g, T>> for Atomic<T> {
-    fn from(ptr: Ptr<T>) -> Self {
+impl<'g, T> From<Shared<'g, T>> for Atomic<T> {
+    fn from(ptr: Shared<T>) -> Self {
         Atomic::from_ptr(ptr)
     }
+}
+
+/// A trait for either `Owned` or `Shared` pointers.
+pub trait Pointer<T> {
+    /// Returns the machine representation of the pointer.
+    fn into_data(self) -> usize;
+    /// Returns a new pointer pointing to the tagged pointer `data`.
+    unsafe fn from_data(data: usize) -> Self;
 }
 
 /// An owned heap-allocated object.
@@ -636,15 +541,30 @@ pub struct Owned<T> {
     _marker: PhantomData<Box<T>>,
 }
 
-impl<T> Owned<T> {
-    /// Returns a new owned pointer pointing to the tagged pointer `data`.
+impl<T> Pointer<T> for Owned<T> {
+    #[inline]
+    fn into_data(self) -> usize {
+        let data = self.data;
+        mem::forget(self);
+        data
+    }
+
+    /// Returns a new pointer pointing to the tagged pointer `data`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the data is zero in debug mode.
+    #[inline]
     unsafe fn from_data(data: usize) -> Self {
+        debug_assert!(data != 0, "converting zero into `Owned`");
         Owned {
             data: data,
             _marker: PhantomData,
         }
     }
+}
 
+impl<T> Owned<T> {
     /// Allocates `value` on the heap and returns a new owned pointer pointing to it.
     ///
     /// # Examples
@@ -697,7 +617,7 @@ impl<T> Owned<T> {
         Self::from_data(raw as usize)
     }
 
-    /// Converts the owned pointer into a [`Ptr`].
+    /// Converts the owned pointer into a [`Shared`].
     ///
     /// # Examples
     ///
@@ -709,11 +629,9 @@ impl<T> Owned<T> {
     /// let p = o.into_ptr(guard);
     /// ```
     ///
-    /// [`Ptr`]: struct.Ptr.html
-    pub fn into_ptr<'g>(self, _: &'g Guard) -> Ptr<'g, T> {
-        let data = self.data;
-        mem::forget(self);
-        Ptr::from_data(data)
+    /// [`Shared`]: struct.Shared.html
+    pub fn into_ptr<'g>(self, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_data(self.into_data()) }
     }
 
     /// Converts the owned pointer into a `Box`.
@@ -728,8 +646,7 @@ impl<T> Owned<T> {
     /// assert_eq!(*b, 1234);
     /// ```
     pub fn into_box(self) -> Box<T> {
-        let (raw, _) = decompose_data::<T>(self.data);
-        mem::forget(self);
+        let (raw, _) = decompose_data::<T>(self.into_data());
         unsafe { Box::from_raw(raw) }
     }
 
@@ -761,8 +678,7 @@ impl<T> Owned<T> {
     /// assert_eq!(o.tag(), 5);
     /// ```
     pub fn with_tag(self, tag: usize) -> Self {
-        let data = self.data;
-        mem::forget(self);
+        let data = self.into_data();
         unsafe { Self::from_data(data_with_tag::<T>(data, tag)) }
     }
 }
@@ -851,45 +767,52 @@ impl<T> AsMut<T> for Owned<T> {
 ///
 /// The pointer must be properly aligned. Since it is aligned, a tag can be stored into the unused
 /// least significant bits of the address.
-pub struct Ptr<'g, T: 'g> {
+pub struct Shared<'g, T: 'g> {
     data: usize,
     _marker: PhantomData<(&'g (), *const T)>,
 }
 
-unsafe impl<'g, T: Send> Send for Ptr<'g, T> {}
+unsafe impl<'g, T: Send> Send for Shared<'g, T> {}
 
-impl<'g, T> Clone for Ptr<'g, T> {
+impl<'g, T> Clone for Shared<'g, T> {
     fn clone(&self) -> Self {
-        Ptr {
+        Shared {
             data: self.data,
             _marker: PhantomData,
         }
     }
 }
 
-impl<'g, T> Copy for Ptr<'g, T> {}
+impl<'g, T> Copy for Shared<'g, T> {}
 
-impl<'g, T> Ptr<'g, T> {
-    /// Returns a new pointer pointing to the tagged pointer `data`.
-    fn from_data(data: usize) -> Self {
-        Ptr {
+impl<'g, T> Pointer<T> for Shared<'g, T> {
+    #[inline]
+    fn into_data(self) -> usize {
+        self.data
+    }
+
+    #[inline]
+    unsafe fn from_data(data: usize) -> Self {
+        Shared {
             data: data,
             _marker: PhantomData,
         }
     }
+}
 
+impl<'g, T> Shared<'g, T> {
     /// Returns a new null pointer.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::Ptr;
+    /// use crossbeam_epoch::Shared;
     ///
-    /// let p = Ptr::<i32>::null();
+    /// let p = Shared::<i32>::null();
     /// assert!(p.is_null());
     /// ```
     pub fn null() -> Self {
-        Ptr {
+        Shared {
             data: 0,
             _marker: PhantomData,
         }
@@ -904,14 +827,14 @@ impl<'g, T> Ptr<'g, T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::Ptr;
+    /// use crossbeam_epoch::Shared;
     ///
-    /// let p = unsafe { Ptr::from_raw(Box::into_raw(Box::new(1234))) };
+    /// let p = unsafe { Shared::from_raw(Box::into_raw(Box::new(1234))) };
     /// assert!(!p.is_null());
     /// ```
     pub fn from_raw(raw: *const T) -> Self {
         ensure_aligned(raw);
-        Ptr {
+        Shared {
             data: raw as usize,
             _marker: PhantomData,
         }
@@ -928,7 +851,7 @@ impl<'g, T> Ptr<'g, T> {
     /// let a = Atomic::null();
     /// let guard = &epoch::pin();
     /// assert!(a.load(SeqCst, guard).is_null());
-    /// a.store_owned(Owned::new(1234), SeqCst);
+    /// a.store(Owned::new(1234), SeqCst);
     /// assert!(!a.load(SeqCst, guard).is_null());
     /// ```
     pub fn is_null(&self) -> bool {
@@ -967,7 +890,7 @@ impl<'g, T> Ptr<'g, T> {
     /// Another concern is the possiblity of data races due to lack of proper synchronization.
     /// For example, consider the following scenario:
     ///
-    /// 1. A thread creates a new object: `a.store_owned(Owned::new(10), Relaxed)`
+    /// 1. A thread creates a new object: `a.store(Owned::new(10), Relaxed)`
     /// 2. Another thread reads it: `*a.load(Relaxed, guard).as_ref().unwrap()`
     ///
     /// The problem is that relaxed orderings don't synchronize initialization of the object with
@@ -1002,7 +925,7 @@ impl<'g, T> Ptr<'g, T> {
     /// Another concern is the possiblity of data races due to lack of proper synchronization.
     /// For example, consider the following scenario:
     ///
-    /// 1. A thread creates a new object: `a.store_owned(Owned::new(10), Relaxed)`
+    /// 1. A thread creates a new object: `a.store(Owned::new(10), Relaxed)`
     /// 2. Another thread reads it: `*a.load(Relaxed, guard).as_ref().unwrap()`
     ///
     /// The problem is that relaxed orderings don't synchronize initialization of the object with
@@ -1092,64 +1015,64 @@ impl<'g, T> Ptr<'g, T> {
     /// assert_eq!(p1.as_raw(), p2.as_raw());
     /// ```
     pub fn with_tag(&self, tag: usize) -> Self {
-        Self::from_data(data_with_tag::<T>(self.data, tag))
+        unsafe { Self::from_data(data_with_tag::<T>(self.data, tag)) }
     }
 }
 
-impl<'g, T> PartialEq<Ptr<'g, T>> for Ptr<'g, T> {
+impl<'g, T> PartialEq<Shared<'g, T>> for Shared<'g, T> {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
     }
 }
 
-impl<'g, T> Eq for Ptr<'g, T> {}
+impl<'g, T> Eq for Shared<'g, T> {}
 
-impl<'g, T> PartialOrd<Ptr<'g, T>> for Ptr<'g, T> {
+impl<'g, T> PartialOrd<Shared<'g, T>> for Shared<'g, T> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.data.partial_cmp(&other.data)
     }
 }
 
-impl<'g, T> Ord for Ptr<'g, T> {
+impl<'g, T> Ord for Shared<'g, T> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.data.cmp(&other.data)
     }
 }
 
-impl<'g, T> fmt::Debug for Ptr<'g, T> {
+impl<'g, T> fmt::Debug for Shared<'g, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let (raw, tag) = decompose_data::<T>(self.data);
 
-        f.debug_struct("Ptr")
+        f.debug_struct("Shared")
             .field("raw", &raw)
             .field("tag", &tag)
             .finish()
     }
 }
 
-impl<'g, T> fmt::Pointer for Ptr<'g, T> {
+impl<'g, T> fmt::Pointer for Shared<'g, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Pointer::fmt(&self.as_raw(), f)
     }
 }
 
-impl<'g, T> Default for Ptr<'g, T> {
+impl<'g, T> Default for Shared<'g, T> {
     fn default() -> Self {
-        Ptr::null()
+        Shared::null()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Ptr;
+    use super::Shared;
 
     #[test]
     fn valid_tag_i8() {
-        Ptr::<i8>::null().with_tag(0);
+        Shared::<i8>::null().with_tag(0);
     }
 
     #[test]
     fn valid_tag_i64() {
-        Ptr::<i64>::null().with_tag(7);
+        Shared::<i64>::null().with_tag(7);
     }
 }

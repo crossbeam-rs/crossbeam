@@ -29,9 +29,7 @@ unsafe impl Sync for Collector {}
 impl Collector {
     /// Creates a new collector.
     pub fn new() -> Self {
-        Collector {
-            global: Arc::new(Global::new()),
-        }
+        Collector { global: Arc::new(Global::new()) }
     }
 
     /// Creates a new handle for the collector.
@@ -43,9 +41,7 @@ impl Collector {
 impl Clone for Collector {
     /// Creates another reference to the same garbage collector.
     fn clone(&self) -> Self {
-        Collector {
-            global: self.global.clone(),
-        }
+        Collector { global: self.global.clone() }
     }
 }
 

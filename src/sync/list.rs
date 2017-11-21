@@ -6,7 +6,7 @@
 use std::marker::PhantomData;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use {Atomic, Ptr, Guard, unprotected};
+use {Atomic, Shared, Guard, unprotected};
 
 /// An entry in a linked list.
 ///
@@ -92,7 +92,7 @@ pub struct Iter<'g, T: 'g, C: Container<T>> {
     pred: &'g Atomic<Entry>,
 
     /// The current entry.
-    curr: Ptr<'g, Entry>,
+    curr: Shared<'g, Entry>,
 
     /// The phantom data for container.
     _marker: PhantomData<(&'g T, C)>,
@@ -146,17 +146,17 @@ impl<T, C: Container<T>> List<T, C> {
     /// - `container` is immovable, e.g. inside a `Box`;
     /// - An entry is not inserted twice; and
     /// - The inserted object will be removed before the list is dropped.
-    pub unsafe fn insert<'g>(&'g self, container: Ptr<'g, T>, guard: &'g Guard) {
+    pub unsafe fn insert<'g>(&'g self, container: Shared<'g, T>, guard: &'g Guard) {
         let to = &self.head;
         let entry = &*C::entry_of(container.as_raw());
-        let entry_ptr = Ptr::from_raw(entry);
+        let entry_ptr = Shared::from_raw(entry);
         let mut next = to.load(Relaxed, guard);
 
         loop {
             entry.next.store(next, Relaxed);
             match to.compare_and_set_weak(next, entry_ptr, Release, guard) {
                 Ok(_) => break,
-                Err(n) => next = n,
+                Err((_, n)) => next = n,
             }
         }
     }
@@ -227,7 +227,7 @@ impl<'g, T: 'g, C: Container<T>> Iterator for Iter<'g, T, C> {
                         }
                         self.curr = succ;
                     }
-                    Err(succ) => {
+                    Err((_, succ)) => {
                         // We lost the race to delete the entry by a concurrent iterator. Set
                         // `self.curr` to the updated pointer, and report that we are stalled.
                         self.curr = succ;
@@ -273,9 +273,7 @@ mod tests {
             }
 
             fn finalize(entry: *const Entry) {
-                unsafe {
-                    drop(Box::from_raw(entry as *mut Entry))
-                }
+                unsafe { drop(Box::from_raw(entry as *mut Entry)) }
             }
         }
 
@@ -297,7 +295,9 @@ mod tests {
         assert!(iter.next().is_some());
         assert!(iter.next().is_none());
 
-        unsafe { n2.as_ref().unwrap().delete(&guard); }
+        unsafe {
+            n2.as_ref().unwrap().delete(&guard);
+        }
 
         let mut iter = l.iter(&guard);
         assert!(iter.next().is_some());

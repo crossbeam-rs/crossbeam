@@ -154,7 +154,7 @@ impl Guard {
     /// [`unprotected`]: fn.unprotected.html
     pub unsafe fn defer<F, R>(&self, f: F)
     where
-        F: FnOnce() -> R + Send
+        F: FnOnce() -> R + Send,
     {
         let garbage = Garbage::new(|| drop(f()));
 
