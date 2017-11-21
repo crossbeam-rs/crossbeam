@@ -8,9 +8,10 @@ use parking_lot::Mutex;
 use select::CaseId;
 use select::handle::{self, Handle};
 
-// TODO: Explain that a single thread can be registered multiple times (that happens only in
-// select).  Unregister removes just entry belonging to the current thread.
-
+/// A selection case, identified by a `Handle` and a `CaseId`.
+///
+/// Note that multiple threads could be operating on a single channel end, as well as a single
+/// thread on multiple different channel ends.
 struct Case {
     handle: Handle,
     case_id: CaseId,
@@ -57,7 +58,7 @@ impl Monitor {
         }
     }
 
-    /// Fires one selection from another thread.
+    /// Fires one selection case from another thread.
     pub fn notify_one(&self) {
         if self.len.load(SeqCst) > 0 {
             let thread_id = thread::current().id();
@@ -96,9 +97,12 @@ impl Monitor {
         }
     }
 
+    /// Shrinks the internal deque if it's capacity is much larger than length.
     fn maybe_shrink(&self, cases: &mut VecDeque<Case>) {
-        if cases.capacity() > 32 && cases.len() < cases.capacity() / 2 {
-            cases.shrink_to_fit();
+        if cases.capacity() > 32 && cases.len() < cases.capacity() / 4 {
+            let mut v = VecDeque::with_capacity(cases.capacity() / 2);
+            v.extend(cases.drain(..));
+            *cases = v;
         }
     }
 }

@@ -43,6 +43,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     (Sender::new(chan.clone()), Receiver::new(chan))
 }
 
+/// The sending half of a channel.
 pub struct Sender<T>(Arc<Channel<T>>);
 
 unsafe impl<T: Send> Send for Sender<T> {}
@@ -176,6 +177,7 @@ impl<T> Clone for Sender<T> {
     }
 }
 
+/// The receiving half of a channel.
 pub struct Receiver<T>(Arc<Channel<T>>);
 
 unsafe impl<T: Send> Send for Receiver<T> {}

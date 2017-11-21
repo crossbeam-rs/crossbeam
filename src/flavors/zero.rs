@@ -20,26 +20,32 @@ impl<T> Channel<T> {
         Channel { exchanger: Exchanger::new() }
     }
 
+    /// Promises a send operation.
     pub fn promise_send(&self, case_id: CaseId) {
         self.exchanger.left().promise(case_id);
     }
 
+    /// Revokes the promised send operation.
     pub fn revoke_send(&self, case_id: CaseId) {
         self.exchanger.left().revoke(case_id);
     }
 
+    /// Fulfills the promised send operation.
     pub fn fulfill_send(&self, value: T) {
         self.exchanger.left().fulfill(Some(value));
     }
 
+    /// Promises a receive operation.
     pub fn promise_recv(&self, case_id: CaseId) {
         self.exchanger.right().promise(case_id);
     }
 
+    /// Revokes the promised receive operation.
     pub fn revoke_recv(&self, case_id: CaseId) {
         self.exchanger.right().revoke(case_id);
     }
 
+    /// Fulfills the promised receive operation.
     pub fn fulfill_recv(&self) -> T {
         self.exchanger.right().fulfill(None).unwrap()
     }

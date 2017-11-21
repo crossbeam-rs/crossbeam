@@ -398,10 +398,12 @@ impl<T> Channel<T> {
         self.len() == self.cap
     }
 
+    /// Returns a reference to the monitor for this channel's senders.
     pub fn senders(&self) -> &Monitor {
         &self.senders
     }
 
+    /// Returns a reference to the monitor for this channel's receivers.
     pub fn receivers(&self) -> &Monitor {
         &self.receivers
     }

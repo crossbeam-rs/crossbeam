@@ -45,6 +45,7 @@ pub fn small_random(ceil: usize) -> usize {
         static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
     }
 
+    // TODO(stjepang): Use `try_with` instead of `with` when it gets stabilized.
     RNG.with(|rng| {
         // This is the 32-bit variant of Xorshift.
         let mut x = rng.get();

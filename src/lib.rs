@@ -19,4 +19,5 @@ pub use channel::{Receiver, Sender};
 pub use channel::{IntoIter, Iter, TryIter};
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
 pub use err::{SendError, SendTimeoutError, TrySendError};
+pub use err::{SelectRecvError, SelectSendError};
 pub use select::Select;

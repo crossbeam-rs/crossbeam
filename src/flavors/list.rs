@@ -319,6 +319,7 @@ impl<T> Channel<T> {
         self.len() == 0
     }
 
+    /// Returns a reference to the monitor for this channel's receivers.
     pub fn receivers(&self) -> &Monitor {
         &self.receivers
     }

@@ -12,27 +12,51 @@ use select::CaseId;
 use select::handle::{self, Handle};
 use util::Backoff;
 
-enum Spin {
-    Once,
+/// Waiting strategy in an exchange operation.
+enum Wait {
+    /// Yield once and then time out.
+    YieldOnce,
+
+    /// Wait until an optional deadline.
     Until(Option<Instant>),
 }
 
+/// Enumeration of possible exchange errors.
 pub enum ExchangeError<T> {
+    /// The exchange operation timed out.
     Timeout(T),
+
+    /// The exchanger was disconnected.
     Disconnected(T),
 }
 
+/// Inner representation of an exchanger.
+///
+/// This data structure is wrapped in a mutex.
 struct Inner<T> {
+    /// There are two wait queues, one per side.
     wait_queues: [WaitQueue<T>; 2],
+
+    /// `true` if the exchanger is closed.
     closed: bool,
 }
 
 /// A two-sided exchanger.
+///
+/// This is a concurrent data structure with two sides: left and right. A thread can offer a value
+/// on one side, and if there is another thread waiting on the opposite side at the same time, they
+/// exchange values.
+///
+/// Instead of *offering* a concrete value for excahnge, a thread can also *promise* a value.
+/// If another thread pairs up with the promise on the opposite end, then it will wait until the
+/// promise is fulfilled. The thread that promised the value must in the end either revoke the
+/// promise or fulfill it.
 pub struct Exchanger<T> {
     inner: Mutex<Inner<T>>,
 }
 
 impl<T> Exchanger<T> {
+    /// Returns a new exchanger.
     pub fn new() -> Self {
         Exchanger {
             inner: Mutex::new(Inner {
@@ -42,6 +66,7 @@ impl<T> Exchanger<T> {
         }
     }
 
+    /// Returns the left side of the exchanger.
     pub fn left(&self) -> Side<T> {
         Side {
             index: 0,
@@ -49,6 +74,7 @@ impl<T> Exchanger<T> {
         }
     }
 
+    /// Returns the right side of the exchanger.
     pub fn right(&self) -> Side<T> {
         Side {
             index: 1,
@@ -56,6 +82,7 @@ impl<T> Exchanger<T> {
         }
     }
 
+    /// Closes the exchanger.
     pub fn close(&self) -> bool {
         let mut inner = self.inner.lock();
 
@@ -69,57 +96,72 @@ impl<T> Exchanger<T> {
         }
     }
 
+    /// Returns `true` if the exchanger is closed.
     pub fn is_closed(&self) -> bool {
         self.inner.lock().closed
     }
 }
 
+/// One side of an exchanger.
 pub struct Side<'a, T: 'a> {
+    /// The index is 0 or 1.
     index: usize,
+
+    /// A reference to the parent exchanger.
     exchanger: &'a Exchanger<T>,
 }
 
 impl<'a, T> Side<'a, T> {
+    /// Promises a value for exchange.
     pub fn promise(&self, case_id: CaseId) {
         self.exchanger.inner.lock().wait_queues[self.index].promise(case_id);
     }
 
+    /// Revokes the previously made promise.
+    ///
+    /// TODO: what if somebody paired up with it?
     pub fn revoke(&self, case_id: CaseId) {
         self.exchanger.inner.lock().wait_queues[self.index].revoke(case_id);
     }
 
+    /// Fulfills the previously made promise.
     pub fn fulfill(&self, value: T) -> T {
         finish_exchange(value, self.exchanger)
     }
 
+    /// Exchanges `value` if there is an offer or promise on the opposite side.
     pub fn try_exchange(
         &self,
         value: T,
         case_id: CaseId,
     ) -> Result<T, ExchangeError<T>> {
-        self.exchange(value, Spin::Once, case_id)
+        self.exchange(value, Wait::YieldOnce, case_id)
     }
 
+    /// Exchanges `value`, waiting until the specified `deadline`.
     pub fn exchange_until(
         &self,
         value: T,
         deadline: Option<Instant>,
         case_id: CaseId,
     ) -> Result<T, ExchangeError<T>> {
-        self.exchange(value, Spin::Until(deadline), case_id)
+        self.exchange(value, Wait::Until(deadline), case_id)
     }
 
+    /// Returns `true` if there is an offer or promise on the opposite side.
     pub fn can_notify(&self) -> bool {
         self.exchanger.inner.lock().wait_queues[self.index].can_notify()
     }
 
+    /// Exchanges `value` with the specified `wait` strategy.
     fn exchange(
         &self,
         mut value: T,
-        spin: Spin,
+        wait: Wait,
         case_id: CaseId,
     ) -> Result<T, ExchangeError<T>> {
         loop {
+            // Allocate a packet on the stack.
             let packet;
             {
                 let mut inner = self.exchanger.inner.lock();
@@ -127,7 +169,7 @@ impl<'a, T> Side<'a, T> {
                     return Err(ExchangeError::Disconnected(value));
                 }
 
-                // If there's a waiting receiver, pass it the value.
+                // If there's someone on the other side, exchange values with it.
                 if let Some(case) = inner.wait_queues[self.index ^ 1].pop() {
                     drop(inner);
                     return Ok(case.exchange(value, self.exchanger));
@@ -139,12 +181,12 @@ impl<'a, T> Side<'a, T> {
                 inner.wait_queues[self.index].offer(&packet, case_id);
             }
 
-            let timed_out = match spin {
-                Spin::Once => {
+            let timed_out = match wait {
+                Wait::YieldOnce => {
                     thread::yield_now();
                     handle::current_try_select(CaseId::abort())
                 },
-                Spin::Until(deadline) => {
+                Wait::Until(deadline) => {
                     !handle::current_wait_until(deadline)
                 },
             };
