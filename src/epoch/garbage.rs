@@ -40,7 +40,7 @@ impl Bag {
             })
         }
         unsafe fn free<T>(t: *mut u8) {
-            drop(Vec::from_raw_parts(t as *mut T, 0, 1));
+            drop(Box::from_raw(t as *mut T));
         }
     }
 
