@@ -3,6 +3,7 @@ use std::cmp;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
+use std::ptr;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize};
 use std::sync::atomic::Ordering;
@@ -1027,6 +1028,10 @@ impl<'g, T> Ptr<'g, T> {
 
     /// Takes ownership of the pointee.
     ///
+    /// # Panics
+    ///
+    /// Panics if this pointer is null, but only in debug mode.
+    ///
     /// # Safety
     ///
     /// This method may be called only if the pointer is valid and nobody else is holding a
@@ -1046,6 +1051,7 @@ impl<'g, T> Ptr<'g, T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
+        debug_assert!(self.as_raw() != ptr::null(), "converting a null `Ptr` into `Owned`");
         Owned::from_data(self.data)
     }
 
