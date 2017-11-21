@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
-use std::ptr;
 
 use epoch::{self, Atomic, Owned};
+use sync::spot;
 
 /// Treiber's lock-free stack.
 ///
@@ -13,7 +13,7 @@ pub struct TreiberStack<T> {
 
 #[derive(Debug)]
 struct Node<T> {
-    data: T,
+    data: spot::Spot<T>,
     next: Atomic<Node<T>>,
 }
 
@@ -26,7 +26,7 @@ impl<T> TreiberStack<T> {
     /// Push `t` on top of the stack.
     pub fn push(&self, t: T) {
         let mut n = Owned::new(Node {
-            data: t,
+            data: spot::Spot::new(t),
             next: Atomic::null(),
         });
         let guard = epoch::pin();
@@ -61,7 +61,7 @@ impl<T> TreiberStack<T> {
                     if self.head.cas_shared(Some(head), next, Release) {
                         unsafe {
                             guard.unlinked(head);
-                            return Some(ptr::read(&(*head).data));
+                            return Some(head.data.take());
                         }
                     }
                 }

@@ -1,9 +1,10 @@
 use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
 use std::sync::atomic::AtomicBool;
-use std::{ptr, mem};
+use std::mem;
 use std::thread::{self, Thread};
 
 use epoch::{self, Atomic, Owned, Shared};
+use sync::spot;
 use CachePadded;
 
 /// A Michael-Scott lock-free queue, with support for blocking `pop`s.
@@ -28,7 +29,7 @@ struct Node<T> {
 #[derive(Debug)]
 enum Payload<T> {
     /// A node with actual data that can be popped.
-    Data(T),
+    Data(spot::Spot<T>),
     /// A node representing a blocked request for data.
     Blocked(*mut Signal<T>),
 }
@@ -113,7 +114,7 @@ impl<T> MsQueue<T> {
                 match self {
                     Cache::Data(t) => {
                         Owned::new(Node {
-                            payload: Payload::Data(t),
+                            payload: Payload::Data(spot::Spot::new(t)),
                             next: Atomic::null()
                         })
                     }
@@ -127,7 +128,7 @@ impl<T> MsQueue<T> {
                     Cache::Data(t) => t,
                     Cache::Node(node) => {
                         match node.into_inner().payload {
-                            Payload::Data(t) => t,
+                            Payload::Data(t) => t.take(),
                             _ => unreachable!(),
                         }
                     }
@@ -197,7 +198,7 @@ impl<T> MsQueue<T> {
                 unsafe {
                     if self.head.cas_shared(Some(head), Some(next), Release) {
                         guard.unlinked(head);
-                        Ok(Some(ptr::read(t)))
+                        Ok(Some(t.take()))
                     } else {
                         Err(())
                     }
