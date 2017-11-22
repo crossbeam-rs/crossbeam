@@ -149,7 +149,7 @@ impl<T, C: Container<T>> List<T, C> {
     pub unsafe fn insert<'g>(&'g self, container: Shared<'g, T>, guard: &'g Guard) {
         let to = &self.head;
         let entry = &*C::entry_of(container.as_raw());
-        let entry_ptr = Shared::from_raw(entry);
+        let entry_ptr = Shared::from(entry as *const _);
         let mut next = to.load(Relaxed, guard);
 
         loop {

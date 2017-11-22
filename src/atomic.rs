@@ -125,7 +125,7 @@ unsafe impl<T: Send + Sync> Sync for Atomic<T> {}
 impl<T> Atomic<T> {
     /// Returns a new atomic pointer pointing to the tagged pointer `data`.
     fn from_data(data: usize) -> Self {
-        Atomic {
+        Self {
             data: AtomicUsize::new(data),
             _marker: PhantomData,
         }
@@ -141,8 +141,8 @@ impl<T> Atomic<T> {
     /// let a = Atomic::<i32>::null();
     /// ```
     #[cfg(not(feature = "nightly"))]
-    pub fn null() -> Self {
-        Atomic {
+    pub fn null() -> Atomic<T> {
+        Self {
             data: ATOMIC_USIZE_INIT,
             _marker: PhantomData,
         }
@@ -158,8 +158,8 @@ impl<T> Atomic<T> {
     /// let a = Atomic::<i32>::null();
     /// ```
     #[cfg(feature = "nightly")]
-    pub const fn null() -> Self {
-        Atomic {
+    pub const fn null() -> Atomic<T> {
+        Self {
             data: ATOMIC_USIZE_INIT,
             _marker: PhantomData,
         }
@@ -174,49 +174,8 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::new(1234);
     /// ```
-    pub fn new(value: T) -> Self {
-        Self::from_owned(Owned::new(value))
-    }
-
-    /// Returns a new atomic pointer pointing to `owned`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{Atomic, Owned};
-    ///
-    /// let a = Atomic::from_owned(Owned::new(1234));
-    /// ```
-    pub fn from_owned(owned: Owned<T>) -> Self {
-        let data = owned.into_data();
-        Self::from_data(data)
-    }
-
-    /// Returns a new atomic pointer pointing to `ptr`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{Atomic, Shared};
-    ///
-    /// let a = Atomic::from_ptr(Shared::<i32>::null());
-    /// ```
-    pub fn from_ptr(ptr: Shared<T>) -> Self {
-        Self::from_data(ptr.into_data())
-    }
-
-    /// Returns a new atomic pointer pointing to `raw`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::ptr;
-    /// use crossbeam_epoch::{Atomic, Shared};
-    ///
-    /// let a = Atomic::from_raw(ptr::null::<i32>());
-    /// ```
-    pub fn from_raw(raw: *const T) -> Self {
-        Self::from_data(raw as usize)
+    pub fn new(value: T) -> Atomic<T> {
+        Self::from(Owned::new(value))
     }
 
     /// Loads a `Shared` from the atomic pointer.
@@ -416,7 +375,7 @@ impl<T> Atomic<T> {
     /// use crossbeam_epoch::{self as epoch, Atomic, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
-    /// let a = Atomic::<i32>::from_ptr(Shared::null().with_tag(3));
+    /// let a = Atomic::<i32>::from(Shared::null().with_tag(3));
     /// let guard = &epoch::pin();
     /// assert_eq!(a.fetch_and(2, SeqCst, guard).tag(), 3);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
@@ -441,7 +400,7 @@ impl<T> Atomic<T> {
     /// use crossbeam_epoch::{self as epoch, Atomic, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
-    /// let a = Atomic::<i32>::from_ptr(Shared::null().with_tag(1));
+    /// let a = Atomic::<i32>::from(Shared::null().with_tag(1));
     /// let guard = &epoch::pin();
     /// assert_eq!(a.fetch_or(2, SeqCst, guard).tag(), 1);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 3);
@@ -466,7 +425,7 @@ impl<T> Atomic<T> {
     /// use crossbeam_epoch::{self as epoch, Atomic, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
-    /// let a = Atomic::<i32>::from_ptr(Shared::null().with_tag(1));
+    /// let a = Atomic::<i32>::from(Shared::null().with_tag(1));
     /// let guard = &epoch::pin();
     /// assert_eq!(a.fetch_xor(3, SeqCst, guard).tag(), 1);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
@@ -513,27 +472,63 @@ impl<T> Default for Atomic<T> {
     }
 }
 
-impl<T> From<T> for Atomic<T> {
-    fn from(t: T) -> Self {
-        Atomic::new(t)
+impl<T> From<Owned<T>> for Atomic<T> {
+    /// Returns a new atomic pointer pointing to `owned`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{Atomic, Owned};
+    ///
+    /// let a = Atomic::<i32>::from(Owned::new(1234));
+    /// ```
+    fn from(owned: Owned<T>) -> Self {
+        let data = owned.data;
+        mem::forget(owned);
+        Self::from_data(data)
     }
 }
 
 impl<T> From<Box<T>> for Atomic<T> {
     fn from(b: Box<T>) -> Self {
-        Atomic::from_owned(Owned::from_box(b))
+        Self::from(Owned::from(b))
     }
 }
 
-impl<T> From<Owned<T>> for Atomic<T> {
-    fn from(owned: Owned<T>) -> Self {
-        Atomic::from_owned(owned)
+impl<T> From<T> for Atomic<T> {
+    fn from(t: T) -> Self {
+        Self::new(t)
     }
 }
 
 impl<'g, T> From<Shared<'g, T>> for Atomic<T> {
-    fn from(ptr: Shared<T>) -> Self {
-        Atomic::from_ptr(ptr)
+    /// Returns a new atomic pointer pointing to `ptr`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{Atomic, Shared};
+    ///
+    /// let a = Atomic::<i32>::from(Shared::<i32>::null());
+    /// ```
+    fn from(ptr: Shared<'g, T>) -> Self {
+        Self::from_data(ptr.data)
+    }
+}
+
+impl<T> From<*const T> for Atomic<T> {
+    /// Returns a new atomic pointer pointing to `raw`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::ptr;
+    /// use crossbeam_epoch::Atomic;
+    ///
+    /// let a = Atomic::<i32>::from(ptr::null::<i32>());
+    /// ```
+    fn from(raw: *const T) -> Self {
+        Self::from_data(raw as usize)
     }
 }
 
@@ -590,25 +585,8 @@ impl<T> Owned<T> {
     ///
     /// let o = Owned::new(1234);
     /// ```
-    pub fn new(value: T) -> Self {
-        Self::from_box(Box::new(value))
-    }
-
-    /// Returns a new owned pointer pointing to `b`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the pointer (the `Box`) is not properly aligned.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Owned;
-    ///
-    /// let o = unsafe { Owned::from_raw(Box::into_raw(Box::new(1234))) };
-    /// ```
-    pub fn from_box(b: Box<T>) -> Self {
-        unsafe { Self::from_raw(Box::into_raw(b)) }
+    pub fn new(value: T) -> Owned<T> {
+        Self::from(Box::new(value))
     }
 
     /// Returns a new owned pointer pointing to `raw`.
@@ -628,7 +606,7 @@ impl<T> Owned<T> {
     ///
     /// let o = unsafe { Owned::from_raw(Box::into_raw(Box::new(1234))) };
     /// ```
-    pub unsafe fn from_raw(raw: *mut T) -> Self {
+    pub unsafe fn from_raw(raw: *mut T) -> Owned<T> {
         ensure_aligned(raw);
         Self::from_data(raw as usize)
     }
@@ -648,22 +626,6 @@ impl<T> Owned<T> {
     /// [`Shared`]: struct.Shared.html
     pub fn into_ptr<'g>(self, _: &'g Guard) -> Shared<'g, T> {
         unsafe { Shared::from_data(self.into_data()) }
-    }
-
-    /// Converts the owned pointer into a `Box`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{self as epoch, Owned};
-    ///
-    /// let o = Owned::new(1234);
-    /// let b: Box<i32> = o.into_box();
-    /// assert_eq!(*b, 1234);
-    /// ```
-    pub fn into_box(self) -> Box<T> {
-        let (raw, _) = decompose_data::<T>(self.into_data());
-        unsafe { Box::from_raw(raw) }
     }
 
     /// Returns the tag stored within the pointer.
@@ -693,7 +655,7 @@ impl<T> Owned<T> {
     /// let o = o.with_tag(5);
     /// assert_eq!(o.tag(), 5);
     /// ```
-    pub fn with_tag(self, tag: usize) -> Self {
+    pub fn with_tag(self, tag: usize) -> Owned<T> {
         let data = self.into_data();
         unsafe { Self::from_data(data_with_tag::<T>(data, tag)) }
     }
@@ -748,8 +710,40 @@ impl<T> From<T> for Owned<T> {
 }
 
 impl<T> From<Box<T>> for Owned<T> {
+    /// Returns a new owned pointer pointing to `b`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the pointer (the `Box`) is not properly aligned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::Owned;
+    ///
+    /// let o = unsafe { Owned::from_raw(Box::into_raw(Box::new(1234))) };
+    /// ```
     fn from(b: Box<T>) -> Self {
-        Owned::from_box(b)
+        unsafe { Self::from_raw(Box::into_raw(b)) }
+    }
+}
+
+impl<T> Into<Box<T>> for Owned<T> {
+    /// Converts the owned pointer into a `Box`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Owned};
+    ///
+    /// let o = Owned::new(1234);
+    /// let b: Box<i32> = o.into();
+    /// assert_eq!(*b, 1234);
+    /// ```
+    fn into(self) -> Box<T> {
+        let (raw, _) = decompose_data::<T>(self.data);
+        mem::forget(self);
+        unsafe { Box::from_raw(raw) }
     }
 }
 
@@ -827,31 +821,9 @@ impl<'g, T> Shared<'g, T> {
     /// let p = Shared::<i32>::null();
     /// assert!(p.is_null());
     /// ```
-    pub fn null() -> Self {
+    pub fn null() -> Shared<'g, T> {
         Shared {
             data: 0,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a new pointer pointing to `raw`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `raw` is not properly aligned.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Shared;
-    ///
-    /// let p = unsafe { Shared::from_raw(Box::into_raw(Box::new(1234))) };
-    /// assert!(!p.is_null());
-    /// ```
-    pub fn from_raw(raw: *const T) -> Self {
-        ensure_aligned(raw);
-        Shared {
-            data: raw as usize,
             _marker: PhantomData,
         }
     }
@@ -884,7 +856,7 @@ impl<'g, T> Shared<'g, T> {
     ///
     /// let o = Owned::new(1234);
     /// let raw = &*o as *const _;
-    /// let a = Atomic::from_owned(o);
+    /// let a = Atomic::from(o);
     ///
     /// let guard = &epoch::pin();
     /// let p = a.load(SeqCst, guard);
@@ -992,7 +964,7 @@ impl<'g, T> Shared<'g, T> {
     pub unsafe fn into_owned(self) -> Owned<T> {
         debug_assert!(
             self.as_raw() != ptr::null(),
-            "converting a null `Ptr` into `Owned`"
+            "converting a null `Shared` into `Owned`"
         );
         Owned::from_data(self.data)
     }
@@ -1005,7 +977,7 @@ impl<'g, T> Shared<'g, T> {
     /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
-    /// let a = Atomic::from_owned(Owned::new(0u64).with_tag(5));
+    /// let a = Atomic::<u64>::from(Owned::new(0u64).with_tag(5));
     /// let guard = &epoch::pin();
     /// let p = a.load(SeqCst, guard);
     /// assert_eq!(p.tag(), 5);
@@ -1033,8 +1005,29 @@ impl<'g, T> Shared<'g, T> {
     /// assert_eq!(p2.tag(), 5);
     /// assert_eq!(p1.as_raw(), p2.as_raw());
     /// ```
-    pub fn with_tag(&self, tag: usize) -> Self {
+    pub fn with_tag(&self, tag: usize) -> Shared<'g, T> {
         unsafe { Self::from_data(data_with_tag::<T>(self.data, tag)) }
+    }
+}
+
+impl<'g, T> From<*const T> for Shared<'g, T> {
+    /// Returns a new pointer pointing to `raw`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `raw` is not properly aligned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::Shared;
+    ///
+    /// let p = unsafe { Shared::from(Box::into_raw(Box::new(1234)) as *const _) };
+    /// assert!(!p.is_null());
+    /// ```
+    fn from(raw: *const T) -> Self {
+        ensure_aligned(raw);
+        unsafe { Self::from_data(raw as usize) }
     }
 }
 
