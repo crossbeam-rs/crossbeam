@@ -782,8 +782,6 @@ pub struct Shared<'g, T: 'g> {
     _marker: PhantomData<(&'g (), *const T)>,
 }
 
-unsafe impl<'g, T: Send> Send for Shared<'g, T> {}
-
 impl<'g, T> Clone for Shared<'g, T> {
     fn clone(&self) -> Self {
         Shared {

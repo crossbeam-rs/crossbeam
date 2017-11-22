@@ -35,8 +35,6 @@ struct Node<T> {
     next: Atomic<Node<T>>,
 }
 
-unsafe impl<T> Send for Node<T> {}
-
 // Any particular `T` should never be accessed concurrently, so no need for `Sync`.
 unsafe impl<T: Send> Sync for Queue<T> {}
 unsafe impl<T: Send> Send for Queue<T> {}
