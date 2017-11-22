@@ -156,7 +156,7 @@ impl<T, C: Container<T>> List<T, C> {
             entry.next.store(next, Relaxed);
             match to.compare_and_set_weak(next, entry_ptr, Release, guard) {
                 Ok(_) => break,
-                Err((_, n)) => next = n,
+                Err(err) => next = err.new,
             }
         }
     }
@@ -227,10 +227,10 @@ impl<'g, T: 'g, C: Container<T>> Iterator for Iter<'g, T, C> {
                         }
                         self.curr = succ;
                     }
-                    Err((_, succ)) => {
+                    Err(err) => {
                         // We lost the race to delete the entry by a concurrent iterator. Set
                         // `self.curr` to the updated pointer, and report that we are stalled.
-                        self.curr = succ;
+                        self.curr = err.new;
                         return Some(Err(IterError::Stalled));
                     }
                 }

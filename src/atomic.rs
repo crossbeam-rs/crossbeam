@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize};
+use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
 use std::sync::atomic::Ordering;
 
 use guard::Guard;
@@ -20,6 +20,15 @@ fn strongest_failure_ordering(ord: Ordering) -> Ordering {
         Acquire | AcqRel => Acquire,
         _ => SeqCst,
     }
+}
+
+/// The error returned on failed compare-and-set operation.
+pub struct CompareAndSetError<'g, T: 'g, P: Pointer<T>> {
+    /// The value in the atomic pointer at the time of the failed operation.
+    pub previous: Shared<'g, T>,
+
+    /// The new value, which the operation failed to store.
+    pub new: P,
 }
 
 /// Memory orderings for compare-and-set operations.
@@ -305,7 +314,7 @@ impl<T> Atomic<T> {
         new: P,
         ord: O,
         _: &'g Guard,
-    ) -> Result<Shared<'g, T>, (Shared<'g, T>, P)>
+    ) -> Result<Shared<'g, T>, CompareAndSetError<'g, T, P>>
     where
         O: CompareAndSetOrdering,
         P: Pointer<T>,
@@ -315,7 +324,10 @@ impl<T> Atomic<T> {
             .compare_exchange(current.into_data(), new, ord.success(), ord.failure())
             .map(|_| unsafe { Shared::from_data(new) })
             .map_err(|previous| unsafe {
-                (Shared::from_data(previous), P::from_data(new))
+                CompareAndSetError {
+                    previous: Shared::from_data(previous),
+                    new: P::from_data(new),
+                }
             })
     }
 
@@ -350,9 +362,9 @@ impl<T> Atomic<T> {
     ///             ptr = p;
     ///             break;
     ///         }
-    ///         Err((p, n)) => {
-    ///             ptr = p;
-    ///             new = n;
+    ///         Err(err) => {
+    ///             ptr = err.previous;
+    ///             new = err.new;
     ///         }
     ///     }
     /// }
@@ -361,7 +373,7 @@ impl<T> Atomic<T> {
     /// loop {
     ///     match a.compare_and_set_weak(curr, Shared::null(), SeqCst, guard) {
     ///         Ok(_) => break,
-    ///         Err((c, _)) => curr = c,
+    ///         Err(err) => curr = err.previous,
     ///     }
     /// }
     /// ```
@@ -371,7 +383,7 @@ impl<T> Atomic<T> {
         new: P,
         ord: O,
         _: &'g Guard,
-    ) -> Result<Shared<'g, T>, (Shared<'g, T>, P)>
+    ) -> Result<Shared<'g, T>, CompareAndSetError<'g, T, P>>
     where
         O: CompareAndSetOrdering,
         P: Pointer<T>,
@@ -381,7 +393,10 @@ impl<T> Atomic<T> {
             .compare_exchange_weak(current.into_data(), new, ord.success(), ord.failure())
             .map(|_| unsafe { Shared::from_data(new) })
             .map_err(|previous| unsafe {
-                (Shared::from_data(previous), P::from_data(new))
+                CompareAndSetError {
+                    previous: Shared::from_data(previous),
+                    new: P::from_data(new),
+                }
             })
     }
 
@@ -526,6 +541,7 @@ impl<'g, T> From<Shared<'g, T>> for Atomic<T> {
 pub trait Pointer<T> {
     /// Returns the machine representation of the pointer.
     fn into_data(self) -> usize;
+
     /// Returns a new pointer pointing to the tagged pointer `data`.
     unsafe fn from_data(data: usize) -> Self;
 }
@@ -974,7 +990,10 @@ impl<'g, T> Shared<'g, T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
-        debug_assert!(self.as_raw() != ptr::null(), "converting a null `Ptr` into `Owned`");
+        debug_assert!(
+            self.as_raw() != ptr::null(),
+            "converting a null `Ptr` into `Owned`"
+        );
         Owned::from_data(self.data)
     }
 

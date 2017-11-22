@@ -73,7 +73,7 @@ mod guard;
 mod internal;
 mod sync;
 
-pub use self::atomic::{Atomic, CompareAndSetOrdering, Owned, Shared};
+pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared};
 pub use self::guard::{unprotected, Guard};
 pub use self::default::{default_handle, is_pinned, pin};
 pub use self::collector::{Collector, Handle};
