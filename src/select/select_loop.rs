@@ -75,109 +75,90 @@ macro_rules! select_loop {
 
             // The actual select loop which a user would write manually
             #[allow(unreachable_code)]
-            'select: loop {
-                // This double-loop construct is used to guard against the user
-                // using unlabeled breaks / continues in their code.
-                //
-                // It works by abusing rustc's control flow analysis:
-                //
-                // 1) The _guard variable is declared
-                // 2) The generated code will assign a value to _guard [A0]
-                //    immediately after an operation was successful (before
-                //    running any user code)
-                // 3) There is another assignment to _guard [A1] directly after
-                //    the inner loop.
-                // 4) If the user has an unlabeled break in their code, rustc
-                //    will complain because both [A0] and [A1] assign to guard.
-                //    If the user has an unlabeled continue in their code, rustc
-                //    will complain because [A0] may assign to guard twice.
-                // 5) Directly after executing the user code, we break the
-                //    outer loop, so we don't trigger the error ourselves.
-                // 6) To avoid an infinite loop, we manually continue to the
-                //    outer loop at the very end of the inner loop.
-                let _dont_use_an_unlabeled_continue_or_break_in_select_loop;
-                loop {
-                    $(
-                        // Build the actual method invocations.
-                        select_loop! {
-                            @impl(
-                                'select,
-                                state,
-                                _dont_use_an_unlabeled_continue_or_break_in_select_loop
-                            )
-                            $method($($args)*) => $body
+            loop {
+                #[allow(bad_style)]
+                struct _DONT_USE_AN_UNLABELED_CONTINUE_OR_BREAK_IN_SELECT_LOOP;
+
+                $(
+                    // Build the actual method invocations.
+                    select_loop! {
+                        @impl(state)
+                        $method($($args)*) => {
+                            // This double-loop construct is used to guard against the user
+                            // using unlabeled breaks and continues in their code.
+                            //
+                            // It works by abusing  ust's control flow analysis. If the user
+                            // code (`$body`) contains an unlabeled break or continue, the
+                            // inner loop will be broken with a result whose type doesn't match
+                            // `_DONT_USE_AN_UNLABELED_CONTINUE_OR_BREAK_IN_SELECT_LOOP`, and
+                            // that will show up in error messages.
+                            let res;
+                            let _: _DONT_USE_AN_UNLABELED_CONTINUE_OR_BREAK_IN_SELECT_LOOP = loop {
+                                res = $body;
+                                break _DONT_USE_AN_UNLABELED_CONTINUE_OR_BREAK_IN_SELECT_LOOP;
+                            };
+                            break res;
                         }
-                    )*
-                    continue 'select;
-                }
-                _dont_use_an_unlabeled_continue_or_break_in_select_loop = ();
+                    }
+                )*
             }
         }
     };
 
     //The individual method invocations
-    {@impl($select:tt, $state:ident, $guard:ident) send($tx:expr, $val:ident) => $body:expr} => {
+    {@impl($state:ident) send($tx:expr, $val:ident) => $body:expr} => {
         match $state.send(&*&$tx, $val) {
             Ok(()) => {
-                $guard = ();
-                break $select $body;
+                $body
             }
             Err($crate::SelectSendError(val)) => {
                 $val = val;
             }
         }
     };
-    {@impl($select:tt, $state:ident, $guard:ident) send($tx:expr, mut $val:expr) => $body:expr} => {
+    {@impl($state:ident) send($tx:expr, mut $val:expr) => $body:expr} => {
         match $state.send(&*&$tx, $val) {
             Ok(()) => {
-                $guard = ();
-                break $select $body;
+                $body
             }
             Err($crate::SelectSendError(val)) => {
                 $val = val;
             }
         }
     };
-    {@impl($select:tt, $state:ident, $guard:ident) send($tx:expr, eval $val:expr) => $body:expr} => {
+    {@impl($state:ident) send($tx:expr, eval $val:expr) => $body:expr} => {
         if let Ok(()) = $state.send(&*&$tx, $val) {
-            $guard = ();
-            break $select $body;
+            $body
         }
     };
-    {@impl($select:tt, $state:ident, $guard:ident) recv($rx:expr, _) => $body:expr} => {
+    {@impl($state:ident) recv($rx:expr, _) => $body:expr} => {
         if let Ok(_) = $state.recv(&*&$rx) {
-            $guard = ();
-            break $select $body;
+            $body
         }
     };
-    {@impl($select:tt, $state:ident, $guard:ident) recv($rx:expr, $val:ident) => $body:expr} => {
+    {@impl($state:ident) recv($rx:expr, $val:ident) => $body:expr} => {
         if let Ok($val) = $state.recv(&*&$rx) {
-            $guard = ();
-            break $select $body;
+            $body
         }
     };
-    {@impl($select:tt, $state:ident, $guard:ident) recv($rx:expr, mut $val:ident) => $body:expr} => {
+    {@impl($state:ident) recv($rx:expr, mut $val:ident) => $body:expr} => {
         if let Ok(mut $val) = $state.recv(&*&$rx) {
-            $guard = ();
-            break $select $body;
+            $body
         }
     };
-    {@impl($select:tt, $state:ident, $guard:ident) disconnected() => $body:expr} => {
+    {@impl($state:ident) disconnected() => $body:expr} => {
         if $state.disconnected() {
-            $guard = ();
-            break $select $body;
+            $body
         }
     };
-    {@impl($select:tt, $state:ident, $guard:ident) would_block() => $body:expr} => {
+    {@impl($state:ident) would_block() => $body:expr} => {
         if $state.would_block() {
-            $guard = ();
-            break $select $body;
+            $body
         }
     };
-    {@impl($select:tt, $state:ident, $guard:ident) timed_out($_timeout:expr) => $body:expr} => {
+    {@impl($state:ident) timed_out($_timeout:expr) => $body:expr} => {
         if $state.timed_out() {
-            $guard = ();
-            break $select $body;
+            $body
         }
     };
 
@@ -189,46 +170,4 @@ macro_rules! select_loop {
         let mut $state = $crate::Select::with_timeout($timeout);
     };
     {@prelude($state:ident) $($tail:tt)*} => {};
-}
-
-#[cfg(test)]
-mod tests {
-    use ::{Receiver, Sender};
-    use std::time::Duration;
-
-    struct _Foo(String);
-
-    fn _it_compiles(
-        mut struct_val: _Foo,
-        immutable_var: String,
-        eval_var: String,
-        rx0: Receiver<String>,
-        rx1: &Receiver<u32>,
-        rx2: Receiver<String>,
-        rx3: Receiver<String>,
-        tx0: &mut Sender<String>,
-        tx1: Sender<String>,
-        tx2: Sender<String>,
-        tx3: Sender<String>,
-        tx4: Sender<String>,
-        tx5: Sender<u32>,
-    ) -> Option<String> {
-        select_loop! {
-            recv(rx0, val) => Some(val),
-            recv(rx1, val) => Some(val.to_string()),
-            recv(rx2, mut val) => Some(val.as_mut_str().to_owned()),
-            recv(rx3, _) => None,
-            send(tx0, mut struct_val.0) => Some(immutable_var),
-            send(tx1, immutable_var) => Some(struct_val.0),
-            send(tx2, eval struct_val.0.clone()) => Some(struct_val.0),
-            send(tx3, immutable_var) => Some(eval_var),
-            send(tx4, eval eval_var.clone()) => Some(eval_var),
-            send(tx5, eval 42) => None,
-            disconnected() => Some("disconnected".into()),
-            would_block() => Some("would_block".into()),
-            timed_out(Duration::from_secs(1)) => Some("timed_out".into()),
-            //The previous timeout duration is overwritten
-            timed_out(Duration::from_secs(2)) => Some("timet_out".into()),
-        }
-    }
 }
