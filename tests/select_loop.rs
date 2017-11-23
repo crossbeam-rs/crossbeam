@@ -815,7 +815,7 @@ fn matching() {
 
 #[test]
 fn matching_with_leftover() {
-    let (tx, rx) = channel::bounded(1);
+    let (tx, rx) = channel::bounded(0);
     let (tx, rx) = (&tx, &rx);
 
     crossbeam::scope(|s| {
