@@ -77,7 +77,7 @@ macro_rules! select_loop {
             #[allow(unreachable_code)]
             loop {
                 #[allow(bad_style)]
-                struct _DONT_USE_AN_UNLABELED_CONTINUE_OR_BREAK_IN_SELECT_LOOP;
+                struct _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP;
 
                 $(
                     // Build the actual method invocations.
@@ -86,16 +86,25 @@ macro_rules! select_loop {
                         $method($($args)*) => {
                             // This double-loop construct is used to guard against the user
                             // using unlabeled breaks and continues in their code.
+                            // It works by abusing Rust's control flow analysis.
                             //
-                            // It works by abusing  ust's control flow analysis. If the user
-                            // code (`$body`) contains an unlabeled break or continue, the
+                            // If the user code (`$body`) contains an unlabeled break, the
                             // inner loop will be broken with a result whose type doesn't match
-                            // `_DONT_USE_AN_UNLABELED_CONTINUE_OR_BREAK_IN_SELECT_LOOP`, and
-                            // that will show up in error messages.
+                            // `_DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP`, and that
+                            // will show up in error messages.
+                            //
+                            // Similarly, if the user code contains an unlabeled continue,
+                            // the inner loop will try to assign a value to variable
+                            // `_DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP` twice, which
+                            // will again show up in error messages.
+                            #[allow(bad_style)]
+                            let _DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP;
+
                             let res;
-                            let _: _DONT_USE_AN_UNLABELED_CONTINUE_OR_BREAK_IN_SELECT_LOOP = loop {
+                            let _: _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP = loop {
+                                _DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP = ();
                                 res = $body;
-                                break _DONT_USE_AN_UNLABELED_CONTINUE_OR_BREAK_IN_SELECT_LOOP;
+                                break _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP;
                             };
                             break res;
                         }
