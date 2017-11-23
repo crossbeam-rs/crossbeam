@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 use std::time::Instant;
 
-use coco::epoch::{self, Atomic, Owned};
+use crossbeam_epoch::{self as epoch, Atomic, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
@@ -109,112 +109,110 @@ impl<T> Channel<T> {
             _marker: PhantomData,
         };
 
-        unsafe {
-            // Create an empty node, into which both head and tail point at the beginning.
-            epoch::unprotected(|scope| {
-                let node = Owned::new(Node::new(0)).into_ptr(scope);
-                channel.head.node.store(node, Relaxed);
-                channel.tail.node.store(node, Relaxed);
-            })
-        }
+        // Create an empty node, into which both head and tail point at the beginning.
+        let node = unsafe {
+            Owned::new(Node::new(0)).into_ptr(epoch::unprotected())
+        };
+        channel.head.node.store(node, Relaxed);
+        channel.tail.node.store(node, Relaxed);
 
         channel
     }
 
     /// Pushes `value` into the queue.
     fn push(&self, value: T) {
-        epoch::pin(|scope| {
-            let mut backoff = Backoff::new();
-            loop {
-                let tail = unsafe { self.tail.node.load(Acquire, scope).deref() };
-                let index = self.tail.index.load(Relaxed);
-                let new_index = index.wrapping_add(1);
-                let offset = index.wrapping_sub(tail.start_index);
+        let guard = &epoch::pin();
 
-                // If `index` is pointing into `tail`...
-                if offset < NODE_CAP {
-                    // if `index` is pointing into `tail`, try moving the tail index forward.
-                    if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
-                        // If this was the last entry in the node, allocate a new one.
-                        if offset + 1 == NODE_CAP {
-                            let new = Owned::new(Node::new(new_index)).into_ptr(scope);
-                            tail.next.store(new, Release);
-                            self.tail.node.store(new, Release);
-                        }
+        let mut backoff = Backoff::new();
+        loop {
+            let tail = unsafe { self.tail.node.load(Acquire, guard).deref() };
+            let index = self.tail.index.load(Relaxed);
+            let new_index = index.wrapping_add(1);
+            let offset = index.wrapping_sub(tail.start_index);
 
-                        // Write `value` into the corresponding entry.
-                        unsafe {
-                            let entry = tail.entries.get_unchecked(offset).get();
-                            ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
-                            (*entry).ready.store(true, Release);
-                        }
-                        return;
+            // If `index` is pointing into `tail`...
+            if offset < NODE_CAP {
+                // if `index` is pointing into `tail`, try moving the tail index forward.
+                if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
+                    // If this was the last entry in the node, allocate a new one.
+                    if offset + 1 == NODE_CAP {
+                        let new = Owned::new(Node::new(new_index)).into_ptr(guard);
+                        tail.next.store(new, Release);
+                        self.tail.node.store(new, Release);
                     }
-                }
 
-                backoff.step();
+                    // Write `value` into the corresponding entry.
+                    unsafe {
+                        let entry = tail.entries.get_unchecked(offset).get();
+                        ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
+                        (*entry).ready.store(true, Release);
+                    }
+                    return;
+                }
             }
-        })
+
+            backoff.step();
+        }
     }
 
     /// Attempts to pop a value from the queue.
     ///
     /// Returns `None` if the queue is empty.
     fn pop(&self) -> Option<T> {
-        epoch::pin(|scope| {
-            let mut backoff = Backoff::new();
-            loop {
-                let head_ptr = self.head.node.load(Acquire, scope);
-                let head = unsafe { head_ptr.deref() };
-                let index = self.head.index.load(SeqCst);
-                let new_index = index.wrapping_add(1);
-                let offset = index.wrapping_sub(head.start_index);
+        let guard = &epoch::pin();
 
-                // If `index` is pointing into `head`...
-                if offset < NODE_CAP {
-                    let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
+        let mut backoff = Backoff::new();
+        loop {
+            let head_ptr = self.head.node.load(Acquire, guard);
+            let head = unsafe { head_ptr.deref() };
+            let index = self.head.index.load(SeqCst);
+            let new_index = index.wrapping_add(1);
+            let offset = index.wrapping_sub(head.start_index);
 
-                    // If this entry does not contain the value and the tail equals the head, then
-                    // the queue is empty.
-                    if !entry.ready.load(Relaxed) && self.tail.index.load(SeqCst) == index {
-                        return None;
-                    }
+            // If `index` is pointing into `head`...
+            if offset < NODE_CAP {
+                let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
 
-                    // Try moving the head index forward.
-                    if self.head.index.compare_and_swap(index, new_index, SeqCst) == index {
-                        // If this was the last entry in the node, defer its destruction.
-                        if offset + 1 == NODE_CAP {
-                            // Wait until the next pointer becomes non-null.
-                            loop {
-                                let next = head.next.load(Acquire, scope);
-                                if !next.is_null() {
-                                    self.head.node.store(next, Release);
-                                    break;
-                                }
-                                backoff.step();
+                // If this entry does not contain the value and the tail equals the head, then the
+                // queue is empty.
+                if !entry.ready.load(Relaxed) && self.tail.index.load(SeqCst) == index {
+                    return None;
+                }
+
+                // Try moving the head index forward.
+                if self.head.index.compare_and_swap(index, new_index, SeqCst) == index {
+                    // If this was the last entry in the node, defer its destruction.
+                    if offset + 1 == NODE_CAP {
+                        // Wait until the next pointer becomes non-null.
+                        loop {
+                            let next = head.next.load(Acquire, guard);
+                            if !next.is_null() {
+                                self.head.node.store(next, Release);
+                                break;
                             }
-
-                            unsafe {
-                                scope.defer_free(head_ptr);
-                            }
-                        }
-
-                        while !entry.ready.load(Acquire) {
                             backoff.step();
                         }
 
-                        let v = unsafe { ptr::read(&(*entry).value) };
-                        let value = ManuallyDrop::into_inner(v);
-                        return Some(value);
+                        unsafe {
+                            guard.defer(move || head_ptr.into_owned());
+                        }
                     }
-                }
 
-                backoff.step();
+                    while !entry.ready.load(Acquire) {
+                        backoff.step();
+                    }
+
+                    let v = unsafe { ptr::read(&(*entry).value) };
+                    let value = ManuallyDrop::into_inner(v);
+                    return Some(value);
+                }
             }
-        })
+
+            backoff.step();
+        }
     }
 
-    /// Returns the current number of values inside the channel.
+    /// Returns the current number of messages inside the channel.
     pub fn len(&self) -> usize {
         loop {
             let tail_index = self.tail.index.load(SeqCst);
@@ -227,29 +225,29 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to send `value` into the channel.
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+    /// Attempts to send `msg` into the channel.
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(value))
+            Err(TrySendError::Disconnected(msg))
         } else {
-            self.push(value);
+            self.push(msg);
             self.receivers.notify_one();
             Ok(())
         }
     }
 
-    /// Send `value` into the channel.
-    pub fn send(&self, value: T) -> Result<(), SendTimeoutError<T>> {
+    /// Send `msg` into the channel.
+    pub fn send(&self, msg: T) -> Result<(), SendTimeoutError<T>> {
         if self.closed.load(SeqCst) {
-            Err(SendTimeoutError::Disconnected(value))
+            Err(SendTimeoutError::Disconnected(msg))
         } else {
-            self.push(value);
+            self.push(msg);
             self.receivers.notify_one();
             Ok(())
         }
     }
 
-    /// Attempts to receive a value from channel.
+    /// Attempts to receive a message from channel.
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let closed = self.closed.load(SeqCst);
         match self.pop() {
@@ -260,11 +258,11 @@ impl<T> Channel<T> {
                     Err(TryRecvError::Empty)
                 }
             },
-            Some(v) => Ok(v),
+            Some(msg) => Ok(msg),
         }
     }
 
-    /// Attempts to receive a value from the channel until the specified `deadline`.
+    /// Attempts to receive a message from the channel until the specified `deadline`.
     pub fn recv_until(
         &self,
         deadline: Option<Instant>,
@@ -274,8 +272,8 @@ impl<T> Channel<T> {
             let backoff = &mut Backoff::new();
             loop {
                 let closed = self.closed.load(SeqCst);
-                if let Some(v) = self.pop() {
-                    return Ok(v);
+                if let Some(msg) = self.pop() {
+                    return Ok(msg);
                 }
                 if closed {
                     return Err(RecvTimeoutError::Disconnected);
@@ -316,7 +314,9 @@ impl<T> Channel<T> {
 
     /// Returns `true` if the channel is empty.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        let head_index = self.head.index.load(SeqCst);
+        let tail_index = self.tail.index.load(SeqCst);
+        head_index == tail_index
     }
 
     /// Returns a reference to the monitor for this channel's receivers.
@@ -331,32 +331,30 @@ impl<T> Drop for Channel<T> {
         let mut head_index = self.head.index.load(Relaxed);
 
         unsafe {
-            epoch::unprotected(|scope| {
-                let mut head_ptr = self.head.node.load(Relaxed, scope);
+            let mut head_ptr = self.head.node.load(Relaxed, epoch::unprotected());
 
-                // Manually drop all values between `head_index` and `tail_index` and destroy the
-                // heap-allocated nodes along the way.
-                while head_index != tail_index {
-                    let head = head_ptr.deref();
-                    let offset = head_index.wrapping_sub(head.start_index);
+            // Manually drop all values between `head_index` and `tail_index` and destroy the
+            // heap-allocated nodes along the way.
+            while head_index != tail_index {
+                let head = head_ptr.deref();
+                let offset = head_index.wrapping_sub(head.start_index);
 
-                    let entry = &mut *head.entries.get_unchecked(offset).get();
-                    ManuallyDrop::drop(&mut (*entry).value);
+                let entry = &mut *head.entries.get_unchecked(offset).get();
+                ManuallyDrop::drop(&mut (*entry).value);
 
-                    if offset + 1 == NODE_CAP {
-                        let next = head.next.load(Relaxed, scope);
-                        head_ptr.destroy();
-                        head_ptr = next;
-                    }
-
-                    head_index = head_index.wrapping_add(1);
+                if offset + 1 == NODE_CAP {
+                    let next = head.next.load(Relaxed, epoch::unprotected());
+                    drop(head_ptr.into_owned());
+                    head_ptr = next;
                 }
 
-                // If there is one last remaining node in the end, destroy it.
-                if !head_ptr.is_null() {
-                    head_ptr.destroy();
-                }
-            })
+                head_index = head_index.wrapping_add(1);
+            }
+
+            // If there is one last remaining node in the end, destroy it.
+            if !head_ptr.is_null() {
+                drop(head_ptr.into_owned());
+            }
         }
     }
 }

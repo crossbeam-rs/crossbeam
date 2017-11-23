@@ -233,7 +233,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns the current number of values inside the channel.
+    /// Returns the current number of messages inside the channel.
     pub fn len(&self) -> usize {
         loop {
             // Load the tail, then load the head.
@@ -258,12 +258,12 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to send `value` into the channel.
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+    /// Attempts to send `msg` into the channel.
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(value))
+            Err(TrySendError::Disconnected(msg))
         } else {
-            match self.push(value, &mut Backoff::new()) {
+            match self.push(msg, &mut Backoff::new()) {
                 None => {
                     self.receivers.notify_one();
                     Ok(())
@@ -273,25 +273,25 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to send `value` into the channel until the specified `deadline`.
+    /// Attempts to send `msg` into the channel until the specified `deadline`.
     pub fn send_until(
         &self,
-        mut value: T,
+        mut msg: T,
         deadline: Option<Instant>,
         case_id: CaseId,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
             if self.closed.load(SeqCst) {
-                return Err(SendTimeoutError::Disconnected(value))
+                return Err(SendTimeoutError::Disconnected(msg))
             } else {
                 let backoff = &mut Backoff::new();
                 loop {
-                    match self.push(value, backoff) {
+                    match self.push(msg, backoff) {
                         None => {
                             self.receivers.notify_one();
                             return Ok(());
                         }
-                        Some(v) => value = v,
+                        Some(m) => msg = m,
                     }
                     if !backoff.step() {
                         break;
@@ -306,20 +306,20 @@ impl<T> Channel<T> {
             self.senders.unregister(case_id);
 
             if is_closed {
-                return Err(SendTimeoutError::Disconnected(value));
+                return Err(SendTimeoutError::Disconnected(msg));
             } else if timed_out {
-                return Err(SendTimeoutError::Timeout(value));
+                return Err(SendTimeoutError::Timeout(msg));
             }
         }
     }
 
-    /// Attempts to receive a value from channel.
+    /// Attempts to receive a message from channel.
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let closed = self.closed.load(SeqCst);
         match self.pop(&mut Backoff::new()) {
-            Some(v) => {
+            Some(msg) => {
                 self.senders.notify_one();
-                Ok(v)
+                Ok(msg)
             }
             None => {
                 if closed {
@@ -331,7 +331,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to receive a value from the channel until the specified `deadline`.
+    /// Attempts to receive a message from the channel until the specified `deadline`.
     pub fn recv_until(
         &self,
         deadline: Option<Instant>,
@@ -390,12 +390,16 @@ impl<T> Channel<T> {
 
     /// Returns `true` if the channel is empty.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        let head = self.head.load(SeqCst);
+        let tail = self.tail.load(SeqCst);
+        tail.wrapping_add(self.power) == head
     }
 
     /// Returns `true` if the channel is full.
     pub fn is_full(&self) -> bool {
-        self.len() == self.cap
+        let tail = self.tail.load(SeqCst);
+        let head = self.head.load(SeqCst);
+        head.wrapping_add(self.power) == tail
     }
 
     /// Returns a reference to the monitor for this channel's senders.

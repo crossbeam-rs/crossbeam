@@ -1,7 +1,6 @@
 #![cfg_attr(feature = "nightly", feature(hint_core_should_pause))]
 
-extern crate coco;
-extern crate crossbeam;
+extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;
 extern crate rand;

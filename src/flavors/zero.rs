@@ -5,7 +5,7 @@
 use std::time::Instant;
 
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use exchanger::{Exchanger, ExchangeError};
+use exchanger::{ExchangeError, Exchanger};
 use select::CaseId;
 
 /// A zero-capacity channel.
@@ -17,7 +17,9 @@ pub struct Channel<T> {
 impl<T> Channel<T> {
     /// Returns a new zero-capacity channel.
     pub fn new() -> Self {
-        Channel { exchanger: Exchanger::new() }
+        Channel {
+            exchanger: Exchanger::new(),
+        }
     }
 
     /// Promises a send operation.
@@ -31,8 +33,8 @@ impl<T> Channel<T> {
     }
 
     /// Fulfills the promised send operation.
-    pub fn fulfill_send(&self, value: T) {
-        self.exchanger.left().fulfill(Some(value));
+    pub fn fulfill_send(&self, msg: T) {
+        self.exchanger.left().fulfill(Some(msg));
     }
 
     /// Promises a receive operation.
@@ -50,46 +52,54 @@ impl<T> Channel<T> {
         self.exchanger.right().fulfill(None).unwrap()
     }
 
-    /// Attempts to send `value` into the channel.
-    pub fn try_send(&self, value: T, case_id: CaseId) -> Result<(), TrySendError<T>> {
-        match self.exchanger.left().try_exchange(Some(value), case_id) {
+    /// Attempts to send `msg` into the channel.
+    pub fn try_send(&self, msg: T, case_id: CaseId) -> Result<(), TrySendError<T>> {
+        match self.exchanger.left().try_exchange(Some(msg), case_id) {
             Ok(_) => Ok(()),
-            Err(ExchangeError::Disconnected(v)) => Err(TrySendError::Disconnected(v.unwrap())),
-            Err(ExchangeError::Timeout(v)) => Err(TrySendError::Full(v.unwrap())),
+            Err(ExchangeError::Disconnected(msg)) => Err(TrySendError::Disconnected(msg.unwrap())),
+            Err(ExchangeError::Timeout(msg)) => Err(TrySendError::Full(msg.unwrap())),
         }
     }
 
-    /// Attempts to send `value` into the channel until the specified `deadline`.
+    /// Attempts to send `msg` into the channel until the specified `deadline`.
     pub fn send_until(
         &self,
-        value: T,
+        msg: T,
         deadline: Option<Instant>,
         case_id: CaseId,
     ) -> Result<(), SendTimeoutError<T>> {
-        match self.exchanger.left().exchange_until(Some(value), deadline, case_id) {
+        match self.exchanger
+            .left()
+            .exchange_until(Some(msg), deadline, case_id)
+        {
             Ok(_) => Ok(()),
-            Err(ExchangeError::Disconnected(v)) => Err(SendTimeoutError::Disconnected(v.unwrap())),
-            Err(ExchangeError::Timeout(v)) => Err(SendTimeoutError::Timeout(v.unwrap())),
+            Err(ExchangeError::Disconnected(msg)) => {
+                Err(SendTimeoutError::Disconnected(msg.unwrap()))
+            }
+            Err(ExchangeError::Timeout(msg)) => Err(SendTimeoutError::Timeout(msg.unwrap())),
         }
     }
 
-    /// Attempts to receive a value from channel.
+    /// Attempts to receive a message from channel.
     pub fn try_recv(&self, case_id: CaseId) -> Result<T, TryRecvError> {
         match self.exchanger.right().try_exchange(None, case_id) {
-            Ok(v) => Ok(v.unwrap()),
+            Ok(msg) => Ok(msg.unwrap()),
             Err(ExchangeError::Disconnected(_)) => Err(TryRecvError::Disconnected),
             Err(ExchangeError::Timeout(_)) => Err(TryRecvError::Empty),
         }
     }
 
-    /// Attempts to receive a value from the channel until the specified `deadline`.
+    /// Attempts to receive a message from the channel until the specified `deadline`.
     pub fn recv_until(
         &self,
         deadline: Option<Instant>,
         case_id: CaseId,
     ) -> Result<T, RecvTimeoutError> {
-        match self.exchanger.right().exchange_until(None, deadline, case_id) {
-            Ok(v) => Ok(v.unwrap()),
+        match self.exchanger
+            .right()
+            .exchange_until(None, deadline, case_id)
+        {
+            Ok(msg) => Ok(msg.unwrap()),
             Err(ExchangeError::Disconnected(_)) => Err(RecvTimeoutError::Disconnected),
             Err(ExchangeError::Timeout(_)) => Err(RecvTimeoutError::Timeout),
         }

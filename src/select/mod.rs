@@ -33,6 +33,9 @@ impl Select {
     }
 
     pub fn send<T>(&mut self, tx: &Sender<T>, value: T) -> Result<(), SelectSendError<T>> {
+        if let Machine::Counting { .. } = self.machine {
+            tx.can_send();
+        }
         if let Some(state) = self.machine.step(tx.case_id()) {
             state.send(tx, value).map_err(|v| SelectSendError(v))
         } else {
@@ -41,6 +44,9 @@ impl Select {
     }
 
     pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, SelectRecvError> {
+        if let Machine::Counting { .. } = self.machine {
+            rx.can_recv();
+        }
         if let Some(state) = self.machine.step(rx.case_id()) {
             state.recv(rx).map_err(|_| SelectRecvError)
         } else {

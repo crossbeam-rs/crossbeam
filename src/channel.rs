@@ -130,10 +130,40 @@ impl<T> Sender<T> {
         }
     }
 
+    /// Returns `true` if the channel is empty.
+    ///
+    /// A zero-capacity channel is always empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (tx, rx) = channel::unbounded();
+    /// assert!(tx.is_empty());
+    ///
+    /// tx.send(0).unwrap();
+    /// assert!(!tx.is_empty());
+    ///
+    /// // Drop the only receiver, thus disconnecting the channel.
+    /// drop(rx);
+    /// // Even a disconnected channel can be non-empty.
+    /// assert!(!tx.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Returns the number of messages in the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (tx, rx) = channel::unbounded();
+    /// assert_eq!(tx.len(), 0);
+    ///
+    /// tx.send(1);
+    /// tx.send(2);
+    /// assert_eq!(tx.len(), 2);
+    /// ```
     pub fn len(&self) -> usize {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.len(),
@@ -142,6 +172,20 @@ impl<T> Sender<T> {
         }
     }
 
+    /// If the channel is bounded, returns its capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (tx, _) = channel::unbounded::<i32>();
+    /// assert_eq!(tx.capacity(), None);
+    ///
+    /// let (tx, _) = channel::bounded::<i32>(5);
+    /// assert_eq!(tx.capacity(), Some(5));
+    ///
+    /// let (tx, _) = channel::bounded::<i32>(0);
+    /// assert_eq!(tx.capacity(), Some(0));
+    /// ```
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
             Flavor::Array(ref chan) => Some(chan.capacity()),
@@ -268,6 +312,20 @@ impl<T> Receiver<T> {
         }
     }
 
+    /// If the channel is bounded, returns its capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (tx, _) = channel::unbounded::<i32>();
+    /// assert_eq!(tx.capacity(), None);
+    ///
+    /// let (tx, _) = channel::bounded::<i32>(5);
+    /// assert_eq!(tx.capacity(), Some(5));
+    ///
+    /// let (tx, _) = channel::bounded::<i32>(0);
+    /// assert_eq!(tx.capacity(), Some(0));
+    /// ```
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
             Flavor::Array(ref chan) => Some(chan.capacity()),

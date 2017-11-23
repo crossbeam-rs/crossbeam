@@ -43,13 +43,13 @@ struct Inner<T> {
 
 /// A two-sided exchanger.
 ///
-/// This is a concurrent data structure with two sides: left and right. A thread can offer a value
-/// on one side, and if there is another thread waiting on the opposite side at the same time, they
-/// exchange values.
+/// This is a concurrent data structure with two sides: left and right. A thread can offer a
+/// message on one side, and if there is another thread waiting on the opposite side at the same
+/// time, they exchange messages.
 ///
-/// Instead of *offering* a concrete value for excahnge, a thread can also *promise* a value.
+/// Instead of *offering* a concrete message for excahnge, a thread can also *promise* a message.
 /// If another thread pairs up with the promise on the opposite end, then it will wait until the
-/// promise is fulfilled. The thread that promised the value must in the end either revoke the
+/// promise is fulfilled. The thread that promised the message must in the end either revoke the
 /// promise or fulfill it.
 pub struct Exchanger<T> {
     inner: Mutex<Inner<T>>,
@@ -112,7 +112,7 @@ pub struct Side<'a, T: 'a> {
 }
 
 impl<'a, T> Side<'a, T> {
-    /// Promises a value for exchange.
+    /// Promises a message for exchange.
     pub fn promise(&self, case_id: CaseId) {
         self.exchanger.inner.lock().wait_queues[self.index].promise(case_id);
     }
@@ -125,27 +125,27 @@ impl<'a, T> Side<'a, T> {
     }
 
     /// Fulfills the previously made promise.
-    pub fn fulfill(&self, value: T) -> T {
-        finish_exchange(value, self.exchanger)
+    pub fn fulfill(&self, msg: T) -> T {
+        finish_exchange(msg, self.exchanger)
     }
 
-    /// Exchanges `value` if there is an offer or promise on the opposite side.
+    /// Exchanges `msg` if there is an offer or promise on the opposite side.
     pub fn try_exchange(
         &self,
-        value: T,
+        msg: T,
         case_id: CaseId,
     ) -> Result<T, ExchangeError<T>> {
-        self.exchange(value, Wait::YieldOnce, case_id)
+        self.exchange(msg, Wait::YieldOnce, case_id)
     }
 
-    /// Exchanges `value`, waiting until the specified `deadline`.
+    /// Exchanges `msg`, waiting until the specified `deadline`.
     pub fn exchange_until(
         &self,
-        value: T,
+        msg: T,
         deadline: Option<Instant>,
         case_id: CaseId,
     ) -> Result<T, ExchangeError<T>> {
-        self.exchange(value, Wait::Until(deadline), case_id)
+        self.exchange(msg, Wait::Until(deadline), case_id)
     }
 
     /// Returns `true` if there is an offer or promise on the opposite side.
@@ -153,10 +153,10 @@ impl<'a, T> Side<'a, T> {
         self.exchanger.inner.lock().wait_queues[self.index].can_notify()
     }
 
-    /// Exchanges `value` with the specified `wait` strategy.
+    /// Exchanges `msg` with the specified `wait` strategy.
     fn exchange(
         &self,
-        mut value: T,
+        mut msg: T,
         wait: Wait,
         case_id: CaseId,
     ) -> Result<T, ExchangeError<T>> {
@@ -166,18 +166,18 @@ impl<'a, T> Side<'a, T> {
             {
                 let mut inner = self.exchanger.inner.lock();
                 if inner.closed {
-                    return Err(ExchangeError::Disconnected(value));
+                    return Err(ExchangeError::Disconnected(msg));
                 }
 
-                // If there's someone on the other side, exchange values with it.
+                // If there's someone on the other side, exchange messages with it.
                 if let Some(case) = inner.wait_queues[self.index ^ 1].pop() {
                     drop(inner);
-                    return Ok(case.exchange(value, self.exchanger));
+                    return Ok(case.exchange(msg, self.exchanger));
                 }
 
-                // Promise a packet with the value.
+                // Promise a packet with the message.
                 handle::current_reset();
-                packet = Packet::new(value);
+                packet = Packet::new(msg);
                 inner.wait_queues[self.index].offer(&packet, case_id);
             }
 
@@ -191,9 +191,9 @@ impl<'a, T> Side<'a, T> {
                 },
             };
 
-            // If someone requested the promised value...
+            // If someone requested the promised message...
             if handle::current_selected() != CaseId::abort() {
-                // Wait until the value is taken and return.
+                // Wait until the message is taken and return.
                 packet.wait();
                 return Ok(packet.into_inner());
             }
@@ -201,11 +201,11 @@ impl<'a, T> Side<'a, T> {
             // Revoke the promise.
             let mut inner = self.exchanger.inner.lock();
             inner.wait_queues[self.index].revoke(case_id);
-            value = packet.into_inner();
+            msg = packet.into_inner();
 
             // If we timed out, return.
             if timed_out {
-                return Err(ExchangeError::Timeout(value));
+                return Err(ExchangeError::Timeout(msg));
             }
 
             // Otherwise, another thread must have woken us up. Let's try again.
@@ -223,18 +223,18 @@ enum Case<T> {
 }
 
 impl<T> Case<T> {
-    fn exchange(&self, value: T, exchanger: &Exchanger<T>) -> T {
+    fn exchange(&self, msg: T, exchanger: &Exchanger<T>) -> T {
         match *self {
             Case::Offer {
                 ref handle, packet, ..
             } => {
-                let v = unsafe { (*packet).exchange(value) };
+                let m = unsafe { (*packet).exchange(msg) };
                 handle.unpark();
-                v
+                m
             }
             Case::Promise { ref local, .. } => {
                 handle::current_reset();
-                let req = Request::new(value, exchanger);
+                let req = Request::new(msg, exchanger);
                 local.request_ptr.store(&req as *const _ as usize, Release);
                 local.handle.unpark();
                 handle::current_wait_until(None);
@@ -258,7 +258,7 @@ impl<T> Case<T> {
     }
 }
 
-fn finish_exchange<T>(value: T, exchanger: &Exchanger<T>) -> T {
+fn finish_exchange<T>(msg: T, exchanger: &Exchanger<T>) -> T {
     let req = loop {
         let ptr = LOCAL.with(|l| l.request_ptr.swap(0, Acquire) as *const Request<T>);
         if !ptr.is_null() {
@@ -271,10 +271,10 @@ fn finish_exchange<T>(value: T, exchanger: &Exchanger<T>) -> T {
         assert!((*req).exchanger == exchanger);
 
         let handle = (*req).handle.clone();
-        let v = (*req).packet.exchange(value);
+        let m = (*req).packet.exchange(msg);
         (*req).handle.try_select(CaseId::abort());
         handle.unpark();
-        v
+        m
     }
 }
 
@@ -388,36 +388,36 @@ struct Request<T> {
 }
 
 impl<T> Request<T> {
-    fn new(value: T, exchanger: &Exchanger<T>) -> Self {
+    fn new(msg: T, exchanger: &Exchanger<T>) -> Self {
         Request {
             handle: handle::current(),
-            packet: Packet::new(value),
+            packet: Packet::new(msg),
             exchanger,
         }
     }
 }
 
 struct Packet<T> {
-    value: Mutex<Option<T>>,
+    msg: Mutex<Option<T>>,
     ready: AtomicBool,
 }
 
 impl<T> Packet<T> {
-    fn new(value: T) -> Self {
+    fn new(msg: T) -> Self {
         Packet {
-            value: Mutex::new(Some(value)),
+            msg: Mutex::new(Some(msg)),
             ready: AtomicBool::new(false),
         }
     }
 
-    fn exchange(&self, value: T) -> T {
-        let r = mem::replace(&mut *self.value.try_lock().unwrap(), Some(value));
+    fn exchange(&self, msg: T) -> T {
+        let r = mem::replace(&mut *self.msg.try_lock().unwrap(), Some(msg));
         self.ready.store(true, Release);
         r.unwrap()
     }
 
     fn into_inner(self) -> T {
-        self.value.try_lock().unwrap().take().unwrap()
+        self.msg.try_lock().unwrap().take().unwrap()
     }
 
     /// Spin-waits until the packet becomes ready.
