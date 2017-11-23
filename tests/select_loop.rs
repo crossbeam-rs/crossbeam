@@ -9,7 +9,6 @@ use std::time::Duration;
 use channel::{bounded, unbounded, Receiver, Sender};
 use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 
-// TODO: Remove this function and use `timed_out(X ms)` instead.
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
