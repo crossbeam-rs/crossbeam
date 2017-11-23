@@ -141,8 +141,8 @@ fn would_block() {
     tx2.send(2).unwrap();
 
     select_loop! {
-        recv(rx1) => panic!(),
-        recv(rx2) => assert_eq!(v, 2),
+        recv(rx1, _) => panic!(),
+        recv(rx2, v) => assert_eq!(v, 2),
         disconnected() => panic!(),
         would_block() => panic!(),
         timed_out(ms(0)) => panic!(),
@@ -864,7 +864,7 @@ fn channel_through_channel() {
 
                 for _ in 0..COUNT {
                     select_loop! {
-                        recv(rx, r) => {
+                        recv(rx, mut r) => {
                             rx = r.downcast_mut::<Option<Receiver<T>>>()
                                 .unwrap()
                                 .take()
