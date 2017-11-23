@@ -703,8 +703,8 @@ fn stress_timeout_two_threads() {
             'outer: loop {
                 loop {
                     if let Ok(()) = sel.send(&tx, i) {
-                            break 'outer;
-                        }
+                        break 'outer;
+                    }
                     if sel.timed_out() {
                         break;
                     }
