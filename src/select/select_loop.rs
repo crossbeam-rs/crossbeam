@@ -8,7 +8,7 @@
 ///
 /// A simple example to illustrate:
 ///
-/// ```
+/// ```ignore
 /// select_loop! {
 ///     send(tx0, value) => println!("Sent value to tx0!"),
 ///     send(tx1, value) => { println!("Sent value to tx1!") }
@@ -40,6 +40,11 @@
 /// * **`recv($rx:expr, $variable:ident) => ...`:** Attempt to receive a value from
 ///   `$rx`. If successful, the received value will be available in `$variable`
 ///    for the expression of this case.
+/// * **`recv($rx:expr, mut $variable:ident) => ...`:** Attempt to receive a value
+///   from `$rx`. If successful, the received value will be available in the
+///   mutable `$variable` for the expression of this case.
+/// * **`recv($rx:expr, _) => ...`:** Attempt to receive a value
+///   from `$rx`. If successful, the received value is discarded.
 /// * **`disconnected() => ...`:** This case is triggered when all channels in the
 ///   loop have disconnected.
 /// * **`would_block() => ...`:** This case is triggered when all channels in the
@@ -139,8 +144,20 @@ macro_rules! select_loop {
             break $select $body;
         }
     };
+    {@impl($select:tt, $state:ident, $guard:ident) recv($rx:expr, _) => $body:expr} => {
+        if let Ok(_) = $state.recv(&*&$rx) {
+            $guard = ();
+            break $select $body;
+        }
+    };
     {@impl($select:tt, $state:ident, $guard:ident) recv($rx:expr, $val:ident) => $body:expr} => {
         if let Ok($val) = $state.recv(&*&$rx) {
+            $guard = ();
+            break $select $body;
+        }
+    };
+    {@impl($select:tt, $state:ident, $guard:ident) recv($rx:expr, mut $val:ident) => $body:expr} => {
+        if let Ok(mut $val) = $state.recv(&*&$rx) {
             $guard = ();
             break $select $body;
         }
@@ -187,6 +204,8 @@ mod tests {
         eval_var: String,
         rx0: Receiver<String>,
         rx1: &Receiver<u32>,
+        rx2: Receiver<String>,
+        rx3: Receiver<String>,
         tx0: &mut Sender<String>,
         tx1: Sender<String>,
         tx2: Sender<String>,
@@ -197,6 +216,8 @@ mod tests {
         select_loop! {
             recv(rx0, val) => Some(val),
             recv(rx1, val) => Some(val.to_string()),
+            recv(rx2, mut val) => Some(val.as_mut_str().to_owned()),
+            recv(rx3, _) => None,
             send(tx0, mut struct_val.0) => Some(immutable_var),
             send(tx1, immutable_var) => Some(struct_val.0),
             send(tx2, eval struct_val.0.clone()) => Some(struct_val.0),
