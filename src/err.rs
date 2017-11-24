@@ -19,10 +19,8 @@ pub enum TrySendError<T> {
     /// The data could not be sent on the channel because it would require that the callee block to
     /// send the data.
     ///
-    /// If this is a bounded positive-capacity channel, then it is full at this time. If this is a
-    /// zero-capacity channel, then there is no [`Receiver`] available to acquire the data.
-    ///
-    /// [`Receiver`]: struct.Receiver.html
+    /// If this is a zero-capacity channel, then the error indicates that there was no receiver
+    /// available to receive the message at the time.
     Full(T),
 
     /// This channel's receiving half has disconnected, so the data could not be sent. The data is
@@ -43,23 +41,22 @@ pub enum SendTimeoutError<T> {
     Disconnected(T),
 }
 
-/// An error returned from the [`Select::recv`] method.
+/// An error returned from the [`Select::send`] method.
 ///
 /// This error occurs when the selection case doesn't send a message into the channel. Note that
 /// cases enumerated in a selection loop are sometimes simply skipped, so they might fail even if
 /// the channel is currently not full.
 ///
-/// [`Select::recv`]: struct.Select.html#method.recv
+/// [`Select::send`]: struct.Select.html#method.send
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SelectSendError<T>(pub T);
 
-/// An error returned from the [`recv`] method on a [`Receiver`].
+/// An error returned from the [`Receiver::recv`] method.
 ///
 /// The [`recv`] operation can only fail if the sending half of a channel is disconnected and the
 /// channel is empty, implying that no further messages will ever be received.
 ///
-/// [`recv`]: struct.Receiver.html#method.recv
-/// [`Receiver`]: struct.Receiver.html
+/// [`Receiver::recv`]: struct.Receiver.html#method.recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RecvError;
 
@@ -71,6 +68,9 @@ pub struct RecvError;
 pub enum TryRecvError {
     /// This channel is currently empty, but the senders have not yet disconnected, so data may yet
     /// become available.
+    ///
+    /// If this is a zero-capacity channel, then the error indicates that there was no sender
+    /// available to at the time.
     Empty,
 
     /// The channel's sending half has become disconnected, and there will never be any more data

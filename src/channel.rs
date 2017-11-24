@@ -7,6 +7,8 @@ use flavors;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use select::CaseId;
 
+// TODO: can_recv and can_send should be !is_empty and !is_full?
+
 pub struct Channel<T> {
     senders: AtomicUsize,
     receivers: AtomicUsize,
@@ -19,6 +21,36 @@ enum Flavor<T> {
     Zero(flavors::zero::Channel<T>),
 }
 
+/// Creates a new channel of unbounded capacity, returning the sender/receiver halves.
+///
+/// This type of channel can hold an unbounded number of messages, i.e. it has infinite capacity.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+///
+/// let (tx, rx) = channel::unbounded();
+///
+/// // An expensive computation.
+/// fn fib(n: i32) -> i32 {
+///     if n <= 1 {
+///         n
+///     } else {
+///         fib(n - 1) + fib(n - 2)
+///     }
+/// }
+///
+/// // Spawn a thread doing expensive computation.
+/// thread::spawn(move || {
+///     tx.send(fib(20)).unwrap();
+/// });
+///
+/// // Do some useful work for a while...
+///
+/// // Let's see what's the result of the expensive computation.
+/// println!("{}", rx.recv().unwrap());
+/// ```
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
@@ -28,6 +60,50 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     (Sender::new(chan.clone()), Receiver::new(chan))
 }
 
+/// Creates a new channel of bounded capacity, returning the sender/receiver halves.
+///
+/// This type of channel has an internal buffer of length `cap` in messages get queued.
+///
+/// An interesting case is zero-capacity channel, also known as *rendezvous* channel. Such channel
+/// cannot hold any messages, since its buffer is of length zero. Instead, send and receive
+/// operations must execute at the same time in order to pair up and pass the message.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use std::time::Duration;
+///
+/// let (tx, rx) = channel::bounded(1);
+///
+/// // This call returns immediately since there is enough space in the channel.
+/// tx.send(1).unwrap();
+///
+/// thread::spawn(move || {
+///     // This call blocks because the channel is full. It will be able to complete only after the
+///     // first message is received.
+///     tx.send(2).unwrap();
+/// });
+///
+/// thread::sleep(Duration::from_secs(1));
+/// assert_eq!(rx.recv(), Ok(1));
+/// assert_eq!(rx.recv(), Ok(2));
+/// ```
+///
+/// ```
+/// use std::thread;
+/// use std::time::Duration;
+///
+/// let (tx, rx) = channel::bounded(0);
+///
+/// thread::spawn(move || {
+///     // This call blocks until the receive operation appears on the other end of the channel.
+///     tx.send(1).unwrap();
+/// });
+///
+/// thread::sleep(Duration::from_secs(1));
+/// assert_eq!(rx.recv(), Ok(1));
+/// ```
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
@@ -44,6 +120,30 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 }
 
 /// The sending half of a channel.
+///
+/// Senders can be cloned and shared among multiple threads.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+///
+/// let (tx1, rx) = channel::unbounded();
+/// let tx2 = tx1.clone();
+///
+/// thread::spawn(move || {
+///     tx1.send(1).unwrap();
+/// });
+///
+/// thread::spawn(move || {
+///     tx2.send(2).unwrap();
+/// });
+///
+/// let msg1 = rx.recv().unwrap();
+/// let msg2 = rx.recv().unwrap();
+///
+/// assert_eq!(3, msg1 + msg2);
+/// ```
 pub struct Sender<T>(Arc<Channel<T>>);
 
 unsafe impl<T: Send> Send for Sender<T> {}
@@ -85,48 +185,122 @@ impl<T> Sender<T> {
         }
     }
 
-    pub(crate) fn fulfill_send(&self, value: T) -> Result<(), T> {
+    pub(crate) fn fulfill_send(&self, msg: T) -> Result<(), T> {
         match self.0.flavor {
-            Flavor::Array(_) | Flavor::List(_) => match self.try_send(value) {
+            Flavor::Array(_) | Flavor::List(_) => match self.try_send(msg) {
                 Ok(()) => Ok(()),
-                Err(TrySendError::Full(v)) => Err(v),
-                Err(TrySendError::Disconnected(v)) => Err(v),
+                Err(TrySendError::Full(m)) => Err(m),
+                Err(TrySendError::Disconnected(m)) => Err(m),
             },
             Flavor::Zero(ref chan) => {
-                chan.fulfill_send(value);
+                chan.fulfill_send(msg);
                 Ok(())
             }
         }
     }
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+    /// Attempts to send a message into the channel without blocking.
+    ///
+    /// This method will either send a message into the channel immediately, or return an error if
+    /// the channel is full or disconnected. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will send a message the message only if
+    /// there happens to be a receive operation on the other side of the channel at the same time.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use channel::TrySendError;
+    ///
+    /// let (tx, rx) = channel::bounded(1);
+    /// assert_eq!(tx.try_send(1), Ok(()));
+    /// assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
+    /// drop(rx);
+    /// assert_eq!(tx.try_send(2), Err(TrySendError::Disconnected(2)));
+    /// ```
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.try_send(value),
-            Flavor::List(ref chan) => chan.try_send(value),
-            Flavor::Zero(ref chan) => chan.try_send(value, self.case_id()),
+            Flavor::Array(ref chan) => chan.try_send(msg),
+            Flavor::List(ref chan) => chan.try_send(msg),
+            Flavor::Zero(ref chan) => chan.try_send(msg, self.case_id()),
         }
     }
 
-    // TODO: explain that a zero-capacity channel is always full and empty.
-    pub fn send(&self, value: T) -> Result<(), SendError<T>> {
+    /// Sends a message into the channel, blocking if the channel is full.
+    ///
+    /// If the channel is full (its capacity is fully utilized), this call will block until the
+    /// send operation can proceed. If the channel is (or becomes) disconnected, this call will
+    /// wake up and return an error.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use channel::SendError;
+    ///
+    /// let (tx, rx) = channel::bounded(1);
+    /// assert_eq!(tx.send(1), Ok(()));
+    ///
+    /// thread::spawn(move || {
+    ///     assert_eq!(rx.recv(), Ok(1));
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     drop(rx);
+    /// });
+    ///
+    /// assert_eq!(tx.send(2), Ok(()));
+    /// assert_eq!(tx.send(3), Err(SendError(3)));
+    /// ```
+    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
-            Flavor::Array(ref chan) => chan.send_until(value, None, self.case_id()),
-            Flavor::List(ref chan) => chan.send(value),
-            Flavor::Zero(ref chan) => chan.send_until(value, None, self.case_id()),
+            Flavor::Array(ref chan) => chan.send_until(msg, None, self.case_id()),
+            Flavor::List(ref chan) => chan.send(msg),
+            Flavor::Zero(ref chan) => chan.send_until(msg, None, self.case_id()),
         };
         match res {
             Ok(()) => Ok(()),
-            Err(SendTimeoutError::Disconnected(v)) => Err(SendError(v)),
-            Err(SendTimeoutError::Timeout(v)) => Err(SendError(v)),
+            Err(SendTimeoutError::Disconnected(m)) => Err(SendError(m)),
+            Err(SendTimeoutError::Timeout(m)) => Err(SendError(m)),
         }
     }
 
-    pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
-        let deadline = Some(Instant::now() + dur);
+    /// Sends a message into the channel, blocking if the channel is full for a limited time.
+    ///
+    /// If the channel is full (its capacity is fully utilized), this call will block until the
+    /// send operation can proceed. If the channel is (or becomes) disconnected, or if it waits for
+    /// longer than `timeout`, this call will wake up and return an error.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use channel::RecvTimeoutError;
+    ///
+    /// let (tx, rx) = channel::unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     tx.send(5).unwrap();
+    ///     drop(tx);
+    /// });
+    ///
+    /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
+    /// ```
+    pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
+        let deadline = Some(Instant::now() + timeout);
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.send_until(value, deadline, self.case_id()),
-            Flavor::List(ref chan) => chan.send(value),
-            Flavor::Zero(ref chan) => chan.send_until(value, deadline, self.case_id()),
+            Flavor::Array(ref chan) => chan.send_until(msg, deadline, self.case_id()),
+            Flavor::List(ref chan) => chan.send(msg),
+            Flavor::Zero(ref chan) => chan.send_until(msg, deadline, self.case_id()),
         }
     }
 
@@ -160,8 +334,8 @@ impl<T> Sender<T> {
     /// let (tx, rx) = channel::unbounded();
     /// assert_eq!(tx.len(), 0);
     ///
-    /// tx.send(1);
-    /// tx.send(2);
+    /// tx.send(1).unwrap();
+    /// tx.send(2).unwrap();
     /// assert_eq!(tx.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
@@ -194,6 +368,16 @@ impl<T> Sender<T> {
         }
     }
 
+    /// Returns `true` if the channel is disconnected (i.e. there are no receivers).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (tx, rx) = channel::unbounded::<i32>();
+    /// assert!(!tx.is_disconnected());
+    /// drop(rx);
+    /// assert!(tx.is_disconnected());
+    /// ```
     pub fn is_disconnected(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_closed(),
@@ -222,6 +406,27 @@ impl<T> Clone for Sender<T> {
 }
 
 /// The receiving half of a channel.
+///
+/// Receivers can be cloned and shared among multiple threads.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use std::time::Duration;
+///
+/// let (tx, rx) = channel::unbounded();
+///
+/// thread::spawn(move || {
+///     tx.send("Hello world!").unwrap();
+///     thread::sleep(Duration::from_secs(2)); // Block for two seconds.
+///     tx.send("Delayed for 2 seconds").unwrap();
+/// });
+///
+/// println!("{}", rx.recv().unwrap()); // Received immediately.
+/// println!("Waiting...");
+/// println!("{}", rx.recv().unwrap()); // Received after 2 seconds.
+/// ```
 pub struct Receiver<T>(Arc<Channel<T>>);
 
 unsafe impl<T: Send> Send for Receiver<T> {}
@@ -270,6 +475,29 @@ impl<T> Receiver<T> {
         }
     }
 
+    /// Attempts to receive a message from the channel without blocking.
+    ///
+    /// This method will never block in order to wait for a message to become available. Instead,
+    /// this will always return immediately with a message if there is one, or an error if the
+    /// channel is empty or disconnected.
+    ///
+    /// If called on a zero-capacity channel, this method will receive a message only if there
+    /// happens to be a send operation on the other side of the channel at the same time.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use channel::TryRecvError;
+    ///
+    /// let (tx, rx) = channel::unbounded();
+    /// assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+    ///
+    /// tx.send(5).unwrap();
+    /// drop(tx);
+    ///
+    /// assert_eq!(rx.try_recv(), Ok(5));
+    /// assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+    /// ```
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.try_recv(),
@@ -278,21 +506,74 @@ impl<T> Receiver<T> {
         }
     }
 
+    /// Waits for a message to be received from the channel.
+    ///
+    /// This method will always block in order to wait for a message to become available. If the
+    /// channel is (or becomes) empty and disconnected, this call will wake up and return an error.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
+    /// on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    ///
+    /// let (tx, rx) = channel::unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     tx.send(5).unwrap();
+    ///     drop(tx);
+    /// });
+    ///
+    /// assert_eq!(rx.recv(), Ok(5));
+    /// assert!(rx.recv().is_err());
+    /// ```
     pub fn recv(&self) -> Result<T, RecvError> {
         let res = match self.0.flavor {
             Flavor::Array(ref chan) => chan.recv_until(None, self.case_id()),
             Flavor::List(ref chan) => chan.recv_until(None, self.case_id()),
             Flavor::Zero(ref chan) => chan.recv_until(None, self.case_id()),
         };
-        if let Ok(v) = res {
-            Ok(v)
+        if let Ok(m) = res {
+            Ok(m)
         } else {
             Err(RecvError)
         }
     }
 
-    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
-        let deadline = Some(Instant::now() + dur);
+    /// Waits for a message to be received from the channel but only for a limited time.
+    ///
+    /// This method will always block in order to wait for a message to become available. If the
+    /// channel is (or becomes) empty and disconnected, or if it waits for longer than `timeout`,
+    /// it will wake up and return an error.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
+    /// on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use channel::RecvTimeoutError;
+    ///
+    /// let (tx, rx) = channel::unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     tx.send(5).unwrap();
+    ///     drop(tx);
+    /// });
+    ///
+    /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
+    /// ```
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
+        let deadline = Some(Instant::now() + timeout);
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.recv_until(deadline, self.case_id()),
             Flavor::List(ref chan) => chan.recv_until(deadline, self.case_id()),
@@ -300,10 +581,40 @@ impl<T> Receiver<T> {
         }
     }
 
+    /// Returns `true` if the channel is empty.
+    ///
+    /// A zero-capacity channel is always empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (tx, rx) = channel::unbounded();
+    /// assert!(rx.is_empty());
+    ///
+    /// tx.send(0).unwrap();
+    /// assert!(!rx.is_empty());
+    ///
+    /// // Drop the only sender, thus disconnecting the channel.
+    /// drop(tx);
+    /// // Even a disconnected channel can be non-empty.
+    /// assert!(!rx.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Returns the number of messages in the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (tx, rx) = channel::unbounded();
+    /// assert_eq!(rx.len(), 0);
+    ///
+    /// tx.send(1).unwrap();
+    /// tx.send(2).unwrap();
+    /// assert_eq!(rx.len(), 2);
+    /// ```
     pub fn len(&self) -> usize {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.len(),
@@ -334,6 +645,16 @@ impl<T> Receiver<T> {
         }
     }
 
+    /// Returns `true` if the channel is disconnected (i.e. there are no senders).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (tx, rx) = channel::unbounded::<i32>();
+    /// assert!(!rx.is_disconnected());
+    /// drop(tx);
+    /// assert!(rx.is_disconnected());
+    /// ```
     pub fn is_disconnected(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_closed(),
@@ -342,10 +663,56 @@ impl<T> Receiver<T> {
         }
     }
 
+    /// Returns an iterator that waits for messages until the channel is disconnected.
+    ///
+    /// Each call to `next` will block waiting for the next message. It will finally return `None`
+    /// when the channel is empty and disconnected.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    ///
+    /// let (tx, rx) = channel::unbounded::<i32>();
+    ///
+    /// thread::spawn(move || {
+    ///     tx.send(1).unwrap();
+    ///     tx.send(2).unwrap();
+    ///     tx.send(3).unwrap();
+    /// });
+    ///
+    /// let v: Vec<_> = rx.iter().collect();
+    /// assert_eq!(v, [1, 2, 3]);
+    /// ```
     pub fn iter(&self) -> Iter<T> {
         Iter { rx: self }
     }
 
+    /// Returns an iterator that receives messages until the channel is empty or disconnected.
+    ///
+    /// Each call to `next` will return a message if there is at least one in the channel. The
+    /// iterator will never block waiting for new messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    ///
+    /// let (tx, rx) = channel::unbounded::<i32>();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     tx.send(1).unwrap();
+    ///     tx.send(2).unwrap();
+    ///     thread::sleep(Duration::from_secs(2));
+    ///     tx.send(3).unwrap();
+    /// });
+    ///
+    /// thread::sleep(Duration::from_secs(2));
+    /// let v: Vec<_> = rx.try_iter().collect();
+    /// assert_eq!(v, [1, 2]);
+    /// ```
     pub fn try_iter(&self) -> TryIter<T> {
         TryIter { rx: self }
     }
@@ -387,6 +754,27 @@ impl<T> IntoIterator for Receiver<T> {
     }
 }
 
+/// An iterator that waits for messages until the channel is disconnected.
+///
+/// Each call to `next` will block waiting for the next message. It will finally return `None` when
+/// the channel is empty and disconnected.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+///
+/// let (tx, rx) = channel::unbounded();
+///
+/// thread::spawn(move || {
+///     tx.send(1).unwrap();
+///     tx.send(2).unwrap();
+///     tx.send(3).unwrap();
+/// });
+///
+/// let v: Vec<_> = rx.iter().collect();
+/// assert_eq!(v, [1, 2, 3]);
+/// ```
 pub struct Iter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
@@ -399,6 +787,31 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
+/// An iterator that receives messages until the channel is empty or disconnected.
+///
+/// Each call to `next` will return a message if there is at least one in the channel. The iterator
+/// will never block waiting for new messages.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use std::time::Duration;
+///
+/// let (tx, rx) = channel::unbounded::<i32>();
+///
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     tx.send(1).unwrap();
+///     tx.send(2).unwrap();
+///     thread::sleep(Duration::from_secs(2));
+///     tx.send(3).unwrap();
+/// });
+///
+/// thread::sleep(Duration::from_secs(2));
+/// let v: Vec<_> = rx.try_iter().collect();
+/// assert_eq!(v, [1, 2]);
+/// ```
 pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
@@ -411,6 +824,27 @@ impl<'a, T> Iterator for TryIter<'a, T> {
     }
 }
 
+/// An owning iterator that waits for messages until the channel is disconnected.
+///
+/// Each call to `next` will block waiting for the next message. It will finally return `None` when
+/// the channel is empty and disconnected.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+///
+/// let (tx, rx) = channel::unbounded();
+///
+/// thread::spawn(move || {
+///     tx.send(1).unwrap();
+///     tx.send(2).unwrap();
+///     tx.send(3).unwrap();
+/// });
+///
+/// let v: Vec<_> = rx.into_iter().collect();
+/// assert_eq!(v, [1, 2, 3]);
+/// ```
 pub struct IntoIter<T> {
     rx: Receiver<T>,
 }
