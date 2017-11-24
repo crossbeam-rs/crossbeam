@@ -58,6 +58,8 @@
 macro_rules! select_loop {
     // The main entrypoint
     {$($method:ident($($args:tt)*) => $body:expr$(,)*)*} => {
+        // On stable Rust, 'unused_mut' warnings have to be suppressed within the whole block.
+        #[cfg_attr(not(feature = "nightly"), allow(unused_mut))]
         {
             #[allow(unused_mut, unused_variables)]
             let mut state = $crate::Select::new();
