@@ -58,8 +58,8 @@
 macro_rules! select_loop {
     // The main entrypoint
     {$($method:ident($($args:tt)*) => $body:expr$(,)*)*} => {
-        #[allow(unused_mut, unused_variables)]
         {
+            #[allow(unused_mut, unused_variables)]
             let mut state = $crate::Select::new();
 
             // Build the prelude.
@@ -74,7 +74,6 @@ macro_rules! select_loop {
             $(select_loop!(@prelude(state) $method($($args)*));)*
 
             // The actual select loop which a user would write manually
-            #[allow(unreachable_code)]
             loop {
                 #[allow(bad_style)]
                 struct _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP;
@@ -100,7 +99,10 @@ macro_rules! select_loop {
                             #[allow(bad_style)]
                             let _DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP;
 
+                            #[allow(unused_variables)]
                             let res;
+
+                            #[allow(unreachable_code)]
                             let _: _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP = loop {
                                 _DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP = ();
                                 res = $body;
@@ -173,9 +175,11 @@ macro_rules! select_loop {
 
     // The prelude helpers
     {@prelude($state:ident) send($tx:expr, $val:ident)} => {
+        #[allow(unused_mut, unused_variables)]
         let mut $val = $val;
     };
     {@prelude($state:ident) timed_out($timeout:expr)} => {
+        #[allow(unused_mut, unused_variables)]
         let mut $state = $crate::Select::with_timeout($timeout);
     };
     {@prelude($state:ident) $($tail:tt)*} => {};
