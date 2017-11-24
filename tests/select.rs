@@ -775,9 +775,9 @@ impl<T> WrappedSender<T> {
         }
     }
 
-    pub fn send_timeout(&self, mut value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
+    pub fn send_timeout(&self, mut value: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
         let mut iters = 0;
-        let mut sel = Select::with_timeout(dur);
+        let mut sel = Select::with_timeout(timeout);
         loop {
             iters += 1;
             assert!(iters < 20);
@@ -835,9 +835,9 @@ impl<T> WrappedReceiver<T> {
         }
     }
 
-    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         let mut iters = 0;
-        let mut sel = Select::with_timeout(dur);
+        let mut sel = Select::with_timeout(timeout);
         loop {
             iters += 1;
             assert!(iters < 20);

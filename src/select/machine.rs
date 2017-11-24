@@ -177,17 +177,17 @@ impl State {
     }
 
     #[inline(always)]
-    pub fn send<T>(&mut self, tx: &Sender<T>, mut value: T) -> Result<(), T> {
+    pub fn send<T>(&mut self, tx: &Sender<T>, mut msg: T) -> Result<(), T> {
         match *self {
             State::Try {
                 ref mut disconn_count,
                 ..
             } => {
-                match tx.try_send(value) {
+                match tx.try_send(msg) {
                     Ok(()) => return Ok(()),
-                    Err(TrySendError::Full(v)) => value = v,
-                    Err(TrySendError::Disconnected(v)) => {
-                        value = v;
+                    Err(TrySendError::Full(m)) => msg = m,
+                    Err(TrySendError::Disconnected(m)) => {
+                        msg = m;
                         *disconn_count += 1;
                     }
                 }
@@ -210,9 +210,9 @@ impl State {
             },
             State::Fulfill { case_id } => {
                 if tx.case_id() == case_id {
-                    match tx.fulfill_send(value) {
+                    match tx.fulfill_send(msg) {
                         Ok(()) => return Ok(()),
-                        Err(v) => value = v,
+                        Err(m) => msg = m,
                     }
                 }
             },
@@ -220,7 +220,7 @@ impl State {
             State::WouldBlock => {}
             State::Timeout => {}
         }
-        Err(value)
+        Err(msg)
     }
 
     #[inline(always)]
@@ -231,7 +231,7 @@ impl State {
                 ..
             } => {
                 match rx.try_recv() {
-                    Ok(v) => return Ok(v),
+                    Ok(m) => return Ok(m),
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => *disconn_count += 1,
                 }
@@ -257,8 +257,8 @@ impl State {
             },
             State::Fulfill { case_id } => {
                 if rx.case_id() == case_id {
-                    if let Ok(v) = rx.fulfill_recv() {
-                        return Ok(v);
+                    if let Ok(m) = rx.fulfill_recv() {
+                        return Ok(m);
                     }
                 }
             },
