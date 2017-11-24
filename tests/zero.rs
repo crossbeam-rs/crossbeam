@@ -204,9 +204,11 @@ fn len() {
             }
         });
 
-        s.spawn(|| for i in 0..COUNT {
-            tx.send(i).unwrap();
-            assert_eq!(tx.len(), 0);
+        s.spawn(|| {
+            for i in 0..COUNT {
+                tx.send(i).unwrap();
+                assert_eq!(tx.len(), 0);
+            }
         });
     });
 
@@ -257,8 +259,10 @@ fn spsc() {
             }
             assert_eq!(rx.recv(), Err(RecvError));
         });
-        s.spawn(move || for i in 0..COUNT {
-            tx.send(i).unwrap();
+        s.spawn(move || {
+            for i in 0..COUNT {
+                tx.send(i).unwrap();
+            }
         });
     });
 }
@@ -273,14 +277,18 @@ fn mpmc() {
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
-            s.spawn(|| for _ in 0..COUNT {
-                let n = rx.recv().unwrap();
-                v[n].fetch_add(1, SeqCst);
+            s.spawn(|| {
+                for _ in 0..COUNT {
+                    let n = rx.recv().unwrap();
+                    v[n].fetch_add(1, SeqCst);
+                }
             });
         }
         for _ in 0..THREADS {
-            s.spawn(|| for i in 0..COUNT {
-                tx.send(i).unwrap();
+            s.spawn(|| {
+                for i in 0..COUNT {
+                    tx.send(i).unwrap();
+                }
             });
         }
     });
@@ -347,12 +355,16 @@ fn drops() {
         let (tx, rx) = bounded::<DropCounter>(0);
 
         crossbeam::scope(|s| {
-            s.spawn(|| for _ in 0..steps {
-                rx.recv().unwrap();
+            s.spawn(|| {
+                for _ in 0..steps {
+                    rx.recv().unwrap();
+                }
             });
 
-            s.spawn(|| for _ in 0..steps {
-                tx.send(DropCounter).unwrap();
+            s.spawn(|| {
+                for _ in 0..steps {
+                    tx.send(DropCounter).unwrap();
+                }
             });
         });
 

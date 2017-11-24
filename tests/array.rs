@@ -262,16 +262,20 @@ fn len() {
     assert_eq!(rx.len(), 0);
 
     crossbeam::scope(|s| {
-        s.spawn(|| for i in 0..COUNT {
-            assert_eq!(rx.recv(), Ok(i));
-            let len = rx.len();
-            assert!(len <= CAP);
+        s.spawn(|| {
+            for i in 0..COUNT {
+                assert_eq!(rx.recv(), Ok(i));
+                let len = rx.len();
+                assert!(len <= CAP);
+            }
         });
 
-        s.spawn(|| for i in 0..COUNT {
-            tx.send(i).unwrap();
-            let len = tx.len();
-            assert!(len <= CAP);
+        s.spawn(|| {
+            for i in 0..COUNT {
+                tx.send(i).unwrap();
+                let len = tx.len();
+                assert!(len <= CAP);
+            }
         });
     });
 
@@ -323,8 +327,10 @@ fn spsc() {
             }
             assert_eq!(rx.recv(), Err(RecvError));
         });
-        s.spawn(move || for i in 0..COUNT {
-            tx.send(i).unwrap();
+        s.spawn(move || {
+            for i in 0..COUNT {
+                tx.send(i).unwrap();
+            }
         });
     });
 }
@@ -339,14 +345,18 @@ fn mpmc() {
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
-            s.spawn(|| for _ in 0..COUNT {
-                let n = rx.recv().unwrap();
-                v[n].fetch_add(1, SeqCst);
+            s.spawn(|| {
+                for _ in 0..COUNT {
+                    let n = rx.recv().unwrap();
+                    v[n].fetch_add(1, SeqCst);
+                }
             });
         }
         for _ in 0..THREADS {
-            s.spawn(|| for i in 0..COUNT {
-                tx.send(i).unwrap();
+            s.spawn(|| {
+                for i in 0..COUNT {
+                    tx.send(i).unwrap();
+                }
             });
         }
     });
@@ -363,25 +373,29 @@ fn stress_timeout_two_threads() {
     let (tx, rx) = bounded(2);
 
     crossbeam::scope(|s| {
-        s.spawn(|| for i in 0..COUNT {
-            if i % 2 == 0 {
-                thread::sleep(ms(50));
-            }
-            loop {
-                if let Ok(()) = tx.send_timeout(i, ms(10)) {
+        s.spawn(|| {
+            for i in 0..COUNT {
+                if i % 2 == 0 {
+                    thread::sleep(ms(50));
+                }
+                loop {
+                    if let Ok(()) = tx.send_timeout(i, ms(10)) {
                         break;
                     }
+                }
             }
         });
 
-        s.spawn(|| for i in 0..COUNT {
-            if i % 2 == 0 {
-                thread::sleep(ms(50));
-            }
-            loop {
-                if let Ok(x) = rx.recv_timeout(ms(10)) {
-                    assert_eq!(x, i);
-                    break;
+        s.spawn(|| {
+            for i in 0..COUNT {
+                if i % 2 == 0 {
+                    thread::sleep(ms(50));
+                }
+                loop {
+                    if let Ok(x) = rx.recv_timeout(ms(10)) {
+                        assert_eq!(x, i);
+                        break;
+                    }
                 }
             }
         });
@@ -410,12 +424,16 @@ fn drops() {
         let (tx, rx) = bounded::<DropCounter>(50);
 
         crossbeam::scope(|s| {
-            s.spawn(|| for _ in 0..steps {
-                rx.recv().unwrap();
+            s.spawn(|| {
+                for _ in 0..steps {
+                    rx.recv().unwrap();
+                }
             });
 
-            s.spawn(|| for _ in 0..steps {
-                tx.send(DropCounter).unwrap();
+            s.spawn(|| {
+                for _ in 0..steps {
+                    tx.send(DropCounter).unwrap();
+                }
             });
         });
 

@@ -367,9 +367,11 @@ fn no_starvation() {
             let txs = (0..N)
                 .map(|i| {
                     let (tx, rx) = bounded(100);
-                    s.spawn(move || if let Ok(x) = rx.recv() {
-                        assert_eq!(x, i);
-                        done_tx[i].store(true, SeqCst);
+                    s.spawn(move || {
+                        if let Ok(x) = rx.recv() {
+                            assert_eq!(x, i);
+                            done_tx[i].store(true, SeqCst);
+                        }
                     });
                     tx
                 })
@@ -407,22 +409,26 @@ fn loop_try() {
         let (tx2, rx2) = bounded::<i32>(0);
 
         crossbeam::scope(|s| {
-            s.spawn(|| loop {
-                match tx1.try_send(1) {
-                    Ok(()) => break,
-                    Err(TrySendError::Disconnected(_)) => break,
-                    Err(TrySendError::Full(_)) => continue,
+            s.spawn(|| {
+                loop {
+                    match tx1.try_send(1) {
+                        Ok(()) => break,
+                        Err(TrySendError::Disconnected(_)) => break,
+                        Err(TrySendError::Full(_)) => continue,
+                    }
                 }
             });
 
-            s.spawn(|| loop {
-                match rx2.try_recv() {
-                    Ok(x) => {
-                        assert_eq!(x, 2);
-                        break;
+            s.spawn(|| {
+                loop {
+                    match rx2.try_recv() {
+                        Ok(x) => {
+                            assert_eq!(x, 2);
+                            break;
+                        }
+                        Err(TryRecvError::Disconnected) => break,
+                        Err(TryRecvError::Empty) => continue,
                     }
-                    Err(TryRecvError::Disconnected) => break,
-                    Err(TryRecvError::Empty) => continue,
                 }
             });
 
@@ -583,12 +589,14 @@ fn stress_recv() {
     let (tx3, rx3) = bounded(100);
 
     crossbeam::scope(|s| {
-        s.spawn(|| for i in 0..10_000 {
-            tx1.send(i).unwrap();
-            rx3.recv().unwrap();
+        s.spawn(|| {
+            for i in 0..10_000 {
+                tx1.send(i).unwrap();
+                rx3.recv().unwrap();
 
-            tx2.send(i).unwrap();
-            rx3.recv().unwrap();
+                tx2.send(i).unwrap();
+                rx3.recv().unwrap();
+            }
         });
 
         for i in 0..10_000 {
@@ -623,10 +631,12 @@ fn stress_send() {
     let (tx3, rx3) = bounded(100);
 
     crossbeam::scope(|s| {
-        s.spawn(|| for i in 0..10_000 {
-            assert_eq!(rx1.recv().unwrap(), i);
-            assert_eq!(rx2.recv().unwrap(), i);
-            rx3.recv().unwrap();
+        s.spawn(|| {
+            for i in 0..10_000 {
+                assert_eq!(rx1.recv().unwrap(), i);
+                assert_eq!(rx2.recv().unwrap(), i);
+                rx3.recv().unwrap();
+            }
         });
 
         for i in 0..10_000 {
@@ -658,10 +668,12 @@ fn stress_mixed() {
     let (tx3, rx3) = bounded(100);
 
     crossbeam::scope(|s| {
-        s.spawn(|| for i in 0..10_000 {
-            tx1.send(i).unwrap();
-            assert_eq!(rx2.recv().unwrap(), i);
-            rx3.recv().unwrap();
+        s.spawn(|| {
+            for i in 0..10_000 {
+                tx1.send(i).unwrap();
+                assert_eq!(rx2.recv().unwrap(), i);
+                rx3.recv().unwrap();
+            }
         });
 
         for i in 0..10_000 {
@@ -694,38 +706,42 @@ fn stress_timeout_two_threads() {
     let (tx, rx) = bounded(2);
 
     crossbeam::scope(|s| {
-        s.spawn(|| for i in 0..COUNT {
-            if i % 2 == 0 {
-                thread::sleep(ms(500));
-            }
+        s.spawn(|| {
+            for i in 0..COUNT {
+                if i % 2 == 0 {
+                    thread::sleep(ms(500));
+                }
 
-            let mut sel = Select::with_timeout(ms(100));
-            'outer: loop {
-                loop {
-                    if let Ok(()) = sel.send(&tx, i) {
-                        break 'outer;
-                    }
-                    if sel.timed_out() {
-                        break;
+                let mut sel = Select::with_timeout(ms(100));
+                'outer: loop {
+                    loop {
+                        if let Ok(()) = sel.send(&tx, i) {
+                            break 'outer;
+                        }
+                        if sel.timed_out() {
+                            break;
+                        }
                     }
                 }
             }
         });
 
-        s.spawn(|| for i in 0..COUNT {
-            if i % 2 == 0 {
-                thread::sleep(ms(500));
-            }
+        s.spawn(|| {
+            for i in 0..COUNT {
+                if i % 2 == 0 {
+                    thread::sleep(ms(500));
+                }
 
-            let mut sel = Select::with_timeout(ms(100));
-            'outer: loop {
-                loop {
-                    if let Ok(x) = sel.recv(&rx) {
-                        assert_eq!(x, i);
-                        break 'outer;
-                    }
-                    if sel.timed_out() {
-                        break;
+                let mut sel = Select::with_timeout(ms(100));
+                'outer: loop {
+                    loop {
+                        if let Ok(x) = sel.recv(&rx) {
+                            assert_eq!(x, i);
+                            break 'outer;
+                        }
+                        if sel.timed_out() {
+                            break;
+                        }
                     }
                 }
             }
@@ -1124,19 +1140,21 @@ fn matching() {
     let (tx, rx) = channel::bounded(0);
     let (tx, rx) = (&tx, &rx);
 
-    crossbeam::scope(|s| for i in 0..44 {
-        s.spawn(move || {
-            let mut sel = Select::new();
-            loop {
-                if let Ok(x) = sel.recv(rx) {
-                    assert_ne!(i, x);
-                    break;
+    crossbeam::scope(|s| {
+        for i in 0..44 {
+            s.spawn(move || {
+                let mut sel = Select::new();
+                loop {
+                    if let Ok(x) = sel.recv(rx) {
+                        assert_ne!(i, x);
+                        break;
+                    }
+                    if let Ok(()) = sel.send(tx, i) {
+                        break;
+                    }
                 }
-                if let Ok(()) = sel.send(tx, i) {
-                    break;
-                }
-            }
-        });
+            });
+        }
     });
 
     assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
