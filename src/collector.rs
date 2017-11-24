@@ -125,7 +125,7 @@ mod tests {
         for _ in 0..100 {
             let guard = &handle.pin();
             unsafe {
-                let a = Owned::new(7).into_ptr(guard);
+                let a = Owned::new(7).into_shared(guard);
                 guard.defer(move || a.into_owned());
 
                 assert!(!(*(*guard.local).bag.get()).is_empty());
@@ -146,7 +146,7 @@ mod tests {
         let guard = &handle.pin();
         unsafe {
             for _ in 0..10 {
-                let a = Owned::new(7).into_ptr(guard);
+                let a = Owned::new(7).into_shared(guard);
                 guard.defer(move || a.into_owned());
             }
             assert!(!(*(*guard.local).bag.get()).is_empty());
@@ -193,7 +193,7 @@ mod tests {
         unsafe {
             let guard = &handle.pin();
             for _ in 0..COUNT {
-                let a = Owned::new(7i32).into_ptr(guard);
+                let a = Owned::new(7i32).into_shared(guard);
                 guard.defer(move || {
                     drop(a.into_owned());
                     DESTROYS.fetch_add(1, Ordering::Relaxed);
@@ -226,7 +226,7 @@ mod tests {
         unsafe {
             let guard = &handle.pin();
             for _ in 0..COUNT {
-                let a = Owned::new(7i32).into_ptr(guard);
+                let a = Owned::new(7i32).into_shared(guard);
                 guard.defer(move || {
                     drop(a.into_owned());
                     DESTROYS.fetch_add(1, Ordering::Relaxed);
@@ -268,7 +268,7 @@ mod tests {
             let guard = &handle.pin();
 
             for _ in 0..COUNT {
-                let a = Owned::new(Elem(7i32)).into_ptr(guard);
+                let a = Owned::new(Elem(7i32)).into_shared(guard);
                 guard.defer(move || a.into_owned());
             }
             guard.flush();
@@ -293,7 +293,7 @@ mod tests {
             let guard = &handle.pin();
 
             for _ in 0..COUNT {
-                let a = Owned::new(7i32).into_ptr(guard);
+                let a = Owned::new(7i32).into_shared(guard);
                 guard.defer(move || {
                     drop(a.into_owned());
                     DESTROYS.fetch_add(1, Ordering::Relaxed);
@@ -333,7 +333,7 @@ mod tests {
                 v.push(Elem(i as i32));
             }
 
-            let a = Owned::new(v).into_ptr(guard);
+            let a = Owned::new(v).into_shared(guard);
             guard.defer(move || a.into_owned());
             guard.flush();
         }
@@ -403,7 +403,7 @@ mod tests {
                         for _ in 0..COUNT {
                             let guard = &handle.pin();
                             unsafe {
-                                let a = Owned::new(Elem(7i32)).into_ptr(guard);
+                                let a = Owned::new(Elem(7i32)).into_shared(guard);
                                 guard.defer(move || a.into_owned());
                             }
                         }

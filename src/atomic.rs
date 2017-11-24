@@ -620,11 +620,11 @@ impl<T> Owned<T> {
     ///
     /// let o = Owned::new(1234);
     /// let guard = &epoch::pin();
-    /// let p = o.into_ptr(guard);
+    /// let p = o.into_shared(guard);
     /// ```
     ///
     /// [`Shared`]: struct.Shared.html
-    pub fn into_ptr<'g>(self, _: &'g Guard) -> Shared<'g, T> {
+    pub fn into_shared<'g>(self, _: &'g Guard) -> Shared<'g, T> {
         unsafe { Shared::from_data(self.into_data()) }
     }
 

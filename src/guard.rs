@@ -134,7 +134,7 @@ impl Guard {
     /// let guard = &epoch::pin();
     ///
     /// // Steal the object currently stored in `a` and swap it with another one.
-    /// let p = a.swap(Owned::new("bar").into_ptr(guard), SeqCst, guard);
+    /// let p = a.swap(Owned::new("bar").into_shared(guard), SeqCst, guard);
     ///
     /// if !p.is_null() {
     ///     // The object `p` is pointing to is now unreachable.

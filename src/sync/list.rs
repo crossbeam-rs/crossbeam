@@ -279,9 +279,9 @@ mod tests {
 
         let l: List<Entry, EntryContainer> = List::new();
 
-        let n1 = Owned::new(Entry::default()).into_ptr(&guard);
-        let n2 = Owned::new(Entry::default()).into_ptr(&guard);
-        let n3 = Owned::new(Entry::default()).into_ptr(&guard);
+        let n1 = Owned::new(Entry::default()).into_shared(&guard);
+        let n2 = Owned::new(Entry::default()).into_shared(&guard);
+        let n3 = Owned::new(Entry::default()).into_shared(&guard);
 
         unsafe {
             l.insert(n3, &guard);

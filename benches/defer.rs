@@ -12,7 +12,7 @@ use utils::scoped::scope;
 fn single_alloc_defer_free(b: &mut Bencher) {
     b.iter(|| {
         let guard = &epoch::pin();
-        let p = Owned::new(1).into_ptr(guard);
+        let p = Owned::new(1).into_shared(guard);
         unsafe {
             guard.defer(move || p.into_owned());
         }
@@ -40,7 +40,7 @@ fn multi_alloc_defer_free(b: &mut Bencher) {
                 s.spawn(|| {
                     for _ in 0..STEPS {
                         let guard = &epoch::pin();
-                        let p = Owned::new(1).into_ptr(guard);
+                        let p = Owned::new(1).into_shared(guard);
                         unsafe {
                             guard.defer(move || p.into_owned());
                         }

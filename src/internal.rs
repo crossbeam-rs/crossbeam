@@ -192,7 +192,7 @@ impl Local {
                 guard_count: Cell::new(0),
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
-            }).into_ptr(&unprotected());
+            }).into_shared(&unprotected());
             global.locals.insert(local, &unprotected());
             Handle { local: local.as_raw() }
         }
