@@ -20,8 +20,7 @@ fn it_compiles() {
 
     fn foo(
         mut struct_val: Foo,
-        immutable_var: String,
-        eval_var: String,
+        mut var: String,
         rx0: Receiver<String>,
         rx1: &Receiver<u32>,
         tx0: &mut Sender<String>,
@@ -34,12 +33,12 @@ fn it_compiles() {
         select_loop! {
             recv(rx0, val) => Some(val),
             recv(rx1, val) => Some(val.to_string()),
-            send(tx0, mut struct_val.0) => Some(immutable_var),
-            send(tx1, immutable_var) => Some(struct_val.0),
-            send(tx2, eval struct_val.0.clone()) => Some(struct_val.0),
-            send(tx3, immutable_var) => Some(eval_var),
-            send(tx4, eval eval_var.clone()) => Some(eval_var),
-            send(tx5, eval 42) => None,
+            send(tx0, mut struct_val.0) => Some(var),
+            send(tx1, mut var) => Some(struct_val.0),
+            send(tx2, struct_val.0.clone()) => Some(struct_val.0),
+            send(tx3, "foo".to_string()) => Some(var),
+            send(tx4, var.clone()) => Some(var),
+            send(tx5, 42) => None,
             disconnected() => Some("disconnected".into()),
             would_block() => Some("would_block".into()),
             timed_out(Duration::from_secs(1)) => Some("timed_out".into()),
@@ -208,8 +207,8 @@ fn unblocks() {
         });
 
         select_loop! {
-            send(tx1, eval 1) => {},
-            send(tx2, eval 2) => panic!(),
+            send(tx1, 1) => {},
+            send(tx2, 2) => panic!(),
             timed_out(ms(1000)) => panic!(),
         }
     });
@@ -230,7 +229,7 @@ fn both_ready() {
         for _ in 0..2 {
             select_loop! {
                 recv(rx1, v) => assert_eq!(v, 1),
-                send(tx2, eval 2) => {},
+                send(tx2, 2) => {},
             }
         }
     });
@@ -271,7 +270,7 @@ fn loop_try() {
 
                 select_loop! {
                     recv(rx1, v) => assert_eq!(v, 1),
-                    send(tx2, eval 2) => {},
+                    send(tx2, 2) => {},
                     disconnected() => panic!(),
                     timed_out(ms(500)) => panic!(),
                 }

@@ -23,20 +23,16 @@
 ///
 /// The following operations are supported by the macro:
 ///
-/// * **`send($tx:expr, $variable:ident) => ...`:** Attempt to `send` the value of
-///   `$variable` with `$tx`. If sending fails, the value of `$variable` is
-///   automatically recovered. For convenience, `$variable` is automatically
-///   made mutable by the macro.
+/// * **`send($tx:expr, $expr:expr) => ...`:** Attempt to `send` the result of
+///   evaluating `$expr` with `$tx`. *Warning:* $expr is evaluated once in every
+///   loop iteration. In some iterations, its result may simply be discarded
+///   with no actual attempt at sending it.
 /// * **`send($tx:expr, mut $field:expr) => ...`:** Attempt to `send` the value of
 ///   `$variable` with `$tx`. If sending fails, the value of `$variable` is
 ///   automatically recovered. Different from the previous version, this version
 ///   assumes that `$field` is mutable. And while the macro accepts any
 ///   expression for `$field`, it only really makes sense to specify plain
 ///   variables or direct field references (e.g. `some_struct.some_field`).
-/// * **`send($tx:expr, eval $expr:expr) => ...`:** Attempt to `send` the result of
-///   evaluating `$expr` with `$tx`. *Warning:* $expr is evaluated once in every
-///   loop iteration. In some iterations, its result may simply be discarded
-///   with no actual attempt at sending it.
 /// * **`recv($rx:expr, $variable:ident) => ...`:** Attempt to receive a value from
 ///   `$rx`. If successful, the received value will be available in `$variable`
 ///    for the expression of this case.
@@ -120,13 +116,8 @@ macro_rules! select_loop {
 
     //The individual method invocations
     {@impl($state:ident) send($tx:expr, $val:ident) => $body:expr} => {
-        match $state.send(&*&$tx, $val) {
-            Ok(()) => {
-                $body
-            }
-            Err($crate::SelectSendError(val)) => {
-                $val = val;
-            }
+        if let Ok(()) = $state.send(&*&$tx, $val) {
+            $body
         }
     };
     {@impl($state:ident) send($tx:expr, mut $val:expr) => $body:expr} => {
@@ -139,7 +130,7 @@ macro_rules! select_loop {
             }
         }
     };
-    {@impl($state:ident) send($tx:expr, eval $val:expr) => $body:expr} => {
+    {@impl($state:ident) send($tx:expr, $val:expr) => $body:expr} => {
         if let Ok(()) = $state.send(&*&$tx, $val) {
             $body
         }
@@ -176,10 +167,6 @@ macro_rules! select_loop {
     };
 
     // The prelude helpers
-    {@prelude($state:ident) send($tx:expr, $val:ident)} => {
-        #[allow(unused_mut, unused_variables)]
-        let mut $val = $val;
-    };
     {@prelude($state:ident) timed_out($timeout:expr)} => {
         #[allow(unused_mut, unused_variables)]
         let mut $state = $crate::Select::with_timeout($timeout);
