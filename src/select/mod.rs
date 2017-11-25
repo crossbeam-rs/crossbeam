@@ -234,7 +234,7 @@ pub(crate) mod handle;
 /// use channel::{Sender, Receiver, Select};
 /// use std::thread;
 ///
-/// // Either sends or receives, whichever possible, a name on the channel.
+/// // Either send my name into the channel or receive someone else's, whatever happens first.
 /// fn seek<'a>(name: &'a str, tx: Sender<&'a str>, rx: Receiver<&'a str>) {
 ///     let mut sel = Select::new();
 ///     loop {

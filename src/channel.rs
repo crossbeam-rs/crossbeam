@@ -7,8 +7,6 @@ use flavors;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use select::CaseId;
 
-// TODO: can_recv and can_send should be !is_empty and !is_full?
-
 pub struct Channel<T> {
     senders: AtomicUsize,
     receivers: AtomicUsize,
@@ -306,7 +304,7 @@ impl<T> Sender<T> {
 
     /// Returns `true` if the channel is empty.
     ///
-    /// A zero-capacity channel is always empty.
+    /// Zero-capacity channels are always empty.
     ///
     /// # Examples
     ///
@@ -323,7 +321,11 @@ impl<T> Sender<T> {
     /// assert!(!tx.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.is_empty(),
+            Flavor::List(ref chan) => chan.is_empty(),
+            Flavor::Zero(_) => true,
+        }
     }
 
     /// Returns the number of messages in the channel.
@@ -583,7 +585,7 @@ impl<T> Receiver<T> {
 
     /// Returns `true` if the channel is empty.
     ///
-    /// A zero-capacity channel is always empty.
+    /// Zero-capacity channels are always empty.
     ///
     /// # Examples
     ///
@@ -600,7 +602,11 @@ impl<T> Receiver<T> {
     /// assert!(!rx.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.is_empty(),
+            Flavor::List(ref chan) => chan.is_empty(),
+            Flavor::Zero(_) => true,
+        }
     }
 
     /// Returns the number of messages in the channel.
