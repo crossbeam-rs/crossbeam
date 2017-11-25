@@ -214,9 +214,10 @@
 //! For example, selection can be used to receive a message from one of the two channels, blocking
 //! until a message appears on either of them:
 //!
-//! ```ignore TODO
-//! #[macro_use]
-//! extern crate channel;
+//! ```
+//! # #[macro_use]
+//! # extern crate channel;
+//! # fn main() {
 //!
 //! use std::thread;
 //!
@@ -234,6 +235,8 @@
 //!         println!("Received a message from the second channel: {}", msg);
 //!     }
 //! }
+//!
+//! # }
 //! ```
 //!
 //! The syntax of [`select_loop!`] is very similar to the one used by `match`.
@@ -241,7 +244,11 @@
 //! Here is another, more complicated example of selection. Here we are selecting over two
 //! operations on the opposite ends of the same channel: a send and a receive operation.
 //!
-//! ```ignore TODO
+//! ```
+//! # #[macro_use]
+//! # extern crate channel;
+//! # fn main() {
+//!
 //! use channel::{Sender, Receiver, Select};
 //! use std::thread;
 //!
@@ -271,6 +278,8 @@
 //! if let Ok(name) = rx.try_recv() {
 //!     println!("No one received {}’s message.", name);
 //! }
+//!
+//! # }
 //! ```
 //!
 //! For more details, take a look at the documentation of [`select_loop!`].
