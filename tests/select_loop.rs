@@ -21,6 +21,7 @@ fn it_compiles() {
     fn foo(
         mut struct_val: Foo,
         mut var: String,
+        immutable_var: String,
         rx0: Receiver<String>,
         rx1: &Receiver<u32>,
         tx0: &mut Sender<String>,
@@ -35,6 +36,7 @@ fn it_compiles() {
             recv(rx1, val) => Some(val.to_string()),
             send(tx0, mut struct_val.0) => Some(var),
             send(tx1, mut var) => Some(struct_val.0),
+            send(tx1, immutable_var) => Some(struct_val.0),
             send(tx2, struct_val.0.clone()) => Some(struct_val.0),
             send(tx3, "foo".to_string()) => Some(var),
             send(tx4, var.clone()) => Some(var),

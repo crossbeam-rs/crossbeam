@@ -23,6 +23,10 @@
 ///
 /// The following operations are supported by the macro:
 ///
+/// * **`send($tx:expr, $variable:ident) => ...`:** Attempt to `send` the value of
+///   `$variable` with `$tx`. If sending fails, the value of `$variable` is
+///   automatically recovered. For convenience, `$variable` is automatically
+///   made mutable by the macro.
 /// * **`send($tx:expr, $expr:expr) => ...`:** Attempt to `send` the result of
 ///   evaluating `$expr` with `$tx`. *Warning:* $expr is evaluated once in every
 ///   loop iteration. In some iterations, its result may simply be discarded
@@ -114,7 +118,17 @@ macro_rules! select_loop {
         }
     };
 
-    //The individual method invocations
+    // The individual method invocations
+    {@impl($state:ident) send($tx:expr, $val:ident) => $body:expr} => {
+        match $state.send(&*&$tx, $val) {
+            Ok(()) => {
+                $body
+            }
+            Err($crate::SelectSendError(val)) => {
+                $val = val;
+            }
+        }
+    };
     {@impl($state:ident) send($tx:expr, $val:ident) => $body:expr} => {
         if let Ok(()) = $state.send(&*&$tx, $val) {
             $body
@@ -167,6 +181,10 @@ macro_rules! select_loop {
     };
 
     // The prelude helpers
+    {@prelude($state:ident) send($tx:expr, $val:ident)} => {
+        #[allow(unused_mut, unused_variables)]
+        let mut $val = $val;
+    };
     {@prelude($state:ident) timed_out($timeout:expr)} => {
         #[allow(unused_mut, unused_variables)]
         let mut $state = $crate::Select::with_timeout($timeout);
