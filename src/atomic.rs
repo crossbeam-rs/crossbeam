@@ -25,7 +25,7 @@ fn strongest_failure_ordering(ord: Ordering) -> Ordering {
 /// The error returned on failed compare-and-set operation.
 pub struct CompareAndSetError<'g, T: 'g, P: Pointer<T>> {
     /// The value in the atomic pointer at the time of the failed operation.
-    pub previous: Shared<'g, T>,
+    pub current: Shared<'g, T>,
 
     /// The new value, which the operation failed to store.
     pub new: P,
@@ -282,9 +282,9 @@ impl<T> Atomic<T> {
         self.data
             .compare_exchange(current.into_data(), new, ord.success(), ord.failure())
             .map(|_| unsafe { Shared::from_data(new) })
-            .map_err(|previous| unsafe {
+            .map_err(|current| unsafe {
                 CompareAndSetError {
-                    previous: Shared::from_data(previous),
+                    current: Shared::from_data(current),
                     new: P::from_data(new),
                 }
             })
@@ -322,7 +322,7 @@ impl<T> Atomic<T> {
     ///             break;
     ///         }
     ///         Err(err) => {
-    ///             ptr = err.previous;
+    ///             ptr = err.current;
     ///             new = err.new;
     ///         }
     ///     }
@@ -332,7 +332,7 @@ impl<T> Atomic<T> {
     /// loop {
     ///     match a.compare_and_set_weak(curr, Shared::null(), SeqCst, guard) {
     ///         Ok(_) => break,
-    ///         Err(err) => curr = err.previous,
+    ///         Err(err) => curr = err.current,
     ///     }
     /// }
     /// ```
@@ -351,9 +351,9 @@ impl<T> Atomic<T> {
         self.data
             .compare_exchange_weak(current.into_data(), new, ord.success(), ord.failure())
             .map(|_| unsafe { Shared::from_data(new) })
-            .map_err(|previous| unsafe {
+            .map_err(|current| unsafe {
                 CompareAndSetError {
-                    previous: Shared::from_data(previous),
+                    current: Shared::from_data(current),
                     new: P::from_data(new),
                 }
             })
