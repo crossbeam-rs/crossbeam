@@ -220,7 +220,7 @@ impl<T> Inner<T> {
 
         // Replace the old buffer with the new one.
         let old = self.buffer
-            .swap(Owned::new(new).into_ptr(guard), Release, guard);
+            .swap(Owned::new(new).into_shared(guard), Release, guard);
 
         // Destroy the old buffer later.
         guard.defer(move || old.into_owned());

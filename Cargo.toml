@@ -8,15 +8,15 @@ repository = "https://github.com/crossbeam-rs/crossbeam-deque"
 homepage = "https://github.com/crossbeam-rs/crossbeam-deque"
 documentation = "https://docs.rs/crossbeam-deque"
 description = "Concurrent work-stealing deque"
-keywords = ["Chase-Lev", "lock-free", "scheduler", "scheduling"]
-categories = ["concurrency", "data-structures"]
+keywords = ["chase-lev", "lock-free", "scheduler", "scheduling"]
+categories = ["algorithms", "concurrency", "data-structures"]
 
 [badges]
 travis-ci = { repository = "crossbeam-rs/crossbeam-deque" }
 
 [dependencies]
-crossbeam-epoch = { git = "https://github.com/stjepang/crossbeam-epoch", branch = "guard" }
-crossbeam-utils = { git = "https://github.com/crossbeam-rs/crossbeam-utils" }
+crossbeam-epoch = "0.1.0"
+crossbeam-utils = "0.2.1"
 
 [dev-dependencies]
 rand = "0.3"
