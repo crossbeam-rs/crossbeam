@@ -16,7 +16,7 @@ nightly = []
 
 [dependencies]
 crossbeam = "0.3.0"
-crossbeam-epoch = { git = "https://github.com/crossbeam-rs/crossbeam-epoch", branch = "master" }
+crossbeam-epoch = "0.1.0"
 crossbeam-utils = "0.1.0"
 parking_lot = "0.4.4"
 rand = "0.3"
