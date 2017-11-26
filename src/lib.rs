@@ -284,6 +284,9 @@
 //!
 //! For more details, take a look at the documentation of [`select_loop!`].
 //!
+//! If you need a more powerful interface that allows selecting over a dynamic set of channel
+//! operations, use [`Select`].
+//!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
 //! [`bounded`]: fn.bounded.html
@@ -297,6 +300,7 @@
 //! [`try_iter`]: struct.Receiver.html#method.try_iter
 //! [`into_iter`]: struct.Receiver.html#method.into_iter
 //! [`select_loop!`]: macro.select_loop.html
+//! [`Select`]: struct.Select.html
 
 #![cfg_attr(feature = "nightly", feature(hint_core_should_pause))]
 

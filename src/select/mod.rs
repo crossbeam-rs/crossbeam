@@ -12,7 +12,7 @@ mod select_loop;
 
 pub(crate) mod handle;
 
-/// The selection interface.
+/// The dynamic selection interface.
 ///
 /// It allows declaring an arbitrary (possibly dynamic) list of operations on channels, and waiting
 /// until exactly one of them fires. The interface is somewhat tricky to use and care must be taken
@@ -55,7 +55,7 @@ pub(crate) mod handle;
 ///
 /// There are two selection *cases*: a receive on `rx1` and a receive on `rx2`. The loop is
 /// continuously probing both channels until one of the cases successfully receives a message. Then
-/// we print a message and the loop is broken.
+/// we print the message and the loop is broken.
 ///
 /// Note that `sel` holds an internal state machine that keeps track of how many cases there are,
 /// which channels are disconnected, etc. It is smart enough to automatically register each case

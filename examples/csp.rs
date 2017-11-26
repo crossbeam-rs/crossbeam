@@ -54,7 +54,7 @@ fn main() {
     }
 }
 
-// Either sends or receives, whichever possible, a name on the channel.
+// Either send my name into the channel or receive someone else's, whatever happens first.
 fn seek<'a>(name: &'a str, tx: &Sender<&'a str>, rx: &Receiver<&'a str>) {
     select_loop! {
         recv(rx, peer) => println!("{} received a message from {}.", name, peer),
