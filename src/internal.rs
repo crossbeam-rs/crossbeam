@@ -368,6 +368,8 @@ impl IsElement<Local> for Local {
     }
 
     unsafe fn element_of(entry: &Entry) -> &Local {
+        // offset_of! macro uses unsafe, but it's unnecessary in this context.
+        #[allow(unused_unsafe)]
         let local_ptr = (entry as *const Entry as usize - offset_of!(Local, entry)) as *const Local;
         &*local_ptr
     }
