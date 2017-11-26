@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## 0.1.0 - 2017-08-27
+## 0.1.0 - 2017-11-26
 ### Added
 - First version of the new epoch-based GC.
 
