@@ -5,9 +5,9 @@
 //! Michael and Scott.  Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue
 //! Algorithms.  PODC 1996.  http://dl.acm.org/citation.cfm?id=248106
 
-use std::mem::{self, ManuallyDrop};
-use std::ptr;
-use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use core::mem::{self, ManuallyDrop};
+use core::ptr;
+use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 use crossbeam_utils::cache_padded::CachePadded;
 

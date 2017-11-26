@@ -16,13 +16,14 @@
 //! When a participant is pinned, a `Guard` is returned as a witness that the participant is pinned.
 //! Guards are necessary for performing atomic operations, and for freeing/dropping locations.
 
-use std::cell::{Cell, UnsafeCell};
-use std::mem::{self, ManuallyDrop};
-use std::num::Wrapping;
-use std::ptr;
-use std::sync::Arc;
-use std::sync::atomic;
-use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
+use core::cell::{Cell, UnsafeCell};
+use core::mem::{self, ManuallyDrop};
+use core::num::Wrapping;
+use core::ptr;
+use core::sync::atomic;
+use core::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
+use alloc::boxed::Box;
+use alloc::arc::Arc;
 
 use crossbeam_utils::cache_padded::CachePadded;
 

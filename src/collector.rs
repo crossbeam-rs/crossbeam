@@ -13,7 +13,7 @@
 /// handle.pin().flush();
 /// ```
 
-use std::sync::Arc;
+use alloc::arc::Arc;
 
 use internal::{Global, Local};
 use guard::Guard;

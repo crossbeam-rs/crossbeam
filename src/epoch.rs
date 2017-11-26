@@ -7,8 +7,8 @@
 //! If an object became garbage in some epoch, then we can be sure that after two advancements no
 //! participant will hold a reference to it. That is the crux of safe memory reclamation.
 
-use std::cmp;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use core::cmp;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// An epoch that can be marked as pinned or unpinned.
 ///

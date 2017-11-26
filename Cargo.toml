@@ -12,14 +12,13 @@ keywords = ["lock-free", "rcu", "atomic", "garbage"]
 categories = ["concurrency", "memory-management"]
 
 [features]
-nightly = []
+default = ["use_std"]
+use_std = ["lazy_static"]
+nightly = ["arrayvec/use_union"]
 strict_gc = []
 
 [dependencies]
-arrayvec = "0.4"
-crossbeam-utils = "0.1"
-lazy_static = "0.2"
-memoffset = "0.1.0"
-
-[dev-dependencies]
-rand = "0.3"
+arrayvec = { version = "0.4", default-features = false }
+crossbeam-utils = { version = "0.1", default-features = false }
+lazy_static = { version = "0.2", optional = true }
+memoffset = { version = "0.1", default-features = false }

@@ -1,12 +1,13 @@
-use std::borrow::{Borrow, BorrowMut};
-use std::cmp;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem;
-use std::ptr;
-use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
-use std::sync::atomic::Ordering;
+use core::borrow::{Borrow, BorrowMut};
+use core::cmp;
+use core::fmt;
+use core::marker::PhantomData;
+use core::mem;
+use core::ptr;
+use core::ops::{Deref, DerefMut};
+use core::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
+use core::sync::atomic::Ordering;
+use alloc::boxed::Box;
 
 use guard::Guard;
 

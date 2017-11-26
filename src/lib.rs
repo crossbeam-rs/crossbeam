@@ -55,9 +55,29 @@
 //! [`defer`]: fn.defer.html
 
 #![cfg_attr(feature = "nightly", feature(const_fn))]
+#![cfg_attr(feature = "nightly", feature(alloc))]
+#![cfg_attr(not(test), no_std)]
+
+#[cfg(all(not(test), feature = "use_std"))]
+#[macro_use]
+extern crate std;
+#[cfg(test)]
+extern crate core;
+
+// Use liballoc on nightly to avoid a dependency on libstd
+#[cfg(feature = "nightly")]
+extern crate alloc;
+#[cfg(not(feature = "nightly"))]
+mod alloc {
+    // Tweak the module layout to match the one in liballoc
+    extern crate std;
+    pub use self::std::boxed;
+    pub use self::std::sync as arc;
+}
 
 extern crate arrayvec;
 extern crate crossbeam_utils;
+#[cfg(feature = "use_std")]
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -65,6 +85,7 @@ extern crate memoffset;
 
 mod atomic;
 mod collector;
+#[cfg(feature = "use_std")]
 mod default;
 mod deferred;
 mod epoch;
@@ -75,5 +96,6 @@ mod sync;
 
 pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared};
 pub use self::guard::{unprotected, Guard};
+#[cfg(feature = "use_std")]
 pub use self::default::{default_handle, is_pinned, pin};
 pub use self::collector::{Collector, Handle};

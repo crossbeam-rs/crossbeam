@@ -24,7 +24,7 @@
 //! concurrent data structure may have its own queue that gets fully destroyed as soon as the data
 //! structure gets dropped.
 
-use std::fmt;
+use core::fmt;
 use arrayvec::ArrayVec;
 use deferred::Deferred;
 

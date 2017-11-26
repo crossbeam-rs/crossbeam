@@ -1,5 +1,6 @@
-use std::mem;
-use std::ptr;
+use core::mem;
+use core::ptr;
+use alloc::boxed::Box;
 
 /// Number of words a piece of `Data` can hold.
 ///
