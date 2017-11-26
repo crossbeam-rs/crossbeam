@@ -1,4 +1,5 @@
 use core::ptr;
+use core::mem;
 
 use garbage::Garbage;
 use internal::Local;
@@ -192,13 +193,67 @@ impl Guard {
             local.flush(self);
         }
     }
+
+    /// Temporarily unpins the thread, executes the given function and then re-pins the thread.
+    ///
+    /// This method is useful when you need to perform a long-running operation (e.g. sleeping)
+    /// and don't need to maintain any guard-based reference across the call (the latter is enforced
+    /// by `&mut self`). The thread will only be unpinned if this is the only active guard for the
+    /// current thread.
+    ///
+    /// If this method is called from an [`unprotected`] guard, then the passed function is called
+    /// directly without unpinning the thread.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Atomic};
+    /// use std::sync::atomic::Ordering::SeqCst;
+    /// use std::thread;
+    /// use std::time::Duration;
+    ///
+    /// let a = Atomic::new(777);
+    /// let mut guard = epoch::pin();
+    /// {
+    ///     let p = a.load(SeqCst, &guard);
+    ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
+    /// }
+    /// guard.repin_after(|| thread::sleep(Duration::from_millis(50)));
+    /// {
+    ///     let p = a.load(SeqCst, &guard);
+    ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
+    /// }
+    /// ```
+    ///
+    /// [`unprotected`]: fn.unprotected.html
+    pub fn repin_after<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        if let Some(local) = unsafe { self.local.as_ref() } {
+            // We need to acquire a handle here to ensure the Local doesn't
+            // disappear from under us.
+            local.acquire_handle();
+            local.unpin();
+        }
+
+        // Ensure the Guard is re-pinned even if the function panics
+        defer! {
+            if let Some(local) = unsafe { self.local.as_ref() } {
+                mem::forget(local.pin());
+                local.release_handle();
+            }
+        }
+
+        f()
+    }
 }
 
 impl Drop for Guard {
     #[inline]
     fn drop(&mut self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
-            Local::unpin(local);
+            local.unpin();
         }
     }
 }

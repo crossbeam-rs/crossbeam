@@ -82,6 +82,8 @@ extern crate crossbeam_utils;
 extern crate lazy_static;
 #[macro_use]
 extern crate memoffset;
+#[macro_use]
+extern crate scopeguard;
 
 mod atomic;
 mod collector;
