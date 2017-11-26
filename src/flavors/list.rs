@@ -111,7 +111,7 @@ impl<T> Channel<T> {
 
         // Create an empty node, into which both head and tail point at the beginning.
         let node = unsafe {
-            Owned::new(Node::new(0)).into_ptr(epoch::unprotected())
+            Owned::new(Node::new(0)).into_shared(epoch::unprotected())
         };
         channel.head.node.store(node, Relaxed);
         channel.tail.node.store(node, Relaxed);
@@ -136,7 +136,7 @@ impl<T> Channel<T> {
                 if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
                     // If this was the last entry in the node, allocate a new one.
                     if offset + 1 == NODE_CAP {
-                        let new = Owned::new(Node::new(new_index)).into_ptr(guard);
+                        let new = Owned::new(Node::new(new_index)).into_shared(guard);
                         tail.next.store(new, Release);
                         self.tail.node.store(new, Release);
                     }
