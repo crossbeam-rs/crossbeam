@@ -30,26 +30,26 @@ extern crate crossbeam_channel;
 
 ## Comparison with `std::sync::mpsc`
 
-|                                  | `std::sync::mpsc`                    | `crossbeam-channel`                               |
-|----------------------------------|--------------------------------------|---------------------------------------------------|
-| Unbounded channel constructor    | `std::sync::mpsc::channel()`         | `crossbeam_channel::unbounded()`                  |
-| Bounded channel constructor      | `std::sync::mpsc::sync_channel(cap)` | `crossbeam_channel::bounded(cap)`                 |
-| Sender types                     | `Sender` and `SyncSender`            | `Sender`                                          |
-| Receiver types                   | `Receiver`                           | `Receiver`                                        |
-| Sender implements `Sync`?        | No                                   | Yes                                               |
-| Receiver implements `Sync`?      | No                                   | Yes                                               |
-| Sender implements `Clone`?       | Yes                                  | Yes                                               |
-| Receiver implements `Clone`?     | No                                   | Yes                                               |
-| Sender operations                | `try_send`, `send`                   | `try_send`, `send`, `send_timeout`                |
-| Receiver operations              | `try_recv`, `recv`, `recv_timeout`   | `try_recv`, `recv`, `recv_timeout`                |
-| Additional sender methods        |                                      | `is_empty`, `len`, `capacity`                     |
-| Additional receiver methods      | `iter`, `try_iter`                   | `iter`, `try_iter`, `is_empty`, `len`, `capacity` |
-| Selection macro                  | `select!`                            | `select_loop!`                                    |
-| Select interface                 | `std::sync::mpsc::Select`            | `crossbeam_channel::Select`                       |
-| Select has a safe interface?     | No                                   | Yes                                               |
-| Select supports send operations? | No                                   | Yes                                               |
-| Select can have a timeout?       | No                                   | Yes                                               |
-| Select can be non-blocking?      | No                                   | Yes                                               |
+|                                  | `std::sync::mpsc`                  | `crossbeam-channel`                               |
+|----------------------------------|------------------------------------|---------------------------------------------------|
+| Unbounded channel constructor    | `channel()`                        | `unbounded()`                                     |
+| Bounded channel constructor      | `sync_channel(cap)`                | `bounded(cap)`                                    |
+| Sender types                     | `Sender` and `SyncSender`          | `Sender`                                          |
+| Receiver types                   | `Receiver`                         | `Receiver`                                        |
+| Sender implements `Sync`?        | No                                 | Yes                                               |
+| Receiver implements `Sync`?      | No                                 | Yes                                               |
+| Sender implements `Clone`?       | Yes                                | Yes                                               |
+| Receiver implements `Clone`?     | No                                 | Yes                                               |
+| Sender operations                | `try_send`, `send`                 | `try_send`, `send`, `send_timeout`                |
+| Receiver operations              | `try_recv`, `recv`, `recv_timeout` | `try_recv`, `recv`, `recv_timeout`                |
+| Additional sender methods        |                                    | `is_empty`, `len`, `capacity`                     |
+| Additional receiver methods      | `iter`, `try_iter`                 | `iter`, `try_iter`, `is_empty`, `len`, `capacity` |
+| Selection macro                  | `select!`                          | `select_loop!`                                    |
+| Select interface                 | `std::sync::mpsc::Select`          | `crossbeam_channel::Select`                       |
+| Select has a safe interface?     | No                                 | Yes                                               |
+| Select supports send operations? | No                                 | Yes                                               |
+| Select can have a timeout?       | No                                 | Yes                                               |
+| Select can be non-blocking?      | No                                 | Yes                                               |
 
 ## License
 
