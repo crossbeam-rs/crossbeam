@@ -24,4 +24,6 @@ go run main.go | tee go.txt
 
 ### Results
 
-![Benchmark results](/benchmarks/plot.png)
+Benchmarked on 2017-11-09:
+
+![Benchmark results](https://i.imgur.com/W0cSEVd.png)

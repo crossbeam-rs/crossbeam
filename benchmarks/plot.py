@@ -61,8 +61,10 @@ def plot(subplot, title, prefix, runs):
         ax.set_xticks(range(m + 1))
     elif m < 50:
         ax.set_xticks([x*5 for x in range(m / 5 + 1)])
+    elif m < 200:
+        ax.set_xticks([x*20 for x in range(m / 20 + 1)])
     else:
-        ax.set_xticks([x*10 for x in range(m / 10 + 1)])
+        ax.set_xticks([x*100 for x in range(m / 100 + 1)])
 
     for (x, y) in zip(go, ys):
         if x > 0:
@@ -85,31 +87,31 @@ def plot(subplot, title, prefix, runs):
 
 
 plot(
-   221,
-   "Bounded channel of capacity 0",
-   'bounded0',
-   ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
+    221,
+    "Bounded channel of capacity 0",
+    'bounded0',
+    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plot(
-   222,
-   "Bounded channel of capacity 1",
-   'bounded1',
-   ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
+    222,
+    "Bounded channel of capacity 1",
+    'bounded1',
+    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plot(
-   223,
-   "Bounded channel of capacity N",
-   'bounded',
-   ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
+    223,
+    "Bounded channel of capacity N",
+    'bounded',
+    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plot(
-   224,
-   "Unbounded channel",
-   'unbounded',
-   ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
+    224,
+    "Unbounded channel",
+    'unbounded',
+    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 legend = [

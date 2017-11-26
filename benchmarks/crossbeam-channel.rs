@@ -1,7 +1,7 @@
-extern crate channel;
 extern crate crossbeam;
+extern crate crossbeam_channel;
 
-use channel::{Select, Receiver, Sender};
+use crossbeam_channel::{bounded, unbounded, Select, Receiver, Sender};
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -154,29 +154,29 @@ fn main() {
         }
     }
 
-    run!("bounded0_mpmc", mpmc(|| channel::bounded(0)));
-    run!("bounded0_mpsc", mpsc(|| channel::bounded(0)));
-    run!("bounded0_select_both", select_both(|| channel::bounded(0)));
-    run!("bounded0_select_rx", select_rx(|| channel::bounded(0)));
-    run!("bounded0_spsc", spsc(|| channel::bounded(0)));
+    run!("bounded0_mpmc", mpmc(|| bounded(0)));
+    run!("bounded0_mpsc", mpsc(|| bounded(0)));
+    run!("bounded0_select_both", select_both(|| bounded(0)));
+    run!("bounded0_select_rx", select_rx(|| bounded(0)));
+    run!("bounded0_spsc", spsc(|| bounded(0)));
 
-    run!("bounded1_mpmc", mpmc(|| channel::bounded(1)));
-    run!("bounded1_mpsc", mpsc(|| channel::bounded(1)));
-    run!("bounded1_select_both", select_both(|| channel::bounded(1)));
-    run!("bounded1_select_rx", select_rx(|| channel::bounded(1)));
-    run!("bounded1_spsc", spsc(|| channel::bounded(1)));
+    run!("bounded1_mpmc", mpmc(|| bounded(1)));
+    run!("bounded1_mpsc", mpsc(|| bounded(1)));
+    run!("bounded1_select_both", select_both(|| bounded(1)));
+    run!("bounded1_select_rx", select_rx(|| bounded(1)));
+    run!("bounded1_spsc", spsc(|| bounded(1)));
 
-    run!("bounded_mpmc", mpmc(|| channel::bounded(MESSAGES)));
-    run!("bounded_mpsc", mpsc(|| channel::bounded(MESSAGES)));
-    run!("bounded_select_both", select_both(|| channel::bounded(MESSAGES)));
-    run!("bounded_select_rx", select_rx(|| channel::bounded(MESSAGES)));
-    run!("bounded_seq", seq(|| channel::bounded(MESSAGES)));
-    run!("bounded_spsc", spsc(|| channel::bounded(MESSAGES)));
+    run!("bounded_mpmc", mpmc(|| bounded(MESSAGES)));
+    run!("bounded_mpsc", mpsc(|| bounded(MESSAGES)));
+    run!("bounded_select_both", select_both(|| bounded(MESSAGES)));
+    run!("bounded_select_rx", select_rx(|| bounded(MESSAGES)));
+    run!("bounded_seq", seq(|| bounded(MESSAGES)));
+    run!("bounded_spsc", spsc(|| bounded(MESSAGES)));
 
-    run!("unbounded_mpmc", mpmc(|| channel::unbounded()));
-    run!("unbounded_mpsc", mpsc(|| channel::unbounded()));
-    run!("unbounded_select_both", select_both(|| channel::unbounded()));
-    run!("unbounded_select_rx", select_rx(|| channel::unbounded()));
-    run!("unbounded_seq", seq(|| channel::unbounded()));
-    run!("unbounded_spsc", spsc(|| channel::unbounded()));
+    run!("unbounded_mpmc", mpmc(|| unbounded()));
+    run!("unbounded_mpsc", mpsc(|| unbounded()));
+    run!("unbounded_select_both", select_both(|| unbounded()));
+    run!("unbounded_select_rx", select_rx(|| unbounded()));
+    run!("unbounded_seq", seq(|| unbounded()));
+    run!("unbounded_spsc", spsc(|| unbounded()));
 }
