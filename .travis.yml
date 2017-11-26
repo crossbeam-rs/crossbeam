@@ -5,6 +5,18 @@ rust:
   - beta
   - nightly
 
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - llvm-toolchain-precise
+      - llvm-toolchain-precise-3.8
+    packages:
+      - llvm-3.8
+      - llvm-3.8-dev
+      - clang-3.8
+      - clang-3.8-dev
+
 script:
   - cargo build
   - cargo build --release
@@ -12,10 +24,38 @@ script:
   - cargo build --release --no-default-features
   - cargo test
   - cargo test --release
+
   - |
     if [ $TRAVIS_RUST_VERSION == nightly ]; then
       cargo build --features nightly --no-default-features
       cargo build --features nightly --release --no-default-features
+    fi
+
+  - |
+    if [ $TRAVIS_RUST_VERSION == nightly ]; then
       cargo test --features nightly
+    fi
+
+  - |
+    if [[ $TRAVIS_RUST_VERSION == nightly ]]; then
       cargo test --features nightly --release
+    fi
+
+  - |
+    if [[ $TRAVIS_RUST_VERSION == nightly ]]; then
+      RUSTFLAGS="-Z sanitizer=thread" \
+      cargo run \
+        --target x86_64-unknown-linux-gnu \
+        --features sanitize,nightly \
+        --example sanitize
+    fi
+
+  - |
+    if [[ $TRAVIS_RUST_VERSION == nightly ]]; then
+      RUSTFLAGS="-Z sanitizer=thread" \
+      cargo run \
+        --release \
+        --target x86_64-unknown-linux-gnu \
+        --features sanitize,nightly \
+        --example sanitize
     fi

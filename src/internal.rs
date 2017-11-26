@@ -121,7 +121,13 @@ impl Global {
                     return global_epoch;
                 }
                 Ok(local) => {
-                    let local_epoch = local.epoch.load(Ordering::Relaxed);
+                    let local_epoch = if cfg!(feature = "sanitize") {
+                        // HACK(stjepang): This is necessary because thread sanitizer doesn't
+                        // understand fences.
+                        local.epoch.load(Ordering::Acquire)
+                    } else {
+                        local.epoch.load(Ordering::Relaxed)
+                    };
 
                     // If the participant was pinned in a different epoch, we cannot advance the
                     // global epoch just yet.
