@@ -115,7 +115,7 @@ impl<T> Channel<T> {
         self.exchanger.right().can_notify()
     }
 
-    /// Closes the channel.
+    /// Closes the channel and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
         self.exchanger.close()
     }

@@ -49,8 +49,8 @@ struct Inner<T> {
 ///
 /// Instead of *offering* a concrete message for excahnge, a thread can also *promise* a message.
 /// If another thread pairs up with the promise on the opposite end, then it will wait until the
-/// promise is fulfilled. The thread that promised the message must in the end either revoke the
-/// promise or fulfill it.
+/// promise is fulfilled. The thread that promised the message must in the end fulfill it. A
+/// promise can also be revoked if nobody is waiting for it.
 pub struct Exchanger<T> {
     inner: Mutex<Inner<T>>,
 }
@@ -82,7 +82,7 @@ impl<T> Exchanger<T> {
         }
     }
 
-    /// Closes the exchanger.
+    /// Closes the exchanger and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
         let mut inner = self.inner.lock();
 
@@ -119,14 +119,40 @@ impl<'a, T> Side<'a, T> {
 
     /// Revokes the previously made promise.
     ///
-    /// TODO: what if somebody paired up with it?
+    /// This method should be called right after the case is aborted.
     pub fn revoke(&self, case_id: CaseId) {
-        self.exchanger.inner.lock().wait_queues[self.index].revoke(case_id);
+        self.exchanger.inner.lock().wait_queues[self.index].remove(case_id);
     }
 
     /// Fulfills the previously made promise.
     pub fn fulfill(&self, msg: T) -> T {
-        finish_exchange(msg, self.exchanger)
+        // Wait until the requesting thread gives us a pointer to its `Request`.
+        let req = LOCAL.with(|local| {
+            let mut backoff = Backoff::new();
+            loop {
+                let ptr = local.request_ptr.swap(0, Acquire) as *const Request<T>;
+                if !ptr.is_null() {
+                    break ptr;
+                }
+                backoff.step();
+            }
+        });
+
+        unsafe {
+            // First, make a clone of the requesting thread's `Handle`.
+            let handle = (*req).handle.clone();
+
+            // Exchange the messages and then notify the requesting thread that it can pick up our
+            // message.
+            let m = (*req).packet.exchange(msg);
+            (*req).handle.try_select(CaseId::abort());
+
+            // Wake up the requesting thread.
+            handle.unpark();
+
+            // Return the exchanged message.
+            m
+        }
     }
 
     /// Exchanges `msg` if there is an offer or promise on the opposite side.
@@ -172,7 +198,7 @@ impl<'a, T> Side<'a, T> {
                 // If there's someone on the other side, exchange messages with it.
                 if let Some(case) = inner.wait_queues[self.index ^ 1].pop() {
                     drop(inner);
-                    return Ok(case.exchange(msg, self.exchanger));
+                    return Ok(case.exchange(msg));
                 }
 
                 // Promise a packet with the message.
@@ -181,6 +207,7 @@ impl<'a, T> Side<'a, T> {
                 inner.wait_queues[self.index].offer(&packet, case_id);
             }
 
+            // Wait until the timeout and then try aborting the case.
             let timed_out = match wait {
                 Wait::YieldOnce => {
                     thread::yield_now();
@@ -200,7 +227,7 @@ impl<'a, T> Side<'a, T> {
 
             // Revoke the promise.
             let mut inner = self.exchanger.inner.lock();
-            inner.wait_queues[self.index].revoke(case_id);
+            inner.wait_queues[self.index].remove(case_id);
             msg = packet.into_inner();
 
             // If we timed out, return.
@@ -213,89 +240,97 @@ impl<'a, T> Side<'a, T> {
     }
 }
 
-enum Case<T> {
+/// An entry in a wait queue.
+enum Entry<T> {
+    /// Offers a concrete message.
     Offer {
         handle: Handle,
         packet: *const Packet<T>,
         case_id: CaseId,
     },
-    Promise { local: Arc<Local>, case_id: CaseId },
+    /// Promises a message.
+    Promise {
+        local: Arc<Local>,
+        case_id: CaseId,
+    },
 }
 
-impl<T> Case<T> {
-    fn exchange(&self, msg: T, exchanger: &Exchanger<T>) -> T {
+impl<T> Entry<T> {
+    /// Exchange `msg` with this entry and wake it up.
+    fn exchange(&self, msg: T) -> T {
         match *self {
-            Case::Offer {
+            // This is an offer.
+            // We can exchange messages immediately.
+            Entry::Offer {
                 ref handle, packet, ..
             } => {
                 let m = unsafe { (*packet).exchange(msg) };
                 handle.unpark();
                 m
             }
-            Case::Promise { ref local, .. } => {
+
+            // This is a promise.
+            // We must request the message and then wait until the promise is fulfilled.
+            Entry::Promise { ref local, .. } => {
+                // Reset the current thread's selection case.
                 handle::current_reset();
-                let req = Request::new(msg, exchanger);
+
+                // Create a request on the stack and register it in the owner of this entry.
+                let req = Request::new(msg);
                 local.request_ptr.store(&req as *const _ as usize, Release);
+
+                // Wake up the owner of this entry.
                 local.handle.unpark();
+
+                // Wait until our selection case is woken.
                 handle::current_wait_until(None);
+
+                // Extract the received message from the request.
                 req.packet.into_inner()
             }
         }
     }
 
+    /// Returns the handle associated with the owner of this entry.
     fn handle(&self) -> &Handle {
         match *self {
-            Case::Offer { ref handle, .. } => handle,
-            Case::Promise { ref local, .. } => &local.handle,
+            Entry::Offer { ref handle, .. } => handle,
+            Entry::Promise { ref local, .. } => &local.handle,
         }
     }
 
+    /// Returns the case ID associated with this entry.
     fn case_id(&self) -> CaseId {
         match *self {
-            Case::Offer { case_id, .. } => case_id,
-            Case::Promise { case_id, .. } => case_id,
+            Entry::Offer { case_id, .. } => case_id,
+            Entry::Promise { case_id, .. } => case_id,
         }
     }
 }
 
-fn finish_exchange<T>(msg: T, exchanger: &Exchanger<T>) -> T {
-    let req = loop {
-        let ptr = LOCAL.with(|l| l.request_ptr.swap(0, Acquire) as *const Request<T>);
-        if !ptr.is_null() {
-            break ptr;
-        }
-        thread::yield_now();
-    };
-
-    unsafe {
-        assert!((*req).exchanger == exchanger);
-
-        let handle = (*req).handle.clone();
-        let m = (*req).packet.exchange(msg);
-        (*req).handle.try_select(CaseId::abort());
-        handle.unpark();
-        m
-    }
-}
-
+/// A wait queue in which blocked selection cases are registered.
 struct WaitQueue<T> {
-    cases: VecDeque<Case<T>>,
+    cases: VecDeque<Entry<T>>,
 }
 
 impl<T> WaitQueue<T> {
+    /// Creates a new `WaitQueue`.
     fn new() -> Self {
         WaitQueue {
             cases: VecDeque::new(),
         }
     }
 
-    fn pop(&mut self) -> Option<Case<T>> {
+    /// Attempts to fire one case owned by another thread and returns it on success.
+    fn pop(&mut self) -> Option<Entry<T>> {
         let thread_id = current_thread_id();
 
         for i in 0..self.cases.len() {
             if self.cases[i].handle().thread_id() != thread_id {
                 if self.cases[i].handle().try_select(self.cases[i].case_id()) {
-                    return Some(self.cases.remove(i).unwrap());
+                    let case = self.cases.remove(i).unwrap();
+                    self.maybe_shrink();
+                    return Some(case);
                 }
             }
         }
@@ -303,22 +338,25 @@ impl<T> WaitQueue<T> {
         None
     }
 
+    /// Inserts an *offer* case owned by the current thread with `case_id`.
     fn offer(&mut self, packet: *const Packet<T>, case_id: CaseId) {
-        self.cases.push_back(Case::Offer {
+        self.cases.push_back(Entry::Offer {
             handle: handle::current(),
             packet,
             case_id,
         });
     }
 
+    /// Inserts a *promise* case owned by the current thread with `case_id`.
     fn promise(&mut self, case_id: CaseId) {
-        self.cases.push_back(Case::Promise {
+        self.cases.push_back(Entry::Promise {
             local: LOCAL.with(|l| l.clone()),
             case_id,
         });
     }
 
-    fn revoke(&mut self, case_id: CaseId) {
+    /// Removes a case owned by the current thread with `case_id`.
+    fn remove(&mut self, case_id: CaseId) {
         let thread_id = current_thread_id();
 
         if let Some((i, _)) = self.cases.iter().enumerate().find(|&(_, case)| {
@@ -329,6 +367,7 @@ impl<T> WaitQueue<T> {
         }
     }
 
+    /// Returns `true` if there exists a case which isn't owned by the current thread.
     fn can_notify(&self) -> bool {
         let thread_id = current_thread_id();
 
@@ -340,6 +379,7 @@ impl<T> WaitQueue<T> {
         false
     }
 
+    /// Aborts all cases and unparks threads which own them.
     fn abort_all(&mut self) {
         for case in self.cases.drain(..) {
             case.handle().try_select(CaseId::abort());
@@ -348,6 +388,7 @@ impl<T> WaitQueue<T> {
         self.maybe_shrink();
     }
 
+    /// Shrinks the internal buffer if its capacity is underused.
     fn maybe_shrink(&mut self) {
         if self.cases.capacity() > 32 && self.cases.capacity() / 2 > self.cases.len() {
             self.cases.shrink_to_fit();
@@ -365,6 +406,9 @@ thread_local! {
     static THREAD_ID: thread::ThreadId = thread::current().id();
 }
 
+/// Returns the current thread ID.
+///
+/// This is much faster than calling `std::thread::current().id()`.
 fn current_thread_id() -> thread::ThreadId {
     THREAD_ID.with(|id| *id)
 }
@@ -376,33 +420,47 @@ thread_local! {
     });
 }
 
+/// Thread-local structure that contains a slot for the `Request` pointer.
 struct Local {
+    /// The handle associated with this thread.
     handle: Handle,
+
+    /// A slot into which another thread may store a pointer to its `Request`.
     request_ptr: AtomicUsize,
 }
 
+/// A request for promised message.
 struct Request<T> {
+    /// The handle associated with the requestor.
     handle: Handle,
+
+    /// The message for exchange.
     packet: Packet<T>,
-    exchanger: *const Exchanger<T>,
 }
 
 impl<T> Request<T> {
-    fn new(msg: T, exchanger: &Exchanger<T>) -> Self {
+    /// Creates a new request owned by the current thread for exchanging `msg`.
+    fn new(msg: T) -> Self {
         Request {
             handle: handle::current(),
             packet: Packet::new(msg),
-            exchanger,
         }
     }
 }
 
+/// A one-time only packet for exchanging messages.
+///
+/// A message can be exchanged for the one inside the packet only once.
 struct Packet<T> {
+    /// The mutex-protected message.
     msg: Mutex<Option<T>>,
+
+    /// This will become `true` when the message is exchanged.
     ready: AtomicBool,
 }
 
 impl<T> Packet<T> {
+    /// Creates a new packet containing `msg`.
     fn new(msg: T) -> Self {
         Packet {
             msg: Mutex::new(Some(msg)),
@@ -410,17 +468,19 @@ impl<T> Packet<T> {
         }
     }
 
+    /// Exchanges `msg` for the one inside the packet.
     fn exchange(&self, msg: T) -> T {
         let r = mem::replace(&mut *self.msg.try_lock().unwrap(), Some(msg));
         self.ready.store(true, Release);
         r.unwrap()
     }
 
+    /// Extracts the message inside the packet.
     fn into_inner(self) -> T {
         self.msg.try_lock().unwrap().take().unwrap()
     }
 
-    /// Spin-waits until the packet becomes ready.
+    /// Spin-waits until the message inside the packet is exchanged.
     fn wait(&self) {
         let mut backoff = Backoff::new();
         while !self.ready.load(Acquire) {

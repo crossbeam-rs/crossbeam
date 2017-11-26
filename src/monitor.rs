@@ -13,14 +13,21 @@ use select::handle::{self, Handle};
 /// Note that multiple threads could be operating on a single channel end, as well as a single
 /// thread on multiple different channel ends.
 struct Case {
+    /// A handle associated with the thread owning this case.
     handle: Handle,
+
+    /// The case ID.
     case_id: CaseId,
 }
 
-/// A simple data structure that registers selection cases and notifies threads.
+/// A simple wait queue for list-based and array-based channels.
+///
+/// This data structure is used sfor registeroing selection cases before blocking and waking them
+/// up when the channel receives a message, sends one, or becomes closed.
 pub struct Monitor {
     /// The list of registered selection cases.
     cases: Mutex<VecDeque<Case>>,
+
     /// Number of cases in the list.
     len: AtomicUsize,
 }
@@ -34,7 +41,7 @@ impl Monitor {
         }
     }
 
-    /// Registers the current thread with given `case_id`.
+    /// Registers the current thread with `case_id`.
     pub fn register(&self, case_id: CaseId) {
         let mut cases = self.cases.lock();
         cases.push_back(Case {
@@ -44,7 +51,7 @@ impl Monitor {
         self.len.store(cases.len(), SeqCst);
     }
 
-    /// Unregisters the current thread with given `case_id`.
+    /// Unregisters the current thread with `case_id`.
     pub fn unregister(&self, case_id: CaseId) {
         let thread_id = thread::current().id();
         let mut cases = self.cases.lock();
@@ -54,29 +61,27 @@ impl Monitor {
         }) {
             cases.remove(i);
             self.len.store(cases.len(), SeqCst);
-            self.maybe_shrink(&mut cases);
+            Self::maybe_shrink(&mut cases);
         }
     }
 
-    /// Fires one selection case from another thread.
+    /// Attempts to fire one case which is owned by another thread.
     pub fn notify_one(&self) {
         if self.len.load(SeqCst) > 0 {
             let thread_id = thread::current().id();
             let mut cases = self.cases.lock();
 
-            let mut i = 0;
-            while i < cases.len() {
+            for i in 0..cases.len() {
                 if cases[i].handle.thread_id() != thread_id {
-                    let case = cases.remove(i).unwrap();
-                    self.len.store(cases.len(), SeqCst);
-                    self.maybe_shrink(&mut cases);
+                    if cases[i].handle.try_select(cases[i].case_id) {
+                        let case = cases.remove(i).unwrap();
+                        self.len.store(cases.len(), SeqCst);
+                        Self::maybe_shrink(&mut cases);
 
-                    if case.handle.try_select(case.case_id) {
                         case.handle.unpark();
                         break;
                     }
                 }
-                i += 1;
             }
         }
     }
@@ -93,12 +98,12 @@ impl Monitor {
                 }
             }
 
-            self.maybe_shrink(&mut cases);
+            Self::maybe_shrink(&mut cases);
         }
     }
 
     /// Shrinks the internal deque if it's capacity is much larger than length.
-    fn maybe_shrink(&self, cases: &mut VecDeque<Case>) {
+    fn maybe_shrink(cases: &mut VecDeque<Case>) {
         if cases.capacity() > 32 && cases.len() < cases.capacity() / 4 {
             let mut v = VecDeque::with_capacity(cases.capacity() / 2);
             v.extend(cases.drain(..));

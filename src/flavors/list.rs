@@ -297,7 +297,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Closes the channel.
+    /// Closes the channel and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
         if self.closed.swap(true, SeqCst) {
             false
