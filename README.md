@@ -13,6 +13,9 @@ aspects: ergonomics, flexibility, features, performance.
 
 [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 
+Read the original [RFC](https://github.com/crossbeam-rs/rfcs/pull/22) that introduced these
+channels for more information on their design and implementation.
+
 ## Usage
 
 Add this to your `Cargo.toml`:
