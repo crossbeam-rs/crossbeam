@@ -325,22 +325,22 @@ mod tests {
         let collector = Collector::new();
         let handle = collector.handle();
 
-        unsafe {
-            let guard = &handle.pin();
+        let mut guard = handle.pin();
 
-            let mut v = Vec::with_capacity(COUNT);
-            for i in 0..COUNT {
-                v.push(Elem(i as i32));
-            }
+        let mut v = Vec::with_capacity(COUNT);
+        for i in 0..COUNT {
+            v.push(Elem(i as i32));
+        }
 
-            let a = Owned::new(v).into_shared(guard);
-            guard.defer(move || a.into_owned());
+        {
+            let a = Owned::new(v).into_shared(&guard);
+            unsafe { guard.defer(move || a.into_owned()); }
             guard.flush();
         }
 
         while DROPS.load(Ordering::Relaxed) < COUNT {
-            let guard = &handle.pin();
-            collector.global.collect(guard);
+            guard.repin();
+            collector.global.collect(&guard);
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT);
     }

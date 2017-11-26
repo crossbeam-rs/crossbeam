@@ -194,6 +194,43 @@ impl Guard {
         }
     }
 
+    /// Unpins and then immediately re-pins the thread.
+    ///
+    /// This method is useful when you don't want delay the advancement of the global epoch by
+    /// holding an old epoch. For safety, you should not maintain any guard-based reference across
+    /// the call (the latter is enforced by `&mut self`). The thread will only be repinned if this
+    /// is the only active guard for the current thread.
+    ///
+    /// If this method is called from an [`unprotected`] guard, then the call will be just no-op.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Atomic};
+    /// use std::sync::atomic::Ordering::SeqCst;
+    /// use std::thread;
+    /// use std::time::Duration;
+    ///
+    /// let a = Atomic::new(777);
+    /// let mut guard = epoch::pin();
+    /// {
+    ///     let p = a.load(SeqCst, &guard);
+    ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
+    /// }
+    /// guard.repin();
+    /// {
+    ///     let p = a.load(SeqCst, &guard);
+    ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
+    /// }
+    /// ```
+    ///
+    /// [`unprotected`]: fn.unprotected.html
+    pub fn repin(&mut self) {
+        if let Some(local) = unsafe { self.local.as_ref() } {
+            local.repin();
+        }
+    }
+
     /// Temporarily unpins the thread, executes the given function and then re-pins the thread.
     ///
     /// This method is useful when you need to perform a long-running operation (e.g. sleeping)
