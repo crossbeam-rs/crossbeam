@@ -8,6 +8,8 @@ rust:
 script:
   - cargo build
   - cargo build --release
+  - cargo build --no-default-features
+  - cargo build --release --no-default-features
   - cargo test
   - cargo test --release
   - |

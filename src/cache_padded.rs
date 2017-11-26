@@ -1,7 +1,7 @@
-use std::fmt;
-use std::mem;
-use std::ops::{Deref, DerefMut};
-use std::ptr;
+use core::fmt;
+use core::mem;
+use core::ops::{Deref, DerefMut};
+use core::ptr;
 
 cfg_if! {
     if #[cfg(feature = "nightly")] {
@@ -25,7 +25,7 @@ cfg_if! {
             }
         }
     } else {
-        use std::marker::PhantomData;
+        use core::marker::PhantomData;
 
         #[derive(Clone)]
         struct Inner<T> {

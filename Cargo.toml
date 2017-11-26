@@ -12,6 +12,8 @@ keywords = ["scoped", "thread", "atomic", "cache"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
 [features]
+default = ["use_std"]
+use_std = []
 nightly = []
 
 [dependencies]
