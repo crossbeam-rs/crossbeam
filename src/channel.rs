@@ -26,9 +26,11 @@ enum Flavor<T> {
 /// # Examples
 ///
 /// ```
+/// use crossbeam_channel::unbounded;
+///
 /// use std::thread;
 ///
-/// let (tx, rx) = channel::unbounded();
+/// let (tx, rx) = unbounded();
 ///
 /// // An expensive computation.
 /// fn fib(n: i32) -> i32 {
@@ -71,8 +73,9 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
+/// use crossbeam_channel::bounded;
 ///
-/// let (tx, rx) = channel::bounded(1);
+/// let (tx, rx) = bounded(1);
 ///
 /// // This call returns immediately since there is enough space in the channel.
 /// tx.send(1).unwrap();
@@ -91,8 +94,9 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
+/// use crossbeam_channel::bounded;
 ///
-/// let (tx, rx) = channel::bounded(0);
+/// let (tx, rx) = bounded(0);
 ///
 /// thread::spawn(move || {
 ///     // This call blocks until the receive operation appears on the other end of the channel.
@@ -125,8 +129,9 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 ///
 /// ```
 /// use std::thread;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (tx1, rx) = channel::unbounded();
+/// let (tx1, rx) = unbounded();
 /// let tx2 = tx1.clone();
 ///
 /// thread::spawn(move || {
@@ -208,9 +213,9 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use channel::TrySendError;
+    /// use crossbeam_channel::{bounded, TrySendError};
     ///
-    /// let (tx, rx) = channel::bounded(1);
+    /// let (tx, rx) = bounded(1);
     /// assert_eq!(tx.try_send(1), Ok(()));
     /// assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
     /// drop(rx);
@@ -238,9 +243,9 @@ impl<T> Sender<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use channel::SendError;
+    /// use crossbeam_channel::{bounded, SendError};
     ///
-    /// let (tx, rx) = channel::bounded(1);
+    /// let (tx, rx) = bounded(1);
     /// assert_eq!(tx.send(1), Ok(()));
     ///
     /// thread::spawn(move || {
@@ -279,9 +284,9 @@ impl<T> Sender<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use channel::RecvTimeoutError;
+    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
@@ -309,7 +314,9 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// let (tx, rx) = channel::unbounded();
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded();
     /// assert!(tx.is_empty());
     ///
     /// tx.send(0).unwrap();
@@ -333,7 +340,9 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// let (tx, rx) = channel::unbounded();
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded();
     /// assert_eq!(tx.len(), 0);
     ///
     /// tx.send(1).unwrap();
@@ -353,13 +362,15 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// let (tx, _) = channel::unbounded::<i32>();
+    /// use crossbeam_channel::{bounded, unbounded};
+    ///
+    /// let (tx, _) = unbounded::<i32>();
     /// assert_eq!(tx.capacity(), None);
     ///
-    /// let (tx, _) = channel::bounded::<i32>(5);
+    /// let (tx, _) = bounded::<i32>(5);
     /// assert_eq!(tx.capacity(), Some(5));
     ///
-    /// let (tx, _) = channel::bounded::<i32>(0);
+    /// let (tx, _) = bounded::<i32>(0);
     /// assert_eq!(tx.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
@@ -375,7 +386,9 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// let (tx, rx) = channel::unbounded::<i32>();
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded::<i32>();
     /// assert!(!tx.is_disconnected());
     /// drop(rx);
     /// assert!(tx.is_disconnected());
@@ -416,8 +429,9 @@ impl<T> Clone for Sender<T> {
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (tx, rx) = channel::unbounded();
+/// let (tx, rx) = unbounded();
 ///
 /// thread::spawn(move || {
 ///     tx.send("Hello world!").unwrap();
@@ -489,9 +503,9 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use channel::TryRecvError;
+    /// use crossbeam_channel::{unbounded, TryRecvError};
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     /// assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
     ///
     /// tx.send(5).unwrap();
@@ -521,8 +535,9 @@ impl<T> Receiver<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
@@ -560,9 +575,9 @@ impl<T> Receiver<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use channel::RecvTimeoutError;
+    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
@@ -590,7 +605,9 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// let (tx, rx) = channel::unbounded();
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded();
     /// assert!(rx.is_empty());
     ///
     /// tx.send(0).unwrap();
@@ -614,7 +631,9 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// let (tx, rx) = channel::unbounded();
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded();
     /// assert_eq!(rx.len(), 0);
     ///
     /// tx.send(1).unwrap();
@@ -634,13 +653,15 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// let (tx, _) = channel::unbounded::<i32>();
+    /// use crossbeam_channel::{bounded, unbounded};
+    ///
+    /// let (tx, _) = unbounded::<i32>();
     /// assert_eq!(tx.capacity(), None);
     ///
-    /// let (tx, _) = channel::bounded::<i32>(5);
+    /// let (tx, _) = bounded::<i32>(5);
     /// assert_eq!(tx.capacity(), Some(5));
     ///
-    /// let (tx, _) = channel::bounded::<i32>(0);
+    /// let (tx, _) = bounded::<i32>(0);
     /// assert_eq!(tx.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
@@ -656,7 +677,9 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// let (tx, rx) = channel::unbounded::<i32>();
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded::<i32>();
     /// assert!(!rx.is_disconnected());
     /// drop(tx);
     /// assert!(rx.is_disconnected());
@@ -678,8 +701,9 @@ impl<T> Receiver<T> {
     ///
     /// ```
     /// use std::thread;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = channel::unbounded::<i32>();
+    /// let (tx, rx) = unbounded::<i32>();
     ///
     /// thread::spawn(move || {
     ///     tx.send(1).unwrap();
@@ -704,8 +728,9 @@ impl<T> Receiver<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = channel::unbounded::<i32>();
+    /// let (tx, rx) = unbounded::<i32>();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
@@ -769,8 +794,9 @@ impl<T> IntoIterator for Receiver<T> {
 ///
 /// ```
 /// use std::thread;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (tx, rx) = channel::unbounded();
+/// let (tx, rx) = unbounded();
 ///
 /// thread::spawn(move || {
 ///     tx.send(1).unwrap();
@@ -803,8 +829,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (tx, rx) = channel::unbounded::<i32>();
+/// let (tx, rx) = unbounded::<i32>();
 ///
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_secs(1));
@@ -839,8 +866,9 @@ impl<'a, T> Iterator for TryIter<'a, T> {
 ///
 /// ```
 /// use std::thread;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (tx, rx) = channel::unbounded();
+/// let (tx, rx) = unbounded();
 ///
 /// thread::spawn(move || {
 ///     tx.send(1).unwrap();

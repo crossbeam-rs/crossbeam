@@ -131,7 +131,9 @@ impl<T> SendError<T> {
     /// # Examples
     ///
     /// ```rust
-    /// let (tx, rx) = channel::unbounded();
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded();
     /// drop(rx);
     ///
     /// if let Err(err) = tx.send("foo") {
@@ -180,7 +182,9 @@ impl<T> TrySendError<T> {
     /// # Examples
     ///
     /// ```rust
-    /// let (tx, rx) = channel::bounded(0);
+    /// use crossbeam_channel::bounded;
+    ///
+    /// let (tx, rx) = bounded(0);
     ///
     /// if let Err(err) = tx.try_send("foo") {
     ///     assert_eq!(err.into_inner(), "foo");
@@ -226,8 +230,9 @@ impl<T> SendTimeoutError<T> {
     ///
     /// ```rust
     /// use std::time::Duration;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     ///
     /// if let Err(err) = tx.send_timeout("foo", Duration::from_secs(0)) {
     ///     assert_eq!(err.into_inner(), "foo");
@@ -269,9 +274,9 @@ impl<T> SelectSendError<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use channel::Select;
+    /// use crossbeam_channel::{unbounded, Select};
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     ///
     /// let mut msg = "message".to_string();
     /// let mut sel = Select::new();

@@ -1,5 +1,5 @@
-extern crate channel;
 extern crate crossbeam;
+extern crate crossbeam_channel;
 
 use std::any::Any;
 use std::thread;
@@ -7,8 +7,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
-use channel::{bounded, unbounded, Receiver, Select, Sender};
-use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
+use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
+use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -1137,7 +1138,7 @@ fn recv_after_close() {
 
 #[test]
 fn matching() {
-    let (tx, rx) = channel::bounded(0);
+    let (tx, rx) = bounded(0);
     let (tx, rx) = (&tx, &rx);
 
     crossbeam::scope(|s| {
@@ -1162,7 +1163,7 @@ fn matching() {
 
 #[test]
 fn matching_with_leftover() {
-    let (tx, rx) = channel::bounded(0);
+    let (tx, rx) = bounded(0);
     let (tx, rx) = (&tx, &rx);
 
     crossbeam::scope(|s| {
@@ -1193,14 +1194,14 @@ fn channel_through_channel() {
     type T = Box<Any + Send>;
 
     for cap in 0..3 {
-        let (tx, rx) = channel::bounded::<T>(cap);
+        let (tx, rx) = bounded::<T>(cap);
 
         crossbeam::scope(|s| {
             s.spawn(move || {
                 let mut tx = tx;
 
                 for _ in 0..COUNT {
-                    let (new_tx, new_rx) = channel::bounded(cap);
+                    let (new_tx, new_rx) = bounded(cap);
                     let mut new_rx: T = Box::new(Some(new_rx));
 
                     let mut sel = Select::new();

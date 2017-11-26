@@ -8,7 +8,7 @@
 //!
 //! # Types of channels
 //!
-//! A channel can be constructed by calling functinos [`unbounded`] and [`bounded`]. The former
+//! A channel can be constructed by calling functions [`unbounded`] and [`bounded`]. The former
 //! creates a channel of unbounded capacity (i.e. it can contain an arbitrary number of messages),
 //! while the latter creates a channel of bounded capacity (i.e. there is a limit to how many
 //! messages it can hold at a time).
@@ -20,8 +20,10 @@
 //! Creating an unbounded channel:
 //!
 //! ```
+//! use crossbeam_channel::unbounded;
+//!
 //! // Create an unbounded channel.
-//! let (tx, rx) = channel::unbounded();
+//! let (tx, rx) = unbounded();
 //!
 //! // Can send an arbitrarily large number of messages.
 //! for i in 0..1000 {
@@ -32,8 +34,10 @@
 //! Creating a bounded channel:
 //!
 //! ```
+//! use crossbeam_channel::bounded;
+//!
 //! // Create a channel that can hold at most 5 messages at a time.
-//! let (tx, rx) = channel::bounded(5);
+//! let (tx, rx) = bounded(5);
 //!
 //! // Can send only 5 messages.
 //! for i in 0..5 {
@@ -49,10 +53,12 @@
 //! be waiting at the other end of it at the same time:
 //!
 //! ```
+//! use crossbeam_channel::bounded;
+//!
 //! use std::thread;
 //!
 //! // Create a zero-capacity channel.
-//! let (tx, rx) = channel::bounded(0);
+//! let (tx, rx) = bounded(0);
 //!
 //! // Spawn a thread that sends a message into the channel.
 //! thread::spawn(move || tx.send("Hi!").unwrap());
@@ -69,10 +75,13 @@
 //! Sharing by reference:
 //!
 //! ```
-//! extern crate channel;
+//! extern crate crossbeam_channel;
 //! extern crate crossbeam_utils;
+//! # fn main() {
 //!
-//! let (tx, rx) = channel::unbounded();
+//! use crossbeam_channel::unbounded;
+//!
+//! let (tx, rx) = unbounded();
 //!
 //! crossbeam_utils::scoped::scope(|s| {
 //!     // Spawn a thread that sends one message and then receives one.
@@ -88,14 +97,17 @@
 //!         rx.recv().unwrap();
 //!     });
 //! });
+//!
+//! # }
 //! ```
 //!
 //! Sharing by sending:
 //!
 //! ```
 //! use std::thread;
+//! use crossbeam_channel::unbounded;
 //!
-//! let (tx, rx) = channel::unbounded();
+//! let (tx, rx) = unbounded();
 //! let (tx2, rx2) = (tx.clone(), rx.clone());
 //!
 //! // Spawn a thread that sends one message and then receives one.
@@ -120,9 +132,9 @@
 //! messages can still be received.
 //!
 //! ```
-//! use channel::TrySendError;
+//! use crossbeam_channel::{unbounded, TrySendError};
 //!
-//! let (tx, rx) = channel::unbounded();
+//! let (tx, rx) = unbounded();
 //!
 //! // The only receiver is dropped, disconnecting the channel.
 //! drop(rx);
@@ -132,9 +144,9 @@
 //! ```
 //!
 //! ```
-//! use channel::TryRecvError;
+//! use crossbeam_channel::{unbounded, TryRecvError};
 //!
-//! let (tx, rx) = channel::unbounded();
+//! let (tx, rx) = unbounded();
 //! tx.try_send(1).unwrap();
 //! tx.try_send(2).unwrap();
 //! tx.try_send(3).unwrap();
@@ -175,7 +187,9 @@
 //! for the next message.
 //!
 //! ```
-//! let (tx, rx) = channel::unbounded();
+//! use crossbeam_channel::unbounded;
+//!
+//! let (tx, rx) = unbounded();
 //! tx.send(1).unwrap();
 //! tx.send(2).unwrap();
 //! tx.send(3).unwrap();
@@ -192,7 +206,9 @@
 //! the channel is empty. This iterator will never block the current thread.
 //!
 //! ```
-//! let (tx, rx) = channel::unbounded();
+//! use crossbeam_channel::unbounded;
+//!
+//! let (tx, rx) = unbounded();
 //! tx.send(1).unwrap();
 //! tx.send(2).unwrap();
 //! tx.send(3).unwrap();
@@ -216,13 +232,14 @@
 //!
 //! ```
 //! # #[macro_use]
-//! # extern crate channel;
+//! # extern crate crossbeam_channel;
 //! # fn main() {
 //!
 //! use std::thread;
+//! use crossbeam_channel::unbounded;
 //!
-//! let (tx1, rx1) = channel::unbounded();
-//! let (tx2, rx2) = channel::unbounded();
+//! let (tx1, rx1) = unbounded();
+//! let (tx2, rx2) = unbounded();
 //!
 //! thread::spawn(move || tx1.send("foo").unwrap());
 //! thread::spawn(move || tx2.send("bar").unwrap());
@@ -246,10 +263,10 @@
 //!
 //! ```
 //! # #[macro_use]
-//! # extern crate channel;
+//! # extern crate crossbeam_channel;
 //! # fn main() {
 //!
-//! use channel::{Sender, Receiver, Select};
+//! use crossbeam_channel::{bounded, Sender, Receiver, Select};
 //! use std::thread;
 //!
 //! // Either send my name into the channel or receive someone else's, whatever happens first.
@@ -260,7 +277,7 @@
 //!     }
 //! }
 //!
-//! let (tx, rx) = channel::bounded(1); // Make room for one unmatched send.
+//! let (tx, rx) = bounded(1); // Make room for one unmatched send.
 //!
 //! // Pair up five people by exchanging messages over the channel.
 //! // Since there is an odd number of them, one person won't have its match.

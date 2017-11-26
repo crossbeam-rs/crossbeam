@@ -32,10 +32,10 @@ pub(crate) mod handle;
 ///
 /// ```
 /// use std::thread;
-/// use channel::Select;
+/// use crossbeam_channel::{unbounded, Select};
 ///
-/// let (tx1, rx1) = channel::unbounded();
-/// let (tx2, rx2) = channel::unbounded();
+/// let (tx1, rx1) = unbounded();
+/// let (tx2, rx2) = unbounded();
 ///
 /// thread::spawn(move || tx1.send("foo").unwrap());
 /// thread::spawn(move || tx2.send("bar").unwrap());
@@ -113,10 +113,10 @@ pub(crate) mod handle;
 ///
 /// ```
 /// use std::thread;
-/// use channel::Select;
+/// use crossbeam_channel::{unbounded, Select};
 ///
-/// let (tx1, rx1) = channel::unbounded();
-/// let (tx2, rx2) = channel::unbounded();
+/// let (tx1, rx1) = unbounded();
+/// let (tx2, rx2) = unbounded();
 ///
 /// thread::spawn(move || tx1.send("foo").unwrap());
 /// thread::spawn(move || tx2.send("bar").unwrap());
@@ -139,9 +139,9 @@ pub(crate) mod handle;
 /// ## Send a non-`Copy` message, regaining ownership on each failure
 ///
 /// ```
-/// use channel::Select;
+/// use crossbeam_channel::{unbounded, Select};
 ///
-/// let (tx, rx) = channel::unbounded();
+/// let (tx, rx) = unbounded();
 ///
 /// // The message we're going to send.
 /// let mut msg = "Hello!".to_string();
@@ -162,9 +162,9 @@ pub(crate) mod handle;
 /// ## Stop if all channels are disconnected
 ///
 /// ```
-/// use channel::Select;
+/// use crossbeam_channel::{unbounded, Select};
 ///
-/// let (tx, rx) = channel::unbounded();
+/// let (tx, rx) = unbounded();
 ///
 /// // Disconnect the channel.
 /// drop(rx);
@@ -187,9 +187,9 @@ pub(crate) mod handle;
 /// ## Abort if all operations would block
 ///
 /// ```
-/// use channel::Select;
+/// use crossbeam_channel::{unbounded, Select};
 ///
-/// let (tx, rx) = channel::unbounded::<i32>();
+/// let (tx, rx) = unbounded::<i32>();
 ///
 /// let mut sel = Select::new();
 /// loop {
@@ -210,9 +210,9 @@ pub(crate) mod handle;
 ///
 /// ```
 /// use std::time::Duration;
-/// use channel::Select;
+/// use crossbeam_channel::{unbounded, Select};
 ///
-/// let (tx, rx) = channel::unbounded::<i32>();
+/// let (tx, rx) = unbounded::<i32>();
 ///
 /// let mut sel = Select::with_timeout(Duration::from_secs(1));
 /// loop {
@@ -232,7 +232,7 @@ pub(crate) mod handle;
 /// ## One send and one receive operation on the same channel
 ///
 /// ```
-/// use channel::{Sender, Receiver, Select};
+/// use crossbeam_channel::{bounded, Sender, Receiver, Select};
 /// use std::thread;
 ///
 /// // Either send my name into the channel or receive someone else's, whatever happens first.
@@ -250,7 +250,7 @@ pub(crate) mod handle;
 ///     }
 /// }
 ///
-/// let (tx, rx) = channel::bounded(1); // Make room for one unmatched send.
+/// let (tx, rx) = bounded(1); // Make room for one unmatched send.
 ///
 /// // Pair up five people by exchanging messages over the channel.
 /// // Since there is an odd number of them, one person won't have its match.
@@ -274,11 +274,11 @@ pub(crate) mod handle;
 ///
 /// ```
 /// use std::thread;
-/// use channel::Select;
+/// use crossbeam_channel::{unbounded, Select};
 ///
 /// let mut chans = vec![];
 /// for _ in 0..10 {
-///     chans.push(channel::unbounded());
+///     chans.push(unbounded());
 /// }
 ///
 /// let tx = chans[7].0.clone();
@@ -315,7 +315,7 @@ impl Select {
     /// # Examples
     ///
     /// ```
-    /// use channel::Select;
+    /// use crossbeam_channel::{unbounded, Select};
     ///
     /// let mut sel = Select::new();
     /// ```
@@ -332,7 +332,7 @@ impl Select {
     ///
     /// ```
     /// use std::time::Duration;
-    /// use channel::Select;
+    /// use crossbeam_channel::{unbounded, Select};
     ///
     /// let mut sel = Select::with_timeout(Duration::from_secs(5));
     /// ```
@@ -350,9 +350,9 @@ impl Select {
     /// # Examples
     ///
     /// ```
-    /// use channel::Select;
+    /// use crossbeam_channel::{unbounded, Select};
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     ///
     /// let mut sel = Select::new();
     /// loop {
@@ -380,9 +380,9 @@ impl Select {
     /// # Examples
     ///
     /// ```
-    /// use channel::Select;
+    /// use crossbeam_channel::{unbounded, Select};
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     /// tx.send("foo").unwrap();
     ///
     /// let mut sel = Select::new();
@@ -412,9 +412,9 @@ impl Select {
     /// # Examples
     ///
     /// ```
-    /// use channel::Select;
+    /// use crossbeam_channel::{unbounded, Select};
     ///
-    /// let (tx, rx) = channel::unbounded();
+    /// let (tx, rx) = unbounded();
     ///
     /// // Disconnect the channel.
     /// drop(rx);
@@ -451,9 +451,9 @@ impl Select {
     /// # Examples
     ///
     /// ```
-    /// use channel::Select;
+    /// use crossbeam_channel::{unbounded, Select};
     ///
-    /// let (tx, rx) = channel::unbounded::<i32>();
+    /// let (tx, rx) = unbounded::<i32>();
     ///
     /// let mut sel = Select::new();
     /// loop {
@@ -497,9 +497,9 @@ impl Select {
     ///
     /// ```
     /// use std::time::Duration;
-    /// use channel::Select;
+    /// use crossbeam_channel::{unbounded, Select};
     ///
-    /// let (tx, rx) = channel::unbounded::<i32>();
+    /// let (tx, rx) = unbounded::<i32>();
     ///
     /// let mut sel = Select::with_timeout(Duration::from_secs(1));
     /// loop {

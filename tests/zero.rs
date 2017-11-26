@@ -1,5 +1,5 @@
-extern crate channel;
 extern crate crossbeam;
+extern crate crossbeam_channel;
 extern crate rand;
 
 use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
@@ -7,8 +7,9 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 use std::time::Duration;
 
-use channel::bounded;
-use channel::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use crossbeam_channel::bounded;
+use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
+use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
 use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {

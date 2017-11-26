@@ -32,9 +32,9 @@ func Seek(name string, match chan string, wg *sync.WaitGroup) {
 }
 */
 
-#[macro_use]
-extern crate channel;
 extern crate crossbeam;
+#[macro_use]
+extern crate crossbeam_channel as channel;
 
 use channel::{Receiver, Sender};
 

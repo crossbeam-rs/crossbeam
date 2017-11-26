@@ -14,7 +14,7 @@
 ///
 /// ```
 /// # #[macro_use]
-/// # extern crate channel;
+/// # extern crate crossbeam_channel as channel;
 /// # fn main() {
 ///
 /// use std::thread;
@@ -137,7 +137,7 @@
 ///
 /// ```
 /// # #[macro_use]
-/// # extern crate channel;
+/// # extern crate crossbeam_channel as channel;
 /// # fn main() {
 ///
 /// use std::thread;
@@ -168,7 +168,7 @@
 ///
 /// ```
 /// # #[macro_use]
-/// # extern crate channel;
+/// # extern crate crossbeam_channel as channel;
 /// # fn main() {
 ///
 /// let (tx, rx) = channel::unbounded();
@@ -191,7 +191,7 @@
 ///
 /// ```
 /// # #[macro_use]
-/// # extern crate channel;
+/// # extern crate crossbeam_channel as channel;
 /// # fn main() {
 ///
 /// let (tx, rx) = channel::unbounded();
@@ -216,7 +216,7 @@
 ///
 /// ```
 /// # #[macro_use]
-/// # extern crate channel;
+/// # extern crate crossbeam_channel as channel;
 /// # fn main() {
 ///
 /// let (tx, rx) = channel::unbounded::<i32>();
@@ -238,7 +238,7 @@
 ///
 /// ```
 /// # #[macro_use]
-/// # extern crate channel;
+/// # extern crate crossbeam_channel as channel;
 /// # fn main() {
 ///
 /// use std::time::Duration;
@@ -262,7 +262,7 @@
 ///
 /// ```
 /// # #[macro_use]
-/// # extern crate channel;
+/// # extern crate crossbeam_channel as channel;
 /// # fn main() {
 ///
 /// use channel::{Sender, Receiver, Select};

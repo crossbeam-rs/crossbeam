@@ -1,7 +1,7 @@
-extern crate channel;
 extern crate crossbeam;
+extern crate crossbeam_channel;
 
-use channel::{bounded, unbounded};
+use crossbeam_channel::{bounded, unbounded};
 
 #[test]
 fn smoke() {
