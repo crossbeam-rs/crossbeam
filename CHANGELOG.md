@@ -10,4 +10,4 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - First version of the new epoch-based GC.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.1.0...HEAD
