@@ -54,6 +54,10 @@
 /// 5. A *timed out* case, which fires when selection is blocked for longer than the specified
 ///    timeout.
 ///
+/// Additionally every case may be guarded by a condition: The case is only taking into account if
+/// the condition is true. Note that the condition must evaluate to the same in every loop
+/// iteration.
+///
 /// # Selection rules
 ///
 /// Rules which must be respected in order for selection to work properly:
@@ -61,6 +65,7 @@
 /// 1. No selection case may be repeated.
 /// 2. No two cases may operate on the same end (receiving or sending) of the same channel.
 /// 3. There must be at least one *send*, or at least one *recv* case.
+/// 4. If conditions are used, their values must not change during the whole select process.
 ///
 /// Violating any of these rules will either result in a panic, deadlock, or livelock, possibly
 /// even in a seemingly unrelated send or receive operations outside this particular selection
@@ -83,6 +88,11 @@
 /// is of the form `operation(arguments) => expression`. The individual cases are optionally
 /// separated by commas. Just like `match`, the whole macro invocation is an expression, which in
 /// the end evaluates to a single value.
+///
+/// Also like `match`, every case may have a guard expression like this: `operation(arguments) if
+/// guard_expression => expression`. The guarded case will only participate in the selection
+/// process if the guard expression evaluates to `true`. If a timeout is guarded, the timeout will
+/// only be registered if the guard expression is `true` at the beginning of the loop.
 ///
 /// The following code illustrates all the possible ways in which cases can be declared:
 ///
@@ -302,7 +312,7 @@
 #[macro_export]
 macro_rules! select_loop {
     // The main entry point.
-    {$($method:ident($($args:tt)*) => $body:expr$(,)*)*} => {{
+    {$($method:ident($($args:tt)*) $(if $guard:expr)* => $body:expr$(,)*)*} => {{
         // On stable Rust, 'unused_mut' warnings have to be suppressed within the whole block.
         #[cfg_attr(not(feature = "nightly"), allow(unused_mut))]
         {
@@ -318,7 +328,10 @@ macro_rules! select_loop {
             //    here as well).
             // 2) If a timeout was specified, overwrite the above state with one
             //    which has the timeout set.
-            $(select_loop!(@prelude(state) $method($($args)*));)*
+            $(select_loop!(@prelude(state) $method($($args)*) $(if $guard)*);)*
+
+            // Only allow one repetition of the `$guard`.
+            $(select_loop!(@check_guard($(if $guard)*) [$method($($args)*) $(if $guard)* =>]);)*
 
             // The actual select loop which a user would write manually
             loop {
@@ -326,36 +339,39 @@ macro_rules! select_loop {
                 struct _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP;
 
                 $(
-                    // Build the actual method invocations.
-                    select_loop! {
-                        @impl(state)
-                        $method($($args)*) => {
-                            // This double-loop construct is used to guard against the user
-                            // using unlabeled breaks and continues in their code.
-                            // It works by abusing Rust's control flow analysis.
-                            //
-                            // If the user code (`$body`) contains an unlabeled break, the
-                            // inner loop will be broken with a result whose type doesn't match
-                            // `_DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP`, and that
-                            // will show up in error messages.
-                            //
-                            // Similarly, if the user code contains an unlabeled continue,
-                            // the inner loop will try to assign a value to variable
-                            // `_DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP` twice, which
-                            // will again show up in error messages.
-                            #[allow(bad_style)]
-                            let _DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP;
+                    // Only enable this case if `$guard` is true.
+                    if $($guard &&)* true {
+                        // Build the actual method invocations.
+                        select_loop! {
+                            @impl(state)
+                            $method($($args)*) => {
+                                // This double-loop construct is used to guard against the user
+                                // using unlabeled breaks and continues in their code.
+                                // It works by abusing Rust's control flow analysis.
+                                //
+                                // If the user code (`$body`) contains an unlabeled break, the
+                                // inner loop will be broken with a result whose type doesn't match
+                                // `_DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP`, and that
+                                // will show up in error messages.
+                                //
+                                // Similarly, if the user code contains an unlabeled continue,
+                                // the inner loop will try to assign a value to variable
+                                // `_DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP` twice, which
+                                // will again show up in error messages.
+                                #[allow(bad_style)]
+                                let _DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP;
 
-                            #[allow(unused_variables)]
-                            let res;
+                                #[allow(unused_variables)]
+                                let res;
 
-                            #[allow(unreachable_code)]
-                            let _: _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP = loop {
-                                _DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP = ();
-                                res = $body;
-                                break _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP;
-                            };
-                            break res;
+                                #[allow(unreachable_code)]
+                                let _: _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP = loop {
+                                    _DONT_USE_AN_UNLABELED_CONTINUE_IN_SELECT_LOOP = ();
+                                    res = $body;
+                                    break _DONT_USE_AN_UNLABELED_BREAK_IN_SELECT_LOOP;
+                                };
+                                break res;
+                            }
                         }
                     }
                 )*
@@ -426,13 +442,25 @@ macro_rules! select_loop {
     };
 
     // The prelude helpers
-    {@prelude($state:ident) send($tx:expr, $val:ident)} => {
+    {@prelude($state:ident) send($tx:expr, $val:ident) $(if $_guard:expr)*} => {
         #[allow(unused_mut, unused_variables)]
         let mut $val = $val;
     };
-    {@prelude($state:ident) timed_out($timeout:expr)} => {
-        #[allow(unused_mut, unused_variables)]
-        let mut $state = $crate::Select::with_timeout($timeout);
+    {@prelude($state:ident) timed_out($timeout:expr) $(if $guard:expr)*} => {
+        if $($guard &&)* true {
+            $state = $crate::Select::with_timeout($timeout);
+        }
     };
     {@prelude($state:ident) $($tail:tt)*} => {};
+
+    // Additional syntax validation for the guard expression
+    {@check_guard() [$($_ctx:tt)*]} => {};
+    {@check_guard(if $_guard:expr) [$($_ctx:tt)*]} => {};
+    {@check_guard($($_tt:tt)*) [$($ctx:tt)*]} => {
+        compile_error!(
+            concat!(
+                "Multiple guards were supplied to select_loop!. in this case: `",
+                stringify!($($ctx)*),
+                "`"));
+    }
 }
