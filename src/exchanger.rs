@@ -156,11 +156,7 @@ impl<'a, T> Side<'a, T> {
     }
 
     /// Exchanges `msg` if there is an offer or promise on the opposite side.
-    pub fn try_exchange(
-        &self,
-        msg: T,
-        case_id: CaseId,
-    ) -> Result<T, ExchangeError<T>> {
+    pub fn try_exchange(&self, msg: T, case_id: CaseId) -> Result<T, ExchangeError<T>> {
         self.exchange(msg, Wait::YieldOnce, case_id)
     }
 
@@ -180,12 +176,7 @@ impl<'a, T> Side<'a, T> {
     }
 
     /// Exchanges `msg` with the specified `wait` strategy.
-    fn exchange(
-        &self,
-        mut msg: T,
-        wait: Wait,
-        case_id: CaseId,
-    ) -> Result<T, ExchangeError<T>> {
+    fn exchange(&self, mut msg: T, wait: Wait, case_id: CaseId) -> Result<T, ExchangeError<T>> {
         loop {
             // Allocate a packet on the stack.
             let packet;
@@ -212,10 +203,8 @@ impl<'a, T> Side<'a, T> {
                 Wait::YieldOnce => {
                     thread::yield_now();
                     handle::current_try_select(CaseId::abort())
-                },
-                Wait::Until(deadline) => {
-                    !handle::current_wait_until(deadline)
-                },
+                }
+                Wait::Until(deadline) => !handle::current_wait_until(deadline),
             };
 
             // If someone requested the promised message...
@@ -302,8 +291,7 @@ impl<T> Entry<T> {
     /// Returns the case ID associated with this entry.
     fn case_id(&self) -> CaseId {
         match *self {
-            Entry::Offer { case_id, .. } => case_id,
-            Entry::Promise { case_id, .. } => case_id,
+            Entry::Offer { case_id, .. } | Entry::Promise { case_id, .. } => case_id,
         }
     }
 }
