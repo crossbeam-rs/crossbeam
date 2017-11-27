@@ -1,3 +1,4 @@
+use std::fmt;
 use std::time::{Duration, Instant};
 
 use {Receiver, Sender};
@@ -367,7 +368,7 @@ impl Select {
             tx.can_send();
         }
         if let Some(state) = self.machine.step(tx.case_id()) {
-            state.send(tx, msg).map_err(|m| SelectSendError(m))
+            state.send(tx, msg).map_err(SelectSendError)
         } else {
             Err(SelectSendError(msg))
         }
@@ -524,5 +525,17 @@ impl Select {
         } else {
             false
         }
+    }
+}
+
+impl fmt::Debug for Select {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Select").finish()
+    }
+}
+
+impl Default for Select {
+    fn default() -> Select {
+        Select::new()
     }
 }

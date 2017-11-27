@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
@@ -7,7 +8,7 @@ use flavors;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use select::CaseId;
 
-pub struct Channel<T> {
+pub(crate) struct Channel<T> {
     senders: AtomicUsize,
     receivers: AtomicUsize,
     flavor: Flavor<T>,
@@ -420,6 +421,12 @@ impl<T> Clone for Sender<T> {
     }
 }
 
+impl<T> fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Sender").finish()
+    }
+}
+
 /// The receiving half of a channel.
 ///
 /// Receivers can be cloned and shared among multiple threads.
@@ -767,6 +774,12 @@ impl<T> Clone for Receiver<T> {
     }
 }
 
+impl<T> fmt::Debug for Receiver<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Receiver").finish()
+    }
+}
+
 impl<'a, T> IntoIterator for &'a Receiver<T> {
     type Item = T;
     type IntoIter = Iter<'a, T>;
@@ -807,6 +820,7 @@ impl<T> IntoIterator for Receiver<T> {
 /// let v: Vec<_> = rx.iter().collect();
 /// assert_eq!(v, [1, 2, 3]);
 /// ```
+#[derive(Debug)]
 pub struct Iter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
@@ -845,6 +859,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 /// let v: Vec<_> = rx.try_iter().collect();
 /// assert_eq!(v, [1, 2]);
 /// ```
+#[derive(Debug)]
 pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
@@ -879,6 +894,7 @@ impl<'a, T> Iterator for TryIter<'a, T> {
 /// let v: Vec<_> = rx.into_iter().collect();
 /// assert_eq!(v, [1, 2, 3]);
 /// ```
+#[derive(Debug)]
 pub struct IntoIter<T> {
     rx: Receiver<T>,
 }
