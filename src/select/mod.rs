@@ -185,7 +185,7 @@ pub(crate) mod handle;
 /// }
 /// ```
 ///
-/// ## Abort if all operations would block
+/// ## Stop if all operations would block
 ///
 /// ```
 /// use crossbeam_channel::{unbounded, Select};
@@ -201,7 +201,7 @@ pub(crate) mod handle;
 ///         break;
 ///     }
 ///     if sel.would_block() {
-///         println!("All operations would block. Aborting selection.");
+///         println!("All operations would block. Stopping selection.");
 ///         break;
 ///     }
 /// }

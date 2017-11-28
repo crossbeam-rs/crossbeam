@@ -212,7 +212,7 @@
 /// # }
 /// ```
 ///
-/// ## Abort if all operations would block
+/// ## Stop if all operations would block
 ///
 /// ```
 /// # #[macro_use]
@@ -228,7 +228,7 @@
 ///         panic!();
 ///     }
 ///
-///     would_block() => println!("All operations would block. Aborting selection."),
+///     would_block() => println!("All operations would block. Stopping selection."),
 /// }
 ///
 /// # }

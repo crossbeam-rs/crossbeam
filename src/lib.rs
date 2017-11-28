@@ -168,7 +168,7 @@
 //! Send and receive operations come in three variants:
 //!
 //! 1. Non-blocking: [`try_send`] and [`try_recv`].
-//! 2. Blocking: [`try_send`] and [`try_recv`].
+//! 2. Blocking: [`send`] and [`recv`].
 //! 3. Blocking with a timeout: [`send_timeout`] and [`recv_timeout`].
 //!
 //! The non-blocking variant attempts to perform the operation, but doesn't block the current
