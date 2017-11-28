@@ -16,7 +16,7 @@ use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 use select::CaseId;
 use select::handle;
-use util::Backoff;
+use utils::Backoff;
 
 /// An entry in the queue.
 ///

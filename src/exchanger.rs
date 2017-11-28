@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 
 use select::CaseId;
 use select::handle::{self, Handle};
-use util::Backoff;
+use utils::Backoff;
 
 /// Waiting strategy in an exchange operation.
 enum Wait {

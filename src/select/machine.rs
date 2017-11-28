@@ -5,7 +5,7 @@ use {Receiver, Sender};
 use err::{TryRecvError, TrySendError};
 use select::handle;
 use select::CaseId;
-use util;
+use utils;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum State {
@@ -214,7 +214,7 @@ impl Machine {
                         disconnected_count: 0,
                     };
                     self.index = 0;
-                    self.start_index = util::small_random(self.len);
+                    self.start_index = utils::small_random(self.len);
                 } else {
                     if self.len == 0 {
                         self.first_id = case_id;

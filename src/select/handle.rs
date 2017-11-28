@@ -5,7 +5,7 @@ use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
 use select::CaseId;
-use util::Backoff;
+use utils::Backoff;
 
 struct Inner {
     case_id: AtomicUsize,
