@@ -57,6 +57,7 @@ pub struct Exchanger<T> {
 
 impl<T> Exchanger<T> {
     /// Returns a new exchanger.
+    #[inline]
     pub fn new() -> Self {
         Exchanger {
             inner: Mutex::new(Inner {

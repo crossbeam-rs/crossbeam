@@ -34,6 +34,7 @@ pub struct Monitor {
 
 impl Monitor {
     /// Creates a new `Monitor`.
+    #[inline]
     pub fn new() -> Self {
         Monitor {
             cases: Mutex::new(VecDeque::new()),
