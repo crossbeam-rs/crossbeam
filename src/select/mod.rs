@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use {Receiver, Sender};
 use err::{SelectRecvError, SelectSendError};
-use self::machine::{Machine, State};
+use self::machine::Machine;
 
 pub(crate) use self::case_id::CaseId;
 
@@ -364,14 +364,7 @@ impl Select {
     /// }
     /// ```
     pub fn send<T>(&mut self, tx: &Sender<T>, msg: T) -> Result<(), SelectSendError<T>> {
-        if let Machine::Counting { .. } = self.machine {
-            tx.can_send();
-        }
-        if let Some(state) = self.machine.step(tx.case_id()) {
-            state.send(tx, msg).map_err(SelectSendError)
-        } else {
-            Err(SelectSendError(msg))
-        }
+        self.machine.send(tx, msg).map_err(SelectSendError)
     }
 
     /// Probes a *receive* case.
@@ -396,14 +389,7 @@ impl Select {
     /// }
     /// ```
     pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, SelectRecvError> {
-        if let Machine::Counting { .. } = self.machine {
-            rx.can_recv();
-        }
-        if let Some(state) = self.machine.step(rx.case_id()) {
-            state.recv(rx).map_err(|_| SelectRecvError)
-        } else {
-            Err(SelectRecvError)
-        }
+        self.machine.recv(rx).map_err(|_| SelectRecvError)
     }
 
     /// Probes a *disconnected* case.
@@ -435,14 +421,7 @@ impl Select {
     /// ```
     #[inline]
     pub fn disconnected(&mut self) -> bool {
-        if let Machine::Initialized {
-            state: State::Disconnected,
-            ..
-        } = self.machine {
-            true
-        } else {
-            false
-        }
+        self.machine.disconnected()
     }
 
     /// Probes a *would block* case.
@@ -471,23 +450,7 @@ impl Select {
     /// ```
     #[inline]
     pub fn would_block(&mut self) -> bool {
-        if let Machine::Initialized {
-            state: State::WouldBlock,
-            ..
-        } = self.machine
-        {
-            return true;
-        }
-
-        if let Machine::Counting {
-            ref mut dont_block,
-            ..
-        } = self.machine
-        {
-            *dont_block = true;
-        }
-
-        false
+        self.machine.would_block()
     }
 
     /// Probes a *timed out* case.
@@ -517,14 +480,7 @@ impl Select {
     /// ```
     #[inline]
     pub fn timed_out(&self) -> bool {
-        if let Machine::Initialized {
-            state: State::Timeout,
-            ..
-        } = self.machine {
-            true
-        } else {
-            false
-        }
+        self.machine.timed_out()
     }
 }
 
