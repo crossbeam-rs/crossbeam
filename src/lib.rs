@@ -332,7 +332,7 @@ mod exchanger;
 mod flavors;
 mod monitor;
 mod select;
-mod util;
+mod utils;
 
 pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};
