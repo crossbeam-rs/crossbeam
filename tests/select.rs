@@ -266,6 +266,44 @@ fn timeout() {
 }
 
 #[test]
+fn timeout_when_disconnected() {
+    let mut iters = 0;
+    let (_, rx) = unbounded::<i32>();
+
+    let mut sel = Select::with_timeout(ms(1000));
+    loop {
+        iters += 1;
+        if let Ok(_) = sel.recv(&rx) {
+            panic!();
+        }
+        if sel.timed_out() {
+            break;
+        }
+    }
+
+    assert!(iters < 50);
+}
+
+#[test]
+fn would_block_when_disconnected() {
+    let mut iters = 0;
+    let (_, rx) = unbounded::<i32>();
+
+    let mut sel = Select::with_timeout(ms(1000));
+    loop {
+        iters += 1;
+        if let Ok(_) = sel.recv(&rx) {
+            panic!();
+        }
+        if sel.would_block() {
+            break;
+        }
+    }
+
+    assert!(iters < 50);
+}
+
+#[test]
 fn unblocks() {
     let mut iters = 0;
     let (tx1, rx1) = bounded(0);

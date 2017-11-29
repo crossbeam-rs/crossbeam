@@ -54,9 +54,9 @@
 /// 5. A *timed out* case, which fires when selection is blocked for longer than the specified
 ///    timeout.
 ///
-/// Additionally every case may be guarded by a condition: The case is only taking into account if
-/// the condition is true. Note that the condition must evaluate to the same in every loop
-/// iteration.
+/// Additionally, every case may optionally be guarded by a condition, so that the case is enabled
+/// only if the condition is true. Note that such conditions must not change within the
+/// `select_loop!`.
 ///
 /// # Selection rules
 ///
@@ -64,8 +64,8 @@
 ///
 /// 1. No selection case may be repeated.
 /// 2. No two cases may operate on the same end (receiving or sending) of the same channel.
-/// 3. There must be at least one *send*, or at least one *recv* case.
-/// 4. If conditions are used, their values must not change during the whole select process.
+/// 3. There must be at least one *send* or at least one *recv* case.
+/// 4. If case conditions are used, they must not change within the `select_loop!`.
 ///
 /// Violating any of these rules will either result in a panic, deadlock, or livelock, possibly
 /// even in a seemingly unrelated send or receive operations outside this particular selection
@@ -89,12 +89,11 @@
 /// separated by commas. Just like `match`, the whole macro invocation is an expression, which in
 /// the end evaluates to a single value.
 ///
-/// Also like `match`, every case may have a guard expression like this: `operation(arguments) if
-/// guard_expression => expression`. The guarded case will only participate in the selection
-/// process if the guard expression evaluates to `true`. If a timeout is guarded, the timeout will
-/// only be registered if the guard expression is `true` at the beginning of the loop.
+/// Every case may also optionally have a guard expression at the end, in the form of
+/// `operation(arguments) if guard_expression => expression`. The guarded case will participate in
+/// selection only if `guard_expression` evaluates to `true`.
 ///
-/// The following code illustrates all the possible ways in which cases can be declared:
+/// The following code illustrates the various ways in which cases can be declared:
 ///
 /// ```ignore
 /// select_loop! {
@@ -119,6 +118,9 @@
 ///     // You should use this form if `msg` is not `Copy`.
 ///     send(tx3, mut msg) => { ... }
 ///
+///     // Send `msg` into `tx4` but only if `enabled_tx4` is `true`.
+///     send(tx4, msg) if enabled_tx4 => { ... }
+///
 ///     // Receive `msg` from `rx1`.
 ///     recv(rx1, msg) => { ... }
 ///
@@ -127,6 +129,9 @@
 ///
 ///     // Receive a message from `rx3`, but don't bind it to a variable.
 ///     recv(rx3, _) => { ... }
+///
+///     // Receive `msg` from the optional receiver, if it exists (`Option<Receiver<_>>`).
+///     recv(opt_rx4.as_ref().unwrap(), msg) if opt_rx4.is_some() => { ... }
 ///
 ///     // This case fires if all declared send/receive operations are on disconnected channels.
 ///     disconnected() => { ... }
@@ -459,7 +464,7 @@ macro_rules! select_loop {
     {@check_guard($($_tt:tt)*) [$($ctx:tt)*]} => {
         compile_error!(
             concat!(
-                "Multiple guards were supplied to select_loop!. in this case: `",
+                "multiple guards were supplied to `select_loop!`: `",
                 stringify!($($ctx)*),
                 "`"));
     }
