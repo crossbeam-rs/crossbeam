@@ -23,7 +23,7 @@ impl Backoff {
         if self.0 <= 6 {
             #[cfg(feature = "nightly")]
             for _ in 0..1 << self.0 {
-                ::std::sync::atomic::hint_core_should_pause();
+                ::std::sync::atomic::spin_loop_hint();
             }
             self.0 += 1;
             true
