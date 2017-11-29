@@ -63,11 +63,11 @@ impl Global {
 
     /// Pushes the bag into the global queue and replaces the bag with a new empty bag.
     pub fn push_bag(&self, bag: &mut Bag, guard: &Guard) {
-        let epoch = self.epoch.load(Ordering::Relaxed);
         let bag = mem::replace(bag, Bag::new());
 
         atomic::fence(Ordering::SeqCst);
 
+        let epoch = self.epoch.load(Ordering::Relaxed);
         self.queue.push((epoch, bag), guard);
     }
 
