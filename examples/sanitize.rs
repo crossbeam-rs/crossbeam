@@ -7,25 +7,29 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
 use std::time::{Duration, Instant};
 use std::thread;
 
-use epoch::{Atomic, Owned};
+use epoch::{Atomic, Collector, Handle, Owned, Shared};
 use rand::Rng;
 
-fn worker(a: Arc<Atomic<AtomicUsize>>) -> usize {
+fn worker(a: Arc<Atomic<AtomicUsize>>, handle: Handle) -> usize {
     let mut rng = rand::thread_rng();
     let mut sum = 0;
 
-    thread::sleep(Duration::from_millis(rng.gen_range(0, 1_000)));
-    let timeout = Duration::from_millis(rng.gen_range(0, 1_000));
+    if rng.gen() {
+        thread::sleep(Duration::from_millis(1));
+    }
+    let timeout = Duration::from_millis(rng.gen_range(0, 10));
     let now = Instant::now();
 
     while now.elapsed() < timeout {
         for _ in 0..100 {
-            let guard = &epoch::pin();
+            let guard = &handle.pin();
+            guard.flush();
 
-            let val = if rng.gen_range(0, 10) == 0 {
+            let val = if rng.gen() {
                 let p = a.swap(Owned::new(AtomicUsize::new(sum)), AcqRel, guard);
                 unsafe {
                     guard.defer(move || p.into_owned());
+                    guard.flush();
                     p.deref().load(Relaxed)
                 }
             } else {
@@ -43,22 +47,24 @@ fn worker(a: Arc<Atomic<AtomicUsize>>) -> usize {
 }
 
 fn main() {
-    // Pin the current thread in order to initialize the global collector, otherwise tsan will show
-    // false positives coming from `lazy_static!`.
-    epoch::pin();
-
-    for _ in 0..10 {
+    for _ in 0..100 {
+        let collector = Collector::new();
         let a = Arc::new(Atomic::new(AtomicUsize::new(777)));
 
-        let threads = (0..50)
+        let threads = (0..16)
             .map(|_| {
                 let a = a.clone();
-                thread::spawn(move || worker(a))
+                let h = collector.handle();
+                thread::spawn(move || worker(a, h))
             })
             .collect::<Vec<_>>();
 
         for t in threads {
             t.join().unwrap();
+        }
+
+        unsafe {
+            a.swap(Shared::null(), AcqRel, epoch::unprotected()).into_owned();
         }
     }
 }
