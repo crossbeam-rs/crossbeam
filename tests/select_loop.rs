@@ -186,6 +186,26 @@ fn timeout() {
 }
 
 #[test]
+fn timeout_when_disconnected() {
+    let (_, rx) = unbounded::<i32>();
+
+    select_loop! {
+        recv(rx, _) => {}
+        timed_out(ms(1000)) => {}
+    }
+}
+
+#[test]
+fn would_block_when_disconnected() {
+    let (_, rx) = unbounded::<i32>();
+
+    select_loop! {
+        recv(rx, _) => {}
+        would_block() => {}
+    }
+}
+
+#[test]
 fn unblocks() {
     let (tx1, rx1) = bounded(0);
     let (tx2, rx2) = bounded(0);
@@ -891,5 +911,107 @@ fn channel_through_channel() {
                 }
             });
         });
+    }
+}
+
+#[test]
+fn conditional_send() {
+    let (tx, rx) = bounded(0);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || rx.recv().unwrap());
+
+        select_loop! {
+            send(tx, ()) if 1 + 1 == 3 => panic!(),
+            timed_out(ms(1000)) => {}
+        }
+
+        select_loop! {
+            send(tx, ()) if 1 + 1 == 2 => {},
+            timed_out(ms(1000)) => panic!(),
+        }
+    });
+}
+
+#[test]
+fn conditional_recv() {
+    let (tx, rx) = unbounded();
+    tx.send(()).unwrap();
+
+    select_loop! {
+        recv(rx, _) if 1 + 1 == 3 => panic!(),
+        timed_out(ms(1000)) => {}
+    }
+
+    select_loop! {
+        recv(rx, _) if 1 + 1 == 2 => {},
+        timed_out(ms(1000)) => panic!(),
+    }
+}
+
+#[test]
+fn conditional_disconnected() {
+    let (_, rx) = bounded::<i32>(0);
+
+    select_loop! {
+        recv(rx, _) => panic!(),
+        disconnected() if 1 + 1 == 3 => panic!(),
+        would_block() => {}
+        timed_out(ms(100)) => panic!(),
+    }
+
+    select_loop! {
+        recv(rx, _) => panic!(),
+        disconnected() if 1 + 1 == 2 => {}
+        would_block() => panic!(),
+        timed_out(ms(100)) => panic!(),
+    }
+}
+
+#[test]
+fn conditional_would_block() {
+    let (_tx, rx) = bounded::<i32>(0);
+
+    select_loop! {
+        recv(rx, _) => panic!(),
+        disconnected() => panic!(),
+        would_block() if 1 + 1 == 3 => panic!(),
+        timed_out(ms(100)) => {}
+    }
+
+    select_loop! {
+        recv(rx, _) => panic!(),
+        disconnected() => panic!(),
+        would_block() if 1 + 1 == 2 => {}
+        timed_out(ms(100)) => panic!(),
+    }
+}
+
+#[test]
+fn conditional_timed_out() {
+    let (_tx, rx) = bounded::<i32>(0);
+
+    select_loop! {
+        recv(rx, _) => panic!(),
+        timed_out(ms(100)) if 1 + 1 == 3 => panic!(),
+        timed_out(ms(1000)) if 1 + 1 == 2 => {}
+    }
+
+    select_loop! {
+        recv(rx, _) => panic!(),
+        timed_out(ms(100)) if 1 + 1 == 2 => {}
+        timed_out(ms(1000)) if 1 + 1 == 3 => panic!(),
+    }
+}
+
+#[test]
+fn conditional_option_unwrap() {
+    let (tx, rx) = unbounded();
+    tx.send(()).unwrap();
+    let rx = Some(&rx);
+
+    select_loop! {
+        recv(rx.unwrap(), _) if rx.is_some() => {}
+        would_block() => panic!()
     }
 }

@@ -1,4 +1,3 @@
-use std::mem;
 use std::time::Instant;
 
 use {Receiver, Sender};
@@ -6,6 +5,13 @@ use err::{TryRecvError, TrySendError};
 use select::handle;
 use select::CaseId;
 use utils;
+
+// TODO(stjepang): Explain operation priorities and write tests to verify them:
+// 1. send/recv
+// 2. all_disconnected
+// 3. any_disconnected
+// 4. would_block
+// 5. timed_out
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum State {
@@ -20,25 +26,29 @@ enum State {
     Dead,
 }
 
-impl State {
-    #[inline]
-    fn is_final(&self) -> bool {
-        match *self {
-            State::Disconnected | State::WouldBlock | State::TimedOut => true,
-            _ => false,
-        }
-    }
-}
+// impl State {
+//     #[inline]
+//     fn is_final(&self) -> bool {
+//         match *self {
+//             State::Disconnected | State::WouldBlock | State::TimedOut => true,
+//             _ => false,
+//         }
+//     }
+// }
 
 pub struct Machine {
     state: State,
     index: usize,
     start_index: usize,
-    len: usize,
     first_id: CaseId,
     deadline: Option<Instant>,
-    seen_disconnected_case: bool,
-    seen_would_block_case: bool,
+
+    len: usize,
+    send_case_count: usize,
+    recv_case_count: usize,
+    has_disconnected_case: bool,
+    has_would_block_case: bool,
+    has_timed_out_case: bool,
 }
 
 impl Machine {
@@ -53,11 +63,15 @@ impl Machine {
             state: State::Count,
             index: 0,
             start_index: 0,
-            len: 0,
             first_id: CaseId::none(),
             deadline,
-            seen_disconnected_case: false,
-            seen_would_block_case: false,
+
+            len: 0,
+            send_case_count: 0,
+            recv_case_count: 0,
+            has_disconnected_case: false,
+            has_would_block_case: false,
+            has_timed_out_case: false,
         }
     }
 
@@ -104,10 +118,7 @@ impl Machine {
                     }
                 }
             },
-            State::Disconnected => {}
-            State::WouldBlock => {}
-            State::TimedOut => {}
-            State::Count => {}
+            State::Count | State::Disconnected | State::WouldBlock | State::TimedOut => {}
             State::Dead => panic!("cannot use the same `Select` for multiple selections")
         }
         Err(msg)
@@ -155,10 +166,7 @@ impl Machine {
                     }
                 }
             },
-            State::Disconnected => {}
-            State::WouldBlock => {}
-            State::TimedOut => {}
-            State::Count => {}
+            State::Count | State::Disconnected | State::WouldBlock | State::TimedOut => {}
             State::Dead => panic!("cannot use the same `Select` for multiple selections")
         }
         Err(())
@@ -166,94 +174,80 @@ impl Machine {
 
     #[inline]
     pub fn disconnected(&mut self) -> bool {
-        match self.state {
-            State::Count => {
-                assert!(
-                    !mem::replace(&mut self.seen_disconnected_case, true),
-                    "there are multiple `disconnected` cases"
-                );
-                false
-            }
-            State::Disconnected => true,
-            State::Dead => panic!("cannot use the same `Select` for multiple selections"),
-            _ => false,
+        if !self.step(CaseId::disconnected()) {
+            return false;
         }
+        self.state == State::Disconnected
     }
 
     #[inline]
     pub fn would_block(&mut self) -> bool {
-        match self.state {
-            State::Count => {
-                assert!(
-                    !mem::replace(&mut self.seen_would_block_case, true),
-                    "there are multiple `would_block` cases"
-                );
-                false
-            }
-            State::WouldBlock => true,
-            State::Dead => panic!("cannot use the same `Select` for multiple selections"),
-            _ => false,
+        if !self.step(CaseId::would_block()) {
+            return false;
         }
+        self.state == State::WouldBlock
     }
 
     #[inline]
-    pub fn timed_out(&self) -> bool {
-        match self.state {
-            State::TimedOut => true,
-            State::Dead => panic!("cannot use the same `Select` for multiple selections"),
-            _ => false,
+    pub fn timed_out(&mut self) -> bool {
+        if !self.step(CaseId::timed_out()) {
+            return false;
         }
+        self.state == State::TimedOut
     }
 
     #[inline(always)]
     pub fn step(&mut self, case_id: CaseId) -> bool {
-        loop {
-            if self.state == State::Count {
-                if self.first_id == case_id {
-                    self.state = State::Try {
-                        disconnected_count: 0,
-                    };
-                    self.index = 0;
-                    self.start_index = utils::small_random(self.len);
-                } else {
-                    if self.len == 0 {
-                        self.first_id = case_id;
-                    }
-                    self.len += 1;
-                    self.index += 1;
+        assert!(
+            self.state != State::Dead,
+            "cannot use the same `Select` for multiple selections"
+        );
+
+        if self.state == State::Count {
+            if self.first_id != case_id {
+                if self.len == 0 {
+                    self.first_id = case_id;
                 }
+
+                self.len += 1;
+                self.index += 1;
+
+                self.send_case_count += case_id.is_send() as usize;
+                self.recv_case_count += case_id.is_recv() as usize;
+                self.has_disconnected_case |= case_id == CaseId::disconnected();
+                self.has_would_block_case |= case_id == CaseId::would_block();
+                self.has_timed_out_case |= case_id == CaseId::timed_out();
 
                 return false;
-            } else {
-                if self.index >= 2 * self.len {
-                    self.transition();
-                    self.index = 0;
-
-                    assert!(
-                        self.state != State::Dead,
-                        "cannot use the same `Select` for multiple selections"
-                    );
-                } else {
-                    let index = self.index;
-                    self.index += 1;
-
-                    if self.start_index <= index && index < self.start_index + self.len {
-                        return true;
-                    } else {
-                        return false;
-                    }
-                }
             }
+
+            self.state = State::Try {
+                disconnected_count: 0,
+            };
+            self.index = 0;
+            self.start_index = utils::small_random(self.len);
         }
+
+        if self.index >= 2 * self.len {
+            self.transition();
+            self.index = 0;
+        }
+
+        let i = self.index;
+        self.index += 1;
+        self.start_index <= i && i < self.start_index + self.len
     }
 
     #[inline(always)]
     fn transition(&mut self) {
         match self.state {
             State::Try { disconnected_count } => {
-                if disconnected_count == self.len {
+                let all_disconnected =
+                    self.send_case_count + self.recv_case_count == disconnected_count;
+
+                if self.has_disconnected_case && all_disconnected {
                     self.state = State::Disconnected;
-                } else if self.seen_would_block_case {
+                } else if self.has_would_block_case {
                     self.state = State::WouldBlock;
                 } else {
                     handle::current_reset();
@@ -261,10 +255,13 @@ impl Machine {
                 }
             }
             State::Promise { disconnected_count } => {
-                if disconnected_count < self.len {
-                    handle::current_wait_until(self.deadline);
-                } else {
+                let all_disconnected =
+                    self.send_case_count + self.recv_case_count == disconnected_count;
+
+                if self.has_disconnected_case && all_disconnected {
                     handle::current_try_select(CaseId::abort());
+                } else {
+                    handle::current_wait_until(self.deadline);
                 }
                 self.state = State::Revoke {
                     case_id: handle::current_selected(),

@@ -8,7 +8,7 @@ use flavors;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use select::CaseId;
 
-pub(crate) struct Channel<T> {
+pub struct Channel<T> {
     senders: AtomicUsize,
     receivers: AtomicUsize,
     flavor: Flavor<T>,
@@ -160,9 +160,7 @@ impl<T> Sender<T> {
     }
 
     pub(crate) fn case_id(&self) -> CaseId {
-        let chan: &Channel<T> = &self.0;
-        let addr = chan as *const Channel<T> as usize;
-        CaseId::new(addr)
+        CaseId::send(&self.0)
     }
 
     pub(crate) fn promise_send(&self) {
@@ -462,9 +460,7 @@ impl<T> Receiver<T> {
     }
 
     pub(crate) fn case_id(&self) -> CaseId {
-        let chan: &Channel<T> = &self.0;
-        let addr = chan as *const Channel<T> as usize;
-        CaseId::new(addr | 1)
+        CaseId::recv(&self.0)
     }
 
     pub(crate) fn promise_recv(&self) {

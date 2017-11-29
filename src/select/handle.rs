@@ -21,7 +21,7 @@ impl Handle {
     pub fn try_select(&self, case_id: CaseId) -> bool {
         self.inner
             .case_id
-            .compare_and_swap(CaseId::none().id, case_id.id, SeqCst) == CaseId::none().id
+            .compare_and_swap(CaseId::none().into(), case_id.into(), SeqCst) == CaseId::none().into()
     }
 
     pub fn unpark(&self) {
@@ -37,7 +37,7 @@ impl Handle {
     }
 
     pub fn selected(&self) -> CaseId {
-        CaseId::new(self.inner.case_id.load(SeqCst))
+        CaseId::from(self.inner.case_id.load(SeqCst))
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
@@ -72,7 +72,7 @@ impl Handle {
 thread_local! {
     static HANDLE: Handle = Handle {
         inner: Arc::new(Inner {
-            case_id: AtomicUsize::new(CaseId::none().id),
+            case_id: AtomicUsize::new(CaseId::none().into()),
             thread: thread::current(),
         })
     };

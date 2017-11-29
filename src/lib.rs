@@ -319,7 +319,7 @@
 //! [`select_loop!`]: macro.select_loop.html
 //! [`Select`]: struct.Select.html
 
-#![cfg_attr(feature = "nightly", feature(hint_core_should_pause))]
+#![cfg_attr(feature = "nightly", feature(spin_loop_hint))]
 
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
