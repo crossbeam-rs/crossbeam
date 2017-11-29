@@ -629,6 +629,23 @@ impl<T> Owned<T> {
         unsafe { Shared::from_data(self.into_data()) }
     }
 
+    /// Converts the owned pointer into a `Box`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Owned};
+    ///
+    /// let o = Owned::new(1234);
+    /// let b: Box<i32> = o.into_box();
+    /// assert_eq!(*b, 1234);
+    /// ```
+    pub fn into_box(self) -> Box<T> {
+        let (raw, _) = decompose_data::<T>(self.data);
+        mem::forget(self);
+        unsafe { Box::from_raw(raw) }
+    }
+
     /// Returns the tag stored within the pointer.
     ///
     /// # Examples
@@ -726,25 +743,6 @@ impl<T> From<Box<T>> for Owned<T> {
     /// ```
     fn from(b: Box<T>) -> Self {
         unsafe { Self::from_raw(Box::into_raw(b)) }
-    }
-}
-
-impl<T> Into<Box<T>> for Owned<T> {
-    /// Converts the owned pointer into a `Box`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{self as epoch, Owned};
-    ///
-    /// let o = Owned::new(1234);
-    /// let b: Box<i32> = o.into();
-    /// assert_eq!(*b, 1234);
-    /// ```
-    fn into(self) -> Box<T> {
-        let (raw, _) = decompose_data::<T>(self.data);
-        mem::forget(self);
-        unsafe { Box::from_raw(raw) }
     }
 }
 
