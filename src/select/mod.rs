@@ -479,7 +479,7 @@ impl Select {
     /// }
     /// ```
     #[inline]
-    pub fn timed_out(&self) -> bool {
+    pub fn timed_out(&mut self) -> bool {
         self.machine.timed_out()
     }
 }
