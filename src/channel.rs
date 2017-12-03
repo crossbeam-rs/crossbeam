@@ -788,6 +788,18 @@ impl<T> Receiver<T> {
     pub fn try_iter(&self) -> TryIter<T> {
         TryIter { rx: self }
     }
+
+    /// Closes the receiver, causing subsequent sends to fail.
+    ///
+    /// This prevents any further messages from being sent on the channel while still allowing the
+    /// receiver to drain existing buffered messages.
+    pub fn close(&self) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.close(),
+            Flavor::List(ref chan) => chan.close(),
+            Flavor::Zero(ref chan) => chan.close(),
+        };
+    }
 }
 
 impl<T> Drop for Receiver<T> {

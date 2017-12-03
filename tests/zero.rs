@@ -218,7 +218,7 @@ fn len() {
 }
 
 #[test]
-fn close_signals_sender() {
+fn drop_signals_sender() {
     let (tx, rx) = bounded(0);
 
     crossbeam::scope(|s| {
@@ -228,6 +228,21 @@ fn close_signals_sender() {
         s.spawn(move || {
             thread::sleep(ms(1000));
             drop(rx);
+        });
+    });
+}
+
+#[test]
+fn close_signals_sender() {
+    let (tx, rx) = bounded(0);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(tx.send(()), Err(SendError(())));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(1000));
+            rx.close();
         });
     });
 }
