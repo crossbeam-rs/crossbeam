@@ -1,6 +1,6 @@
 [package]
 name = "crossbeam-channel"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["The Crossbeam Project Developers"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
@@ -17,6 +17,6 @@ nightly = []
 [dependencies]
 crossbeam = "0.3.0"
 crossbeam-epoch = "0.2.0"
-crossbeam-utils = "0.1.0"
-parking_lot = "0.4.4"
+crossbeam-utils = "0.2.0"
+parking_lot = "0.5"
 rand = "0.3"
