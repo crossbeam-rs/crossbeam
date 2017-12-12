@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Support for Rust 1.12.1.
+
+### Fixed
+- Call `T::clone` when cloning a `CachePadded<T>`.
 
 ## [0.2.1] - 2017-11-26
 ### Added

@@ -3,12 +3,31 @@ use core::mem;
 use core::ops::{Deref, DerefMut};
 use core::ptr;
 
+
 cfg_if! {
     if #[cfg(feature = "nightly")] {
-        #[derive(Clone)]
-        #[repr(align(64))]
-        struct Inner<T> {
-            value: T,
+        // This trick allows use to support rustc 1.12.1, which does not support the
+        // #[repr(align(n))] syntax. Using the attribute makes the parser fail over.
+        // It is, however, okay to use it within a macro, since it would be parsed
+        // in a later stage, but that never occurs due to the cfg_if.
+        // TODO(Vtec234): remove this crap when we drop support for 1.12.
+        macro_rules! nightly_inner {
+            () => (
+                #[derive(Clone)]
+                #[repr(align(64))]
+                pub(crate) struct Inner<T> {
+                    value: T,
+                }
+            )
+        }
+        nightly_inner!();
+
+        impl<T> Inner<T> {
+            pub(crate) fn new(t: T) -> Inner<T> {
+                Self {
+                    value: t
+                }
+            }
         }
 
         impl<T> Deref for Inner<T> {
@@ -27,13 +46,26 @@ cfg_if! {
     } else {
         use core::marker::PhantomData;
 
-        #[derive(Clone)]
         struct Inner<T> {
             bytes: [u8; 64],
 
-            /// `[T; 0]` ensures correct alignment.
+            /// `[T; 0]` ensures alignment is at least that of `T`.
             /// `PhantomData<T>` signals that `CachePadded<T>` contains a `T`.
             _marker: ([T; 0], PhantomData<T>),
+        }
+
+        impl<T> Inner<T> {
+            fn new(t: T) -> Inner<T> {
+                assert!(mem::size_of::<T>() <= mem::size_of::<Self>());
+                assert!(mem::align_of::<T>() <= mem::align_of::<Self>());
+
+                unsafe {
+                    let mut inner: Self = mem::uninitialized();
+                    let p: *mut T = &mut *inner;
+                    ptr::write(p, t);
+                    inner
+                }
+            }
         }
 
         impl<T> Deref for Inner<T> {
@@ -56,6 +88,13 @@ cfg_if! {
                 unsafe {
                     ptr::drop_in_place(p);
                 }
+            }
+        }
+
+        impl<T: Clone> Clone for Inner<T> {
+            fn clone(&self) -> Inner<T> {
+                let val = self.deref().clone();
+                Self::new(val)
             }
         }
     }
@@ -91,17 +130,7 @@ impl<T> CachePadded<T> {
     ///
     /// If `nightly` is not enabled and `T` is larger than 64 bytes, this function will panic.
     pub fn new(t: T) -> CachePadded<T> {
-        assert!(mem::size_of::<T>() <= mem::size_of::<CachePadded<T>>());
-        assert!(mem::align_of::<T>() <= mem::align_of::<CachePadded<T>>());
-
-        unsafe {
-            let mut padded = CachePadded {
-                inner: mem::uninitialized(),
-            };
-            let p: *mut T = &mut *padded;
-            ptr::write(p, t);
-            padded
-        }
+        CachePadded::<T> { inner: Inner::new(t) }
     }
 }
 
@@ -127,9 +156,7 @@ impl<T: Default> Default for CachePadded<T> {
 
 impl<T: Clone> Clone for CachePadded<T> {
     fn clone(&self) -> Self {
-        CachePadded {
-            inner: self.inner.clone(),
-        }
+        CachePadded { inner: self.inner.clone() }
     }
 }
 
@@ -169,7 +196,7 @@ mod test {
         let arr = [CachePadded::new(17u8), CachePadded::new(37u8)];
         let a = &*arr[0] as *const u8;
         let b = &*arr[1] as *const u8;
-        assert_eq!(a.wrapping_offset(64), b);
+        assert!(unsafe { a.offset(64) } <= b);
     }
 
     #[test]
@@ -207,7 +234,10 @@ mod test {
 
     #[test]
     fn debug() {
-        assert_eq!(format!("{:?}", CachePadded::new(17u64)), "CachePadded { 17 }");
+        assert_eq!(
+            format!("{:?}", CachePadded::new(17u64)),
+            "CachePadded { 17 }"
+        );
     }
 
     #[test]
@@ -237,5 +267,24 @@ mod test {
         let a = CachePadded::new(17);
         let b = a.clone();
         assert_eq!(*a, *b);
+    }
+
+    #[test]
+    fn runs_custom_clone() {
+        let count = Cell::new(0);
+
+        struct Foo<'a>(&'a Cell<usize>);
+
+        impl<'a> Clone for Foo<'a> {
+            fn clone(&self) -> Foo<'a> {
+                self.0.set(self.0.get() + 1);
+                Foo::<'a>(self.0)
+            }
+        }
+
+        let a = CachePadded::new(Foo(&count));
+        a.clone();
+
+        assert_eq!(count.get(), 1);
     }
 }
