@@ -472,12 +472,10 @@ fn loop_try() {
             });
 
             s.spawn(|| {
-                let mut iters = 0;
                 thread::sleep(ms(500));
 
                 let mut sel = Select::with_timeout(ms(500));
                 loop {
-                    iters += 1;
                     if let Ok(x) = sel.recv(&rx1) {
                         assert_eq!(x, 1);
                         break;
@@ -495,7 +493,6 @@ fn loop_try() {
 
                 drop(rx1);
                 drop(tx2);
-                assert!(iters < 1000);
             });
         });
     }
