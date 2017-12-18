@@ -415,18 +415,9 @@ macro_rules! select_loop {
             $body
         }
     };
-    {@impl($state:ident) recv($rx:expr, _) => $body:expr} => {
-        if let Ok(_) = $state.recv(&*&$rx) {
-            $body
-        }
-    };
-    {@impl($state:ident) recv($rx:expr, $val:ident) => $body:expr} => {
-        if let Ok($val) = $state.recv(&*&$rx) {
-            $body
-        }
-    };
-    {@impl($state:ident) recv($rx:expr, mut $val:ident) => $body:expr} => {
-        if let Ok(mut $val) = $state.recv(&*&$rx) {
+    {@impl($state:ident) recv($rx:expr, $val:pat) => $body:expr} => {
+        if let Ok(val) = $state.recv(&*&$rx) {
+            let $val = val;  // Only allow infallible patterns
             $body
         }
     };
