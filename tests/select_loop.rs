@@ -25,6 +25,7 @@ fn it_compiles() {
         immutable_var: String,
         rx0: Receiver<String>,
         rx1: &Receiver<u32>,
+        rx2: Receiver<()>,
         tx0: &mut Sender<String>,
         tx1: Sender<String>,
         tx2: Sender<String>,
@@ -35,6 +36,7 @@ fn it_compiles() {
         select_loop! {
             recv(rx0, val) => Some(val),
             recv(rx1, val) => Some(val.to_string()),
+            recv(rx2, ()) => None,
             send(tx0, mut struct_val.0) => Some(var),
             send(tx1, mut var) => Some(struct_val.0),
             send(tx1, immutable_var) => Some(struct_val.0),
@@ -42,6 +44,7 @@ fn it_compiles() {
             send(tx3, "foo".to_string()) => Some(var),
             send(tx4, var.clone()) => Some(var),
             send(tx5, 42) => None,
+            
             disconnected() => Some("disconnected".into()),
             would_block() => Some("would_block".into()),
             timed_out(Duration::from_secs(1)) => Some("timed_out".into()),
