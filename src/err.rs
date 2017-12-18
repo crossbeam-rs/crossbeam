@@ -176,6 +176,14 @@ impl<T: Send> error::Error for TrySendError<T> {
     }
 }
 
+impl<T> From<SendError<T>> for TrySendError<T> {
+    fn from(err: SendError<T>) -> TrySendError<T> {
+        match err {
+            SendError(t) => TrySendError::Disconnected(t),
+        }
+    }
+}
+
 impl<T> TrySendError<T> {
     /// Unwraps the value.
     ///
@@ -220,6 +228,14 @@ impl<T: Send> error::Error for SendTimeoutError<T> {
 
     fn cause(&self) -> Option<&error::Error> {
         None
+    }
+}
+
+impl<T> From<SendError<T>> for SendTimeoutError<T> {
+    fn from(err: SendError<T>) -> SendTimeoutError<T> {
+        match err {
+            SendError(e) => SendTimeoutError::Disconnected(e),
+        }
     }
 }
 
