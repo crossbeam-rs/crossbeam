@@ -13,4 +13,4 @@ categories = ["concurrency", "data-structures"]
 nightly = []
 
 [dev-dependencies]
-rand = "0.3"
+rand = "0.4"
