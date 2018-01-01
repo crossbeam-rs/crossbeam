@@ -1,6 +1,15 @@
+# Notice
+
+This crate is outdated. The Crossbeam project is currently in a transition
+period. We are rewriting the epoch garbage collector, as well as several
+other utilities and adding new structures. To follow the progress, please
+take a look at other crates in the project [here](https://github.com/crossbeam-rs).
+When the transition is complete, this crate will be updated to use the new code.
+
 # Crossbeam: support for concurrent and parallel programming
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](https://travis-ci.org/crossbeam-rs/crossbeam)
+
 
 This crate is an early work in progress. The focus for the moment is
 concurrency:
