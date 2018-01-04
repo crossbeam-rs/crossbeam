@@ -32,6 +32,15 @@ pub struct CompareAndSetError<'g, T: 'g, P: Pointer<T>> {
     pub new: P,
 }
 
+impl<'g, T: 'g, P: Pointer<T> + fmt::Debug> fmt::Debug for CompareAndSetError<'g, T, P> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("CompareAndSetError")
+            .field("current", &self.current)
+            .field("new", &self.new)
+            .finish()
+    }
+}
+
 /// Memory orderings for compare-and-set operations.
 ///
 /// A compare-and-set operation can have different memory orderings depending on whether it
@@ -244,7 +253,8 @@ impl<T> Atomic<T> {
     }
 
     /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
-    /// value is the same as `current`.
+    /// value is the same as `current`. The tag is also taken into account, so two pointers to the
+    /// same object, but with different tags, will not be considered equal.
     ///
     /// The return value is a result indicating whether the new pointer was written. On success the
     /// pointer that was written is returned. On failure the actual current value and `new` are
@@ -292,7 +302,8 @@ impl<T> Atomic<T> {
     }
 
     /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
-    /// value is the same as `current`.
+    /// value is the same as `current`. The tag is also taken into account, so two pointers to the
+    /// same object, but with different tags, will not be considered equal.
     ///
     /// Unlike [`compare_and_set`], this method is allowed to spuriously fail even when comparison
     /// succeeds, which can result in more efficient code on some platforms.  The return value is a
