@@ -43,10 +43,15 @@ unsafe impl<T: Sync> Sync for CachePadded<T> {}
 ///
 /// If a type `T: ZerosValid`, then a sequence of zeros the size of `T` must be
 /// a valid member of the type `T`.
+#[cfg(not(feature = "nightly"))]
 pub unsafe trait ZerosValid {}
 
+/// Types for which mem::zeroed() is safe.
+///
+/// If a type `T: ZerosValid`, then a sequence of zeros the size of `T` must be
+/// a valid member of the type `T`.
 #[cfg(feature = "nightly")]
-unsafe impl ZerosValid for .. {}
+pub unsafe auto trait ZerosValid {}
 
 macro_rules! zeros_valid { ($( $T:ty )*) => ($(
     unsafe impl ZerosValid for $T {}
