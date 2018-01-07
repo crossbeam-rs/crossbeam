@@ -59,8 +59,8 @@ pub struct Channel<T> {
     /// The next power of two greater than or equal to the capacity.
     power: usize,
 
-    /// Equals `true` if the channel is closed.
-    closed: AtomicBool,
+    /// Equals `true` if the channel is disconnected.
+    is_disconnected: AtomicBool,
 
     /// Senders waiting on full channel.
     senders: Monitor,
@@ -87,7 +87,8 @@ impl<T> Channel<T> {
         assert!(
             cap <= cap_limit,
             "channel capacity is too large: {} > {}",
-            cap, cap_limit
+            cap,
+            cap_limit
         );
 
         // Allocate a buffer of `cap` entries.
@@ -118,7 +119,7 @@ impl<T> Channel<T> {
             power,
             head: CachePadded::new(AtomicUsize::new(head)),
             tail: CachePadded::new(AtomicUsize::new(tail)),
-            closed: AtomicBool::new(false),
+            is_disconnected: AtomicBool::new(false),
             senders: Monitor::new(),
             receivers: Monitor::new(),
             _marker: PhantomData,
@@ -260,7 +261,7 @@ impl<T> Channel<T> {
 
     /// Attempts to send `msg` into the channel.
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
+        if self.is_disconnected.load(SeqCst) {
             Err(TrySendError::Disconnected(msg))
         } else {
             match self.push(msg, &mut Backoff::new()) {
@@ -281,8 +282,8 @@ impl<T> Channel<T> {
         case_id: CaseId,
     ) -> Result<(), SendTimeoutError<T>> {
         loop {
-            if self.closed.load(SeqCst) {
-                return Err(SendTimeoutError::Disconnected(msg))
+            if self.is_disconnected.load(SeqCst) {
+                return Err(SendTimeoutError::Disconnected(msg));
             } else {
                 let backoff = &mut Backoff::new();
                 loop {
@@ -301,11 +302,12 @@ impl<T> Channel<T> {
 
             handle::current_reset();
             self.senders.register(case_id);
-            let is_closed = self.is_closed();
-            let timed_out = !is_closed && self.is_full() && !handle::current_wait_until(deadline);
+            let is_disconnected = self.is_disconnected();
+            let timed_out =
+                !is_disconnected && self.is_full() && !handle::current_wait_until(deadline);
             self.senders.unregister(case_id);
 
-            if is_closed {
+            if is_disconnected {
                 return Err(SendTimeoutError::Disconnected(msg));
             } else if timed_out {
                 return Err(SendTimeoutError::Timeout(msg));
@@ -315,19 +317,19 @@ impl<T> Channel<T> {
 
     /// Attempts to receive a message from channel.
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let closed = self.closed.load(SeqCst);
+        let is_disconnected = self.is_disconnected.load(SeqCst);
         match self.pop(&mut Backoff::new()) {
             Some(msg) => {
                 self.senders.notify_one();
                 Ok(msg)
             }
             None => {
-                if closed {
+                if is_disconnected {
                     Err(TryRecvError::Disconnected)
                 } else {
                     Err(TryRecvError::Empty)
                 }
-            },
+            }
         }
     }
 
@@ -340,12 +342,12 @@ impl<T> Channel<T> {
         loop {
             let backoff = &mut Backoff::new();
             loop {
-                let closed = self.closed.load(SeqCst);
+                let is_disconnected = self.is_disconnected.load(SeqCst);
                 if let Some(v) = self.pop(backoff) {
                     self.senders.notify_one();
                     return Ok(v);
                 }
-                if closed {
+                if is_disconnected {
                     return Err(RecvTimeoutError::Disconnected);
                 }
                 if !backoff.step() {
@@ -355,11 +357,12 @@ impl<T> Channel<T> {
 
             handle::current_reset();
             self.receivers.register(case_id);
-            let is_closed = self.is_closed();
-            let timed_out = !is_closed && self.is_empty() && !handle::current_wait_until(deadline);
+            let is_disconnected = self.is_disconnected();
+            let timed_out =
+                !is_disconnected && self.is_empty() && !handle::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
-            if is_closed && self.is_empty() {
+            if is_disconnected && self.is_empty() {
                 return Err(RecvTimeoutError::Disconnected);
             } else if timed_out {
                 return Err(RecvTimeoutError::Timeout);
@@ -372,9 +375,9 @@ impl<T> Channel<T> {
         self.cap
     }
 
-    /// Closes the channel and wakes up all currently blocked operations on it.
-    pub fn close(&self) -> bool {
-        if self.closed.swap(true, SeqCst) {
+    /// Disconnects the channel and wakes up all currently blocked operations on it.
+    pub fn disconnect(&self) -> bool {
+        if self.is_disconnected.swap(true, SeqCst) {
             false
         } else {
             self.senders.abort_all();
@@ -383,9 +386,9 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns `true` if the channel is closed.
-    pub fn is_closed(&self) -> bool {
-        self.closed.load(SeqCst)
+    /// Returns `true` if the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        self.is_disconnected.load(SeqCst)
     }
 
     /// Returns `true` if the channel is empty.

@@ -218,7 +218,7 @@ fn len() {
 }
 
 #[test]
-fn drop_signals_sender() {
+fn dropping_receiver_signals_sender() {
     let (tx, rx) = bounded(0);
 
     crossbeam::scope(|s| {
@@ -233,7 +233,7 @@ fn drop_signals_sender() {
 }
 
 #[test]
-fn close_signals_sender() {
+fn disconnect_signals_sender() {
     let (tx, rx) = bounded(0);
 
     crossbeam::scope(|s| {
@@ -242,13 +242,13 @@ fn close_signals_sender() {
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
-            rx.close();
+            rx.disconnect();
         });
     });
 }
 
 #[test]
-fn close_signals_receiver() {
+fn disconnect_signals_receiver() {
     let (tx, rx) = bounded::<()>(0);
 
     crossbeam::scope(|s| {

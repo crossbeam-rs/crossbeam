@@ -93,7 +93,7 @@ fn try_recv() {
 }
 
 #[test]
-fn recv_after_close() {
+fn recv_after_disconnect() {
     let (tx, rx) = unbounded();
 
     tx.send(1).unwrap();
@@ -167,7 +167,7 @@ fn len() {
 }
 
 #[test]
-fn close_signals_sender() {
+fn disconnect_signals_sender() {
     let (tx, rx) = unbounded();
 
     crossbeam::scope(|s| {
@@ -179,7 +179,7 @@ fn close_signals_sender() {
         });
         s.spawn(move || {
             thread::sleep(ms(500));
-            rx.close();
+            rx.disconnect();
             assert_eq!(rx.recv(), Ok(1));
             assert_eq!(rx.recv(), Ok(2));
             assert_eq!(rx.recv(), Err(RecvError));
@@ -188,7 +188,7 @@ fn close_signals_sender() {
 }
 
 #[test]
-fn close_signals_receiver() {
+fn disconnect_signals_receiver() {
     let (tx, rx) = unbounded::<()>();
 
     crossbeam::scope(|s| {

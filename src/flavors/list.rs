@@ -83,8 +83,8 @@ pub struct Channel<T> {
     /// The current tail index and the node containing it.
     tail: CachePadded<Position<T>>,
 
-    /// Equals `true` if the channel is closed.
-    closed: AtomicBool,
+    /// Equals `true` if the channel is disconnected.
+    is_disconnected: AtomicBool,
 
     /// Receivers waiting on empty channel.
     receivers: Monitor,
@@ -104,15 +104,13 @@ impl<T> Channel<T> {
                 index: AtomicUsize::new(0),
                 node: Atomic::null(),
             }),
-            closed: AtomicBool::new(false),
+            is_disconnected: AtomicBool::new(false),
             receivers: Monitor::new(),
             _marker: PhantomData,
         };
 
         // Create an empty node, into which both head and tail point at the beginning.
-        let node = unsafe {
-            Owned::new(Node::new(0)).into_shared(epoch::unprotected())
-        };
+        let node = unsafe { Owned::new(Node::new(0)).into_shared(epoch::unprotected()) };
         channel.head.node.store(node, Relaxed);
         channel.tail.node.store(node, Relaxed);
 
@@ -227,7 +225,7 @@ impl<T> Channel<T> {
 
     /// Attempts to send `msg` into the channel.
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
+        if self.is_disconnected.load(SeqCst) {
             Err(TrySendError::Disconnected(msg))
         } else {
             self.push(msg);
@@ -238,7 +236,7 @@ impl<T> Channel<T> {
 
     /// Send `msg` into the channel.
     pub fn send(&self, msg: T) -> Result<(), SendTimeoutError<T>> {
-        if self.closed.load(SeqCst) {
+        if self.is_disconnected.load(SeqCst) {
             Err(SendTimeoutError::Disconnected(msg))
         } else {
             self.push(msg);
@@ -249,15 +247,15 @@ impl<T> Channel<T> {
 
     /// Attempts to receive a message from channel.
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let closed = self.closed.load(SeqCst);
+        let is_disconnected = self.is_disconnected.load(SeqCst);
         match self.pop() {
             None => {
-                if closed {
+                if is_disconnected {
                     Err(TryRecvError::Disconnected)
                 } else {
                     Err(TryRecvError::Empty)
                 }
-            },
+            }
             Some(msg) => Ok(msg),
         }
     }
@@ -271,11 +269,11 @@ impl<T> Channel<T> {
         loop {
             let backoff = &mut Backoff::new();
             loop {
-                let closed = self.closed.load(SeqCst);
+                let is_disconnected = self.is_disconnected.load(SeqCst);
                 if let Some(msg) = self.pop() {
                     return Ok(msg);
                 }
-                if closed {
+                if is_disconnected {
                     return Err(RecvTimeoutError::Disconnected);
                 }
                 if !backoff.step() {
@@ -285,11 +283,12 @@ impl<T> Channel<T> {
 
             handle::current_reset();
             self.receivers.register(case_id);
-            let is_closed = self.is_closed();
-            let timed_out = !is_closed && self.is_empty() && !handle::current_wait_until(deadline);
+            let is_disconnected = self.is_disconnected();
+            let timed_out =
+                !is_disconnected && self.is_empty() && !handle::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
-            if is_closed && self.is_empty() {
+            if is_disconnected && self.is_empty() {
                 return Err(RecvTimeoutError::Disconnected);
             } else if timed_out {
                 return Err(RecvTimeoutError::Timeout);
@@ -297,9 +296,9 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Closes the channel and wakes up all currently blocked operations on it.
-    pub fn close(&self) -> bool {
-        if self.closed.swap(true, SeqCst) {
+    /// Disconnects the channel and wakes up all currently blocked operations on it.
+    pub fn disconnect(&self) -> bool {
+        if self.is_disconnected.swap(true, SeqCst) {
             false
         } else {
             self.receivers.abort_all();
@@ -307,9 +306,9 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns `true` if the channel is closed.
-    pub fn is_closed(&self) -> bool {
-        self.closed.load(SeqCst)
+    /// Returns `true` if the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        self.is_disconnected.load(SeqCst)
     }
 
     /// Returns `true` if the channel is empty.
