@@ -1,4 +1,6 @@
+use std::cmp;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
@@ -159,8 +161,13 @@ impl<T> Sender<T> {
         Sender(chan)
     }
 
+    fn channel_address(&self) -> usize {
+        let chan: &Channel<T> = &*self.0;
+        chan as *const Channel<T> as usize
+    }
+
     pub(crate) fn case_id(&self) -> CaseId {
-        CaseId::send(&self.0)
+        CaseId::send(self.channel_address())
     }
 
     pub(crate) fn promise_send(&self) {
@@ -425,6 +432,32 @@ impl<T> fmt::Debug for Sender<T> {
     }
 }
 
+impl<T> Hash for Sender<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.channel_address().hash(state)
+    }
+}
+
+impl<T> PartialEq for Sender<T> {
+    fn eq(&self, other: &Sender<T>) -> bool {
+        self.channel_address() == other.channel_address()
+    }
+}
+
+impl<T> Eq for Sender<T> {}
+
+impl<T> PartialOrd for Sender<T> {
+    fn partial_cmp(&self, other: &Sender<T>) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for Sender<T> {
+    fn cmp(&self, other: &Sender<T>) -> cmp::Ordering {
+        self.channel_address().cmp(&other.channel_address())
+    }
+}
+
 /// The receiving half of a channel.
 ///
 /// Receivers can be cloned and shared among multiple threads.
@@ -459,8 +492,13 @@ impl<T> Receiver<T> {
         Receiver(chan)
     }
 
+    fn channel_address(&self) -> usize {
+        let chan: &Channel<T> = &*self.0;
+        chan as *const Channel<T> as usize
+    }
+
     pub(crate) fn case_id(&self) -> CaseId {
-        CaseId::recv(&self.0)
+        CaseId::recv(self.channel_address())
     }
 
     pub(crate) fn promise_recv(&self) {
@@ -773,6 +811,32 @@ impl<T> Clone for Receiver<T> {
 impl<T> fmt::Debug for Receiver<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver").finish()
+    }
+}
+
+impl<T> Hash for Receiver<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.channel_address().hash(state)
+    }
+}
+
+impl<T> PartialEq for Receiver<T> {
+    fn eq(&self, other: &Receiver<T>) -> bool {
+        self.channel_address() == other.channel_address()
+    }
+}
+
+impl<T> Eq for Receiver<T> {}
+
+impl<T> PartialOrd for Receiver<T> {
+    fn partial_cmp(&self, other: &Receiver<T>) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for Receiver<T> {
+    fn cmp(&self, other: &Receiver<T>) -> cmp::Ordering {
+        self.channel_address().cmp(&other.channel_address())
     }
 }
 
