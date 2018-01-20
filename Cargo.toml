@@ -9,6 +9,11 @@ readme = "README.md"
 license = "Apache-2.0/MIT"
 categories = ["concurrency", "data-structures"]
 
+[features]
+default = ["use_std"]
+nightly = ["crossbeam-epoch/nightly"]
+use_std = ["crossbeam-epoch/use_std"]
+
 [dependencies]
 crossbeam-epoch = "0.2"
 crossbeam-utils = "0.2"
