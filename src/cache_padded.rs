@@ -1,17 +1,18 @@
-use std::marker;
 use std::cell::UnsafeCell;
-use std::fmt;
-use std::mem;
-use std::ptr;
 use std::ops::{Deref, DerefMut};
+use std::{ptr, mem, fmt, marker};
 
-// For now, treat this as an arch-independent constant.
+/// An over-approximation of ((cache-line-size) / sizeof(usize))
+// FIXME: arch-dependent value for CACHE_LINE
 const CACHE_LINE: usize = 32;
 
-#[cfg_attr(feature = "nightly",
-           repr(simd))]
+// FIXME: this is a spooky hack that aligns `CachePadded` to the cache line.
+// It would be better to have a language feature on the alignment, e.g.
+// `#[align(64)]`.  See https://github.com/rust-lang/rfcs/issues/325 for more
+// details.
+#[cfg_attr(feature = "nightly", repr(simd))]
 #[derive(Debug)]
-struct Padding(u64, u64, u64, u64);
+struct Padding([usize; CACHE_LINE]);
 
 /// Pad `T` to the length of a cacheline.
 ///
@@ -20,14 +21,18 @@ struct Padding(u64, u64, u64, u64);
 /// invalidated due to unrelated concurrent activity. Use the `CachePadded` type
 /// when you want to *avoid* cache locality.
 ///
-/// At the moment, cache lines are assumed to be 32 * sizeof(usize) on all
-/// architectures.
+/// # Warning
 ///
-/// **Warning**: the wrapped data is never dropped; move out using `ptr::read`
-/// if you need to run dtors.
+/// - The wrapped data is never dropped; move out using `ptr::read` if you need
+///   to run dtors.
+/// - Do not rely on this actually being padded to the cache line for the
+///   correctness of your program.  Certain compiler options or hardware might
+///   actually cause it not to be aligned.
+// FIXME: currently we require sizeof(T) <= cache line size.
 pub struct CachePadded<T> {
     data: UnsafeCell<[usize; CACHE_LINE]>,
-    _marker: ([Padding; 0], marker::PhantomData<T>),
+    _pad: [Padding; 0],
+    _marker: marker::PhantomData<T>,
 }
 
 impl<T> fmt::Debug for CachePadded<T> {
@@ -73,23 +78,28 @@ zeros_valid!(i8 i16 i32 i64 isize);
 unsafe impl ZerosValid for ::std::sync::atomic::AtomicUsize {}
 unsafe impl<T> ZerosValid for ::std::sync::atomic::AtomicPtr<T> {}
 
+macro_rules! init_zero {
+    () => ({
+        assert_valid::<T>();
+        CachePadded {
+            data: UnsafeCell::new(([0; CACHE_LINE])),
+            _pad: [],
+            _marker: marker::PhantomData,
+        }}
+    )
+}
+
 impl<T: ZerosValid> CachePadded<T> {
     /// A const fn equivalent to mem::zeroed().
     #[cfg(not(feature = "nightly"))]
     pub fn zeroed() -> CachePadded<T> {
-        CachePadded {
-            data: UnsafeCell::new(([0; CACHE_LINE])),
-            _marker: ([], marker::PhantomData),
-        }
+        init_zero!()
     }
 
     /// A const fn equivalent to mem::zeroed().
     #[cfg(feature = "nightly")]
     pub const fn zeroed() -> CachePadded<T> {
-        CachePadded {
-            data: UnsafeCell::new(([0; CACHE_LINE])),
-            _marker: ([], marker::PhantomData),
-        }
+        init_zero!()
     }
 }
 
@@ -98,23 +108,33 @@ impl<T: ZerosValid> CachePadded<T> {
 fn assert_valid<T>() {
     assert!(mem::size_of::<T>() <= mem::size_of::<CachePadded<T>>());
     assert!(mem::align_of::<T>() <= mem::align_of::<CachePadded<T>>());
+    assert_eq!(mem::size_of::<CachePadded<T>>(), CACHE_LINE * mem::size_of::<usize>());
+
+    // FIXME: we should ensure that the alignment of `CachePadded<T>`
+    // is a multiple of the cache line size, but
+    // `mem::align_of::<CachePadded<T>>()` gives us a very small
+    // number...
 }
 
 impl<T> CachePadded<T> {
     /// Wrap `t` with cacheline padding.
     ///
-    /// **Warning**: the wrapped data is never dropped; move out using
-    /// `ptr:read` if you need to run dtors.
+    /// # Warning
+    ///
+    /// The wrapped data is never dropped; move out using `ptr:read` if you need to run dtors.
+    ///
+    /// # Panic
+    ///
+    /// If `T` is bigger than a cache line, this will hit an assertion.
     pub fn new(t: T) -> CachePadded<T> {
-        assert_valid::<T>();
-        let ret = CachePadded {
-            data: UnsafeCell::new(([0; CACHE_LINE])),
-            _marker: ([], marker::PhantomData),
-        };
+        let ret = init_zero!();
+
+        // Copy the data into the untyped buffer.
         unsafe {
             let p: *mut T = mem::transmute(&ret.data);
             ptr::write(p, t);
         }
+
         ret
     }
 }
@@ -122,14 +142,12 @@ impl<T> CachePadded<T> {
 impl<T> Deref for CachePadded<T> {
     type Target = T;
     fn deref(&self) -> &T {
-        assert_valid::<T>();
         unsafe { mem::transmute(&self.data) }
     }
 }
 
 impl<T> DerefMut for CachePadded<T> {
     fn deref_mut(&mut self) -> &mut T {
-        assert_valid::<T>();
         unsafe { mem::transmute(&mut self.data) }
     }
 }
@@ -138,7 +156,6 @@ impl<T> DerefMut for CachePadded<T> {
 /*
 impl<T> Drop for CachePadded<T> {
     fn drop(&mut self) {
-        assert_valid::<T>();
         let p: *mut T = mem::transmute(&self.data);
         mem::drop(ptr::read(p));
     }
