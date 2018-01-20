@@ -85,7 +85,7 @@
 //!             n.next.store_shared(head, Relaxed);
 //!
 //!             // if snapshot is still good, link in the new node
-//!             match self.head.cas_and_ref(head, n, Release, &guard) {
+//!             match self.head.compare_and_set_ref(head, n, Release, &guard) {
 //!                 Ok(_) => return,
 //!                 Err(owned) => n = owned,
 //!             }
@@ -105,7 +105,7 @@
 //!                     let next = head.next.load(Relaxed, &guard);
 //!
 //!                     // if snapshot is still good, update from `head` to `next`
-//!                     if self.head.cas_shared(Some(head), next, Release) {
+//!                     if self.head.compare_and_set_shared(Some(head), next, Release) {
 //!                         unsafe {
 //!                             // mark the node as unlinked
 //!                             guard.unlinked(head);
@@ -138,7 +138,6 @@ pub use self::atomic::Atomic;
 pub use self::guard::{pin, Guard};
 
 use std::ops::{Deref, DerefMut};
-use std::ptr;
 use std::mem;
 
 /// Like `Box<T>`: an owned, heap-allocated data value of type `T`.
@@ -153,6 +152,7 @@ impl<T> Owned<T> {
         Owned { data: Box::new(t) }
     }
 
+    /// Obtain the raw pointer to the inner data.
     fn as_raw(&self) -> *mut T {
         self.deref() as *const _ as *mut _
     }
@@ -178,6 +178,9 @@ impl<T> DerefMut for Owned<T> {
 
 #[derive(PartialEq, Eq)]
 /// Like `&'a T`: a shared reference valid for lifetime `'a`.
+///
+/// This implicitly asserts that an epoch is active in this thread for
+/// its lifetime, which is what makes this different from `&'a T`.
 #[derive(Debug)]
 pub struct Shared<'a, T: 'a> {
     data: &'a T,
@@ -198,21 +201,18 @@ impl<'a, T> Deref for Shared<'a, T> {
 }
 
 impl<'a, T> Shared<'a, T> {
-    unsafe fn from_raw(raw: *mut T) -> Option<Shared<'a, T>> {
-        if raw == ptr::null_mut() { None }
-        else {
-            Some(Shared {
-                data: mem::transmute::<*mut T, &T>(raw)
-            })
-        }
+    /// from_{raw, ref, owned} create a shared reference, bound to the given epoch.
+    fn from_raw(raw: *mut T, _: &'a Guard) -> Option<Shared<'a, T>> {
+        // This is safe as the existence of the guard for the lifetime is the invariant.
+        unsafe { raw.as_ref().map(|x| Shared { data: x }) }
     }
 
-    unsafe fn from_ref(r: &T) -> Shared<'a, T> {
-        Shared { data: mem::transmute(r) }
+    fn from_ref(r: &T, _: &'a Guard) -> Shared<'a, T> {
+        unsafe { Shared { data: mem::transmute(r) } }
     }
 
-    unsafe fn from_owned(owned: Owned<T>) -> Shared<'a, T> {
-        let ret = Shared::from_ref(owned.deref());
+    fn from_owned(owned: Owned<T>, guard: &'a Guard) -> Shared<'a, T> {
+        let ret = Shared::from_ref(owned.deref(), guard);
         mem::forget(owned);
         ret
     }
@@ -244,10 +244,10 @@ mod test {
 
         let x = Atomic::null();
         x.store(Some(Owned::new(Test)), Ordering::Relaxed);
-        x.store_and_ref(Owned::new(Test), Ordering::Relaxed, &g);
+        x.store_ref(Owned::new(Test), Ordering::Relaxed, &g);
         let y = x.load(Ordering::Relaxed, &g);
-        let z = x.cas_and_ref(y, Owned::new(Test), Ordering::Relaxed, &g).ok();
-        let _ = x.cas(z, Some(Owned::new(Test)), Ordering::Relaxed);
+        let z = x.compare_and_set_ref(y, Owned::new(Test), Ordering::Relaxed, &g).ok();
+        let _ = x.compare_and_set(z, Some(Owned::new(Test)), Ordering::Relaxed);
         x.swap(Some(Owned::new(Test)), Ordering::Relaxed, &g);
 
         unsafe {

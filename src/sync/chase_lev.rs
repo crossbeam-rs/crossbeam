@@ -284,7 +284,7 @@ impl<T> Deque<T> {
                               guard: &'a epoch::Guard)
                               -> Shared<'a, Buffer<T>> {
         let newbuf = Owned::new(buf);
-        let newbuf = self.array.store_and_ref(newbuf, Release, &guard);
+        let newbuf = self.array.store_ref(newbuf, Release, &guard);
         guard.unlinked(old);
 
         newbuf
