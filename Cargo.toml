@@ -11,8 +11,8 @@ categories = ["concurrency", "data-structures"]
 
 [features]
 default = ["use_std"]
-nightly = ["crossbeam-epoch/nightly"]
-use_std = ["crossbeam-epoch/use_std"]
+nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
+use_std = ["crossbeam-epoch/use_std", "crossbeam-utils/use_std"]
 
 [dependencies]
 crossbeam-epoch = "0.2"
