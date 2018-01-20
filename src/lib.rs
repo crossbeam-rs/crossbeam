@@ -24,8 +24,8 @@
 
 //#![deny(missing_docs)]
 
-extern crate crossbeam_utils;
 pub extern crate crossbeam_epoch as epoch;
+extern crate crossbeam_utils;
 
 pub mod sync;
 pub use crossbeam_utils::cache_padded::CachePadded;

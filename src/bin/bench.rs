@@ -32,17 +32,27 @@ trait Queue<T> {
 }
 
 impl<T> Queue<T> for MsQueue<T> {
-    fn push(&self, t: T) { self.push(t) }
-    fn try_pop(&self) -> Option<T> { self.try_pop() }
+    fn push(&self, t: T) {
+        self.push(t)
+    }
+    fn try_pop(&self) -> Option<T> {
+        self.try_pop()
+    }
 }
 
 impl<T> Queue<T> for SegQueue<T> {
-    fn push(&self, t: T) { self.push(t) }
-    fn try_pop(&self) -> Option<T> { self.try_pop() }
+    fn push(&self, t: T) {
+        self.push(t)
+    }
+    fn try_pop(&self) -> Option<T> {
+        self.try_pop()
+    }
 }
 
 impl<T> Queue<T> for MpscQueue<T> {
-    fn push(&self, t: T) { self.push(t) }
+    fn push(&self, t: T) {
+        self.push(t)
+    }
     fn try_pop(&self) -> Option<T> {
         use extra_impls::mpsc_queue::*;
 
@@ -57,8 +67,12 @@ impl<T> Queue<T> for MpscQueue<T> {
 }
 
 impl<T> Queue<T> for Mutex<VecDeque<T>> {
-    fn push(&self, t: T) { self.lock().unwrap().push_back(t) }
-    fn try_pop(&self) -> Option<T> { self.lock().unwrap().pop_front() }
+    fn push(&self, t: T) {
+        self.lock().unwrap().push_back(t)
+    }
+    fn try_pop(&self) -> Option<T> {
+        self.lock().unwrap().pop_front()
+    }
 }
 
 fn bench_queue_mpsc<Q: Queue<u64> + Sync>(q: Q) -> f64 {
@@ -74,7 +88,7 @@ fn bench_queue_mpsc<Q: Queue<u64> + Sync>(q: Q) -> f64 {
             }
 
             let mut count = 0;
-            while count < COUNT*THREADS {
+            while count < COUNT * THREADS {
                 if q.try_pop().is_some() {
                     count += 1;
                 }
@@ -106,14 +120,12 @@ fn bench_queue_mpmc<Q: Queue<bool> + Sync>(q: Q) -> f64 {
                         }
                     }
                 });
-                scope.spawn(move || {
-                    loop {
-                        if let Some(false) = qr.try_pop() { break }
+                scope.spawn(move || loop {
+                    if let Some(false) = qr.try_pop() {
+                        break;
                     }
                 });
             }
-
-
         });
     });
 
@@ -135,7 +147,7 @@ fn bench_chan_mpsc() -> f64 {
                 });
             }
 
-            for _i in 0..COUNT*THREADS {
+            for _i in 0..COUNT * THREADS {
                 let _ = rx.recv().unwrap();
             }
         });
@@ -153,7 +165,7 @@ fn main() {
     println!("MSQ mpmc: {}", bench_queue_mpmc(MsQueue::new()));
     println!("Seg mpmc: {}", bench_queue_mpmc(SegQueue::new()));
 
-//    println!("queue_mpsc: {}", bench_queue_mpsc());
-//    println!("queue_mpmc: {}", bench_queue_mpmc());
-//   println!("mutex_mpmc: {}", bench_mutex_mpmc());
+    // println!("queue_mpsc: {}", bench_queue_mpsc());
+    // println!("queue_mpmc: {}", bench_queue_mpmc());
+    // println!("mutex_mpmc: {}", bench_mutex_mpmc());
 }

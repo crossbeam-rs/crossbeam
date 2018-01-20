@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use std::ptr;
 
 use epoch::{self, Atomic, Owned};
@@ -20,7 +20,9 @@ struct Node<T> {
 impl<T> TreiberStack<T> {
     /// Create a new, empty stack.
     pub fn new() -> TreiberStack<T> {
-        TreiberStack { head: Atomic::null() }
+        TreiberStack {
+            head: Atomic::null(),
+        }
     }
 
     /// Push `t` on top of the stack.
@@ -59,7 +61,10 @@ impl<T> TreiberStack<T> {
             match unsafe { head_shared.as_ref() } {
                 Some(head) => {
                     let next = head.next.load(Relaxed, &guard);
-                    if self.head.compare_and_set(head_shared, next, Release, &guard).is_ok() {
+                    if self.head
+                        .compare_and_set(head_shared, next, Release, &guard)
+                        .is_ok()
+                    {
                         unsafe {
                             guard.defer(move || head_shared.into_owned());
                             return Some(ptr::read(&(*head).data));

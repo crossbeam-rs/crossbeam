@@ -16,7 +16,9 @@ fn main() {
             let qs = q.clone();
 
             s.spawn(move || {
-                for i in 1..COUNT { qs.push(i) }
+                for i in 1..COUNT {
+                    qs.push(i)
+                }
             });
 
             for _i in 0..THREADS {

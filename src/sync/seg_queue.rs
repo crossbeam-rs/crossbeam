@@ -1,7 +1,7 @@
-use std::sync::atomic::Ordering::{Acquire, Release, Relaxed};
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::fmt;
-use std::{ptr, mem};
+use std::{mem, ptr};
 use std::cmp;
 use std::cell::UnsafeCell;
 
@@ -71,7 +71,9 @@ impl<T> SegQueue<T> {
         let guard = epoch::pin();
         loop {
             let tail = unsafe { self.tail.load(Acquire, &guard).as_ref() }.unwrap();
-            if tail.high.load(Relaxed) >= SEG_SIZE { continue }
+            if tail.high.load(Relaxed) >= SEG_SIZE {
+                continue;
+            }
             let i = tail.high.fetch_add(1, Relaxed);
             unsafe {
                 if i < SEG_SIZE {
@@ -85,7 +87,7 @@ impl<T> SegQueue<T> {
                         self.tail.store(tail_new, Release);
                     }
 
-                    return
+                    return;
                 }
             }
         }
@@ -117,12 +119,16 @@ impl<T> SegQueue<T> {
             let head = unsafe { head_shared.as_ref() }.unwrap();
             loop {
                 let low = head.low.load(Relaxed);
-                if low >= cmp::min(head.high.load(Relaxed), SEG_SIZE) { break }
-                if head.low.compare_and_swap(low, low+1, Relaxed) == low {
+                if low >= cmp::min(head.high.load(Relaxed), SEG_SIZE) {
+                    break;
+                }
+                if head.low.compare_and_swap(low, low + 1, Relaxed) == low {
                     unsafe {
                         let cell = (*head).data.get_unchecked(low).get();
                         loop {
-                            if (*cell).1.load(Acquire) { break }
+                            if (*cell).1.load(Acquire) {
+                                break;
+                            }
                         }
                         if low + 1 == SEG_SIZE {
                             loop {
@@ -130,15 +136,17 @@ impl<T> SegQueue<T> {
                                 if next_shared.as_ref().is_some() {
                                     self.head.store(next_shared, Release);
                                     guard.defer(move || head_shared.into_owned());
-                                    break
+                                    break;
                                 }
                             }
                         }
-                        return Some(ptr::read(&(*cell).0))
+                        return Some(ptr::read(&(*cell).0));
                     }
                 }
             }
-            if head.next.load(Relaxed, &guard).is_null() { return None }
+            if head.next.load(Relaxed, &guard).is_null() {
+                return None;
+            }
         }
     }
 }
@@ -231,7 +239,9 @@ mod test {
                     assert!(elem > cur);
                     cur = elem;
 
-                    if cur == CONC_COUNT - 1 { break }
+                    if cur == CONC_COUNT - 1 {
+                        break;
+                    }
                 }
             }
         }
@@ -253,19 +263,22 @@ mod test {
 
     #[test]
     fn push_pop_many_mpmc() {
-        enum LR { Left(i64), Right(i64) }
+        enum LR {
+            Left(i64),
+            Right(i64),
+        }
 
         let q: SegQueue<LR> = SegQueue::new();
 
         scope(|scope| {
             for _t in 0..2 {
                 scope.spawn(|| {
-                    for i in CONC_COUNT-1..CONC_COUNT {
+                    for i in CONC_COUNT - 1..CONC_COUNT {
                         q.push(LR::Left(i))
                     }
                 });
                 scope.spawn(|| {
-                    for i in CONC_COUNT-1..CONC_COUNT {
+                    for i in CONC_COUNT - 1..CONC_COUNT {
                         q.push(LR::Right(i))
                     }
                 });
