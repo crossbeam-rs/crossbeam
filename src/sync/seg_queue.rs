@@ -60,8 +60,9 @@ impl<T> SegQueue<T> {
         };
         let sentinel = Owned::new(Segment::new());
         let guard = epoch::pin();
-        let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
-        q.tail.store_shared(Some(sentinel), Relaxed);
+        let sentinel = sentinel.into_shared(&guard);
+        q.head.store(sentinel, Relaxed);
+        q.tail.store(sentinel, Relaxed);
         q
     }
 
@@ -69,7 +70,7 @@ impl<T> SegQueue<T> {
     pub fn push(&self, t: T) {
         let guard = epoch::pin();
         loop {
-            let tail = self.tail.load(Acquire, &guard).unwrap();
+            let tail = unsafe { self.tail.load(Acquire, &guard).as_ref() }.unwrap();
             if tail.high.load(Relaxed) >= SEG_SIZE { continue }
             let i = tail.high.fetch_add(1, Relaxed);
             unsafe {
@@ -79,8 +80,9 @@ impl<T> SegQueue<T> {
                     (*cell).1.store(true, Release);
 
                     if i + 1 == SEG_SIZE {
-                        let tail = tail.next.store_and_ref(Owned::new(Segment::new()), Release, &guard);
-                        self.tail.store_shared(Some(tail), Release);
+                        let tail_new = Owned::new(Segment::new()).into_shared(&guard);
+                        tail.next.store(tail_new, Release);
+                        self.tail.store(tail_new, Release);
                     }
 
                     return
@@ -94,14 +96,15 @@ impl<T> SegQueue<T> {
     /// Returns `true` if the queue is empty.
     pub fn is_empty(&self) -> bool {
         let guard = epoch::pin();
-        let head = self.head.load(Acquire, &guard).unwrap();
-        let tail = self.tail.load(Acquire, &guard).unwrap();
-        if head.as_raw() != tail.as_raw() {
+        let head = self.head.load(Acquire, &guard);
+        let tail = self.tail.load(Acquire, &guard);
+        if head != tail {
             return false;
         }
 
-        let low = head.low.load(Relaxed);
-        low >= cmp::min(head.high.load(Relaxed), SEG_SIZE)
+        let head_ref = unsafe { head.as_ref() }.unwrap();
+        let low = head_ref.low.load(Relaxed);
+        low >= cmp::min(head_ref.high.load(Relaxed), SEG_SIZE)
     }
 
     /// Attempt to dequeue from the front.
@@ -110,7 +113,8 @@ impl<T> SegQueue<T> {
     pub fn try_pop(&self) -> Option<T> {
         let guard = epoch::pin();
         loop {
-            let head = self.head.load(Acquire, &guard).unwrap();
+            let head_shared = self.head.load(Acquire, &guard);
+            let head = unsafe { head_shared.as_ref() }.unwrap();
             loop {
                 let low = head.low.load(Relaxed);
                 if low >= cmp::min(head.high.load(Relaxed), SEG_SIZE) { break }
@@ -122,9 +126,10 @@ impl<T> SegQueue<T> {
                         }
                         if low + 1 == SEG_SIZE {
                             loop {
-                                if let Some(next) = head.next.load(Acquire, &guard) {
-                                    self.head.store_shared(Some(next), Release);
-                                    guard.unlinked(head);
+                                let next_shared = head.next.load(Acquire, &guard);
+                                if next_shared.as_ref().is_some() {
+                                    self.head.store(next_shared, Release);
+                                    guard.defer(move || head_shared.into_owned());
                                     break
                                 }
                             }
@@ -133,7 +138,7 @@ impl<T> SegQueue<T> {
                     }
                 }
             }
-            if head.next.load(Relaxed, &guard).is_none() { return None }
+            if head.next.load(Relaxed, &guard).is_null() { return None }
         }
     }
 }
@@ -144,7 +149,7 @@ impl<T> Drop for SegQueue<T> {
 
         // Destroy the remaining sentinel segment.
         let guard = epoch::pin();
-        let sentinel = self.head.load(Relaxed, &guard).unwrap().as_raw();
+        let sentinel = self.head.load(Relaxed, &guard).as_raw() as *mut Segment<T>;
         unsafe {
             drop(Vec::from_raw_parts(sentinel, 0, 1));
         }

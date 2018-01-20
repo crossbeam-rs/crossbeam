@@ -32,10 +32,10 @@ impl<T> TreiberStack<T> {
         let guard = epoch::pin();
         loop {
             let head = self.head.load(Relaxed, &guard);
-            n.next.store_shared(head, Relaxed);
-            match self.head.cas_and_ref(head, n, Release, &guard) {
+            n.next.store(head, Relaxed);
+            match self.head.compare_and_set(head, n, Release, &guard) {
                 Ok(_) => break,
-                Err(owned) => n = owned,
+                Err(e) => n = e.new,
             }
         }
     }
@@ -55,12 +55,13 @@ impl<T> TreiberStack<T> {
     pub fn try_pop(&self) -> Option<T> {
         let guard = epoch::pin();
         loop {
-            match self.head.load(Acquire, &guard) {
+            let head_shared = self.head.load(Acquire, &guard);
+            match unsafe { head_shared.as_ref() } {
                 Some(head) => {
                     let next = head.next.load(Relaxed, &guard);
-                    if self.head.cas_shared(Some(head), next, Release) {
+                    if self.head.compare_and_set(head_shared, next, Release, &guard).is_ok() {
                         unsafe {
-                            guard.unlinked(head);
+                            guard.defer(move || head_shared.into_owned());
                             return Some(ptr::read(&(*head).data));
                         }
                     }
@@ -73,7 +74,7 @@ impl<T> TreiberStack<T> {
     /// Check if this queue is empty.
     pub fn is_empty(&self) -> bool {
         let guard = epoch::pin();
-        self.head.load(Acquire, &guard).is_none()
+        self.head.load(Acquire, &guard).is_null()
     }
 }
 

@@ -67,8 +67,9 @@ impl<T> MsQueue<T> {
             next: Atomic::null(),
         });
         let guard = epoch::pin();
-        let sentinel = q.head.store_and_ref(sentinel, Relaxed, &guard);
-        q.tail.store_shared(Some(sentinel), Relaxed);
+        let sentinel = sentinel.into_shared(&guard);
+        q.head.store(sentinel, Relaxed);
+        q.tail.store(sentinel, Relaxed);
         q
     }
 
@@ -84,16 +85,20 @@ impl<T> MsQueue<T> {
                      -> Result<(), Owned<Node<T>>>
     {
         // is `onto` the actual tail?
-        if let Some(next) = onto.next.load(Acquire, guard) {
+        let next_atomic = &unsafe { onto.as_ref() }.unwrap().next;
+        let next_shared = next_atomic.load(Acquire, guard);
+        if unsafe { next_shared.as_ref() }.is_some() {
             // if not, try to "help" by moving the tail pointer forward
-            self.tail.cas_shared(Some(onto), Some(next), Release);
+            let _ = self.tail.compare_and_set(onto, next_shared, Release, guard);
             Err(n)
         } else {
             // looks like the actual tail; attempt to link in `n`
-            onto.next.cas_and_ref(None, n, Release, guard).map(|shared| {
-                // try to move the tail pointer forward
-                self.tail.cas_shared(Some(onto), Some(shared), Release);
-            })
+            next_atomic.compare_and_set(Shared::null(), n, Release, guard)
+                .map(|shared| {
+                    // try to move the tail pointer forward
+                    let _ = self.tail.compare_and_set(onto, shared, Release, guard);
+                })
+                .map_err(|e| e.new)
         }
     }
 
@@ -126,7 +131,7 @@ impl<T> MsQueue<T> {
                 match self {
                     Cache::Data(t) => t,
                     Cache::Node(node) => {
-                        match node.into_inner().payload {
+                        match (*node.into_box()).payload {
                             Payload::Data(t) => t,
                             _ => unreachable!(),
                         }
@@ -141,16 +146,17 @@ impl<T> MsQueue<T> {
         loop {
             // We push onto the tail, so we'll start optimistically by looking
             // there first.
-            let tail = self.tail.load(Acquire, &guard).unwrap();
+            let tail_shared = self.tail.load(Acquire, &guard);
+            let tail_ref = unsafe { tail_shared.as_ref() }.unwrap();
 
             // Is the queue in Data mode (empty queues can be viewed as either mode)?
-            if tail.is_data() ||
-                self.head.load(Relaxed, &guard).unwrap().as_raw() == tail.as_raw()
+            if tail_ref.is_data() ||
+                self.head.load(Relaxed, &guard) == tail_shared
             {
                 // Attempt to push onto the `tail` snapshot; fails if
                 // `tail.next` has changed, which will always be the case if the
                 // queue has transitioned to blocking mode.
-                match self.push_internal(&guard, tail, cache.into_node()) {
+                match self.push_internal(&guard, tail_shared, cache.into_node()) {
                     Ok(_) => return,
                     Err(n) => {
                         // replace the cache, retry whole thing
@@ -159,18 +165,20 @@ impl<T> MsQueue<T> {
                 }
             } else {
                 // Queue is in blocking mode. Attempt to unblock a thread.
-                let head = self.head.load(Acquire, &guard).unwrap();
+                let head_shared = self.head.load(Acquire, &guard);
+                let head = unsafe { head_shared.as_ref() }.unwrap();
                 // Get a handle on the first blocked node. Racy, so queue might
                 // be empty or in data mode by the time we see it.
-                let request = head.next.load(Acquire, &guard).and_then(|next| {
+                let next_shared = head.next.load(Acquire, &guard);
+                let request = unsafe { next_shared.as_ref() }.and_then(|next| {
                     match next.payload {
-                        Payload::Blocked(signal) => Some((next, signal)),
+                        Payload::Blocked(signal) => Some((next_shared, signal)),
                         Payload::Data(_) => None,
                     }
                 });
                 if let Some((blocked_node, signal)) = request {
                     // race to dequeue the node
-                    if self.head.cas_shared(Some(head), Some(blocked_node), Release) {
+                    if self.head.compare_and_set(head_shared, blocked_node, Release, &guard).is_ok() {
                         unsafe {
                             // signal the thread
                             (*signal).data = Some(cache.into_data());
@@ -178,7 +186,7 @@ impl<T> MsQueue<T> {
 
                             (*signal).ready.store(true, Release);
                             thread.unpark();
-                            guard.unlinked(head);
+                            guard.defer(move || head_shared.into_owned());
                             return;
                         }
                     }
@@ -191,12 +199,14 @@ impl<T> MsQueue<T> {
     // Attempt to pop a data node. `Ok(None)` if queue is empty or in blocking
     // mode; `Err(())` if lost race to pop.
     fn pop_internal(&self, guard: &epoch::Guard) -> Result<Option<T>, ()> {
-        let head = self.head.load(Acquire, guard).unwrap();
-        if let Some(next) = head.next.load(Acquire, guard) {
+        let head_shared = self.head.load(Acquire, guard);
+        let head = unsafe { head_shared.as_ref() }.unwrap();
+        let next_shared = head.next.load(Acquire, guard);
+        if let Some(next) = unsafe { next_shared.as_ref() } {
             if let Payload::Data(ref t) = next.payload {
                 unsafe {
-                    if self.head.cas_shared(Some(head), Some(next), Release) {
-                        guard.unlinked(head);
+                    if self.head.compare_and_set(head_shared, next_shared, Release, guard).is_ok() {
+                        guard.defer(move || head_shared.into_owned());
                         Ok(Some(ptr::read(t)))
                     } else {
                         Err(())
@@ -213,9 +223,9 @@ impl<T> MsQueue<T> {
     /// Check if this queue is empty.
     pub fn is_empty(&self) -> bool {
         let guard = epoch::pin();
-        let head = self.head.load(Acquire, &guard).unwrap();
+        let head = unsafe { self.head.load(Acquire, &guard).as_ref() }.unwrap();
 
-        if let Some(next) = head.next.load(Acquire, &guard) {
+        if let Some(next) = unsafe { head.next.load(Acquire, &guard).as_ref() } {
             if let Payload::Data(_) = next.payload {
                 false
             } else {
@@ -279,14 +289,15 @@ impl<T> MsQueue<T> {
 
             // At this point, we believe the queue is empty/blocked.
             // Snapshot the tail, onto which we want to push a blocked node.
-            let tail = self.tail.load(Acquire, &guard).unwrap();
+            let tail_shared = self.tail.load(Acquire, &guard);
+            let tail = unsafe { tail_shared.as_ref() }.unwrap();
 
             // Double-check that we're in blocking mode
             if tail.is_data() {
                 // The current tail is in data mode, so we probably need to abort.
                 // BUT, it might be the sentinel, so check for that first.
-                let head = self.head.load(Relaxed, &guard).unwrap();
-                if tail.is_data() && tail.as_raw() != head.as_raw() { continue; }
+                let head_shared = self.head.load(Relaxed, &guard);
+                if tail.is_data() && tail_shared != head_shared { continue; }
             }
 
             // At this point, the tail snapshot is either a blocked node deep in
@@ -295,7 +306,7 @@ impl<T> MsQueue<T> {
             // snapshot, we know we are maintaining the core invariant: all
             // reachable, non-sentinel nodes have the same payload mode, in this
             // case, blocked.
-            match self.push_internal(&guard, tail, node) {
+            match self.push_internal(&guard, tail_shared, node) {
                 Ok(()) => {
                     while !signal.ready.load(Acquire) {
                         thread::park();
@@ -316,7 +327,7 @@ impl<T> Drop for MsQueue<T> {
 
         // Destroy the remaining sentinel node.
         let guard = epoch::pin();
-        let sentinel = self.head.load(Relaxed, &guard).unwrap().as_raw();
+        let sentinel = self.head.load(Relaxed, &guard).as_raw() as *mut Node<T>;
         unsafe {
             drop(Vec::from_raw_parts(sentinel, 0, 1));
         }

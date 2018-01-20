@@ -1,7 +1,7 @@
 [package]
 name = "crossbeam"
-version = "0.3.2"
-authors = ["Aaron Turon <aturon@mozilla.com>"]
+version = "0.4.0"
+authors = ["The Crossbeam Project Developers"]
 description = "Support for lock-free data structures, synchronizers, and parallel programming"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 documentation = "https://docs.rs/crossbeam"
@@ -9,8 +9,10 @@ readme = "README.md"
 license = "Apache-2.0/MIT"
 categories = ["concurrency", "data-structures"]
 
-[features]
-nightly = []
+[dependencies]
+crossbeam-epoch = "0.2"
+crossbeam-utils = "0.2"
+crossbeam-deque = "0.1"
 
 [dev-dependencies]
 rand = "0.4"
