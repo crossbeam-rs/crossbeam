@@ -176,6 +176,14 @@ impl<T: Send> error::Error for TrySendError<T> {
     }
 }
 
+impl<T> From<SendError<T>> for TrySendError<T> {
+    fn from(err: SendError<T>) -> TrySendError<T> {
+        match err {
+            SendError(t) => TrySendError::Disconnected(t),
+        }
+    }
+}
+
 impl<T> TrySendError<T> {
     /// Unwraps the value.
     ///
@@ -220,6 +228,14 @@ impl<T: Send> error::Error for SendTimeoutError<T> {
 
     fn cause(&self) -> Option<&error::Error> {
         None
+    }
+}
+
+impl<T> From<SendError<T>> for SendTimeoutError<T> {
+    fn from(err: SendError<T>) -> SendTimeoutError<T> {
+        match err {
+            SendError(e) => SendTimeoutError::Disconnected(e),
+        }
     }
 }
 
@@ -331,6 +347,14 @@ impl error::Error for TryRecvError {
     }
 }
 
+impl From<RecvError> for TryRecvError {
+    fn from(err: RecvError) -> TryRecvError {
+        match err {
+            RecvError => TryRecvError::Disconnected,
+        }
+    }
+}
+
 impl fmt::Display for RecvTimeoutError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -350,6 +374,14 @@ impl error::Error for RecvTimeoutError {
 
     fn cause(&self) -> Option<&error::Error> {
         None
+    }
+}
+
+impl From<RecvError> for RecvTimeoutError {
+    fn from(err: RecvError) -> RecvTimeoutError {
+        match err {
+            RecvError => RecvTimeoutError::Disconnected,
+        }
     }
 }
 

@@ -1,5 +1,3 @@
-use channel::Channel;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct CaseId {
     id: usize,
@@ -32,15 +30,13 @@ impl CaseId {
     }
 
     #[inline]
-    pub fn send<T>(chan: &Channel<T>) -> Self {
-        let addr = chan as *const Channel<T> as usize;
-        CaseId { id: addr }
+    pub fn send(channel_address: usize) -> Self {
+        CaseId { id: channel_address }
     }
 
     #[inline]
-    pub fn recv<T>(chan: &Channel<T>) -> Self {
-        let addr = chan as *const Channel<T> as usize;
-        CaseId { id: addr | 1 }
+    pub fn recv(channel_address: usize) -> Self {
+        CaseId { id: channel_address | 1 }
     }
 
     #[inline]
