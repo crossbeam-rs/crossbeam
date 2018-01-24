@@ -387,7 +387,7 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns `true` if the channel is disconnected (i.e. there are no receivers).
+    /// Returns `true` if the channel is disconnected.
     ///
     /// # Examples
     ///
@@ -406,6 +406,36 @@ impl<T> Sender<T> {
             Flavor::Array(ref chan) => chan.is_disconnected(),
             Flavor::List(ref chan) => chan.is_disconnected(),
             Flavor::Zero(ref chan) => chan.is_disconnected(),
+        }
+    }
+
+    /// Disconnects the channel.
+    ///
+    /// Returns `true` if this call disconnected the channel and `false` if it was already
+    /// disconnected.
+    ///
+    /// Disconnection prevents any further messages from being sent into the channel, while still
+    /// allowing the receiver to drain any existing buffered messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded::<i32>();
+    /// tx.send(1);
+    /// tx.send(2);
+    ///
+    /// rx.disconnect();
+    /// assert_eq!(rx.recv(), Ok(1));
+    /// assert_eq!(rx.recv(), Ok(2));
+    /// assert!(rx.recv().is_err());
+    /// ```
+    pub fn disconnect(&self) -> bool {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.disconnect(),
+            Flavor::List(ref chan) => chan.disconnect(),
+            Flavor::Zero(ref chan) => chan.disconnect(),
         }
     }
 }
@@ -715,7 +745,7 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns `true` if the channel is disconnected (i.e. there are no senders). TODO: these parens
+    /// Returns `true` if the channel is disconnected.
     ///
     /// # Examples
     ///
@@ -795,16 +825,34 @@ impl<T> Receiver<T> {
         TryIter { rx: self }
     }
 
-    /// Disconnects the receiver, causing subsequent sends to fail.
+    /// Disconnects the channel.
     ///
-    /// This prevents any further messages from being sent on the channel while still allowing the
-    /// receiver to drain existing buffered messages.
-    pub fn disconnect(&self) {
+    /// Returns `true` if this call disconnected the channel and `false` if it was already
+    /// disconnected.
+    ///
+    /// Disconnection prevents any further messages from being sent into the channel, while still
+    /// allowing the receiver to drain any existing buffered messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded::<i32>();
+    /// tx.send(1);
+    /// tx.send(2);
+    /// tx.disconnect();
+    ///
+    /// assert_eq!(rx.recv(), Ok(1));
+    /// assert_eq!(rx.recv(), Ok(2));
+    /// assert!(rx.recv().is_err());
+    /// ```
+    pub fn disconnect(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.disconnect(),
             Flavor::List(ref chan) => chan.disconnect(),
             Flavor::Zero(ref chan) => chan.disconnect(),
-        };
+        }
     }
 }
 
