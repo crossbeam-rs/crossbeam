@@ -17,7 +17,7 @@ nightly = []
 [dependencies]
 crossbeam-epoch = "0.2.0"
 crossbeam-utils = "0.2.0"
-parking_lot = "0.4.4"
+parking_lot = "0.5"
 
 [dev-dependencies]
 crossbeam = "0.3.0"
