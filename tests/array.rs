@@ -173,7 +173,25 @@ fn try_send() {
 }
 
 #[test]
-fn recv_after_close() {
+fn send_disconnected() {
+    let (tx, rx) = bounded(0);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(tx.send(1), Ok(()));
+            assert_eq!(tx.send(2), Err(SendError(2)));
+        });
+        s.spawn(move || {
+            assert_eq!(rx.recv(), Ok(1));
+            thread::sleep(ms(1000));
+            rx.disconnect();
+            assert_eq!(rx.recv(), Err(RecvError));
+        });
+    });
+}
+
+#[test]
+fn recv_after_disconnect() {
     let (tx, rx) = bounded(100);
 
     tx.send(1).unwrap();
@@ -285,7 +303,7 @@ fn len() {
 }
 
 #[test]
-fn close_signals_sender() {
+fn dropping_receiver_signals_sender() {
     let (tx, rx) = bounded(1);
 
     crossbeam::scope(|s| {
@@ -301,7 +319,25 @@ fn close_signals_sender() {
 }
 
 #[test]
-fn close_signals_receiver() {
+fn disconnect_signals_sender() {
+    let (tx, rx) = bounded(1);
+
+    crossbeam::scope(|s| {
+        s.spawn(move || {
+            assert_eq!(tx.send(1), Ok(()));
+            assert_eq!(tx.send(2), Err(SendError(2)));
+        });
+        s.spawn(move || {
+            thread::sleep(ms(1000));
+            rx.disconnect();
+            assert_eq!(rx.recv(), Ok(1));
+            assert_eq!(rx.recv(), Err(RecvError));
+        });
+    });
+}
+
+#[test]
+fn disconnect_signals_receiver() {
     let (tx, rx) = bounded::<()>(1);
 
     crossbeam::scope(|s| {

@@ -115,13 +115,13 @@ impl<T> Channel<T> {
         self.exchanger.right().can_notify()
     }
 
-    /// Closes the channel and wakes up all currently blocked operations on it.
-    pub fn close(&self) -> bool {
-        self.exchanger.close()
+    /// Disconnects the channel and wakes up all currently blocked operations on it.
+    pub fn disconnect(&self) -> bool {
+        self.exchanger.disconnect()
     }
 
-    /// Returns `true` if the channel is closed.
-    pub fn is_closed(&self) -> bool {
-        self.exchanger.is_closed()
+    /// Returns `true` if the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        self.exchanger.is_disconnected()
     }
 }

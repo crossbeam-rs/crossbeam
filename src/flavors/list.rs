@@ -19,28 +19,39 @@ use select::CaseId;
 use select::handle;
 use utils::Backoff;
 
-/// Number of values a node can hold.
+/// Number of messages a node can hold.
 const NODE_CAP: usize = 32;
 
 /// An entry in a node of the linked list.
 struct Entry<T> {
-    /// The value in this entry.
-    value: ManuallyDrop<T>,
+    /// The message in this entry.
+    msg: ManuallyDrop<T>,
 
-    /// Whether the value is ready for reading.
+    /// Whether the message is ready for reading.
     ready: AtomicBool,
+}
+
+/// Indicates that the `push` operation failed due to the channel being disconnected.
+struct PushError<T>(T);
+
+/// The list of possible error outcomes for the `pop` operation.
+enum PopError {
+    /// The channel is empty.
+    Empty,
+
+    /// The channel is disconnected.
+    Disconnected,
 }
 
 /// A node in the linked list.
 ///
-/// Each node in the list can hold up to `NODE_CAP` values. Storing multiple values in a node
-/// improves cache locality and reduces the total amount of allocation.
+/// Each node in the list can hold up to `NODE_CAP` messages. Storing multiple messages in a node
+/// improves cache locality and reduces the total number of allocations.
 struct Node<T> {
-    /// Start index of this node.
-    /// Indices span the range `start_index .. start_index + NODE_CAP`.
+    /// The start index of this node.
     start_index: usize,
 
-    /// Entries containing values.
+    /// The entries containing messages.
     entries: [UnsafeCell<Entry<T>>; NODE_CAP],
 
     /// The next node in the linked list.
@@ -58,13 +69,11 @@ impl<T> Node<T> {
     }
 }
 
-/// A position in the queue (index and node).
+/// A position in the channel (index and node).
 ///
 /// This struct marks the current position of the head or the tail in a linked list.
 struct Position<T> {
-    /// The index in the queue.
-    ///
-    /// Indices wrap around on overflow.
+    /// The index in the channel.
     index: AtomicUsize,
 
     /// The node in the linked list.
@@ -73,18 +82,21 @@ struct Position<T> {
 
 /// A channel of unbounded capacity based on a linked list.
 ///
-/// The internal queue can be thought of as an array of infinite length. Head and tail indices
-/// point into the array and wrap around on overflow. This infinite array is implemented as a
-/// linked list of nodes, each of which has enough space to contain a few dozen values.
+/// The internal queue can be thought of as an array of infinite length, implemented as a linked
+/// list of nodes, each of which has enough space to contain a few dozen messages. Fitting multiple
+/// messages into a single node improves cache locality and reduces the number of allocations.
+///
+/// An index is a number of type `usize` that represents an entry in the message queue. Each node
+/// contains a `start_index` representing the index of its first message. Indices simply wrap
+/// around on overflow. Also note that the last bit of an index is reserved for marking, while the
+/// rest of the bits represent the actual position in the sequence of messages. When the tail index
+/// is marked, that means the channel is disconnected and the tail cannot move forward any further.
 pub struct Channel<T> {
     /// The current head index and the node containing it.
     head: CachePadded<Position<T>>,
 
     /// The current tail index and the node containing it.
     tail: CachePadded<Position<T>>,
-
-    /// Equals `true` if the channel is closed.
-    closed: AtomicBool,
 
     /// Receivers waiting on empty channel.
     receivers: Monitor,
@@ -104,36 +116,44 @@ impl<T> Channel<T> {
                 index: AtomicUsize::new(0),
                 node: Atomic::null(),
             }),
-            closed: AtomicBool::new(false),
             receivers: Monitor::new(),
             _marker: PhantomData,
         };
 
         // Create an empty node, into which both head and tail point at the beginning.
-        let node = unsafe {
-            Owned::new(Node::new(0)).into_shared(epoch::unprotected())
-        };
+        let node = unsafe { Owned::new(Node::new(0)).into_shared(epoch::unprotected()) };
         channel.head.node.store(node, Relaxed);
         channel.tail.node.store(node, Relaxed);
 
         channel
     }
 
-    /// Pushes `value` into the queue.
-    fn push(&self, value: T) {
+    /// Pushes `msg` into the channel.
+    fn push(&self, msg: T, backoff: &mut Backoff) -> Result<(), PushError<T>> {
         let guard = &epoch::pin();
 
-        let mut backoff = Backoff::new();
         loop {
-            let tail = unsafe { self.tail.node.load(Acquire, guard).deref() };
-            let index = self.tail.index.load(Relaxed);
-            let new_index = index.wrapping_add(1);
-            let offset = index.wrapping_sub(tail.start_index);
+            // These two load operations don't have to be `SeqCst`. If they happen to retrieve
+            // stale values, the following CAS will fail or not even be attempted.
+            let tail_ptr = self.tail.node.load(Acquire, guard);
+            let tail = unsafe { tail_ptr.deref() };
+            let tail_index = self.tail.index.load(Relaxed);
 
-            // If `index` is pointing into `tail`...
+            // If the tail index is marked, the channel is disconnected.
+            if tail_index & 1 != 0 {
+                return Err(PushError(msg));
+            }
+
+            // Calculate the index of the corresponding entry in the node.
+            let offset = tail_index.wrapping_sub(tail.start_index) >> 1;
+
+            // Advance the current index one entry forward.
+            let new_index = tail_index.wrapping_add(1 << 1);
+
+            // If `tail_index` is pointing into `tail`...
             if offset < NODE_CAP {
-                // if `index` is pointing into `tail`, try moving the tail index forward.
-                if self.tail.index.compare_and_swap(index, new_index, SeqCst) == index {
+                // Try moving the tail index forward.
+                if self.tail.index.compare_and_swap(tail_index, new_index, SeqCst) == tail_index {
                     // If this was the last entry in the node, allocate a new one.
                     if offset + 1 == NODE_CAP {
                         let new = Owned::new(Node::new(new_index)).into_shared(guard);
@@ -141,13 +161,13 @@ impl<T> Channel<T> {
                         self.tail.node.store(new, Release);
                     }
 
-                    // Write `value` into the corresponding entry.
+                    // Write `msg` into the corresponding entry.
                     unsafe {
                         let entry = tail.entries.get_unchecked(offset).get();
-                        ptr::write(&mut (*entry).value, ManuallyDrop::new(value));
+                        ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
                         (*entry).ready.store(true, Release);
                     }
-                    return;
+                    return Ok(());
                 }
             }
 
@@ -155,32 +175,49 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to pop a value from the queue.
+    /// Attempts to pop a message from the channel.
     ///
-    /// Returns `None` if the queue is empty.
-    fn pop(&self) -> Option<T> {
+    /// Returns `None` if the channel is empty.
+    fn pop(&self, backoff: &mut Backoff) -> Result<T, PopError> {
         let guard = &epoch::pin();
 
-        let mut backoff = Backoff::new();
         loop {
+            // Loading the head node doesn't't have to be a `SeqCst` operation. If we get a stale
+            // value, the following CAS will fail or not even be attempted. Loading the head index
+            // must be `SeqCst` because we need the up-to-date value when checking whether the
+            // channel is empty.
             let head_ptr = self.head.node.load(Acquire, guard);
             let head = unsafe { head_ptr.deref() };
-            let index = self.head.index.load(SeqCst);
-            let new_index = index.wrapping_add(1);
-            let offset = index.wrapping_sub(head.start_index);
+            let head_index = self.head.index.load(SeqCst);
 
-            // If `index` is pointing into `head`...
+            // Calculate the index of the corresponding entry in the node.
+            let offset = head_index.wrapping_sub(head.start_index) >> 1;
+
+            // Advance the current index one entry forward.
+            let new_index = head_index.wrapping_add(1 << 1);
+
+            // If `head_index` is pointing into `head`...
             if offset < NODE_CAP {
                 let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
 
-                // If this entry does not contain the value and the tail equals the head, then the
-                // queue is empty.
-                if !entry.ready.load(Relaxed) && self.tail.index.load(SeqCst) == index {
-                    return None;
+                // If this entry does not contain a message...
+                if !entry.ready.load(Relaxed) {
+                    let tail_index = self.tail.index.load(SeqCst);
+
+                    // If the tail equals the head, that means the channel is empty.
+                    if tail_index & !1 == head_index {
+                        // Check whether the channel is disconnected and return the appropriate
+                        // error variant.
+                        if tail_index & 1 == 0 {
+                            return Err(PopError::Empty);
+                        } else {
+                            return Err(PopError::Disconnected);
+                        }
+                    }
                 }
 
                 // Try moving the head index forward.
-                if self.head.index.compare_and_swap(index, new_index, SeqCst) == index {
+                if self.head.index.compare_and_swap(head_index, new_index, SeqCst) == head_index {
                     // If this was the last entry in the node, defer its destruction.
                     if offset + 1 == NODE_CAP {
                         // Wait until the next pointer becomes non-null.
@@ -202,9 +239,9 @@ impl<T> Channel<T> {
                         backoff.step();
                     }
 
-                    let v = unsafe { ptr::read(&(*entry).value) };
-                    let value = ManuallyDrop::into_inner(v);
-                    return Some(value);
+                    let m = unsafe { ptr::read(&(*entry).msg) };
+                    let msg = ManuallyDrop::into_inner(m);
+                    return Ok(msg);
                 }
             }
 
@@ -220,45 +257,41 @@ impl<T> Channel<T> {
 
             // If the tail index didn't change, we've got consistent indices to work with.
             if self.tail.index.load(SeqCst) == tail_index {
-                return tail_index.wrapping_sub(head_index);
+                // Note that there is no need to clear out the last bit in `tail_index` since the
+                // difference is shifted right by one bit.
+                return tail_index.wrapping_sub(head_index) >> 1;
             }
         }
     }
 
     /// Attempts to send `msg` into the channel.
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        if self.closed.load(SeqCst) {
-            Err(TrySendError::Disconnected(msg))
-        } else {
-            self.push(msg);
-            self.receivers.notify_one();
-            Ok(())
+        match self.push(msg, &mut Backoff::new()) {
+            Ok(()) => {
+                self.receivers.notify_one();
+                Ok(())
+            }
+            Err(PushError(m)) => Err(TrySendError::Disconnected(m)),
         }
     }
 
     /// Send `msg` into the channel.
     pub fn send(&self, msg: T) -> Result<(), SendTimeoutError<T>> {
-        if self.closed.load(SeqCst) {
-            Err(SendTimeoutError::Disconnected(msg))
-        } else {
-            self.push(msg);
-            self.receivers.notify_one();
-            Ok(())
+        match self.push(msg, &mut Backoff::new()) {
+            Ok(()) => {
+                self.receivers.notify_one();
+                Ok(())
+            }
+            Err(PushError(m)) => Err(SendTimeoutError::Disconnected(m)),
         }
     }
 
     /// Attempts to receive a message from channel.
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let closed = self.closed.load(SeqCst);
-        match self.pop() {
-            None => {
-                if closed {
-                    Err(TryRecvError::Disconnected)
-                } else {
-                    Err(TryRecvError::Empty)
-                }
-            },
-            Some(msg) => Ok(msg),
+        match self.pop(&mut Backoff::new()) {
+            Ok(m) => Ok(m),
+            Err(PopError::Empty) => Err(TryRecvError::Empty),
+            Err(PopError::Disconnected) => Err(TryRecvError::Disconnected),
         }
     }
 
@@ -271,13 +304,12 @@ impl<T> Channel<T> {
         loop {
             let backoff = &mut Backoff::new();
             loop {
-                let closed = self.closed.load(SeqCst);
-                if let Some(msg) = self.pop() {
-                    return Ok(msg);
+                match self.pop(backoff) {
+                    Ok(m) => return Ok(m),
+                    Err(PopError::Empty) => {},
+                    Err(PopError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
                 }
-                if closed {
-                    return Err(RecvTimeoutError::Disconnected);
-                }
+
                 if !backoff.step() {
                     break;
                 }
@@ -285,21 +317,22 @@ impl<T> Channel<T> {
 
             handle::current_reset();
             self.receivers.register(case_id);
-            let is_closed = self.is_closed();
-            let timed_out = !is_closed && self.is_empty() && !handle::current_wait_until(deadline);
+            let timed_out =
+                !self.is_disconnected() && self.is_empty() && !handle::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
-            if is_closed && self.is_empty() {
-                return Err(RecvTimeoutError::Disconnected);
-            } else if timed_out {
+            if timed_out {
                 return Err(RecvTimeoutError::Timeout);
             }
         }
     }
 
-    /// Closes the channel and wakes up all currently blocked operations on it.
-    pub fn close(&self) -> bool {
-        if self.closed.swap(true, SeqCst) {
+    /// Disconnects the channel and wakes up all currently blocked operations on it.
+    pub fn disconnect(&self) -> bool {
+        let tail_index = self.tail.index.fetch_or(1, SeqCst);
+
+        // Was the channel already disconnected?
+        if tail_index & 1 != 0 {
             false
         } else {
             self.receivers.abort_all();
@@ -307,15 +340,15 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns `true` if the channel is closed.
-    pub fn is_closed(&self) -> bool {
-        self.closed.load(SeqCst)
+    /// Returns `true` if the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        self.tail.index.load(SeqCst) & 1 != 0
     }
 
     /// Returns `true` if the channel is empty.
     pub fn is_empty(&self) -> bool {
         let head_index = self.head.index.load(SeqCst);
-        let tail_index = self.tail.index.load(SeqCst);
+        let tail_index = self.tail.index.load(SeqCst) & !1;
         head_index == tail_index
     }
 
@@ -327,20 +360,20 @@ impl<T> Channel<T> {
 
 impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
-        let tail_index = self.tail.index.load(Relaxed);
+        let tail_index = self.tail.index.load(Relaxed) & !1;
         let mut head_index = self.head.index.load(Relaxed);
 
         unsafe {
             let mut head_ptr = self.head.node.load(Relaxed, epoch::unprotected());
 
-            // Manually drop all values between `head_index` and `tail_index` and destroy the
+            // Manually drop all messages between `head_index` and `tail_index` and destroy the
             // heap-allocated nodes along the way.
             while head_index != tail_index {
                 let head = head_ptr.deref();
-                let offset = head_index.wrapping_sub(head.start_index);
+                let offset = head_index.wrapping_sub(head.start_index) >> 1;
 
                 let entry = &mut *head.entries.get_unchecked(offset).get();
-                ManuallyDrop::drop(&mut (*entry).value);
+                ManuallyDrop::drop(&mut (*entry).msg);
 
                 if offset + 1 == NODE_CAP {
                     let next = head.next.load(Relaxed, epoch::unprotected());
@@ -348,7 +381,7 @@ impl<T> Drop for Channel<T> {
                     head_ptr = next;
                 }
 
-                head_index = head_index.wrapping_add(1);
+                head_index = head_index.wrapping_add(1 << 1);
             }
 
             // If there is one last remaining node in the end, destroy it.

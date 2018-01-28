@@ -37,8 +37,8 @@ struct Inner<T> {
     /// There are two wait queues, one per side.
     wait_queues: [WaitQueue<T>; 2],
 
-    /// `true` if the exchanger is closed.
-    closed: bool,
+    /// `true` if the exchanger is disconnected.
+    is_disconnected: bool,
 }
 
 /// A two-sided exchanger.
@@ -62,7 +62,7 @@ impl<T> Exchanger<T> {
         Exchanger {
             inner: Mutex::new(Inner {
                 wait_queues: [WaitQueue::new(), WaitQueue::new()],
-                closed: false,
+                is_disconnected: false,
             }),
         }
     }
@@ -83,23 +83,23 @@ impl<T> Exchanger<T> {
         }
     }
 
-    /// Closes the exchanger and wakes up all currently blocked operations on it.
-    pub fn close(&self) -> bool {
+    /// Disconnects the exchanger and wakes up all currently blocked operations on it.
+    pub fn disconnect(&self) -> bool {
         let mut inner = self.inner.lock();
 
-        if inner.closed {
+        if inner.is_disconnected {
             false
         } else {
-            inner.closed = true;
+            inner.is_disconnected = true;
             inner.wait_queues[0].abort_all();
             inner.wait_queues[1].abort_all();
             true
         }
     }
 
-    /// Returns `true` if the exchanger is closed.
-    pub fn is_closed(&self) -> bool {
-        self.inner.lock().closed
+    /// Returns `true` if the exchanger is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        self.inner.lock().is_disconnected
     }
 }
 
@@ -183,7 +183,7 @@ impl<'a, T> Side<'a, T> {
             let packet;
             {
                 let mut inner = self.exchanger.inner.lock();
-                if inner.closed {
+                if inner.is_disconnected {
                     return Err(ExchangeError::Disconnected(msg));
                 }
 
@@ -239,10 +239,7 @@ enum Entry<T> {
         case_id: CaseId,
     },
     /// Promises a message.
-    Promise {
-        local: Arc<Local>,
-        case_id: CaseId,
-    },
+    Promise { local: Arc<Local>, case_id: CaseId },
 }
 
 impl<T> Entry<T> {
@@ -348,9 +345,11 @@ impl<T> WaitQueue<T> {
     fn remove(&mut self, case_id: CaseId) {
         let thread_id = current_thread_id();
 
-        if let Some((i, _)) = self.cases.iter().enumerate().find(|&(_, case)| {
-            case.case_id() == case_id && case.handle().thread_id() == thread_id
-        }) {
+        if let Some((i, _)) = self.cases
+            .iter()
+            .enumerate()
+            .find(|&(_, case)| case.case_id() == case_id && case.handle().thread_id() == thread_id)
+        {
             self.cases.remove(i);
             self.maybe_shrink();
         }

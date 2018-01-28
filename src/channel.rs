@@ -387,7 +387,7 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns `true` if the channel is disconnected (i.e. there are no receivers).
+    /// Returns `true` if the channel is disconnected.
     ///
     /// # Examples
     ///
@@ -395,15 +395,47 @@ impl<T> Sender<T> {
     /// use crossbeam_channel::unbounded;
     ///
     /// let (tx, rx) = unbounded::<i32>();
+    /// tx.send(1).unwrap();
+    ///
     /// assert!(!tx.is_disconnected());
     /// drop(rx);
     /// assert!(tx.is_disconnected());
     /// ```
     pub fn is_disconnected(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_closed(),
-            Flavor::Zero(ref chan) => chan.is_closed(),
+            Flavor::Array(ref chan) => chan.is_disconnected(),
+            Flavor::List(ref chan) => chan.is_disconnected(),
+            Flavor::Zero(ref chan) => chan.is_disconnected(),
+        }
+    }
+
+    /// Disconnects the channel.
+    ///
+    /// Returns `true` if this call disconnected the channel and `false` if it was already
+    /// disconnected.
+    ///
+    /// Disconnection prevents any further messages from being sent into the channel, while still
+    /// allowing the receiver to drain any existing buffered messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded::<i32>();
+    /// tx.send(1);
+    /// tx.send(2);
+    ///
+    /// rx.disconnect();
+    /// assert_eq!(rx.recv(), Ok(1));
+    /// assert_eq!(rx.recv(), Ok(2));
+    /// assert!(rx.recv().is_err());
+    /// ```
+    pub fn disconnect(&self) -> bool {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.disconnect(),
+            Flavor::List(ref chan) => chan.disconnect(),
+            Flavor::Zero(ref chan) => chan.disconnect(),
         }
     }
 }
@@ -412,9 +444,9 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.0.senders.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.close(),
-                Flavor::List(ref chan) => chan.close(),
-                Flavor::Zero(ref chan) => chan.close(),
+                Flavor::Array(ref chan) => chan.disconnect(),
+                Flavor::List(ref chan) => chan.disconnect(),
+                Flavor::Zero(ref chan) => chan.disconnect(),
             };
         }
     }
@@ -713,7 +745,7 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns `true` if the channel is disconnected (i.e. there are no senders).
+    /// Returns `true` if the channel is disconnected.
     ///
     /// # Examples
     ///
@@ -721,15 +753,19 @@ impl<T> Receiver<T> {
     /// use crossbeam_channel::unbounded;
     ///
     /// let (tx, rx) = unbounded::<i32>();
+    /// tx.send(1).unwrap();
+    ///
     /// assert!(!rx.is_disconnected());
     /// drop(tx);
     /// assert!(rx.is_disconnected());
+    ///
+    /// assert_eq!(rx.recv(), Ok(1));
     /// ```
     pub fn is_disconnected(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_closed(),
-            Flavor::Zero(ref chan) => chan.is_closed(),
+            Flavor::Array(ref chan) => chan.is_disconnected(),
+            Flavor::List(ref chan) => chan.is_disconnected(),
+            Flavor::Zero(ref chan) => chan.is_disconnected(),
         }
     }
 
@@ -788,15 +824,45 @@ impl<T> Receiver<T> {
     pub fn try_iter(&self) -> TryIter<T> {
         TryIter { rx: self }
     }
+
+    /// Disconnects the channel.
+    ///
+    /// Returns `true` if this call disconnected the channel and `false` if it was already
+    /// disconnected.
+    ///
+    /// Disconnection prevents any further messages from being sent into the channel, while still
+    /// allowing the receiver to drain any existing buffered messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded::<i32>();
+    /// tx.send(1);
+    /// tx.send(2);
+    /// tx.disconnect();
+    ///
+    /// assert_eq!(rx.recv(), Ok(1));
+    /// assert_eq!(rx.recv(), Ok(2));
+    /// assert!(rx.recv().is_err());
+    /// ```
+    pub fn disconnect(&self) -> bool {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.disconnect(),
+            Flavor::List(ref chan) => chan.disconnect(),
+            Flavor::Zero(ref chan) => chan.disconnect(),
+        }
+    }
 }
 
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         if self.0.receivers.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.close(),
-                Flavor::List(ref chan) => chan.close(),
-                Flavor::Zero(ref chan) => chan.close(),
+                Flavor::Array(ref chan) => chan.disconnect(),
+                Flavor::List(ref chan) => chan.disconnect(),
+                Flavor::Zero(ref chan) => chan.disconnect(),
             };
         }
     }

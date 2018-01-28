@@ -818,7 +818,7 @@ fn try_send() {
 }
 
 #[test]
-fn recv_after_close() {
+fn recv_after_disconnect() {
     let (tx, rx) = bounded(100);
     let tx = WrappedSender(tx);
     let rx = WrappedReceiver(rx);

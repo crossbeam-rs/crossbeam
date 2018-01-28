@@ -23,7 +23,7 @@ struct Case {
 /// A simple wait queue for list-based and array-based channels.
 ///
 /// This data structure is used sfor registeroing selection cases before blocking and waking them
-/// up when the channel receives a message, sends one, or becomes closed.
+/// up when the channel receives a message, sends one, or becomes disconnected.
 pub struct Monitor {
     /// The list of registered selection cases.
     cases: Mutex<VecDeque<Case>>,
