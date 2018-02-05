@@ -29,4 +29,4 @@ pub extern crate crossbeam_utils as utils;
 
 pub mod sync;
 pub use utils::cache_padded::CachePadded;
-pub use utils::scoped::{scope, Scope, ScopedJoinHandle};
+pub use utils::scoped::{scope, Scope, ScopedJoinHandle, ScopedThreadBuilder};
