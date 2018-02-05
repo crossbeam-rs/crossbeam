@@ -24,45 +24,9 @@
 
 //#![deny(missing_docs)]
 
-#![cfg_attr(feature = "nightly",
-            feature(const_fn, repr_simd, optin_builtin_traits))]
+pub extern crate crossbeam_epoch as epoch;
+pub extern crate crossbeam_utils as utils;
 
-use std::thread;
-use std::io;
-
-pub use scoped::{scope, Scope, ScopedJoinHandle};
-
-pub mod epoch;
 pub mod sync;
-mod scoped;
-
-mod cache_padded;
-pub use self::cache_padded::{CachePadded, ZerosValid};
-
-#[doc(hidden)]
-trait FnBox {
-    fn call_box(self: Box<Self>);
-}
-
-impl<F: FnOnce()> FnBox for F {
-    fn call_box(self: Box<Self>) { (*self)() }
-}
-
-/// Like `std::thread::spawn`, but without the closure bounds.
-pub unsafe fn spawn_unsafe<'a, F>(f: F) -> thread::JoinHandle<()> where F: FnOnce() + Send + 'a {
-    let builder = thread::Builder::new();
-    builder_spawn_unsafe(builder, f).unwrap()
-}
-
-/// Like `std::thread::Builder::spawn`, but without the closure bounds.
-pub unsafe fn builder_spawn_unsafe<'a, F>(builder: thread::Builder, f: F)
-        -> io::Result<thread::JoinHandle<()>>
-    where F: FnOnce() + Send + 'a
-{
-    use std::mem;
-
-    let closure: Box<FnBox + 'a> = Box::new(f);
-    let closure: Box<FnBox + Send> = mem::transmute(closure);
-    builder.spawn(move || closure.call_box())
-}
-
+pub use utils::cache_padded::CachePadded;
+pub use utils::scoped::{scope, Scope, ScopedJoinHandle};

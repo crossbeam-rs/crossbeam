@@ -23,14 +23,15 @@ impl<T> ArcCell<T> {
         loop {
             match self.0.swap(0, Ordering::Acquire) {
                 0 => {}
-                n => return unsafe { mem::transmute(n) }
+                n => return unsafe { mem::transmute(n) },
             }
         }
     }
 
     fn put(&self, t: Arc<T>) {
         debug_assert_eq!(self.0.load(Ordering::SeqCst), 0);
-        self.0.store(unsafe { mem::transmute(t) }, Ordering::Release);
+        self.0
+            .store(unsafe { mem::transmute(t) }, Ordering::Release);
     }
 
     /// Stores a new value in the `ArcCell`, returning the previous
@@ -54,7 +55,7 @@ impl<T> ArcCell<T> {
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
-    use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
     use super::*;
 

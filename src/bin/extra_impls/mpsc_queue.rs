@@ -80,8 +80,8 @@ impl<T> fmt::Debug for Queue<T> {
     }
 }
 
-unsafe impl<T: Send> Send for Queue<T> { }
-unsafe impl<T: Send> Sync for Queue<T> { }
+unsafe impl<T: Send> Send for Queue<T> {}
+unsafe impl<T: Send> Sync for Queue<T> {}
 
 impl<T> Node<T> {
     unsafe fn new(v: Option<T>) -> *mut Node<T> {
@@ -136,7 +136,11 @@ impl<T> Queue<T> {
                 return Data(ret);
             }
 
-            if self.head.load(Ordering::Acquire) == tail {Empty} else {Inconsistent}
+            if self.head.load(Ordering::Acquire) == tail {
+                Empty
+            } else {
+                Inconsistent
+            }
         }
     }
 }
