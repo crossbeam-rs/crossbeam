@@ -25,8 +25,8 @@
 //#![deny(missing_docs)]
 
 pub extern crate crossbeam_epoch as epoch;
-extern crate crossbeam_utils;
+pub extern crate crossbeam_utils as utils;
 
 pub mod sync;
-pub use crossbeam_utils::cache_padded::CachePadded;
-pub use crossbeam_utils::scoped::{scope, Scope, ScopedJoinHandle};
+pub use utils::cache_padded::CachePadded;
+pub use utils::scoped::{scope, Scope, ScopedJoinHandle};
