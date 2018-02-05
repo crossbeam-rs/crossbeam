@@ -25,19 +25,8 @@
 //#![deny(missing_docs)]
 
 pub extern crate crossbeam_epoch as epoch;
-pub extern crate crossbeam_utils as utils;
-pub extern crate crossbeam_deque as deque;
-pub extern crate crossbeam_channel as channel;
-
-// This is a hack for re-exporting macros. See
-// https://github.com/rust-lang/rust/issues/29638#issuecomment-298517765
-//
-// # Caveat
-//
-// As a side effect, channel's other functions are also visible in the crate root.
-#[doc(hidden)]
-pub use channel::*;
+extern crate crossbeam_utils;
 
 pub mod sync;
-pub use utils::cache_padded::CachePadded;
-pub use utils::scoped::{scope, Scope, ScopedJoinHandle};
+pub use crossbeam_utils::cache_padded::CachePadded;
+pub use crossbeam_utils::scoped::{scope, Scope, ScopedJoinHandle};

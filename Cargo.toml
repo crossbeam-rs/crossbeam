@@ -18,7 +18,6 @@ use_std = ["crossbeam-epoch/use_std", "crossbeam-utils/use_std"]
 crossbeam-epoch = "0.2"
 crossbeam-utils = "0.2"
 crossbeam-deque = "0.1"
-crossbeam-channel = "0.1"
 
 [dev-dependencies]
 rand = "0.4"
