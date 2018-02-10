@@ -11,14 +11,14 @@
 //!   quiescent state-based reclamation (QSBR). The crate is reexported as the
 //!   `epoch` module.
 //!
-//! - `crossbeam-utils` for **Utilities**. A "scoped" thread API makes it
-//!   possible to spawn threads that share stack data with their
-//!   parents. `CachePadded` struct inserts pad to align data with
-//!   cacheline. This crate also seeks to expand the standard library's a few
+//! - `crossbeam-utils` for **Utilities**. The "scoped" thread API makes it
+//!   possible to spawn threads that share stack data with their parents. The
+//!   `CachePadded` struct inserts padding to align data with the size of a
+//!   cacheline. This crate also seeks to expand the standard library's few
 //!   synchronization primitives (locks, barriers, etc) to include
 //!   advanced/niche primitives, as well as userspace alternatives. This crate
 //!   is reexported as the `utils` module. `CachePadded` and scoped thread API
-//!   is also reexported at the top-level.
+//!   are also reexported at the top-level.
 //!
 //! - **Non-blocking data structures**. Several crates provide high performance
 //!   and highly-concurrent data structures, which are much superior to wrapping
