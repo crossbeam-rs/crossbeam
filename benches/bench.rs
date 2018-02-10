@@ -1,4 +1,7 @@
+#![feature(test)]
+
 extern crate crossbeam;
+extern crate test;
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -9,9 +12,10 @@ use crossbeam::scope;
 use crossbeam::sync::MsQueue;
 use crossbeam::sync::SegQueue;
 
-use extra_impls::mpsc_queue::Queue as MpscQueue;
+use test::Bencher;
 
-mod extra_impls;
+mod mpsc_queue;
+use mpsc_queue::Queue as MpscQueue;
 
 const COUNT: u64 = 10000000;
 const THREADS: u64 = 2;
@@ -54,7 +58,7 @@ impl<T> Queue<T> for MpscQueue<T> {
         self.push(t)
     }
     fn try_pop(&self) -> Option<T> {
-        use extra_impls::mpsc_queue::*;
+        use mpsc_queue::*;
 
         loop {
             match self.pop() {
@@ -156,16 +160,69 @@ fn bench_chan_mpsc() -> f64 {
     nanos(d) / ((COUNT * THREADS) as f64)
 }
 
-fn main() {
-    println!("MSQ mpsc: {}", bench_queue_mpsc(MsQueue::new()));
-    println!("chan mpsc: {}", bench_chan_mpsc());
-    println!("mpsc mpsc: {}", bench_queue_mpsc(MpscQueue::new()));
-    println!("Seg mpsc: {}", bench_queue_mpsc(SegQueue::new()));
+#[bench]
+fn bench_queue_mpsc_ms_queue(b: &mut Bencher) {
+    b.iter(|| bench_queue_mpsc(MsQueue::new()));
+}
 
-    println!("MSQ mpmc: {}", bench_queue_mpmc(MsQueue::new()));
-    println!("Seg mpmc: {}", bench_queue_mpmc(SegQueue::new()));
+#[bench]
+fn bench_queue_mpsc_seg_queue(b: &mut Bencher) {
+    b.iter(|| bench_queue_mpsc(SegQueue::new()));
+}
 
-    // println!("queue_mpsc: {}", bench_queue_mpsc());
-    // println!("queue_mpmc: {}", bench_queue_mpmc());
-    // println!("mutex_mpmc: {}", bench_mutex_mpmc());
+#[bench]
+fn bench_queue_mpsc_mpsc_queue(b: &mut Bencher) {
+    b.iter(|| bench_queue_mpsc(MpscQueue::new()));
+}
+
+#[bench]
+fn bench_queue_mpsc_chan(b: &mut Bencher) {
+    b.iter(|| bench_chan_mpsc());
+}
+
+#[bench]
+fn bench_queue_mpmc_ms_queue(b: &mut Bencher) {
+    b.iter(|| bench_queue_mpmc(MsQueue::new()));
+}
+
+#[bench]
+fn bench_queue_mpmc_seg_queue(b: &mut Bencher) {
+    b.iter(|| bench_queue_mpmc(SegQueue::new()));
+}
+
+#[bench]
+fn stress_ms_queue(b: &mut Bencher) {
+    use std::sync::Arc;
+
+    const DUP: usize = 4;
+    const THREADS: u32 = 2;
+    const COUNT: u64 = 100000;
+
+    b.iter(|| {
+        scope(|s| {
+            for _i in 0..DUP {
+                let q = Arc::new(MsQueue::new());
+                let qs = q.clone();
+
+                s.spawn(move || {
+                    for i in 1..COUNT {
+                        qs.push(i)
+                    }
+                });
+
+                for _i in 0..THREADS {
+                    let qr = q.clone();
+                    s.spawn(move || {
+                        let mut cur: u64 = 0;
+                        for _j in 0..COUNT {
+                            if let Some(new) = qr.try_pop() {
+                                assert!(new > cur);
+                                cur = new;
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    })
 }
