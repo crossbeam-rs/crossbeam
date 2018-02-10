@@ -77,7 +77,7 @@ impl AtomicEpoch {
     #[inline]
     pub fn new(epoch: Epoch) -> Self {
         let data = AtomicUsize::new(epoch.data);
-        AtomicEpoch { data: data }
+        AtomicEpoch { data }
     }
 
     /// Loads a value from the atomic epoch.
@@ -101,6 +101,6 @@ impl AtomicEpoch {
     #[inline]
     pub fn compare_and_swap(&self, current: Epoch, new: Epoch, ord: Ordering) -> Epoch {
         let data = self.data.compare_and_swap(current.data, new.data, ord);
-        Epoch { data: data }
+        Epoch { data }
     }
 }
