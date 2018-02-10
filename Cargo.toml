@@ -2,12 +2,14 @@
 name = "crossbeam"
 version = "0.4.0"
 authors = ["The Crossbeam Project Developers"]
-description = "Support for lock-free data structures, synchronizers, and parallel programming"
-repository = "https://github.com/crossbeam-rs/crossbeam"
-documentation = "https://docs.rs/crossbeam"
+license = "MIT/Apache-2.0"
 readme = "README.md"
-license = "Apache-2.0/MIT"
-categories = ["concurrency", "data-structures"]
+repository = "https://github.com/crossbeam-rs/crossbeam"
+homepage = "https://github.com/crossbeam-rs/crossbeam"
+documentation = "https://docs.rs/crossbeam"
+description = "Support for concurrent programming: memory management, utilities, non-blocking data structures"
+keywords = ["atomic", "garbage", "non-blocking", "lock-free", "rcu"]
+categories = ["concurrency", "memory-management", "data-structures"]
 
 [features]
 default = ["use_std"]
@@ -15,9 +17,9 @@ nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
 use_std = ["crossbeam-epoch/use_std", "crossbeam-utils/use_std"]
 
 [dependencies]
-crossbeam-epoch = "0.2"
+crossbeam-epoch = "0.4"
 crossbeam-utils = "0.2"
-crossbeam-deque = "0.1"
+crossbeam-deque = "0.3"
 
 [dev-dependencies]
 rand = "0.4"
