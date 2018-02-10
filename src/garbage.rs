@@ -92,7 +92,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
     use std::sync::atomic::Ordering;
 
-    use super::*;
+    use super::{Garbage, Bag};
 
     #[test]
     fn check_defer() {
@@ -117,7 +117,7 @@ mod tests {
         let mut bag = Bag::new();
         assert!(bag.is_empty());
 
-        for _ in 0..MAX_OBJECTS {
+        for _ in 0..super::MAX_OBJECTS {
             assert!(bag.try_push(Garbage::new(incr)).is_ok());
             assert!(!bag.is_empty());
             assert_eq!(FLAG.load(Ordering::Relaxed), 0);
@@ -129,6 +129,6 @@ mod tests {
         assert_eq!(FLAG.load(Ordering::Relaxed), 0);
 
         drop(bag);
-        assert_eq!(FLAG.load(Ordering::Relaxed), MAX_OBJECTS);
+        assert_eq!(FLAG.load(Ordering::Relaxed), super::MAX_OBJECTS);
     }
 }

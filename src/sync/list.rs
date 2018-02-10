@@ -130,8 +130,8 @@ pub enum IterError {
 
 impl Default for Entry {
     /// Returns the empty entry.
-    fn default() -> Self {
-        Self { next: Atomic::null() }
+    fn default() -> Entry {
+        Entry { next: Atomic::null() }
     }
 }
 
@@ -150,8 +150,8 @@ impl Entry {
 
 impl<T, C: IsElement<T>> List<T, C> {
     /// Returns a new, empty linked list.
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> List<T, C> {
+        List {
             head: Atomic::null(),
             _marker: PhantomData,
         }
@@ -204,7 +204,7 @@ impl<T, C: IsElement<T>> List<T, C> {
     ///    thread will continue to iterate over the same list.
     pub fn iter<'g>(&'g self, guard: &'g Guard) -> Iter<'g, T, C> {
         Iter {
-            guard,
+            guard: guard,
             pred: &self.head,
             curr: self.head.load(Acquire, guard),
             head: &self.head,
@@ -289,7 +289,7 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
 
 #[cfg(test)]
 mod tests {
-    use {Collector, Owned};
+    use {Collector, Owned, Guard};
     use crossbeam_utils::scoped;
     use std::sync::Barrier;
     use super::*;

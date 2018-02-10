@@ -75,6 +75,13 @@ mod alloc {
     pub use self::std::sync as arc;
 }
 
+#[cfg(feature = "manually_drop")]
+mod nodrop {
+    pub use std::mem::ManuallyDrop as NoDrop;
+}
+#[cfg(not(feature = "manually_drop"))]
+extern crate nodrop;
+
 extern crate arrayvec;
 extern crate crossbeam_utils;
 #[cfg(feature = "use_std")]

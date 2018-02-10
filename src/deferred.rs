@@ -37,7 +37,7 @@ impl Deferred {
 
                 Deferred {
                     call: call::<F>,
-                    data,
+                    data: data,
                 }
             } else {
                 let b: Box<F> = Box::new(f);
@@ -51,7 +51,7 @@ impl Deferred {
 
                 Deferred {
                     call: call::<F>,
-                    data,
+                    data: data,
                 }
             }
         }

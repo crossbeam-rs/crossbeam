@@ -17,7 +17,7 @@
 //! Guards are necessary for performing atomic operations, and for freeing/dropping locations.
 
 use core::cell::{Cell, UnsafeCell};
-use core::mem::{self, ManuallyDrop};
+use core::mem;
 use core::num::Wrapping;
 use core::ptr;
 use core::sync::atomic;
@@ -26,14 +26,21 @@ use alloc::boxed::Box;
 use alloc::arc::Arc;
 
 use crossbeam_utils::cache_padded::CachePadded;
+use nodrop::NoDrop;
 
 use atomic::Owned;
-use collector::Handle;
 use epoch::{AtomicEpoch, Epoch};
 use guard::{unprotected, Guard};
 use garbage::{Bag, Garbage};
 use sync::list::{List, Entry, IterError, IsElement};
 use sync::queue::Queue;
+
+/// Number of bags to destroy.
+const COLLECT_STEPS: usize = 8;
+
+/// Number of pinnings after which a participant will execute some deferred functions from the
+/// global queue.
+const PINNINGS_BETWEEN_COLLECT: usize = 128;
 
 /// The global data for a garbage collector.
 pub struct Global {
@@ -44,21 +51,23 @@ pub struct Global {
     queue: Queue<(Epoch, Bag)>,
 
     /// The global epoch.
-    pub(crate) epoch: CachePadded<AtomicEpoch>,
+    epoch: CachePadded<AtomicEpoch>,
 }
 
 impl Global {
-    /// Number of bags to destroy.
-    const COLLECT_STEPS: usize = 8;
-
     /// Creates a new global data for garbage collection.
     #[inline]
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Global {
+        Global {
             locals: List::new(),
             queue: Queue::new(),
             epoch: CachePadded::new(AtomicEpoch::new(Epoch::starting())),
         }
+    }
+
+    /// Returns the current global epoch.
+    pub fn load_epoch(&self, ordering: Ordering) -> Epoch {
+        self.epoch.load(ordering)
     }
 
     /// Pushes the bag into the global queue and replaces the bag with a new empty bag.
@@ -91,7 +100,7 @@ impl Global {
         let steps = if cfg!(feature = "sanitize") {
             usize::max_value()
         } else {
-            Self::COLLECT_STEPS
+            COLLECT_STEPS
         };
 
         for _ in 0..steps {
@@ -163,10 +172,10 @@ pub struct Local {
     /// A reference to the global data.
     ///
     /// When all guards and handles get dropped, this reference is destroyed.
-    global: UnsafeCell<ManuallyDrop<Arc<Global>>>,
+    global: UnsafeCell<NoDrop<Arc<Global>>>,
 
     /// The local bag of deferred functions.
-    pub(crate) bag: UnsafeCell<Bag>,
+    bag: UnsafeCell<Bag>,
 
     /// The number of guards keeping this participant pinned.
     guard_count: Cell<usize>,
@@ -183,27 +192,29 @@ pub struct Local {
 unsafe impl Sync for Local {}
 
 impl Local {
-    /// Number of pinnings after which a participant will execute some deferred functions from the
-    /// global queue.
-    const PINNINGS_BETWEEN_COLLECT: usize = 128;
-
     /// Registers a new `Local` in the provided `Global`.
-    pub fn register(global: Arc<Global>) -> Handle {
+    pub fn register(global: &Arc<Global>) -> *const Local {
         unsafe {
             // Since we dereference no pointers in this block, it is safe to use `unprotected`.
 
             let local = Owned::new(Local {
                 entry: Entry::default(),
                 epoch: AtomicEpoch::new(Epoch::starting()),
-                global: UnsafeCell::new(ManuallyDrop::new(global.clone())),
+                global: UnsafeCell::new(NoDrop::new(global.clone())),
                 bag: UnsafeCell::new(Bag::new()),
                 guard_count: Cell::new(0),
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
             }).into_shared(&unprotected());
             global.locals.insert(local, &unprotected());
-            Handle { local: local.as_raw() }
+            local.as_raw()
         }
+    }
+
+    /// Returns whether the local garbage bag is empty.
+    #[inline]
+    pub fn is_bag_empty(&self) -> bool {
+        unsafe { (*self.bag.get()).is_empty() }
     }
 
     /// Returns a reference to the `Global` in which this `Local` resides.
@@ -240,7 +251,7 @@ impl Local {
     /// Pins the `Local`.
     #[inline]
     pub fn pin(&self) -> Guard {
-        let guard = Guard { local: self };
+        let guard = unsafe { Guard::new(self) };
 
         let guard_count = self.guard_count.get();
         self.guard_count.set(guard_count.checked_add(1).unwrap());
@@ -276,7 +287,7 @@ impl Local {
 
             // After every `PINNINGS_BETWEEN_COLLECT` try advancing the epoch and collecting
             // some garbage.
-            if count.0 % Self::PINNINGS_BETWEEN_COLLECT == 0 {
+            if count.0 % PINNINGS_BETWEEN_COLLECT == 0 {
                 self.global().collect(&guard);
             }
         }

@@ -34,7 +34,7 @@ impl Collector {
 
     /// Creates a new handle for the collector.
     pub fn handle(&self) -> Handle {
-        Local::register(self.global.clone())
+        Handle { local: Local::register(&self.global) }
     }
 }
 
@@ -47,7 +47,7 @@ impl Clone for Collector {
 
 /// A handle to a garbage collector.
 pub struct Handle {
-    pub(crate) local: *const Local,
+    local: *const Local,
 }
 
 impl Handle {
@@ -128,9 +128,9 @@ mod tests {
                 let a = Owned::new(7).into_shared(guard);
                 guard.defer(move || a.into_owned());
 
-                assert!(!(*(*guard.local).bag.get()).is_empty());
+                assert!(!(*guard.get_local()).is_bag_empty());
 
-                while !(*(*guard.local).bag.get()).is_empty() {
+                while !(*guard.get_local()).is_bag_empty() {
                     guard.flush();
                 }
             }
@@ -149,7 +149,7 @@ mod tests {
                 let a = Owned::new(7).into_shared(guard);
                 guard.defer(move || a.into_owned());
             }
-            assert!(!(*(*guard.local).bag.get()).is_empty());
+            assert!(!(*guard.get_local()).is_bag_empty());
         }
     }
 
@@ -165,9 +165,9 @@ mod tests {
                         for _ in 0..500_000 {
                             let guard = &handle.pin();
 
-                            let before = collector.global.epoch.load(Ordering::Relaxed);
+                            let before = collector.global.load_epoch(Ordering::Relaxed);
                             collector.global.collect(guard);
-                            let after = collector.global.epoch.load(Ordering::Relaxed);
+                            let after = collector.global.load_epoch(Ordering::Relaxed);
 
                             assert!(after.wrapping_sub(before) <= 2);
                         }

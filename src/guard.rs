@@ -73,10 +73,26 @@ use internal::Local;
 ///
 /// [`pin`]: fn.pin.html
 pub struct Guard {
-    pub(crate) local: *const Local,
+    local: *const Local,
 }
 
 impl Guard {
+    /// Creates a new guard from a pointer to `Local`.
+    ///
+    /// # Safety
+    ///
+    /// The `local` should be a valid pointer created by `Local::register()`.
+    #[doc(hidden)]
+    pub unsafe fn new(local: *const Local) -> Guard {
+        Guard { local: local }
+    }
+
+    /// Accesses the internal pointer to `Local`.
+    #[doc(hidden)]
+    pub unsafe fn get_local(&self) -> *const Local {
+        self.local
+    }
+
     /// Stores a function so that it can be executed at some point after all currently pinned
     /// threads get unpinned.
     ///
@@ -354,19 +370,19 @@ impl Clone for Guard {
 ///
 /// ```
 /// use crossbeam_epoch::{self as epoch, Atomic};
-/// use std::mem::ManuallyDrop;
+/// use std::ptr;
 /// use std::sync::atomic::Ordering::Relaxed;
 ///
-/// struct Stack<T> {
-///     head: Atomic<Node<T>>,
+/// struct Stack {
+///     head: epoch::Atomic<Node>,
 /// }
 ///
-/// struct Node<T> {
-///     data: ManuallyDrop<T>,
-///     next: Atomic<Node<T>>,
+/// struct Node {
+///     data: u32,
+///     next: epoch::Atomic<Node>,
 /// }
 ///
-/// impl<T> Drop for Stack<T> {
+/// impl Drop for Stack {
 ///     fn drop(&mut self) {
 ///         unsafe {
 ///             // Unprotected load.
@@ -376,10 +392,8 @@ impl Clone for Guard {
 ///                 // Unprotected load.
 ///                 let next = n.next.load(Relaxed, epoch::unprotected());
 ///
-///                 // Take ownership of the node, then drop its data and deallocate it.
-///                 let mut o = node.into_owned();
-///                 ManuallyDrop::drop(&mut o.data);
-///                 drop(o);
+///                 // Take ownership of the node, then drop it.
+///                 drop(node.into_owned());
 ///
 ///                 node = next;
 ///             }

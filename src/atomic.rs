@@ -15,11 +15,10 @@ use guard::Guard;
 /// appropriate ordering for the failure case.
 #[inline]
 fn strongest_failure_ordering(ord: Ordering) -> Ordering {
-    use self::Ordering::*;
     match ord {
-        Relaxed | Release => Relaxed,
-        Acquire | AcqRel => Acquire,
-        _ => SeqCst,
+        Ordering::Relaxed | Ordering::Release => Ordering::Relaxed,
+        Ordering::Acquire | Ordering::AcqRel => Ordering::Acquire,
+        _ => Ordering::SeqCst,
     }
 }
 
@@ -134,8 +133,8 @@ unsafe impl<T: Send + Sync> Sync for Atomic<T> {}
 
 impl<T> Atomic<T> {
     /// Returns a new atomic pointer pointing to the tagged pointer `data`.
-    fn from_data(data: usize) -> Self {
-        Self {
+    fn from_data(data: usize) -> Atomic<T> {
+        Atomic {
             data: AtomicUsize::new(data),
             _marker: PhantomData,
         }
@@ -152,7 +151,7 @@ impl<T> Atomic<T> {
     /// ```
     #[cfg(not(feature = "nightly"))]
     pub fn null() -> Atomic<T> {
-        Self {
+        Atomic {
             data: ATOMIC_USIZE_INIT,
             _marker: PhantomData,
         }

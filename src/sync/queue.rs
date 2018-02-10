@@ -5,11 +5,13 @@
 //! Michael and Scott.  Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue
 //! Algorithms.  PODC 1996.  http://dl.acm.org/citation.cfm?id=248106
 
-use core::mem::{self, ManuallyDrop};
+use core::fmt;
+use core::mem;
 use core::ptr;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 use crossbeam_utils::cache_padded::CachePadded;
+use nodrop::NoDrop;
 
 use {unprotected, Atomic, Guard, Owned, Shared};
 
@@ -22,23 +24,27 @@ pub struct Queue<T> {
     tail: CachePadded<Atomic<Node<T>>>,
 }
 
-#[derive(Debug)]
 struct Node<T> {
     /// The slot in which a value of type `T` can be stored.
     ///
-    /// The type of `data` is `ManuallyDrop<T>` because a `Node<T>` doesn't always contain a `T`.
-    /// For example, the sentinel node in a queue never contains a value: its slot is always empty.
+    /// The type of `data` is `NoDrop<T>` because a `Node<T>` doesn't always contain a `T`. For
+    /// example, the sentinel node in a queue never contains a value: its slot is always empty.
     /// Other nodes start their life with a push operation and contain a value until it gets popped
     /// out. After that such empty nodes get added to the collector for destruction.
-    data: ManuallyDrop<T>,
+    data: NoDrop<T>,
 
     next: Atomic<Node<T>>,
+}
+
+impl<T> fmt::Debug for Node<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "node {{ ... }}")
+    }
 }
 
 // Any particular `T` should never be accessed concurrently, so no need for `Sync`.
 unsafe impl<T: Send> Sync for Queue<T> {}
 unsafe impl<T: Send> Send for Queue<T> {}
-
 
 impl<T> Queue<T> {
     /// Create a new, empty queue.
@@ -87,7 +93,7 @@ impl<T> Queue<T> {
     /// Adds `t` to the back of the queue, possibly waking up threads blocked on `pop`.
     pub fn push(&self, t: T, guard: &Guard) {
         let new = Owned::new(Node {
-            data: ManuallyDrop::new(t),
+            data: NoDrop::new(t),
             next: Atomic::null(),
         });
         let new = Owned::into_shared(new, guard);
@@ -115,7 +121,7 @@ impl<T> Queue<T> {
                     .compare_and_set(head, next, Release, guard)
                     .map(|_| {
                         guard.defer(move || drop(head.into_owned()));
-                        Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
+                        Some(NoDrop::into_inner(ptr::read(&n.data)))
                     })
                     .map_err(|_| ())
             },
@@ -140,7 +146,7 @@ impl<T> Queue<T> {
                     .compare_and_set(head, next, Release, guard)
                     .map(|_| {
                         guard.defer(move || drop(head.into_owned()));
-                        Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
+                        Some(NoDrop::into_inner(ptr::read(&n.data)))
                     })
                     .map_err(|_| ())
             },
@@ -193,9 +199,10 @@ impl<T> Drop for Queue<T> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use {pin};
+
+    use core::sync::atomic::Ordering;
     use crossbeam_utils::scoped;
-    use pin;
 
     struct Queue<T> {
         queue: super::Queue<T>,
@@ -213,9 +220,9 @@ mod test {
 
         pub fn is_empty(&self) -> bool {
             let guard = &pin();
-            let head = self.queue.head.load(Acquire, guard);
+            let head = self.queue.head.load(Ordering::Acquire, guard);
             let h = unsafe { head.deref() };
-            h.next.load(Acquire, guard).is_null()
+            h.next.load(Ordering::Acquire, guard).is_null()
         }
 
         pub fn try_pop(&self) -> Option<T> {
