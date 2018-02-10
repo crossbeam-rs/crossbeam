@@ -34,7 +34,7 @@ impl Collector {
 
     /// Creates a new handle for the collector.
     pub fn handle(&self) -> Handle {
-        Local::register(self.global.clone())
+        Local::register(&self.global)
     }
 }
 

@@ -188,7 +188,7 @@ impl Local {
     const PINNINGS_BETWEEN_COLLECT: usize = 128;
 
     /// Registers a new `Local` in the provided `Global`.
-    pub fn register(global: Arc<Global>) -> Handle {
+    pub fn register(global: &Arc<Global>) -> Handle {
         unsafe {
             // Since we dereference no pointers in this block, it is safe to use `unprotected`.
 
