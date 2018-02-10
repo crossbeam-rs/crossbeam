@@ -136,7 +136,10 @@ impl<T> Buffer<T> {
         let ptr = v.as_mut_ptr();
         mem::forget(v);
 
-        Buffer { ptr, cap }
+        Buffer {
+            ptr: ptr,
+            cap: cap,
+        }
     }
 
     /// Returns a pointer to the element at the specified `index`.
@@ -528,14 +531,16 @@ impl<T> Deque<T> {
     /// assert_eq!(d.steal(), Steal::Data(1));
     ///
     /// // Attempt to steal an element, but keep retrying if we get `Retry`.
-    /// let stolen = loop {
+    /// loop {
     ///     match d.steal() {
-    ///         Steal::Empty => break None,
-    ///         Steal::Data(data) => break Some(data),
+    ///         Steal::Empty => panic!("should steal something"),
+    ///         Steal::Data(data) => {
+    ///             assert_eq!(data, 2);
+    ///             break;
+    ///         }
     ///         Steal::Retry => {}
     ///     }
-    /// };
-    /// assert_eq!(stolen, Some(2));
+    /// }
     /// ```
     ///
     /// [`Steal::Retry`]: enum.Steal.html#variant.Retry
@@ -664,7 +669,7 @@ impl<T> Stealer<T> {
         let t = self.inner.top.load(Relaxed);
         atomic::fence(SeqCst);
         let b = self.inner.bottom.load(Relaxed);
-        b.wrapping_sub(t).max(0) as usize
+        std::cmp::max(b.wrapping_sub(t), 0) as usize
     }
 
     /// Steals an element from the top of the deque.
@@ -686,14 +691,16 @@ impl<T> Stealer<T> {
     /// d.push(2);
     ///
     /// // Attempt to steal an element, but keep retrying if we get `Retry`.
-    /// let stolen = loop {
-    ///     match s.steal() {
-    ///         Steal::Empty => break None,
-    ///         Steal::Data(data) => break Some(data),
+    /// loop {
+    ///     match d.steal() {
+    ///         Steal::Empty => panic!("should steal something"),
+    ///         Steal::Data(data) => {
+    ///             assert_eq!(data, 1);
+    ///             break;
+    ///         }
     ///         Steal::Retry => {}
     ///     }
-    /// };
-    /// assert_eq!(stolen, Some(1));
+    /// }
     /// ```
     ///
     /// [`Steal::Retry`]: enum.Steal.html#variant.Retry
