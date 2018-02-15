@@ -21,9 +21,9 @@ use_std = ["lazy_static", "crossbeam-utils/use_std"]
 arrayvec = { version = "0.4", default-features = false }
 cfg-if = "0.1"
 crossbeam-utils = { version = "0.2", default-features = false }
-lazy_static = { version = "0.2", optional = true }
+lazy_static = { version = "1", optional = true }
 memoffset = { version = "0.2" }
 scopeguard = { version = "0.3", default-features = false }
 
 [dev-dependencies]
-rand = "0.3"
+rand = "0.4"
