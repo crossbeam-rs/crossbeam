@@ -681,8 +681,8 @@ impl<T> Owned<T> {
     ///
     /// let o = Owned::new(0u64);
     /// assert_eq!(o.tag(), 0);
-    /// let o = o.with_tag(5);
-    /// assert_eq!(o.tag(), 5);
+    /// let o = o.with_tag(2);
+    /// assert_eq!(o.tag(), 2);
     /// ```
     pub fn with_tag(self, tag: usize) -> Owned<T> {
         let data = self.into_data();
@@ -985,10 +985,10 @@ impl<'g, T> Shared<'g, T> {
     /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
-    /// let a = Atomic::<u64>::from(Owned::new(0u64).with_tag(5));
+    /// let a = Atomic::<u64>::from(Owned::new(0u64).with_tag(2));
     /// let guard = &epoch::pin();
     /// let p = a.load(SeqCst, guard);
-    /// assert_eq!(p.tag(), 5);
+    /// assert_eq!(p.tag(), 2);
     /// ```
     pub fn tag(&self) -> usize {
         let (_, tag) = decompose_data::<T>(self.data);
@@ -1007,10 +1007,10 @@ impl<'g, T> Shared<'g, T> {
     /// let a = Atomic::new(0u64);
     /// let guard = &epoch::pin();
     /// let p1 = a.load(SeqCst, guard);
-    /// let p2 = p1.with_tag(5);
+    /// let p2 = p1.with_tag(2);
     ///
     /// assert_eq!(p1.tag(), 0);
-    /// assert_eq!(p2.tag(), 5);
+    /// assert_eq!(p2.tag(), 2);
     /// assert_eq!(p1.as_raw(), p2.as_raw());
     /// ```
     pub fn with_tag(&self, tag: usize) -> Shared<'g, T> {
