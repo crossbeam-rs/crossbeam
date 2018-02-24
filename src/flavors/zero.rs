@@ -56,7 +56,7 @@ impl<T> Channel<T> {
     pub fn try_send(&self, msg: T, case_id: CaseId) -> Result<(), TrySendError<T>> {
         match self.exchanger.left().try_exchange(Some(msg), case_id) {
             Ok(_) => Ok(()),
-            Err(ExchangeError::Disconnected(msg)) => Err(TrySendError::Disconnected(msg.unwrap())),
+            Err(ExchangeError::Closed(msg)) => Err(TrySendError::Closed(msg.unwrap())),
             Err(ExchangeError::Timeout(msg)) => Err(TrySendError::Full(msg.unwrap())),
         }
     }
@@ -73,8 +73,8 @@ impl<T> Channel<T> {
             .exchange_until(Some(msg), deadline, case_id)
         {
             Ok(_) => Ok(()),
-            Err(ExchangeError::Disconnected(msg)) => {
-                Err(SendTimeoutError::Disconnected(msg.unwrap()))
+            Err(ExchangeError::Closed(msg)) => {
+                Err(SendTimeoutError::Closed(msg.unwrap()))
             }
             Err(ExchangeError::Timeout(msg)) => Err(SendTimeoutError::Timeout(msg.unwrap())),
         }
@@ -84,7 +84,7 @@ impl<T> Channel<T> {
     pub fn try_recv(&self, case_id: CaseId) -> Result<T, TryRecvError> {
         match self.exchanger.right().try_exchange(None, case_id) {
             Ok(msg) => Ok(msg.unwrap()),
-            Err(ExchangeError::Disconnected(_)) => Err(TryRecvError::Disconnected),
+            Err(ExchangeError::Closed(_)) => Err(TryRecvError::Closed),
             Err(ExchangeError::Timeout(_)) => Err(TryRecvError::Empty),
         }
     }
@@ -100,7 +100,7 @@ impl<T> Channel<T> {
             .exchange_until(None, deadline, case_id)
         {
             Ok(msg) => Ok(msg.unwrap()),
-            Err(ExchangeError::Disconnected(_)) => Err(RecvTimeoutError::Disconnected),
+            Err(ExchangeError::Closed(_)) => Err(RecvTimeoutError::Closed),
             Err(ExchangeError::Timeout(_)) => Err(RecvTimeoutError::Timeout),
         }
     }
@@ -115,13 +115,13 @@ impl<T> Channel<T> {
         self.exchanger.right().can_notify()
     }
 
-    /// Disconnects the channel and wakes up all currently blocked operations on it.
-    pub fn disconnect(&self) -> bool {
-        self.exchanger.disconnect()
+    /// Closes the channel and wakes up all currently blocked operations on it.
+    pub fn close(&self) -> bool {
+        self.exchanger.close()
     }
 
-    /// Returns `true` if the channel is disconnected.
-    pub fn is_disconnected(&self) -> bool {
-        self.exchanger.is_disconnected()
+    /// Returns `true` if the channel is closed.
+    pub fn is_closed(&self) -> bool {
+        self.exchanger.is_closed()
     }
 }

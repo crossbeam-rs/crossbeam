@@ -8,19 +8,19 @@ use utils;
 
 // TODO(stjepang): Explain operation priorities and write tests to verify them:
 // 1. send/recv
-// 2. all_disconnected
-// 3. any_disconnected
+// 2. all_closed
+// 3. any_closed
 // 4. would_block
 // 5. timed_out
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum State {
     Count,
-    Try { disconnected_count: usize },
-    Promise { disconnected_count: usize },
+    Try { closed_count: usize },
+    Promise { closed_count: usize },
     Revoke { case_id: CaseId },
     Fulfill { case_id: CaseId },
-    Disconnected,
+    Closed,
     WouldBlock,
     TimedOut,
     Dead,
@@ -30,7 +30,7 @@ enum State {
 //     #[inline]
 //     fn is_final(&self) -> bool {
 //         match *self {
-//             State::Disconnected | State::WouldBlock | State::TimedOut => true,
+//             State::Closed | State::WouldBlock | State::TimedOut => true,
 //             _ => false,
 //         }
 //     }
@@ -46,7 +46,7 @@ pub struct Machine {
     len: usize,
     send_case_count: usize,
     recv_case_count: usize,
-    has_disconnected_case: bool,
+    has_closed_case: bool,
     has_would_block_case: bool,
     has_timed_out_case: bool,
 }
@@ -69,7 +69,7 @@ impl Machine {
             len: 0,
             send_case_count: 0,
             recv_case_count: 0,
-            has_disconnected_case: false,
+            has_closed_case: false,
             has_would_block_case: false,
             has_timed_out_case: false,
         }
@@ -83,24 +83,24 @@ impl Machine {
 
         match self.state {
             State::Try {
-                ref mut disconnected_count,
+                ref mut closed_count,
             } => {
                 match tx.try_send(msg) {
                     Ok(()) => return Ok(()),
                     Err(TrySendError::Full(m)) => msg = m,
-                    Err(TrySendError::Disconnected(m)) => {
+                    Err(TrySendError::Closed(m)) => {
                         msg = m;
-                        *disconnected_count += 1;
+                        *closed_count += 1;
                     }
                 }
             },
             State::Promise {
-                ref mut disconnected_count,
+                ref mut closed_count,
             } => {
                 tx.promise_send();
 
-                if tx.is_disconnected() {
-                    *disconnected_count += 1;
+                if tx.is_closed() {
+                    *closed_count += 1;
                 } else if tx.can_send() {
                     handle::current_try_select(CaseId::abort());
                 }
@@ -118,7 +118,7 @@ impl Machine {
                     }
                 }
             },
-            State::Count | State::Disconnected | State::WouldBlock | State::TimedOut => {}
+            State::Count | State::Closed | State::WouldBlock | State::TimedOut => {}
             State::Dead => panic!("cannot use the same `Select` for multiple selections")
         }
         Err(msg)
@@ -132,24 +132,24 @@ impl Machine {
 
         match self.state {
             State::Try {
-                ref mut disconnected_count,
+                ref mut closed_count,
             } => {
                 match rx.try_recv() {
                     Ok(m) => return Ok(m),
                     Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => *disconnected_count += 1,
+                    Err(TryRecvError::Closed) => *closed_count += 1,
                 }
             },
             State::Promise {
-                ref mut disconnected_count,
+                ref mut closed_count,
             } => {
                 rx.promise_recv();
 
-                let is_disconn = rx.is_disconnected();
+                let is_closed = rx.is_closed();
                 let can_recv = rx.can_recv();
 
-                if is_disconn && !can_recv {
-                    *disconnected_count += 1;
+                if is_closed && !can_recv {
+                    *closed_count += 1;
                 } else if can_recv {
                     handle::current_try_select(CaseId::abort());
                 }
@@ -166,18 +166,18 @@ impl Machine {
                     }
                 }
             },
-            State::Count | State::Disconnected | State::WouldBlock | State::TimedOut => {}
+            State::Count | State::Closed | State::WouldBlock | State::TimedOut => {}
             State::Dead => panic!("cannot use the same `Select` for multiple selections")
         }
         Err(())
     }
 
     #[inline]
-    pub fn disconnected(&mut self) -> bool {
-        if !self.step(CaseId::disconnected()) {
+    pub fn closed(&mut self) -> bool {
+        if !self.step(CaseId::closed()) {
             return false;
         }
-        self.state == State::Disconnected
+        self.state == State::Closed
     }
 
     #[inline]
@@ -214,7 +214,7 @@ impl Machine {
 
                 self.send_case_count += case_id.is_send() as usize;
                 self.recv_case_count += case_id.is_recv() as usize;
-                self.has_disconnected_case |= case_id == CaseId::disconnected();
+                self.has_closed_case |= case_id == CaseId::closed();
                 self.has_would_block_case |= case_id == CaseId::would_block();
                 self.has_timed_out_case |= case_id == CaseId::timed_out();
 
@@ -222,7 +222,7 @@ impl Machine {
             }
 
             self.state = State::Try {
-                disconnected_count: 0,
+                closed_count: 0,
             };
             self.index = 0;
             self.start_index = utils::small_random(self.len);
@@ -241,24 +241,24 @@ impl Machine {
     #[inline(always)]
     fn transition(&mut self) {
         match self.state {
-            State::Try { disconnected_count } => {
-                let all_disconnected =
-                    self.send_case_count + self.recv_case_count == disconnected_count;
+            State::Try { closed_count } => {
+                let all_closed =
+                    self.send_case_count + self.recv_case_count == closed_count;
 
-                if self.has_disconnected_case && all_disconnected {
-                    self.state = State::Disconnected;
+                if self.has_closed_case && all_closed {
+                    self.state = State::Closed;
                 } else if self.has_would_block_case {
                     self.state = State::WouldBlock;
                 } else {
                     handle::current_reset();
-                    self.state = State::Promise { disconnected_count: 0 };
+                    self.state = State::Promise { closed_count: 0 };
                 }
             }
-            State::Promise { disconnected_count } => {
-                let all_disconnected =
-                    self.send_case_count + self.recv_case_count == disconnected_count;
+            State::Promise { closed_count } => {
+                let all_closed =
+                    self.send_case_count + self.recv_case_count == closed_count;
 
-                if self.has_disconnected_case && all_disconnected {
+                if self.has_closed_case && all_closed {
                     handle::current_try_select(CaseId::abort());
                 } else {
                     handle::current_wait_until(self.deadline);
@@ -272,7 +272,7 @@ impl Machine {
             }
             State::Fulfill { .. } => {
                 self.state = State::Try {
-                    disconnected_count: 0,
+                    closed_count: 0,
                 };
 
                 if let Some(end) = self.deadline {
@@ -281,7 +281,7 @@ impl Machine {
                     }
                 }
             }
-            State::Disconnected => {}
+            State::Closed => {}
             State::WouldBlock => {}
             State::TimedOut => {}
             State::Count => {}

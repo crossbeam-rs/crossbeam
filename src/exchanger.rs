@@ -26,8 +26,8 @@ pub enum ExchangeError<T> {
     /// The exchange operation timed out.
     Timeout(T),
 
-    /// The exchanger was disconnected.
-    Disconnected(T),
+    /// The exchanger is closed.
+    Closed(T),
 }
 
 /// Inner representation of an exchanger.
@@ -37,8 +37,8 @@ struct Inner<T> {
     /// There are two wait queues, one per side.
     wait_queues: [WaitQueue<T>; 2],
 
-    /// `true` if the exchanger is disconnected.
-    is_disconnected: bool,
+    /// `true` if the exchanger is closed.
+    is_closed: bool,
 }
 
 /// A two-sided exchanger.
@@ -62,7 +62,7 @@ impl<T> Exchanger<T> {
         Exchanger {
             inner: Mutex::new(Inner {
                 wait_queues: [WaitQueue::new(), WaitQueue::new()],
-                is_disconnected: false,
+                is_closed: false,
             }),
         }
     }
@@ -83,23 +83,23 @@ impl<T> Exchanger<T> {
         }
     }
 
-    /// Disconnects the exchanger and wakes up all currently blocked operations on it.
-    pub fn disconnect(&self) -> bool {
+    /// Closes the exchanger and wakes up all currently blocked operations on it.
+    pub fn close(&self) -> bool {
         let mut inner = self.inner.lock();
 
-        if inner.is_disconnected {
+        if inner.is_closed {
             false
         } else {
-            inner.is_disconnected = true;
+            inner.is_closed = true;
             inner.wait_queues[0].abort_all();
             inner.wait_queues[1].abort_all();
             true
         }
     }
 
-    /// Returns `true` if the exchanger is disconnected.
-    pub fn is_disconnected(&self) -> bool {
-        self.inner.lock().is_disconnected
+    /// Returns `true` if the exchanger is closed.
+    pub fn is_closed(&self) -> bool {
+        self.inner.lock().is_closed
     }
 }
 
@@ -183,8 +183,8 @@ impl<'a, T> Side<'a, T> {
             let packet;
             {
                 let mut inner = self.exchanger.inner.lock();
-                if inner.is_disconnected {
-                    return Err(ExchangeError::Disconnected(msg));
+                if inner.is_closed {
+                    return Err(ExchangeError::Closed(msg));
                 }
 
                 // If there's someone on the other side, exchange messages with it.

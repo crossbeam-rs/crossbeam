@@ -45,7 +45,7 @@ fn it_compiles() {
             send(tx4, var.clone()) => Some(var),
             send(tx5, 42) => None,
             
-            disconnected() => Some("disconnected".into()),
+            closed() => Some("closed".into()),
             would_block() => Some("would_block".into()),
             timed_out(Duration::from_secs(1)) => Some("timed_out".into()),
             // The previous timeout duration is overridden.
@@ -94,7 +94,7 @@ fn smoke2() {
 }
 
 #[test]
-fn disconnected() {
+fn closed() {
     let (tx1, rx1) = unbounded::<i32>();
     let (tx2, rx2) = unbounded::<i32>();
 
@@ -107,7 +107,7 @@ fn disconnected() {
         select_loop! {
             recv(rx1, _) => panic!(),
             recv(rx2, _) => panic!(),
-            disconnected() => panic!(),
+            closed() => panic!(),
             timed_out(ms(1000)) => {},
         }
     });
@@ -121,7 +121,7 @@ fn disconnected() {
         select_loop! {
             recv(rx1, _) => panic!(),
             recv(rx2, _) => panic!(),
-            disconnected() => {},
+            closed() => {},
             timed_out(ms(1000)) => panic!(),
         }
     });
@@ -137,7 +137,7 @@ fn would_block() {
     select_loop! {
         recv(rx1, _) => panic!(),
         recv(rx2, _) => panic!(),
-        disconnected() => panic!(),
+        closed() => panic!(),
         would_block() => {},
         timed_out(ms(0)) => panic!(),
     }
@@ -147,7 +147,7 @@ fn would_block() {
     select_loop! {
         recv(rx1, _) => panic!(),
         recv(rx2, v) => assert_eq!(v, 2),
-        disconnected() => panic!(),
+        closed() => panic!(),
         would_block() => panic!(),
         timed_out(ms(0)) => panic!(),
     }
@@ -157,7 +157,7 @@ fn would_block() {
     select_loop! {
         recv(rx1, _) => panic!(),
         recv(rx2, _) => panic!(),
-        disconnected() => {},
+        closed() => {},
         would_block() => panic!(),
         timed_out(ms(0)) => panic!(),
     }
@@ -189,7 +189,7 @@ fn timeout() {
 }
 
 #[test]
-fn timeout_when_disconnected() {
+fn timeout_when_closed() {
     let (_, rx) = unbounded::<i32>();
 
     select_loop! {
@@ -199,7 +199,7 @@ fn timeout_when_disconnected() {
 }
 
 #[test]
-fn would_block_when_disconnected() {
+fn would_block_when_closed() {
     let (_, rx) = unbounded::<i32>();
 
     select_loop! {
@@ -272,7 +272,7 @@ fn loop_try() {
                 loop {
                     match tx1.try_send(1) {
                         Ok(()) => break,
-                        Err(TrySendError::Disconnected(_)) => break,
+                        Err(TrySendError::Closed(_)) => break,
                         Err(TrySendError::Full(_)) => continue,
                     }
                 }
@@ -285,7 +285,7 @@ fn loop_try() {
                             assert_eq!(x, 2);
                             break;
                         }
-                        Err(TryRecvError::Disconnected) => break,
+                        Err(TryRecvError::Closed) => break,
                         Err(TryRecvError::Empty) => continue,
                     }
                 }
@@ -297,7 +297,7 @@ fn loop_try() {
                 select_loop! {
                     recv(rx1, v) => assert_eq!(v, 1),
                     send(tx2, 2) => {},
-                    disconnected() => panic!(),
+                    closed() => panic!(),
                     timed_out(ms(500)) => panic!(),
                 }
 
@@ -374,7 +374,7 @@ fn preflight2() {
     select_loop! {
         recv(rx, _) => {}
     }
-    assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+    assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
 }
 
 #[test]
@@ -387,7 +387,7 @@ fn preflight3() {
 
     select_loop! {
         recv(rx, _) => panic!(),
-        disconnected() => {},
+        closed() => {},
     }
 }
 
@@ -523,7 +523,7 @@ impl<T> WrappedSender<T> {
     pub fn try_send(&self, mut value: T) -> Result<(), TrySendError<T>> {
         select_loop! {
             send(self.0, mut value) => return Ok(()),
-            disconnected() => return Err(TrySendError::Disconnected(value)),
+            closed() => return Err(TrySendError::Closed(value)),
             would_block() => return Err(TrySendError::Full(value)),
         }
     }
@@ -531,14 +531,14 @@ impl<T> WrappedSender<T> {
     pub fn send(&self, mut value: T) -> Result<(), SendError<T>> {
         select_loop! {
             send(self.0, mut value) => return Ok(()),
-            disconnected() => return Err(SendError(value)),
+            closed() => return Err(SendError(value)),
         }
     }
 
     pub fn send_timeout(&self, mut value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
         select_loop! {
             send(self.0, mut value) => return Ok(()),
-            disconnected() => return Err(SendTimeoutError::Disconnected(value)),
+            closed() => return Err(SendTimeoutError::Closed(value)),
             timed_out(dur) => return Err(SendTimeoutError::Timeout(value)),
         }
     }
@@ -550,7 +550,7 @@ impl<T> WrappedReceiver<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         select_loop! {
             recv(self.0, v) => return Ok(v),
-            disconnected() => return Err(TryRecvError::Disconnected),
+            closed() => return Err(TryRecvError::Closed),
             would_block() => return Err(TryRecvError::Empty),
         }
     }
@@ -558,14 +558,14 @@ impl<T> WrappedReceiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
         select_loop! {
             recv(self.0, v) => return Ok(v),
-            disconnected() => return Err(RecvError),
+            closed() => return Err(RecvError),
         }
     }
 
     pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
         select_loop! {
             recv(self.0, v) => return Ok(v),
-            disconnected() => return Err(RecvTimeoutError::Disconnected),
+            closed() => return Err(RecvTimeoutError::Closed),
             timed_out(dur) => return Err(RecvTimeoutError::Timeout),
         }
     }
@@ -628,7 +628,7 @@ fn recv_timeout() {
             assert_eq!(rx.recv_timeout(ms(1000)), Ok(7));
             assert_eq!(
                 rx.recv_timeout(ms(1000)),
-                Err(RecvTimeoutError::Disconnected)
+                Err(RecvTimeoutError::Closed)
             );
         });
         s.spawn(move || {
@@ -650,7 +650,7 @@ fn try_recv() {
             thread::sleep(ms(1500));
             assert_eq!(rx.try_recv(), Ok(7));
             thread::sleep(ms(500));
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+            assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -668,7 +668,7 @@ fn try_recv() {
             assert_eq!(rx.recv_timeout(ms(1000)), Ok(7));
             assert_eq!(
                 rx.recv_timeout(ms(1000)),
-                Err(RecvTimeoutError::Disconnected)
+                Err(RecvTimeoutError::Closed)
             );
         });
         s.spawn(move || {
@@ -765,7 +765,7 @@ fn send_timeout() {
             assert_eq!(tx.send_timeout(8, ms(1000)), Ok(()));
             assert_eq!(
                 tx.send_timeout(9, ms(1000)),
-                Err(SendTimeoutError::Disconnected(9))
+                Err(SendTimeoutError::Closed(9))
             );
         });
         s.spawn(move || {
@@ -788,7 +788,7 @@ fn try_send() {
             thread::sleep(ms(1500));
             assert_eq!(tx.try_send(3), Ok(()));
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(4), Err(TrySendError::Disconnected(4)));
+            assert_eq!(tx.try_send(4), Err(TrySendError::Closed(4)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -808,7 +808,7 @@ fn try_send() {
             thread::sleep(ms(1500));
             assert_eq!(tx.try_send(8), Ok(()));
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(9), Err(TrySendError::Disconnected(9)));
+            assert_eq!(tx.try_send(9), Err(TrySendError::Closed(9)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -818,7 +818,7 @@ fn try_send() {
 }
 
 #[test]
-fn recv_after_disconnect() {
+fn recv_after_close() {
     let (tx, rx) = bounded(100);
     let tx = WrappedSender(tx);
     let rx = WrappedReceiver(rx);
@@ -953,19 +953,19 @@ fn conditional_recv() {
 }
 
 #[test]
-fn conditional_disconnected() {
+fn conditional_closed() {
     let (_, rx) = bounded::<i32>(0);
 
     select_loop! {
         recv(rx, _) => panic!(),
-        disconnected() if 1 + 1 == 3 => panic!(),
+        closed() if 1 + 1 == 3 => panic!(),
         would_block() => {}
         timed_out(ms(100)) => panic!(),
     }
 
     select_loop! {
         recv(rx, _) => panic!(),
-        disconnected() if 1 + 1 == 2 => {}
+        closed() if 1 + 1 == 2 => {}
         would_block() => panic!(),
         timed_out(ms(100)) => panic!(),
     }
@@ -977,14 +977,14 @@ fn conditional_would_block() {
 
     select_loop! {
         recv(rx, _) => panic!(),
-        disconnected() => panic!(),
+        closed() => panic!(),
         would_block() if 1 + 1 == 3 => panic!(),
         timed_out(ms(100)) => {}
     }
 
     select_loop! {
         recv(rx, _) => panic!(),
-        disconnected() => panic!(),
+        closed() => panic!(),
         would_block() if 1 + 1 == 2 => {}
         timed_out(ms(100)) => panic!(),
     }

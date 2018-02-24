@@ -15,7 +15,7 @@ impl CaseId {
     }
 
     #[inline]
-    pub fn disconnected() -> Self {
+    pub fn closed() -> Self {
         CaseId { id: 2 }
     }
 

@@ -59,9 +59,9 @@ pub(crate) mod handle;
 /// we print the message and the loop is broken.
 ///
 /// Note that `sel` holds an internal state machine that keeps track of how many cases there are,
-/// which channels are disconnected, etc. It is smart enough to automatically register each case
-/// into an internal conditional variable of sorts, block on it, and wake up when any of the cases
-/// become ready.
+/// which channels are closed, etc. It is smart enough to automatically register each case into an
+/// internal conditional variable of sorts, block on it, and wake up when any of the cases become
+/// ready.
 ///
 /// You don't need to wory about blocking or about the loop burning CPU time - the selection
 /// mechanism will automatically block and wake up the current thread as is necessary. However,
@@ -75,8 +75,8 @@ pub(crate) mod handle;
 /// 2. A *send* case, which fires when the message can be sent into the channel.
 /// 3. A *would block* case, which fires when all receive and send operations in the loop would
 ///    block.
-/// 4. A *disconnected* case, which fires when all operations in the loop are working with
-///    disconnected channels.
+/// 4. A *closed* case, which fires when all operations in the loop are working with closed
+///    channels.
 /// 5. A *timed out* case, which fires when selection is blocked for longer than the specified
 ///    timeout.
 ///
@@ -102,7 +102,7 @@ pub(crate) mod handle;
 /// 2. If none of the cases can fire at the time, one of the calls in the loop will block the
 ///    current thread.
 /// 3. If blocked, the current thread will be woken up as soon a message is pushed/popped into/from
-///    any channel waited on by a receive/send case, or if all channels become disconnected.
+///    any channel waited on by a receive/send case, or if all channels get closed.
 ///
 /// Finally, if more than one send or receive case can fire at the same time, a pseudorandom case
 /// will be selected, but on a best-effort basis only. The mechanism isn't promising any strict
@@ -160,26 +160,26 @@ pub(crate) mod handle;
 /// }
 /// ```
 ///
-/// ## Stop if all channels are disconnected
+/// ## Stop if all channels are closed
 ///
 /// ```
 /// use crossbeam_channel::{unbounded, Select};
 ///
 /// let (tx, rx) = unbounded();
 ///
-/// // Disconnect the channel.
+/// // Close the channel.
 /// drop(rx);
 ///
 /// let mut sel = Select::new();
 /// loop {
 ///     if let Ok(_) = sel.send(&tx, "message") {
-///         // Won't happen. The channel is disconnected.
+///         // Won't happen. The channel is closed.
 ///         println!("Sent the message.");
 ///         panic!();
 ///         break;
 ///     }
-///     if sel.disconnected() {
-///         println!("All channels are disconnected! Stopping selection.");
+///     if sel.closed() {
+///         println!("All channels are closed! Stopping selection.");
 ///         break;
 ///     }
 /// }
@@ -392,9 +392,9 @@ impl Select {
         self.machine.recv(rx).map_err(|_| SelectRecvError)
     }
 
-    /// Probes a *disconnected* case.
+    /// Probes a *closed* case.
     ///
-    /// This case fires when all operations in the loop are working with disconnected channels.
+    /// This case fires when all operations in the loop are working with closed channels.
     ///
     /// # Examples
     ///
@@ -403,7 +403,7 @@ impl Select {
     ///
     /// let (tx, rx) = unbounded();
     ///
-    /// // Disconnect the channel.
+    /// // Close the channel.
     /// drop(rx);
     ///
     /// let mut sel = Select::new();
@@ -413,15 +413,15 @@ impl Select {
     ///         panic!();
     ///         break;
     ///     }
-    ///     if sel.disconnected() {
-    ///         // All channels are disconnected.
+    ///     if sel.closed() {
+    ///         // All channels are closed.
     ///         break;
     ///     }
     /// }
     /// ```
     #[inline]
-    pub fn disconnected(&mut self) -> bool {
-        self.machine.disconnected()
+    pub fn closed(&mut self) -> bool {
+        self.machine.closed()
     }
 
     /// Probes a *would block* case.

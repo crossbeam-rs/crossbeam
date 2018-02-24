@@ -31,7 +31,7 @@ struct Entry<T> {
     ready: AtomicBool,
 }
 
-/// Indicates that the `push` operation failed due to the channel being disconnected.
+/// Indicates that the `push` operation failed due to the channel being closed.
 struct PushError<T>(T);
 
 /// The list of possible error outcomes for the `pop` operation.
@@ -39,8 +39,8 @@ enum PopError {
     /// The channel is empty.
     Empty,
 
-    /// The channel is disconnected.
-    Disconnected,
+    /// The channel is closed.
+    Closed,
 }
 
 /// A node in the linked list.
@@ -90,7 +90,7 @@ struct Position<T> {
 /// contains a `start_index` representing the index of its first message. Indices simply wrap
 /// around on overflow. Also note that the last bit of an index is reserved for marking, while the
 /// rest of the bits represent the actual position in the sequence of messages. When the tail index
-/// is marked, that means the channel is disconnected and the tail cannot move forward any further.
+/// is marked, that means the channel is closed and the tail cannot move forward any further.
 pub struct Channel<T> {
     /// The current head index and the node containing it.
     head: CachePadded<Position<T>>,
@@ -139,7 +139,7 @@ impl<T> Channel<T> {
             let tail = unsafe { tail_ptr.deref() };
             let tail_index = self.tail.index.load(Relaxed);
 
-            // If the tail index is marked, the channel is disconnected.
+            // If the tail index is marked, the channel is closed.
             if tail_index & 1 != 0 {
                 return Err(PushError(msg));
             }
@@ -206,12 +206,12 @@ impl<T> Channel<T> {
 
                     // If the tail equals the head, that means the channel is empty.
                     if tail_index & !1 == head_index {
-                        // Check whether the channel is disconnected and return the appropriate
+                        // Check whether the channel is closed and return the appropriate
                         // error variant.
                         if tail_index & 1 == 0 {
                             return Err(PopError::Empty);
                         } else {
-                            return Err(PopError::Disconnected);
+                            return Err(PopError::Closed);
                         }
                     }
                 }
@@ -271,7 +271,7 @@ impl<T> Channel<T> {
                 self.receivers.notify_one();
                 Ok(())
             }
-            Err(PushError(m)) => Err(TrySendError::Disconnected(m)),
+            Err(PushError(m)) => Err(TrySendError::Closed(m)),
         }
     }
 
@@ -282,7 +282,7 @@ impl<T> Channel<T> {
                 self.receivers.notify_one();
                 Ok(())
             }
-            Err(PushError(m)) => Err(SendTimeoutError::Disconnected(m)),
+            Err(PushError(m)) => Err(SendTimeoutError::Closed(m)),
         }
     }
 
@@ -291,7 +291,7 @@ impl<T> Channel<T> {
         match self.pop(&mut Backoff::new()) {
             Ok(m) => Ok(m),
             Err(PopError::Empty) => Err(TryRecvError::Empty),
-            Err(PopError::Disconnected) => Err(TryRecvError::Disconnected),
+            Err(PopError::Closed) => Err(TryRecvError::Closed),
         }
     }
 
@@ -307,7 +307,7 @@ impl<T> Channel<T> {
                 match self.pop(backoff) {
                     Ok(m) => return Ok(m),
                     Err(PopError::Empty) => {},
-                    Err(PopError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
+                    Err(PopError::Closed) => return Err(RecvTimeoutError::Closed),
                 }
 
                 if !backoff.step() {
@@ -318,7 +318,7 @@ impl<T> Channel<T> {
             handle::current_reset();
             self.receivers.register(case_id);
             let timed_out =
-                !self.is_disconnected() && self.is_empty() && !handle::current_wait_until(deadline);
+                !self.is_closed() && self.is_empty() && !handle::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
             if timed_out {
@@ -327,11 +327,11 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Disconnects the channel and wakes up all currently blocked operations on it.
-    pub fn disconnect(&self) -> bool {
+    /// Closes the channel and wakes up all currently blocked operations on it.
+    pub fn close(&self) -> bool {
         let tail_index = self.tail.index.fetch_or(1, SeqCst);
 
-        // Was the channel already disconnected?
+        // Was the channel already closed?
         if tail_index & 1 != 0 {
             false
         } else {
@@ -340,8 +340,8 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns `true` if the channel is disconnected.
-    pub fn is_disconnected(&self) -> bool {
+    /// Returns `true` if the channel is closed.
+    pub fn is_closed(&self) -> bool {
         self.tail.index.load(SeqCst) & 1 != 0
     }
 
