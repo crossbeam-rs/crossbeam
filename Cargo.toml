@@ -1,0 +1,21 @@
+[package]
+name = "crossbeam-skiplist"
+version = "0.0.0"
+authors = ["The Crossbeam Project Developers"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/crossbeam-rs/crossbeam-skiplist"
+homepage = "https://github.com/crossbeam-rs/crossbeam-skiplist"
+documentation = "https://docs.rs/crossbeam-skiplist"
+description = "A concurrent skip list"
+keywords = ["map", "set", "skiplist", "lock-free"]
+categories = ["algorithms", "concurrency", "data-structures"]
+
+[dependencies]
+crossbeam-epoch = "0.2.0"
+crossbeam-utils = "0.2.1"
+scopeguard = "0.3.0"
+
+[dev-dependencies]
+crossbeam = "0.3.2"
+rand = "0.4.2"
