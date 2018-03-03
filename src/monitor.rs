@@ -22,7 +22,7 @@ struct Case {
 
 /// A simple wait queue for list-based and array-based channels.
 ///
-/// This data structure is used sfor registeroing selection cases before blocking and waking them
+/// This data structure is used for registering selection cases before blocking and waking them
 /// up when the channel receives a message, sends one, or gets closed.
 pub struct Monitor {
     /// The list of registered selection cases.
