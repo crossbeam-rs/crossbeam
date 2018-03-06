@@ -54,7 +54,7 @@ fn main() {
         let threads = (0..16)
             .map(|_| {
                 let a = a.clone();
-                let h = collector.handle();
+                let h = collector.register();
                 thread::spawn(move || worker(a, h))
             })
             .collect::<Vec<_>>();

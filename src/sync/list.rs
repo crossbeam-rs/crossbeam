@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn insert() {
         let collector = Collector::new();
-        let handle = collector.handle();
+        let handle = collector.register();
         let guard = handle.pin();
 
         let l: List<Entry> = List::new();
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn delete() {
         let collector = Collector::new();
-        let handle = collector.handle();
+        let handle = collector.register();
         let guard = handle.pin();
 
         let l: List<Entry> = List::new();
@@ -400,7 +400,7 @@ mod tests {
             s.spawn(|| {
                 b.wait();
 
-                let handle = collector.handle();
+                let handle = collector.register();
                 let guard: Guard = handle.pin();
                 let mut v = Vec::with_capacity(ITERS);
 
@@ -420,7 +420,7 @@ mod tests {
             });
         });
 
-        let handle = collector.handle();
+        let handle = collector.register();
         let guard = handle.pin();
 
         let mut iter = l.iter(&guard);
@@ -439,7 +439,7 @@ mod tests {
             s.spawn(|| {
                 b.wait();
 
-                let handle = collector.handle();
+                let handle = collector.register();
                 let guard: Guard = handle.pin();
                 let mut v = Vec::with_capacity(ITERS);
 
@@ -464,7 +464,7 @@ mod tests {
             });
         });
 
-        let handle = collector.handle();
+        let handle = collector.register();
         let guard = handle.pin();
 
         let mut iter = l.iter(&guard);

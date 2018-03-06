@@ -14,7 +14,7 @@ lazy_static! {
 
 thread_local! {
     /// The per-thread participant for the default garbage collector.
-    static HANDLE: Handle = COLLECTOR.handle();
+    static HANDLE: Handle = COLLECTOR.register();
 }
 
 /// Pins the current thread.
