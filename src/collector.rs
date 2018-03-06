@@ -14,6 +14,7 @@
 /// ```
 
 use alloc::arc::Arc;
+use core::fmt;
 
 use internal::{Global, Local};
 use guard::Guard;
@@ -42,6 +43,12 @@ impl Clone for Collector {
     /// Creates another reference to the same garbage collector.
     fn clone(&self) -> Self {
         Collector { global: self.global.clone() }
+    }
+}
+
+impl fmt::Debug for Collector {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Collector").finish()
     }
 }
 
@@ -82,6 +89,12 @@ impl Clone for Handle {
             Local::acquire_handle(&*self.local);
         }
         Handle { local: self.local }
+    }
+}
+
+impl fmt::Debug for Handle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Handle").finish()
     }
 }
 

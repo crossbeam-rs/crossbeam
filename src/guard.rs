@@ -1,3 +1,4 @@
+use core::fmt;
 use core::ptr;
 use core::mem;
 
@@ -302,6 +303,12 @@ impl Clone for Guard {
             None => Guard { local: ptr::null() },
             Some(local) => local.pin(),
         }
+    }
+}
+
+impl fmt::Debug for Guard {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Guard").finish()
     }
 }
 
