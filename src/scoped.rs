@@ -109,22 +109,20 @@
 
 use std::cell::RefCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem;
+use std::ops::DerefMut;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::thread;
 use std::io;
 
-use atomic_option::AtomicOption;
-
 #[doc(hidden)]
-trait FnBox {
-    fn call_box(self: Box<Self>);
+trait FnBox<T> {
+    fn call_box(self: Box<Self>) -> T;
 }
 
-impl<F: FnOnce()> FnBox for F {
-    fn call_box(self: Box<Self>) {
+impl<T, F: FnOnce() -> T> FnBox<T> for F {
+    fn call_box(self: Box<Self>) -> T {
         (*self)()
     }
 }
@@ -146,47 +144,61 @@ pub unsafe fn builder_spawn_unsafe<'a, F>(
 where
     F: FnOnce() + Send + 'a,
 {
-    use std::mem;
-
-    let closure: Box<FnBox + 'a> = Box::new(f);
-    let closure: Box<FnBox + Send> = mem::transmute(closure);
+    let closure: Box<FnBox<()> + 'a> = Box::new(f);
+    let closure: Box<FnBox<()> + Send> = mem::transmute(closure);
     builder.spawn(move || closure.call_box())
 }
 
-
 pub struct Scope<'a> {
-    dtors: RefCell<Option<DtorChain<'a>>>,
+    /// The list of the deferred functions and thread join jobs.
+    dtors: RefCell<Option<DtorChain<'a, ()>>>,
+    // !Send + !Sync
+    _marker: PhantomData<*const ()>,
 }
 
-struct DtorChain<'a> {
-    dtor: Box<FnBox + 'a>,
-    next: Option<Box<DtorChain<'a>>>,
+struct DtorChain<'a, T> {
+    dtor: Box<FnBox<T> + 'a>,
+    next: Option<Box<DtorChain<'a, T>>>,
 }
 
-enum JoinState {
-    Running(thread::JoinHandle<()>),
-    Joined,
+impl<'a, T> DtorChain<'a, T> {
+    pub fn pop(chain: &mut Option<DtorChain<'a, T>>) -> Option<Box<FnBox<T> + 'a>> {
+        chain.take().map(|mut node| {
+            *chain = node.next.take().map(|b| *b);
+            node.dtor
+        })
+    }
 }
 
-impl JoinState {
-    fn join(&mut self) {
-        let mut state = JoinState::Joined;
-        mem::swap(self, &mut state);
-        if let JoinState::Running(handle) = state {
-            let res = handle.join();
+struct JoinState<T> {
+    join_handle: thread::JoinHandle<()>,
+    result: usize,
+    _marker: PhantomData<T>,
+}
 
-            if !thread::panicking() {
-                res.unwrap();
-            }
+impl<T: Send> JoinState<T> {
+    fn new(join_handle: thread::JoinHandle<()>, result: usize) -> JoinState<T> {
+        JoinState {
+            join_handle: join_handle,
+            result: result,
+            _marker: PhantomData,
         }
+    }
+
+    fn join(self) -> thread::Result<T> {
+        let result = self.result;
+        self.join_handle.join().map(|_| {
+            unsafe { *Box::from_raw(result as *mut T) }
+        })
     }
 }
 
 /// A handle to a scoped thread
-pub struct ScopedJoinHandle<T> {
-    inner: Rc<RefCell<JoinState>>,
-    packet: Arc<AtomicOption<T>>,
+pub struct ScopedJoinHandle<'a, T: 'a> {
+    // !Send + !Sync
+    inner: Rc<RefCell<Option<JoinState<T>>>>,
     thread: thread::Thread,
+    _marker: PhantomData<&'a T>,
 }
 
 /// Create a new `scope`, for deferred destructors.
@@ -204,11 +216,18 @@ pub struct ScopedJoinHandle<T> {
 /// });
 /// // Prints messages in the reverse order written
 /// ```
+///
+/// # Panics
+///
+/// `scoped::scope()` panics if a spawned thread panics but it is not joined inside the scope.
 pub fn scope<'a, F, R>(f: F) -> R
 where
     F: FnOnce(&Scope<'a>) -> R,
 {
-    let mut scope = Scope { dtors: RefCell::new(None) };
+    let mut scope = Scope {
+        dtors: RefCell::new(None),
+        _marker: PhantomData,
+    };
     let ret = f(&scope);
     scope.drop_all();
     ret
@@ -220,7 +239,7 @@ impl<'a> fmt::Debug for Scope<'a> {
     }
 }
 
-impl<T> fmt::Debug for ScopedJoinHandle<T> {
+impl<'a, T> fmt::Debug for ScopedJoinHandle<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ScopedJoinHandle {{ ... }}")
     }
@@ -233,26 +252,16 @@ impl<'a> Scope<'a> {
     // method outside of any destructor, we avoid any leakage problems
     // due to @rust-lang/rust#14875.
     fn drop_all(&mut self) {
-        loop {
-            // use a separate scope to ensure that the RefCell borrow
-            // is relinquished before running `dtor`
-            let dtor = {
-                let mut dtors = self.dtors.borrow_mut();
-                if let Some(mut node) = dtors.take() {
-                    *dtors = node.next.take().map(|b| *b);
-                    node.dtor
-                } else {
-                    return;
-                }
-            };
-            dtor.call_box()
+        while let Some(dtor) = DtorChain::pop(&mut self.dtors.borrow_mut()) {
+            dtor.call_box();
         }
     }
 
     /// Schedule code to be executed when exiting the scope.
     ///
     /// This is akin to having a destructor on the stack, except that it is
-    /// *guaranteed* to be run.
+    /// *guaranteed* to be run. It is guaranteed that the function is called
+    /// after all the spawned threads are joined.
     pub fn defer<F>(&self, f: F)
     where
         F: FnOnce() + 'a,
@@ -273,8 +282,9 @@ impl<'a> Scope<'a> {
     /// scope exits.
     ///
     /// [spawn]: http://doc.rust-lang.org/std/thread/fn.spawn.html
-    pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T>
+    pub fn spawn<'s, F, T>(&'s self, f: F) -> ScopedJoinHandle<'a, T>
     where
+        'a: 's,
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
     {
@@ -313,42 +323,49 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
     }
 
     /// Spawns a new thread, and returns a join handle for it.
-    pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<T>>
+    pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'a, T>>
     where
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
     {
-        let their_packet = Arc::new(AtomicOption::new());
-        let my_packet = their_packet.clone();
+        // The `Box` constructed below is written only by the spawned thread,
+        // and read by the current thread only after the spawned thread is
+        // joined (`JoinState::join()`). Thus there are no data races.
+        let result = Box::into_raw(Box::<T>::new(unsafe { mem::uninitialized() })) as usize;
 
         let join_handle = try!(unsafe {
             builder_spawn_unsafe(self.builder, move || {
-                their_packet.swap(f(), Ordering::Relaxed);
+                let mut result = Box::from_raw(result as *mut T);
+                *result = f();
+                mem::forget(result);
             })
         });
-
         let thread = join_handle.thread().clone();
-        let deferred_handle = Rc::new(RefCell::new(JoinState::Running(join_handle)));
+
+        let join_state = JoinState::<T>::new(join_handle, result);
+        let deferred_handle = Rc::new(RefCell::new(Some(join_state)));
         let my_handle = deferred_handle.clone();
 
         self.scope.defer(move || {
-            let mut state = deferred_handle.borrow_mut();
-            state.join();
+            let state = mem::replace(deferred_handle.borrow_mut().deref_mut(), None);
+            if let Some(state) = state {
+                state.join().unwrap();
+            }
         });
 
         Ok(ScopedJoinHandle {
             inner: my_handle,
-            packet: my_packet,
             thread: thread,
+            _marker: PhantomData,
         })
     }
 }
 
-impl<T> ScopedJoinHandle<T> {
+impl<'a, T: Send + 'a> ScopedJoinHandle<'a, T> {
     /// Join the scoped thread, returning the result it produced.
-    pub fn join(self) -> T {
-        self.inner.borrow_mut().join();
-        self.packet.take(Ordering::Relaxed).unwrap()
+    pub fn join(self) -> thread::Result<T> {
+        let state = mem::replace(self.inner.borrow_mut().deref_mut(), None);
+        state.unwrap().join()
     }
 
     /// Get the underlying thread handle.
