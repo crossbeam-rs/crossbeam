@@ -38,3 +38,9 @@ pub fn is_pinned() -> bool {
 pub fn default_handle() -> Handle {
     HANDLE.with(|handle| handle.clone())
 }
+
+/// Returns the default handle associated with the current thread.
+#[inline]
+pub fn default_collector() -> &'static Collector {
+    &COLLECTOR
+}

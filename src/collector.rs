@@ -21,7 +21,7 @@ use guard::Guard;
 
 /// An epoch-based garbage collector.
 pub struct Collector {
-    global: Arc<Global>,
+    pub(crate) global: Arc<Global>,
 }
 
 unsafe impl Send for Collector {}
@@ -35,7 +35,7 @@ impl Collector {
 
     /// Registers a new handle for the collector.
     pub fn register(&self) -> Handle {
-        Local::register(&self.global)
+        Local::register(self)
     }
 }
 
@@ -51,6 +51,14 @@ impl fmt::Debug for Collector {
         f.debug_struct("Collector").finish()
     }
 }
+
+impl PartialEq for Collector {
+    /// Checks if both handles point to the same collector.
+    fn eq(&self, rhs: &Collector) -> bool {
+        Arc::ptr_eq(&self.global, &rhs.global)
+    }
+}
+impl Eq for Collector {}
 
 /// A handle to a garbage collector.
 pub struct Handle {
@@ -68,6 +76,12 @@ impl Handle {
     #[inline]
     pub fn is_pinned(&self) -> bool {
         unsafe { (*self.local).is_pinned() }
+    }
+
+    /// Returns the `Collector` associated with this handle.
+    #[inline]
+    pub fn collector(&self) -> &Collector {
+        unsafe { (*self.local).collector() }
     }
 }
 

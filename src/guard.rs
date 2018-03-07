@@ -4,6 +4,7 @@ use core::mem;
 
 use garbage::Garbage;
 use internal::Local;
+use collector::Collector;
 
 /// A guard that keeps the current thread pinned.
 ///
@@ -284,6 +285,28 @@ impl Guard {
         }
 
         f()
+    }
+
+    /// Returns the `Collector` associated with this guard.
+    ///
+    /// This method is useful when you need to ensure that all guards used with
+    /// a data structure come from the same collector.
+    ///
+    /// If this method is called from an [`unprotected`] guard, then `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch as epoch;
+    ///
+    /// let mut guard1 = epoch::pin();
+    /// let mut guard2 = epoch::pin();
+    /// assert!(guard1.collector() == guard2.collector());
+    /// ```
+    ///
+    /// [`unprotected`]: fn.unprotected.html
+    pub fn collector(&self) -> Option<&Collector> {
+        unsafe { self.local.as_ref().map(|local| local.collector()) }
     }
 }
 

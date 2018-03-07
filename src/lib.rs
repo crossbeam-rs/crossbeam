@@ -58,11 +58,11 @@
 #![cfg_attr(feature = "nightly", feature(alloc))]
 #![cfg_attr(not(test), no_std)]
 
+#[cfg(test)]
+extern crate core;
 #[cfg(all(not(test), feature = "use_std"))]
 #[macro_use]
 extern crate std;
-#[cfg(test)]
-extern crate core;
 
 // Use liballoc on nightly to avoid a dependency on libstd
 #[cfg(feature = "nightly")]
@@ -99,5 +99,5 @@ mod sync;
 pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared};
 pub use self::guard::{unprotected, Guard};
 #[cfg(feature = "use_std")]
-pub use self::default::{default_handle, is_pinned, pin};
+pub use self::default::{default_collector, default_handle, is_pinned, pin};
 pub use self::collector::{Collector, Handle};

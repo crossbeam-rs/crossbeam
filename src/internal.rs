@@ -23,12 +23,11 @@ use core::ptr;
 use core::sync::atomic;
 use core::sync::atomic::Ordering;
 use alloc::boxed::Box;
-use alloc::arc::Arc;
 
 use crossbeam_utils::cache_padded::CachePadded;
 
 use atomic::Owned;
-use collector::Handle;
+use collector::{Handle, Collector};
 use epoch::{AtomicEpoch, Epoch};
 use guard::{unprotected, Guard};
 use garbage::{Bag, Garbage};
@@ -163,7 +162,7 @@ pub struct Local {
     /// A reference to the global data.
     ///
     /// When all guards and handles get dropped, this reference is destroyed.
-    global: UnsafeCell<ManuallyDrop<Arc<Global>>>,
+    collector: UnsafeCell<ManuallyDrop<Collector>>,
 
     /// The local bag of deferred functions.
     pub(crate) bag: UnsafeCell<Bag>,
@@ -188,20 +187,20 @@ impl Local {
     const PINNINGS_BETWEEN_COLLECT: usize = 128;
 
     /// Registers a new `Local` in the provided `Global`.
-    pub fn register(global: &Arc<Global>) -> Handle {
+    pub fn register(collector: &Collector) -> Handle {
         unsafe {
             // Since we dereference no pointers in this block, it is safe to use `unprotected`.
 
             let local = Owned::new(Local {
                 entry: Entry::default(),
                 epoch: AtomicEpoch::new(Epoch::starting()),
-                global: UnsafeCell::new(ManuallyDrop::new(global.clone())),
+                collector: UnsafeCell::new(ManuallyDrop::new(collector.clone())),
                 bag: UnsafeCell::new(Bag::new()),
                 guard_count: Cell::new(0),
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
             }).into_shared(&unprotected());
-            global.locals.insert(local, &unprotected());
+            collector.global.locals.insert(local, &unprotected());
             Handle { local: local.as_raw() }
         }
     }
@@ -209,7 +208,13 @@ impl Local {
     /// Returns a reference to the `Global` in which this `Local` resides.
     #[inline]
     pub fn global(&self) -> &Global {
-        unsafe { &*self.global.get() }
+        &self.collector().global
+    }
+
+    /// Returns a reference to the `Collector` in which this `Local` resides.
+    #[inline]
+    pub fn collector(&self) -> &Collector {
+        unsafe { &**self.collector.get() }
     }
 
     /// Returns `true` if the current participant is pinned.
@@ -365,7 +370,7 @@ impl Local {
             // Take the reference to the `Global` out of this `Local`. Since we're not protected
             // by a guard at this time, it's crucial that the reference is read before marking the
             // `Local` as deleted.
-            let global: Arc<Global> = ptr::read(&**self.global.get());
+            let collector: Collector = ptr::read(&*(*self.collector.get()));
 
             // Mark this node in the linked list as deleted.
             self.entry.delete(&unprotected());
@@ -373,7 +378,7 @@ impl Local {
             // Finally, drop the reference to the global.  Note that this might be the last
             // reference to the `Global`. If so, the global data will be destroyed and all deferred
             // functions in its queue will be executed.
-            drop(global);
+            drop(collector);
         }
     }
 }
