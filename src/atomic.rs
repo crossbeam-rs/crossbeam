@@ -10,6 +10,7 @@ use core::sync::atomic::Ordering;
 use alloc::boxed::Box;
 
 use guard::Guard;
+use crossbeam_utils::consume::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
 /// appropriate ordering for the failure case.
@@ -207,6 +208,31 @@ impl<T> Atomic<T> {
     /// ```
     pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
         unsafe { Shared::from_data(self.data.load(ord)) }
+    }
+
+    /// Loads a `Shared` from the atomic pointer using a "consume" memory ordering.
+    ///
+    /// This is similar to the "acquire" ordering, except that an ordering is
+    /// only guaranteed with operations that "depend on" the result of the load.
+    /// However consume loads are usually much faster than acquire loads on
+    /// architectures with a weak memory model since they don't require memory
+    /// fence instructions.
+    ///
+    /// The exact definition of "depend on" is a bit vague, but it works as you
+    /// would expect in practice since a lot of software, especially the Linux
+    /// kernel, rely on this behavior.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Atomic};
+    ///
+    /// let a = Atomic::new(1234);
+    /// let guard = &epoch::pin();
+    /// let p = a.load_consume(guard);
+    /// ```
+    pub fn load_consume<'g>(&self, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_data(self.data.load_consume()) }
     }
 
     /// Stores a `Shared` or `Owned` pointer into the atomic pointer.

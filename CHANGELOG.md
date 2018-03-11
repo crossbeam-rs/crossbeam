@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Add `Debug` impls for `Collector`, `Handle`, and `Guard`.
+- Add `load_consume` to `Atomic`.
 
 ### Changed
 - Rename `Collector::handle` to `Collector::register`.
