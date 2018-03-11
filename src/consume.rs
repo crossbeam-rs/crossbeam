@@ -28,6 +28,7 @@ pub trait AtomicConsume {
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 macro_rules! impl_consume {
     () => {
+        #[inline]
         fn load_consume(&self) -> Self::Val {
             let result = self.load(Ordering::Relaxed);
             compiler_fence(Ordering::Acquire);
@@ -39,6 +40,7 @@ macro_rules! impl_consume {
 #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
 macro_rules! impl_consume {
     () => {
+        #[inline]
         fn load_consume(&self) -> Self::Val {
             self.load(Ordering::Acquire)
         }
