@@ -11,10 +11,15 @@ description = "A concurrent skip list"
 keywords = ["map", "set", "skiplist", "lock-free"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
+[features]
+default = ["use_std"]
+use_std = ["crossbeam-epoch/use_std"]
+nightly = ["crossbeam-epoch/nightly"]
+
 [dependencies]
-crossbeam-epoch = "0.2.0"
-crossbeam-utils = "0.2.1"
-scopeguard = "0.3.0"
+crossbeam-epoch = {version = "0.4.1", default-features = false}
+crossbeam-utils = {version = "0.3.0", default-features = false}
+scopeguard = {version = "0.3.0", default-features = false}
 
 [dev-dependencies]
 crossbeam = "0.3.2"

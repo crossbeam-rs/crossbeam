@@ -2,7 +2,9 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::iter::FromIterator;
 
-use base;
+use base::{self, try_pin_loop};
+use epoch;
+use Bound;
 
 /// A map based on a lock-free skip list.
 pub struct SkipMap<K, V> {
@@ -13,7 +15,7 @@ impl<K, V> SkipMap<K, V> {
     /// Returns a new, empty map.
     pub fn new() -> SkipMap<K, V> {
         SkipMap {
-            inner: base::SkipList::new(),
+            inner: base::SkipList::new(epoch::default_collector().clone()),
         }
     }
 
@@ -37,12 +39,14 @@ where
 {
     /// Returns the entry with the smallest key.
     pub fn front(&self) -> Option<Entry<K, V>> {
-        self.inner.front().map(Entry::new)
+        let guard = &epoch::pin();
+        try_pin_loop(|| self.inner.front(guard)).map(Entry::new)
     }
 
     /// Returns the entry with the largest key.
     pub fn back(&self) -> Option<Entry<K, V>> {
-        self.inner.back().map(Entry::new)
+        let guard = &epoch::pin();
+        try_pin_loop(|| self.inner.back(guard)).map(Entry::new)
     }
 
     /// Returns `true` if the map contains a value for the specified key.
@@ -51,7 +55,8 @@ where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        self.get(key).is_some()
+        let guard = &epoch::pin();
+        self.inner.contains_key(key, guard)
     }
 
     /// Returns an entry with the specified `key`.
@@ -60,32 +65,62 @@ where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        self.inner.get(key).map(Entry::new)
+        let guard = &epoch::pin();
+        try_pin_loop(|| self.inner.get(key, guard)).map(Entry::new)
     }
 
-    /// Returns the first entry with a key greater than or equal to `key`, or `None` if all entries
-    /// have smaller keys.
-    pub fn seek<Q>(&self, key: &Q) -> Option<Entry<K, V>>
+    /// Returns an `Entry` pointing to the lowest element whose key is above
+    /// the given bound. If no such element is found then `None` is
+    /// returned.
+    pub fn lower_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, K, V>>
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        self.inner.seek(key).map(Entry::new)
+        let guard = &epoch::pin();
+        try_pin_loop(|| self.inner.lower_bound(bound, guard)).map(Entry::new)
+    }
+
+    /// Returns an `Entry` pointing to the highest element whose key is below
+    /// the given bound. If no such element is found then `None` is
+    /// returned.
+    pub fn upper_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, K, V>>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        let guard = &epoch::pin();
+        try_pin_loop(|| self.inner.upper_bound(bound, guard)).map(Entry::new)
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
     pub fn get_or_insert(&self, key: K, value: V) -> Entry<K, V> {
-        Entry::new(self.inner.get_or_insert(key, value))
+        let guard = &epoch::pin();
+        Entry::new(self.inner.get_or_insert(key, value, guard))
     }
 
     /// Returns an iterator over all entries in the map.
     pub fn iter(&self) -> Iter<K, V> {
         Iter {
-            inner: self.inner.iter(),
+            inner: self.inner.ref_iter(),
         }
     }
 
-    // TODO(stjepang): Add `fn range`.
+    /// Returns an iterator over a subset of entries in the skip list.
+    pub fn range<'a, 'k, Min, Max>(
+        &'a self,
+        lower_bound: Bound<&'k Min>,
+        upper_bound: Bound<&'k Max>,
+    ) -> Range<'a, 'k, Min, Max, K, V>
+    where
+        K: Ord + Borrow<Min> + Borrow<Max>,
+        Min: Ord + ?Sized + 'k,
+        Max: Ord + ?Sized + 'k,
+    {
+        Range {
+            inner: self.inner.ref_range(lower_bound, upper_bound),
+        }
+    }
 }
 
 impl<K, V> SkipMap<K, V>
@@ -98,7 +133,8 @@ where
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
     pub fn insert(&self, key: K, value: V) -> Entry<K, V> {
-        Entry::new(self.inner.insert(key, value))
+        let guard = &epoch::pin();
+        Entry::new(self.inner.insert(key, value, guard))
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
@@ -107,22 +143,26 @@ where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        self.inner.remove(key).map(Entry::new)
+        let guard = &epoch::pin();
+        self.inner.remove(key, guard).map(Entry::new)
     }
 
     /// Removes an entry from the front of the map.
     pub fn pop_front(&self) -> Option<Entry<K, V>> {
-        self.inner.pop_front().map(Entry::new)
+        let guard = &epoch::pin();
+        self.inner.pop_front(guard).map(Entry::new)
     }
 
     /// Removes an entry from the back of the map.
     pub fn pop_back(&self) -> Option<Entry<K, V>> {
-        self.inner.pop_back().map(Entry::new)
+        let guard = &epoch::pin();
+        self.inner.pop_back(guard).map(Entry::new)
     }
 
     /// Iterates over the map and removes every entry.
     pub fn clear(&self) {
-        self.inner.clear();
+        let guard = &mut epoch::pin();
+        self.inner.clear(guard);
     }
 }
 
@@ -132,9 +172,17 @@ impl<K, V> Default for SkipMap<K, V> {
     }
 }
 
-impl<K, V> fmt::Debug for SkipMap<K, V> {
+impl<K, V> fmt::Debug for SkipMap<K, V>
+where
+    K: Ord + fmt::Debug,
+    V: fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SkipMap {{ ... }}")
+        let mut m = f.debug_map();
+        for e in self.iter() {
+            m.entry(e.key(), e.value());
+        }
+        m.finish()
     }
 }
 
@@ -179,14 +227,11 @@ where
 
 /// A reference-counted entry in a map.
 pub struct Entry<'a, K: 'a, V: 'a> {
-    inner: base::Entry<'a, K, V>,
+    inner: base::RefEntry<'a, K, V>,
 }
 
-unsafe impl<'a, K: Send + Sync, V: Send + Sync> Send for Entry<'a, K, V> {}
-unsafe impl<'a, K: Send + Sync, V: Send + Sync> Sync for Entry<'a, K, V> {}
-
 impl<'a, K, V> Entry<'a, K, V> {
-    fn new(inner: base::Entry<'a, K, V>) -> Entry<'a, K, V> {
+    fn new(inner: base::RefEntry<'a, K, V>) -> Entry<'a, K, V> {
         Entry { inner }
     }
 
@@ -204,8 +249,6 @@ impl<'a, K, V> Entry<'a, K, V> {
     pub fn is_removed(&self) -> bool {
         self.inner.is_removed()
     }
-
-    // TODO(stjepang): Add `fn try_into_value(self)`.
 }
 
 impl<'a, K, V> Entry<'a, K, V>
@@ -213,23 +256,27 @@ where
     K: Ord,
 {
     /// Moves to the next entry in the map.
-    pub fn next(&mut self) -> bool {
-        self.inner.next()
+    pub fn move_next(&mut self) -> bool {
+        let guard = &epoch::pin();
+        self.inner.move_next(guard)
     }
 
     /// Moves to the previous entry in the map.
-    pub fn prev(&mut self) -> bool {
-        self.inner.prev()
+    pub fn move_prev(&mut self) -> bool {
+        let guard = &epoch::pin();
+        self.inner.move_prev(guard)
     }
 
     /// Returns the next entry in the map.
-    pub fn get_next(&self) -> Option<Entry<'a, K, V>> {
-        self.inner.get_next().map(Entry::new)
+    pub fn next(&self) -> Option<Entry<'a, K, V>> {
+        let guard = &epoch::pin();
+        self.inner.next(guard).map(Entry::new)
     }
 
     /// Returns the previous entry in the map.
-    pub fn get_prev(&self) -> Option<Entry<'a, K, V>> {
-        self.inner.get_prev().map(Entry::new)
+    pub fn prev(&self) -> Option<Entry<'a, K, V>> {
+        let guard = &epoch::pin();
+        self.inner.prev(guard).map(Entry::new)
     }
 }
 
@@ -242,7 +289,8 @@ where
     ///
     /// Returns `true` if this call removed the entry and `false` if it was already removed.
     pub fn remove(&self) -> bool {
-        self.inner.remove()
+        let guard = &epoch::pin();
+        self.inner.remove(guard)
     }
 }
 
@@ -261,8 +309,8 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_tuple("Entry")
-            .field(&self.key())
-            .field(&self.value())
+            .field(self.key())
+            .field(self.value())
             .finish()
     }
 }
@@ -281,9 +329,6 @@ impl<K, V> Iterator for IntoIter<K, V> {
 }
 
 impl<K, V> fmt::Debug for IntoIter<K, V>
-where
-    K: fmt::Debug,
-    V: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "IntoIter {{ ... }}")
@@ -292,7 +337,7 @@ where
 
 /// An iterator over the entries of a `SkipMap`.
 pub struct Iter<'a, K: 'a, V: 'a> {
-    inner: base::Iter<'a, K, V>,
+    inner: base::RefIter<'a, K, V>,
 }
 
 impl<'a, K, V> Iterator for Iter<'a, K, V>
@@ -302,7 +347,8 @@ where
     type Item = Entry<'a, K, V>;
 
     fn next(&mut self) -> Option<Entry<'a, K, V>> {
-        self.inner.next().map(Entry::new)
+        let guard = &epoch::pin();
+        self.inner.next(guard).map(Entry::new)
     }
 }
 
@@ -311,17 +357,62 @@ where
     K: Ord,
 {
     fn next_back(&mut self) -> Option<Entry<'a, K, V>> {
-        self.inner.next_back().map(Entry::new)
+        let guard = &epoch::pin();
+        self.inner.next_back(guard).map(Entry::new)
     }
 }
 
 impl<'a, K, V> fmt::Debug for Iter<'a, K, V>
-where
-    K: fmt::Debug,
-    V: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Iter {{ ... }}")
+    }
+}
+
+/// An iterator over the entries of a `SkipMap`.
+pub struct Range<'a, 'k, Min, Max, K: 'a, V: 'a>
+where
+    K: Ord + Borrow<Min> + Borrow<Max>,
+    Min: Ord + ?Sized + 'k,
+    Max: Ord + ?Sized + 'k,
+{
+    inner: base::RefRange<'a, 'k, Min, Max, K, V>,
+}
+
+impl<'a, 'k, Min, Max, K, V> Iterator for Range<'a, 'k, Min, Max, K, V>
+where
+    K: Ord + Borrow<Min> + Borrow<Max>,
+    Min: Ord + ?Sized + 'k,
+    Max: Ord + ?Sized + 'k,
+{
+    type Item = Entry<'a, K, V>;
+
+    fn next(&mut self) -> Option<Entry<'a, K, V>> {
+        let guard = &epoch::pin();
+        self.inner.next(guard).map(Entry::new)
+    }
+}
+
+impl<'a, 'k, Min, Max, K, V> DoubleEndedIterator for Range<'a, 'k, Min, Max, K, V>
+where
+    K: Ord + Borrow<Min> + Borrow<Max>,
+    Min: Ord + ?Sized + 'k,
+    Max: Ord + ?Sized + 'k,
+{
+    fn next_back(&mut self) -> Option<Entry<'a, K, V>> {
+        let guard = &epoch::pin();
+        self.inner.next_back(guard).map(Entry::new)
+    }
+}
+
+impl<'a, 'k, Min, Max, K, V> fmt::Debug for Range<'a, 'k, Min, Max, K, V>
+where
+    K: Ord + Borrow<Min> + Borrow<Max>,
+    Min: Ord + ?Sized + 'k,
+    Max: Ord + ?Sized + 'k,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Range {{ ... }}")
     }
 }
 
@@ -335,6 +426,253 @@ mod tests {
         m.insert(1, 10);
         m.insert(5, 50);
         m.insert(7, 70);
+    }
+
+    #[test]
+    fn iter() {
+        let s = SkipMap::new();
+        for &x in &[4, 2, 12, 8, 7, 11, 5] {
+            s.insert(x, x * 10);
+        }
+
+        assert_eq!(
+            s.iter().map(|e| *e.key()).collect::<Vec<_>>(),
+            &[2, 4, 5, 7, 8, 11, 12]
+        );
+
+        let mut it = s.iter();
+        s.remove(&2);
+        assert_eq!(*it.next().unwrap().key(), 4);
+        s.remove(&7);
+        assert_eq!(*it.next().unwrap().key(), 5);
+        s.remove(&5);
+        assert_eq!(*it.next().unwrap().key(), 8);
+        s.remove(&12);
+        assert_eq!(*it.next().unwrap().key(), 11);
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn iter_range() {
+        use Bound::*;
+        let s = SkipMap::new();
+        let v = (0..10).map(|x| x * 10).collect::<Vec<_>>();
+        for &x in v.iter() {
+            s.insert(x, x);
+        }
+
+        assert_eq!(
+            s.iter().map(|x| *x.value()).collect::<Vec<_>>(),
+            vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+        );
+        assert_eq!(
+            s.iter().rev().map(|x| *x.value()).collect::<Vec<_>>(),
+            vec![90, 80, 70, 60, 50, 40, 30, 20, 10, 0]
+        );
+        assert_eq!(
+            s.range(Unbounded, Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+        );
+
+        assert_eq!(
+            s.range(Included(&0), Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+        );
+        assert_eq!(
+            s.range(Excluded(&0), Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![10, 20, 30, 40, 50, 60, 70, 80, 90]
+        );
+        assert_eq!(
+            s.range(Included(&25), Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![30, 40, 50, 60, 70, 80, 90]
+        );
+        assert_eq!(
+            s.range(Excluded(&25), Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![30, 40, 50, 60, 70, 80, 90]
+        );
+        assert_eq!(
+            s.range(Included(&70), Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![70, 80, 90]
+        );
+        assert_eq!(
+            s.range(Excluded(&70), Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![80, 90]
+        );
+        assert_eq!(
+            s.range(Included(&100), Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Excluded(&100), Unbounded)
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+
+        assert_eq!(
+            s.range(Unbounded, Included(&90))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+        );
+        assert_eq!(
+            s.range(Unbounded, Excluded(&90))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![0, 10, 20, 30, 40, 50, 60, 70, 80]
+        );
+        assert_eq!(
+            s.range(Unbounded, Included(&25))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![0, 10, 20]
+        );
+        assert_eq!(
+            s.range(Unbounded, Excluded(&25))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![0, 10, 20]
+        );
+        assert_eq!(
+            s.range(Unbounded, Included(&70))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![0, 10, 20, 30, 40, 50, 60, 70]
+        );
+        assert_eq!(
+            s.range(Unbounded, Excluded(&70))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![0, 10, 20, 30, 40, 50, 60]
+        );
+        assert_eq!(
+            s.range(Unbounded, Included(&-1))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Unbounded, Excluded(&-1))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+
+        assert_eq!(
+            s.range(Included(&25), Included(&80))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![30, 40, 50, 60, 70, 80]
+        );
+        assert_eq!(
+            s.range(Included(&25), Excluded(&80))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![30, 40, 50, 60, 70]
+        );
+        assert_eq!(
+            s.range(Excluded(&25), Included(&80))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![30, 40, 50, 60, 70, 80]
+        );
+        assert_eq!(
+            s.range(Excluded(&25), Excluded(&80))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![30, 40, 50, 60, 70]
+        );
+
+        assert_eq!(
+            s.range(Included(&25), Included(&25))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Included(&25), Excluded(&25))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Excluded(&25), Included(&25))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Excluded(&25), Excluded(&25))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+
+        assert_eq!(
+            s.range(Included(&50), Included(&50))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![50]
+        );
+        assert_eq!(
+            s.range(Included(&50), Excluded(&50))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Excluded(&50), Included(&50))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Excluded(&50), Excluded(&50))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+
+        assert_eq!(
+            s.range(Included(&100), Included(&-2))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Included(&100), Excluded(&-2))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Excluded(&100), Included(&-2))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert_eq!(
+            s.range(Excluded(&100), Excluded(&-2))
+                .map(|x| *x.value())
+                .collect::<Vec<_>>(),
+            vec![]
+        );
     }
 
     // TODO(stjepang): Write more tests.
