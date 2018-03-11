@@ -29,7 +29,7 @@ pub trait AtomicConsume {
 macro_rules! impl_consume {
     () => {
         fn load_consume(&self) -> Self::Val {
-            let result = $s.load(Ordering::Relaxed);
+            let result = self.load(Ordering::Relaxed);
             compiler_fence(Ordering::Acquire);
             result
         }
