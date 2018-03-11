@@ -10,7 +10,5 @@ extern crate cfg_if;
 
 pub mod cache_padded;
 #[cfg(feature = "use_std")]
-pub mod atomic_option;
-#[cfg(feature = "use_std")]
 pub mod scoped;
 pub mod consume;
