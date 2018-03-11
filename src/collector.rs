@@ -182,29 +182,22 @@ mod tests {
     fn pin_holds_advance() {
         let collector = Collector::new();
 
-        let threads = (0..NUM_THREADS)
-            .map(|_| {
-                scoped::scope(|scope| {
-                    scope.spawn(|| {
-                        let handle = collector.register();
-                        for _ in 0..500_000 {
-                            let guard = &handle.pin();
+        scoped::scope(|scope| {
+            for _ in 0..NUM_THREADS {
+                scope.spawn(|| {
+                    let handle = collector.register();
+                    for _ in 0..500_000 {
+                        let guard = &handle.pin();
 
-                            let before = collector.global.epoch.load(Ordering::Relaxed);
-                            collector.global.collect(guard);
-                            let after = collector.global.epoch.load(Ordering::Relaxed);
+                        let before = collector.global.epoch.load(Ordering::Relaxed);
+                        collector.global.collect(guard);
+                        let after = collector.global.epoch.load(Ordering::Relaxed);
 
-                            assert!(after.wrapping_sub(before) <= 2);
-                        }
-                    })
-                })
-            })
-            .collect::<Vec<_>>();
-        drop(collector);
-
-        for t in threads {
-            t.join();
-        }
+                        assert!(after.wrapping_sub(before) <= 2);
+                    }
+                });
+            }
+        })
     }
 
     #[test]
@@ -420,26 +413,20 @@ mod tests {
 
         let collector = Collector::new();
 
-        let threads = (0..THREADS)
-            .map(|_| {
-                scoped::scope(|scope| {
-                    scope.spawn(|| {
-                        let handle = collector.register();
-                        for _ in 0..COUNT {
-                            let guard = &handle.pin();
-                            unsafe {
-                                let a = Owned::new(Elem(7i32)).into_shared(guard);
-                                guard.defer(move || a.into_owned());
-                            }
+        scoped::scope(|scope| {
+            for _ in 0..THREADS {
+                scope.spawn(|| {
+                    let handle = collector.register();
+                    for _ in 0..COUNT {
+                        let guard = &handle.pin();
+                        unsafe {
+                            let a = Owned::new(Elem(7i32)).into_shared(guard);
+                            guard.defer(move || a.into_owned());
                         }
-                    })
-                })
-            })
-            .collect::<Vec<_>>();
-
-        for t in threads {
-            t.join();
-        }
+                    }
+                });
+            }
+        });
 
         let handle = collector.register();
         while DROPS.load(Ordering::Relaxed) < COUNT * THREADS {
