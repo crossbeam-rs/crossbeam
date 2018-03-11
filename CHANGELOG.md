@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.2] - 2018-03-12
+### Fixed
+- Mark `load_consume` with `#[inline]`.
+
 ## [0.3.1] - 2018-03-12
 ### Fixed
 - `load_consume` on ARM and AArch64.
