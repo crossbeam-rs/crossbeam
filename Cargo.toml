@@ -15,10 +15,10 @@ categories = ["algorithms", "concurrency", "data-structures"]
 nightly = []
 
 [dependencies]
-crossbeam-epoch = "0.2.0"
-crossbeam-utils = "0.2.0"
+crossbeam-epoch = "0.4.0"
+crossbeam-utils = "0.3.0"
 parking_lot = "0.5"
 
 [dev-dependencies]
 crossbeam = "0.3.0"
-rand = "0.3"
+rand = "0.4"
