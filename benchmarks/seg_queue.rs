@@ -29,7 +29,7 @@ fn spsc() {
         });
         s.spawn(|| {
             for _ in 0..MESSAGES {
-                if q.try_pop().is_none() {
+                while q.try_pop().is_none() {
                     thread::yield_now();
                 }
             }
@@ -50,7 +50,7 @@ fn mpsc() {
         }
         s.spawn(|| {
             for _ in 0..MESSAGES {
-                if q.try_pop().is_none() {
+                while q.try_pop().is_none() {
                     thread::yield_now();
                 }
             }
@@ -72,7 +72,7 @@ fn mpmc() {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
-                    if q.try_pop().is_none() {
+                    while q.try_pop().is_none() {
                         thread::yield_now();
                     }
                 }
