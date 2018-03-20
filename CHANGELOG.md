@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.1] - 2018-03-20
 ### Added
 - Add `Debug` impls for `Collector`, `Handle`, and `Guard`.
 - Add `load_consume` to `Atomic`.
@@ -48,5 +49,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - First version of the new epoch-based GC.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.1.0...v0.2.0
