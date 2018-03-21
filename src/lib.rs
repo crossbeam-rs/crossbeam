@@ -58,6 +58,8 @@
 #![cfg_attr(feature = "nightly", feature(alloc))]
 #![cfg_attr(not(test), no_std)]
 
+#![deny(missing_docs, warnings, missing_debug_implementations)]
+
 #[cfg(test)]
 extern crate core;
 #[cfg(all(not(test), feature = "use_std"))]
@@ -96,7 +98,7 @@ mod guard;
 mod internal;
 mod sync;
 
-pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared};
+pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared, Pointer};
 pub use self::guard::{unprotected, Guard};
 #[cfg(feature = "use_std")]
 pub use self::default::{default_collector, default_handle, is_pinned, pin};
