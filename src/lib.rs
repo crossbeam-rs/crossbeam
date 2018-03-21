@@ -58,7 +58,7 @@
 #![cfg_attr(feature = "nightly", feature(alloc))]
 #![cfg_attr(not(test), no_std)]
 
-#![deny(missing_docs, warnings, missing_debug_implementations)]
+#![warn(missing_docs, missing_debug_implementations)]
 
 #[cfg(test)]
 extern crate core;

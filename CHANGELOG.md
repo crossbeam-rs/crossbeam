@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 ### Added
 - Expose the `Pointer` trait.
-- Disallow warnings, missing docs, missing debug impls.
+- Warn missing docs and missing debug impls.
 
 ## [0.4.1] - 2018-03-20
 ### Added
