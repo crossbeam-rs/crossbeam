@@ -4,7 +4,7 @@ rust:
   - stable
   - beta
   - nightly
-  - 1.12.1
+  - 1.25.0
 
 script:
   - cargo build

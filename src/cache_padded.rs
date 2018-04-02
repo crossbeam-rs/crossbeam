@@ -1,104 +1,5 @@
 use core::fmt;
-use core::mem;
 use core::ops::{Deref, DerefMut};
-use core::ptr;
-
-
-cfg_if! {
-    if #[cfg(feature = "nightly")] {
-        // This trick allows use to support rustc 1.12.1, which does not support the
-        // #[repr(align(n))] syntax. Using the attribute makes the parser fail over.
-        // It is, however, okay to use it within a macro, since it would be parsed
-        // in a later stage, but that never occurs due to the cfg_if.
-        // TODO(Vtec234): remove this crap when we drop support for 1.12.
-        macro_rules! nightly_inner {
-            () => (
-                #[derive(Clone)]
-                #[repr(align(64))]
-                pub(crate) struct Inner<T> {
-                    value: T,
-                }
-            )
-        }
-        nightly_inner!();
-
-        impl<T> Inner<T> {
-            pub(crate) fn new(t: T) -> Inner<T> {
-                Self {
-                    value: t
-                }
-            }
-        }
-
-        impl<T> Deref for Inner<T> {
-            type Target = T;
-
-            fn deref(&self) -> &T {
-                &self.value
-            }
-        }
-
-        impl<T> DerefMut for Inner<T> {
-            fn deref_mut(&mut self) -> &mut T {
-                &mut self.value
-            }
-        }
-    } else {
-        use core::marker::PhantomData;
-
-        struct Inner<T> {
-            bytes: [u8; 64],
-
-            /// `[T; 0]` ensures alignment is at least that of `T`.
-            /// `PhantomData<T>` signals that `CachePadded<T>` contains a `T`.
-            _marker: ([T; 0], PhantomData<T>),
-        }
-
-        impl<T> Inner<T> {
-            fn new(t: T) -> Inner<T> {
-                assert!(mem::size_of::<T>() <= mem::size_of::<Self>());
-                assert!(mem::align_of::<T>() <= mem::align_of::<Self>());
-
-                unsafe {
-                    let mut inner: Self = mem::uninitialized();
-                    let p: *mut T = &mut *inner;
-                    ptr::write(p, t);
-                    inner
-                }
-            }
-        }
-
-        impl<T> Deref for Inner<T> {
-            type Target = T;
-
-            fn deref(&self) -> &T {
-                unsafe { &*(self.bytes.as_ptr() as *const T) }
-            }
-        }
-
-        impl<T> DerefMut for Inner<T> {
-            fn deref_mut(&mut self) -> &mut T {
-                unsafe { &mut *(self.bytes.as_ptr() as *mut T) }
-            }
-        }
-
-        impl<T> Drop for CachePadded<T> {
-            fn drop(&mut self) {
-                let p: *mut T = self.deref_mut();
-                unsafe {
-                    ptr::drop_in_place(p);
-                }
-            }
-        }
-
-        impl<T: Clone> Clone for Inner<T> {
-            fn clone(&self) -> Inner<T> {
-                let val = self.deref().clone();
-                Self::new(val)
-            }
-        }
-    }
-}
 
 /// Pads `T` to the length of a cache line.
 ///
@@ -116,8 +17,10 @@ cfg_if! {
 /// However, if the `nightly` feature is enabled, arbitrarily large types `T` can be stored inside
 /// a `CachePadded<T>`. The size will then be a multiple of 64 at least the size of `T`, and the
 /// alignment will be the maximum of 64 and the alignment of `T`.
+#[derive(Clone, Default)]
+#[repr(align(64))]
 pub struct CachePadded<T> {
-    inner: Inner<T>,
+    inner: T,
 }
 
 unsafe impl<T: Send> Send for CachePadded<T> {}
@@ -130,7 +33,7 @@ impl<T> CachePadded<T> {
     ///
     /// If `nightly` is not enabled and `T` is larger than 64 bytes, this function will panic.
     pub fn new(t: T) -> CachePadded<T> {
-        CachePadded::<T> { inner: Inner::new(t) }
+        CachePadded::<T> { inner: t }
     }
 }
 
@@ -138,25 +41,13 @@ impl<T> Deref for CachePadded<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.inner.deref()
+        &self.inner
     }
 }
 
 impl<T> DerefMut for CachePadded<T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.inner.deref_mut()
-    }
-}
-
-impl<T: Default> Default for CachePadded<T> {
-    fn default() -> Self {
-        Self::new(Default::default())
-    }
-}
-
-impl<T: Clone> Clone for CachePadded<T> {
-    fn clone(&self) -> Self {
-        CachePadded { inner: self.inner.clone() }
+        &mut self.inner
     }
 }
 
@@ -176,7 +67,14 @@ impl<T> From<T> for CachePadded<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::cell::Cell;
+    use core::mem;
+    use core::cell::Cell;
+
+    #[test]
+    fn default() {
+        let x: CachePadded<u64> = Default::default();
+        assert_eq!(*x, 0);
+    }
 
     #[test]
     fn store_u64() {
@@ -215,21 +113,11 @@ mod test {
         CachePadded::new([17u64; 8]);
     }
 
-    cfg_if! {
-        if #[cfg(feature = "nightly")] {
-            #[test]
-            fn large() {
-                let a = [17u64; 9];
-                let b = CachePadded::new(a);
-                assert!(mem::size_of_val(&a) <= mem::size_of_val(&b));
-            }
-        } else {
-            #[test]
-            #[should_panic]
-            fn large() {
-                CachePadded::new([17u64; 9]);
-            }
-        }
+    #[test]
+    fn large() {
+        let a = [17u64; 9];
+        let b = CachePadded::new(a);
+        assert!(mem::size_of_val(&a) <= mem::size_of_val(&b));
     }
 
     #[test]

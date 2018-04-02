@@ -1,6 +1,6 @@
 [package]
 name = "crossbeam-utils"
-version = "0.3.2"
+version = "0.4.0"
 authors = ["The Crossbeam Project Developers"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
@@ -17,4 +17,3 @@ use_std = []
 nightly = []
 
 [dependencies]
-cfg-if = "0.1"

@@ -5,9 +5,6 @@
 #[cfg(feature = "use_std")]
 extern crate core;
 
-#[macro_use]
-extern crate cfg_if;
-
 pub mod cache_padded;
 #[cfg(feature = "use_std")]
 pub mod scoped;

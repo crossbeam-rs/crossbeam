@@ -13,7 +13,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-utils = "0.2"
+crossbeam-utils = "0.4"
 ```
 
 Next, add this to your crate:
@@ -21,6 +21,8 @@ Next, add this to your crate:
 ```rust
 extern crate crossbeam_utils;
 ```
+
+The minimum required Rust version is 1.25.
 
 ## License
 
