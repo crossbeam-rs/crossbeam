@@ -29,9 +29,9 @@ use arrayvec::ArrayVec;
 use deferred::Deferred;
 
 /// Maximum number of objects a bag can contain.
-#[cfg(not(feature = "strict_gc"))]
+#[cfg(not(feature = "sanitize"))]
 const MAX_OBJECTS: usize = 64;
-#[cfg(feature = "strict_gc")]
+#[cfg(feature = "sanitize")]
 const MAX_OBJECTS: usize = 4;
 
 

@@ -13,9 +13,11 @@ categories = ["concurrency", "memory-management"]
 
 [features]
 default = ["use_std"]
-nightly = ["arrayvec/use_union"]
-sanitize = []
 use_std = ["lazy_static", "crossbeam-utils/use_std"]
+nightly = ["arrayvec/use_union"]
+
+# triggering potential data races sooner than later for testing/debugging purposes
+sanitize = []
 
 [dependencies]
 arrayvec = { version = "0.4", default-features = false }
