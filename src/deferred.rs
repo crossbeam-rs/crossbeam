@@ -1,3 +1,5 @@
+use core::fmt;
+use core::marker::PhantomData;
 use core::mem;
 use core::ptr;
 use alloc::boxed::Box;
@@ -17,6 +19,13 @@ type Data = [usize; DATA_WORDS];
 pub struct Deferred {
     call: unsafe fn(*mut u8),
     data: Data,
+    _marker: PhantomData<*mut ()>, // !Send + !Sync
+}
+
+impl fmt::Debug for Deferred {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "Deferred {{ ... }}")
+    }
 }
 
 impl Deferred {
@@ -38,6 +47,7 @@ impl Deferred {
                 Deferred {
                     call: call::<F>,
                     data,
+                    _marker: PhantomData,
                 }
             } else {
                 let b: Box<F> = Box::new(f);
@@ -52,22 +62,17 @@ impl Deferred {
                 Deferred {
                     call: call::<F>,
                     data,
+                    _marker: PhantomData,
                 }
             }
         }
     }
 
-    /// Calls the function or panics if it was already called.
+    /// Calls the function.
     #[inline]
-    pub fn call(&mut self) {
-        unsafe fn fail(_: *mut u8) {
-            panic!("cannot call `FnOnce` more than once");
-        }
-
-        let call = mem::replace(&mut self.call, fail);
-        unsafe {
-            call(&mut self.data as *mut Data as *mut u8);
-        }
+    pub fn call(mut self) {
+        let call = self.call;
+        unsafe { call(&mut self.data as *mut Data as *mut u8) };
     }
 }
 
@@ -81,7 +86,7 @@ mod tests {
         let fired = &Cell::new(false);
         let a = [0usize; 1];
 
-        let mut d = Deferred::new(move || {
+        let d = Deferred::new(move || {
             drop(a);
             fired.set(true);
         });
@@ -96,7 +101,7 @@ mod tests {
         let fired = &Cell::new(false);
         let a = [0usize; 10];
 
-        let mut d = Deferred::new(move || {
+        let d = Deferred::new(move || {
             drop(a);
             fired.set(true);
         });
@@ -107,41 +112,23 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot call `FnOnce` more than once")]
-    fn twice_on_stack() {
-        let a = [0usize; 1];
-        let mut d = Deferred::new(move || drop(a));
-        d.call();
-        d.call();
-    }
-
-    #[test]
-    #[should_panic(expected = "cannot call `FnOnce` more than once")]
-    fn twice_on_heap() {
-        let a = [0usize; 10];
-        let mut d = Deferred::new(move || drop(a));
-        d.call();
-        d.call();
-    }
-
-    #[test]
     fn string() {
         let a = "hello".to_string();
-        let mut d = Deferred::new(move || assert_eq!(a, "hello"));
+        let d = Deferred::new(move || assert_eq!(a, "hello"));
         d.call();
     }
 
     #[test]
     fn boxed_slice_i32() {
         let a: Box<[i32]> = vec![2, 3, 5, 7].into_boxed_slice();
-        let mut d = Deferred::new(move || assert_eq!(*a, [2, 3, 5, 7]));
+        let d = Deferred::new(move || assert_eq!(*a, [2, 3, 5, 7]));
         d.call();
     }
 
     #[test]
     fn long_slice_usize() {
         let a: [usize; 5] = [2, 3, 5, 7, 11];
-        let mut d = Deferred::new(move || assert_eq!(a, [2, 3, 5, 7, 11]));
+        let d = Deferred::new(move || assert_eq!(a, [2, 3, 5, 7, 11]));
         d.call();
     }
 }

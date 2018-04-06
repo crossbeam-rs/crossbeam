@@ -2,7 +2,7 @@ use core::fmt;
 use core::ptr;
 use core::mem;
 
-use garbage::Garbage;
+use deferred::Deferred;
 use internal::Local;
 use collector::Collector;
 
@@ -113,16 +113,29 @@ impl Guard {
     /// }
     /// ```
     ///
-    /// Apart from that, keep in mind that another thread may execute `f`, so anything accessed
-    /// by the closure must be `Send`.
+    /// Apart from that, keep in mind that another thread may execute `f`, so anything accessed by
+    /// the closure must be `Send`.
+    ///
+    /// We intentionally didn't require `F: Send`, because Rust's type systems usually cannot prove
+    /// `F: Send` for typical use cases. For example, consider the following code snippet, which
+    /// exemplifies the typical use case of deferring the deallocation of a shared reference:
+    ///
+    /// ```ignore
+    /// let shared = Owned::new(7i32).into_shared(guard);
+    /// guard.defer(Deferred::new(move || shared.into_owned())); // `Shared` is not `Send`!
+    /// ```
+    ///
+    /// While `Shared` is not `Send`, it's safe for another thread to call the deferred function,
+    /// because it's called only after the grace period and `shared` is no longer shared with other
+    /// threads. But we don't expect type systems to prove this.
     ///
     /// # Examples
     ///
     /// When a heap-allocated object in a data structure becomes unreachable, it has to be
     /// deallocated. However, the current thread and other threads may be still holding references
-    /// on the stack to that same object. Therefore it cannot be deallocated before those
-    /// references get dropped. This method can defer deallocation until all those threads get
-    /// unpinned and consequently drop all their references on the stack.
+    /// on the stack to that same object. Therefore it cannot be deallocated before those references
+    /// get dropped. This method can defer deallocation until all those threads get unpinned and
+    /// consequently drop all their references on the stack.
     ///
     /// ```rust
     /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
@@ -159,10 +172,8 @@ impl Guard {
     where
         F: FnOnce() -> R,
     {
-        let garbage = Garbage::new(|| drop(f()));
-
         if let Some(local) = self.local.as_ref() {
-            local.defer(garbage, self);
+            local.defer(Deferred::new(move || drop(f())), self);
         }
     }
 

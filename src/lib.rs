@@ -36,8 +36,8 @@
 //! # Garbage
 //!
 //! Objects that get removed from concurrent collections must be stashed away until all currently
-//! pinned participants get unpinned. Such objects can be stored into a [`Garbage`], where they are
-//! kept until the right time for their destruction comes.
+//! pinned participants get unpinned. Such objects can be stored into a thread-local or global
+//! storage, where they are kept until the right time for their destruction comes.
 //!
 //! There is a global shared instance of garbage queue. You can [`defer`] the execution of an
 //! arbitrary function until the global epoch is advanced enough. Most notably, concurrent data
@@ -93,7 +93,6 @@ mod collector;
 mod default;
 mod deferred;
 mod epoch;
-mod garbage;
 mod guard;
 mod internal;
 mod sync;

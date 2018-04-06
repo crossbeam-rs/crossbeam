@@ -15,6 +15,25 @@
 //!
 //! When a participant is pinned, a `Guard` is returned as a witness that the participant is pinned.
 //! Guards are necessary for performing atomic operations, and for freeing/dropping locations.
+//!
+//! # Thread-local bag
+//!
+//! Objects that get unlinked from concurrent data structures must be stashed away until the global
+//! epoch sufficiently advances so that they become safe for destruction. Pointers to such objects
+//! are pushed into a thread-local bag, and when it becomes full, the bag is marked with the current
+//! global epoch and pushed into the global queue of bags. We store objects in thread-local storages
+//! for amortizing the synchronization cost of pushing the garbages to a global queue.
+//!
+//! # Global queue
+//!
+//! Whenever a bag is pushed into a queue, the objects in some bags in the queue are collected and
+//! destroyed along the way. This design reduces contention on data structures. The global queue
+//! cannot be explicitly accessed: the only way to interact with it is by calling functions
+//! `defer()` that adds an object tothe thread-local bag, or `collect()` that manually triggers
+//! garbage collection.
+//!
+//! Ideally each instance of concurrent data structure may have its own queue that gets fully
+//! destroyed as soon as the data structure gets dropped.
 
 use core::cell::{Cell, UnsafeCell};
 use core::mem::{self, ManuallyDrop};
@@ -25,14 +44,88 @@ use core::sync::atomic::Ordering;
 use alloc::boxed::Box;
 
 use crossbeam_utils::cache_padded::CachePadded;
+use arrayvec::ArrayVec;
 
 use atomic::Owned;
 use collector::{Handle, Collector};
 use epoch::{AtomicEpoch, Epoch};
 use guard::{unprotected, Guard};
-use garbage::{Bag, Garbage};
+use deferred::Deferred;
 use sync::list::{List, Entry, IterError, IsElement};
 use sync::queue::Queue;
+
+/// Maximum number of objects a bag can contain.
+#[cfg(not(feature = "sanitize"))]
+const MAX_OBJECTS: usize = 64;
+#[cfg(feature = "sanitize")]
+const MAX_OBJECTS: usize = 4;
+
+/// A bag of deferred functions.
+#[derive(Default, Debug)]
+pub struct Bag {
+    /// Stashed objects.
+    deferreds: ArrayVec<[Deferred; MAX_OBJECTS]>,
+}
+
+/// `Bag::try_push()` requires that it is safe for another thread to execute the given functions.
+unsafe impl Send for Bag {}
+
+impl Bag {
+    /// Returns a new, empty bag.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns `true` if the bag is empty.
+    pub fn is_empty(&self) -> bool {
+        self.deferreds.is_empty()
+    }
+
+    /// Attempts to insert a deferred function into the bag.
+    ///
+    /// Returns `Ok(())` if successful, and `Err(deferred)` for the given `deferred` if the bag is
+    /// full.
+    ///
+    /// # Safety
+    ///
+    /// It should be safe for another thread to execute the given function.
+    pub unsafe fn try_push(&mut self, deferred: Deferred) -> Result<(), Deferred> {
+        self.deferreds.try_push(deferred).map_err(|e| e.element())
+    }
+
+    /// Seals the bag with the given epoch.
+    fn seal(self, epoch: Epoch) -> SealedBag {
+        SealedBag { epoch, bag: self }
+    }
+}
+
+impl Drop for Bag {
+    fn drop(&mut self) {
+        // Call all deferred functions.
+        for deferred in self.deferreds.drain(..) {
+            deferred.call();
+        }
+    }
+}
+
+/// A pair of an epoch and a bag.
+#[derive(Default, Debug)]
+struct SealedBag {
+    epoch: Epoch,
+    bag: Bag,
+}
+
+/// It is safe to share `SealedBag` because `is_expired` only inspects the epoch.
+unsafe impl Sync for SealedBag {}
+
+impl SealedBag {
+    /// Checks if it is safe to drop the bag w.r.t. the given global epoch.
+    fn is_expired(&self, global_epoch: Epoch) -> bool {
+        // A pinned participant can witness at most one epoch advancement. Therefore, any bag that
+        // is within one epoch of the current one cannot be destroyed yet.
+        global_epoch.wrapping_sub(self.epoch) >= 2
+    }
+}
 
 /// The global data for a garbage collector.
 pub struct Global {
@@ -40,7 +133,7 @@ pub struct Global {
     locals: List<Local>,
 
     /// The global queue of bags of deferred functions.
-    queue: Queue<(Epoch, Bag)>,
+    queue: Queue<SealedBag>,
 
     /// The global epoch.
     pub(crate) epoch: CachePadded<AtomicEpoch>,
@@ -67,7 +160,7 @@ impl Global {
         atomic::fence(Ordering::SeqCst);
 
         let epoch = self.epoch.load(Ordering::Relaxed);
-        self.queue.push((epoch, bag), guard);
+        self.queue.push(bag.seal(epoch), guard);
     }
 
     /// Collects several bags from the global queue and executes deferred functions in them.
@@ -81,12 +174,6 @@ impl Global {
     pub fn collect(&self, guard: &Guard) {
         let global_epoch = self.try_advance(guard);
 
-        let condition = |item: &(Epoch, Bag)| {
-            // A pinned participant can witness at most one epoch advancement. Therefore, any bag
-            // that is within one epoch of the current one cannot be destroyed yet.
-            global_epoch.wrapping_sub(item.0) >= 2
-        };
-
         let steps = if cfg!(feature = "sanitize") {
             usize::max_value()
         } else {
@@ -94,9 +181,13 @@ impl Global {
         };
 
         for _ in 0..steps {
-            match self.queue.try_pop_if(&condition, guard) {
+            match self.queue.try_pop_if(
+                &|sealed_bag: &SealedBag| sealed_bag.is_expired(global_epoch),
+                guard,
+            )
+            {
                 None => break,
-                Some(bag) => drop(bag),
+                Some(sealed_bag) => drop(sealed_bag),
             }
         }
     }
@@ -221,12 +312,17 @@ impl Local {
         self.guard_count.get() > 0
     }
 
-    pub fn defer(&self, mut garbage: Garbage, guard: &Guard) {
-        let bag = unsafe { &mut *self.bag.get() };
+    /// Adds `deferred` to the thread-local bag.
+    ///
+    /// # Safety
+    ///
+    /// It should be safe for another thread to execute the given function.
+    pub unsafe fn defer(&self, mut deferred: Deferred, guard: &Guard) {
+        let bag = &mut *self.bag.get();
 
-        while let Err(g) = bag.try_push(garbage) {
+        while let Err(d) = bag.try_push(deferred) {
             self.global().push_bag(bag, guard);
-            garbage = g;
+            deferred = d;
         }
     }
 
@@ -319,7 +415,7 @@ impl Local {
                 self.epoch.store(global_epoch, Ordering::Release);
 
                 // However, we don't need a following `SeqCst` fence, because it is safe for memory
-                // accesses from the new epoch to be executed before updating the local epoch.  At
+                // accesses from the new epoch to be executed before updating the local epoch. At
                 // worse, other threads will see the new epoch late and delay GC slightly.
             }
         }
@@ -373,9 +469,9 @@ impl Local {
             // Mark this node in the linked list as deleted.
             self.entry.delete(&unprotected());
 
-            // Finally, drop the reference to the global.  Note that this might be the last
-            // reference to the `Global`. If so, the global data will be destroyed and all deferred
-            // functions in its queue will be executed.
+            // Finally, drop the reference to the global. Note that this might be the last reference
+            // to the `Global`. If so, the global data will be destroyed and all deferred functions
+            // in its queue will be executed.
             drop(collector);
         }
     }
@@ -397,5 +493,51 @@ impl IsElement<Local> for Local {
     unsafe fn finalize(entry: &Entry) {
         let local = Self::element_of(entry);
         drop(Box::from_raw(local as *const Local as *mut Local));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
+    use std::sync::atomic::Ordering;
+
+    use super::*;
+
+    #[test]
+    fn check_defer() {
+        static FLAG: AtomicUsize = ATOMIC_USIZE_INIT;
+        fn set() {
+            FLAG.store(42, Ordering::Relaxed);
+        }
+
+        let d = Deferred::new(set);
+        assert_eq!(FLAG.load(Ordering::Relaxed), 0);
+        d.call();
+        assert_eq!(FLAG.load(Ordering::Relaxed), 42);
+    }
+
+    #[test]
+    fn check_bag() {
+        static FLAG: AtomicUsize = ATOMIC_USIZE_INIT;
+        fn incr() {
+            FLAG.fetch_add(1, Ordering::Relaxed);
+        }
+
+        let mut bag = Bag::new();
+        assert!(bag.is_empty());
+
+        for _ in 0..MAX_OBJECTS {
+            assert!(unsafe { bag.try_push(Deferred::new(incr)).is_ok() });
+            assert!(!bag.is_empty());
+            assert_eq!(FLAG.load(Ordering::Relaxed), 0);
+        }
+
+        let result = unsafe { bag.try_push(Deferred::new(incr)) };
+        assert!(result.is_err());
+        assert!(!bag.is_empty());
+        assert_eq!(FLAG.load(Ordering::Relaxed), 0);
+
+        drop(bag);
+        assert_eq!(FLAG.load(Ordering::Relaxed), MAX_OBJECTS);
     }
 }
