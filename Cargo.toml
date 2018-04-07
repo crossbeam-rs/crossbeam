@@ -16,7 +16,7 @@ travis-ci = { repository = "crossbeam-rs/crossbeam-deque" }
 
 [dependencies]
 crossbeam-epoch = "0.4.0"
-crossbeam-utils = "0.2.1"
+crossbeam-utils = "0.3"
 
 [dev-dependencies]
 rand = "0.4"
