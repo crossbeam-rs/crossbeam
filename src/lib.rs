@@ -409,11 +409,16 @@ impl<T> Deque<T> {
             // Calculate the length of the deque.
             let len = b.wrapping_sub(t);
 
-            // Is the deque full?
             let cap = buffer.deref().cap;
+            // Is the deque full?
             if len >= cap as isize {
                 // Yes. Grow the underlying buffer.
                 self.inner.resize(2 * cap);
+                buffer = self.inner.buffer.load(Relaxed, epoch::unprotected());
+            // Is the new length less than one fourth the capacity?
+            } else if cap > self.inner.min_cap && len + 1 < cap as isize / 4 {
+                // Yes. Shrink the underlying buffer.
+                self.inner.resize(cap / 2);
                 buffer = self.inner.buffer.load(Relaxed, epoch::unprotected());
             }
 
