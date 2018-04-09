@@ -383,6 +383,76 @@ impl<T> Deque<T> {
         b.wrapping_sub(t) as usize
     }
 
+    /// Returns the number of elements the deque can hold without reallocating.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Deque;
+    ///
+    /// let d = Deque::with_min_capacity(50);
+    /// assert_eq!(d.capacity(), 64);
+    ///
+    /// for i in 0..200 {
+    ///     d.push(i);
+    /// }
+    /// assert_eq!(d.capacity(), 256);
+    /// ```
+    pub fn capacity(&self) -> usize {
+        unsafe {
+            let buf = self.inner.buffer.load(Relaxed, epoch::unprotected());
+            buf.deref().cap
+        }
+    }
+
+    /// Shrinks the capacity of the deque as much as possible.
+    ///
+    /// The capacity will drop down as close as possible to the length but there may still be some
+    /// free space left.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Deque;
+    ///
+    /// // Insert a lot of elements. This makes the buffer grow.
+    /// let d = Deque::new();
+    /// for i in 0..200 {
+    ///     d.push(i);
+    /// }
+    ///
+    /// // Remove all elements.
+    /// let s = d.stealer();
+    /// for i in 0..200 {
+    ///     s.steal();
+    /// }
+    ///
+    /// // Stealers cannot shrink the buffer, so the capacity is still very large.
+    /// assert!(d.capacity() >= 200);
+    ///
+    /// // Shrink the buffer. The capacity drops down, but some free space may still be left.
+    /// d.shrink_to_fit();
+    /// assert!(d.capacity() < 50);
+    /// ```
+    pub fn shrink_to_fit(&self) {
+        let b = self.inner.bottom.load(Relaxed);
+        let cap = self.capacity();
+        let t = self.inner.top.load(Relaxed);
+        let len = b.wrapping_sub(t);
+
+        // Shrink the capacity as much as possible without overshooting `min_cap` or `len`.
+        let mut new_cap = cap;
+        while self.inner.min_cap <= new_cap / 2 && len <= new_cap as isize / 2 {
+            new_cap /= 2;
+        }
+
+        if new_cap != cap {
+            unsafe {
+                self.inner.resize(new_cap);
+            }
+        }
+    }
+
     /// Pushes an element into the bottom of the deque.
     ///
     /// If the internal buffer is full, a new one twice the capacity of the current one will be
