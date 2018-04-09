@@ -340,6 +340,8 @@ impl<T> Deque<T> {
     ///
     /// // The minimum capacity will be rounded up to 1024.
     /// let d = Deque::<i32>::with_min_capacity(1000);
+    /// assert_eq!(d.min_capacity(), 1024);
+    /// assert_eq!(d.capacity(), 1024);
     /// ```
     pub fn with_min_capacity(min_cap: usize) -> Deque<T> {
         Deque {
@@ -381,6 +383,26 @@ impl<T> Deque<T> {
         let b = self.inner.bottom.load(Relaxed);
         let t = self.inner.top.load(Relaxed);
         b.wrapping_sub(t) as usize
+    }
+
+    /// Returns the minimum capacity of the deque.
+    ///
+    /// The minimum capacity can be specified in [`Deque::with_min_capacity`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Deque;
+    ///
+    /// // Gets rounded to the next power of two.
+    /// let d = Deque::<i32>::with_min_capacity(50);
+    /// assert_eq!(d.min_capacity(), 64);
+    /// assert_eq!(d.capacity(), 64);
+    /// ```
+    ///
+    /// [`Deque::with_min_capacity`]: struct.Deque.html#method.with_min_capacity
+    pub fn min_capacity(&self) -> usize {
+        self.inner.min_cap
     }
 
     /// Returns the number of elements the deque can hold without reallocating.
