@@ -85,6 +85,7 @@
 extern crate crossbeam_epoch as epoch;
 extern crate crossbeam_utils as utils;
 
+use std::cmp;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
@@ -664,7 +665,7 @@ impl<T> Stealer<T> {
         let t = self.inner.top.load(Relaxed);
         atomic::fence(SeqCst);
         let b = self.inner.bottom.load(Relaxed);
-        b.wrapping_sub(t).max(0) as usize
+        cmp::max(b.wrapping_sub(t), 0) as usize
     }
 
     /// Steals an element from the top of the deque.

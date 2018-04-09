@@ -20,6 +20,8 @@ Next, add this to your crate:
 extern crate crossbeam_deque;
 ```
 
+The minimum required Rust version is 1.20.
+
 ## License
 
 Licensed under the terms of MIT license and the Apache License (Version 2.0).
