@@ -10,6 +10,112 @@ use flavors;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use select::CaseId;
 
+use ::Sel;
+impl<T> Sel for Receiver<T> {
+    fn try(&self) -> Option<usize> {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.sel_try_recv(),
+            Flavor::List(ref chan) => chan.sel_try_recv(),
+            Flavor::Zero(ref chan) => chan.sel_try_recv(),
+        }
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.receivers().register(case_id),
+            Flavor::List(ref chan) => chan.receivers().register(case_id),
+            Flavor::Zero(ref chan) => chan.promise_recv(case_id),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.receivers().unregister(case_id),
+            Flavor::List(ref chan) => chan.receivers().unregister(case_id),
+            Flavor::Zero(ref chan) => chan.revoke_recv(case_id),
+        }
+    }
+
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.is_empty() && !chan.is_closed(),
+            Flavor::List(ref chan) => chan.is_empty() && !chan.is_closed(),
+            Flavor::Zero(ref chan) => !chan.can_recv() && !chan.is_closed(),
+        }
+    }
+
+    fn fulfill(&self) -> Option<usize> {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.sel_try_recv(),
+            Flavor::List(ref chan) => chan.sel_try_recv(),
+            Flavor::Zero(ref chan) => Some(1), // TODO
+        }
+    }
+}
+
+impl<T> Sel for Sender<T> {
+    fn try(&self) -> Option<usize> {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.sel_try_send(),
+            Flavor::List(ref chan) => Some(0),
+            Flavor::Zero(ref chan) => chan.sel_try_send(),
+        }
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.senders().register(case_id),
+            Flavor::List(ref chan) => {},
+            Flavor::Zero(ref chan) => chan.promise_send(case_id),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.senders().unregister(case_id),
+            Flavor::List(ref chan) => {},
+            Flavor::Zero(ref chan) => chan.revoke_send(case_id),
+        }
+    }
+
+    fn is_blocked(&self) -> bool {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.is_full(),
+            Flavor::List(_) => true,
+            Flavor::Zero(ref chan) => !chan.can_send(),
+        }
+    }
+
+    fn fulfill(&self) -> Option<usize> {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.sel_try_send(),
+            Flavor::List(ref chan) => Some(0),
+            Flavor::Zero(ref chan) => Some(1), // TODO
+        }
+    }
+}
+
+#[test]
+fn my() {
+    let (s, r) = bounded::<i32>(0);
+    ::std::thread::spawn(move || {
+        println!("SENDING");
+        s.send(7).unwrap();
+        println!("SENT");
+    });
+
+    let sel: &Sel = &r;
+    r.promise(r.case_id());
+    println!("SLEEPING");
+    ::std::thread::sleep_ms(1000);
+    println!("WOKE UP");
+    let token = sel.try();
+    let v = unsafe { r.finish_recv(1) };
+
+    assert_eq!(v, Some(7));
+}
+
 pub struct Channel<T> {
     senders: AtomicUsize,
     flavor: Flavor<T>,
@@ -153,6 +259,14 @@ unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Sync for Sender<T> {}
 
 impl<T> Sender<T> {
+    pub unsafe fn finish_send(&self, token: usize, msg: T) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.finish_send(token, msg),
+            Flavor::List(ref chan) => chan.try_send(msg).unwrap(),
+            Flavor::Zero(ref chan) => chan.finish_send(token, msg),
+        }
+    }
+
     fn new(chan: Arc<Channel<T>>) -> Self {
         chan.senders.fetch_add(1, SeqCst);
         Sender(chan)
@@ -163,7 +277,8 @@ impl<T> Sender<T> {
         chan as *const Channel<T> as usize
     }
 
-    pub(crate) fn case_id(&self) -> CaseId {
+    #[doc(hidden)]
+    pub fn case_id(&self) -> CaseId {
         CaseId::send(self.channel_address())
     }
 
@@ -500,6 +615,14 @@ unsafe impl<T: Send> Send for Receiver<T> {}
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
 impl<T> Receiver<T> {
+    pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.finish_recv(token),
+            Flavor::List(ref chan) => chan.finish_recv(token),
+            Flavor::Zero(ref chan) => chan.finish_recv(token),
+        }
+    }
+
     fn new(chan: Arc<Channel<T>>) -> Self {
         Receiver(chan)
     }
@@ -509,7 +632,8 @@ impl<T> Receiver<T> {
         chan as *const Channel<T> as usize
     }
 
-    pub(crate) fn case_id(&self) -> CaseId {
+    #[doc(hidden)]
+    pub fn case_id(&self) -> CaseId {
         CaseId::recv(self.channel_address())
     }
 

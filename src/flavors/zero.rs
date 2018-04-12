@@ -15,6 +15,32 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
+    pub fn sel_try_recv(&self) -> Option<usize> {
+        self.exchanger.right().sel_try_exchange()
+    }
+
+    pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
+        if token == 0 {
+            None
+        } else if token == 1 {
+            Some(self.fulfill_recv())
+        } else {
+            Some(self.exchanger.right().finish_exchange(token, None).unwrap())
+        }
+    }
+
+    pub fn sel_try_send(&self) -> Option<usize> {
+        self.exchanger.left().sel_try_exchange()
+    }
+
+    pub unsafe fn finish_send(&self, token: usize, msg: T) {
+        if token == 1 {
+            self.fulfill_send(msg);
+        } else {
+            self.exchanger.right().finish_exchange(token, Some(msg));
+        }
+    }
+
     /// Returns a new zero-capacity channel.
     pub fn new() -> Self {
         Channel {

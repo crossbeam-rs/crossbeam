@@ -5,13 +5,15 @@ use {Receiver, Sender};
 use err::{SelectRecvError, SelectSendError};
 use self::machine::Machine;
 
-pub(crate) use self::case_id::CaseId;
+pub use self::case_id::CaseId;
 
 mod case_id;
 mod machine;
+mod select_macro;
 mod select_loop;
 
-pub(crate) mod handle;
+#[doc(hidden)]
+pub mod handle;
 
 /// The dynamic selection interface.
 ///

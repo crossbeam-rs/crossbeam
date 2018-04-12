@@ -323,13 +323,16 @@
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;
+#[doc(hidden)]
+pub extern crate smallvec;
 
 mod channel;
 mod err;
 mod exchanger;
 mod flavors;
 mod monitor;
-mod select;
+#[doc(hidden)]
+pub mod select;
 mod utils;
 
 pub use channel::{bounded, unbounded};
@@ -339,3 +342,30 @@ pub use err::{RecvError, RecvTimeoutError, TryRecvError};
 pub use err::{SendError, SendTimeoutError, TrySendError};
 pub use err::{SelectRecvError, SelectSendError};
 pub use select::Select;
+
+use select::CaseId;
+#[doc(hidden)]
+pub trait Sel {
+    fn try(&self) -> Option<usize>;
+    fn promise(&self, case_id: CaseId);
+    fn revoke(&self, case_id: CaseId);
+    fn is_blocked(&self) -> bool;
+    fn fulfill(&self) -> Option<usize>;
+}
+impl<'a, T: Sel> Sel for &'a T {
+    fn try(&self) -> Option<usize> {
+        (**self).try()
+    }
+    fn promise(&self, case_id: CaseId) {
+        (**self).promise(case_id);
+    }
+    fn revoke(&self, case_id: CaseId) {
+        (**self).revoke(case_id);
+    }
+    fn is_blocked(&self) -> bool {
+        (**self).is_blocked()
+    }
+    fn fulfill(&self) -> Option<usize> {
+        (**self).fulfill()
+    }
+}

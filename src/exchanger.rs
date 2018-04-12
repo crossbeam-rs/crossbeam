@@ -113,6 +113,29 @@ pub struct Side<'a, T: 'a> {
 }
 
 impl<'a, T> Side<'a, T> {
+    pub fn sel_try_exchange(&self) -> Option<usize> {
+        let mut inner = self.exchanger.inner.lock();
+        if inner.is_closed {
+            return Some(0);
+        }
+
+        // If there's someone on the other side, exchange messages with it.
+        if let Some(case) = inner.wait_queues[self.index ^ 1].pop() {
+            drop(inner);
+
+            let entry: Box<Entry<T>> = Box::new(case); // TODO: optimize
+            let entry = Box::into_raw(entry) as usize;
+            return Some(entry);
+        }
+
+        None
+    }
+
+    pub unsafe fn finish_exchange(&self, token: usize, msg: T) -> T {
+        let entry = *Box::from_raw(token as *mut Entry<T>);
+        entry.exchange(msg)
+    }
+
     /// Promises a message for exchange.
     pub fn promise(&self, case_id: CaseId) {
         self.exchanger.inner.lock().wait_queues[self.index].promise(case_id);

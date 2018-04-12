@@ -91,6 +91,55 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
+    pub fn sel_try_recv(&self) -> Option<usize> {
+        match self.sel_pop() {
+            Ok(x) => Some(x),
+            Err(PopError::Closed) => Some(0),
+            Err(PopError::Empty) => None,
+        }
+    }
+
+    pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
+        if token == 0 {
+            None
+        } else {
+            let one_lap = self.mark_bit << 1;
+
+            unsafe {
+                let entry: &Entry<T> = &*(token as *const Entry<T>);
+
+                // Read the message from the entry and increment the lap.
+                let msg = ptr::read(entry.msg.get());
+                entry.lap.fetch_add(one_lap, Release);
+
+                self.senders.notify_one();
+                Some(msg)
+            }
+        }
+    }
+
+    pub fn sel_try_send(&self) -> Option<usize> {
+        match self.sel_push() {
+            Ok(x) => Some(x),
+            Err(PushError::Closed(())) => unreachable!(), // TODO: delete this case
+            Err(PushError::Full(())) => None,
+        }
+    }
+
+    pub unsafe fn finish_send(&self, token: usize, msg: T) {
+        let one_lap = self.mark_bit << 1;
+
+        unsafe {
+            let entry: &Entry<T> = &*(token as *const Entry<T>);
+
+            // Write the message into the entry and increment the lap.
+            ptr::write(entry.msg.get(), msg);
+            entry.lap.fetch_add(one_lap, Release);
+
+            self.receivers.notify_one();
+        }
+    }
+
     /// Returns a new channel with capacity `cap`.
     ///
     /// # Panics
@@ -156,6 +205,58 @@ impl<T> Channel<T> {
         &*self.buffer.offset(index as isize)
     }
 
+    fn sel_push(&self) -> Result<usize, PushError<()>> {
+        let one_lap = self.mark_bit << 1;
+        let index_bits = self.mark_bit - 1;
+        let lap_bits = !(one_lap - 1);
+
+        loop {
+            // Load the tail.
+            let tail = self.tail.load(SeqCst);
+
+            // If the tail is marked, the channel is closed.
+            if tail & self.mark_bit != 0 {
+                return Err(PushError::Closed(()));
+            }
+
+            let index = tail & index_bits;
+            let lap = tail & lap_bits;
+
+            // Inspect the corresponding entry.
+            let entry = unsafe { self.entry_at(index) };
+            let elap = entry.lap.load(SeqCst);
+            let next_elap = elap.wrapping_add(one_lap);
+
+            // If the laps of the tail and the entry match, we may attempt to push.
+            if lap == elap {
+                let new_tail = if index + 1 < self.cap {
+                    // Same lap; incremented index.
+                    tail + 1
+                } else {
+                    // Two laps forward; index wraps around to zero.
+                    lap.wrapping_add(one_lap.wrapping_mul(2))
+                };
+
+                // Try moving the tail one entry forward.
+                if self.tail
+                    .compare_exchange_weak(tail, new_tail, SeqCst, Relaxed)
+                    .is_ok()
+                {
+                    return Ok(entry as *const Entry<T> as usize);
+                }
+            // But if the entry lags one lap behind the tail...
+            } else if next_elap == lap {
+                let head = self.head.load(SeqCst);
+
+                // ...and if head lags one lap behind tail as well...
+                if head.wrapping_add(one_lap) == tail {
+                    // ...then the channel is full.
+                    return Err(PushError::Full(()));
+                }
+            }
+        }
+    }
+
     /// Attempts to push `msg` into the channel.
     ///
     /// Returns `None` on success, and `Some(msg)` if the channel is full.
@@ -213,6 +314,58 @@ impl<T> Channel<T> {
             }
 
             backoff.step();
+        }
+    }
+
+    fn sel_pop(&self) -> Result<usize, PopError> {
+        let one_lap = self.mark_bit << 1;
+        let index_bits = self.mark_bit - 1;
+        let lap_bits = !(one_lap - 1);
+
+        loop {
+            // Load the head.
+            let head = self.head.load(SeqCst);
+            let index = head & index_bits;
+            let lap = head & lap_bits;
+
+            // Inspect the corresponding entry.
+            let entry = unsafe { self.entry_at(index) };
+            let elap = entry.lap.load(SeqCst);
+            let next_elap = elap.wrapping_add(one_lap);
+
+            // If the laps of the head and the entry match, we may attempt to pop.
+            if lap == elap {
+                let new = if index + 1 < self.cap {
+                    // Same lap; incremented index.
+                    head + 1
+                } else {
+                    // Two laps forward; index wraps around to zero.
+                    lap.wrapping_add(one_lap.wrapping_mul(2))
+                };
+
+                // Try moving the head one entry forward.
+                if self.head
+                    .compare_exchange_weak(head, new, SeqCst, Relaxed)
+                    .is_ok()
+                {
+                    return Ok(entry as *const Entry<T> as usize);
+                }
+            // But if the entry lags one lap behind the head...
+            } else if next_elap == lap {
+                let tail = self.tail.load(SeqCst);
+
+                // ...and if the tail lags one lap behind the head as well, that means the channel
+                // is empty.
+                if (tail & !self.mark_bit).wrapping_add(one_lap) == head {
+                    // Check whether the channel is closed and return the appropriate error
+                    // variant.
+                    if tail & self.mark_bit != 0 {
+                        return Err(PopError::Closed);
+                    } else {
+                        return Err(PopError::Empty);
+                    }
+                }
+            }
         }
     }
 
