@@ -4,13 +4,6 @@ extern crate crossbeam_channel;
 use crossbeam_channel::{bounded, unbounded};
 
 #[test]
-fn smoke() {
-    unbounded::<i32>();
-    bounded::<i32>(7);
-    bounded::<i32>(0);
-}
-
-#[test]
 fn nested_recv_iter() {
     let (tx, rx) = unbounded::<i32>();
     let (total_tx, total_rx) = unbounded::<i32>();

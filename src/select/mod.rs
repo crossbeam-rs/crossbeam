@@ -2,504 +2,781 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 use {Receiver, Sender};
-// use err::{SelectRecvError, SelectSendError};
-// use self::machine::Machine;
 
 pub use self::case_id::CaseId;
 
 mod case_id;
-// mod machine;
-mod select_macro;
-// mod select_loop;
 
 #[doc(hidden)]
 pub mod handle;
 
-/*
-/// The dynamic selection interface.
-///
-/// It allows declaring an arbitrary (possibly dynamic) list of operations on channels, and waiting
-/// until exactly one of them fires. The interface is somewhat tricky to use and care must be taken
-/// in order to use it correctly.
-///
-/// If possible, it is highly recommended to use the [`select_loop!`] macro instead, which is much
-/// easier to use. The downside of the macro is that it only allows selecting over a statically
-/// defined set of operations.
-///
-/// # What is selection?
-///
-/// It is possible to declare a set of possible send and/or receive operations on channels, and
-/// then wait until exactly one of them fires (in other words, one of them is *selected*).
-///
-/// For example, we might want to receive a message from a set of two channels and block until a
-/// message is received from any of them. To do that, we would write:
-///
-/// ```
-/// use std::thread;
-/// use crossbeam_channel::{unbounded, Select};
-///
-/// let (tx1, rx1) = unbounded();
-/// let (tx2, rx2) = unbounded();
-///
-/// thread::spawn(move || tx1.send("foo").unwrap());
-/// thread::spawn(move || tx2.send("bar").unwrap());
-///
-/// let mut sel = Select::new();
-/// loop {
-///     if let Ok(msg) = sel.recv(&rx1) {
-///         println!("A message was received from rx1: {:?}", msg);
-///         break;
-///     }
-///     if let Ok(msg) = sel.recv(&rx2) {
-///         println!("A message was received from rx2: {:?}", msg);
-///         break;
-///     }
-/// }
-/// ```
-///
-/// There are two selection *cases*: a receive on `rx1` and a receive on `rx2`. The loop is
-/// continuously probing both channels until one of the cases successfully receives a message. Then
-/// we print the message and the loop is broken.
-///
-/// Note that `sel` holds an internal state machine that keeps track of how many cases there are,
-/// which channels are closed, etc. It is smart enough to automatically register each case into an
-/// internal conditional variable of sorts, block on it, and wake up when any of the cases become
-/// ready.
-///
-/// You don't need to wory about blocking or about the loop burning CPU time - the selection
-/// mechanism will automatically block and wake up the current thread as is necessary. However,
-/// there are a few rules that must be followed when probing cases in a loop.
-///
-/// # Selection cases
-///
-/// There are five kinds of selection cases:
-///
-/// 1. A *receive* case, which fires when a message can be received from the channel.
-/// 2. A *send* case, which fires when the message can be sent into the channel.
-/// 3. A *would block* case, which fires when all receive and send operations in the loop would
-///    block.
-/// 4. A *closed* case, which fires when all operations in the loop are working with closed
-///    channels.
-/// 5. A *timed out* case, which fires when selection is blocked for longer than the specified
-///    timeout.
-///
-/// # Selection rules
-///
-/// Rules which must be respected in order for selection to work properly:
-///
-/// 1. Before each selection, a fresh [`Select`] must be created.
-/// 2. Selection cases must be repeatedly probed in a loop.
-/// 3. If a selection case fires, the loop must be broken without probing cases any further.
-/// 4. In each iteration of the loop, the same set of cases must be probed in the same order.
-/// 5. No selection case may be repeated.
-/// 6. No two cases may operate on the same end (receiving or sending) of the same channel.
-/// 7. There must be at least one *send*, or at least one *recv* case.
-///
-/// Violating any of these rules will either result in a panic, deadlock, or livelock, possibly
-/// even in a seemingly unrelated send or receive operations outside this particular selection
-/// loop.
-///
-/// # Guarantees
-///
-/// 1. Exactly one case fires.
-/// 2. If none of the cases can fire at the time, one of the calls in the loop will block the
-///    current thread.
-/// 3. If blocked, the current thread will be woken up as soon a message is pushed/popped into/from
-///    any channel waited on by a receive/send case, or if all channels get closed.
-///
-/// Finally, if more than one send or receive case can fire at the same time, a pseudorandom case
-/// will be selected, but on a best-effort basis only. The mechanism isn't promising any strict
-/// guarantees on fairness.
-///
-/// # Examples
-///
-/// ## Receive a message of the same type from two channels
-///
-/// ```
-/// use std::thread;
-/// use crossbeam_channel::{unbounded, Select};
-///
-/// let (tx1, rx1) = unbounded();
-/// let (tx2, rx2) = unbounded();
-///
-/// thread::spawn(move || tx1.send("foo").unwrap());
-/// thread::spawn(move || tx2.send("bar").unwrap());
-///
-/// let mut sel = Select::new();
-/// let msg = loop {
-///     if let Ok(msg) = sel.recv(&rx1) {
-///         println!("Received from rx1.");
-///         break msg;
-///     }
-///     if let Ok(msg) = sel.recv(&rx2) {
-///         println!("Received from rx2.");
-///         break msg;
-///     }
-/// };
-///
-/// println!("Message: {:?}", msg);
-/// ```
-///
-/// ## Send a non-`Copy` message, regaining ownership on each failure
-///
-/// ```
-/// use crossbeam_channel::{unbounded, Select};
-///
-/// let (tx, rx) = unbounded();
-///
-/// // The message we're going to send.
-/// let mut msg = "Hello!".to_string();
-///
-/// let mut sel = Select::new();
-/// loop {
-///     if let Err(err) = sel.send(&tx, msg) {
-///         // This selection case didn't fire yet.
-///         // Regain ownership of the message, which is contained in `err`.
-///         msg = err.0;
-///     } else {
-///         // The message was successfully sent.
-///         break;
-///     }
-/// }
-/// ```
-///
-/// ## Stop if all channels are closed
-///
-/// ```
-/// /*
-/// use crossbeam_channel::{unbounded, Select};
-///
-/// let (tx, rx) = unbounded();
-///
-/// // Close the channel.
-/// drop(rx);
-///
-/// let mut sel = Select::new();
-/// loop {
-///     if let Ok(_) = sel.send(&tx, "message") {
-///         // Won't happen. The channel is closed.
-///         println!("Sent the message.");
-///         panic!();
-///         break;
-///     }
-///     if sel.closed() {
-///         println!("All channels are closed! Stopping selection.");
-///         break;
-///     }
-/// }
-/// */
-/// ```
-///
-/// ## Stop if all operations would block
-///
-/// ```
-/// use crossbeam_channel::{unbounded, Select};
-///
-/// let (tx, rx) = unbounded::<i32>();
-///
-/// let mut sel = Select::new();
-/// loop {
-///     if let Ok(msg) = sel.recv(&rx) {
-///         // Won't happen. The channel is empty.
-///         println!("Received message: {:?}", msg);
-///         panic!();
-///         break;
-///     }
-///     if sel.would_block() {
-///         println!("All operations would block. Stopping selection.");
-///         break;
-///     }
-/// }
-/// ```
-///
-/// ## Selection with a timeout
-///
-/// ```
-/// use std::time::Duration;
-/// use crossbeam_channel::{unbounded, Select};
-///
-/// let (tx, rx) = unbounded::<i32>();
-///
-/// let mut sel = Select::with_timeout(Duration::from_secs(1));
-/// loop {
-///     if let Ok(msg) = sel.recv(&rx) {
-///         // Won't happen. The channel is empty.
-///         println!("Received message: {:?}", msg);
-///         panic!();
-///         break;
-///     }
-///     if sel.timed_out() {
-///         println!("Timed out after 1 second.");
-///         break;
-///     }
-/// }
-/// ```
-///
-/// ## One send and one receive operation on the same channel
-///
-/// ```
-/// use crossbeam_channel::{bounded, Sender, Receiver, Select};
-/// use std::thread;
-///
-/// // Either send my name into the channel or receive someone else's, whatever happens first.
-/// fn seek<'a>(name: &'a str, tx: Sender<&'a str>, rx: Receiver<&'a str>) {
-///     let mut sel = Select::new();
-///     loop {
-///         if let Ok(peer) = sel.recv(&rx) {
-///             println!("{} received a message from {}.", name, peer);
-///             break;
-///         }
-///         if let Ok(()) = sel.send(&tx, name) {
-///             // Wait for someone to receive my message.
-///             break;
-///         }
-///     }
-/// }
-///
-/// let (tx, rx) = bounded(1); // Make room for one unmatched send.
-///
-/// // Pair up five people by exchanging messages over the channel.
-/// // Since there is an odd number of them, one person won't have its match.
-/// ["Anna", "Bob", "Cody", "Dave", "Eva"].iter()
-///     .map(|name| {
-///         let tx = tx.clone();
-///         let rx = rx.clone();
-///         thread::spawn(move || seek(name, tx, rx))
-///     })
-///     .collect::<Vec<_>>()
-///     .into_iter()
-///     .for_each(|t| t.join().unwrap());
-///
-/// // Let's send a message to the remaining person who doesn't have a match.
-/// if let Ok(name) = rx.try_recv() {
-///     println!("No one received {}’s message.", name);
-/// }
-/// ```
-///
-/// ## Receive a message from a dynamic list of receivers
-///
-/// ```
-/// use std::thread;
-/// use crossbeam_channel::{unbounded, Select};
-///
-/// let mut chans = vec![];
-/// for _ in 0..10 {
-///     chans.push(unbounded());
-/// }
-///
-/// let tx = chans[7].0.clone();
-///
-/// thread::spawn(move || {
-///     let mut sel = Select::new();
-///
-///     let msg = 'select: loop {
-///         // In each iteration of the selection loop we probe cases in the same order.
-///         for &(_, ref rx) in &chans {
-///             if let Ok(msg) = sel.recv(rx) {
-///                 // Finally, this case fired.
-///                 // Break the outer loop with the received message as the result.
-///                 break 'select msg;
-///             }
-///         }
-///     };
-///
-///     println!("Received message: {:?}", msg);
-/// });
-///
-/// tx.send("Hello!").unwrap();
-/// ```
-///
-/// [`Select`]: struct.Select.html
-/// [`select_loop!`]: macro.select_loop.html
-pub struct Select {
-    machine: Machine,
-}
+#[macro_export]
+macro_rules! select {
+    // Success! The list is empty.
+    (@parse_list ($($head:tt)*) ()) => {
+        select!(@parse_case () () () ($($head)*) (0usize))
+    };
+    // If necessary, insert an empty argument list after `default`.
+    (@parse_list
+        ($($head:tt)*)
+        (default => $($tail:tt)*)
+    ) => {
+        select!(@parse_list ($($head)*) (default() => $($tail)*))
+    };
+    // The first case is separated by a comma.
+    (@parse_list
+        ($($head:tt)*)
+        ($case:ident $args:tt => $body:expr, $($tail:tt)*)
+    ) => {
+        select!(
+            @parse_list
+            ($($head)* $case $args => { $body },)
+            ($($tail)*)
+        )
+    };
+    // Print an error if there is a semicolon after the block.
+    (@parse_list
+        ($($head:tt)*)
+        ($case:ident $args:tt => { $($body:tt)* }; $($tail:tt)*)
+    ) => {
+        compile_error!("did you mean to put a comma instead of the semicolon after `}`?")
+    };
+    // Don't require a comma after the case if it has a proper block.
+    (@parse_list
+        ($($head:tt)*)
+        ($case:ident $args:tt => { $($body:tt)* } $($tail:tt)*)
+    ) => {
+        select!(
+            @parse_list
+            ($($head)* $case $args => { $($body)* },)
+            ($($tail)*)
+        )
+    };
+    // Only one case remains.
+    (@parse_list
+        ($($head:tt)*)
+        ($case:ident $args:tt => $body:expr)
+    ) => {
+        select!(
+            @parse_list
+            ($($head)* $case $args => { $body },)
+            ()
+        )
+    };
+    // Accept a trailing comma at the end of the list.
+    (@parse_list
+        ($($head:tt)*)
+        ($case:ident $args:tt => $body:expr,)
+    ) => {
+        select!(
+            @parse_list
+            ($($head)* $case $args => { $body },)
+            ()
+        )
+    };
+    // Diagnose and print an error.
+    (@parse_list ($($head:tt)*) ($($tail:tt)*)) => {
+        select!(@parse_list_error1 $($tail)*)
+    };
+    // Stage 1: check the case type.
+    (@parse_list_error1 recv $($tail:tt)*) => {
+        select!(@parse_list_error2 recv $($tail)*)
+    };
+    (@parse_list_error1 send $($tail:tt)*) => {
+        select!(@parse_list_error2 send $($tail)*)
+    };
+    (@parse_list_error1 default $($tail:tt)*) => {
+        select!(@parse_list_error2 default $($tail)*)
+    };
+    (@parse_list_error1 $t:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected one of `recv`, `send`, or `default`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+    (@parse_list_error1 $($tail:tt)*) => {
+        select!(@parse_list_error2 $($tail)*);
+    };
+    // Stage 2: check the argument list.
+    (@parse_list_error2 $case:ident) => {
+        compile_error!(concat!(
+            "missing argument list after `",
+            stringify!($case),
+            "`",
+        ))
+    };
+    (@parse_list_error2 $case:ident => $($tail:tt)*) => {
+        compile_error!(concat!(
+            "missing argument list after `",
+            stringify!($case),
+            "`",
+        ))
+    };
+    (@parse_list_error2 $($tail:tt)*) => {
+        select!(@parse_list_error3 $($tail)*)
+    };
+    // Stage 3: check the `=>` and what comes after it.
+    (@parse_list_error3 $case:ident($($args:tt)*)) => {
+        compile_error!(concat!(
+            "missing `=>` after the argument list of `",
+            stringify!($case),
+            "`",
+        ))
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) =>) => {
+        compile_error!("expected expression after `=>`")
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => $body:expr; $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma instead of the semicolon after `",
+            stringify!($body),
+            "`?",
+        ))
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => recv($($a:tt)*) $($tail:tt)*) => {
+        compile_error!("expected an expression after `=>`")
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => send($($a:tt)*) $($tail:tt)*) => {
+        compile_error!("expected an expression after `=>`")
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => default($($a:tt)*) $($tail:tt)*) => {
+        compile_error!("expected an expression after `=>`")
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => $f:ident($($a:tt)*) $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($f),
+            "(",
+            stringify!($($a)*),
+            ")`?",
+        ))
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => $f:ident!($($a:tt)*) $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($f),
+            "!(",
+            stringify!($($a)*),
+            ")`?",
+        ))
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => $f:ident![$($a:tt)*] $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($f),
+            "![",
+            stringify!($($a)*),
+            "]`?",
+        ))
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => $f:ident!{$($a:tt)*} $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($f),
+            "!{",
+            stringify!($($a)*),
+            "}`?",
+        ))
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) => $body:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($body),
+            "`?",
+        ))
+    };
+    (@parse_list_error3 $case:ident($($args:tt)*) $t:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected `=>`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+    (@parse_list_error3 $case:ident $args:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected an argument list, found `",
+            stringify!($args),
+            "`",
+        ))
+    };
+    (@parse_list_error3 $($tail:tt)*) => {
+        select!(@parse_list_error4 $($tail)*)
+    };
+    // Stage 4: fail with a generic error message.
+    (@parse_list_error4 $($tail:tt)*) => {
+        compile_error!("invalid syntax")
+    };
 
-impl Select {
-    /// Constructs a new state machine for selection.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let mut sel = Select::new();
-    /// ```
-    #[inline]
-    pub fn new() -> Select {
-        Select {
-            machine: Machine::new(),
+    // Check the format of a `recv` case...
+    (@parse_case
+        ($($recv:tt)*)
+        $send:tt
+        $default:tt
+        (recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            ($($recv)* [$index] recv($r, $m) => $body,)
+            $send
+            $default
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    (@parse_case
+        ($($recv:tt)*)
+        $send:tt
+        $default:tt
+        (recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            ($($recv)* [$index] recv($rs, $m, $r) => $body,)
+            $send
+            $default
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    // Allow trailing comma...
+    (@parse_case
+        ($($recv:tt)*)
+        $send:tt
+        $default:tt
+        (recv($r:expr, $m:pat,) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            ($($recv)* [$index] recv($r, $m) => $body,)
+            $send
+            $default
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    (@parse_case
+        ($($recv:tt)*)
+        $send:tt
+        $default:tt
+        (recv($rs:expr, $m:pat, $r:pat,) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            ($($recv)* [$index] recv($rs, $m, $r) => $body,)
+            $send
+            $default
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    // Error cases...
+    (@parse_case
+        ($($recv:tt)*)
+        $send:tt
+        $default:tt
+        (recv($($args:tt)*) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!(concat!(
+            "invalid arguments in `recv(",
+            stringify!($($args)*),
+            ")`",
+        ))
+    };
+    (@parse_case
+        ($($recv:tt)*)
+        $send:tt
+        $default:tt
+        (recv $t:tt => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!(concat!(
+            "expected an argument list after `recv`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+
+    // Check the format of a `send` case...
+    (@parse_case
+        $recv:tt
+        ($($send:tt)*)
+        $default:tt
+        (send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            $recv
+            ($($send)* [$index] send($s, $m) => $body,)
+            $default
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    (@parse_case
+        $recv:tt
+        ($($send:tt)*)
+        $default:tt
+        (send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            $recv
+            ($($send)* [$index] send($ss, $m, $s) => $body,)
+            $default
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    // Allow trailing comma...
+    (@parse_case
+        $recv:tt
+        ($($send:tt)*)
+        $default:tt
+        (send($s:expr, $m:expr,) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            $recv
+            ($($send)* [$index] send($s, $m) => $body,)
+            $default
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    (@parse_case
+        $recv:tt
+        ($($send:tt)*)
+        $default:tt
+        (send($ss:expr, $m:expr, $s:pat,) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            $recv
+            ($($send)* [$index] send($ss, $m, $s) => $body,)
+            $default
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    // Error cases...
+    (@parse_case
+        $recv:tt
+        ($($send:tt)*)
+        $default:tt
+        (send($($args:tt)*) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!(concat!(
+            "invalid arguments in `send(",
+            stringify!($($args)*),
+            ")`",
+        ))
+    };
+    (@parse_case
+        $recv:tt
+        ($($send:tt)*)
+        $default:tt
+        (send $t:tt => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!(concat!(
+            "expected an argument list after `send`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+
+    // Check the format of a `default` case.
+    (@parse_case
+        $recv:tt
+        $send:tt
+        ()
+        (default() => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            $recv
+            $send
+            ([$index] default() => $body,)
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    (@parse_case
+        $recv:tt
+        $send:tt
+        ()
+        (default($t:expr) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            $recv
+            $send
+            ([$index] default($t) => $body,)
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    // Allow trailing comma...
+    (@parse_case
+        $recv:tt
+        $send:tt
+        ()
+        (default($t:expr,) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        select!(
+            @parse_case
+            $recv
+            $send
+            ([$index] default($t) => $body,)
+            ($($tail)*)
+            ($index + 1)
+        )
+    };
+    // Valid, but duplicate cases...
+    (@parse_case
+        $recv:tt
+        $send:tt
+        ($($default:tt)+)
+        (default() => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!("there can be only one `default` case in a `select!` block")
+    };
+    (@parse_case
+        $recv:tt
+        $send:tt
+        ($($default:tt)+)
+        (default($t:expr) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!("there can be only one `default` case in a `select!` block")
+    };
+    (@parse_case
+        $recv:tt
+        $send:tt
+        ($($default:tt)+)
+        (default($t:expr,) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!("there can be only one `default` case in a `select!` block")
+    };
+    // Other error cases...
+    (@parse_case
+        $recv:tt
+        $send:tt
+        $default:tt
+        (default($($args:tt)*) => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!(concat!(
+            "invalid arguments in `default(",
+            stringify!($($args)*),
+            ")`",
+        ))
+    };
+    (@parse_case
+        $recv:tt
+        $send:tt
+        $default:tt
+        (default $t:tt => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!(concat!(
+            "expected an argument list after `default`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+
+    // The case was not consumed, therefore it must be invalid.
+    (@parse_case
+        $recv:tt
+        $send:tt
+        $default:tt
+        ($case:ident $args:tt => $body:tt, $($tail:tt)*)
+        ($index:expr)
+    ) => {
+        compile_error!(concat!(
+            "expected one of `recv`, `send`, or `default`, found `",
+            stringify!($case),
+            "`",
+        ))
+    };
+    // Success! All cases were consumed.
+    (@parse_case
+        $recv:tt
+        $send:tt
+        $default:tt
+        ()
+        ($index:expr)
+    ) => {
+        select!(@generate $recv $send $default)
+    };
+
+    (@generate $recv:tt $send:tt $default:tt) => {{
+        use $crate::select::CaseId;
+        use $crate::Sel;
+        use $crate::smallvec::SmallVec;
+        use $crate::select::handle;
+        use std::time::Instant;
+
+        let mut cases = SmallVec::<[(CaseId, &Sel, usize); 4]>::new();
+        select!(@push cases $recv $send);
+
+        let deadline: Option<Instant>;
+        let default_index: usize;
+        select!(@default deadline default_index $default);
+
+        // TODO: shuffle
+
+        let mut selected = CaseId::none();
+        let mut token: usize = 0;
+        let mut index: usize = default_index;
+
+        loop {
+            for &(case_id, sel, i) in &cases {
+                if let Some(t) = sel.try() {
+                    selected = case_id;
+                    token = t;
+                    index = i;
+                    break;
+                }
+            }
+
+            if default_index != !0 {
+                if let Some(deadline) = deadline {
+                    if Instant::now() >= deadline {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if selected != CaseId::none() {
+                break;
+            }
+
+            handle::current_reset();
+
+            for &(case_id, sel, _) in &cases {
+                sel.promise(case_id);
+            }
+
+            for &(case_id, sel, _) in &cases {
+                if !sel.is_blocked() {
+                    handle::current_try_select(CaseId::abort());
+                }
+            }
+
+            let timed_out = !handle::current_wait_until(deadline);
+            let s = handle::current_selected();
+
+            for &(case_id, sel, _) in &cases {
+                sel.revoke(case_id);
+            }
+
+            // println!("HERE");
+            if s != CaseId::abort() {
+                // println!("ABORT");
+                for &(case_id, sel, i) in &cases {
+                    if case_id == s {
+                        if let Some(t) = sel.fulfill() {
+                            selected = case_id;
+                            token = t;
+                            index = i;
+                            break;
+                        }
+                    }
+                }
+
+                if selected != CaseId::none() {
+                    break;
+                }
+            }
+
+            if timed_out {
+                selected = CaseId::abort();
+                token = !0;
+                index = default_index;
+                break;
+            }
         }
-    }
 
-    /// Constructs a new state machine for selection with a specific `timeout`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let mut sel = Select::with_timeout(Duration::from_secs(5));
-    /// ```
-    #[inline]
-    pub fn with_timeout(timeout: Duration) -> Select {
-        Select {
-            machine: Machine::with_deadline(Some(Instant::now() + timeout)),
+        select!(@finish index token $recv $send $default)
+
+        // TODO: Run `cargo clippy` and make sure there are no warnings in here.
+        // TODO: optimize try_send and try_recv cases?
+
+        // TODO: disable warnings in the main loop
+        // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
+
+        // TODO: Use $b:block
+
+        // TODO: count number of steps in the loop by prepending @debug to the macro or smth
+
+        // TODO: bad error: did you mean to put a comma after `match`?
+        // fix this for `match`, `while`, `if`, etc.
+        // select! {
+        //     recv(r, msg) => match msg {
+        //         None => (),
+        //         Some(_) => (),
+        //     }
+        //     default => ()
+        // }
+        // TODO: error message tests
+
+        // TODO: accept both Instant and Duration the in default case
+
+        // TODO: move exchanger.rs into zero.rs
+
+        // TODO: importing:
+        // use crossbeam::channel::async as chan;
+        // use crossbeam::channel::sync as chan;
+    }};
+
+    (@push
+        $cases:ident
+        ([$i:expr] recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
+        $send:tt
+    ) => {
+        let r = &($r);
+        $cases.push((r.case_id(), r, $i));
+        select!(@push $cases ($($tail)*) $send);
+    };
+    (@push
+        $cases:ident
+        ()
+        ([$i:expr] send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
+    ) => {
+        let s = &($s);
+        $cases.push((s.case_id(), s, $i));
+        select!(@push $cases () ($($tail)*));
+    };
+    (@push
+        $cases:ident
+        ()
+        ()
+    ) => {
+    };
+
+    (@default
+        $deadline:ident
+        $default_index:ident
+        ()
+    ) => {
+        $deadline = None;
+        $default_index = !0;
+    };
+    (@default
+        $deadline:ident
+        $default_index:ident
+        ([$i:expr] default() => $body:tt,)
+    ) => {
+        $deadline = None;
+        $default_index = $i;
+    };
+    (@default
+        $deadline:ident
+        $default_index:ident
+        ([$i:expr] default($t:expr) => $body:tt,)
+    ) => {
+        $deadline = Some(Instant::now() + ($t));
+        $default_index = $i;
+    };
+
+    (@finish
+        $index:ident
+        $token:ident
+        ([$i:expr] recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
+        $send:tt
+        $default:tt
+    ) => {
+        if $index == $i {
+            let $m = unsafe { ($r).finish_recv($token) };
+            $body
+        } else {
+            select!(
+                @finish
+                $index
+                $token
+                ($($tail)*)
+                $send
+                $default
+            )
         }
-    }
+    };
+    (@finish
+        $index:ident
+        $token:ident
+        ()
+        ([$i:expr] send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
+        $default:tt
+    ) => {
+        if $index == $i {
+            unsafe { ($s).finish_send($token, $m) };
+            $body
+        } else {
+            select!(
+                @finish
+                $index
+                $token
+                ()
+                ($($tail)*)
+                $default
+            )
+        }
+    };
+    (@finish
+        $index:ident
+        $token:ident
+        ()
+        ()
+        ([$i:expr] default $args:tt => $body:tt,)
+    ) => {
+        if $index == $i {
+            $body
+        } else {
+            select!(
+                @finish
+                $index
+                $token
+                ()
+                ()
+                ()
+            )
+        }
+    };
+    (@finish
+        $index:ident
+        $token:ident
+        ()
+        ()
+        ()
+    ) => {
+        unreachable!()
+    };
 
-    /// Probes a *send* case.
-    ///
-    /// The operation is attempting to send `msg` through `tx`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let (tx, rx) = unbounded();
-    ///
-    /// let mut sel = Select::new();
-    /// loop {
-    ///     if let Ok(_) = sel.send(&tx, "foo") {
-    ///         // The message was successfully sent.
-    ///         break;
-    ///     }
-    /// }
-    /// ```
-    pub fn send<T>(&mut self, tx: &Sender<T>, msg: T) -> Result<(), SelectSendError<T>> {
-        self.machine.send(tx, msg).map_err(SelectSendError)
-    }
-
-    /// Probes a *receive* case.
-    ///
-    /// The operation is attempting to receive a message through `rx`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let (tx, rx) = unbounded();
-    /// tx.send("foo").unwrap();
-    ///
-    /// let mut sel = Select::new();
-    /// loop {
-    ///     if let Ok(msg) = sel.recv(&rx) {
-    ///         // The message was successfully received.
-    ///         assert_eq!(msg, "foo");
-    ///         break;
-    ///     }
-    /// }
-    /// ```
-    pub fn recv<T>(&mut self, rx: &Receiver<T>) -> Result<T, SelectRecvError> {
-        self.machine.recv(rx).map_err(|_| SelectRecvError)
-    }
-
-    /// Probes a *closed* case.
-    ///
-    /// This case fires when all operations in the loop are working with closed channels.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// /*
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let (tx, rx) = unbounded();
-    ///
-    /// // Close the channel.
-    /// drop(rx);
-    ///
-    /// let mut sel = Select::new();
-    /// loop {
-    ///     if let Ok(_) = sel.send(&tx, "foo") {
-    ///         // The message was successfully sent.
-    ///         panic!();
-    ///         break;
-    ///     }
-    ///     if sel.closed() {
-    ///         // All channels are closed.
-    ///         break;
-    ///     }
-    /// }
-    /// */
-    /// ```
-    #[inline]
-    pub fn closed(&mut self) -> bool {
-        self.machine.closed()
-    }
-
-    /// Probes a *would block* case.
-    ///
-    /// This case fires when all operations in the loop would block.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let (tx, rx) = unbounded::<i32>();
-    ///
-    /// let mut sel = Select::new();
-    /// loop {
-    ///     if let Ok(msg) = sel.recv(&rx) {
-    ///         // The message was successfully received.
-    ///         panic!();
-    ///         break;
-    ///     }
-    ///     if sel.would_block() {
-    ///         // All operation would block.
-    ///         break;
-    ///     }
-    /// }
-    /// ```
-    #[inline]
-    pub fn would_block(&mut self) -> bool {
-        self.machine.would_block()
-    }
-
-    /// Probes a *timed out* case.
-    ///
-    /// This case fires when selection is blocked for longer than the specified timeout.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let (tx, rx) = unbounded::<i32>();
-    ///
-    /// let mut sel = Select::with_timeout(Duration::from_secs(1));
-    /// loop {
-    ///     if let Ok(msg) = sel.recv(&rx) {
-    ///         // The message was successfully received.
-    ///         panic!();
-    ///         break;
-    ///     }
-    ///     if sel.timed_out() {
-    ///         // Selection timed out.
-    ///         break;
-    ///     }
-    /// }
-    /// ```
-    #[inline]
-    pub fn timed_out(&mut self) -> bool {
-        self.machine.timed_out()
-    }
+    // The entry point.
+    () => {
+        compile_error!("empty block in `select!`")
+    };
+    ($($tail:tt)*) => {
+        // Start by parsing the list of cases.
+        select!(@parse_list () ($($tail)*))
+    };
 }
-
-impl fmt::Debug for Select {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Select").finish()
-    }
-}
-
-impl Default for Select {
-    fn default() -> Select {
-        Select::new()
-    }
-}
-*/

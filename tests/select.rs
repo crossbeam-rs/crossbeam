@@ -1,96 +1,136 @@
 extern crate crossbeam;
+#[macro_use]
 extern crate crossbeam_channel;
 
 use std::any::Any;
 use std::thread;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
-/*
-use crossbeam_channel::{bounded, unbounded, Receiver,  Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
-use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
+use crossbeam_channel::{SendTimeoutError, TrySendError};
+
+// TODO: test that `select!` evaluates to an expression
+// TODO: two nested `select!`s
+// TODO: check `select! { recv(&&&&&rx, _) => {} }`
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
 
 #[test]
+fn foo() {
+    let (s, r) = bounded::<i32>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            assert_eq!(r.recv(), Some(7));
+        });
+
+        select! {
+            send(s, 7) => {}
+        }
+    });
+}
+
+// #[test]
+// fn bar() {
+//     let (tx, rx) = bounded(0);
+//
+//     crossbeam::scope(|s| {
+//         s.spawn(|| {
+//             tx.send(8);
+//         });
+//         s.spawn(|| {
+//             thread::sleep(ms(1000)); /////////////
+//             select! {
+//                 recv(rx, v) => assert_eq!(v, Some(8))
+//             }
+//         });
+//     });
+// }
+
+// #[test]
+// #[allow(dead_code, unused_mut)]
+// fn it_compiles() {
+//     struct Foo(String);
+//
+//     fn foo(
+//         mut struct_val: Foo,
+//         mut var: String,
+//         immutable_var: String,
+//         rx0: Receiver<String>,
+//         rx1: &Receiver<u32>,
+//         rx2: Receiver<()>,
+//         tx0: &mut Sender<String>,
+//         tx1: Sender<String>,
+//         tx2: Sender<String>,
+//         tx3: Sender<String>,
+//         tx4: Sender<String>,
+//         tx5: Sender<u32>,
+//     ) -> Option<String> {
+//         select! {
+//             recv(rx0, val) => Some(val),
+//             recv(rx1, val) => Some(val.to_string()),
+//             recv(rx2, ()) => None,
+//             send(tx0, mut struct_val.0) => Some(var),
+//             send(tx1, mut var) => Some(struct_val.0),
+//             send(tx1, immutable_var) => Some(struct_val.0),
+//             send(tx2, struct_val.0.clone()) => Some(struct_val.0),
+//             send(tx3, "foo".to_string()) => Some(var),
+//             send(tx4, var.clone()) => Some(var),
+//             send(tx5, 42) => None,
+//
+//             closed() => Some("closed".into()),
+//             would_block() => Some("would_block".into()),
+//             timed_out(Duration::from_secs(1)) => Some("timed_out".into()),
+//             // The previous timeout duration is overridden.
+//             timed_out(Duration::from_secs(2)) => Some("timed_out".into()),
+//         }
+//     }
+// }
+
+#[test]
 fn smoke1() {
-    let mut iters = 0;
     let (tx1, rx1) = unbounded();
     let (tx2, rx2) = unbounded();
 
-    tx1.send(1).unwrap();
+    tx1.send(1);
 
-    let mut sel = Select::new();
-    loop {
-        iters += 1;
-        if let Ok(v) = sel.recv(&rx1) {
-            assert_eq!(v, 1);
-            break;
-        }
-        if let Ok(_) = sel.recv(&rx2) {
-            panic!();
-        }
+    select! {
+        recv(rx1, v) => assert_eq!(v, Some(1)),
+        recv(rx2, _) => panic!(),
     }
 
-    tx2.send(2).unwrap();
+    tx2.send(2);
 
-    let mut sel = Select::new();
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx1) {
-            panic!();
-        }
-        if let Ok(v) = sel.recv(&rx2) {
-            assert_eq!(v, 2);
-            break;
-        }
+    select! {
+        recv(rx1, _) => panic!(),
+        recv(rx2, v) => assert_eq!(v, Some(2)),
     }
-
-    assert!(iters < 50);
 }
 
 #[test]
 fn smoke2() {
-    let mut iters = 0;
     let (_tx1, rx1) = unbounded::<i32>();
     let (_tx2, rx2) = unbounded::<i32>();
     let (_tx3, rx3) = unbounded::<i32>();
     let (_tx4, rx4) = unbounded::<i32>();
     let (tx5, rx5) = unbounded::<i32>();
 
-    tx5.send(5).unwrap();
+    tx5.send(5);
 
-    let mut sel = Select::new();
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx1) {
-            panic!();
-        }
-        if let Ok(_) = sel.recv(&rx2) {
-            panic!();
-        }
-        if let Ok(_) = sel.recv(&rx3) {
-            panic!();
-        }
-        if let Ok(_) = sel.recv(&rx4) {
-            panic!();
-        }
-        if let Ok(x) = sel.recv(&rx5) {
-            assert_eq!(x, 5);
-            break;
-        }
+    select! {
+        recv(rx1, _) => panic!(),
+        recv(rx2, _) => panic!(),
+        recv(rx3, _) => panic!(),
+        recv(rx4, _) => panic!(),
+        recv(rx5, v) => assert_eq!(v, Some(5)),
     }
-
-    assert!(iters < 50);
 }
 
 #[test]
 fn closed() {
-    let mut iters = 0;
     let (tx1, rx1) = unbounded::<i32>();
     let (tx2, rx2) = unbounded::<i32>();
 
@@ -98,25 +138,23 @@ fn closed() {
         s.spawn(|| {
             thread::sleep(ms(500));
             drop(tx1);
+            tx2.send(5);
         });
 
-        let mut sel = Select::with_timeout(ms(1000));
-        loop {
-            iters += 1;
-            if let Ok(_) = sel.recv(&rx1) {
-                panic!();
-            }
-            if let Ok(_) = sel.recv(&rx2) {
-                panic!();
-            }
-            if sel.closed() {
-                panic!();
-            }
-            if sel.timed_out() {
-                break;
-            }
+        select! {
+            recv(rx1, v) => assert!(v.is_none()),
+            recv(rx2, _) => panic!(),
+            default(ms(1000)) => panic!(),
         }
+
+        rx2.recv().unwrap();
     });
+
+    select! {
+        recv(rx1, v) => assert!(v.is_none()),
+        recv(rx2, _) => panic!(),
+        default(ms(1000)) => panic!(),
+    }
 
     crossbeam::scope(|s| {
         s.spawn(|| {
@@ -124,211 +162,119 @@ fn closed() {
             drop(tx2);
         });
 
-        let mut sel = Select::with_timeout(ms(1000));
-        loop {
-            iters += 1;
-            if let Ok(_) = sel.recv(&rx1) {
-                panic!();
-            }
-            if let Ok(_) = sel.recv(&rx2) {
-                panic!();
-            }
-            if sel.closed() {
-                break;
-            }
-            if sel.timed_out() {
-                panic!();
-            }
+        select! {
+            recv(rx2, v) => assert!(v.is_none()),
+            default(ms(1000)) => panic!(),
         }
     });
-
-    assert!(iters < 50);
 }
 
 #[test]
-fn would_block() {
-    let mut iters = 0;
+fn default() {
     let (tx1, rx1) = unbounded::<i32>();
     let (tx2, rx2) = unbounded::<i32>();
 
+    select! {
+        recv(rx1, _) => panic!(),
+        recv(rx2, _) => panic!(),
+        default => {}
+    }
+
     drop(tx1);
 
-    let mut sel = Select::with_timeout(ms(0));
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx1) {
-            panic!();
-        }
-        if let Ok(_) = sel.recv(&rx2) {
-            panic!();
-        }
-        if sel.closed() {
-            panic!();
-        }
-        if sel.would_block() {
-            break;
-        }
-        if sel.timed_out() {
-            panic!();
-        }
+    select! {
+        recv(rx1, v) => assert!(v.is_none()),
+        recv(rx2, _) => panic!(),
+        default => panic!(),
     }
 
-    tx2.send(2).unwrap();
+    tx2.send(2);
 
-    let mut sel = Select::with_timeout(ms(0));
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx1) {
-            panic!();
-        }
-        if let Ok(x) = sel.recv(&rx2) {
-            assert_eq!(x, 2);
-            break;
-        }
-        if sel.closed() {
-            panic!();
-        }
-        if sel.would_block() {
-            panic!();
-        }
-        if sel.timed_out() {
-            panic!();
-        }
+    select! {
+        recv(rx2, v) => assert_eq!(v, Some(2)),
+        default => panic!(),
     }
 
-    drop(tx2);
-
-    let mut sel = Select::with_timeout(ms(0));
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx1) {
-            panic!();
-        }
-        if let Ok(_) = sel.recv(&rx2) {
-            panic!();
-        }
-        if sel.closed() {
-            break;
-        }
-        if sel.would_block() {
-            panic!();
-        }
-        if sel.timed_out() {
-            panic!();
-        }
+    select! {
+        recv(rx2, _) => panic!(),
+        default => {},
     }
 
-    assert!(iters < 50);
+    select! {
+        default => {},
+    }
 }
 
 #[test]
 fn timeout() {
-    let mut iters = 0;
     let (_tx1, rx1) = unbounded::<i32>();
     let (tx2, rx2) = unbounded::<i32>();
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             thread::sleep(ms(1500));
-            tx2.send(2).unwrap();
+            tx2.send(2);
         });
 
-        let mut sel = Select::with_timeout(ms(1000));
-        loop {
-            iters += 1;
-            if let Ok(_) = sel.recv(&rx1) {
-                panic!();
-            }
-            if let Ok(_) = sel.recv(&rx2) {
-                panic!();
-            }
-            if sel.timed_out() {
-                break;
-            }
+        select! {
+            recv(rx1, _) => panic!(),
+            recv(rx2, _) => panic!(),
+            default(ms(1000)) => {},
         }
 
-        let mut sel = Select::with_timeout(ms(1000));
-        loop {
-            iters += 1;
-            if let Ok(_) = sel.recv(&rx1) {
-                panic!();
-            }
-            if let Ok(x) = sel.recv(&rx2) {
-                assert_eq!(x, 2);
-                break;
-            }
-            if sel.timed_out() {
-                panic!();
-            }
+        select! {
+            recv(rx1, _) => panic!(),
+            recv(rx2, v) => assert_eq!(v, Some(2)),
+            default(ms(1000)) => panic!(),
         }
     });
 
-    assert!(iters < 50);
+    crossbeam::scope(|s| {
+        let (tx, rx) = unbounded::<i32>();
+
+        s.spawn(move || {
+            thread::sleep(ms(500));
+            drop(tx);
+        });
+
+        select! {
+            default(ms(1000)) => assert!(rx.is_closed()),
+        }
+    });
 }
 
 #[test]
-fn timeout_when_closed() {
-    let mut iters = 0;
+fn default_when_closed() {
     let (_, rx) = unbounded::<i32>();
 
-    let mut sel = Select::with_timeout(ms(1000));
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx) {
-            panic!();
-        }
-        if sel.timed_out() {
-            break;
-        }
+    select! {
+        recv(rx, v) => assert!(v.is_none()),
+        default => panic!(),
     }
 
-    assert!(iters < 50);
-}
-
-#[test]
-fn would_block_when_closed() {
-    let mut iters = 0;
     let (_, rx) = unbounded::<i32>();
 
-    let mut sel = Select::with_timeout(ms(1000));
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx) {
-            panic!();
-        }
-        if sel.would_block() {
-            break;
-        }
+    select! {
+        recv(rx, v) => assert!(v.is_none()),
+        default(ms(1000)) => panic!(),
     }
-
-    assert!(iters < 50);
 }
 
 #[test]
 fn unblocks() {
-    let mut iters = 0;
     let (tx1, rx1) = bounded(0);
     let (tx2, rx2) = bounded(0);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             thread::sleep(ms(500));
-            tx2.send(2).unwrap();
+            tx2.send(2);
         });
 
-        let mut sel = Select::with_timeout(ms(1000));
-        loop {
-            iters += 1;
-            if let Ok(_) = sel.recv(&rx1) {
-                panic!();
-            }
-            if let Ok(x) = sel.recv(&rx2) {
-                assert_eq!(x, 2);
-                break;
-            }
-            if sel.timed_out() {
-                panic!();
-            }
+        select! {
+            recv(rx1, _) => panic!(),
+            recv(rx2, v) => assert_eq!(v, Some(2)),
+            default(ms(1000)) => panic!(),
         }
     });
 
@@ -338,108 +284,33 @@ fn unblocks() {
             assert_eq!(rx1.recv().unwrap(), 1);
         });
 
-        let mut sel = Select::with_timeout(ms(1000));
-        loop {
-            iters += 1;
-            if let Ok(()) = sel.send(&tx1, 1) {
-                break;
-            }
-            if let Ok(()) = sel.send(&tx2, 2) {
-                panic!();
-            }
-            if sel.timed_out() {
-                panic!();
-            }
+        select! {
+            send(tx1, 1) => {},
+            send(tx2, 2) => panic!(),
+            default(ms(1000)) => panic!(),
         }
     });
-
-    assert!(iters < 50);
 }
 
 #[test]
 fn both_ready() {
-    let mut iters = 0;
     let (tx1, rx1) = bounded(0);
     let (tx2, rx2) = bounded(0);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             thread::sleep(ms(500));
-            tx1.send(1).unwrap();
+            tx1.send(1);
             assert_eq!(rx2.recv().unwrap(), 2);
         });
 
         for _ in 0..2 {
-            let mut sel = Select::new();
-            loop {
-                iters += 1;
-                if let Ok(x) = sel.recv(&rx1) {
-                    assert_eq!(x, 1);
-                    break;
-                }
-                if let Ok(()) = sel.send(&tx2, 2) {
-                    break;
-                }
+            select! {
+                recv(rx1, v) => assert_eq!(v, Some(1)),
+                send(tx2, 2) => {},
             }
         }
     });
-
-    assert!(iters < 50);
-}
-
-#[test]
-fn no_starvation() {
-    const N: usize = 10;
-
-    let done_rx = &(0..N).map(|_| AtomicBool::new(false)).collect::<Vec<_>>();
-    let done_tx = &(0..N).map(|_| AtomicBool::new(false)).collect::<Vec<_>>();
-
-    while !done_rx.iter().all(|x| x.load(SeqCst)) || !done_tx.iter().all(|x| x.load(SeqCst)) {
-        crossbeam::scope(|s| {
-            let rxs = (0..N)
-                .map(|i| {
-                    let (tx, rx) = unbounded();
-                    tx.send(i).unwrap();
-                    rx
-                })
-                .collect::<Vec<_>>();
-
-            let txs = (0..N)
-                .map(|i| {
-                    let (tx, rx) = bounded(100);
-                    s.spawn(move || {
-                        if let Ok(x) = rx.recv() {
-                            assert_eq!(x, i);
-                            done_tx[i].store(true, SeqCst);
-                        }
-                    });
-                    tx
-                })
-                .collect::<Vec<_>>();
-
-            let mut iters = 0;
-
-            let mut sel = Select::new();
-            'select: loop {
-                iters += 1;
-
-                for rx in &rxs {
-                    if let Ok(x) = sel.recv(&rx) {
-                        done_rx[x].store(true, SeqCst);
-                        break 'select;
-                    }
-                }
-
-                for (i, tx) in txs.iter().enumerate() {
-                    if let Ok(()) = sel.send(&tx, i) {
-                        break 'select;
-                    }
-                }
-            }
-
-            assert!(iters < 50);
-        });
-    }
 }
 
 #[test]
@@ -456,21 +327,23 @@ fn loop_try() {
                         break;
                     }
 
-                    if let Err(TryRecvError::Closed) = rx_end.try_recv() {
-                        break;
+                    select! {
+                        recv(rx_end, _) => break,
+                        default => {}
                     }
                 }
             });
 
             s.spawn(|| {
                 loop {
-                    if let Ok(x) = rx2.try_recv() {
+                    if let Some(x) = rx2.try_recv() {
                         assert_eq!(x, 2);
                         break;
                     }
 
-                    if let Err(TryRecvError::Closed) = rx_end.try_recv() {
-                        break;
+                    select! {
+                        recv(rx_end, _) => break,
+                        default => {}
                     }
                 }
             });
@@ -478,21 +351,10 @@ fn loop_try() {
             s.spawn(|| {
                 thread::sleep(ms(500));
 
-                let mut sel = Select::with_timeout(ms(500));
-                loop {
-                    if let Ok(x) = sel.recv(&rx1) {
-                        assert_eq!(x, 1);
-                        break;
-                    }
-                    if let Ok(_) = sel.send(&tx2, 2) {
-                        break;
-                    }
-                    if sel.closed() {
-                        panic!();
-                    }
-                    if sel.timed_out() {
-                        panic!();
-                    }
+                select! {
+                    recv(rx1, v) => assert_eq!(v, Some(1)),
+                    send(tx2, 2) => {},
+                    default(ms(500)) => panic!(),
                 }
 
                 drop(tx_end);
@@ -504,7 +366,6 @@ fn loop_try() {
 #[test]
 fn cloning1() {
     crossbeam::scope(|s| {
-        let mut iters = 0;
         let (tx1, rx1) = unbounded::<i32>();
         let (_tx2, rx2) = unbounded::<i32>();
         let (tx3, rx3) = unbounded::<()>();
@@ -512,113 +373,76 @@ fn cloning1() {
         s.spawn(move || {
             rx3.recv().unwrap();
             tx1.clone();
-            assert_eq!(rx3.try_recv(), Err(TryRecvError::Empty));
-            tx1.send(1).unwrap();
+            assert_eq!(rx3.try_recv(), None);
+            tx1.send(1);
             rx3.recv().unwrap();
         });
 
-        tx3.send(()).unwrap();
+        tx3.send(());
 
-        let mut sel = Select::new();
-        loop {
-            iters += 1;
-            if let Ok(_) = sel.recv(&rx1) {
-                break;
-            }
-            if let Ok(_) = sel.recv(&rx2) {
-                panic!();
-            }
+        select! {
+            recv(rx1, _) => {},
+            recv(rx2, _) => {},
         }
 
-        tx3.send(()).unwrap();
-        assert!(iters < 50);
+        tx3.send(());
     });
 }
 
 #[test]
 fn cloning2() {
-    crossbeam::scope(|s| {
-        let mut iters = 0;
-        let (tx1, rx1) = unbounded::<()>();
-        let (tx2, rx2) = unbounded::<()>();
-        let (_tx3, _rx3) = unbounded::<()>();
+    let (tx1, rx1) = unbounded::<()>();
+    let (tx2, rx2) = unbounded::<()>();
+    let (_tx3, _rx3) = unbounded::<()>();
 
+    crossbeam::scope(|s| {
         s.spawn(move || {
-            let mut sel = Select::new();
-            loop {
-                iters += 1;
-                if let Ok(_) = sel.recv(&rx1) {
-                    panic!();
-                }
-                if let Ok(_) = sel.recv(&rx2) {
-                    break;
-                }
+            select! {
+                recv(rx1, _) => panic!(),
+                recv(rx2, _) => {},
             }
         });
 
         thread::sleep(ms(500));
         drop(tx1.clone());
-        tx2.send(()).unwrap();
-
-        assert!(iters < 50);
+        tx2.send(());
     })
 }
 
 #[test]
 fn preflight1() {
     let (tx, rx) = unbounded();
-    tx.send(()).unwrap();
+    tx.send(());
 
-    let mut iters = 0;
-    let mut sel = Select::new();
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx) {
-            break;
-        }
+    select! {
+        recv(rx, _) => {}
     }
-    assert!(iters < 10);
 }
 
 #[test]
 fn preflight2() {
     let (tx, rx) = unbounded();
     drop(tx.clone());
-    tx.send(()).unwrap();
+    tx.send(());
     drop(tx);
 
-    let mut iters = 0;
-    let mut sel = Select::new();
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx) {
-            break;
-        }
+    select! {
+        recv(rx, v) => assert!(v.is_some()),
     }
-    assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
-    assert!(iters < 10);
+    assert_eq!(rx.try_recv(), None);
 }
 
 #[test]
 fn preflight3() {
     let (tx, rx) = unbounded();
     drop(tx.clone());
-    tx.send(()).unwrap();
+    tx.send(());
     drop(tx);
     rx.recv().unwrap();
 
-    let mut iters = 0;
-    let mut sel = Select::new();
-    loop {
-        iters += 1;
-        if let Ok(_) = sel.recv(&rx) {
-            panic!();
-        }
-        if sel.closed() {
-            break;
-        }
+    select! {
+        recv(rx, v) => assert!(v.is_none())
     }
-    assert!(iters < 10);
 }
 
 #[test]
@@ -630,35 +454,23 @@ fn stress_recv() {
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..10_000 {
-                tx1.send(i).unwrap();
+                tx1.send(i);
                 rx3.recv().unwrap();
 
-                tx2.send(i).unwrap();
+                tx2.send(i);
                 rx3.recv().unwrap();
             }
         });
 
         for i in 0..10_000 {
-            let mut iters = 0;
-
             for _ in 0..2 {
-                let mut sel = Select::new();
-                loop {
-                    iters += 1;
-                    if let Ok(x) = sel.recv(&rx1) {
-                        assert_eq!(x, i);
-                        break;
-                    }
-                    if let Ok(x) = sel.recv(&rx2) {
-                        assert_eq!(x, i);
-                        break;
-                    }
+                select! {
+                    recv(rx1, v) => assert_eq!(v, Some(i)),
+                    recv(rx2, v) => assert_eq!(v, Some(i)),
                 }
 
-                tx3.send(()).unwrap();
+                tx3.send(());
             }
-
-            assert!(iters < 50);
         }
     });
 }
@@ -679,23 +491,13 @@ fn stress_send() {
         });
 
         for i in 0..10_000 {
-            let mut iters = 0;
-
             for _ in 0..2 {
-                let mut sel = Select::new();
-                loop {
-                    iters += 1;
-                    if let Ok(()) = sel.send(&tx1, i) {
-                        break;
-                    }
-                    if let Ok(()) = sel.send(&tx2, i) {
-                        break;
-                    }
+                select! {
+                    send(tx1, i) => {},
+                    send(tx2, i) => {},
                 }
             }
-            tx3.send(()).unwrap();
-
-            assert!(iters < 50);
+            tx3.send(());
         }
     });
 }
@@ -709,31 +511,20 @@ fn stress_mixed() {
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..10_000 {
-                tx1.send(i).unwrap();
+                tx1.send(i);
                 assert_eq!(rx2.recv().unwrap(), i);
                 rx3.recv().unwrap();
             }
         });
 
         for i in 0..10_000 {
-            let mut iters = 0;
-
             for _ in 0..2 {
-                let mut sel = Select::new();
-                loop {
-                    iters += 1;
-                    if let Ok(x) = sel.recv(&rx1) {
-                        assert_eq!(x, i);
-                        break;
-                    }
-                    if let Ok(()) = sel.send(&tx2, i) {
-                        break;
-                    }
+                select! {
+                    recv(rx1, v) => assert_eq!(v, Some(i)),
+                    send(tx2, i) => {},
                 }
             }
-            tx3.send(()).unwrap();
-
-            assert!(iters < 50);
+            tx3.send(());
         }
     });
 }
@@ -751,15 +542,10 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(500));
                 }
 
-                let mut sel = Select::with_timeout(ms(100));
-                'outer: loop {
-                    loop {
-                        if let Ok(()) = sel.send(&tx, i) {
-                            break 'outer;
-                        }
-                        if sel.timed_out() {
-                            break;
-                        }
+                loop {
+                    select! {
+                        send(tx, i) => break,
+                        default(ms(100)) => {}
                     }
                 }
             }
@@ -771,16 +557,13 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(500));
                 }
 
-                let mut sel = Select::with_timeout(ms(100));
-                'outer: loop {
-                    loop {
-                        if let Ok(x) = sel.recv(&rx) {
-                            assert_eq!(x, i);
-                            break 'outer;
-                        }
-                        if sel.timed_out() {
+                loop {
+                    select! {
+                        recv(rx, v) => {
+                            assert_eq!(v, Some(i));
                             break;
                         }
+                        default(ms(100)) => {}
                     }
                 }
             }
@@ -791,63 +574,23 @@ fn stress_timeout_two_threads() {
 struct WrappedSender<T>(Sender<T>);
 
 impl<T> WrappedSender<T> {
-    pub fn try_send(&self, mut value: T) -> Result<(), TrySendError<T>> {
-        let mut iters = 0;
-        let mut sel = Select::new();
-        loop {
-            iters += 1;
-            assert!(iters < 20);
-
-            if let Err(err) = sel.send(&self.0, value) {
-                value = err.into_inner();
-            } else {
-                return Ok(());
-            }
-            if sel.closed() {
-                return Err(TrySendError::Closed(value));
-            }
-            if sel.would_block() {
-                return Err(TrySendError::Full(value));
-            }
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        select! {
+            send(self.0, value) => Ok(()),
+            default => Err(TrySendError::Full(value)),
         }
     }
 
-    pub fn send(&self, mut value: T) -> Result<(), SendError<T>> {
-        let mut iters = 0;
-        let mut sel = Select::new();
-        loop {
-            iters += 1;
-            assert!(iters < 20);
-
-            if let Err(err) = sel.send(&self.0, value) {
-                value = err.into_inner();
-            } else {
-                return Ok(());
-            }
-            if sel.closed() {
-                return Err(SendError(value));
-            }
+    pub fn send(&self, value: T) {
+        select! {
+            send(self.0, value) => ()
         }
     }
 
-    pub fn send_timeout(&self, mut value: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
-        let mut iters = 0;
-        let mut sel = Select::with_timeout(timeout);
-        loop {
-            iters += 1;
-            assert!(iters < 20);
-
-            if let Err(err) = sel.send(&self.0, value) {
-                value = err.into_inner();
-            } else {
-                return Ok(());
-            }
-            if sel.closed() {
-                return Err(SendTimeoutError::Closed(value));
-            }
-            if sel.timed_out() {
-                return Err(SendTimeoutError::Timeout(value));
-            }
+    pub fn send_timeout(&self, value: T, dur: Duration) -> Result<(), SendTimeoutError<T>> {
+        select! {
+            send(self.0, value) => Ok(()),
+            default(dur) => Err(SendTimeoutError::Timeout(value)),
         }
     }
 }
@@ -855,57 +598,26 @@ impl<T> WrappedSender<T> {
 struct WrappedReceiver<T>(Receiver<T>);
 
 impl<T> WrappedReceiver<T> {
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        let mut iters = 0;
-        let mut sel = Select::new();
-        loop {
-            iters += 1;
-            assert!(iters < 20);
-
-            if let Ok(v) = sel.recv(&self.0) {
-                return Ok(v);
-            }
-            if sel.closed() {
-                return Err(TryRecvError::Closed);
-            }
-            if sel.would_block() {
-                return Err(TryRecvError::Empty);
-            }
+    pub fn try_recv(&self) -> Option<T> {
+        select! {
+            recv(self.0, v) => v,
+            default => None,
         }
     }
 
-    pub fn recv(&self) -> Result<T, RecvError> {
-        let mut iters = 0;
-        let mut sel = Select::new();
-        loop {
-            iters += 1;
-            assert!(iters < 20);
-
-            if let Ok(v) = sel.recv(&self.0) {
-                return Ok(v);
-            }
-            if sel.closed() {
-                return Err(RecvError);
-            }
+    pub fn recv(&self) -> Option<T> {
+        select! {
+            recv(self.0, v) => v
         }
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        let mut iters = 0;
-        let mut sel = Select::with_timeout(timeout);
-        loop {
-            iters += 1;
-            assert!(iters < 20);
-
-            if let Ok(v) = sel.recv(&self.0) {
-                return Ok(v);
-            }
-            if sel.closed() {
-                return Err(RecvTimeoutError::Closed);
-            }
-            if sel.timed_out() {
-                return Err(RecvTimeoutError::Timeout);
-            }
+    pub fn recv_timeout(&self, dur: Duration) -> Result<T, RecvTimeoutError> {
+        select! {
+            recv(self.0, v) => match v {
+                Some(v) => Ok(v),
+                None => Err(RecvTimeoutError::Closed),
+            },
+            default(dur) => Err(RecvTimeoutError::Timeout),
         }
     }
 }
@@ -918,18 +630,18 @@ fn recv() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.recv(), Ok(7));
+            assert_eq!(rx.recv(), Some(7));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(8));
+            assert_eq!(rx.recv(), Some(8));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(9));
-            assert_eq!(rx.recv(), Err(RecvError));
+            assert_eq!(rx.recv(), Some(9));
+            assert_eq!(rx.recv(), None);
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(tx.send(7), Ok(()));
-            assert_eq!(tx.send(8), Ok(()));
-            assert_eq!(tx.send(9), Ok(()));
+            tx.send(7);
+            tx.send(8);
+            tx.send(9);
         });
     });
 
@@ -939,18 +651,18 @@ fn recv() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.recv(), Ok(7));
+            assert_eq!(rx.recv(), Some(7));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(8));
+            assert_eq!(rx.recv(), Some(8));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(9));
-            assert_eq!(rx.recv(), Err(RecvError));
+            assert_eq!(rx.recv(), Some(9));
+            assert_eq!(rx.recv(), None);
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(tx.send(7), Ok(()));
-            assert_eq!(tx.send(8), Ok(()));
-            assert_eq!(tx.send(9), Ok(()));
+            tx.send(7);
+            tx.send(8);
+            tx.send(9);
         });
     });
 }
@@ -972,7 +684,7 @@ fn recv_timeout() {
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(tx.send(7), Ok(()));
+            tx.send(7);
         });
     });
 }
@@ -985,15 +697,15 @@ fn try_recv() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+            assert_eq!(rx.try_recv(), None);
             thread::sleep(ms(1500));
-            assert_eq!(rx.try_recv(), Ok(7));
+            assert_eq!(rx.try_recv(), Some(7));
             thread::sleep(ms(500));
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+            assert_eq!(rx.try_recv(), None);
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
-            assert_eq!(tx.send(7), Ok(()));
+            tx.send(7);
         });
     });
 
@@ -1012,7 +724,7 @@ fn try_recv() {
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(tx.send(7), Ok(()));
+            tx.send(7);
         });
     });
 }
@@ -1025,19 +737,20 @@ fn send() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(tx.send(7), Ok(()));
+            tx.send(7);
             thread::sleep(ms(1000));
-            assert_eq!(tx.send(8), Ok(()));
+            tx.send(8);
             thread::sleep(ms(1000));
-            assert_eq!(tx.send(9), Ok(()));
-            thread::sleep(ms(1000));
-            assert_eq!(tx.send(10), Ok(()));
+            tx.send(9);
+            // TODO: drop(rx) closes the channel
+            // thread::sleep(ms(1000));
+            // assert_eq!(tx.send(10), Err(SendError(10)));
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(rx.recv(), Ok(7));
-            assert_eq!(rx.recv(), Ok(8));
-            assert_eq!(rx.recv(), Ok(9));
+            assert_eq!(rx.recv(), Some(7));
+            assert_eq!(rx.recv(), Some(8));
+            assert_eq!(rx.recv(), Some(9));
         });
     });
 
@@ -1047,17 +760,19 @@ fn send() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(tx.send(7), Ok(()));
+            tx.send(7);
             thread::sleep(ms(1000));
-            assert_eq!(tx.send(8), Ok(()));
+            tx.send(8);
             thread::sleep(ms(1000));
-            assert_eq!(tx.send(9), Ok(()));
+            tx.send(9);
+            // TODO: drop(rx) closes the channel
+            // assert_eq!(tx.send(10), Err(SendError(10)));
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(rx.recv(), Ok(7));
-            assert_eq!(rx.recv(), Ok(8));
-            assert_eq!(rx.recv(), Ok(9));
+            assert_eq!(rx.recv(), Some(7));
+            assert_eq!(rx.recv(), Some(8));
+            assert_eq!(rx.recv(), Some(9));
         });
     });
 }
@@ -1078,13 +793,16 @@ fn send_timeout() {
             );
             thread::sleep(ms(1000));
             assert_eq!(tx.send_timeout(4, ms(1000)), Ok(()));
+            // TODO: drop(rx) closes the channel
+            // thread::sleep(ms(1000));
+            // assert_eq!(tx.send(5), Err(SendError(5)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(1));
+            assert_eq!(rx.recv(), Some(1));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(2));
-            assert_eq!(rx.recv(), Ok(4));
+            assert_eq!(rx.recv(), Some(2));
+            assert_eq!(rx.recv(), Some(4));
         });
     });
 
@@ -1099,14 +817,15 @@ fn send_timeout() {
                 Err(SendTimeoutError::Timeout(7))
             );
             assert_eq!(tx.send_timeout(8, ms(1000)), Ok(()));
-            assert_eq!(
-                tx.send_timeout(9, ms(1000)),
-                Err(SendTimeoutError::Timeout(9))
-            );
+            // TODO: drop(rx) closes the channel
+            // assert_eq!(
+            //     tx.send_timeout(9, ms(1000)),
+            //     Err(SendTimeoutError::Closed(9))
+            // );
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(rx.recv(), Ok(8));
+            assert_eq!(rx.recv(), Some(8));
         });
     });
 }
@@ -1123,14 +842,15 @@ fn try_send() {
             assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
             thread::sleep(ms(1500));
             assert_eq!(tx.try_send(3), Ok(()));
-            thread::sleep(ms(500));
-            assert_eq!(tx.try_send(4), Ok(()));
+            // TODO: drop(rx) closes the channel
+            // thread::sleep(ms(500));
+            // assert_eq!(tx.try_send(4), Err(TrySendError::Closed(4)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
-            assert_eq!(rx.try_recv(), Ok(1));
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
-            assert_eq!(rx.recv(), Ok(3));
+            assert_eq!(rx.try_recv(), Some(1));
+            assert_eq!(rx.try_recv(), None);
+            assert_eq!(rx.recv(), Some(3));
         });
     });
 
@@ -1143,33 +863,34 @@ fn try_send() {
             assert_eq!(tx.try_send(7), Err(TrySendError::Full(7)));
             thread::sleep(ms(1500));
             assert_eq!(tx.try_send(8), Ok(()));
-            thread::sleep(ms(500));
-            assert_eq!(tx.try_send(9), Err(TrySendError::Full(9)));
+            // TODO: drop(rx) closes the channel
+            // thread::sleep(ms(500));
+            // assert_eq!(tx.try_send(9), Err(TrySendError::Closed(9)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(8));
+            assert_eq!(rx.recv(), Some(8));
         });
     });
 }
 
-#[test]
-fn recv_after_close() {
-    let (tx, rx) = bounded(100);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
-
-    tx.send(1).unwrap();
-    tx.send(2).unwrap();
-    tx.send(3).unwrap();
-
-    drop(tx);
-
-    assert_eq!(rx.recv(), Ok(1));
-    assert_eq!(rx.recv(), Ok(2));
-    assert_eq!(rx.recv(), Ok(3));
-    assert_eq!(rx.recv(), Err(RecvError));
-}
+// #[test]
+// fn recv_after_close() {
+//     let (tx, rx) = bounded(100);
+//     let tx = WrappedSender(tx);
+//     let rx = WrappedReceiver(rx);
+//
+//     tx.send(1);
+//     tx.send(2);
+//     tx.send(3);
+//
+//     drop(tx);
+//
+//     assert_eq!(rx.recv(), Some(1));
+//     assert_eq!(rx.recv(), Some(2));
+//     assert_eq!(rx.recv(), Some(3));
+//     assert_eq!(rx.recv(), Err(RecvError));
+// }
 
 #[test]
 fn matching() {
@@ -1179,21 +900,15 @@ fn matching() {
     crossbeam::scope(|s| {
         for i in 0..44 {
             s.spawn(move || {
-                let mut sel = Select::new();
-                loop {
-                    if let Ok(x) = sel.recv(rx) {
-                        assert_ne!(i, x);
-                        break;
-                    }
-                    if let Ok(()) = sel.send(tx, i) {
-                        break;
-                    }
+                select! {
+                    recv(rx, v) => assert_ne!(v.unwrap(), i),
+                    send(tx, i) => {},
                 }
             });
         }
     });
 
-    assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(rx.try_recv(), None);
 }
 
 #[test]
@@ -1204,22 +919,16 @@ fn matching_with_leftover() {
     crossbeam::scope(|s| {
         for i in 0..55 {
             s.spawn(move || {
-                let mut sel = Select::new();
-                loop {
-                    if let Ok(x) = sel.recv(&rx) {
-                        assert_ne!(i, x);
-                        break;
-                    }
-                    if let Ok(()) = sel.send(&tx, i) {
-                        break;
-                    }
+                select! {
+                    recv(rx, v) => assert_ne!(v.unwrap(), i),
+                    send(tx, i) => {},
                 }
             });
         }
-        tx.send(!0).unwrap();
+        tx.send(!0);
     });
 
-    assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(rx.try_recv(), None);
 }
 
 #[test]
@@ -1239,13 +948,8 @@ fn channel_through_channel() {
                     let (new_tx, new_rx) = bounded(cap);
                     let mut new_rx: T = Box::new(Some(new_rx));
 
-                    let mut sel = Select::new();
-                    loop {
-                        if let Err(err) = sel.send(&tx, new_rx) {
-                            new_rx = err.into_inner();
-                        } else {
-                            break;
-                        }
+                    select! {
+                        send(tx, new_rx) => {}
                     }
 
                     tx = new_tx;
@@ -1256,14 +960,13 @@ fn channel_through_channel() {
                 let mut rx = rx;
 
                 for _ in 0..COUNT {
-                    let mut sel = Select::new();
-                    loop {
-                        if let Ok(mut r) = sel.recv(&rx) {
-                            rx = r.downcast_mut::<Option<Receiver<T>>>()
+                    rx = select! {
+                        recv(rx, mut r) => {
+                            r.unwrap()
+                                .downcast_mut::<Option<Receiver<T>>>()
                                 .unwrap()
                                 .take()
-                                .unwrap();
-                            break;
+                                .unwrap()
                         }
                     }
                 }
@@ -1271,4 +974,105 @@ fn channel_through_channel() {
         });
     }
 }
-*/
+
+// #[test]
+// fn conditional_send() {
+//     let (tx, rx) = bounded(0);
+//
+//     crossbeam::scope(|s| {
+//         s.spawn(move || rx.recv().unwrap());
+//
+//         select! {
+//             send(tx, ()) if 1 + 1 == 3 => panic!(),
+//             timed_out(ms(1000)) => {}
+//         }
+//
+//         select! {
+//             send(tx, ()) if 1 + 1 == 2 => {},
+//             timed_out(ms(1000)) => panic!(),
+//         }
+//     });
+// }
+//
+// #[test]
+// fn conditional_recv() {
+//     let (tx, rx) = unbounded();
+//     tx.send(());
+//
+//     select! {
+//         recv(rx, _) if 1 + 1 == 3 => panic!(),
+//         timed_out(ms(1000)) => {}
+//     }
+//
+//     select! {
+//         recv(rx, _) if 1 + 1 == 2 => {},
+//         timed_out(ms(1000)) => panic!(),
+//     }
+// }
+//
+// #[test]
+// fn conditional_closed() {
+//     let (_, rx) = bounded::<i32>(0);
+//
+//     select! {
+//         recv(rx, _) => panic!(),
+//         closed() if 1 + 1 == 3 => panic!(),
+//         would_block() => {}
+//         timed_out(ms(100)) => panic!(),
+//     }
+//
+//     select! {
+//         recv(rx, _) => panic!(),
+//         closed() if 1 + 1 == 2 => {}
+//         would_block() => panic!(),
+//         timed_out(ms(100)) => panic!(),
+//     }
+// }
+//
+// #[test]
+// fn conditional_would_block() {
+//     let (_tx, rx) = bounded::<i32>(0);
+//
+//     select! {
+//         recv(rx, _) => panic!(),
+//         closed() => panic!(),
+//         would_block() if 1 + 1 == 3 => panic!(),
+//         timed_out(ms(100)) => {}
+//     }
+//
+//     select! {
+//         recv(rx, _) => panic!(),
+//         closed() => panic!(),
+//         would_block() if 1 + 1 == 2 => {}
+//         timed_out(ms(100)) => panic!(),
+//     }
+// }
+//
+// #[test]
+// fn conditional_timed_out() {
+//     let (_tx, rx) = bounded::<i32>(0);
+//
+//     select! {
+//         recv(rx, _) => panic!(),
+//         timed_out(ms(100)) if 1 + 1 == 3 => panic!(),
+//         timed_out(ms(1000)) if 1 + 1 == 2 => {}
+//     }
+//
+//     select! {
+//         recv(rx, _) => panic!(),
+//         timed_out(ms(100)) if 1 + 1 == 2 => {}
+//         timed_out(ms(1000)) if 1 + 1 == 3 => panic!(),
+//     }
+// }
+//
+// #[test]
+// fn conditional_option_unwrap() {
+//     let (tx, rx) = unbounded();
+//     tx.send(());
+//     let rx = Some(&rx);
+//
+//     select! {
+//         recv(rx.unwrap(), _) if rx.is_some() => {}
+//         would_block() => panic!()
+//     }
+// }
