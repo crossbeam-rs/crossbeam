@@ -49,7 +49,7 @@ fn main() {
         }
     });
 
-    if let Ok(name) = rx.try_recv() {
+    if let Some(name) = rx.try_recv() {
         println!("No one received {}’s message.", name);
     }
 }

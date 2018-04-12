@@ -21,12 +21,12 @@ fn nested_recv_iter() {
             for x in rx.iter() {
                 acc += x;
             }
-            total_tx.send(acc).unwrap();
+            total_tx.send(acc);
         });
 
-        tx.send(3).unwrap();
-        tx.send(1).unwrap();
-        tx.send(2).unwrap();
+        tx.send(3);
+        tx.send(1);
+        tx.send(2);
         drop(tx);
         assert_eq!(total_rx.recv().unwrap(), 6);
     });
@@ -47,12 +47,12 @@ fn recv_iter_break() {
                     count += x;
                 }
             }
-            count_tx.send(count).unwrap();
+            count_tx.send(count);
         });
 
-        tx.send(2).unwrap();
-        tx.send(2).unwrap();
-        tx.send(2).unwrap();
+        tx.send(2);
+        tx.send(2);
+        tx.send(2);
         let _ = tx.send(2);
         drop(tx);
         assert_eq!(count_rx.recv().unwrap(), 4);
@@ -76,14 +76,12 @@ fn recv_try_iter() {
                         return;
                     }
                 }
-                request_tx.send(()).unwrap();
+                request_tx.send(());
             }
         });
 
         for _ in request_rx.iter() {
-            if response_tx.send(2).is_err() {
-                break;
-            }
+            response_tx.send(2);
         }
     })
 }
@@ -92,8 +90,8 @@ fn recv_try_iter() {
 fn recv_into_iter_owned() {
     let mut iter = {
         let (tx, rx) = unbounded::<i32>();
-        tx.send(1).unwrap();
-        tx.send(2).unwrap();
+        tx.send(1);
+        tx.send(2);
         rx.into_iter()
     };
 
@@ -105,8 +103,8 @@ fn recv_into_iter_owned() {
 #[test]
 fn recv_into_iter_borrowed() {
     let (tx, rx) = unbounded::<i32>();
-    tx.send(1).unwrap();
-    tx.send(2).unwrap();
+    tx.send(1);
+    tx.send(2);
     drop(tx);
 
     let mut iter = (&rx).into_iter();

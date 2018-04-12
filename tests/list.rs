@@ -19,12 +19,12 @@ fn ms(ms: u64) -> Duration {
 fn smoke() {
     let (tx, rx) = unbounded();
     tx.try_send(7).unwrap();
-    assert_eq!(rx.try_recv().unwrap(), 7);
+    assert_eq!(rx.try_recv(), Some(7));
 
-    tx.send(8).unwrap();
-    assert_eq!(rx.recv().unwrap(), 8);
+    tx.send(8);
+    assert_eq!(rx.recv(), Some(8));
 
-    assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(rx.try_recv(), None);
     assert_eq!(rx.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
 
     assert_eq!(tx.capacity(), None);
@@ -37,18 +37,18 @@ fn recv() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.recv(), Ok(7));
+            assert_eq!(rx.recv(), Some(7));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(8));
+            assert_eq!(rx.recv(), Some(8));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Ok(9));
-            assert_eq!(rx.recv(), Err(RecvError));
+            assert_eq!(rx.recv(), Some(9));
+            assert_eq!(rx.recv(), None);
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(tx.send(7), Ok(()));
-            assert_eq!(tx.send(8), Ok(()));
-            assert_eq!(tx.send(9), Ok(()));
+            tx.send(7);
+            tx.send(8);
+            tx.send(9);
         });
     });
 }
@@ -68,7 +68,7 @@ fn recv_timeout() {
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(tx.send(7), Ok(()));
+            tx.send(7);
         });
     });
 }
@@ -79,15 +79,15 @@ fn try_recv() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+            assert_eq!(rx.try_recv(), None);
             thread::sleep(ms(1500));
-            assert_eq!(rx.try_recv(), Ok(7));
+            assert_eq!(rx.try_recv(), Some(7));
             thread::sleep(ms(500));
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+            assert_eq!(rx.try_recv(), None);
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
-            assert_eq!(tx.send(7), Ok(()));
+            tx.send(7);
         });
     });
 }
@@ -96,16 +96,16 @@ fn try_recv() {
 fn recv_after_close() {
     let (tx, rx) = unbounded();
 
-    tx.send(1).unwrap();
-    tx.send(2).unwrap();
-    tx.send(3).unwrap();
+    tx.send(1);
+    tx.send(2);
+    tx.send(3);
 
     drop(tx);
 
-    assert_eq!(rx.recv(), Ok(1));
-    assert_eq!(rx.recv(), Ok(2));
-    assert_eq!(rx.recv(), Ok(3));
-    assert_eq!(rx.recv(), Err(RecvError));
+    assert_eq!(rx.recv(), Some(1));
+    assert_eq!(rx.recv(), Some(2));
+    assert_eq!(rx.recv(), Some(3));
+    assert_eq!(rx.recv(), None);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn len() {
     assert_eq!(rx.len(), 0);
 
     for i in 0..50 {
-        tx.send(i).unwrap();
+        tx.send(i);
         assert_eq!(tx.len(), i + 1);
     }
 
@@ -135,7 +135,7 @@ fn close_signals_receiver() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.recv(), Err(RecvError));
+            assert_eq!(rx.recv(), None);
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -153,13 +153,13 @@ fn spsc() {
     crossbeam::scope(|s| {
         s.spawn(move || {
             for i in 0..COUNT {
-                assert_eq!(rx.recv(), Ok(i));
+                assert_eq!(rx.recv(), Some(i));
             }
-            assert_eq!(rx.recv(), Err(RecvError));
+            assert_eq!(rx.recv(), None);
         });
         s.spawn(move || {
             for i in 0..COUNT {
-                tx.send(i).unwrap();
+                tx.send(i);
             }
         });
     });
@@ -185,13 +185,13 @@ fn mpmc() {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..COUNT {
-                    tx.send(i).unwrap();
+                    tx.send(i);
                 }
             });
         }
     });
 
-    assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(rx.try_recv(), None);
 
     for c in v {
         assert_eq!(c.load(SeqCst), THREADS);
@@ -210,7 +210,7 @@ fn stress_timeout_two_threads() {
                 if i % 2 == 0 {
                     thread::sleep(ms(50));
                 }
-                tx.send(i).unwrap();
+                tx.send(i);
             }
         });
 
@@ -260,7 +260,7 @@ fn drops() {
 
             s.spawn(|| {
                 for _ in 0..steps {
-                    tx.send(DropCounter).unwrap();
+                    tx.send(DropCounter);
                 }
             });
         });
@@ -287,7 +287,7 @@ fn linearizable() {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..COUNT {
-                    tx.send(0).unwrap();
+                    tx.send(0);
                     rx.try_recv().unwrap();
                 }
             });

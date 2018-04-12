@@ -3,12 +3,12 @@ use std::time::{Duration, Instant};
 
 use {Receiver, Sender};
 // use err::{SelectRecvError, SelectSendError};
-use self::machine::Machine;
+// use self::machine::Machine;
 
 pub use self::case_id::CaseId;
 
 mod case_id;
-mod machine;
+// mod machine;
 mod select_macro;
 // mod select_loop;
 

@@ -61,10 +61,10 @@
 //! let (tx, rx) = bounded(0);
 //!
 //! // Spawn a thread that sends a message into the channel.
-//! thread::spawn(move || tx.send("Hi!").unwrap());
+//! thread::spawn(move || tx.send("Hi!"));
 //!
 //! // Receive the message.
-//! assert_eq!(rx.recv(), Ok("Hi!"));
+//! assert_eq!(rx.recv(), Some("Hi!"));
 //! ```
 //!
 //! # Sharing channels
@@ -86,14 +86,14 @@
 //! crossbeam_utils::scoped::scope(|s| {
 //!     // Spawn a thread that sends one message and then receives one.
 //!     s.spawn(|| {
-//!         tx.send(1).unwrap();
+//!         tx.send(1);
 //!         rx.recv().unwrap();
 //!     });
 //!
 //!     // Spawn another thread that does the same thing.
 //!     // Both closures capture `tx` and `rx` by reference.
 //!     s.spawn(|| {
-//!         tx.send(2).unwrap();
+//!         tx.send(2);
 //!         rx.recv().unwrap();
 //!     });
 //! });
@@ -113,14 +113,14 @@
 //! // Spawn a thread that sends one message and then receives one.
 //! // Here, `tx` and `rx` are moved into the closure (sent into the thread).
 //! thread::spawn(move || {
-//!     tx.send(1).unwrap();
+//!     tx.send(1);
 //!     rx.recv().unwrap();
 //! });
 //!
 //! // Spawn another thread that does the same thing.
 //! // Here, `tx2` and `rx2` are moved into the closure (sent into the thread).
 //! thread::spawn(move || {
-//!     tx2.send(2).unwrap();
+//!     tx2.send(2);
 //!     rx2.recv().unwrap();
 //! });
 //! ```
@@ -155,12 +155,12 @@
 //! drop(tx);
 //!
 //! // The remaining messages can be received.
-//! assert_eq!(rx.try_recv(), Ok(1));
-//! assert_eq!(rx.try_recv(), Ok(2));
-//! assert_eq!(rx.try_recv(), Ok(3));
+//! assert_eq!(rx.try_recv(), Some(1));
+//! assert_eq!(rx.try_recv(), Some(2));
+//! assert_eq!(rx.try_recv(), Some(3));
 //!
 //! // However, attempting to receive another message will result in an error.
-//! assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+//! assert_eq!(rx.try_recv(), None);
 //! ```
 //!
 //! # Blocking and non-blocking operations
@@ -189,9 +189,9 @@
 //! use crossbeam_channel::unbounded;
 //!
 //! let (tx, rx) = unbounded();
-//! tx.send(1).unwrap();
-//! tx.send(2).unwrap();
-//! tx.send(3).unwrap();
+//! tx.send(1);
+//! tx.send(2);
+//! tx.send(3);
 //!
 //! // Drop the sender in order to close the channel.
 //! drop(tx);
@@ -208,9 +208,9 @@
 //! use crossbeam_channel::unbounded;
 //!
 //! let (tx, rx) = unbounded();
-//! tx.send(1).unwrap();
-//! tx.send(2).unwrap();
-//! tx.send(3).unwrap();
+//! tx.send(1);
+//! tx.send(2);
+//! tx.send(3);
 //! // No need to drop the sender.
 //!
 //! // Receive all messages currently in the channel.
@@ -241,8 +241,8 @@
 //! let (tx1, rx1) = unbounded();
 //! let (tx2, rx2) = unbounded();
 //!
-//! thread::spawn(move || tx1.send("foo").unwrap());
-//! thread::spawn(move || tx2.send("bar").unwrap());
+//! thread::spawn(move || tx1.send("foo"));
+//! thread::spawn(move || tx2.send("bar"));
 //!
 //! select_loop! {
 //!     recv(rx1, msg) => {
@@ -294,7 +294,7 @@
 //!     .for_each(|t| t.join().unwrap());
 //!
 //! // Let's send a message to the remaining person who doesn't have a match.
-//! if let Ok(name) = rx.try_recv() {
+//! if let Some(name) = rx.try_recv() {
 //!     println!("No one received {}’s message.", name);
 //! }
 //! */
@@ -343,9 +343,7 @@ pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};
 pub use channel::{IntoIter, Iter, TryIter};
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
-pub use err::{SendError, SendTimeoutError, TrySendError};
-// pub use err::{SelectRecvError, SelectSendError};
-// pub use select::Select;
+pub use err::{SendTimeoutError, TrySendError};
 
 use select::CaseId;
 #[doc(hidden)]

@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
 
 use flavors;
-use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use err::{RecvError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use select::CaseId;
 
 use ::Sel;
@@ -101,7 +101,7 @@ fn my() {
     let (s, r) = bounded::<i32>(0);
     ::std::thread::spawn(move || {
         println!("SENDING");
-        s.send(7).unwrap();
+        s.send(7);
         println!("SENT");
     });
 
@@ -151,7 +151,7 @@ enum Flavor<T> {
 ///
 /// // Spawn a thread doing expensive computation.
 /// thread::spawn(move || {
-///     tx.send(fib(20)).unwrap();
+///     tx.send(fib(20));
 /// });
 ///
 /// // Do some useful work for a while...
@@ -185,17 +185,17 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// let (tx, rx) = bounded(1);
 ///
 /// // This call returns immediately since there is enough space in the channel.
-/// tx.send(1).unwrap();
+/// tx.send(1);
 ///
 /// thread::spawn(move || {
 ///     // This call blocks because the channel is full. It will be able to complete only after the
 ///     // first message is received.
-///     tx.send(2).unwrap();
+///     tx.send(2);
 /// });
 ///
 /// thread::sleep(Duration::from_secs(1));
-/// assert_eq!(rx.recv(), Ok(1));
-/// assert_eq!(rx.recv(), Ok(2));
+/// assert_eq!(rx.recv(), Some(1));
+/// assert_eq!(rx.recv(), Some(2));
 /// ```
 ///
 /// ```
@@ -207,11 +207,11 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 ///
 /// thread::spawn(move || {
 ///     // This call blocks until the receive operation appears on the other end of the channel.
-///     tx.send(1).unwrap();
+///     tx.send(1);
 /// });
 ///
 /// thread::sleep(Duration::from_secs(1));
-/// assert_eq!(rx.recv(), Ok(1));
+/// assert_eq!(rx.recv(), Some(1));
 /// ```
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
@@ -241,11 +241,11 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// let tx2 = tx1.clone();
 ///
 /// thread::spawn(move || {
-///     tx1.send(1).unwrap();
+///     tx1.send(1);
 /// });
 ///
 /// thread::spawn(move || {
-///     tx2.send(2).unwrap();
+///     tx2.send(2);
 /// });
 ///
 /// let msg1 = rx.recv().unwrap();
@@ -306,19 +306,19 @@ impl<T> Sender<T> {
         }
     }
 
-    pub(crate) fn fulfill_send(&self, msg: T) -> Result<(), T> {
-        match self.0.flavor {
-            Flavor::Array(_) | Flavor::List(_) => match self.try_send(msg) {
-                Ok(()) => Ok(()),
-                Err(TrySendError::Full(m)) => Err(m),
-                Err(TrySendError::Closed(m)) => Err(m),
-            },
-            Flavor::Zero(ref chan) => {
-                chan.fulfill_send(msg);
-                Ok(())
-            }
-        }
-    }
+    // pub(crate) fn fulfill_send(&self, msg: T) -> Result<(), T> {
+    //     match self.0.flavor {
+    //         Flavor::Array(_) | Flavor::List(_) => match self.try_send(msg) {
+    //             Ok(()) => Ok(()),
+    //             Err(TrySendError::Full(m)) => Err(m),
+    //             Err(TrySendError::Closed(m)) => Err(m),
+    //         },
+    //         Flavor::Zero(ref chan) => {
+    //             chan.fulfill_send(msg);
+    //             Ok(())
+    //         }
+    //     }
+    // }
 
     /// Attempts to send a message into the channel without blocking.
     ///
@@ -359,31 +359,23 @@ impl<T> Sender<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use crossbeam_channel::{bounded, SendError};
+    /// use crossbeam_channel::bounded;
     ///
-    /// let (tx, rx) = bounded(1);
-    /// assert_eq!(tx.send(1), Ok(()));
+    /// let (tx, rx) = bounded(0);
     ///
     /// thread::spawn(move || {
-    ///     assert_eq!(rx.recv(), Ok(1));
-    ///     thread::sleep(Duration::from_secs(1));
-    ///     //drop(rx);
+    ///     tx.send(1);
     /// });
     ///
-    /// assert_eq!(tx.send(2), Ok(()));
-    /// //assert_eq!(tx.send(3), Err(SendError(3)));
+    /// assert_eq!(rx.recv(), Some(1));
     /// ```
-    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
+    pub fn send(&self, msg: T) {
         let res = match self.0.flavor {
             Flavor::Array(ref chan) => chan.send_until(msg, None, self.case_id()),
             Flavor::List(ref chan) => chan.send(msg),
             Flavor::Zero(ref chan) => chan.send_until(msg, None, self.case_id()),
         };
-        match res {
-            Ok(()) => Ok(()),
-            Err(SendTimeoutError::Closed(m)) => Err(SendError(m)),
-            Err(SendTimeoutError::Timeout(m)) => Err(SendError(m)),
-        }
+        res.unwrap(); // TODO: remove
     }
 
     /// Sends a message into the channel, blocking if the channel is full for a limited time.
@@ -406,7 +398,7 @@ impl<T> Sender<T> {
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5).unwrap();
+    ///     tx.send(5);
     ///     drop(tx);
     /// });
     ///
@@ -435,7 +427,7 @@ impl<T> Sender<T> {
     /// let (tx, rx) = unbounded();
     /// assert!(tx.is_empty());
     ///
-    /// tx.send(0).unwrap();
+    /// tx.send(0);
     /// assert!(!tx.is_empty());
     ///
     /// // Drop the only receiver, thus closing the channel.
@@ -461,8 +453,8 @@ impl<T> Sender<T> {
     /// let (tx, rx) = unbounded();
     /// assert_eq!(tx.len(), 0);
     ///
-    /// tx.send(1).unwrap();
-    /// tx.send(2).unwrap();
+    /// tx.send(1);
+    /// tx.send(2);
     /// assert_eq!(tx.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
@@ -503,35 +495,6 @@ impl<T> Sender<T> {
             Flavor::Array(ref chan) => chan.is_closed(),
             Flavor::List(ref chan) => chan.is_closed(),
             Flavor::Zero(ref chan) => chan.is_closed(),
-        }
-    }
-
-    /// Closes the channel.
-    ///
-    /// Returns `true` if this call closed the channel and `false` if it was already closed.
-    ///
-    /// Closing prevents any further messages from being sent into the channel, while still
-    /// allowing the receiver to drain any existing buffered messages.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded::<i32>();
-    /// tx.send(1);
-    /// tx.send(2);
-    ///
-    /// rx.close();
-    /// assert_eq!(rx.recv(), Ok(1));
-    /// assert_eq!(rx.recv(), Ok(2));
-    /// assert!(rx.recv().is_err());
-    /// ```
-    pub fn close(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.close(),
-            Flavor::List(ref chan) => chan.close(),
-            Flavor::Zero(ref chan) => chan.close(),
         }
     }
 }
@@ -600,9 +563,9 @@ impl<T> Ord for Sender<T> {
 /// let (tx, rx) = unbounded();
 ///
 /// thread::spawn(move || {
-///     tx.send("Hello world!").unwrap();
+///     tx.send("Hello world!");
 ///     thread::sleep(Duration::from_secs(2)); // Block for two seconds.
-///     tx.send("Delayed for 2 seconds").unwrap();
+///     tx.send("Delayed for 2 seconds");
 /// });
 ///
 /// println!("{}", rx.recv().unwrap()); // Received immediately.
@@ -661,12 +624,12 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub(crate) fn fulfill_recv(&self) -> Result<T, ()> {
-        match self.0.flavor {
-            Flavor::Array(_) | Flavor::List(_) => self.try_recv().map_err(|_| ()),
-            Flavor::Zero(ref chan) => Ok(chan.fulfill_recv()),
-        }
-    }
+    // pub(crate) fn fulfill_recv(&self) -> Result<T, ()> {
+    //     match self.0.flavor {
+    //         Flavor::Array(_) | Flavor::List(_) => self.try_recv().map_err(|_| ()),
+    //         Flavor::Zero(ref chan) => Ok(chan.fulfill_recv()),
+    //     }
+    // }
 
     /// Attempts to receive a message from the channel without blocking.
     ///
@@ -683,20 +646,21 @@ impl<T> Receiver<T> {
     /// use crossbeam_channel::{unbounded, TryRecvError};
     ///
     /// let (tx, rx) = unbounded();
-    /// assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+    /// assert_eq!(rx.try_recv(), None);
     ///
-    /// tx.send(5).unwrap();
+    /// tx.send(5);
     /// drop(tx);
     ///
-    /// assert_eq!(rx.try_recv(), Ok(5));
-    /// assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+    /// assert_eq!(rx.try_recv(), Some(5));
+    /// assert_eq!(rx.try_recv(), None);
     /// ```
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.0.flavor {
+    pub fn try_recv(&self) -> Option<T> {
+        let res = match self.0.flavor {
             Flavor::Array(ref chan) => chan.try_recv(),
             Flavor::List(ref chan) => chan.try_recv(),
             Flavor::Zero(ref chan) => chan.try_recv(self.case_id()),
-        }
+        };
+        res.ok()
     }
 
     /// Waits for a message to be received from the channel.
@@ -718,24 +682,20 @@ impl<T> Receiver<T> {
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5).unwrap();
+    ///     tx.send(5);
     ///     drop(tx);
     /// });
     ///
-    /// assert_eq!(rx.recv(), Ok(5));
-    /// assert!(rx.recv().is_err());
+    /// assert_eq!(rx.recv(), Some(5));
+    /// assert_eq!(rx.recv(), None);
     /// ```
-    pub fn recv(&self) -> Result<T, RecvError> {
+    pub fn recv(&self) -> Option<T> {
         let res = match self.0.flavor {
             Flavor::Array(ref chan) => chan.recv_until(None, self.case_id()),
             Flavor::List(ref chan) => chan.recv_until(None, self.case_id()),
             Flavor::Zero(ref chan) => chan.recv_until(None, self.case_id()),
         };
-        if let Ok(m) = res {
-            Ok(m)
-        } else {
-            Err(RecvError)
-        }
+        res.ok()
     }
 
     /// Waits for a message to be received from the channel but only for a limited time.
@@ -758,7 +718,7 @@ impl<T> Receiver<T> {
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5).unwrap();
+    ///     tx.send(5);
     ///     drop(tx);
     /// });
     ///
@@ -787,7 +747,7 @@ impl<T> Receiver<T> {
     /// let (tx, rx) = unbounded();
     /// assert!(rx.is_empty());
     ///
-    /// tx.send(0).unwrap();
+    /// tx.send(0);
     /// assert!(!rx.is_empty());
     ///
     /// // Drop the only sender, thus closing the channel.
@@ -813,8 +773,8 @@ impl<T> Receiver<T> {
     /// let (tx, rx) = unbounded();
     /// assert_eq!(rx.len(), 0);
     ///
-    /// tx.send(1).unwrap();
-    /// tx.send(2).unwrap();
+    /// tx.send(1);
+    /// tx.send(2);
     /// assert_eq!(rx.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
@@ -872,9 +832,9 @@ impl<T> Receiver<T> {
     /// let (tx, rx) = unbounded::<i32>();
     ///
     /// thread::spawn(move || {
-    ///     tx.send(1).unwrap();
-    ///     tx.send(2).unwrap();
-    ///     tx.send(3).unwrap();
+    ///     tx.send(1);
+    ///     tx.send(2);
+    ///     tx.send(3);
     /// });
     ///
     /// let v: Vec<_> = rx.iter().collect();
@@ -900,10 +860,10 @@ impl<T> Receiver<T> {
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(1).unwrap();
-    ///     tx.send(2).unwrap();
+    ///     tx.send(1);
+    ///     tx.send(2);
     ///     thread::sleep(Duration::from_secs(2));
-    ///     tx.send(3).unwrap();
+    ///     tx.send(3);
     /// });
     ///
     /// thread::sleep(Duration::from_secs(2));
@@ -912,35 +872,6 @@ impl<T> Receiver<T> {
     /// ```
     pub fn try_iter(&self) -> TryIter<T> {
         TryIter { rx: self }
-    }
-
-    /// Closes the channel.
-    ///
-    /// Returns `true` if this call closed the channel and `false` if it was already closed.
-    ///
-    /// Closing prevents any further messages from being sent into the channel, while still
-    /// allowing the receiver to drain any existing buffered messages.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded::<i32>();
-    /// tx.send(1);
-    /// tx.send(2);
-    /// tx.close();
-    ///
-    /// assert_eq!(rx.recv(), Ok(1));
-    /// assert_eq!(rx.recv(), Ok(2));
-    /// assert!(rx.recv().is_err());
-    /// ```
-    pub fn close(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.close(),
-            Flavor::List(ref chan) => chan.close(),
-            Flavor::Zero(ref chan) => chan.close(),
-        }
     }
 }
 
@@ -1014,9 +945,9 @@ impl<T> IntoIterator for Receiver<T> {
 /// let (tx, rx) = unbounded();
 ///
 /// thread::spawn(move || {
-///     tx.send(1).unwrap();
-///     tx.send(2).unwrap();
-///     tx.send(3).unwrap();
+///     tx.send(1);
+///     tx.send(2);
+///     tx.send(3);
 /// });
 ///
 /// let v: Vec<_> = rx.iter().collect();
@@ -1031,7 +962,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.rx.recv().ok()
+        self.rx.recv()
     }
 }
 
@@ -1051,10 +982,10 @@ impl<'a, T> Iterator for Iter<'a, T> {
 ///
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_secs(1));
-///     tx.send(1).unwrap();
-///     tx.send(2).unwrap();
+///     tx.send(1);
+///     tx.send(2);
 ///     thread::sleep(Duration::from_secs(2));
-///     tx.send(3).unwrap();
+///     tx.send(3);
 /// });
 ///
 /// thread::sleep(Duration::from_secs(2));
@@ -1070,7 +1001,7 @@ impl<'a, T> Iterator for TryIter<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.rx.try_recv().ok()
+        self.rx.try_recv()
     }
 }
 
@@ -1088,9 +1019,9 @@ impl<'a, T> Iterator for TryIter<'a, T> {
 /// let (tx, rx) = unbounded();
 ///
 /// thread::spawn(move || {
-///     tx.send(1).unwrap();
-///     tx.send(2).unwrap();
-///     tx.send(3).unwrap();
+///     tx.send(1);
+///     tx.send(2);
+///     tx.send(3);
 /// });
 ///
 /// let v: Vec<_> = rx.into_iter().collect();
@@ -1105,6 +1036,6 @@ impl<T> Iterator for IntoIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.rx.recv().ok()
+        self.rx.recv()
     }
 }

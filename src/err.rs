@@ -1,16 +1,6 @@
 use std::error;
 use std::fmt;
 
-/// An error returned from the [`Sender::send`] method.
-///
-/// A send operation can only fail if the receiving end of a channel is closed, implying that the
-/// data could never be received. The error contains the data being sent as a payload so it can
-/// be recovered.
-///
-/// [`Sender::send`]: struct.Sender.html#method.send
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct SendError<T>(pub T);
-
 /// This enumeration is the list of the possible error outcomes for the [`try_send`] method.
 ///
 /// [`try_send`]: struct.Sender.html#method.try_send
@@ -40,18 +30,6 @@ pub enum SendTimeoutError<T> {
     /// The channel is closed.
     Closed(T),
 }
-
-/*
-/// An error returned from the [`Select::send`] method.
-///
-/// This error occurs when the selection case doesn't send a message into the channel. Note that
-/// cases enumerated in a selection loop are sometimes simply skipped, so they might fail even if
-/// the channel is currently not full.
-///
-/// [`Select::send`]: struct.Select.html#method.send
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct SelectSendError<T>(pub T);
-*/
 
 /// An error returned from the [`Receiver::recv`] method.
 ///
@@ -103,48 +81,6 @@ pub enum RecvTimeoutError {
 pub struct SelectRecvError;
 */
 
-impl<T> fmt::Debug for SendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "SendError(..)".fmt(f)
-    }
-}
-
-impl<T> fmt::Display for SendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "sending on a closed channel".fmt(f)
-    }
-}
-
-impl<T: Send> error::Error for SendError<T> {
-    fn description(&self) -> &str {
-        "sending on a closed channel"
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
-impl<T> SendError<T> {
-    /// Unwraps the value.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded();
-    /// drop(rx);
-    ///
-    /// if let Err(err) = tx.send("foo") {
-    ///     assert_eq!(err.into_inner(), "foo");
-    /// }
-    /// ```
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
 impl<T> fmt::Debug for TrySendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -173,14 +109,6 @@ impl<T: Send> error::Error for TrySendError<T> {
 
     fn cause(&self) -> Option<&error::Error> {
         None
-    }
-}
-
-impl<T> From<SendError<T>> for TrySendError<T> {
-    fn from(err: SendError<T>) -> TrySendError<T> {
-        match err {
-            SendError(t) => TrySendError::Closed(t),
-        }
     }
 }
 
@@ -228,14 +156,6 @@ impl<T: Send> error::Error for SendTimeoutError<T> {
 
     fn cause(&self) -> Option<&error::Error> {
         None
-    }
-}
-
-impl<T> From<SendError<T>> for SendTimeoutError<T> {
-    fn from(err: SendError<T>) -> SendTimeoutError<T> {
-        match err {
-            SendError(e) => SendTimeoutError::Closed(e),
-        }
     }
 }
 
