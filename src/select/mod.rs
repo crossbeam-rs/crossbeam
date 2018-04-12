@@ -163,6 +163,7 @@ pub(crate) mod handle;
 /// ## Stop if all channels are closed
 ///
 /// ```
+/// /*
 /// use crossbeam_channel::{unbounded, Select};
 ///
 /// let (tx, rx) = unbounded();
@@ -183,6 +184,7 @@ pub(crate) mod handle;
 ///         break;
 ///     }
 /// }
+/// */
 /// ```
 ///
 /// ## Stop if all operations would block
@@ -399,6 +401,7 @@ impl Select {
     /// # Examples
     ///
     /// ```
+    /// /*
     /// use crossbeam_channel::{unbounded, Select};
     ///
     /// let (tx, rx) = unbounded();
@@ -418,6 +421,7 @@ impl Select {
     ///         break;
     ///     }
     /// }
+    /// */
     /// ```
     #[inline]
     pub fn closed(&mut self) -> bool {

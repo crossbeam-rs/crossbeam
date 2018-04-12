@@ -209,6 +209,7 @@
 /// # extern crate crossbeam_channel as channel;
 /// # fn main() {
 ///
+/// /*
 /// let (tx, rx) = channel::unbounded();
 ///
 /// // Close the channel.
@@ -223,6 +224,7 @@
 ///
 ///     closed() => println!("All channels are closed! Stopping selection."),
 /// }
+/// */
 ///
 /// # }
 /// ```

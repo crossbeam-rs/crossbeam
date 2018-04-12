@@ -10,6 +10,7 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
 use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
 
+/*
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
@@ -1018,3 +1019,4 @@ fn conditional_option_unwrap() {
         would_block() => panic!()
     }
 }
+*/

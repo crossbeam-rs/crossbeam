@@ -446,27 +446,30 @@ fn loop_try() {
     for _ in 0..20 {
         let (tx1, rx1) = bounded::<i32>(0);
         let (tx2, rx2) = bounded::<i32>(0);
+        let (tx_end, rx_end) = bounded::<()>(0);
 
         crossbeam::scope(|s| {
             s.spawn(|| {
                 loop {
-                    match tx1.try_send(1) {
-                        Ok(()) => break,
-                        Err(TrySendError::Closed(_)) => break,
-                        Err(TrySendError::Full(_)) => continue,
+                    if tx1.try_send(1).is_ok() {
+                        break;
+                    }
+
+                    if let Err(TryRecvError::Closed) = rx_end.try_recv() {
+                        break;
                     }
                 }
             });
 
             s.spawn(|| {
                 loop {
-                    match rx2.try_recv() {
-                        Ok(x) => {
-                            assert_eq!(x, 2);
-                            break;
-                        }
-                        Err(TryRecvError::Closed) => break,
-                        Err(TryRecvError::Empty) => continue,
+                    if let Ok(x) = rx2.try_recv() {
+                        assert_eq!(x, 2);
+                        break;
+                    }
+
+                    if let Err(TryRecvError::Closed) = rx_end.try_recv() {
+                        break;
                     }
                 }
             });
@@ -491,8 +494,7 @@ fn loop_try() {
                     }
                 }
 
-                drop(rx1);
-                drop(tx2);
+                drop(tx_end);
             });
         });
     }
@@ -1028,7 +1030,7 @@ fn send() {
             thread::sleep(ms(1000));
             assert_eq!(tx.send(9), Ok(()));
             thread::sleep(ms(1000));
-            assert_eq!(tx.send(10), Err(SendError(10)));
+            assert_eq!(tx.send(10), Ok(()));
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
@@ -1049,7 +1051,6 @@ fn send() {
             assert_eq!(tx.send(8), Ok(()));
             thread::sleep(ms(1000));
             assert_eq!(tx.send(9), Ok(()));
-            assert_eq!(tx.send(10), Err(SendError(10)));
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
@@ -1076,8 +1077,6 @@ fn send_timeout() {
             );
             thread::sleep(ms(1000));
             assert_eq!(tx.send_timeout(4, ms(1000)), Ok(()));
-            thread::sleep(ms(1000));
-            assert_eq!(tx.send(5), Err(SendError(5)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -1101,7 +1100,7 @@ fn send_timeout() {
             assert_eq!(tx.send_timeout(8, ms(1000)), Ok(()));
             assert_eq!(
                 tx.send_timeout(9, ms(1000)),
-                Err(SendTimeoutError::Closed(9))
+                Err(SendTimeoutError::Timeout(9))
             );
         });
         s.spawn(move || {
@@ -1124,7 +1123,7 @@ fn try_send() {
             thread::sleep(ms(1500));
             assert_eq!(tx.try_send(3), Ok(()));
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(4), Err(TrySendError::Closed(4)));
+            assert_eq!(tx.try_send(4), Ok(()));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -1144,7 +1143,7 @@ fn try_send() {
             thread::sleep(ms(1500));
             assert_eq!(tx.try_send(8), Ok(()));
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(9), Err(TrySendError::Closed(9)));
+            assert_eq!(tx.try_send(9), Err(TrySendError::Full(9)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));

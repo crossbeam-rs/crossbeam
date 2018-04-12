@@ -112,7 +112,7 @@ fn send() {
             thread::sleep(ms(1000));
             assert_eq!(tx.send(9), Ok(()));
             thread::sleep(ms(1000));
-            assert_eq!(tx.send(10), Err(SendError(10)));
+            assert_eq!(tx.try_send(10), Ok(()));
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
@@ -137,8 +137,6 @@ fn send_timeout() {
             );
             thread::sleep(ms(1000));
             assert_eq!(tx.send_timeout(4, ms(1000)), Ok(()));
-            thread::sleep(ms(1000));
-            assert_eq!(tx.send(5), Err(SendError(5)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -161,7 +159,7 @@ fn try_send() {
             thread::sleep(ms(1500));
             assert_eq!(tx.try_send(3), Ok(()));
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(4), Err(TrySendError::Closed(4)));
+            assert_eq!(tx.try_send(4), Ok(()));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -204,43 +202,6 @@ fn recv_after_close() {
     assert_eq!(rx.recv(), Ok(2));
     assert_eq!(rx.recv(), Ok(3));
     assert_eq!(rx.recv(), Err(RecvError));
-}
-
-#[test]
-fn is_closed() {
-    let (tx, rx) = bounded::<()>(100);
-    assert!(!tx.is_closed());
-    assert!(!rx.is_closed());
-
-    let tx2 = tx.clone();
-    drop(tx);
-    let tx3 = tx2.clone();
-    assert!(!tx2.is_closed());
-    assert!(!rx.is_closed());
-
-    drop(tx2);
-    assert!(!tx3.is_closed());
-    assert!(!rx.is_closed());
-
-    drop(tx3);
-    assert!(rx.is_closed());
-
-    let (tx, rx) = bounded::<()>(100);
-    assert!(!tx.is_closed());
-    assert!(!rx.is_closed());
-
-    let rx2 = rx.clone();
-    drop(rx);
-    let rx3 = rx2.clone();
-    assert!(!rx2.is_closed());
-    assert!(!tx.is_closed());
-
-    drop(rx2);
-    assert!(!rx3.is_closed());
-    assert!(!tx.is_closed());
-
-    drop(rx3);
-    assert!(tx.is_closed());
 }
 
 #[test]
@@ -300,40 +261,6 @@ fn len() {
 
     assert_eq!(tx.len(), 0);
     assert_eq!(rx.len(), 0);
-}
-
-#[test]
-fn dropping_receiver_signals_sender() {
-    let (tx, rx) = bounded(1);
-
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(tx.send(()), Ok(()));
-            assert_eq!(tx.send(()), Err(SendError(())));
-        });
-        s.spawn(move || {
-            thread::sleep(ms(1000));
-            drop(rx);
-        });
-    });
-}
-
-#[test]
-fn close_signals_sender() {
-    let (tx, rx) = bounded(1);
-
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(tx.send(1), Ok(()));
-            assert_eq!(tx.send(2), Err(SendError(2)));
-        });
-        s.spawn(move || {
-            thread::sleep(ms(1000));
-            rx.close();
-            assert_eq!(rx.recv(), Ok(1));
-            assert_eq!(rx.recv(), Err(RecvError));
-        });
-    });
 }
 
 #[test]

@@ -12,7 +12,6 @@ use select::CaseId;
 
 pub struct Channel<T> {
     senders: AtomicUsize,
-    receivers: AtomicUsize,
     flavor: Flavor<T>,
 }
 
@@ -57,7 +56,6 @@ enum Flavor<T> {
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
-        receivers: AtomicUsize::new(0),
         flavor: Flavor::List(flavors::list::Channel::new()),
     });
     (Sender::new(chan.clone()), Receiver::new(chan))
@@ -112,7 +110,6 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
-        receivers: AtomicUsize::new(0),
         flavor: {
             if cap == 0 {
                 Flavor::Zero(flavors::zero::Channel::new())
@@ -224,8 +221,6 @@ impl<T> Sender<T> {
     /// let (tx, rx) = bounded(1);
     /// assert_eq!(tx.try_send(1), Ok(()));
     /// assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
-    /// drop(rx);
-    /// assert_eq!(tx.try_send(2), Err(TrySendError::Closed(2)));
     /// ```
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
@@ -257,11 +252,11 @@ impl<T> Sender<T> {
     /// thread::spawn(move || {
     ///     assert_eq!(rx.recv(), Ok(1));
     ///     thread::sleep(Duration::from_secs(1));
-    ///     drop(rx);
+    ///     //drop(rx);
     /// });
     ///
     /// assert_eq!(tx.send(2), Ok(()));
-    /// assert_eq!(tx.send(3), Err(SendError(3)));
+    /// //assert_eq!(tx.send(3), Err(SendError(3)));
     /// ```
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let res = match self.0.flavor {
@@ -387,20 +382,7 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns `true` if the channel is closed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded::<i32>();
-    /// tx.send(1).unwrap();
-    ///
-    /// assert!(!tx.is_closed());
-    /// drop(rx);
-    /// assert!(tx.is_closed());
-    /// ```
+    #[doc(hidden)]
     pub fn is_closed(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_closed(),
@@ -519,7 +501,6 @@ unsafe impl<T: Send> Sync for Receiver<T> {}
 
 impl<T> Receiver<T> {
     fn new(chan: Arc<Channel<T>>) -> Self {
-        chan.receivers.fetch_add(1, SeqCst);
         Receiver(chan)
     }
 
@@ -744,22 +725,7 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns `true` if the channel is closed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded::<i32>();
-    /// tx.send(1).unwrap();
-    ///
-    /// assert!(!rx.is_closed());
-    /// drop(tx);
-    /// assert!(rx.is_closed());
-    ///
-    /// assert_eq!(rx.recv(), Ok(1));
-    /// ```
+    #[doc(hidden)]
     pub fn is_closed(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_closed(),
@@ -850,18 +816,6 @@ impl<T> Receiver<T> {
             Flavor::Array(ref chan) => chan.close(),
             Flavor::List(ref chan) => chan.close(),
             Flavor::Zero(ref chan) => chan.close(),
-        }
-    }
-}
-
-impl<T> Drop for Receiver<T> {
-    fn drop(&mut self) {
-        if self.0.receivers.fetch_sub(1, SeqCst) == 1 {
-            match self.0.flavor {
-                Flavor::Array(ref chan) => chan.close(),
-                Flavor::List(ref chan) => chan.close(),
-                Flavor::Zero(ref chan) => chan.close(),
-            };
         }
     }
 }

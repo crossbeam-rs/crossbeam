@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::unbounded;
-use crossbeam_channel::{RecvError, RecvTimeoutError, SendError, TryRecvError};
+use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
 use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
@@ -109,43 +109,6 @@ fn recv_after_close() {
 }
 
 #[test]
-fn is_closed() {
-    let (tx, rx) = unbounded::<()>();
-    assert!(!tx.is_closed());
-    assert!(!rx.is_closed());
-
-    let tx2 = tx.clone();
-    drop(tx);
-    let tx3 = tx2.clone();
-    assert!(!tx2.is_closed());
-    assert!(!rx.is_closed());
-
-    drop(tx2);
-    assert!(!tx3.is_closed());
-    assert!(!rx.is_closed());
-
-    drop(tx3);
-    assert!(rx.is_closed());
-
-    let (tx, rx) = unbounded::<()>();
-    assert!(!tx.is_closed());
-    assert!(!rx.is_closed());
-
-    let rx2 = rx.clone();
-    drop(rx);
-    let rx3 = rx2.clone();
-    assert!(!rx2.is_closed());
-    assert!(!tx.is_closed());
-
-    drop(rx2);
-    assert!(!rx3.is_closed());
-    assert!(!tx.is_closed());
-
-    drop(rx3);
-    assert!(tx.is_closed());
-}
-
-#[test]
 fn len() {
     let (tx, rx) = unbounded();
 
@@ -164,27 +127,6 @@ fn len() {
 
     assert_eq!(tx.len(), 0);
     assert_eq!(rx.len(), 0);
-}
-
-#[test]
-fn close_signals_sender() {
-    let (tx, rx) = unbounded();
-
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(tx.send(1), Ok(()));
-            assert_eq!(tx.send(2), Ok(()));
-            thread::sleep(ms(1000));
-            assert_eq!(tx.send(3), Err(SendError(3)));
-        });
-        s.spawn(move || {
-            thread::sleep(ms(500));
-            rx.close();
-            assert_eq!(rx.recv(), Ok(1));
-            assert_eq!(rx.recv(), Ok(2));
-            assert_eq!(rx.recv(), Err(RecvError));
-        });
-    });
 }
 
 #[test]
