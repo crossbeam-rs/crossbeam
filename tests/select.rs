@@ -7,7 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
+use crossbeam_channel::{RecvError, TryRecvError};
 use crossbeam_channel::TrySendError;
 
 // TODO: test that `select!` evaluates to an expression

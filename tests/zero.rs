@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::bounded;
-use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
+use crossbeam_channel::{RecvError, TryRecvError};
 use crossbeam_channel::TrySendError;
 use rand::{thread_rng, Rng};
 
@@ -55,12 +55,18 @@ fn recv_timeout() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(rx.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
-            assert_eq!(rx.recv_timeout(ms(1000)), Ok(7));
-            assert_eq!(
-                rx.recv_timeout(ms(1000)),
-                Err(RecvTimeoutError::Closed)
-            );
+            select! {
+                recv(rx, v) => panic!(),
+                default(ms(1000)) => {}
+            }
+            select! {
+                recv(rx, v) => assert_eq!(v, Some(7)),
+                default(ms(1000)) => panic!(),
+            }
+            select! {
+                recv(rx, v) => assert_eq!(v, None),
+                default(ms(1000)) => panic!(),
+            }
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
@@ -277,9 +283,12 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(50));
                 }
                 loop {
-                    if let Ok(x) = rx.recv_timeout(ms(10)) {
-                        assert_eq!(x, i);
-                        break;
+                    select! {
+                        recv(rx, v) => {
+                            assert_eq!(v, Some(i));
+                            break;
+                        }
+                        default(ms(10)) => {}
                     }
                 }
             }

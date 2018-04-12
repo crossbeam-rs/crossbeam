@@ -43,19 +43,6 @@ pub enum TryRecvError {
     Closed,
 }
 
-/// This enumeration is the list of possible errors that made [`recv_timeout`] unable to return
-/// data when called. This can occur with both bounded and unbounded channels.
-///
-/// [`recv_timeout`]: struct.Receiver.html#method.recv_timeout
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum RecvTimeoutError {
-    /// This channel is currently empty, but not closed, so data may yet become available.
-    Timeout,
-
-    /// The channel is closed, and there will never be any more data received on it.
-    Closed,
-}
-
 /*
 /// An error returned from the [`Select::recv`] method.
 ///
@@ -212,36 +199,6 @@ impl From<RecvError> for TryRecvError {
     fn from(err: RecvError) -> TryRecvError {
         match err {
             RecvError => TryRecvError::Closed,
-        }
-    }
-}
-
-impl fmt::Display for RecvTimeoutError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            RecvTimeoutError::Timeout => "timed out waiting on channel".fmt(f),
-            RecvTimeoutError::Closed => "channel is empty and closed".fmt(f),
-        }
-    }
-}
-
-impl error::Error for RecvTimeoutError {
-    fn description(&self) -> &str {
-        match *self {
-            RecvTimeoutError::Timeout => "timed out waiting on channel",
-            RecvTimeoutError::Closed => "channel is empty and closed",
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
-impl From<RecvError> for RecvTimeoutError {
-    fn from(err: RecvError) -> RecvTimeoutError {
-        match err {
-            RecvError => RecvTimeoutError::Closed,
         }
     }
 }

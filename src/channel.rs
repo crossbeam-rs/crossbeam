@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
 
 use flavors;
-use err::{RecvError, RecvTimeoutError, TryRecvError, TrySendError};
+use err::{RecvError, TryRecvError, TrySendError};
 use select::CaseId;
 
 use ::Sel;
@@ -652,48 +652,10 @@ impl<T> Receiver<T> {
     /// assert_eq!(rx.recv(), None);
     /// ```
     pub fn recv(&self) -> Option<T> {
-        let res = match self.0.flavor {
-            Flavor::Array(ref chan) => chan.recv_until(None, self.case_id()),
-            Flavor::List(ref chan) => chan.recv_until(None, self.case_id()),
-            Flavor::Zero(ref chan) => chan.recv_until(None, self.case_id()),
-        };
-        res.ok()
-    }
-
-    /// Waits for a message to be received from the channel but only for a limited time.
-    ///
-    /// This method will always block in order to wait for a message to become available. If the
-    /// channel is (or gets) closed and empty, or if it waits for longer than `timeout`, it will
-    /// wake up and return an error.
-    ///
-    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
-    /// on the other side of the channel.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::thread;
-    /// use std::time::Duration;
-    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
-    ///
-    /// let (tx, rx) = unbounded();
-    ///
-    /// thread::spawn(move || {
-    ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5);
-    ///     drop(tx);
-    /// });
-    ///
-    /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Closed));
-    /// ```
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        let deadline = Some(Instant::now() + timeout);
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.recv_until(deadline, self.case_id()),
-            Flavor::List(ref chan) => chan.recv_until(deadline, self.case_id()),
-            Flavor::Zero(ref chan) => chan.recv_until(deadline, self.case_id()),
+            Flavor::Array(ref chan) => chan.recv(self.case_id()),
+            Flavor::List(ref chan) => chan.recv(self.case_id()),
+            Flavor::Zero(ref chan) => chan.recv(self.case_id()),
         }
     }
 

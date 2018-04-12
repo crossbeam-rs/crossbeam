@@ -13,7 +13,7 @@ use std::time::Instant;
 use crossbeam_epoch::{self as epoch, Atomic, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
-use err::{RecvTimeoutError, TryRecvError, TrySendError};
+use err::{TryRecvError, TrySendError};
 use monitor::Monitor;
 use select::CaseId;
 use select::handle;
@@ -381,19 +381,15 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to receive a message from the channel until the specified `deadline`.
-    pub fn recv_until(
-        &self,
-        deadline: Option<Instant>,
-        case_id: CaseId,
-    ) -> Result<T, RecvTimeoutError> {
+    /// Attempts to receive a message from the channel.
+    pub fn recv(&self, case_id: CaseId) -> Option<T> {
         loop {
             let backoff = &mut Backoff::new();
             loop {
                 match self.pop(backoff) {
-                    Ok(m) => return Ok(m),
+                    Ok(m) => return Some(m),
                     Err(PopError::Empty) => {},
-                    Err(PopError::Closed) => return Err(RecvTimeoutError::Closed),
+                    Err(PopError::Closed) => return None,
                 }
 
                 if !backoff.step() {
@@ -403,13 +399,10 @@ impl<T> Channel<T> {
 
             handle::current_reset();
             self.receivers.register(case_id);
-            let timed_out =
-                !self.is_closed() && self.is_empty() && !handle::current_wait_until(deadline);
-            self.receivers.unregister(case_id);
-
-            if timed_out {
-                return Err(RecvTimeoutError::Timeout);
+            if !self.is_closed() && self.is_empty() {
+                handle::current_wait_until(None);
             }
+            self.receivers.unregister(case_id);
         }
     }
 
