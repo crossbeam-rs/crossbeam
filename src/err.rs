@@ -41,6 +41,7 @@ pub enum SendTimeoutError<T> {
     Closed(T),
 }
 
+/*
 /// An error returned from the [`Select::send`] method.
 ///
 /// This error occurs when the selection case doesn't send a message into the channel. Note that
@@ -50,6 +51,7 @@ pub enum SendTimeoutError<T> {
 /// [`Select::send`]: struct.Select.html#method.send
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SelectSendError<T>(pub T);
+*/
 
 /// An error returned from the [`Receiver::recv`] method.
 ///
@@ -89,6 +91,7 @@ pub enum RecvTimeoutError {
     Closed,
 }
 
+/*
 /// An error returned from the [`Select::recv`] method.
 ///
 /// This error occurs when the selection case doesn't receive a message from the channel. Note that
@@ -98,6 +101,7 @@ pub enum RecvTimeoutError {
 /// [`Select::recv`]: struct.Select.html#method.recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct SelectRecvError;
+*/
 
 impl<T> fmt::Debug for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -258,6 +262,7 @@ impl<T> SendTimeoutError<T> {
     }
 }
 
+/*
 impl<T: Send> fmt::Debug for SelectSendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         "SelectSendError(..)".fmt(f)
@@ -304,6 +309,7 @@ impl<T> SelectSendError<T> {
         self.0
     }
 }
+*/
 
 impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -381,6 +387,7 @@ impl From<RecvError> for RecvTimeoutError {
     }
 }
 
+/*
 impl fmt::Display for SelectRecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         "selection `recv` case is not ready".fmt(f)
@@ -396,3 +403,4 @@ impl error::Error for SelectRecvError {
         None
     }
 }
+*/

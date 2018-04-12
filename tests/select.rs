@@ -7,7 +7,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
+/*
+use crossbeam_channel::{bounded, unbounded, Receiver,  Sender};
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
 use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
 
@@ -1270,3 +1271,4 @@ fn channel_through_channel() {
         });
     }
 }
+*/

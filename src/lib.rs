@@ -234,6 +234,7 @@
 //! # extern crate crossbeam_channel;
 //! # fn main() {
 //!
+//! /*
 //! use std::thread;
 //! use crossbeam_channel::unbounded;
 //!
@@ -251,6 +252,7 @@
 //!         println!("Received a message from the second channel: {}", msg);
 //!     }
 //! }
+//! */
 //!
 //! # }
 //! ```
@@ -265,6 +267,7 @@
 //! # extern crate crossbeam_channel;
 //! # fn main() {
 //!
+//! /*
 //! use crossbeam_channel::{bounded, Sender, Receiver, Select};
 //! use std::thread;
 //!
@@ -294,6 +297,7 @@
 //! if let Ok(name) = rx.try_recv() {
 //!     println!("No one received {}’s message.", name);
 //! }
+//! */
 //!
 //! # }
 //! ```
@@ -340,8 +344,8 @@ pub use channel::{Receiver, Sender};
 pub use channel::{IntoIter, Iter, TryIter};
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
 pub use err::{SendError, SendTimeoutError, TrySendError};
-pub use err::{SelectRecvError, SelectSendError};
-pub use select::Select;
+// pub use err::{SelectRecvError, SelectSendError};
+// pub use select::Select;
 
 use select::CaseId;
 #[doc(hidden)]
