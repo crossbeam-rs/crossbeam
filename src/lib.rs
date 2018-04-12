@@ -197,29 +197,9 @@
 //! drop(tx);
 //!
 //! // Receive all remaining messages.
-//! let v: Vec<_> = rx.iter().collect();
+//! let v: Vec<_> = rx.collect();
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
-//!
-//! By calling [`try_iter`] it is also possible to create an iterator that returns messages until
-//! the channel is empty. This iterator will never block the current thread.
-//!
-//! ```
-//! use crossbeam_channel::unbounded;
-//!
-//! let (tx, rx) = unbounded();
-//! tx.send(1);
-//! tx.send(2);
-//! tx.send(3);
-//! // No need to drop the sender.
-//!
-//! // Receive all messages currently in the channel.
-//! let v: Vec<_> = rx.try_iter().collect();
-//! assert_eq!(v, [1, 2, 3]);
-//! ```
-//!
-//! Finally, there is the [`into_iter`] method, which is equivalent to [`iter`], except it takes
-//! ownership of the receiver instead of borrowing it.
 //!
 //! # Selection
 //!
@@ -316,9 +296,6 @@
 //! [`try_recv`]: struct.Receiver.html#method.try_recv
 //! [`recv`]: struct.Receiver.html#method.recv
 //! [`recv_timeout`]: struct.Receiver.html#method.recv_timeout
-//! [`iter`]: struct.Receiver.html#method.iter
-//! [`try_iter`]: struct.Receiver.html#method.try_iter
-//! [`into_iter`]: struct.Receiver.html#method.into_iter
 //! [`select_loop!`]: macro.select_loop.html
 //! [`Select`]: struct.Select.html
 
@@ -341,7 +318,6 @@ mod utils;
 
 pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};
-pub use channel::{IntoIter, Iter, TryIter};
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
 pub use err::{SendTimeoutError, TrySendError};
 

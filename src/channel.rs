@@ -817,62 +817,6 @@ impl<T> Receiver<T> {
             Flavor::Zero(ref chan) => chan.is_closed(),
         }
     }
-
-    /// Returns an iterator that waits for messages until the channel is closed.
-    ///
-    /// Each call to `next` will block waiting for the next message. It will finally return `None`
-    /// when the channel is empty and closed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::thread;
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded::<i32>();
-    ///
-    /// thread::spawn(move || {
-    ///     tx.send(1);
-    ///     tx.send(2);
-    ///     tx.send(3);
-    /// });
-    ///
-    /// let v: Vec<_> = rx.iter().collect();
-    /// assert_eq!(v, [1, 2, 3]);
-    /// ```
-    pub fn iter(&self) -> Iter<T> {
-        Iter { rx: self }
-    }
-
-    /// Returns an iterator that receives messages until the channel is empty or closed.
-    ///
-    /// Each call to `next` will return a message if there is at least one in the channel. The
-    /// iterator will never block waiting for new messages.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::thread;
-    /// use std::time::Duration;
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded::<i32>();
-    ///
-    /// thread::spawn(move || {
-    ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(1);
-    ///     tx.send(2);
-    ///     thread::sleep(Duration::from_secs(2));
-    ///     tx.send(3);
-    /// });
-    ///
-    /// thread::sleep(Duration::from_secs(2));
-    /// let v: Vec<_> = rx.try_iter().collect();
-    /// assert_eq!(v, [1, 2]);
-    /// ```
-    pub fn try_iter(&self) -> TryIter<T> {
-        TryIter { rx: self }
-    }
 }
 
 impl<T> Clone for Receiver<T> {
@@ -913,129 +857,19 @@ impl<T> Ord for Receiver<T> {
     }
 }
 
+impl<T> Iterator for Receiver<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.recv()
+    }
+}
+
 impl<'a, T> IntoIterator for &'a Receiver<T> {
     type Item = T;
-    type IntoIter = Iter<'a, T>;
+    type IntoIter = Receiver<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl<T> IntoIterator for Receiver<T> {
-    type Item = T;
-    type IntoIter = IntoIter<T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter { rx: self }
-    }
-}
-
-/// An iterator that waits for messages until the channel is closed.
-///
-/// Each call to `next` will block waiting for the next message. It will finally return `None` when
-/// the channel is empty and closed.
-///
-/// # Examples
-///
-/// ```
-/// use std::thread;
-/// use crossbeam_channel::unbounded;
-///
-/// let (tx, rx) = unbounded();
-///
-/// thread::spawn(move || {
-///     tx.send(1);
-///     tx.send(2);
-///     tx.send(3);
-/// });
-///
-/// let v: Vec<_> = rx.iter().collect();
-/// assert_eq!(v, [1, 2, 3]);
-/// ```
-#[derive(Debug)]
-pub struct Iter<'a, T: 'a> {
-    rx: &'a Receiver<T>,
-}
-
-impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.rx.recv()
-    }
-}
-
-/// An iterator that receives messages until the channel is empty or closed.
-///
-/// Each call to `next` will return a message if there is at least one in the channel. The iterator
-/// will never block waiting for new messages.
-///
-/// # Examples
-///
-/// ```
-/// use std::thread;
-/// use std::time::Duration;
-/// use crossbeam_channel::unbounded;
-///
-/// let (tx, rx) = unbounded::<i32>();
-///
-/// thread::spawn(move || {
-///     thread::sleep(Duration::from_secs(1));
-///     tx.send(1);
-///     tx.send(2);
-///     thread::sleep(Duration::from_secs(2));
-///     tx.send(3);
-/// });
-///
-/// thread::sleep(Duration::from_secs(2));
-/// let v: Vec<_> = rx.try_iter().collect();
-/// assert_eq!(v, [1, 2]);
-/// ```
-#[derive(Debug)]
-pub struct TryIter<'a, T: 'a> {
-    rx: &'a Receiver<T>,
-}
-
-impl<'a, T> Iterator for TryIter<'a, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.rx.try_recv()
-    }
-}
-
-/// An owning iterator that waits for messages until the channel is closed.
-///
-/// Each call to `next` will block waiting for the next message. It will finally return `None` when
-/// the channel is empty and closed.
-///
-/// # Examples
-///
-/// ```
-/// use std::thread;
-/// use crossbeam_channel::unbounded;
-///
-/// let (tx, rx) = unbounded();
-///
-/// thread::spawn(move || {
-///     tx.send(1);
-///     tx.send(2);
-///     tx.send(3);
-/// });
-///
-/// let v: Vec<_> = rx.into_iter().collect();
-/// assert_eq!(v, [1, 2, 3]);
-/// ```
-#[derive(Debug)]
-pub struct IntoIter<T> {
-    rx: Receiver<T>,
-}
-
-impl<T> Iterator for IntoIter<T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.rx.recv()
+        self.clone()
     }
 }
