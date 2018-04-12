@@ -314,7 +314,8 @@ mod flavors;
 mod monitor;
 #[doc(hidden)]
 pub mod select;
-mod utils;
+#[doc(hidden)]
+pub mod utils;
 
 pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};

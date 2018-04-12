@@ -543,31 +543,25 @@ macro_rules! select {
 
         // TODO: shuffle
 
-        let mut selected = CaseId::none();
         let mut token: usize = 0;
-        let mut index: usize = default_index;
+        let mut index: usize = !0;
 
         loop {
             for &(case_id, sel, i) in &cases {
                 if let Some(t) = sel.try() {
-                    selected = case_id;
                     token = t;
                     index = i;
                     break;
                 }
             }
 
-            if default_index != !0 {
-                if let Some(deadline) = deadline {
-                    if Instant::now() >= deadline {
-                        break;
-                    }
-                } else {
-                    break;
-                }
+            if index != !0 {
+                break;
             }
 
-            if selected != CaseId::none() {
+            if default_index != !0 && deadline.is_none() {
+                token = !0;
+                index = default_index;
                 break;
             }
 
@@ -590,13 +584,10 @@ macro_rules! select {
                 sel.revoke(case_id);
             }
 
-            // println!("HERE");
             if s != CaseId::abort() {
-                // println!("ABORT");
                 for &(case_id, sel, i) in &cases {
                     if case_id == s {
                         if let Some(t) = sel.fulfill() {
-                            selected = case_id;
                             token = t;
                             index = i;
                             break;
@@ -604,13 +595,12 @@ macro_rules! select {
                     }
                 }
 
-                if selected != CaseId::none() {
+                if index != !0 {
                     break;
                 }
             }
 
             if timed_out {
-                selected = CaseId::abort();
                 token = !0;
                 index = default_index;
                 break;
@@ -643,6 +633,10 @@ macro_rules! select {
         // TODO: accept both Instant and Duration the in default case
 
         // TODO: move exchanger.rs into zero.rs
+
+        // TODO: Optimize by changing `&Sel` to concrete type if there's only one send/recv block
+        // TODO: Optimize by changing `smallvec` to `[X; 1]` if there's only one case
+        // TODO: Optimize send for unbounded channels because it never fails
 
         // TODO: importing:
         // use crossbeam::channel::async as chan;

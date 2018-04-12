@@ -196,6 +196,7 @@ impl<T> Channel<T> {
 
     fn sel_pop(&self) -> Result<usize, PopError> {
         let guard = &epoch::pin();
+        let mut backoff = Backoff::new();
 
         loop {
             // Loading the head node doesn't't have to be a `SeqCst` operation. If we get a stale
@@ -258,6 +259,8 @@ impl<T> Channel<T> {
                     return Ok(entry as *const Entry<T> as usize);
                 }
             }
+
+            backoff.step();
         }
     }
 

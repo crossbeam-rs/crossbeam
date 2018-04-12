@@ -110,6 +110,7 @@ impl<T> Channel<T> {
 
                 // Read the message from the entry and increment the lap.
                 let msg = ptr::read(entry.msg.get());
+                // TODO: Optimize by changing `fetch_add` to `store`
                 entry.lap.fetch_add(one_lap, Release);
 
                 self.senders.notify_one();
@@ -119,10 +120,18 @@ impl<T> Channel<T> {
     }
 
     pub fn sel_try_send(&self) -> Option<usize> {
-        match self.sel_push() {
-            Ok(x) => Some(x),
-            Err(PushError::Closed(())) => unreachable!(), // TODO: delete this case
-            Err(PushError::Full(())) => None,
+        let backoff = &mut Backoff::new();
+        loop {
+            match self.sel_push(backoff) {
+                Ok(x) => return Some(x),
+                Err(PushError::Closed(())) => unreachable!(), // TODO: delete this case
+                Err(PushError::Full(())) => {},
+            }
+
+            // TODO:
+            if !backoff.step() {
+                return None;
+            }
         }
     }
 
@@ -134,6 +143,7 @@ impl<T> Channel<T> {
 
             // Write the message into the entry and increment the lap.
             ptr::write(entry.msg.get(), msg);
+            // TODO: Optimize by changing `fetch_add` to `store`
             entry.lap.fetch_add(one_lap, Release);
 
             self.receivers.notify_one();
@@ -205,7 +215,7 @@ impl<T> Channel<T> {
         &*self.buffer.offset(index as isize)
     }
 
-    fn sel_push(&self) -> Result<usize, PushError<()>> {
+    fn sel_push(&self, backoff: &mut Backoff) -> Result<usize, PushError<()>> {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -254,6 +264,8 @@ impl<T> Channel<T> {
                     return Err(PushError::Full(()));
                 }
             }
+
+            backoff.step();
         }
     }
 
@@ -322,6 +334,8 @@ impl<T> Channel<T> {
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
 
+        let mut backoff = Backoff::new();
+
         loop {
             // Load the head.
             let head = self.head.load(SeqCst);
@@ -366,6 +380,8 @@ impl<T> Channel<T> {
                     }
                 }
             }
+
+            backoff.step();
         }
     }
 
