@@ -4,7 +4,7 @@
 
 use std::time::Instant;
 
-use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use err::{RecvTimeoutError, TryRecvError, TrySendError};
 use exchanger::{ExchangeError, Exchanger};
 use select::CaseId;
 
@@ -88,21 +88,14 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to send `msg` into the channel until the specified `deadline`.
-    pub fn send_until(
-        &self,
-        msg: T,
-        deadline: Option<Instant>,
-        case_id: CaseId,
-    ) -> Result<(), SendTimeoutError<T>> {
+    pub fn send(&self, msg: T, case_id: CaseId) {
         match self.exchanger
             .left()
-            .exchange_until(Some(msg), deadline, case_id)
+            .exchange_until(Some(msg), None, case_id)
         {
-            Ok(_) => Ok(()),
-            Err(ExchangeError::Closed(msg)) => {
-                Err(SendTimeoutError::Closed(msg.unwrap()))
-            }
-            Err(ExchangeError::Timeout(msg)) => Err(SendTimeoutError::Timeout(msg.unwrap())),
+            Ok(_) => (),
+            Err(ExchangeError::Closed(msg)) => panic!(), // TODO: delete this case
+            Err(ExchangeError::Timeout(msg)) => panic!(), // TODO: cannot happen?
         }
     }
 

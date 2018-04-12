@@ -1,4 +1,5 @@
 extern crate crossbeam;
+#[macro_use]
 extern crate crossbeam_channel;
 extern crate rand;
 
@@ -9,7 +10,7 @@ use std::time::Duration;
 
 use crossbeam_channel::bounded;
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
-use crossbeam_channel::{SendTimeoutError, TrySendError};
+use crossbeam_channel::TrySendError;
 use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
@@ -114,15 +115,18 @@ fn send_timeout() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(
-                tx.send_timeout(7, ms(1000)),
-                Err(SendTimeoutError::Timeout(7))
-            );
-            assert_eq!(tx.send_timeout(8, ms(1000)), Ok(()));
-            assert_eq!(
-                tx.send_timeout(9, ms(1000)),
-                Err(SendTimeoutError::Timeout(9))
-            );
+            select! {
+                send(tx, 7) => panic!(),
+                default(ms(1000)) => {}
+            }
+            select! {
+                send(tx, 8) => {}
+                default(ms(1000)) => panic!(),
+            }
+            select! {
+                send(tx, 9) => panic!(),
+                default(ms(1000)) => {}
+            }
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
@@ -259,8 +263,9 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(50));
                 }
                 loop {
-                    if let Ok(()) = tx.send_timeout(i, ms(10)) {
-                        break;
+                    select! {
+                        send(tx, i) => break,
+                        default(ms(10)) => {}
                     }
                 }
             }

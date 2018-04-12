@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
-use crossbeam_channel::{SendTimeoutError, TrySendError};
+use crossbeam_channel::TrySendError;
 
 // TODO: test that `select!` evaluates to an expression
 // TODO: two nested `select!`s
@@ -571,6 +571,7 @@ fn stress_timeout_two_threads() {
     });
 }
 
+/*
 struct WrappedSender<T>(Sender<T>);
 
 impl<T> WrappedSender<T> {
@@ -873,6 +874,7 @@ fn try_send() {
         });
     });
 }
+*/
 
 // #[test]
 // fn recv_after_close() {

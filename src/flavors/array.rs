@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use crossbeam_utils::cache_padded::CachePadded;
 
-use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use err::{RecvTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 use select::CaseId;
 use select::handle;
@@ -489,24 +489,21 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to send `msg` into the channel until the specified `deadline`.
-    pub fn send_until(
+    pub fn send(
         &self,
         mut msg: T,
-        deadline: Option<Instant>,
         case_id: CaseId,
-    ) -> Result<(), SendTimeoutError<T>> {
+    ) {
         loop {
             let backoff = &mut Backoff::new();
             loop {
                 match self.push(msg, backoff) {
                     Ok(()) => {
                         self.receivers.notify_one();
-                        return Ok(());
+                        return;
                     }
                     Err(PushError::Full(m)) => msg = m,
-                    Err(PushError::Closed(m)) => {
-                        return Err(SendTimeoutError::Closed(m));
-                    }
+                    Err(PushError::Closed(m)) => panic!(), // TODO: delete this
                 }
 
                 if !backoff.step() {
@@ -516,13 +513,10 @@ impl<T> Channel<T> {
 
             handle::current_reset();
             self.senders.register(case_id);
-            let timed_out =
-                !self.is_closed() && self.is_full() && !handle::current_wait_until(deadline);
-            self.senders.unregister(case_id);
-
-            if timed_out {
-                return Err(SendTimeoutError::Timeout(msg));
+            if self.is_full() {
+                !handle::current_wait_until(None);
             }
+            self.senders.unregister(case_id);
         }
     }
 

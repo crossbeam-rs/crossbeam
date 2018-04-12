@@ -13,7 +13,7 @@ use std::time::Instant;
 use crossbeam_epoch::{self as epoch, Atomic, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
-use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use err::{RecvTimeoutError, TryRecvError, TrySendError};
 use monitor::Monitor;
 use select::CaseId;
 use select::handle;
@@ -365,13 +365,10 @@ impl<T> Channel<T> {
     }
 
     /// Send `msg` into the channel.
-    pub fn send(&self, msg: T) -> Result<(), SendTimeoutError<T>> {
+    pub fn send(&self, msg: T) {
         match self.push(msg, &mut Backoff::new()) {
-            Ok(()) => {
-                self.receivers.notify_one();
-                Ok(())
-            }
-            Err(PushError(m)) => Err(SendTimeoutError::Closed(m)),
+            Ok(()) => self.receivers.notify_one(),
+            Err(PushError(m)) => panic!(), // TODO: delete this case
         }
     }
 

@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
 
 use flavors;
-use err::{RecvError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use err::{RecvError, RecvTimeoutError, TryRecvError, TrySendError};
 use select::CaseId;
 
 use ::Sel;
@@ -370,48 +370,10 @@ impl<T> Sender<T> {
     /// assert_eq!(rx.recv(), Some(1));
     /// ```
     pub fn send(&self, msg: T) {
-        let res = match self.0.flavor {
-            Flavor::Array(ref chan) => chan.send_until(msg, None, self.case_id()),
-            Flavor::List(ref chan) => chan.send(msg),
-            Flavor::Zero(ref chan) => chan.send_until(msg, None, self.case_id()),
-        };
-        res.unwrap(); // TODO: remove
-    }
-
-    /// Sends a message into the channel, blocking if the channel is full for a limited time.
-    ///
-    /// If the channel is full (its capacity is fully utilized), this call will block until the
-    /// send operation can proceed. If the channel is (or gets) closed, or if it waits for longer
-    /// than `timeout`, this call will wake up and return an error.
-    ///
-    /// If called on a zero-capacity channel, this method will wait for a receive operation to
-    /// appear on the other side of the channel.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::thread;
-    /// use std::time::Duration;
-    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
-    ///
-    /// let (tx, rx) = unbounded();
-    ///
-    /// thread::spawn(move || {
-    ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5);
-    ///     drop(tx);
-    /// });
-    ///
-    /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Closed));
-    /// ```
-    pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
-        let deadline = Some(Instant::now() + timeout);
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.send_until(msg, deadline, self.case_id()),
+            Flavor::Array(ref chan) => chan.send(msg, self.case_id()),
             Flavor::List(ref chan) => chan.send(msg),
-            Flavor::Zero(ref chan) => chan.send_until(msg, deadline, self.case_id()),
+            Flavor::Zero(ref chan) => chan.send(msg, self.case_id()),
         }
     }
 

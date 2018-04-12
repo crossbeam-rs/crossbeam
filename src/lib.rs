@@ -320,7 +320,7 @@ pub mod utils;
 pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
-pub use err::{SendTimeoutError, TrySendError};
+pub use err::{TrySendError};
 
 use select::CaseId;
 #[doc(hidden)]

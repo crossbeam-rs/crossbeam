@@ -18,19 +18,6 @@ pub enum TrySendError<T> {
     Closed(T),
 }
 
-/// This enumeration is the list of possible errors that made [`send_timeout`] unable to return
-/// data when called. This can occur with bounded channels only.
-///
-/// [`send_timeout`]: struct.Sender.html#method.send_timeout
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum SendTimeoutError<T> {
-    /// This channel is currently full, but not yet closed.
-    Timeout(T),
-
-    /// The channel is closed.
-    Closed(T),
-}
-
 /// An error returned from the [`Receiver::recv`] method.
 ///
 /// The [`recv`] operation can only fail if the channel is closed and empty, implying that no
@@ -130,54 +117,6 @@ impl<T> TrySendError<T> {
         match self {
             TrySendError::Full(v) => v,
             TrySendError::Closed(v) => v,
-        }
-    }
-}
-
-impl<T> fmt::Debug for SendTimeoutError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "SendTimeoutError(..)".fmt(f)
-    }
-}
-
-impl<T> fmt::Display for SendTimeoutError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            SendTimeoutError::Timeout(..) => "timed out waiting on channel".fmt(f),
-            SendTimeoutError::Closed(..) => "sending on a closed channel".fmt(f),
-        }
-    }
-}
-
-impl<T: Send> error::Error for SendTimeoutError<T> {
-    fn description(&self) -> &str {
-        "sending on an empty and closed channel"
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
-impl<T> SendTimeoutError<T> {
-    /// Unwraps the value.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use std::time::Duration;
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded();
-    ///
-    /// if let Err(err) = tx.send_timeout("foo", Duration::from_secs(0)) {
-    ///     assert_eq!(err.into_inner(), "foo");
-    /// }
-    /// ```
-    pub fn into_inner(self) -> T {
-        match self {
-            SendTimeoutError::Timeout(v) => v,
-            SendTimeoutError::Closed(v) => v,
         }
     }
 }
