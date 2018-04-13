@@ -54,12 +54,9 @@ impl Monitor {
 
     /// Unregisters the current thread with `case_id`.
     pub fn unregister(&self, case_id: CaseId) {
-        let thread_id = thread::current().id();
         let mut cases = self.cases.lock();
 
-        if let Some((i, _)) = cases.iter().enumerate().find(|&(_, case)| {
-            case.case_id == case_id && case.handle.thread_id() == thread_id
-        }) {
+        if let Some((i, _)) = cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
             cases.remove(i);
             self.len.store(cases.len(), SeqCst);
             Self::maybe_shrink(&mut cases);

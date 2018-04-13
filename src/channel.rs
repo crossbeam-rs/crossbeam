@@ -19,7 +19,6 @@ union Token {
 
 use ::Sel;
 impl<T> Sel for Receiver<T> {
-
     fn try(&self, backoff: &mut Backoff) -> Option<usize> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.sel_try_recv(backoff),
@@ -266,34 +265,6 @@ impl<T> Sender<T> {
         let chan: &Channel<T> = &*self.0;
         chan as *const Channel<T> as usize
     }
-
-    pub fn case_id(&self) -> CaseId {
-        CaseId::send(self.channel_address())
-    }
-
-    pub(crate) fn promise_send(&self) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.senders().register(self.case_id()),
-            Flavor::List(_) => {}
-            Flavor::Zero(ref chan) => chan.promise_send(self.case_id()),
-        }
-    }
-
-    pub(crate) fn revoke_send(&self) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.senders().unregister(self.case_id()),
-            Flavor::List(_) => {}
-            Flavor::Zero(ref chan) => chan.revoke_send(self.case_id()),
-        }
-    }
-
-    pub(crate) fn can_send(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => !chan.is_full(),
-            Flavor::List(_) => true,
-            Flavor::Zero(ref chan) => chan.can_send(),
-        }
-    }
 }
 
 impl<T> Sender<T> {
@@ -400,15 +371,6 @@ impl<T> Sender<T> {
             Flavor::Zero(_) => Some(0),
         }
     }
-
-    #[doc(hidden)]
-    pub fn is_closed(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_closed(),
-            Flavor::Zero(ref chan) => chan.is_closed(),
-        }
-    }
 }
 
 impl<T> Drop for Sender<T> {
@@ -506,34 +468,6 @@ impl<T> Receiver<T> {
     fn channel_address(&self) -> usize {
         let chan: &Channel<T> = &*self.0;
         chan as *const Channel<T> as usize
-    }
-
-    pub fn case_id(&self) -> CaseId {
-        CaseId::recv(self.channel_address())
-    }
-
-    pub(crate) fn promise_recv(&self) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.receivers().register(self.case_id()),
-            Flavor::List(ref chan) => chan.receivers().register(self.case_id()),
-            Flavor::Zero(ref chan) => chan.promise_recv(self.case_id()),
-        }
-    }
-
-    pub(crate) fn revoke_recv(&self) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.receivers().unregister(self.case_id()),
-            Flavor::List(ref chan) => chan.receivers().unregister(self.case_id()),
-            Flavor::Zero(ref chan) => chan.revoke_recv(self.case_id()),
-        }
-    }
-
-    pub(crate) fn can_recv(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => !chan.is_empty(),
-            Flavor::List(ref chan) => !chan.is_empty(),
-            Flavor::Zero(ref chan) => chan.can_recv(),
-        }
     }
 }
 
@@ -671,15 +605,6 @@ impl<T> Receiver<T> {
             Flavor::Array(ref chan) => Some(chan.capacity()),
             Flavor::List(_) => None,
             Flavor::Zero(_) => Some(0),
-        }
-    }
-
-    #[doc(hidden)]
-    pub fn is_closed(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_closed(),
-            Flavor::Zero(ref chan) => chan.is_closed(),
         }
     }
 }

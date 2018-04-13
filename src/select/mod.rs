@@ -528,15 +528,14 @@ macro_rules! select {
     };
 
     (@generate $recv:tt $send:tt $default:tt) => {{
+        // TODO: Remove all these imports to avoid the "unused import" warnings.
         use $crate::select::CaseId;
         use $crate::Sel;
         use $crate::smallvec::SmallVec;
         use $crate::select::handle;
         use std::time::Instant;
         use $crate::utils::Backoff;
-
-        let mut cases = SmallVec::<[(CaseId, &Sel, usize); 4]>::new();
-        select!(@push cases $recv $send);
+        use $crate::{Sender, Receiver};
 
         let deadline: Option<Instant>;
         let default_index: usize;
@@ -549,13 +548,27 @@ macro_rules! select {
 
         // TODO: Maybe case_id should be address of the case in `cases`?
 
-        loop {
-            let backoff = &mut Backoff::new();
+        {
+            let mut cases;
+            select!(@smallvec cases $recv $send);
+            select!(@push cases $recv $send);
+
             loop {
-                for &(case_id, sel, i) in &cases {
-                    if let Some(t) = sel.try(backoff) {
-                        token = t;
-                        index = i;
+                let backoff = &mut Backoff::new();
+                loop {
+                    for &(sel, i) in &cases {
+                        if let Some(t) = sel.try(backoff) {
+                            token = t;
+                            index = i;
+                            break;
+                        }
+                    }
+
+                    if index != !0 {
+                        break;
+                    }
+
+                    if !backoff.step() {
                         break;
                     }
                 }
@@ -564,60 +577,58 @@ macro_rules! select {
                     break;
                 }
 
-                if !backoff.step() {
+                if default_index != !0 && deadline.is_none() {
+                    token = !0;
+                    index = default_index;
                     break;
                 }
-            }
 
-            if index != !0 {
-                break;
-            }
+                handle::current_reset();
 
-            if default_index != !0 && deadline.is_none() {
-                token = !0;
-                index = default_index;
-                break;
-            }
-
-            handle::current_reset();
-
-            for &(case_id, sel, _) in &cases {
-                sel.promise(case_id);
-            }
-
-            for &(case_id, sel, _) in &cases {
-                if !sel.is_blocked() {
-                    handle::current_try_select(CaseId::abort());
+                for case in &cases {
+                    let case_id = CaseId::new(case as *const _ as usize);
+                    let &(sel, _) = case;
+                    sel.promise(case_id);
                 }
-            }
 
-            let timed_out = !handle::current_wait_until(deadline);
-            let s = handle::current_selected();
-
-            for &(case_id, sel, _) in &cases {
-                sel.revoke(case_id);
-            }
-
-            if s != CaseId::abort() {
-                for &(case_id, sel, i) in &cases {
-                    if case_id == s {
-                        if let Some(t) = sel.fulfill(&mut Backoff::new()) {
-                            token = t;
-                            index = i;
-                            break;
-                        }
+                for &(sel, _) in &cases {
+                    if !sel.is_blocked() {
+                        handle::current_try_select(CaseId::abort());
                     }
                 }
 
-                if index != !0 {
+                let timed_out = !handle::current_wait_until(deadline);
+                let s = handle::current_selected();
+
+                for case in &cases {
+                    let case_id = CaseId::new(case as *const _ as usize);
+                    let &(sel, _) = case;
+                    sel.revoke(case_id);
+                }
+
+                if s != CaseId::abort() {
+                    for case in &cases {
+                        let case_id = CaseId::new(case as *const _ as usize);
+                        let &(sel, i) = case;
+                        if case_id == s {
+                            if let Some(t) = sel.fulfill(&mut Backoff::new()) {
+                                token = t;
+                                index = i;
+                                break;
+                            }
+                        }
+                    }
+
+                    if index != !0 {
+                        break;
+                    }
+                }
+
+                if timed_out {
+                    token = !0;
+                    index = default_index;
                     break;
                 }
-            }
-
-            if timed_out {
-                token = !0;
-                index = default_index;
-                break;
             }
         }
 
@@ -626,7 +637,6 @@ macro_rules! select {
         // TODO: Run `cargo clippy` and make sure there are no warnings in here.
         // TODO: optimize try_send and try_recv cases?
 
-        // TODO: disable warnings in the main loop
         // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
 
         // TODO: Use $b:block
@@ -645,9 +655,7 @@ macro_rules! select {
         // TODO: error message tests
 
         // TODO: accept both Instant and Duration the in default case
-
-        // TODO: Optimize by changing `&Sel` to concrete type if there's only one send/recv block
-        // TODO: Optimize by changing `smallvec` to `[X; 1]` if there's only one case
+        // TODO: Optimize single case (in send/try_recv/recv) with `select! { @single ...  }`
         // TODO: Optimize send for unbounded channels because it never fails
 
         // TODO: importing:
@@ -655,13 +663,39 @@ macro_rules! select {
         // use crossbeam::channel::sync as chan;
     }};
 
+    (@smallvec
+        $cases:ident
+        ([$i:expr] recv $args:tt => $body:tt)
+        ()
+    ) => {
+        $cases = SmallVec::<[(&Receiver<_>, usize); 4]>::new();
+        if false {
+            // This is just to get around the "variable does not need to be mutable" warning.
+            $cases = SmallVec::new();
+        }
+    };
+    (@smallvec
+        $cases:ident
+        ()
+        ([$i:expr] send $args:tt => $body:tt)
+    ) => {
+        $cases = SmallVec::<[(&Sender<_>, usize); 4]>::new();
+    };
+    (@smallvec
+        $cases:ident
+        $recv:tt
+        $send:tt
+    ) => {
+        $cases = SmallVec::<[(&Sel, usize); 4]>::new();
+    };
+
     (@push
         $cases:ident
         ([$i:expr] recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
         $send:tt
     ) => {
         let r = &($r);
-        $cases.push((r.case_id(), r, $i));
+        $cases.push((r, $i));
         select!(@push $cases ($($tail)*) $send);
     };
     (@push
@@ -670,7 +704,7 @@ macro_rules! select {
         ([$i:expr] send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
     ) => {
         let s = &($s);
-        $cases.push((s.case_id(), s, $i));
+        $cases.push((s, $i));
         select!(@push $cases () ($($tail)*));
     };
     (@push

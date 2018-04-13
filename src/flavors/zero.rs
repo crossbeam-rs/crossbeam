@@ -517,7 +517,7 @@ impl<T> WaitQueue<T> {
         if let Some((i, _)) = self.cases
             .iter()
             .enumerate()
-            .find(|&(_, case)| case.case_id() == case_id && case.handle().thread_id() == thread_id)
+            .find(|&(_, case)| case.case_id() == case_id)
         {
             self.cases.remove(i);
             self.maybe_shrink();

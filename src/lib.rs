@@ -300,6 +300,8 @@
 
 #![cfg_attr(feature = "nightly", feature(spin_loop_hint))]
 
+#![warn(missing_docs, missing_debug_implementations)]
+
 // TODO: Reexport hidden stuff through _internal module
 
 extern crate crossbeam_epoch;

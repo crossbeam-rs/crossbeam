@@ -40,13 +40,8 @@ impl CaseId {
     }
 
     #[inline]
-    pub fn is_send(&self) -> bool {
-        self.id >= 10 && self.id & 1 == 0
-    }
-
-    #[inline]
-    pub fn is_recv(&self) -> bool {
-        self.id >= 10 && self.id & 1 == 1
+    pub fn new(id: usize) -> Self {
+        CaseId { id }
     }
 }
 

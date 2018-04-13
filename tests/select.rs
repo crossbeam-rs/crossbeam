@@ -236,7 +236,12 @@ fn timeout() {
         });
 
         select! {
-            default(ms(1000)) => assert!(rx.is_closed()),
+            default(ms(1000)) => {
+                select! {
+                    recv(rx, v) => assert!(v.is_none()),
+                    default => panic!(),
+                }
+            }
         }
     });
 }
