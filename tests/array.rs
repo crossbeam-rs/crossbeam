@@ -19,7 +19,7 @@ fn ms(ms: u64) -> Duration {
 #[test]
 fn smoke() {
     let (tx, rx) = bounded(1);
-    assert_eq!(tx.try_send(7), None);
+    tx.send(7);
     assert_eq!(rx.try_recv(), Some(7));
 
     tx.send(8);
@@ -406,7 +406,7 @@ fn drops() {
         });
 
         for _ in 0..additional {
-            assert_eq!(tx.try_send(DropCounter), None);
+            tx.send(DropCounter);
         }
 
         assert_eq!(DROPS.load(SeqCst), steps);

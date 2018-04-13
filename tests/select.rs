@@ -321,8 +321,9 @@ fn loop_try() {
         crossbeam::scope(|s| {
             s.spawn(|| {
                 loop {
-                    if tx1.try_send(1).is_none() {
-                        break;
+                    select! {
+                        send(tx1, 1) => break,
+                        default => {}
                     }
 
                     select! {

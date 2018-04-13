@@ -19,6 +19,7 @@ union Token {
 
 use ::Sel;
 impl<T> Sel for Receiver<T> {
+
     fn try(&self, backoff: &mut Backoff) -> Option<usize> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.sel_try_recv(backoff),
@@ -246,6 +247,7 @@ pub struct Sender<T>(Arc<Channel<T>>);
 unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Sync for Sender<T> {}
 
+#[doc(hidden)]
 impl<T> Sender<T> {
     pub unsafe fn finish_send(&self, token: usize, msg: T) {
         match self.0.flavor {
@@ -265,7 +267,6 @@ impl<T> Sender<T> {
         chan as *const Channel<T> as usize
     }
 
-    #[doc(hidden)]
     pub fn case_id(&self) -> CaseId {
         CaseId::send(self.channel_address())
     }
@@ -293,31 +294,9 @@ impl<T> Sender<T> {
             Flavor::Zero(ref chan) => chan.can_send(),
         }
     }
+}
 
-    /// Attempts to send a message into the channel without blocking.
-    ///
-    /// This method will either send a message into the channel immediately, or return an error if
-    /// the channel is full or closed. The returned error contains the original message.
-    ///
-    /// If called on a zero-capacity channel, this method will send a message the message only if
-    /// there happens to be a receive operation on the other side of the channel at the same time.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_channel::bounded;
-    ///
-    /// let (tx, rx) = bounded(1);
-    /// assert_eq!(tx.try_send(1), None);
-    /// assert_eq!(tx.try_send(2), Some(2));
-    /// ```
-    pub fn try_send(&self, msg: T) -> Option<T> {
-        select! {
-            send(self, msg) => None,
-            default => Some(msg),
-        }
-    }
-
+impl<T> Sender<T> {
     /// Sends a message into the channel, blocking if the channel is full.
     ///
     /// If the channel is full (its capacity is fully utilized), this call will block until the
@@ -510,6 +489,7 @@ pub struct Receiver<T>(Arc<Channel<T>>);
 unsafe impl<T: Send> Send for Receiver<T> {}
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
+#[doc(hidden)]
 impl<T> Receiver<T> {
     pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
         match self.0.flavor {
@@ -528,7 +508,6 @@ impl<T> Receiver<T> {
         chan as *const Channel<T> as usize
     }
 
-    #[doc(hidden)]
     pub fn case_id(&self) -> CaseId {
         CaseId::recv(self.channel_address())
     }
@@ -554,6 +533,40 @@ impl<T> Receiver<T> {
             Flavor::Array(ref chan) => !chan.is_empty(),
             Flavor::List(ref chan) => !chan.is_empty(),
             Flavor::Zero(ref chan) => chan.can_recv(),
+        }
+    }
+}
+
+impl<T> Receiver<T> {
+    /// Waits for a message to be received from the channel.
+    ///
+    /// This method will always block in order to wait for a message to become available. If the
+    /// channel is (or gets) closed and empty, this call will wake up and return an error.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
+    /// on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     tx.send(5);
+    ///     drop(tx);
+    /// });
+    ///
+    /// assert_eq!(rx.recv(), Some(5));
+    /// assert_eq!(rx.recv(), None);
+    /// ```
+    pub fn recv(&self) -> Option<T> {
+        select! {
+            recv(self, msg) => msg
         }
     }
 
@@ -584,38 +597,6 @@ impl<T> Receiver<T> {
         select! {
             recv(self, msg) => msg,
             default => None,
-        }
-    }
-
-    /// Waits for a message to be received from the channel.
-    ///
-    /// This method will always block in order to wait for a message to become available. If the
-    /// channel is (or gets) closed and empty, this call will wake up and return an error.
-    ///
-    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
-    /// on the other side of the channel.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::thread;
-    /// use std::time::Duration;
-    /// use crossbeam_channel::unbounded;
-    ///
-    /// let (tx, rx) = unbounded();
-    ///
-    /// thread::spawn(move || {
-    ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5);
-    ///     drop(tx);
-    /// });
-    ///
-    /// assert_eq!(rx.recv(), Some(5));
-    /// assert_eq!(rx.recv(), None);
-    /// ```
-    pub fn recv(&self) -> Option<T> {
-        select! {
-            recv(self, msg) => msg
         }
     }
 

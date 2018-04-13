@@ -16,11 +16,12 @@ use select::CaseId;
 use select::handle;
 use utils::Backoff;
 
-#[derive(Copy, Clone)]
-pub struct Token {
-    entry: *const u8,
-    lap: usize,
-}
+// #[derive(Copy, Clone)]
+// pub struct Token {
+//     entry: *const u8,
+//     lap: usize,
+// }
+pub type Token = usize;
 
 /// An entry in the channel.
 ///

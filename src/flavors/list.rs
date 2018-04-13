@@ -17,10 +17,11 @@ use select::CaseId;
 use select::handle;
 use utils::Backoff;
 
-#[derive(Copy, Clone)]
-pub struct Token {
-    entry: *const u8,
-}
+// #[derive(Copy, Clone)]
+// pub struct Token {
+//     entry: *const u8,
+// }
+pub type Token = usize;
 
 /// Number of messages a node can hold.
 const NODE_CAP: usize = 32;

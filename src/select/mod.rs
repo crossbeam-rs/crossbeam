@@ -644,8 +644,6 @@ macro_rules! select {
 
         // TODO: accept both Instant and Duration the in default case
 
-        // TODO: move exchanger.rs into zero.rs
-
         // TODO: Optimize by changing `&Sel` to concrete type if there's only one send/recv block
         // TODO: Optimize by changing `smallvec` to `[X; 1]` if there's only one case
         // TODO: Optimize send for unbounded channels because it never fails

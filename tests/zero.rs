@@ -18,7 +18,10 @@ fn ms(ms: u64) -> Duration {
 #[test]
 fn smoke() {
     let (tx, rx) = bounded(0);
-    assert_eq!(tx.try_send(7), Some(7));
+    select! {
+        send(tx, 7) => panic!(),
+        default => {}
+    }
     assert_eq!(rx.try_recv(), None);
 
     assert_eq!(tx.capacity(), Some(0));
@@ -145,11 +148,20 @@ fn try_send() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(tx.try_send(7), Some(7));
+            select! {
+                send(tx, 7) => panic!(),
+                default => {}
+            }
             thread::sleep(ms(1500));
-            assert_eq!(tx.try_send(8), None);
+            select! {
+                send(tx, 8) => {}
+                default => panic!(),
+            }
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(9), Some(9));
+            select! {
+                send(tx, 9) => panic!(),
+                default => {}
+            }
         });
         s.spawn(move || {
             thread::sleep(ms(1000));

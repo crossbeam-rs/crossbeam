@@ -314,7 +314,6 @@ pub extern crate smallvec;
 pub mod select;
 
 mod channel;
-mod exchanger;
 mod flavors;
 mod monitor;
 #[doc(hidden)]
