@@ -120,7 +120,7 @@ fn send() {
             thread::sleep(ms(1000));
             tx.send(9);
             thread::sleep(ms(1000));
-            assert_eq!(tx.try_send(10), None);
+            tx.send(10);
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
@@ -171,12 +171,24 @@ fn try_send() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(tx.try_send(1), None);
-            assert_eq!(tx.try_send(2), Some(2));
+            select! {
+                send(tx, 1) => {}
+                default => panic!(),
+            }
+            select! {
+                send(tx, 2) => panic!(),
+                default => {}
+            }
             thread::sleep(ms(1500));
-            assert_eq!(tx.try_send(3), None);
+            select! {
+                send(tx, 3) => {}
+                default => panic!(),
+            }
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(4), None);
+            select! {
+                send(tx, 4) => {}
+                default => panic!(),
+            }
         });
         s.spawn(move || {
             thread::sleep(ms(1000));

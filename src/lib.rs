@@ -27,7 +27,7 @@
 //!
 //! // Can send an arbitrarily large number of messages.
 //! for i in 0..1000 {
-//!     assert_eq!(tx.try_send(i), None);
+//!     tx.send(i);
 //! }
 //! ```
 //!
@@ -41,11 +41,11 @@
 //!
 //! // Can send only 5 messages.
 //! for i in 0..5 {
-//!     assert_eq!(tx.try_send(i), None);
+//!     tx.send(i);
 //! }
 //!
 //! // An attempt to send one more message will fail.
-//! assert!(tx.try_send(5).is_some());
+//! // assert!(tx.try_send(5).is_some());
 //! ```
 //!
 //! An interesting special case is a bounded, zero-capacity channel. This kind of channel cannot
@@ -147,9 +147,9 @@
 //! use crossbeam_channel::unbounded;
 //!
 //! let (tx, rx) = unbounded();
-//! assert_eq!(tx.try_send(1), None);
-//! assert_eq!(tx.try_send(2), None);
-//! assert_eq!(tx.try_send(3), None);
+//! tx.send(1);
+//! tx.send(2);
+//! tx.send(3);
 //!
 //! // The only sender is dropped, closing the channel.
 //! drop(tx);
@@ -167,7 +167,7 @@
 //!
 //! Send and receive operations come in three variants:
 //!
-//! 1. Non-blocking: [`try_send`] and [`try_recv`].
+//! 1. Non-blocking: [`try_recv`].
 //! 2. Blocking: [`send`] and [`recv`].
 //! 3. Blocking with a timeout: [`send_timeout`] and [`recv_timeout`].
 //!
@@ -290,7 +290,6 @@
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
 //! [`bounded`]: fn.bounded.html
-//! [`try_send`]: struct.Sender.html#method.try_send
 //! [`send`]: struct.Sender.html#method.send
 //! [`send_timeout`]: struct.Sender.html#method.send_timeout
 //! [`try_recv`]: struct.Receiver.html#method.try_recv

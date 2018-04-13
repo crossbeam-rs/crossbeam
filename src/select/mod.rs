@@ -547,6 +547,8 @@ macro_rules! select {
         let mut token: usize = 0;
         let mut index: usize = !0;
 
+        // TODO: Maybe case_id should be address of the case in `cases`?
+
         loop {
             let backoff = &mut Backoff::new();
             loop {
