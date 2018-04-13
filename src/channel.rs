@@ -4,18 +4,25 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::time::{Duration, Instant};
 
 use flavors;
-use err::{RecvError, TryRecvError, TrySendError};
 use select::CaseId;
+use utils::Backoff;
+
+union Token {
+    array: flavors::array::Token,
+    list: flavors::list::Token,
+    zero: flavors::zero::Token,
+}
+
+// TODO: use backoff in try()/fulfill() for zero-capacity channels?
 
 use ::Sel;
 impl<T> Sel for Receiver<T> {
-    fn try(&self) -> Option<usize> {
+    fn try(&self, backoff: &mut Backoff) -> Option<usize> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.sel_try_recv(),
-            Flavor::List(ref chan) => chan.sel_try_recv(),
+            Flavor::Array(ref chan) => chan.sel_try_recv(backoff),
+            Flavor::List(ref chan) => chan.sel_try_recv(backoff),
             Flavor::Zero(ref chan) => chan.sel_try_recv(),
         }
     }
@@ -45,19 +52,19 @@ impl<T> Sel for Receiver<T> {
         }
     }
 
-    fn fulfill(&self) -> Option<usize> {
+    fn fulfill(&self, backoff: &mut Backoff) -> Option<usize> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.sel_try_recv(),
-            Flavor::List(ref chan) => chan.sel_try_recv(),
+            Flavor::Array(ref chan) => chan.sel_try_recv(backoff),
+            Flavor::List(ref chan) => chan.sel_try_recv(backoff),
             Flavor::Zero(ref chan) => Some(1), // TODO
         }
     }
 }
 
 impl<T> Sel for Sender<T> {
-    fn try(&self) -> Option<usize> {
+    fn try(&self, backoff: &mut Backoff) -> Option<usize> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.sel_try_send(),
+            Flavor::Array(ref chan) => chan.sel_try_send(backoff),
             Flavor::List(ref chan) => Some(0),
             Flavor::Zero(ref chan) => chan.sel_try_send(),
         }
@@ -87,33 +94,13 @@ impl<T> Sel for Sender<T> {
         }
     }
 
-    fn fulfill(&self) -> Option<usize> {
+    fn fulfill(&self, backoff: &mut Backoff) -> Option<usize> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.sel_try_send(),
+            Flavor::Array(ref chan) => chan.sel_try_send(backoff),
             Flavor::List(ref chan) => Some(0),
             Flavor::Zero(ref chan) => Some(1), // TODO
         }
     }
-}
-
-#[test]
-fn my() {
-    let (s, r) = bounded::<i32>(0);
-    ::std::thread::spawn(move || {
-        println!("SENDING");
-        s.send(7);
-        println!("SENT");
-    });
-
-    let sel: &Sel = &r;
-    r.promise(r.case_id());
-    println!("SLEEPING");
-    ::std::thread::sleep_ms(1000);
-    println!("WOKE UP");
-    let token = sel.try();
-    let v = unsafe { r.finish_recv(1) };
-
-    assert_eq!(v, Some(7));
 }
 
 pub struct Channel<T> {
@@ -121,6 +108,7 @@ pub struct Channel<T> {
     flavor: Flavor<T>,
 }
 
+// TODO: rename to Channel?
 enum Flavor<T> {
     Array(flavors::array::Channel<T>),
     List(flavors::list::Channel<T>),
@@ -262,7 +250,7 @@ impl<T> Sender<T> {
     pub unsafe fn finish_send(&self, token: usize, msg: T) {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.finish_send(token, msg),
-            Flavor::List(ref chan) => chan.try_send(msg).unwrap(),
+            Flavor::List(ref chan) => chan.send(msg),
             Flavor::Zero(ref chan) => chan.finish_send(token, msg),
         }
     }
@@ -306,20 +294,6 @@ impl<T> Sender<T> {
         }
     }
 
-    // pub(crate) fn fulfill_send(&self, msg: T) -> Result<(), T> {
-    //     match self.0.flavor {
-    //         Flavor::Array(_) | Flavor::List(_) => match self.try_send(msg) {
-    //             Ok(()) => Ok(()),
-    //             Err(TrySendError::Full(m)) => Err(m),
-    //             Err(TrySendError::Closed(m)) => Err(m),
-    //         },
-    //         Flavor::Zero(ref chan) => {
-    //             chan.fulfill_send(msg);
-    //             Ok(())
-    //         }
-    //     }
-    // }
-
     /// Attempts to send a message into the channel without blocking.
     ///
     /// This method will either send a message into the channel immediately, or return an error if
@@ -331,17 +305,16 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::{bounded, TrySendError};
+    /// use crossbeam_channel::bounded;
     ///
     /// let (tx, rx) = bounded(1);
-    /// assert_eq!(tx.try_send(1), Ok(()));
-    /// assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
+    /// assert_eq!(tx.try_send(1), None);
+    /// assert_eq!(tx.try_send(2), Some(2));
     /// ```
-    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.try_send(msg),
-            Flavor::List(ref chan) => chan.try_send(msg),
-            Flavor::Zero(ref chan) => chan.try_send(msg, self.case_id()),
+    pub fn try_send(&self, msg: T) -> Option<T> {
+        select! {
+            send(self, msg) => None,
+            default => Some(msg),
         }
     }
 
@@ -370,10 +343,8 @@ impl<T> Sender<T> {
     /// assert_eq!(rx.recv(), Some(1));
     /// ```
     pub fn send(&self, msg: T) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.send(msg, self.case_id()),
-            Flavor::List(ref chan) => chan.send(msg),
-            Flavor::Zero(ref chan) => chan.send(msg, self.case_id()),
+        select! {
+            send(self, msg) => {}
         }
     }
 
@@ -586,13 +557,6 @@ impl<T> Receiver<T> {
         }
     }
 
-    // pub(crate) fn fulfill_recv(&self) -> Result<T, ()> {
-    //     match self.0.flavor {
-    //         Flavor::Array(_) | Flavor::List(_) => self.try_recv().map_err(|_| ()),
-    //         Flavor::Zero(ref chan) => Ok(chan.fulfill_recv()),
-    //     }
-    // }
-
     /// Attempts to receive a message from the channel without blocking.
     ///
     /// This method will never block in order to wait for a message to become available. Instead,
@@ -605,7 +569,7 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::{unbounded, TryRecvError};
+    /// use crossbeam_channel::unbounded;
     ///
     /// let (tx, rx) = unbounded();
     /// assert_eq!(rx.try_recv(), None);
@@ -617,12 +581,10 @@ impl<T> Receiver<T> {
     /// assert_eq!(rx.try_recv(), None);
     /// ```
     pub fn try_recv(&self) -> Option<T> {
-        let res = match self.0.flavor {
-            Flavor::Array(ref chan) => chan.try_recv(),
-            Flavor::List(ref chan) => chan.try_recv(),
-            Flavor::Zero(ref chan) => chan.try_recv(self.case_id()),
-        };
-        res.ok()
+        select! {
+            recv(self, msg) => msg,
+            default => None,
+        }
     }
 
     /// Waits for a message to be received from the channel.
@@ -652,10 +614,8 @@ impl<T> Receiver<T> {
     /// assert_eq!(rx.recv(), None);
     /// ```
     pub fn recv(&self) -> Option<T> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.recv(self.case_id()),
-            Flavor::List(ref chan) => chan.recv(self.case_id()),
-            Flavor::Zero(ref chan) => chan.recv(self.case_id()),
+        select! {
+            recv(self, msg) => msg
         }
     }
 

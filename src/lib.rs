@@ -27,7 +27,7 @@
 //!
 //! // Can send an arbitrarily large number of messages.
 //! for i in 0..1000 {
-//!     tx.try_send(i).unwrap();
+//!     assert_eq!(tx.try_send(i), None);
 //! }
 //! ```
 //!
@@ -41,11 +41,11 @@
 //!
 //! // Can send only 5 messages.
 //! for i in 0..5 {
-//!     tx.try_send(i).unwrap();
+//!     assert_eq!(tx.try_send(i), None);
 //! }
 //!
 //! // An attempt to send one more message will fail.
-//! assert!(tx.try_send(5).is_err());
+//! assert!(tx.try_send(5).is_some());
 //! ```
 //!
 //! An interesting special case is a bounded, zero-capacity channel. This kind of channel cannot
@@ -132,7 +132,7 @@
 //! messages can still be received.
 //!
 //! ```
-//! use crossbeam_channel::{unbounded, TrySendError};
+//! use crossbeam_channel::unbounded;
 //!
 //! let (tx, rx) = unbounded::<&str>();
 //!
@@ -144,12 +144,12 @@
 //! ```
 //!
 //! ```
-//! use crossbeam_channel::{unbounded, TryRecvError};
+//! use crossbeam_channel::unbounded;
 //!
 //! let (tx, rx) = unbounded();
-//! tx.try_send(1).unwrap();
-//! tx.try_send(2).unwrap();
-//! tx.try_send(3).unwrap();
+//! assert_eq!(tx.try_send(1), None);
+//! assert_eq!(tx.try_send(2), None);
+//! assert_eq!(tx.try_send(3), None);
 //!
 //! // The only sender is dropped, closing the channel.
 //! drop(tx);
@@ -301,39 +301,41 @@
 
 #![cfg_attr(feature = "nightly", feature(spin_loop_hint))]
 
+// TODO: Reexport hidden stuff through _internal module
+
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;
 #[doc(hidden)]
 pub extern crate smallvec;
 
+#[doc(hidden)]
+#[macro_use]
+pub mod select;
+
 mod channel;
-mod err;
 mod exchanger;
 mod flavors;
 mod monitor;
-#[doc(hidden)]
-pub mod select;
 #[doc(hidden)]
 pub mod utils;
 
 pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};
-pub use err::{RecvError, TryRecvError};
-pub use err::{TrySendError};
 
 use select::CaseId;
+use utils::Backoff;
 #[doc(hidden)]
 pub trait Sel {
-    fn try(&self) -> Option<usize>;
+    fn try(&self, backoff: &mut Backoff) -> Option<usize>;
     fn promise(&self, case_id: CaseId);
     fn revoke(&self, case_id: CaseId);
     fn is_blocked(&self) -> bool;
-    fn fulfill(&self) -> Option<usize>;
+    fn fulfill(&self, backoff: &mut Backoff) -> Option<usize>;
 }
 impl<'a, T: Sel> Sel for &'a T {
-    fn try(&self) -> Option<usize> {
-        (**self).try()
+    fn try(&self, backoff: &mut Backoff) -> Option<usize> {
+        (**self).try(backoff)
     }
     fn promise(&self, case_id: CaseId) {
         (**self).promise(case_id);
@@ -344,7 +346,7 @@ impl<'a, T: Sel> Sel for &'a T {
     fn is_blocked(&self) -> bool {
         (**self).is_blocked()
     }
-    fn fulfill(&self) -> Option<usize> {
-        (**self).fulfill()
+    fn fulfill(&self, backoff: &mut Backoff) -> Option<usize> {
+        (**self).fulfill(backoff)
     }
 }

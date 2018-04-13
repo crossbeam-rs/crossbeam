@@ -9,7 +9,6 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::unbounded;
-use crossbeam_channel::{RecvError, TryRecvError};
 use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
@@ -19,7 +18,7 @@ fn ms(ms: u64) -> Duration {
 #[test]
 fn smoke() {
     let (tx, rx) = unbounded();
-    tx.try_send(7).unwrap();
+    assert_eq!(tx.try_send(7), None);
     assert_eq!(rx.try_recv(), Some(7));
 
     tx.send(8);
@@ -247,6 +246,7 @@ fn stress_timeout_two_threads() {
 fn drops() {
     static DROPS: AtomicUsize = ATOMIC_USIZE_INIT;
 
+    #[derive(Debug, PartialEq)]
     struct DropCounter;
 
     impl Drop for DropCounter {
@@ -279,7 +279,7 @@ fn drops() {
         });
 
         for _ in 0..additional {
-            tx.try_send(DropCounter).unwrap();
+            assert_eq!(tx.try_send(DropCounter), None);
         }
 
         assert_eq!(DROPS.load(SeqCst), steps);

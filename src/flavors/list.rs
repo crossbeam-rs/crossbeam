@@ -8,16 +8,19 @@ use std::mem::{self, ManuallyDrop};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
-use std::time::Instant;
 
 use crossbeam_epoch::{self as epoch, Atomic, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
-use err::{TryRecvError, TrySendError};
 use monitor::Monitor;
 use select::CaseId;
 use select::handle;
 use utils::Backoff;
+
+#[derive(Copy, Clone)]
+pub struct Token {
+    entry: *const u8,
+}
 
 /// Number of messages a node can hold.
 const NODE_CAP: usize = 32;
@@ -29,18 +32,6 @@ struct Entry<T> {
 
     /// Whether the message is ready for reading.
     ready: AtomicBool,
-}
-
-/// Indicates that the `push` operation failed due to the channel being closed.
-struct PushError<T>(T);
-
-/// The list of possible error outcomes for the `pop` operation.
-enum PopError {
-    /// The channel is empty.
-    Empty,
-
-    /// The channel is closed.
-    Closed,
 }
 
 /// A node in the linked list.
@@ -106,12 +97,8 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn sel_try_recv(&self) -> Option<usize> {
-        match self.sel_pop() {
-            Ok(x) => Some(x),
-            Err(PopError::Closed) => Some(0),
-            Err(PopError::Empty) => None,
-        }
+    pub fn sel_try_recv(&self, backoff: &mut Backoff) -> Option<usize> {
+        self.pop(backoff)
     }
 
     pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
@@ -148,7 +135,7 @@ impl<T> Channel<T> {
     }
 
     /// Pushes `msg` into the channel.
-    fn push(&self, msg: T, backoff: &mut Backoff) -> Result<(), PushError<T>> {
+    fn push(&self, msg: T, backoff: &mut Backoff) {
         let guard = &epoch::pin();
 
         loop {
@@ -157,11 +144,6 @@ impl<T> Channel<T> {
             let tail_ptr = self.tail.node.load(Acquire, guard);
             let tail = unsafe { tail_ptr.deref() };
             let tail_index = self.tail.index.load(Relaxed);
-
-            // If the tail index is marked, the channel is closed.
-            if tail_index & 1 != 0 {
-                return Err(PushError(msg));
-            }
 
             // Calculate the index of the corresponding entry in the node.
             let offset = tail_index.wrapping_sub(tail.start_index) >> 1;
@@ -186,7 +168,7 @@ impl<T> Channel<T> {
                         ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
                         (*entry).ready.store(true, Release);
                     }
-                    return Ok(());
+                    return;
                 }
             }
 
@@ -194,9 +176,8 @@ impl<T> Channel<T> {
         }
     }
 
-    fn sel_pop(&self) -> Result<usize, PopError> {
+    fn pop(&self, backoff: &mut Backoff) -> Option<usize> {
         let guard = &epoch::pin();
-        let mut backoff = Backoff::new();
 
         loop {
             // Loading the head node doesn't't have to be a `SeqCst` operation. If we get a stale
@@ -226,9 +207,9 @@ impl<T> Channel<T> {
                         // Check whether the channel is closed and return the appropriate
                         // error variant.
                         if tail_index & 1 == 0 {
-                            return Err(PopError::Empty);
+                            return None;
                         } else {
-                            return Err(PopError::Closed);
+                            return Some(0);
                         }
                     }
                 }
@@ -256,81 +237,7 @@ impl<T> Channel<T> {
                         // backoff.step();
                     }
 
-                    return Ok(entry as *const Entry<T> as usize);
-                }
-            }
-
-            backoff.step();
-        }
-    }
-
-    /// Attempts to pop a message from the channel.
-    ///
-    /// Returns `None` if the channel is empty.
-    fn pop(&self, backoff: &mut Backoff) -> Result<T, PopError> {
-        let guard = &epoch::pin();
-
-        loop {
-            // Loading the head node doesn't't have to be a `SeqCst` operation. If we get a stale
-            // value, the following CAS will fail or not even be attempted. Loading the head index
-            // must be `SeqCst` because we need the up-to-date value when checking whether the
-            // channel is empty.
-            let head_ptr = self.head.node.load(Acquire, guard);
-            let head = unsafe { head_ptr.deref() };
-            let head_index = self.head.index.load(SeqCst);
-
-            // Calculate the index of the corresponding entry in the node.
-            let offset = head_index.wrapping_sub(head.start_index) >> 1;
-
-            // Advance the current index one entry forward.
-            let new_index = head_index.wrapping_add(1 << 1);
-
-            // If `head_index` is pointing into `head`...
-            if offset < NODE_CAP {
-                let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
-
-                // If this entry does not contain a message...
-                if !entry.ready.load(Relaxed) {
-                    let tail_index = self.tail.index.load(SeqCst);
-
-                    // If the tail equals the head, that means the channel is empty.
-                    if tail_index & !1 == head_index {
-                        // Check whether the channel is closed and return the appropriate
-                        // error variant.
-                        if tail_index & 1 == 0 {
-                            return Err(PopError::Empty);
-                        } else {
-                            return Err(PopError::Closed);
-                        }
-                    }
-                }
-
-                // Try moving the head index forward.
-                if self.head.index.compare_and_swap(head_index, new_index, SeqCst) == head_index {
-                    // If this was the last entry in the node, defer its destruction.
-                    if offset + 1 == NODE_CAP {
-                        // Wait until the next pointer becomes non-null.
-                        loop {
-                            let next = head.next.load(Acquire, guard);
-                            if !next.is_null() {
-                                self.head.node.store(next, Release);
-                                break;
-                            }
-                            backoff.step();
-                        }
-
-                        unsafe {
-                            guard.defer(move || head_ptr.into_owned());
-                        }
-                    }
-
-                    while !entry.ready.load(Acquire) {
-                        backoff.step();
-                    }
-
-                    let m = unsafe { ptr::read(&(*entry).msg) };
-                    let msg = ManuallyDrop::into_inner(m);
-                    return Ok(msg);
+                    return Some(entry as *const Entry<T> as usize);
                 }
             }
 
@@ -353,57 +260,10 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to send `msg` into the channel.
-    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        match self.push(msg, &mut Backoff::new()) {
-            Ok(()) => {
-                self.receivers.notify_one();
-                Ok(())
-            }
-            Err(PushError(m)) => Err(TrySendError::Closed(m)),
-        }
-    }
-
     /// Send `msg` into the channel.
     pub fn send(&self, msg: T) {
-        match self.push(msg, &mut Backoff::new()) {
-            Ok(()) => self.receivers.notify_one(),
-            Err(PushError(m)) => panic!(), // TODO: delete this case
-        }
-    }
-
-    /// Attempts to receive a message from channel.
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop(&mut Backoff::new()) {
-            Ok(m) => Ok(m),
-            Err(PopError::Empty) => Err(TryRecvError::Empty),
-            Err(PopError::Closed) => Err(TryRecvError::Closed),
-        }
-    }
-
-    /// Attempts to receive a message from the channel.
-    pub fn recv(&self, case_id: CaseId) -> Option<T> {
-        loop {
-            let backoff = &mut Backoff::new();
-            loop {
-                match self.pop(backoff) {
-                    Ok(m) => return Some(m),
-                    Err(PopError::Empty) => {},
-                    Err(PopError::Closed) => return None,
-                }
-
-                if !backoff.step() {
-                    break;
-                }
-            }
-
-            handle::current_reset();
-            self.receivers.register(case_id);
-            if !self.is_closed() && self.is_empty() {
-                handle::current_wait_until(None);
-            }
-            self.receivers.unregister(case_id);
-        }
+        self.push(msg, &mut Backoff::new());
+        self.receivers.notify_one();
     }
 
     /// Closes the channel and wakes up all currently blocked operations on it.

@@ -2,11 +2,13 @@
 //!
 //! Also known as *rendezvous* channel.
 
-use std::time::Instant;
-
-use err::{TryRecvError, TrySendError};
 use exchanger::{ExchangeError, Exchanger};
 use select::CaseId;
+
+#[derive(Copy, Clone)]
+pub struct Token {
+    boxed: usize,
+}
 
 /// A zero-capacity channel.
 pub struct Channel<T> {
@@ -79,11 +81,11 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to send `msg` into the channel.
-    pub fn try_send(&self, msg: T, case_id: CaseId) -> Result<(), TrySendError<T>> {
+    pub fn try_send(&self, msg: T, case_id: CaseId) -> Option<T> {
         match self.exchanger.left().try_exchange(Some(msg), case_id) {
-            Ok(_) => Ok(()),
-            Err(ExchangeError::Closed(msg)) => Err(TrySendError::Closed(msg.unwrap())),
-            Err(ExchangeError::Timeout(msg)) => Err(TrySendError::Full(msg.unwrap())),
+            Ok(_) => None,
+            Err(ExchangeError::Timeout(msg)) => Some(msg.unwrap()),
+            Err(ExchangeError::Closed(msg)) => panic!(), // TODO: delete this case
         }
     }
 
@@ -100,11 +102,11 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to receive a message from channel.
-    pub fn try_recv(&self, case_id: CaseId) -> Result<T, TryRecvError> {
+    pub fn try_recv(&self, case_id: CaseId) -> Option<T> {
         match self.exchanger.right().try_exchange(None, case_id) {
-            Ok(msg) => Ok(msg.unwrap()),
-            Err(ExchangeError::Closed(_)) => Err(TryRecvError::Closed),
-            Err(ExchangeError::Timeout(_)) => Err(TryRecvError::Empty),
+            Ok(msg) => Some(msg.unwrap()),
+            Err(ExchangeError::Closed(_)) => None,
+            Err(ExchangeError::Timeout(_)) => None,
         }
     }
 

@@ -533,6 +533,7 @@ macro_rules! select {
         use $crate::smallvec::SmallVec;
         use $crate::select::handle;
         use std::time::Instant;
+        use $crate::utils::Backoff;
 
         let mut cases = SmallVec::<[(CaseId, &Sel, usize); 4]>::new();
         select!(@push cases $recv $send);
@@ -547,10 +548,21 @@ macro_rules! select {
         let mut index: usize = !0;
 
         loop {
-            for &(case_id, sel, i) in &cases {
-                if let Some(t) = sel.try() {
-                    token = t;
-                    index = i;
+            let backoff = &mut Backoff::new();
+            loop {
+                for &(case_id, sel, i) in &cases {
+                    if let Some(t) = sel.try(backoff) {
+                        token = t;
+                        index = i;
+                        break;
+                    }
+                }
+
+                if index != !0 {
+                    break;
+                }
+
+                if !backoff.step() {
                     break;
                 }
             }
@@ -587,7 +599,7 @@ macro_rules! select {
             if s != CaseId::abort() {
                 for &(case_id, sel, i) in &cases {
                     if case_id == s {
-                        if let Some(t) = sel.fulfill() {
+                        if let Some(t) = sel.fulfill(&mut Backoff::new()) {
                             token = t;
                             index = i;
                             break;

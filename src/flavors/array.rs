@@ -8,15 +8,19 @@ use std::mem;
 use std::ptr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{Relaxed, Release, SeqCst};
-use std::time::Instant;
 
 use crossbeam_utils::cache_padded::CachePadded;
 
-use err::{TryRecvError, TrySendError};
 use monitor::Monitor;
 use select::CaseId;
 use select::handle;
 use utils::Backoff;
+
+#[derive(Copy, Clone)]
+pub struct Token {
+    entry: *const u8,
+    lap: usize,
+}
 
 /// An entry in the channel.
 ///
@@ -29,24 +33,6 @@ struct Entry<T> {
 
     /// The message in this entry.
     msg: UnsafeCell<T>,
-}
-
-/// The list of possible error outcomes for the `push` operation.
-enum PushError<T> {
-    /// The channel is full.
-    Full(T),
-
-    /// The channel is closed.
-    Closed(T),
-}
-
-/// The list of possible error outcomes for the `pop` operation.
-enum PopError {
-    /// The channel is empty.
-    Empty,
-
-    /// The channel is closed.
-    Closed,
 }
 
 /// An array-based channel with fixed capacity.
@@ -91,12 +77,8 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn sel_try_recv(&self) -> Option<usize> {
-        match self.sel_pop() {
-            Ok(x) => Some(x),
-            Err(PopError::Closed) => Some(0),
-            Err(PopError::Empty) => None,
-        }
+    pub fn sel_try_recv(&self, backoff: &mut Backoff) -> Option<usize> {
+        self.pop(backoff)
     }
 
     pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
@@ -105,49 +87,33 @@ impl<T> Channel<T> {
         } else {
             let one_lap = self.mark_bit << 1;
 
-            unsafe {
-                let entry: &Entry<T> = &*(token as *const Entry<T>);
+            let entry: &Entry<T> = &*(token as *const Entry<T>);
 
-                // Read the message from the entry and increment the lap.
-                let msg = ptr::read(entry.msg.get());
-                // TODO: Optimize by changing `fetch_add` to `store`
-                entry.lap.fetch_add(one_lap, Release);
+            // Read the message from the entry and increment the lap.
+            let msg = ptr::read(entry.msg.get());
+            // TODO: Optimize by changing `fetch_add` to `store`
+            entry.lap.fetch_add(one_lap, Release);
 
-                self.senders.notify_one();
-                Some(msg)
-            }
+            self.senders.notify_one();
+            Some(msg)
         }
     }
 
-    pub fn sel_try_send(&self) -> Option<usize> {
-        let backoff = &mut Backoff::new();
-        loop {
-            match self.sel_push(backoff) {
-                Ok(x) => return Some(x),
-                Err(PushError::Closed(())) => unreachable!(), // TODO: delete this case
-                Err(PushError::Full(())) => {},
-            }
-
-            // TODO:
-            if !backoff.step() {
-                return None;
-            }
-        }
+    pub fn sel_try_send(&self, backoff: &mut Backoff) -> Option<usize> {
+        self.push(backoff)
     }
 
     pub unsafe fn finish_send(&self, token: usize, msg: T) {
         let one_lap = self.mark_bit << 1;
 
-        unsafe {
-            let entry: &Entry<T> = &*(token as *const Entry<T>);
+        let entry: &Entry<T> = &*(token as *const Entry<T>);
 
-            // Write the message into the entry and increment the lap.
-            ptr::write(entry.msg.get(), msg);
-            // TODO: Optimize by changing `fetch_add` to `store`
-            entry.lap.fetch_add(one_lap, Release);
+        // Write the message into the entry and increment the lap.
+        ptr::write(entry.msg.get(), msg);
+        // TODO: Optimize by changing `fetch_add` to `store`
+        entry.lap.fetch_add(one_lap, Release);
 
-            self.receivers.notify_one();
-        }
+        self.receivers.notify_one();
     }
 
     /// Returns a new channel with capacity `cap`.
@@ -215,7 +181,7 @@ impl<T> Channel<T> {
         &*self.buffer.offset(index as isize)
     }
 
-    fn sel_push(&self, backoff: &mut Backoff) -> Result<usize, PushError<()>> {
+    fn push(&self, backoff: &mut Backoff) -> Option<usize> {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -223,11 +189,6 @@ impl<T> Channel<T> {
         loop {
             // Load the tail.
             let tail = self.tail.load(SeqCst);
-
-            // If the tail is marked, the channel is closed.
-            if tail & self.mark_bit != 0 {
-                return Err(PushError::Closed(()));
-            }
 
             let index = tail & index_bits;
             let lap = tail & lap_bits;
@@ -252,7 +213,7 @@ impl<T> Channel<T> {
                     .compare_exchange_weak(tail, new_tail, SeqCst, Relaxed)
                     .is_ok()
                 {
-                    return Ok(entry as *const Entry<T> as usize);
+                    return Some(entry as *const Entry<T> as usize);
                 }
             // But if the entry lags one lap behind the tail...
             } else if next_elap == lap {
@@ -261,7 +222,7 @@ impl<T> Channel<T> {
                 // ...and if head lags one lap behind tail as well...
                 if head.wrapping_add(one_lap) == tail {
                     // ...then the channel is full.
-                    return Err(PushError::Full(()));
+                    return None;
                 }
             }
 
@@ -269,126 +230,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to push `msg` into the channel.
-    ///
-    /// Returns `None` on success, and `Some(msg)` if the channel is full.
-    fn push(&self, msg: T, backoff: &mut Backoff) -> Result<(), PushError<T>> {
-        let one_lap = self.mark_bit << 1;
-        let index_bits = self.mark_bit - 1;
-        let lap_bits = !(one_lap - 1);
-
-        loop {
-            // Load the tail.
-            let tail = self.tail.load(SeqCst);
-
-            // If the tail is marked, the channel is closed.
-            if tail & self.mark_bit != 0 {
-                return Err(PushError::Closed(msg));
-            }
-
-            let index = tail & index_bits;
-            let lap = tail & lap_bits;
-
-            // Inspect the corresponding entry.
-            let entry = unsafe { self.entry_at(index) };
-            let elap = entry.lap.load(SeqCst);
-            let next_elap = elap.wrapping_add(one_lap);
-
-            // If the laps of the tail and the entry match, we may attempt to push.
-            if lap == elap {
-                let new_tail = if index + 1 < self.cap {
-                    // Same lap; incremented index.
-                    tail + 1
-                } else {
-                    // Two laps forward; index wraps around to zero.
-                    lap.wrapping_add(one_lap.wrapping_mul(2))
-                };
-
-                // Try moving the tail one entry forward.
-                if self.tail
-                    .compare_exchange_weak(tail, new_tail, SeqCst, Relaxed)
-                    .is_ok()
-                {
-                    // Write the message into the entry and increment the lap.
-                    unsafe { ptr::write(entry.msg.get(), msg) }
-                    entry.lap.store(next_elap, Release);
-                    return Ok(());
-                }
-            // But if the entry lags one lap behind the tail...
-            } else if next_elap == lap {
-                let head = self.head.load(SeqCst);
-
-                // ...and if head lags one lap behind tail as well...
-                if head.wrapping_add(one_lap) == tail {
-                    // ...then the channel is full.
-                    return Err(PushError::Full(msg));
-                }
-            }
-
-            backoff.step();
-        }
-    }
-
-    fn sel_pop(&self) -> Result<usize, PopError> {
-        let one_lap = self.mark_bit << 1;
-        let index_bits = self.mark_bit - 1;
-        let lap_bits = !(one_lap - 1);
-
-        let mut backoff = Backoff::new();
-
-        loop {
-            // Load the head.
-            let head = self.head.load(SeqCst);
-            let index = head & index_bits;
-            let lap = head & lap_bits;
-
-            // Inspect the corresponding entry.
-            let entry = unsafe { self.entry_at(index) };
-            let elap = entry.lap.load(SeqCst);
-            let next_elap = elap.wrapping_add(one_lap);
-
-            // If the laps of the head and the entry match, we may attempt to pop.
-            if lap == elap {
-                let new = if index + 1 < self.cap {
-                    // Same lap; incremented index.
-                    head + 1
-                } else {
-                    // Two laps forward; index wraps around to zero.
-                    lap.wrapping_add(one_lap.wrapping_mul(2))
-                };
-
-                // Try moving the head one entry forward.
-                if self.head
-                    .compare_exchange_weak(head, new, SeqCst, Relaxed)
-                    .is_ok()
-                {
-                    return Ok(entry as *const Entry<T> as usize);
-                }
-            // But if the entry lags one lap behind the head...
-            } else if next_elap == lap {
-                let tail = self.tail.load(SeqCst);
-
-                // ...and if the tail lags one lap behind the head as well, that means the channel
-                // is empty.
-                if (tail & !self.mark_bit).wrapping_add(one_lap) == head {
-                    // Check whether the channel is closed and return the appropriate error
-                    // variant.
-                    if tail & self.mark_bit != 0 {
-                        return Err(PopError::Closed);
-                    } else {
-                        return Err(PopError::Empty);
-                    }
-                }
-            }
-
-            backoff.step();
-        }
-    }
-
-    /// Attempts to pop a message from the channel.
-    ///
-    /// Returns `None` if the channel is empty.
-    fn pop(&self, backoff: &mut Backoff) -> Result<T, PopError> {
+    fn pop(&self, backoff: &mut Backoff) -> Option<usize> {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -419,10 +261,7 @@ impl<T> Channel<T> {
                     .compare_exchange_weak(head, new, SeqCst, Relaxed)
                     .is_ok()
                 {
-                    // Read the message from the entry and increment the lap.
-                    let msg = unsafe { ptr::read(entry.msg.get()) };
-                    entry.lap.store(next_elap, Release);
-                    return Ok(msg);
+                    return Some(entry as *const Entry<T> as usize);
                 }
             // But if the entry lags one lap behind the head...
             } else if next_elap == lap {
@@ -434,9 +273,9 @@ impl<T> Channel<T> {
                     // Check whether the channel is closed and return the appropriate error
                     // variant.
                     if tail & self.mark_bit != 0 {
-                        return Err(PopError::Closed);
+                        return Some(0);
                     } else {
-                        return Err(PopError::Empty);
+                        return None;
                     }
                 }
             }
@@ -473,86 +312,6 @@ impl<T> Channel<T> {
                     self.cap
                 };
             }
-        }
-    }
-
-    /// Attempts to send `msg` into the channel.
-    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        match self.push(msg, &mut Backoff::new()) {
-            Ok(()) => {
-                self.receivers.notify_one();
-                Ok(())
-            }
-            Err(PushError::Full(m)) => Err(TrySendError::Full(m)),
-            Err(PushError::Closed(m)) => Err(TrySendError::Closed(m)),
-        }
-    }
-
-    /// Attempts to send `msg` into the channel.
-    pub fn send(&self, mut msg: T, case_id: CaseId) {
-        loop {
-            let backoff = &mut Backoff::new();
-            loop {
-                match self.push(msg, backoff) {
-                    Ok(()) => {
-                        self.receivers.notify_one();
-                        return;
-                    }
-                    Err(PushError::Full(m)) => msg = m,
-                    Err(PushError::Closed(m)) => panic!(), // TODO: delete this
-                }
-
-                if !backoff.step() {
-                    break;
-                }
-            }
-
-            handle::current_reset();
-            self.senders.register(case_id);
-            if self.is_full() {
-                handle::current_wait_until(None);
-            }
-            self.senders.unregister(case_id);
-        }
-    }
-
-    /// Attempts to receive a message from channel.
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        match self.pop(&mut Backoff::new()) {
-            Ok(m) => {
-                self.senders.notify_one();
-                Ok(m)
-            }
-            Err(PopError::Empty) => Err(TryRecvError::Empty),
-            Err(PopError::Closed) => Err(TryRecvError::Closed),
-        }
-    }
-
-    /// Attempts to receive a message from the channel.
-    pub fn recv(&self, case_id: CaseId) -> Option<T> {
-        loop {
-            let backoff = &mut Backoff::new();
-            loop {
-                match self.pop(backoff) {
-                    Ok(m) => {
-                        self.senders.notify_one();
-                        return Some(m);
-                    }
-                    Err(PopError::Empty) => {},
-                    Err(PopError::Closed) => return None,
-                }
-
-                if !backoff.step() {
-                    break;
-                }
-            }
-
-            handle::current_reset();
-            self.receivers.register(case_id);
-            if !self.is_closed() && self.is_empty() {
-                handle::current_wait_until(None);
-            }
-            self.receivers.unregister(case_id);
         }
     }
 

@@ -10,8 +10,6 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::bounded;
-use crossbeam_channel::{RecvError, TryRecvError};
-use crossbeam_channel::TrySendError;
 use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
@@ -21,7 +19,7 @@ fn ms(ms: u64) -> Duration {
 #[test]
 fn smoke() {
     let (tx, rx) = bounded(1);
-    tx.try_send(7).unwrap();
+    assert_eq!(tx.try_send(7), None);
     assert_eq!(rx.try_recv(), Some(7));
 
     tx.send(8);
@@ -122,7 +120,7 @@ fn send() {
             thread::sleep(ms(1000));
             tx.send(9);
             thread::sleep(ms(1000));
-            assert_eq!(tx.try_send(10), Ok(()));
+            assert_eq!(tx.try_send(10), None);
         });
         s.spawn(move || {
             thread::sleep(ms(1500));
@@ -173,12 +171,12 @@ fn try_send() {
 
     crossbeam::scope(|s| {
         s.spawn(move || {
-            assert_eq!(tx.try_send(1), Ok(()));
-            assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
+            assert_eq!(tx.try_send(1), None);
+            assert_eq!(tx.try_send(2), Some(2));
             thread::sleep(ms(1500));
-            assert_eq!(tx.try_send(3), Ok(()));
+            assert_eq!(tx.try_send(3), None);
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(4), Ok(()));
+            assert_eq!(tx.try_send(4), None);
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -375,6 +373,7 @@ fn stress_timeout_two_threads() {
 fn drops() {
     static DROPS: AtomicUsize = ATOMIC_USIZE_INIT;
 
+    #[derive(Debug, PartialEq)]
     struct DropCounter;
 
     impl Drop for DropCounter {
@@ -407,7 +406,7 @@ fn drops() {
         });
 
         for _ in 0..additional {
-            tx.try_send(DropCounter).unwrap();
+            assert_eq!(tx.try_send(DropCounter), None);
         }
 
         assert_eq!(DROPS.load(SeqCst), steps);

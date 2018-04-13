@@ -28,6 +28,7 @@ impl Backoff {
             self.0 += 1;
             true
         } else if self.0 <= 10 {
+            // TODO: return false without yielding
             thread::yield_now();
             self.0 += 1;
             true

@@ -7,8 +7,6 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use crossbeam_channel::{RecvError, TryRecvError};
-use crossbeam_channel::TrySendError;
 
 // TODO: test that `select!` evaluates to an expression
 // TODO: two nested `select!`s
@@ -323,7 +321,7 @@ fn loop_try() {
         crossbeam::scope(|s| {
             s.spawn(|| {
                 loop {
-                    if tx1.try_send(1).is_ok() {
+                    if tx1.try_send(1).is_none() {
                         break;
                     }
 
