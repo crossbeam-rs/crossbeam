@@ -312,16 +312,34 @@ impl<T> Sender<T> {
     ///
     /// tx.send(0);
     /// assert!(!tx.is_empty());
-    ///
-    /// // Drop the only receiver, thus closing the channel.
-    /// drop(rx);
-    /// // Even a closed channel can be non-empty.
-    /// assert!(!tx.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_empty(),
             Flavor::List(ref chan) => chan.is_empty(),
+            Flavor::Zero(_) => true,
+        }
+    }
+
+    /// Returns `true` if the channel is full.
+    ///
+    /// Zero-capacity channels are always full.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::bounded;
+    ///
+    /// let (tx, rx) = bounded(1);
+    ///
+    /// assert!(!tx.is_full());
+    /// tx.send(0);
+    /// assert!(tx.is_full());
+    /// ```
+    pub fn is_full(&self) -> bool {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.is_full(),
+            Flavor::List(ref chan) => false,
             Flavor::Zero(_) => true,
         }
     }
@@ -544,20 +562,38 @@ impl<T> Receiver<T> {
     /// use crossbeam_channel::unbounded;
     ///
     /// let (tx, rx) = unbounded();
+    ///
     /// assert!(rx.is_empty());
-    ///
     /// tx.send(0);
-    /// assert!(!rx.is_empty());
-    ///
-    /// // Drop the only sender, thus closing the channel.
-    /// drop(tx);
-    /// // Even a closed channel can be non-empty.
     /// assert!(!rx.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_empty(),
             Flavor::List(ref chan) => chan.is_empty(),
+            Flavor::Zero(_) => true,
+        }
+    }
+
+    /// Returns `true` if the channel is full.
+    ///
+    /// Zero-capacity channels are always full.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::bounded;
+    ///
+    /// let (tx, rx) = bounded(1);
+    ///
+    /// assert!(!rx.is_full());
+    /// tx.send(0);
+    /// assert!(rx.is_full());
+    /// ```
+    pub fn is_full(&self) -> bool {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.is_full(),
+            Flavor::List(ref chan) => false,
             Flavor::Zero(_) => true,
         }
     }
