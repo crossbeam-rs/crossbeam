@@ -96,28 +96,6 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn sel_try_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.pop(token, backoff)
-    }
-
-    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
-        if token.entry.is_null() {
-            None
-        } else {
-            let entry = &*(token.entry as *const Entry<T>);
-            let _guard: Guard = mem::transmute(token.guard);
-
-            let mut backoff = Backoff::new();
-            while !entry.ready.load(Acquire) {
-                backoff.step();
-            }
-
-            let m = ptr::read(&entry.msg);
-            let msg = ManuallyDrop::into_inner(m);
-            Some(msg)
-        }
-    }
-
     pub fn new() -> Self {
         let channel = Channel {
             head: CachePadded::new(Position {
@@ -140,8 +118,7 @@ impl<T> Channel<T> {
         channel
     }
 
-    /// Pushes `msg` into the channel.
-    fn push(&self, msg: T, backoff: &mut Backoff) {
+    pub fn send(&self, msg: T, backoff: &mut Backoff) {
         let guard = epoch::pin();
 
         loop {
@@ -174,6 +151,8 @@ impl<T> Channel<T> {
                         ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
                         (*entry).ready.store(true, Release);
                     }
+
+                    self.receivers.notify_one();
                     return;
                 }
             }
@@ -182,7 +161,7 @@ impl<T> Channel<T> {
         }
     }
 
-    fn pop(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    pub fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let guard = epoch::pin();
 
         loop {
@@ -252,6 +231,24 @@ impl<T> Channel<T> {
         true
     }
 
+    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
+        if token.entry.is_null() {
+            None
+        } else {
+            let entry = &*(token.entry as *const Entry<T>);
+            let _guard: Guard = mem::transmute(token.guard);
+
+            let mut backoff = Backoff::new();
+            while !entry.ready.load(Acquire) {
+                backoff.step();
+            }
+
+            let m = ptr::read(&entry.msg);
+            let msg = ManuallyDrop::into_inner(m);
+            Some(msg)
+        }
+    }
+
     /// Returns the current number of messages inside the channel.
     pub fn len(&self) -> usize {
         loop {
@@ -265,12 +262,6 @@ impl<T> Channel<T> {
                 return tail_index.wrapping_sub(head_index) >> 1;
             }
         }
-    }
-
-    /// Send `msg` into the channel.
-    pub fn send(&self, msg: T) {
-        self.push(msg, &mut Backoff::new());
-        self.receivers.notify_one();
     }
 
     /// Closes the channel and wakes up all currently blocked operations on it.

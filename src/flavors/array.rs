@@ -75,39 +75,6 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn sel_try_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.pop(token, backoff)
-    }
-
-    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
-        if token.entry.is_null() {
-            None
-        } else {
-            let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
-
-            // Read the message from the entry and increment the lap.
-            let msg = ptr::read(entry.msg.get());
-            entry.lap.store(token.lap, Release);
-
-            self.senders.notify_one();
-            Some(msg)
-        }
-    }
-
-    pub fn sel_try_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.push(token, backoff)
-    }
-
-    pub unsafe fn finish_send(&self, token: Token, msg: T) {
-        let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
-
-        // Write the message into the entry and increment the lap.
-        ptr::write(entry.msg.get(), msg);
-        entry.lap.store(token.lap, Release);
-
-        self.receivers.notify_one();
-    }
-
     /// Returns a new channel with capacity `cap`.
     ///
     /// # Panics
@@ -173,7 +140,7 @@ impl<T> Channel<T> {
         &*self.buffer.offset(index as isize)
     }
 
-    fn push(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    pub fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -224,7 +191,17 @@ impl<T> Channel<T> {
         }
     }
 
-    fn pop(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    pub unsafe fn finish_send(&self, token: Token, msg: T) {
+        let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
+
+        // Write the message into the entry and increment the lap.
+        ptr::write(entry.msg.get(), msg);
+        entry.lap.store(token.lap, Release);
+
+        self.receivers.notify_one();
+    }
+
+    pub fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -279,6 +256,21 @@ impl<T> Channel<T> {
             }
 
             backoff.step();
+        }
+    }
+
+    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
+        if token.entry.is_null() {
+            None
+        } else {
+            let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
+
+            // Read the message from the entry and increment the lap.
+            let msg = ptr::read(entry.msg.get());
+            entry.lap.store(token.lap, Release);
+
+            self.senders.notify_one();
+            Some(msg)
         }
     }
 

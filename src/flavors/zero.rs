@@ -23,17 +23,18 @@ use utils::Backoff;
 pub type Token = usize;
 
 /// A zero-capacity channel.
-pub struct Channel<T> {
+pub struct Channel {
     /// The internal two-sided exchanger.
-    exchanger: Exchanger<Option<T>>,
+    exchanger: Exchanger,
 }
 
-impl<T> Channel<T> {
+impl Channel {
+    #[inline]
     pub fn sel_try_recv(&self, token: &mut Token) -> bool {
         self.exchanger.right().sel_try_exchange(token)
     }
 
-    pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
+    pub unsafe fn finish_recv<T>(&self, token: usize) -> Option<T> {
         if token == 0 {
             None
         } else if token == 1 {
@@ -43,11 +44,12 @@ impl<T> Channel<T> {
         }
     }
 
+    #[inline]
     pub fn sel_try_send(&self, token: &mut Token) -> bool {
         self.exchanger.left().sel_try_exchange(token)
     }
 
-    pub unsafe fn finish_send(&self, token: usize, msg: T) {
+    pub unsafe fn finish_send<T>(&self, token: usize, msg: T) {
         if token == 1 {
             self.fulfill_send(msg);
         } else {
@@ -56,6 +58,7 @@ impl<T> Channel<T> {
     }
 
     /// Returns a new zero-capacity channel.
+    #[inline]
     pub fn new() -> Self {
         Channel {
             exchanger: Exchanger::new(),
@@ -63,125 +66,70 @@ impl<T> Channel<T> {
     }
 
     /// Promises a send operation.
+    #[inline]
     pub fn promise_send(&self, case_id: CaseId) {
         self.exchanger.left().promise(case_id);
     }
 
     /// Revokes the promised send operation.
+    #[inline]
     pub fn revoke_send(&self, case_id: CaseId) {
         self.exchanger.left().revoke(case_id);
     }
 
     /// Fulfills the promised send operation.
-    pub fn fulfill_send(&self, msg: T) {
+    pub fn fulfill_send<T>(&self, msg: T) {
         self.exchanger.left().fulfill(Some(msg));
     }
 
     /// Promises a receive operation.
+    #[inline]
     pub fn promise_recv(&self, case_id: CaseId) {
         self.exchanger.right().promise(case_id);
     }
 
     /// Revokes the promised receive operation.
+    #[inline]
     pub fn revoke_recv(&self, case_id: CaseId) {
         self.exchanger.right().revoke(case_id);
     }
 
     /// Fulfills the promised receive operation.
-    pub fn fulfill_recv(&self) -> T {
+    pub fn fulfill_recv<T>(&self) -> T {
         self.exchanger.right().fulfill(None).unwrap()
     }
 
-    /// Attempts to send `msg` into the channel.
-    pub fn try_send(&self, msg: T, case_id: CaseId) -> Option<T> {
-        match self.exchanger.left().try_exchange(Some(msg), case_id) {
-            Ok(_) => None,
-            Err(ExchangeError::Timeout(msg)) => Some(msg.unwrap()),
-            Err(ExchangeError::Closed(msg)) => panic!(), // TODO: delete this case
-        }
-    }
-
-    /// Attempts to send `msg` into the channel.
-    pub fn send(&self, msg: T, case_id: CaseId) {
-        match self.exchanger
-            .left()
-            .exchange_until(Some(msg), None, case_id)
-        {
-            Ok(_) => (),
-            Err(ExchangeError::Closed(msg)) => panic!(), // TODO: delete this case
-            Err(ExchangeError::Timeout(msg)) => panic!(), // TODO: cannot happen?
-        }
-    }
-
-    /// Attempts to receive a message from channel.
-    pub fn try_recv(&self, case_id: CaseId) -> Option<T> {
-        match self.exchanger.right().try_exchange(None, case_id) {
-            Ok(msg) => Some(msg.unwrap()),
-            Err(ExchangeError::Closed(_)) => None,
-            Err(ExchangeError::Timeout(_)) => None,
-        }
-    }
-
-    /// Attempts to receive a message from the channel.
-    pub fn recv(
-        &self,
-        case_id: CaseId,
-    ) -> Option<T> {
-        match self.exchanger
-            .right()
-            .exchange_until(None, None, case_id)
-        {
-            Ok(msg) => Some(msg.unwrap()),
-            Err(ExchangeError::Closed(_)) => None,
-            Err(ExchangeError::Timeout(_)) => panic!(), // TODO: cannot happeN?
-        }
-    }
-
     /// Returns `true` if there is a waiting sender.
+    #[inline]
     pub fn can_recv(&self) -> bool {
         self.exchanger.left().can_notify()
     }
 
     /// Returns `true` if there is a waiting receiver.
+    #[inline]
     pub fn can_send(&self) -> bool {
         self.exchanger.right().can_notify()
     }
 
     /// Closes the channel and wakes up all currently blocked operations on it.
+    #[inline]
     pub fn close(&self) -> bool {
         self.exchanger.close()
     }
 
     /// Returns `true` if the channel is closed.
+    #[inline]
     pub fn is_closed(&self) -> bool {
         self.exchanger.is_closed()
     }
 }
 
-/// Waiting strategy in an exchange operation.
-enum Wait {
-    /// Yield once and then time out.
-    YieldOnce,
-
-    /// Wait until an optional deadline.
-    Until(Option<Instant>),
-}
-
-/// Enumeration of possible exchange errors.
-enum ExchangeError<T> {
-    /// The exchange operation timed out.
-    Timeout(T),
-
-    /// The exchanger is closed.
-    Closed(T),
-}
-
 /// Inner representation of an exchanger.
 ///
 /// This data structure is wrapped in a mutex.
-struct Inner<T> {
+struct Inner {
     /// There are two wait queues, one per side.
-    wait_queues: [WaitQueue<T>; 2],
+    wait_queues: [WaitQueue; 2],
 
     /// `true` if the exchanger is closed.
     is_closed: bool,
@@ -197,11 +145,11 @@ struct Inner<T> {
 /// If another thread pairs up with the promise on the opposite end, then it will wait until the
 /// promise is fulfilled. The thread that promised the message must in the end fulfill it. A
 /// promise can also be revoked if nobody is waiting for it.
-struct Exchanger<T> {
-    inner: Mutex<Inner<T>>,
+struct Exchanger {
+    inner: Mutex<Inner>,
 }
 
-impl<T> Exchanger<T> {
+impl Exchanger {
     /// Returns a new exchanger.
     #[inline]
     fn new() -> Self {
@@ -214,7 +162,8 @@ impl<T> Exchanger<T> {
     }
 
     /// Returns the left side of the exchanger.
-    fn left(&self) -> Side<T> {
+    #[inline]
+    fn left(&self) -> Side {
         Side {
             index: 0,
             exchanger: self,
@@ -222,7 +171,8 @@ impl<T> Exchanger<T> {
     }
 
     /// Returns the right side of the exchanger.
-    fn right(&self) -> Side<T> {
+    #[inline]
+    fn right(&self) -> Side {
         Side {
             index: 1,
             exchanger: self,
@@ -230,6 +180,7 @@ impl<T> Exchanger<T> {
     }
 
     /// Closes the exchanger and wakes up all currently blocked operations on it.
+    #[inline]
     fn close(&self) -> bool {
         let mut inner = self.inner.lock();
 
@@ -244,21 +195,23 @@ impl<T> Exchanger<T> {
     }
 
     /// Returns `true` if the exchanger is closed.
+    #[inline]
     fn is_closed(&self) -> bool {
         self.inner.lock().is_closed
     }
 }
 
 /// One side of an exchanger.
-struct Side<'a, T: 'a> {
+struct Side<'a> {
     /// The index is 0 or 1.
     index: usize,
 
     /// A reference to the parent exchanger.
-    exchanger: &'a Exchanger<T>,
+    exchanger: &'a Exchanger,
 }
 
-impl<'a, T> Side<'a, T> {
+impl<'a> Side<'a> {
+    #[inline]
     fn sel_try_exchange(&self, token: &mut Token) -> bool {
         let mut inner = self.exchanger.inner.lock();
         if inner.is_closed {
@@ -270,7 +223,7 @@ impl<'a, T> Side<'a, T> {
         if let Some(case) = inner.wait_queues[self.index ^ 1].pop() {
             drop(inner);
 
-            let entry: Box<Entry<T>> = Box::new(case); // TODO: optimize
+            let entry: Box<Entry> = Box::new(case); // TODO: optimize
             let entry = Box::into_raw(entry) as usize;
             *token = entry;
             return true;
@@ -279,12 +232,13 @@ impl<'a, T> Side<'a, T> {
         false
     }
 
-    unsafe fn finish_exchange(&self, token: usize, msg: T) -> T {
-        let entry = *Box::from_raw(token as *mut Entry<T>);
+    unsafe fn finish_exchange<T>(&self, token: usize, msg: T) -> T {
+        let entry = *Box::from_raw(token as *mut Entry);
         entry.exchange(msg)
     }
 
     /// Promises a message for exchange.
+    #[inline]
     fn promise(&self, case_id: CaseId) {
         self.exchanger.inner.lock().wait_queues[self.index].promise(case_id);
     }
@@ -292,12 +246,13 @@ impl<'a, T> Side<'a, T> {
     /// Revokes the previously made promise.
     ///
     /// This method should be called right after the case is aborted.
+    #[inline]
     fn revoke(&self, case_id: CaseId) {
         self.exchanger.inner.lock().wait_queues[self.index].remove(case_id);
     }
 
     /// Fulfills the previously made promise.
-    fn fulfill(&self, msg: T) -> T {
+    fn fulfill<T>(&self, msg: T) -> T {
         // Wait until the requesting thread gives us a pointer to its `Request`.
         let req = LOCAL.with(|local| {
             let mut backoff = Backoff::new();
@@ -327,106 +282,23 @@ impl<'a, T> Side<'a, T> {
         }
     }
 
-    /// Exchanges `msg` if there is an offer or promise on the opposite side.
-    fn try_exchange(&self, msg: T, case_id: CaseId) -> Result<T, ExchangeError<T>> {
-        self.exchange(msg, Wait::YieldOnce, case_id)
-    }
-
-    /// Exchanges `msg`, waiting until the specified `deadline`.
-    fn exchange_until(
-        &self,
-        msg: T,
-        deadline: Option<Instant>,
-        case_id: CaseId,
-    ) -> Result<T, ExchangeError<T>> {
-        self.exchange(msg, Wait::Until(deadline), case_id)
-    }
-
     /// Returns `true` if there is an offer or promise on the opposite side.
+    #[inline]
     fn can_notify(&self) -> bool {
         self.exchanger.inner.lock().wait_queues[self.index].can_notify()
-    }
-
-    /// Exchanges `msg` with the specified `wait` strategy.
-    fn exchange(&self, mut msg: T, wait: Wait, case_id: CaseId) -> Result<T, ExchangeError<T>> {
-        loop {
-            // Allocate a packet on the stack.
-            let packet;
-            {
-                let mut inner = self.exchanger.inner.lock();
-                if inner.is_closed {
-                    return Err(ExchangeError::Closed(msg));
-                }
-
-                // If there's someone on the other side, exchange messages with it.
-                if let Some(case) = inner.wait_queues[self.index ^ 1].pop() {
-                    drop(inner);
-                    return Ok(case.exchange(msg));
-                }
-
-                // Promise a packet with the message.
-                handle::current_reset();
-                packet = Packet::new(msg);
-                inner.wait_queues[self.index].offer(&packet, case_id);
-            }
-
-            // Wait until the timeout and then try aborting the case.
-            let timed_out = match wait {
-                Wait::YieldOnce => {
-                    thread::yield_now();
-                    handle::current_try_select(CaseId::abort())
-                }
-                Wait::Until(deadline) => !handle::current_wait_until(deadline),
-            };
-
-            // If someone requested the promised message...
-            if handle::current_selected() != CaseId::abort() {
-                // Wait until the message is taken and return.
-                packet.wait();
-                return Ok(packet.into_inner());
-            }
-
-            // Revoke the promise.
-            let mut inner = self.exchanger.inner.lock();
-            inner.wait_queues[self.index].remove(case_id);
-            msg = packet.into_inner();
-
-            // If we timed out, return.
-            if timed_out {
-                return Err(ExchangeError::Timeout(msg));
-            }
-
-            // Otherwise, another thread must have woken us up. Let's try again.
-        }
     }
 }
 
 /// An entry in a wait queue.
-enum Entry<T> {
-    /// Offers a concrete message.
-    Offer {
-        handle: Handle,
-        packet: *const Packet<T>,
-        case_id: CaseId,
-    },
+enum Entry {
     /// Promises a message.
     Promise { local: Arc<Local>, case_id: CaseId },
 }
 
-impl<T> Entry<T> {
+impl Entry {
     /// Exchange `msg` with this entry and wake it up.
-    fn exchange(&self, msg: T) -> T {
+    fn exchange<T>(&self, msg: T) -> T {
         match *self {
-            // This is an offer.
-            // We can exchange messages immediately.
-            Entry::Offer {
-                ref handle, packet, ..
-            } => {
-                let m = unsafe { (*packet).exchange(msg) };
-                handle.unpark();
-                m
-            }
-
             // This is a promise.
             // We must request the message and then wait until the promise is fulfilled.
             Entry::Promise { ref local, .. } => {
@@ -450,28 +322,30 @@ impl<T> Entry<T> {
     }
 
     /// Returns the handle associated with the owner of this entry.
+    #[inline]
     fn handle(&self) -> &Handle {
         match *self {
-            Entry::Offer { ref handle, .. } => handle,
             Entry::Promise { ref local, .. } => &local.handle,
         }
     }
 
     /// Returns the case ID associated with this entry.
+    #[inline]
     fn case_id(&self) -> CaseId {
         match *self {
-            Entry::Offer { case_id, .. } | Entry::Promise { case_id, .. } => case_id,
+            Entry::Promise { case_id, .. } => case_id,
         }
     }
 }
 
 /// A wait queue in which blocked selection cases are registered.
-struct WaitQueue<T> {
-    cases: VecDeque<Entry<T>>,
+struct WaitQueue {
+    cases: VecDeque<Entry>,
 }
 
-impl<T> WaitQueue<T> {
+impl WaitQueue {
     /// Creates a new `WaitQueue`.
+    #[inline]
     fn new() -> Self {
         WaitQueue {
             cases: VecDeque::new(),
@@ -479,7 +353,8 @@ impl<T> WaitQueue<T> {
     }
 
     /// Attempts to fire one case owned by another thread and returns it on success.
-    fn pop(&mut self) -> Option<Entry<T>> {
+    #[inline]
+    fn pop(&mut self) -> Option<Entry> {
         let thread_id = current_thread_id();
 
         for i in 0..self.cases.len() {
@@ -495,16 +370,8 @@ impl<T> WaitQueue<T> {
         None
     }
 
-    /// Inserts an *offer* case owned by the current thread with `case_id`.
-    fn offer(&mut self, packet: *const Packet<T>, case_id: CaseId) {
-        self.cases.push_back(Entry::Offer {
-            handle: handle::current(),
-            packet,
-            case_id,
-        });
-    }
-
     /// Inserts a *promise* case owned by the current thread with `case_id`.
+    #[inline]
     fn promise(&mut self, case_id: CaseId) {
         self.cases.push_back(Entry::Promise {
             local: LOCAL.with(|l| l.clone()),
@@ -513,6 +380,7 @@ impl<T> WaitQueue<T> {
     }
 
     /// Removes a case owned by the current thread with `case_id`.
+    #[inline]
     fn remove(&mut self, case_id: CaseId) {
         let thread_id = current_thread_id();
 
@@ -527,6 +395,7 @@ impl<T> WaitQueue<T> {
     }
 
     /// Returns `true` if there exists a case which isn't owned by the current thread.
+    #[inline]
     fn can_notify(&self) -> bool {
         let thread_id = current_thread_id();
 
@@ -539,6 +408,7 @@ impl<T> WaitQueue<T> {
     }
 
     /// Aborts all cases and unparks threads which own them.
+    #[inline]
     fn abort_all(&mut self) {
         for case in self.cases.drain(..) {
             case.handle().try_select(CaseId::abort());
@@ -548,6 +418,7 @@ impl<T> WaitQueue<T> {
     }
 
     /// Shrinks the internal buffer if its capacity is underused.
+    #[inline]
     fn maybe_shrink(&mut self) {
         if self.cases.capacity() > 32 && self.cases.capacity() / 2 > self.cases.len() {
             self.cases.shrink_to_fit();
@@ -555,7 +426,7 @@ impl<T> WaitQueue<T> {
     }
 }
 
-impl<T> Drop for WaitQueue<T> {
+impl Drop for WaitQueue {
     fn drop(&mut self) {
         debug_assert!(self.cases.is_empty());
     }

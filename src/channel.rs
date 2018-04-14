@@ -48,8 +48,8 @@ impl<T> Sel for Receiver<T> {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.sel_try_recv(&mut token.array, backoff),
-                Flavor::List(ref chan) => chan.sel_try_recv(&mut token.list, backoff),
+                Flavor::Array(ref chan) => chan.start_recv(&mut token.array, backoff),
+                Flavor::List(ref chan) => chan.start_recv(&mut token.list, backoff),
                 Flavor::Zero(ref chan) => chan.sel_try_recv(&mut token.zero),
             }
         }
@@ -83,8 +83,8 @@ impl<T> Sel for Receiver<T> {
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.sel_try_recv(&mut token.array, backoff),
-                Flavor::List(ref chan) => chan.sel_try_recv(&mut token.list, backoff),
+                Flavor::Array(ref chan) => chan.start_recv(&mut token.array, backoff),
+                Flavor::List(ref chan) => chan.start_recv(&mut token.list, backoff),
                 Flavor::Zero(ref chan) => { token.zero = 1; true }, // TODO
             }
         }
@@ -95,8 +95,8 @@ impl<T> Sel for Sender<T> {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.sel_try_send(&mut token.array, backoff),
-                Flavor::List(ref chan) => { token.list.entry = 0 as *const _; true },
+                Flavor::Array(ref chan) => chan.start_send(&mut token.array, backoff),
+                Flavor::List(_) => true,
                 Flavor::Zero(ref chan) => chan.sel_try_send(&mut token.zero),
             }
         }
@@ -105,7 +105,7 @@ impl<T> Sel for Sender<T> {
     fn promise(&self, case_id: CaseId) {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.senders().register(case_id),
-            Flavor::List(ref chan) => {},
+            Flavor::List(_) => {},
             Flavor::Zero(ref chan) => chan.promise_send(case_id),
         }
     }
@@ -128,7 +128,7 @@ impl<T> Sel for Sender<T> {
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => unsafe { chan.sel_try_send(&mut token.array, backoff) },
+            Flavor::Array(ref chan) => unsafe { chan.start_send(&mut token.array, backoff) },
             Flavor::List(ref chan) => unsafe { token.list.entry = 0 as *const _; true }
             Flavor::Zero(ref chan) => unsafe { token.zero = 1; true },
         }
@@ -144,7 +144,7 @@ pub struct Channel<T> {
 enum Flavor<T> {
     Array(flavors::array::Channel<T>),
     List(flavors::list::Channel<T>),
-    Zero(flavors::zero::Channel<T>),
+    Zero(flavors::zero::Channel),
 }
 
 /// Creates a new channel of unbounded capacity, returning the sender/receiver halves.
@@ -280,14 +280,6 @@ unsafe impl<T: Send> Sync for Sender<T> {}
 
 #[doc(hidden)]
 impl<T> Sender<T> {
-    pub unsafe fn finish_send(&self, token: Token, msg: T) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.finish_send(token.array, msg),
-            Flavor::List(ref chan) => chan.send(msg),
-            Flavor::Zero(ref chan) => chan.finish_send(token.zero, msg),
-        }
-    }
-
     fn new(chan: Arc<Channel<T>>) -> Self {
         chan.senders.fetch_add(1, SeqCst);
         Sender(chan)
@@ -296,6 +288,14 @@ impl<T> Sender<T> {
     fn channel_address(&self) -> usize {
         let chan: &Channel<T> = &*self.0;
         chan as *const Channel<T> as usize
+    }
+
+    pub unsafe fn finish_send(&self, token: Token, msg: T) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.finish_send(token.array, msg),
+            Flavor::List(ref chan) => chan.send(msg, &mut Backoff::new()),
+            Flavor::Zero(ref chan) => chan.finish_send(token.zero, msg),
+        }
     }
 }
 
@@ -503,14 +503,6 @@ unsafe impl<T: Send> Sync for Receiver<T> {}
 
 #[doc(hidden)]
 impl<T> Receiver<T> {
-    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.finish_recv(token.array),
-            Flavor::List(ref chan) => chan.finish_recv(token.list),
-            Flavor::Zero(ref chan) => chan.finish_recv(token.zero),
-        }
-    }
-
     fn new(chan: Arc<Channel<T>>) -> Self {
         Receiver(chan)
     }
@@ -518,6 +510,14 @@ impl<T> Receiver<T> {
     fn channel_address(&self) -> usize {
         let chan: &Channel<T> = &*self.0;
         chan as *const Channel<T> as usize
+    }
+
+    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.finish_recv(token.array),
+            Flavor::List(ref chan) => chan.finish_recv(token.list),
+            Flavor::Zero(ref chan) => chan.finish_recv(token.zero),
+        }
     }
 }
 
