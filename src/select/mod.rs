@@ -1,7 +1,7 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use {Receiver, Sender};
+use utils::Backoff;
 
 pub use self::case_id::CaseId;
 
@@ -530,12 +530,13 @@ macro_rules! select {
     (@generate $recv:tt $send:tt $default:tt) => {{
         // TODO: Remove all these imports to avoid the "unused import" warnings.
         use $crate::select::CaseId;
-        use $crate::Sel;
+        use $crate::channel::Sel;
         use $crate::smallvec::SmallVec;
         use $crate::select::handle;
         use std::time::Instant;
         use $crate::utils::Backoff;
         use $crate::{Sender, Receiver};
+        use $crate::channel::Token;
 
         let deadline: Option<Instant>;
         let default_index: usize;
@@ -543,22 +544,22 @@ macro_rules! select {
 
         // TODO: shuffle
 
-        let mut token: usize = 0;
+        let mut token: Token = unsafe { ::std::mem::zeroed() };
         let mut index: usize = !0;
 
         // TODO: Maybe case_id should be address of the case in `cases`?
 
+        // TODO: #[allow(warnings)]
         {
             let mut cases;
             select!(@smallvec cases $recv $send);
-            select!(@push cases $recv $send);
 
             loop {
                 let backoff = &mut Backoff::new();
                 loop {
                     for &(sel, i) in &cases {
-                        if let Some(t) = sel.try(backoff) {
-                            token = t;
+                        if sel.try(&mut token, backoff) {
+                            // token = t;
                             index = i;
                             break;
                         }
@@ -578,7 +579,7 @@ macro_rules! select {
                 }
 
                 if default_index != !0 && deadline.is_none() {
-                    token = !0;
+                    // token = !0;
                     index = default_index;
                     break;
                 }
@@ -611,8 +612,8 @@ macro_rules! select {
                         let case_id = CaseId::new(case as *const _ as usize);
                         let &(sel, i) = case;
                         if case_id == s {
-                            if let Some(t) = sel.fulfill(&mut Backoff::new()) {
-                                token = t;
+                            if sel.fulfill(&mut token, &mut Backoff::new()) {
+                                // token = t;
                                 index = i;
                                 break;
                             }
@@ -625,7 +626,7 @@ macro_rules! select {
                 }
 
                 if timed_out {
-                    token = !0;
+                    // token = !0;
                     index = default_index;
                     break;
                 }
@@ -661,25 +662,29 @@ macro_rules! select {
         // TODO: importing:
         // use crossbeam::channel::async as chan;
         // use crossbeam::channel::sync as chan;
+
+        // TODO: mem::forget the token in unreachable!() case in order to eliminate the drop flag?
+        // TODO: merge Handle and Local?
+
+        // TODO: equality and ordering between Sender  Receiver
+        // TODO: eliminate all thread-locals (mpsc doesn't use them!)
     }};
 
     (@smallvec
         $cases:ident
-        ([$i:expr] recv $args:tt => $body:tt)
+        ([$i:expr] recv($r:expr, $m:pat) => $body:tt,)
         ()
     ) => {
-        $cases = SmallVec::<[(&Receiver<_>, usize); 4]>::new();
-        if false {
-            // This is just to get around the "variable does not need to be mutable" warning.
-            $cases = SmallVec::new();
-        }
+        let r: &Receiver<_> = &($r);
+        $cases = [(r, $i)];
     };
     (@smallvec
         $cases:ident
         ()
-        ([$i:expr] send $args:tt => $body:tt)
+        ([$i:expr] send($s:expr, $m:expr) => $body:tt,)
     ) => {
-        $cases = SmallVec::<[(&Sender<_>, usize); 4]>::new();
+        let s: &Sender<_> = &($s);
+        $cases = [(s, $i)];
     };
     (@smallvec
         $cases:ident
@@ -687,6 +692,7 @@ macro_rules! select {
         $send:tt
     ) => {
         $cases = SmallVec::<[(&Sel, usize); 4]>::new();
+        select!(@push $cases $recv $send);
     };
 
     (@push

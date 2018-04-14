@@ -12,16 +12,13 @@ use std::sync::atomic::Ordering::{Relaxed, Release, SeqCst};
 use crossbeam_utils::cache_padded::CachePadded;
 
 use monitor::Monitor;
-use select::CaseId;
-use select::handle;
 use utils::Backoff;
 
-// #[derive(Copy, Clone)]
-// pub struct Token {
-//     entry: *const u8,
-//     lap: usize,
-// }
-pub type Token = usize;
+#[derive(Copy, Clone)]
+pub struct Token {
+    entry: *const u8,
+    lap: usize,
+}
 
 /// An entry in the channel.
 ///
@@ -78,41 +75,35 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn sel_try_recv(&self, backoff: &mut Backoff) -> Option<usize> {
-        self.pop(backoff)
+    pub fn sel_try_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.pop(token, backoff)
     }
 
-    pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
-        if token == 0 {
+    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
+        if token.entry.is_null() {
             None
         } else {
-            let one_lap = self.mark_bit << 1;
-
-            let entry: &Entry<T> = &*(token as *const Entry<T>);
+            let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
 
             // Read the message from the entry and increment the lap.
             let msg = ptr::read(entry.msg.get());
-            // TODO: Optimize by changing `fetch_add` to `store`
-            entry.lap.fetch_add(one_lap, Release);
+            entry.lap.store(token.lap, Release);
 
             self.senders.notify_one();
             Some(msg)
         }
     }
 
-    pub fn sel_try_send(&self, backoff: &mut Backoff) -> Option<usize> {
-        self.push(backoff)
+    pub fn sel_try_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.push(token, backoff)
     }
 
-    pub unsafe fn finish_send(&self, token: usize, msg: T) {
-        let one_lap = self.mark_bit << 1;
-
-        let entry: &Entry<T> = &*(token as *const Entry<T>);
+    pub unsafe fn finish_send(&self, token: Token, msg: T) {
+        let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
 
         // Write the message into the entry and increment the lap.
         ptr::write(entry.msg.get(), msg);
-        // TODO: Optimize by changing `fetch_add` to `store`
-        entry.lap.fetch_add(one_lap, Release);
+        entry.lap.store(token.lap, Release);
 
         self.receivers.notify_one();
     }
@@ -182,7 +173,7 @@ impl<T> Channel<T> {
         &*self.buffer.offset(index as isize)
     }
 
-    fn push(&self, backoff: &mut Backoff) -> Option<usize> {
+    fn push(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -214,7 +205,9 @@ impl<T> Channel<T> {
                     .compare_exchange_weak(tail, new_tail, SeqCst, Relaxed)
                     .is_ok()
                 {
-                    return Some(entry as *const Entry<T> as usize);
+                    token.entry = entry as *const Entry<T> as *const u8;
+                    token.lap = next_elap;
+                    return true;
                 }
             // But if the entry lags one lap behind the tail...
             } else if next_elap == lap {
@@ -223,7 +216,7 @@ impl<T> Channel<T> {
                 // ...and if head lags one lap behind tail as well...
                 if head.wrapping_add(one_lap) == tail {
                     // ...then the channel is full.
-                    return None;
+                    return false;
                 }
             }
 
@@ -231,7 +224,7 @@ impl<T> Channel<T> {
         }
     }
 
-    fn pop(&self, backoff: &mut Backoff) -> Option<usize> {
+    fn pop(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -262,7 +255,9 @@ impl<T> Channel<T> {
                     .compare_exchange_weak(head, new, SeqCst, Relaxed)
                     .is_ok()
                 {
-                    return Some(entry as *const Entry<T> as usize);
+                    token.entry = entry as *const Entry<T> as *const u8;
+                    token.lap = next_elap;
+                    return true;
                 }
             // But if the entry lags one lap behind the head...
             } else if next_elap == lap {
@@ -274,9 +269,11 @@ impl<T> Channel<T> {
                     // Check whether the channel is closed and return the appropriate error
                     // variant.
                     if tail & self.mark_bit != 0 {
-                        return Some(0);
+                        token.entry = ptr::null();
+                        token.lap = 0;
+                        return true;
                     } else {
-                        return None;
+                        return false;
                     }
                 }
             }

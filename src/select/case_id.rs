@@ -15,31 +15,6 @@ impl CaseId {
     }
 
     #[inline]
-    pub fn closed() -> Self {
-        CaseId { id: 2 }
-    }
-
-    #[inline]
-    pub fn would_block() -> Self {
-        CaseId { id: 3 }
-    }
-
-    #[inline]
-    pub fn timed_out() -> Self {
-        CaseId { id: 4 }
-    }
-
-    #[inline]
-    pub fn send(channel_address: usize) -> Self {
-        CaseId { id: channel_address }
-    }
-
-    #[inline]
-    pub fn recv(channel_address: usize) -> Self {
-        CaseId { id: channel_address | 1 }
-    }
-
-    #[inline]
     pub fn new(id: usize) -> Self {
         CaseId { id }
     }

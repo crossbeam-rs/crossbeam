@@ -9,19 +9,17 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 
-use crossbeam_epoch::{self as epoch, Atomic, Owned};
+use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
 use monitor::Monitor;
-use select::CaseId;
-use select::handle;
 use utils::Backoff;
 
-// #[derive(Copy, Clone)]
-// pub struct Token {
-//     entry: *const u8,
-// }
-pub type Token = usize;
+#[derive(Copy, Clone)]
+pub struct Token {
+    pub entry: *const u8, // TODO: remove pub
+    guard: usize,
+}
 
 /// Number of messages a node can hold.
 const NODE_CAP: usize = 32;
@@ -98,16 +96,23 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn sel_try_recv(&self, backoff: &mut Backoff) -> Option<usize> {
-        self.pop(backoff)
+    pub fn sel_try_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.pop(token, backoff)
     }
 
-    pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
-        if token == 0 {
+    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
+        if token.entry.is_null() {
             None
         } else {
-            let entry = token as *const Entry<T>;
-            let m = unsafe { ptr::read(&(*entry).msg) };
+            let entry = &*(token.entry as *const Entry<T>);
+            let _guard: Guard = mem::transmute(token.guard);
+
+            let mut backoff = Backoff::new();
+            while !entry.ready.load(Acquire) {
+                backoff.step();
+            }
+
+            let m = ptr::read(&entry.msg);
             let msg = ManuallyDrop::into_inner(m);
             Some(msg)
         }
@@ -137,12 +142,12 @@ impl<T> Channel<T> {
 
     /// Pushes `msg` into the channel.
     fn push(&self, msg: T, backoff: &mut Backoff) {
-        let guard = &epoch::pin();
+        let guard = epoch::pin();
 
         loop {
             // These two load operations don't have to be `SeqCst`. If they happen to retrieve
             // stale values, the following CAS will fail or not even be attempted.
-            let tail_ptr = self.tail.node.load(Acquire, guard);
+            let tail_ptr = self.tail.node.load(Acquire, &guard);
             let tail = unsafe { tail_ptr.deref() };
             let tail_index = self.tail.index.load(Relaxed);
 
@@ -158,7 +163,7 @@ impl<T> Channel<T> {
                 if self.tail.index.compare_and_swap(tail_index, new_index, SeqCst) == tail_index {
                     // If this was the last entry in the node, allocate a new one.
                     if offset + 1 == NODE_CAP {
-                        let new = Owned::new(Node::new(new_index)).into_shared(guard);
+                        let new = Owned::new(Node::new(new_index)).into_shared(&guard);
                         tail.next.store(new, Release);
                         self.tail.node.store(new, Release);
                     }
@@ -177,15 +182,15 @@ impl<T> Channel<T> {
         }
     }
 
-    fn pop(&self, backoff: &mut Backoff) -> Option<usize> {
-        let guard = &epoch::pin();
+    fn pop(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        let guard = epoch::pin();
 
         loop {
             // Loading the head node doesn't't have to be a `SeqCst` operation. If we get a stale
             // value, the following CAS will fail or not even be attempted. Loading the head index
             // must be `SeqCst` because we need the up-to-date value when checking whether the
             // channel is empty.
-            let head_ptr = self.head.node.load(Acquire, guard);
+            let head_ptr = self.head.node.load(Acquire, &guard);
             let head = unsafe { head_ptr.deref() };
             let head_index = self.head.index.load(SeqCst);
 
@@ -208,9 +213,10 @@ impl<T> Channel<T> {
                         // Check whether the channel is closed and return the appropriate
                         // error variant.
                         if tail_index & 1 == 0 {
-                            return None;
+                            return false;
                         } else {
-                            return Some(0);
+                            token.entry = ptr::null();
+                            return true;
                         }
                     }
                 }
@@ -221,12 +227,12 @@ impl<T> Channel<T> {
                     if offset + 1 == NODE_CAP {
                         // Wait until the next pointer becomes non-null.
                         loop {
-                            let next = head.next.load(Acquire, guard);
+                            let next = head.next.load(Acquire, &guard);
                             if !next.is_null() {
                                 self.head.node.store(next, Release);
                                 break;
                             }
-                            // backoff.step();
+                            backoff.step();
                         }
 
                         unsafe {
@@ -234,16 +240,16 @@ impl<T> Channel<T> {
                         }
                     }
 
-                    while !entry.ready.load(Acquire) {
-                        // backoff.step();
-                    }
-
-                    return Some(entry as *const Entry<T> as usize);
+                    token.entry = entry as *const Entry<T> as *const u8;
+                    break;
                 }
             }
 
             backoff.step();
         }
+
+        token.guard = unsafe { mem::transmute(guard) };
+        true
     }
 
     /// Returns the current number of messages inside the channel.

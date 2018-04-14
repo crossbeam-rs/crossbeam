@@ -29,8 +29,8 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn sel_try_recv(&self) -> Option<usize> {
-        self.exchanger.right().sel_try_exchange()
+    pub fn sel_try_recv(&self, token: &mut Token) -> bool {
+        self.exchanger.right().sel_try_exchange(token)
     }
 
     pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
@@ -43,8 +43,8 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn sel_try_send(&self) -> Option<usize> {
-        self.exchanger.left().sel_try_exchange()
+    pub fn sel_try_send(&self, token: &mut Token) -> bool {
+        self.exchanger.left().sel_try_exchange(token)
     }
 
     pub unsafe fn finish_send(&self, token: usize, msg: T) {
@@ -259,10 +259,11 @@ struct Side<'a, T: 'a> {
 }
 
 impl<'a, T> Side<'a, T> {
-    fn sel_try_exchange(&self) -> Option<usize> {
+    fn sel_try_exchange(&self, token: &mut Token) -> bool {
         let mut inner = self.exchanger.inner.lock();
         if inner.is_closed {
-            return Some(0);
+            *token = 0;
+            return true;
         }
 
         // If there's someone on the other side, exchange messages with it.
@@ -271,10 +272,11 @@ impl<'a, T> Side<'a, T> {
 
             let entry: Box<Entry<T>> = Box::new(case); // TODO: optimize
             let entry = Box::into_raw(entry) as usize;
-            return Some(entry);
+            *token = entry;
+            return true;
         }
 
-        None
+        false
     }
 
     unsafe fn finish_exchange(&self, token: usize, msg: T) -> T {

@@ -314,7 +314,8 @@ pub extern crate smallvec;
 #[macro_use]
 pub mod select;
 
-mod channel;
+#[doc(hidden)]
+pub mod channel;
 mod flavors;
 mod monitor;
 #[doc(hidden)]
@@ -322,31 +323,3 @@ pub mod utils;
 
 pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};
-
-use select::CaseId;
-use utils::Backoff;
-#[doc(hidden)]
-pub trait Sel {
-    fn try(&self, backoff: &mut Backoff) -> Option<usize>;
-    fn promise(&self, case_id: CaseId);
-    fn revoke(&self, case_id: CaseId);
-    fn is_blocked(&self) -> bool;
-    fn fulfill(&self, backoff: &mut Backoff) -> Option<usize>;
-}
-impl<'a, T: Sel> Sel for &'a T {
-    fn try(&self, backoff: &mut Backoff) -> Option<usize> {
-        (**self).try(backoff)
-    }
-    fn promise(&self, case_id: CaseId) {
-        (**self).promise(case_id);
-    }
-    fn revoke(&self, case_id: CaseId) {
-        (**self).revoke(case_id);
-    }
-    fn is_blocked(&self) -> bool {
-        (**self).is_blocked()
-    }
-    fn fulfill(&self, backoff: &mut Backoff) -> Option<usize> {
-        (**self).fulfill(backoff)
-    }
-}

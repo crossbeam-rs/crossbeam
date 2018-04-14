@@ -9,21 +9,49 @@ use flavors;
 use select::CaseId;
 use utils::Backoff;
 
-union Token {
+pub trait Sel {
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
+    fn promise(&self, case_id: CaseId);
+    fn revoke(&self, case_id: CaseId);
+    fn is_blocked(&self) -> bool;
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
+}
+impl<'a, T: Sel> Sel for &'a T {
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        (**self).try(token, backoff)
+    }
+    fn promise(&self, case_id: CaseId) {
+        (**self).promise(case_id);
+    }
+    fn revoke(&self, case_id: CaseId) {
+        (**self).revoke(case_id);
+    }
+    fn is_blocked(&self) -> bool {
+        (**self).is_blocked()
+    }
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        (**self).fulfill(token, backoff)
+    }
+}
+
+pub union Token {
     array: flavors::array::Token,
     list: flavors::list::Token,
     zero: flavors::zero::Token,
 }
 
+// pub type Token = usize;
+
 // TODO: use backoff in try()/fulfill() for zero-capacity channels?
 
-use ::Sel;
 impl<T> Sel for Receiver<T> {
-    fn try(&self, backoff: &mut Backoff) -> Option<usize> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.sel_try_recv(backoff),
-            Flavor::List(ref chan) => chan.sel_try_recv(backoff),
-            Flavor::Zero(ref chan) => chan.sel_try_recv(),
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref chan) => chan.sel_try_recv(&mut token.array, backoff),
+                Flavor::List(ref chan) => chan.sel_try_recv(&mut token.list, backoff),
+                Flavor::Zero(ref chan) => chan.sel_try_recv(&mut token.zero),
+            }
         }
     }
 
@@ -52,21 +80,25 @@ impl<T> Sel for Receiver<T> {
         }
     }
 
-    fn fulfill(&self, backoff: &mut Backoff) -> Option<usize> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.sel_try_recv(backoff),
-            Flavor::List(ref chan) => chan.sel_try_recv(backoff),
-            Flavor::Zero(ref chan) => Some(1), // TODO
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref chan) => chan.sel_try_recv(&mut token.array, backoff),
+                Flavor::List(ref chan) => chan.sel_try_recv(&mut token.list, backoff),
+                Flavor::Zero(ref chan) => { token.zero = 1; true }, // TODO
+            }
         }
     }
 }
 
 impl<T> Sel for Sender<T> {
-    fn try(&self, backoff: &mut Backoff) -> Option<usize> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.sel_try_send(backoff),
-            Flavor::List(ref chan) => Some(0),
-            Flavor::Zero(ref chan) => chan.sel_try_send(),
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref chan) => chan.sel_try_send(&mut token.array, backoff),
+                Flavor::List(ref chan) => { token.list.entry = 0 as *const _; true },
+                Flavor::Zero(ref chan) => chan.sel_try_send(&mut token.zero),
+            }
         }
     }
 
@@ -94,11 +126,11 @@ impl<T> Sel for Sender<T> {
         }
     }
 
-    fn fulfill(&self, backoff: &mut Backoff) -> Option<usize> {
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.sel_try_send(backoff),
-            Flavor::List(ref chan) => Some(0),
-            Flavor::Zero(ref chan) => Some(1), // TODO
+            Flavor::Array(ref chan) => unsafe { chan.sel_try_send(&mut token.array, backoff) },
+            Flavor::List(ref chan) => unsafe { token.list.entry = 0 as *const _; true }
+            Flavor::Zero(ref chan) => unsafe { token.zero = 1; true },
         }
     }
 }
@@ -248,11 +280,11 @@ unsafe impl<T: Send> Sync for Sender<T> {}
 
 #[doc(hidden)]
 impl<T> Sender<T> {
-    pub unsafe fn finish_send(&self, token: usize, msg: T) {
+    pub unsafe fn finish_send(&self, token: Token, msg: T) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.finish_send(token, msg),
+            Flavor::Array(ref chan) => chan.finish_send(token.array, msg),
             Flavor::List(ref chan) => chan.send(msg),
-            Flavor::Zero(ref chan) => chan.finish_send(token, msg),
+            Flavor::Zero(ref chan) => chan.finish_send(token.zero, msg),
         }
     }
 
@@ -471,11 +503,11 @@ unsafe impl<T: Send> Sync for Receiver<T> {}
 
 #[doc(hidden)]
 impl<T> Receiver<T> {
-    pub unsafe fn finish_recv(&self, token: usize) -> Option<T> {
+    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.finish_recv(token),
-            Flavor::List(ref chan) => chan.finish_recv(token),
-            Flavor::Zero(ref chan) => chan.finish_recv(token),
+            Flavor::Array(ref chan) => chan.finish_recv(token.array),
+            Flavor::List(ref chan) => chan.finish_recv(token.list),
+            Flavor::Zero(ref chan) => chan.finish_recv(token.zero),
         }
     }
 
