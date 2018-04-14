@@ -152,7 +152,9 @@ impl<T> Channel<T> {
                         (*entry).ready.store(true, Release);
                     }
 
-                    self.receivers.notify_one();
+                    if let Some(case) = self.receivers.remove_one() {
+                        case.handle.unpark();
+                    }
                     return;
                 }
             }

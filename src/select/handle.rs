@@ -7,14 +7,16 @@ use std::time::Instant;
 use select::CaseId;
 use utils::Backoff;
 
-struct Inner {
-    case_id: AtomicUsize,
-    thread: Thread,
+pub struct Inner {
+    pub case_id: AtomicUsize,
+    pub thread: Thread,
+    /// A slot into which another thread may store a pointer to its `Request`.
+    pub request_ptr: AtomicUsize,
 }
 
 #[derive(Clone)]
 pub struct Handle {
-    inner: Arc<Inner>,
+    pub inner: Arc<Inner>,
 }
 
 impl Handle {
@@ -70,10 +72,11 @@ impl Handle {
 }
 
 thread_local! {
-    static HANDLE: Handle = Handle {
+    pub static HANDLE: Handle = Handle {
         inner: Arc::new(Inner {
             case_id: AtomicUsize::new(CaseId::none().into()),
             thread: thread::current(),
+            request_ptr: AtomicUsize::new(0),
         })
     };
 }

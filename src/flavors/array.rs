@@ -198,7 +198,9 @@ impl<T> Channel<T> {
         ptr::write(entry.msg.get(), msg);
         entry.lap.store(token.lap, Release);
 
-        self.receivers.notify_one();
+        if let Some(case) = self.receivers.remove_one() {
+            case.handle.unpark();
+        }
     }
 
     pub fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -269,7 +271,9 @@ impl<T> Channel<T> {
             let msg = ptr::read(entry.msg.get());
             entry.lap.store(token.lap, Release);
 
-            self.senders.notify_one();
+            if let Some(case) = self.senders.remove_one() {
+                case.handle.unpark();
+            }
             Some(msg)
         }
     }

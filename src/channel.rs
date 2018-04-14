@@ -85,7 +85,7 @@ impl<T> Sel for Receiver<T> {
             match self.0.flavor {
                 Flavor::Array(ref chan) => chan.start_recv(&mut token.array, backoff),
                 Flavor::List(ref chan) => chan.start_recv(&mut token.list, backoff),
-                Flavor::Zero(ref chan) => { token.zero = 1; true }, // TODO
+                Flavor::Zero(ref chan) => { token.zero = flavors::zero::Token::Fulfill; true }, // TODO
             }
         }
     }
@@ -130,7 +130,7 @@ impl<T> Sel for Sender<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => unsafe { chan.start_send(&mut token.array, backoff) },
             Flavor::List(ref chan) => unsafe { token.list.entry = 0 as *const _; true }
-            Flavor::Zero(ref chan) => unsafe { token.zero = 1; true },
+            Flavor::Zero(ref chan) => unsafe { token.zero = flavors::zero::Token::Fulfill; true },
         }
     }
 }

@@ -584,6 +584,10 @@ macro_rules! select {
                     break;
                 }
 
+                // TODO: initialize a timestamp here and use it inside waitqueue for sorting
+                // TODO: maybe initialize in second round only, but in the first round don't sleep,
+                // just yield once?
+
                 handle::current_reset();
 
                 for case in &cases {

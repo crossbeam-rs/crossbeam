@@ -8,16 +8,18 @@ use parking_lot::Mutex;
 use select::CaseId;
 use select::handle::{self, Handle};
 
+// TODO: Optimize current thread id
+
 /// A selection case, identified by a `Handle` and a `CaseId`.
 ///
 /// Note that multiple threads could be operating on a single channel end, as well as a single
 /// thread on multiple different channel ends.
-struct Case {
+pub struct Case {
     /// A handle associated with the thread owning this case.
-    handle: Handle,
+    pub handle: Handle,
 
     /// The case ID.
-    case_id: CaseId,
+    pub case_id: CaseId,
 }
 
 /// A simple wait queue for list-based and array-based channels.
@@ -63,8 +65,7 @@ impl Monitor {
         }
     }
 
-    /// Attempts to fire one case which is owned by another thread.
-    pub fn notify_one(&self) {
+    pub fn remove_one(&self) -> Option<Case> {
         if self.len.load(SeqCst) > 0 {
             let thread_id = thread::current().id();
             let mut cases = self.cases.lock();
@@ -75,13 +76,13 @@ impl Monitor {
                         let case = cases.remove(i).unwrap();
                         self.len.store(cases.len(), SeqCst);
                         Self::maybe_shrink(&mut cases);
-
-                        case.handle.unpark();
-                        break;
+                        return Some(case);
                     }
                 }
             }
         }
+
+        None
     }
 
     /// Aborts all currently registered selection cases.
@@ -98,6 +99,22 @@ impl Monitor {
 
             Self::maybe_shrink(&mut cases);
         }
+    }
+
+    /// Returns `true` if there exists a case which isn't owned by the current thread.
+    #[inline]
+    pub fn can_notify(&self) -> bool {
+        if self.len.load(SeqCst) > 0 {
+            let cases = self.cases.lock();
+            let thread_id = thread::current().id();
+
+            for i in 0..cases.len() {
+                if cases[i].handle.thread_id() != thread_id {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Shrinks the internal deque if it's capacity is much larger than length.
