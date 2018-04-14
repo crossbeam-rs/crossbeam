@@ -6,8 +6,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
@@ -112,8 +111,8 @@ impl<T> Channel<T> {
 
         // Create an empty node, into which both head and tail point at the beginning.
         let node = unsafe { Owned::new(Node::new(0)).into_shared(epoch::unprotected()) };
-        channel.head.node.store(node, Relaxed);
-        channel.tail.node.store(node, Relaxed);
+        channel.head.node.store(node, Ordering::Relaxed);
+        channel.tail.node.store(node, Ordering::Relaxed);
 
         channel
     }
@@ -124,9 +123,9 @@ impl<T> Channel<T> {
         loop {
             // These two load operations don't have to be `SeqCst`. If they happen to retrieve
             // stale values, the following CAS will fail or not even be attempted.
-            let tail_ptr = self.tail.node.load(Acquire, &guard);
+            let tail_ptr = self.tail.node.load(Ordering::Acquire, &guard);
             let tail = unsafe { tail_ptr.deref() };
-            let tail_index = self.tail.index.load(Relaxed);
+            let tail_index = self.tail.index.load(Ordering::Relaxed);
 
             // Calculate the index of the corresponding entry in the node.
             let offset = tail_index.wrapping_sub(tail.start_index) >> 1;
@@ -137,19 +136,19 @@ impl<T> Channel<T> {
             // If `tail_index` is pointing into `tail`...
             if offset < NODE_CAP {
                 // Try moving the tail index forward.
-                if self.tail.index.compare_and_swap(tail_index, new_index, SeqCst) == tail_index {
+                if self.tail.index.compare_and_swap(tail_index, new_index, Ordering::SeqCst) == tail_index {
                     // If this was the last entry in the node, allocate a new one.
                     if offset + 1 == NODE_CAP {
                         let new = Owned::new(Node::new(new_index)).into_shared(&guard);
-                        tail.next.store(new, Release);
-                        self.tail.node.store(new, Release);
+                        tail.next.store(new, Ordering::Release);
+                        self.tail.node.store(new, Ordering::Release);
                     }
 
                     // Write `msg` into the corresponding entry.
                     unsafe {
                         let entry = tail.entries.get_unchecked(offset).get();
                         ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
-                        (*entry).ready.store(true, Release);
+                        (*entry).ready.store(true, Ordering::Release);
                     }
 
                     if let Some(case) = self.receivers.remove_one() {
@@ -171,9 +170,9 @@ impl<T> Channel<T> {
             // value, the following CAS will fail or not even be attempted. Loading the head index
             // must be `SeqCst` because we need the up-to-date value when checking whether the
             // channel is empty.
-            let head_ptr = self.head.node.load(Acquire, &guard);
+            let head_ptr = self.head.node.load(Ordering::Acquire, &guard);
             let head = unsafe { head_ptr.deref() };
-            let head_index = self.head.index.load(SeqCst);
+            let head_index = self.head.index.load(Ordering::SeqCst);
 
             // Calculate the index of the corresponding entry in the node.
             let offset = head_index.wrapping_sub(head.start_index) >> 1;
@@ -186,8 +185,8 @@ impl<T> Channel<T> {
                 let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
 
                 // If this entry does not contain a message...
-                if !entry.ready.load(Relaxed) {
-                    let tail_index = self.tail.index.load(SeqCst);
+                if !entry.ready.load(Ordering::Relaxed) {
+                    let tail_index = self.tail.index.load(Ordering::SeqCst);
 
                     // If the tail equals the head, that means the channel is empty.
                     if tail_index & !1 == head_index {
@@ -203,14 +202,14 @@ impl<T> Channel<T> {
                 }
 
                 // Try moving the head index forward.
-                if self.head.index.compare_and_swap(head_index, new_index, SeqCst) == head_index {
+                if self.head.index.compare_and_swap(head_index, new_index, Ordering::SeqCst) == head_index {
                     // If this was the last entry in the node, defer its destruction.
                     if offset + 1 == NODE_CAP {
                         // Wait until the next pointer becomes non-null.
                         loop {
-                            let next = head.next.load(Acquire, &guard);
+                            let next = head.next.load(Ordering::Acquire, &guard);
                             if !next.is_null() {
-                                self.head.node.store(next, Release);
+                                self.head.node.store(next, Ordering::Release);
                                 break;
                             }
                             backoff.step();
@@ -241,7 +240,7 @@ impl<T> Channel<T> {
             let _guard: Guard = mem::transmute(token.guard);
 
             let mut backoff = Backoff::new();
-            while !entry.ready.load(Acquire) {
+            while !entry.ready.load(Ordering::Acquire) {
                 backoff.step();
             }
 
@@ -254,11 +253,11 @@ impl<T> Channel<T> {
     /// Returns the current number of messages inside the channel.
     pub fn len(&self) -> usize {
         loop {
-            let tail_index = self.tail.index.load(SeqCst);
-            let head_index = self.head.index.load(SeqCst);
+            let tail_index = self.tail.index.load(Ordering::SeqCst);
+            let head_index = self.head.index.load(Ordering::SeqCst);
 
             // If the tail index didn't change, we've got consistent indices to work with.
-            if self.tail.index.load(SeqCst) == tail_index {
+            if self.tail.index.load(Ordering::SeqCst) == tail_index {
                 // Note that there is no need to clear out the last bit in `tail_index` since the
                 // difference is shifted right by one bit.
                 return tail_index.wrapping_sub(head_index) >> 1;
@@ -268,7 +267,7 @@ impl<T> Channel<T> {
 
     /// Closes the channel and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
-        let tail_index = self.tail.index.fetch_or(1, SeqCst);
+        let tail_index = self.tail.index.fetch_or(1, Ordering::SeqCst);
 
         // Was the channel already closed?
         if tail_index & 1 != 0 {
@@ -281,13 +280,13 @@ impl<T> Channel<T> {
 
     /// Returns `true` if the channel is closed.
     pub fn is_closed(&self) -> bool {
-        self.tail.index.load(SeqCst) & 1 != 0
+        self.tail.index.load(Ordering::SeqCst) & 1 != 0
     }
 
     /// Returns `true` if the channel is empty.
     pub fn is_empty(&self) -> bool {
-        let head_index = self.head.index.load(SeqCst);
-        let tail_index = self.tail.index.load(SeqCst) & !1;
+        let head_index = self.head.index.load(Ordering::SeqCst);
+        let tail_index = self.tail.index.load(Ordering::SeqCst) & !1;
         head_index == tail_index
     }
 
@@ -299,11 +298,11 @@ impl<T> Channel<T> {
 
 impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
-        let tail_index = self.tail.index.load(Relaxed) & !1;
-        let mut head_index = self.head.index.load(Relaxed);
+        let tail_index = self.tail.index.load(Ordering::Relaxed) & !1;
+        let mut head_index = self.head.index.load(Ordering::Relaxed);
 
         unsafe {
-            let mut head_ptr = self.head.node.load(Relaxed, epoch::unprotected());
+            let mut head_ptr = self.head.node.load(Ordering::Relaxed, epoch::unprotected());
 
             // Manually drop all messages between `head_index` and `tail_index` and destroy the
             // heap-allocated nodes along the way.
@@ -315,7 +314,7 @@ impl<T> Drop for Channel<T> {
                 ManuallyDrop::drop(&mut (*entry).msg);
 
                 if offset + 1 == NODE_CAP {
-                    let next = head.next.load(Relaxed, epoch::unprotected());
+                    let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
                     drop(head_ptr.into_owned());
                     head_ptr = next;
                 }

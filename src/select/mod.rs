@@ -555,6 +555,7 @@ macro_rules! select {
             select!(@smallvec cases $recv $send);
 
             loop {
+                // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
                 let backoff = &mut Backoff::new();
                 loop {
                     for &(sel, i) in &cases {

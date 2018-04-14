@@ -6,8 +6,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::{Relaxed, Release, SeqCst};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_utils::cache_padded::CachePadded;
 
@@ -147,14 +146,14 @@ impl<T> Channel<T> {
 
         loop {
             // Load the tail.
-            let tail = self.tail.load(SeqCst);
+            let tail = self.tail.load(Ordering::SeqCst);
 
             let index = tail & index_bits;
             let lap = tail & lap_bits;
 
             // Inspect the corresponding entry.
             let entry = unsafe { self.entry_at(index) };
-            let elap = entry.lap.load(SeqCst);
+            let elap = entry.lap.load(Ordering::SeqCst);
             let next_elap = elap.wrapping_add(one_lap);
 
             // If the laps of the tail and the entry match, we may attempt to push.
@@ -169,7 +168,7 @@ impl<T> Channel<T> {
 
                 // Try moving the tail one entry forward.
                 if self.tail
-                    .compare_exchange_weak(tail, new_tail, SeqCst, Relaxed)
+                    .compare_exchange_weak(tail, new_tail, Ordering::SeqCst, Ordering::Relaxed)
                     .is_ok()
                 {
                     token.entry = entry as *const Entry<T> as *const u8;
@@ -178,7 +177,7 @@ impl<T> Channel<T> {
                 }
             // But if the entry lags one lap behind the tail...
             } else if next_elap == lap {
-                let head = self.head.load(SeqCst);
+                let head = self.head.load(Ordering::SeqCst);
 
                 // ...and if head lags one lap behind tail as well...
                 if head.wrapping_add(one_lap) == tail {
@@ -196,7 +195,7 @@ impl<T> Channel<T> {
 
         // Write the message into the entry and increment the lap.
         ptr::write(entry.msg.get(), msg);
-        entry.lap.store(token.lap, Release);
+        entry.lap.store(token.lap, Ordering::Release);
 
         if let Some(case) = self.receivers.remove_one() {
             case.handle.unpark();
@@ -210,13 +209,13 @@ impl<T> Channel<T> {
 
         loop {
             // Load the head.
-            let head = self.head.load(SeqCst);
+            let head = self.head.load(Ordering::SeqCst);
             let index = head & index_bits;
             let lap = head & lap_bits;
 
             // Inspect the corresponding entry.
             let entry = unsafe { self.entry_at(index) };
-            let elap = entry.lap.load(SeqCst);
+            let elap = entry.lap.load(Ordering::SeqCst);
             let next_elap = elap.wrapping_add(one_lap);
 
             // If the laps of the head and the entry match, we may attempt to pop.
@@ -231,7 +230,7 @@ impl<T> Channel<T> {
 
                 // Try moving the head one entry forward.
                 if self.head
-                    .compare_exchange_weak(head, new, SeqCst, Relaxed)
+                    .compare_exchange_weak(head, new, Ordering::SeqCst, Ordering::Relaxed)
                     .is_ok()
                 {
                     token.entry = entry as *const Entry<T> as *const u8;
@@ -240,7 +239,7 @@ impl<T> Channel<T> {
                 }
             // But if the entry lags one lap behind the head...
             } else if next_elap == lap {
-                let tail = self.tail.load(SeqCst);
+                let tail = self.tail.load(Ordering::SeqCst);
 
                 // ...and if the tail lags one lap behind the head as well, that means the channel
                 // is empty.
@@ -269,7 +268,7 @@ impl<T> Channel<T> {
 
             // Read the message from the entry and increment the lap.
             let msg = ptr::read(entry.msg.get());
-            entry.lap.store(token.lap, Release);
+            entry.lap.store(token.lap, Ordering::Release);
 
             if let Some(case) = self.senders.remove_one() {
                 case.handle.unpark();
@@ -285,11 +284,11 @@ impl<T> Channel<T> {
 
         loop {
             // Load the tail, then load the head.
-            let tail = self.tail.load(SeqCst);
-            let head = self.head.load(SeqCst);
+            let tail = self.tail.load(Ordering::SeqCst);
+            let head = self.head.load(Ordering::SeqCst);
 
             // If the tail didn't change, we've got consistent values to work with.
-            if self.tail.load(SeqCst) == tail {
+            if self.tail.load(Ordering::SeqCst) == tail {
                 // Clear out the mark bit, just in case it is set.
                 let tail = tail & !self.mark_bit;
 
@@ -316,7 +315,7 @@ impl<T> Channel<T> {
 
     /// Closes the channel and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
-        let tail = self.tail.fetch_or(self.mark_bit, SeqCst);
+        let tail = self.tail.fetch_or(self.mark_bit, Ordering::SeqCst);
 
         // Was the channel already closed?
         if tail & self.mark_bit != 0 {
@@ -330,13 +329,13 @@ impl<T> Channel<T> {
 
     /// Returns `true` if the channel is closed.
     pub fn is_closed(&self) -> bool {
-        self.tail.load(SeqCst) & self.mark_bit != 0
+        self.tail.load(Ordering::SeqCst) & self.mark_bit != 0
     }
 
     /// Returns `true` if the channel is empty.
     pub fn is_empty(&self) -> bool {
-        let head = self.head.load(SeqCst);
-        let tail = self.tail.load(SeqCst) & !self.mark_bit;
+        let head = self.head.load(Ordering::SeqCst);
+        let tail = self.tail.load(Ordering::SeqCst) & !self.mark_bit;
 
         // Is the tail lagging one lap behind head?
         let one_lap = self.mark_bit << 1;
@@ -345,8 +344,8 @@ impl<T> Channel<T> {
 
     /// Returns `true` if the channel is full.
     pub fn is_full(&self) -> bool {
-        let tail = self.tail.load(SeqCst) & !self.mark_bit;
-        let head = self.head.load(SeqCst);
+        let tail = self.tail.load(Ordering::SeqCst) & !self.mark_bit;
+        let head = self.head.load(Ordering::SeqCst);
 
         // Is the head lagging one lap behind tail?
         let one_lap = self.mark_bit << 1;
@@ -367,7 +366,7 @@ impl<T> Channel<T> {
 impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
         let index_bits = self.mark_bit - 1;
-        let head = self.head.load(Relaxed) & index_bits;
+        let head = self.head.load(Ordering::Relaxed) & index_bits;
 
         // Loop over all entries that hold a message and drop them.
         for i in 0..self.len() {

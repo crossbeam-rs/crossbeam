@@ -1,6 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
@@ -23,7 +22,7 @@ impl Handle {
     pub fn try_select(&self, case_id: CaseId) -> bool {
         self.inner
             .case_id
-            .compare_and_swap(CaseId::none().into(), case_id.into(), SeqCst) == CaseId::none().into()
+            .compare_and_swap(CaseId::none().into(), case_id.into(), Ordering::SeqCst) == CaseId::none().into()
     }
 
     pub fn unpark(&self) {
@@ -35,11 +34,11 @@ impl Handle {
     }
 
     pub fn reset(&self) {
-        self.inner.case_id.store(0, SeqCst);
+        self.inner.case_id.store(0, Ordering::SeqCst);
     }
 
     pub fn selected(&self) -> CaseId {
-        CaseId::from(self.inner.case_id.load(SeqCst))
+        CaseId::from(self.inner.case_id.load(Ordering::SeqCst))
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {

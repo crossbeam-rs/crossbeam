@@ -2,13 +2,8 @@
 //!
 //! Also known as *rendezvous* channel.
 
-use std::collections::VecDeque;
 use std::mem;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::atomic::Ordering::{Acquire, Release};
-use std::thread;
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use parking_lot::Mutex;
 
@@ -130,17 +125,6 @@ impl Channel {
     }
 }
 
-/// Inner representation of an exchanger.
-///
-/// This data structure is wrapped in a mutex.
-struct Inner {
-    /// There are two wait queues, one per side.
-    wait_queues: [Monitor; 2],
-
-    /// `true` if the exchanger is closed.
-    is_closed: bool,
-}
-
 /// A two-sided exchanger.
 ///
 /// This is a concurrent data structure with two sides: left and right. A thread can offer a
@@ -152,7 +136,8 @@ struct Inner {
 /// promise is fulfilled. The thread that promised the message must in the end fulfill it. A
 /// promise can also be revoked if nobody is waiting for it.
 struct Exchanger {
-    inner: Mutex<Inner>,
+    wait_queues: [Monitor; 2],
+    is_closed: AtomicBool,
 }
 
 impl Exchanger {
@@ -160,10 +145,8 @@ impl Exchanger {
     #[inline]
     fn new() -> Self {
         Exchanger {
-            inner: Mutex::new(Inner {
-                wait_queues: [Monitor::new(), Monitor::new()],
-                is_closed: false,
-            }),
+            wait_queues: [Monitor::new(), Monitor::new()],
+            is_closed: AtomicBool::new(false),
         }
     }
 
@@ -188,22 +171,19 @@ impl Exchanger {
     /// Closes the exchanger and wakes up all currently blocked operations on it.
     #[inline]
     fn close(&self) -> bool {
-        let mut inner = self.inner.lock();
-
-        if inner.is_closed {
-            false
-        } else {
-            inner.is_closed = true;
-            inner.wait_queues[0].abort_all();
-            inner.wait_queues[1].abort_all();
+        if !self.is_closed.swap(true, Ordering::SeqCst) {
+            self.wait_queues[0].abort_all();
+            self.wait_queues[1].abort_all();
             true
+        } else {
+            false
         }
     }
 
     /// Returns `true` if the exchanger is closed.
     #[inline]
     fn is_closed(&self) -> bool {
-        self.inner.lock().is_closed
+        self.is_closed.load(Ordering::SeqCst)
     }
 }
 
@@ -219,23 +199,22 @@ struct Side<'a> {
 impl<'a> Side<'a> {
     #[inline]
     fn sel_try_exchange(&self, token: &mut Token) -> bool {
-        let mut inner = self.exchanger.inner.lock();
-        if inner.is_closed {
-            *token = Token::Closed;
-            return true;
-        }
-
-        // If there's someone on the other side, exchange messages with it.
-        if let Some(case) = inner.wait_queues[self.index ^ 1].remove_one() {
-            drop(inner);
-
-            unsafe {
-                *token = Token::Case(mem::transmute(case));
+        for _ in 0..2 {
+            // If there's someone on the other side, exchange messages with it.
+            if let Some(case) = self.exchanger.wait_queues[self.index ^ 1].remove_one() {
+                unsafe {
+                    *token = Token::Case(mem::transmute(case));
+                }
+                return true;
             }
-            return true;
+
+            if !self.exchanger.is_closed() {
+                return false;
+            }
         }
 
-        false
+        *token = Token::Closed;
+        true
     }
 
     unsafe fn finish_exchange<T>(&self, case: Case, msg: T) -> T {
@@ -247,7 +226,7 @@ impl<'a> Side<'a> {
 
         // Create a request on the stack and register it in the owner of this case.
         let req = Request::new(msg);
-        case.handle.inner.request_ptr.store(&req as *const _ as usize, Release);
+        case.handle.inner.request_ptr.store(&req as *const _ as usize, Ordering::Release);
 
         // Wake up the owner of this case.
         case.handle.inner.thread.unpark();
@@ -262,7 +241,7 @@ impl<'a> Side<'a> {
     /// Promises a message for exchange.
     #[inline]
     fn promise(&self, case_id: CaseId) {
-        self.exchanger.inner.lock().wait_queues[self.index].register(case_id);
+        self.exchanger.wait_queues[self.index].register(case_id);
     }
 
     /// Revokes the previously made promise.
@@ -270,7 +249,7 @@ impl<'a> Side<'a> {
     /// This method should be called right after the case is aborted.
     #[inline]
     fn revoke(&self, case_id: CaseId) {
-        self.exchanger.inner.lock().wait_queues[self.index].unregister(case_id);
+        self.exchanger.wait_queues[self.index].unregister(case_id);
     }
 
     /// Fulfills the previously made promise.
@@ -279,7 +258,7 @@ impl<'a> Side<'a> {
         let req = HANDLE.with(|handle| {
             let mut backoff = Backoff::new();
             loop {
-                let ptr = handle.inner.request_ptr.swap(0, Acquire) as *const Request<T>;
+                let ptr = handle.inner.request_ptr.swap(0, Ordering::Acquire) as *const Request<T>;
                 if !ptr.is_null() {
                     break ptr;
                 }
@@ -307,7 +286,7 @@ impl<'a> Side<'a> {
     /// Returns `true` if there is an offer or promise on the opposite side.
     #[inline]
     fn can_notify(&self) -> bool {
-        self.exchanger.inner.lock().wait_queues[self.index].can_notify()
+        self.exchanger.wait_queues[self.index].can_notify()
     }
 }
 

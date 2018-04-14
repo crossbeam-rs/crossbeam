@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 use parking_lot::Mutex;
@@ -51,7 +50,7 @@ impl Monitor {
             handle: handle::current(),
             case_id,
         });
-        self.len.store(cases.len(), SeqCst);
+        self.len.store(cases.len(), Ordering::SeqCst);
     }
 
     /// Unregisters the current thread with `case_id`.
@@ -60,13 +59,13 @@ impl Monitor {
 
         if let Some((i, _)) = cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
             cases.remove(i);
-            self.len.store(cases.len(), SeqCst);
+            self.len.store(cases.len(), Ordering::SeqCst);
             Self::maybe_shrink(&mut cases);
         }
     }
 
     pub fn remove_one(&self) -> Option<Case> {
-        if self.len.load(SeqCst) > 0 {
+        if self.len.load(Ordering::SeqCst) > 0 {
             let thread_id = thread::current().id();
             let mut cases = self.cases.lock();
 
@@ -74,7 +73,7 @@ impl Monitor {
                 if cases[i].handle.thread_id() != thread_id {
                     if cases[i].handle.try_select(cases[i].case_id) {
                         let case = cases.remove(i).unwrap();
-                        self.len.store(cases.len(), SeqCst);
+                        self.len.store(cases.len(), Ordering::SeqCst);
                         Self::maybe_shrink(&mut cases);
                         return Some(case);
                     }
@@ -87,10 +86,10 @@ impl Monitor {
 
     /// Aborts all currently registered selection cases.
     pub fn abort_all(&self) {
-        if self.len.load(SeqCst) > 0 {
+        if self.len.load(Ordering::SeqCst) > 0 {
             let mut cases = self.cases.lock();
 
-            self.len.store(0, SeqCst);
+            self.len.store(0, Ordering::SeqCst);
             for case in cases.drain(..) {
                 if case.handle.try_select(CaseId::abort()) {
                     case.handle.unpark();
@@ -104,7 +103,7 @@ impl Monitor {
     /// Returns `true` if there exists a case which isn't owned by the current thread.
     #[inline]
     pub fn can_notify(&self) -> bool {
-        if self.len.load(SeqCst) > 0 {
+        if self.len.load(Ordering::SeqCst) > 0 {
             let cases = self.cases.lock();
             let thread_id = thread::current().id();
 
@@ -130,6 +129,6 @@ impl Monitor {
 impl Drop for Monitor {
     fn drop(&mut self) {
         debug_assert!(self.cases.lock().is_empty());
-        debug_assert_eq!(self.len.load(SeqCst), 0);
+        debug_assert_eq!(self.len.load(Ordering::SeqCst), 0);
     }
 }

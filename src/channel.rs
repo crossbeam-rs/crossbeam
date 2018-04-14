@@ -2,8 +2,7 @@ use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use flavors;
 use select::CaseId;
@@ -281,7 +280,7 @@ unsafe impl<T: Send> Sync for Sender<T> {}
 #[doc(hidden)]
 impl<T> Sender<T> {
     fn new(chan: Arc<Channel<T>>) -> Self {
-        chan.senders.fetch_add(1, SeqCst);
+        chan.senders.fetch_add(1, Ordering::SeqCst);
         Sender(chan)
     }
 
@@ -425,7 +424,7 @@ impl<T> Sender<T> {
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
-        if self.0.senders.fetch_sub(1, SeqCst) == 1 {
+        if self.0.senders.fetch_sub(1, Ordering::SeqCst) == 1 {
             match self.0.flavor {
                 Flavor::Array(ref chan) => chan.close(),
                 Flavor::List(ref chan) => chan.close(),
@@ -625,7 +624,7 @@ impl<T> Receiver<T> {
     pub fn is_full(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_full(),
-            Flavor::List(ref chan) => false,
+            Flavor::List(_) => false,
             Flavor::Zero(_) => true,
         }
     }
