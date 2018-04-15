@@ -49,7 +49,7 @@ impl<T> Sel for Receiver<T> {
             match self.0.flavor {
                 Flavor::Array(ref chan) => chan.start_recv(&mut token.array, backoff),
                 Flavor::List(ref chan) => chan.start_recv(&mut token.list, backoff),
-                Flavor::Zero(ref chan) => chan.sel_try_recv(&mut token.zero),
+                Flavor::Zero(ref chan) => chan.start_recv(&mut token.zero),
             }
         }
     }
@@ -58,7 +58,7 @@ impl<T> Sel for Receiver<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.receivers().register(case_id),
             Flavor::List(ref chan) => chan.receivers().register(case_id),
-            Flavor::Zero(ref chan) => chan.promise_recv(case_id),
+            Flavor::Zero(ref chan) => chan.receivers().register(case_id),
         }
     }
 
@@ -66,7 +66,7 @@ impl<T> Sel for Receiver<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.receivers().unregister(case_id),
             Flavor::List(ref chan) => chan.receivers().unregister(case_id),
-            Flavor::Zero(ref chan) => chan.revoke_recv(case_id),
+            Flavor::Zero(ref chan) => chan.receivers().unregister(case_id),
         }
     }
 
@@ -75,7 +75,7 @@ impl<T> Sel for Receiver<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_empty() && !chan.is_closed(),
             Flavor::List(ref chan) => chan.is_empty() && !chan.is_closed(),
-            Flavor::Zero(ref chan) => !chan.can_recv() && !chan.is_closed(),
+            Flavor::Zero(ref chan) => !chan.senders().can_notify() && !chan.is_closed(),
         }
     }
 
@@ -96,7 +96,7 @@ impl<T> Sel for Sender<T> {
             match self.0.flavor {
                 Flavor::Array(ref chan) => chan.start_send(&mut token.array, backoff),
                 Flavor::List(_) => true,
-                Flavor::Zero(ref chan) => chan.sel_try_send(&mut token.zero),
+                Flavor::Zero(ref chan) => chan.start_send(&mut token.zero),
             }
         }
     }
@@ -105,7 +105,7 @@ impl<T> Sel for Sender<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.senders().register(case_id),
             Flavor::List(_) => {},
-            Flavor::Zero(ref chan) => chan.promise_send(case_id),
+            Flavor::Zero(ref chan) => chan.senders().register(case_id),
         }
     }
 
@@ -113,7 +113,7 @@ impl<T> Sel for Sender<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.senders().unregister(case_id),
             Flavor::List(ref chan) => {},
-            Flavor::Zero(ref chan) => chan.revoke_send(case_id),
+            Flavor::Zero(ref chan) => chan.senders().unregister(case_id),
         }
     }
 
@@ -121,7 +121,7 @@ impl<T> Sel for Sender<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_full(),
             Flavor::List(_) => true,
-            Flavor::Zero(ref chan) => !chan.can_send(),
+            Flavor::Zero(ref chan) => !chan.receivers().can_notify(),
         }
     }
 
