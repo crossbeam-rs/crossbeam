@@ -1,6 +1,7 @@
 use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -18,8 +19,8 @@ pub trait Sel {
     fn is_blocked(&self) -> bool;
     fn revoke(&self, case_id: CaseId);
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
-    fn finish(&self, token: Token);
-    fn fail(&self, token: Token);
+    fn finish(&self, token: &mut Token);
+    fn fail(&self, token: &mut Token);
 }
 impl<'a, T: Sel> Sel for &'a T {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -37,10 +38,10 @@ impl<'a, T: Sel> Sel for &'a T {
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         (**self).fulfill(token, backoff)
     }
-    fn finish(&self, token: Token) {
+    fn finish(&self, token: &mut Token) {
         (**self).finish(token)
     }
-    fn fail(&self, token: Token) {
+    fn fail(&self, token: &mut Token) {
         (**self).fail(token);
     }
 }
@@ -101,17 +102,18 @@ impl<T> Sel for Receiver<T> {
         }
     }
 
-    fn finish(&self, token: Token) {
+    fn finish(&self, token: &mut Token) {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.finish_recv(token.array),
-                Flavor::List(ref chan) => chan.finish_recv(token.list),
-                Flavor::Zero(ref chan) => chan.finish_recv(token.zero),
+                Flavor::Array(ref chan) => chan.finish_recv(&mut token.array),
+                Flavor::List(ref chan) => chan.finish_recv(&mut token.list),
+                Flavor::Zero(ref chan) => chan.finish_recv(&mut token.zero),
             }
         }
     }
 
-    fn fail(&self, token: Token) {
+    fn fail(&self, token: &mut Token) {
+        unreachable!();
     }
 }
 
@@ -158,20 +160,20 @@ impl<T> Sel for Sender<T> {
         }
     }
 
-    fn finish(&self, token: Token) {
+    fn finish(&self, token: &mut Token) {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.finish_send(true, token.array),
-                Flavor::List(ref chan) => chan.finish_send(token.list),
-                Flavor::Zero(ref chan) => chan.finish_send(token.zero), // TODO: may fail!
+                Flavor::Array(ref chan) => chan.finish_send(true, &mut token.array),
+                Flavor::List(ref chan) => chan.finish_send(&mut token.list),
+                Flavor::Zero(ref chan) => chan.finish_send(&mut token.zero), // TODO: may fail!
             }
         }
     }
 
-    fn fail(&self, token: Token) {
+    fn fail(&self, token: &mut Token) {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.fail_send(token.array),
+                Flavor::Array(ref chan) => chan.fail_send(&mut token.array),
                 Flavor::List(ref chan) => unreachable!(),
                 Flavor::Zero(ref chan) => unimplemented!(), // TODO
             }
@@ -226,17 +228,17 @@ impl<'a, T> Sel for SendLiteral<'a, T> {
         }
     }
 
-    fn finish(&self, token: Token) {
+    fn finish(&self, token: &mut Token) {
         unsafe {
             match self.sender.0.flavor {
-                Flavor::Array(ref chan) => chan.finish_send(false, token.array),
-                Flavor::List(ref chan) => chan.finish_send(token.list),
-                Flavor::Zero(ref chan) => chan.finish_send(token.zero), // TODO: may not fail!
+                Flavor::Array(ref chan) => chan.finish_send(false, &mut token.array),
+                Flavor::List(ref chan) => chan.finish_send(&mut token.list),
+                Flavor::Zero(ref chan) => chan.finish_send(&mut token.zero), // TODO: may not fail!
             }
         }
     }
 
-    fn fail(&self, token: Token) {
+    fn fail(&self, token: &mut Token) {
         unreachable!();
     }
 }
@@ -591,6 +593,10 @@ impl<T> Ord for Sender<T> {
     }
 }
 
+impl<T> UnwindSafe for Sender<T> {}
+
+impl<T> RefUnwindSafe for Sender<T> {}
+
 /// The receiving half of a channel.
 ///
 /// Receivers can be cloned and shared among multiple threads.
@@ -849,3 +855,7 @@ impl<'a, T> IntoIterator for &'a Receiver<T> {
         self.clone()
     }
 }
+
+impl<T> UnwindSafe for Receiver<T> {}
+
+impl<T> RefUnwindSafe for Receiver<T> {}

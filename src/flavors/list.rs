@@ -175,7 +175,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn finish_send(&self, token: Token) {
+    pub fn finish_send(&self, token: &mut Token) {
         if let Some(case) = self.receivers.remove_one() {
             case.handle.unpark();
         }
@@ -271,7 +271,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub unsafe fn finish_recv(&self, token: Token) {
+    pub unsafe fn finish_recv(&self, token: &mut Token) {
 
     }
 

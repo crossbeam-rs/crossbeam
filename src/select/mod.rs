@@ -712,6 +712,8 @@ macro_rules! select {
         // TODO: we should be able to pass in `Box<Receiver<T>>` and `Box<Option<Receiver<T>>`
         // TODO: - or maybe `Option<Box<Receiver<T>>>`?
 
+        // TODO: Sender and Receiver should impl UnwindSafe and RefUnwindSafe
+
         // TODO: use a custom Sel impl for Sender to support may-fail sending
 
         // TODO: Run `cargo clippy` and make sure there are no warnings in here.
@@ -836,7 +838,7 @@ macro_rules! select {
     ) => {
         if $index == $i {
             let $m = unsafe { ($r).read(&mut $token) };
-            unsafe { ($r).finish($token) };
+            unsafe { ($r).finish(&mut $token) };
             $body
         } else {
             select!(
@@ -868,10 +870,24 @@ macro_rules! select {
                 }
             };
             */
-            let msg = $m;
+
             unsafe {
+                struct Guard<F: FnMut()>(F);
+                impl<F: FnMut()> Drop for Guard<F> {
+                    fn drop(&mut self) {
+                        self.0();
+                    }
+                }
+
+                let msg = {
+                    let guard = Guard(|| ($s).fail(&mut $token));
+                    let msg = $m;
+                    ::std::mem::forget(guard);
+                    msg
+                };
+
                 ($s).write(&mut $token, msg);
-                ($s).finish($token);
+                ($s).finish(&mut $token);
             }
             $body
         } else {

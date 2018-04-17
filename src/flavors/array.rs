@@ -224,7 +224,7 @@ impl<T> Channel<T> {
         ptr::write(entry.msg.get(), msg);
     }
 
-    pub unsafe fn finish_send(&self, may_fail: bool, token: Token) {
+    pub unsafe fn finish_send(&self, may_fail: bool, token: &mut Token) {
         let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
 
         entry.lap.store(token.lap, Ordering::Release);
@@ -234,13 +234,15 @@ impl<T> Channel<T> {
         }
     }
 
-    pub unsafe fn fail_send(&self, token: Token) {
+    pub unsafe fn fail_send(&self, token: &mut Token) {
         self.tail.fetch_and(!self.mark_bit, Ordering::SeqCst);
 
-        // TODO: wake another sender? and receiver?
-        // if let Some(case) = self.receivers.remove_one() {
-        //     case.handle.unpark();
-        // }
+        if let Some(case) = self.senders.remove_one() {
+            case.handle.unpark();
+        }
+        if let Some(case) = self.receivers.remove_one() {
+            case.handle.unpark();
+        }
     }
 
     pub fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -315,7 +317,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub unsafe fn finish_recv(&self, token: Token) {
+    pub unsafe fn finish_recv(&self, token: &mut Token) {
         if token.entry.is_null() {
 
         } else {

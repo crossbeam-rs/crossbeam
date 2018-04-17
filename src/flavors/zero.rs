@@ -57,7 +57,7 @@ impl Channel {
         // TODO
     }
 
-    pub unsafe fn finish_recv(&self, token: Token) {
+    pub unsafe fn finish_recv(&self, token: &mut Token) {
         // TODO
     }
 
@@ -86,7 +86,7 @@ impl Channel {
         // TODO
     }
 
-    pub unsafe fn finish_send(&self, token: Token) {
+    pub unsafe fn finish_send(&self, token: &mut Token) {
         // TODO
     }
 
