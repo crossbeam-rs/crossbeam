@@ -74,6 +74,8 @@ pub struct Channel<T> {
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
+
+    // TODO: use a lock on 16-bit architectures?
 }
 
 impl<T> Channel<T> {

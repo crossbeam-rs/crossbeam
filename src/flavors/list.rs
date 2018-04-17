@@ -130,30 +130,28 @@ impl<T> Channel<T> {
             let tail = unsafe { tail_ptr.deref() };
             let tail_index = self.tail.index.load(Ordering::Relaxed);
 
-            if tail_index & 1 == 0 {
-                // Calculate the index of the corresponding entry in the node.
-                let offset = tail_index.wrapping_sub(tail.start_index) >> 1;
+            // Calculate the index of the corresponding entry in the node.
+            let offset = tail_index.wrapping_sub(tail.start_index);
 
-                // Advance the current index one entry forward.
-                let new_index = tail_index.wrapping_add(1 << 1);
+            // Advance the current index one entry forward.
+            let new_index = tail_index.wrapping_add(1);
 
-                // If `tail_index` is pointing into `tail`...
-                if offset < NODE_CAP {
-                    // Try moving the tail index forward.
-                    if self.tail.index.compare_and_swap(tail_index, new_index, Ordering::SeqCst) == tail_index {
-                        // If this was the last entry in the node, allocate a new one.
-                        if offset + 1 == NODE_CAP {
-                            let new = Owned::new(Node::new(new_index)).into_shared(&guard);
-                            tail.next.store(new, Ordering::Release);
-                            self.tail.node.store(new, Ordering::Release);
-                        }
-
-                        unsafe {
-                            let entry = tail.entries.get_unchecked(offset).get();
-                            token.entry = entry as *const Entry<T> as *const u8;
-                        }
-                        break;
+            // If `tail_index` is pointing into `tail`...
+            if offset < NODE_CAP {
+                // Try moving the tail index forward.
+                if self.tail.index.compare_and_swap(tail_index, new_index, Ordering::SeqCst) == tail_index {
+                    // If this was the last entry in the node, allocate a new one.
+                    if offset + 1 == NODE_CAP {
+                        let new = Owned::new(Node::new(new_index)).into_shared(&guard);
+                        tail.next.store(new, Ordering::Release);
+                        self.tail.node.store(new, Ordering::Release);
                     }
+
+                    unsafe {
+                        let entry = tail.entries.get_unchecked(offset).get();
+                        token.entry = entry as *const Entry<T> as *const u8;
+                    }
+                    break;
                 }
             }
 
@@ -194,10 +192,10 @@ impl<T> Channel<T> {
             let head_index = self.head.index.load(Ordering::SeqCst);
 
             // Calculate the index of the corresponding entry in the node.
-            let offset = head_index.wrapping_sub(head.start_index) >> 1;
+            let offset = head_index.wrapping_sub(head.start_index);
 
             // Advance the current index one entry forward.
-            let new_index = head_index.wrapping_add(1 << 1);
+            let new_index = head_index.wrapping_add(1);
 
             // If `head_index` is pointing into `head`...
             if offset < NODE_CAP {
@@ -208,7 +206,7 @@ impl<T> Channel<T> {
                     let tail_index = self.tail.index.load(Ordering::SeqCst);
 
                     // If the tail equals the head, that means the channel is empty.
-                    if tail_index & !1 == head_index {
+                    if tail_index == head_index {
                         // Check whether the channel is closed and return the appropriate
                         // error variant.
                         if self.is_closed() {
@@ -283,9 +281,7 @@ impl<T> Channel<T> {
 
             // If the tail index didn't change, we've got consistent indices to work with.
             if self.tail.index.load(Ordering::SeqCst) == tail_index {
-                // Note that there is no need to clear out the last bit in `tail_index` since the
-                // difference is shifted right by one bit.
-                return tail_index.wrapping_sub(head_index) >> 1;
+                return tail_index.wrapping_sub(head_index);
             }
         }
     }
@@ -308,7 +304,7 @@ impl<T> Channel<T> {
     /// Returns `true` if the channel is empty.
     pub fn is_empty(&self) -> bool {
         let head_index = self.head.index.load(Ordering::SeqCst);
-        let tail_index = self.tail.index.load(Ordering::SeqCst) & !1;
+        let tail_index = self.tail.index.load(Ordering::SeqCst);
         head_index == tail_index
     }
 
@@ -320,7 +316,7 @@ impl<T> Channel<T> {
 
 impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
-        let tail_index = self.tail.index.load(Ordering::Relaxed) & !1;
+        let tail_index = self.tail.index.load(Ordering::Relaxed);
         let mut head_index = self.head.index.load(Ordering::Relaxed);
 
         unsafe {
@@ -330,7 +326,7 @@ impl<T> Drop for Channel<T> {
             // heap-allocated nodes along the way.
             while head_index != tail_index {
                 let head = head_ptr.deref();
-                let offset = head_index.wrapping_sub(head.start_index) >> 1;
+                let offset = head_index.wrapping_sub(head.start_index);
 
                 let entry = &mut *head.entries.get_unchecked(offset).get();
                 ManuallyDrop::drop(&mut (*entry).msg);
@@ -341,7 +337,7 @@ impl<T> Drop for Channel<T> {
                     head_ptr = next;
                 }
 
-                head_index = head_index.wrapping_add(1 << 1);
+                head_index = head_index.wrapping_add(1);
             }
 
             // If there is one last remaining node in the end, destroy it.
