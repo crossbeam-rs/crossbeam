@@ -122,7 +122,7 @@ impl<T> Sel for Sender<T> {
         unsafe {
             match self.0.flavor {
                 Flavor::Array(ref chan) => chan.start_send(true, &mut token.array, backoff),
-                Flavor::List(ref chan) => chan.start_send(&mut token.list, backoff),
+                Flavor::List(ref chan) => true,
                 Flavor::Zero(ref chan) => chan.start_send(&mut token.zero), // TODO: pass may_fail
             }
         }
@@ -174,13 +174,14 @@ impl<T> Sel for Sender<T> {
         unsafe {
             match self.0.flavor {
                 Flavor::Array(ref chan) => chan.fail_send(&mut token.array),
-                Flavor::List(ref chan) => unreachable!(),
+                Flavor::List(ref chan) => {}, // just ignore
                 Flavor::Zero(ref chan) => unimplemented!(), // TODO
             }
         }
     }
 }
 
+/*
 pub struct SendLiteral<'a, T: 'a> {
     sender: &'a Sender<T>,
 }
@@ -242,6 +243,7 @@ impl<'a, T> Sel for SendLiteral<'a, T> {
         unreachable!();
     }
 }
+*/
 
 pub struct Channel<T> {
     senders: AtomicUsize,

@@ -13,7 +13,7 @@ pub mod handle;
 use smallvec::SmallVec;
 use channel::Sel;
 use ::{Sender, Receiver};
-use channel::SendLiteral;
+// use channel::SendLiteral;
 pub type GenericContainer<'a> = SmallVec<[(&'a Sel, usize); 4]>;
 
 pub trait SelectArgument<'a> {
@@ -52,6 +52,7 @@ impl<'a, T: 'a> SelectArgument<'a> for Sender<T> {
     }
 }
 
+/*
 impl<'a, T: 'a> SelectArgument<'a> for SendLiteral<'a, T> {
     type Container = [(&'a SendLiteral<'a, T>, usize); 1];
     fn init_single(&'a self, index: usize) -> Self::Container {
@@ -61,6 +62,7 @@ impl<'a, T: 'a> SelectArgument<'a> for SendLiteral<'a, T> {
         c.push((self, index));
     }
 }
+*/
 
 // impl<'a, T> SelectArgument<'a> for Option<&'a Receiver<T>> {
 //     // TODO: use arrayvec?
@@ -859,18 +861,6 @@ macro_rules! select {
         $default:tt
     ) => {
         if $index == $i {
-            // TODO: don't catch the panic - create a guard instead!
-            /*
-            use std::panic;
-            let msg = match panic::catch_unwind(panic::AssertUnwindSafe(|| { $m })) {
-                Ok(m) => m,
-                Err(err) => {
-                    unsafe { ($s).fail_send($token); }
-                    panic::resume_unwind(err)
-                }
-            };
-            */
-
             unsafe {
                 struct Guard<F: FnMut()>(F);
                 impl<F: FnMut()> Drop for Guard<F> {

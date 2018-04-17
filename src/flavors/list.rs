@@ -120,8 +120,9 @@ impl<T> Channel<T> {
         channel
     }
 
-    pub fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    pub fn write(&self, token: &mut Token, msg: T) {
         let guard = epoch::pin();
+        let mut backoff = Backoff::new();
 
         loop {
             // These two load operations don't have to be `SeqCst`. If they happen to retrieve
@@ -149,27 +150,16 @@ impl<T> Channel<T> {
 
                     unsafe {
                         let entry = tail.entries.get_unchecked(offset).get();
-                        token.entry = entry as *const Entry<T> as *const u8;
+
+                        // TODO: is creating a `&mut` UB? any other similar places?
+                        ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
+                        (*entry).ready.store(true, Ordering::Release);
                     }
                     break;
                 }
             }
 
             backoff.step();
-        }
-
-        token.guard = unsafe { mem::transmute::<Guard, usize>(guard) };
-        true
-    }
-
-    pub fn write(&self, token: &mut Token, msg: T) {
-        unsafe {
-            let entry = token.entry as *const Entry<T> as *mut Entry<T>;
-            let _guard: Guard = mem::transmute::<usize, Guard>(token.guard);
-
-            // TODO: is creating a `&mut` UB?
-            ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
-            (*entry).ready.store(true, Ordering::Release);
         }
     }
 
