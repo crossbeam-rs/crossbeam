@@ -6,7 +6,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crossbeam_utils::cache_padded::CachePadded;
 
@@ -17,6 +17,7 @@ use utils::Backoff;
 pub struct Token {
     entry: *const u8,
     lap: usize,
+    tail: usize,
 }
 
 /// An entry in the channel.
@@ -62,6 +63,8 @@ pub struct Channel<T> {
     ///
     /// If the mark bit in the tail is set, that indicates the channel is closed.
     mark_bit: usize,
+
+    is_closed: AtomicBool,
 
     /// Senders waiting on full channel.
     senders: Monitor,
@@ -121,6 +124,7 @@ impl<T> Channel<T> {
             buffer,
             cap,
             mark_bit,
+            is_closed: AtomicBool::new(false),
             head: CachePadded::new(AtomicUsize::new(head)),
             tail: CachePadded::new(AtomicUsize::new(tail)),
             senders: Monitor::new(),
@@ -139,7 +143,7 @@ impl<T> Channel<T> {
         &*self.buffer.offset(index as isize)
     }
 
-    pub fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    pub fn start_send(&self, may_fail: bool, token: &mut Token, backoff: &mut Backoff) -> bool {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -147,6 +151,11 @@ impl<T> Channel<T> {
         loop {
             // Load the tail.
             let tail = self.tail.load(Ordering::SeqCst);
+
+            if tail & self.mark_bit != 0 {
+                backoff.step();
+                continue;
+            }
 
             let index = tail & index_bits;
             let lap = tail & lap_bits;
@@ -166,14 +175,28 @@ impl<T> Channel<T> {
                     lap.wrapping_add(one_lap.wrapping_mul(2))
                 };
 
-                // Try moving the tail one entry forward.
-                if self.tail
-                    .compare_exchange_weak(tail, new_tail, Ordering::SeqCst, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    token.entry = entry as *const Entry<T> as *const u8;
-                    token.lap = next_elap;
-                    return true;
+                if may_fail {
+                    // Try moving the tail one entry forward.
+                    if self.tail
+                        .compare_exchange_weak(tail, tail | self.mark_bit, Ordering::SeqCst, Ordering::Relaxed)
+                        .is_ok()
+                    {
+                        token.entry = entry as *const Entry<T> as *const u8;
+                        token.lap = next_elap;
+                        token.tail = new_tail;
+                        return true;
+                    }
+                } else {
+                    // Try moving the tail one entry forward.
+                    if self.tail
+                        .compare_exchange_weak(tail, new_tail, Ordering::SeqCst, Ordering::Relaxed)
+                        .is_ok()
+                    {
+                        token.entry = entry as *const Entry<T> as *const u8;
+                        token.lap = next_elap;
+                        token.tail = new_tail;
+                        return true;
+                    }
                 }
             // But if the entry lags one lap behind the tail...
             } else if next_elap == lap {
@@ -190,16 +213,34 @@ impl<T> Channel<T> {
         }
     }
 
-    pub unsafe fn finish_send(&self, token: Token, msg: T) {
+    pub unsafe fn write(&self, token: &mut Token, msg: T, may_fail: bool) {
         let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
+
+        if may_fail {
+            self.tail.store(token.tail, Ordering::SeqCst);
+        }
 
         // Write the message into the entry and increment the lap.
         ptr::write(entry.msg.get(), msg);
+    }
+
+    pub unsafe fn finish_send(&self, may_fail: bool, token: Token) {
+        let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
+
         entry.lap.store(token.lap, Ordering::Release);
 
         if let Some(case) = self.receivers.remove_one() {
             case.handle.unpark();
         }
+    }
+
+    pub unsafe fn fail_send(&self, token: Token) {
+        self.tail.fetch_and(!self.mark_bit, Ordering::SeqCst);
+
+        // TODO: wake another sender? and receiver?
+        // if let Some(case) = self.receivers.remove_one() {
+        //     case.handle.unpark();
+        // }
     }
 
     pub fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -246,10 +287,12 @@ impl<T> Channel<T> {
                 if (tail & !self.mark_bit).wrapping_add(one_lap) == head {
                     // Check whether the channel is closed and return the appropriate error
                     // variant.
-                    if tail & self.mark_bit != 0 {
-                        token.entry = ptr::null();
-                        token.lap = 0;
-                        return true;
+                    if self.is_closed() {
+                        if self.tail.load(Ordering::SeqCst) == tail {
+                            token.entry = ptr::null();
+                            token.lap = 0;
+                            return true;
+                        }
                     } else {
                         return false;
                     }
@@ -260,7 +303,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
+    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
         if token.entry.is_null() {
             None
         } else {
@@ -268,12 +311,20 @@ impl<T> Channel<T> {
 
             // Read the message from the entry and increment the lap.
             let msg = ptr::read(entry.msg.get());
+            Some(msg)
+        }
+    }
+
+    pub unsafe fn finish_recv(&self, token: Token) {
+        if token.entry.is_null() {
+
+        } else {
+            let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
             entry.lap.store(token.lap, Ordering::Release);
 
             if let Some(case) = self.senders.remove_one() {
                 case.handle.unpark();
             }
-            Some(msg)
         }
     }
 
@@ -315,21 +366,18 @@ impl<T> Channel<T> {
 
     /// Closes the channel and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
-        let tail = self.tail.fetch_or(self.mark_bit, Ordering::SeqCst);
-
-        // Was the channel already closed?
-        if tail & self.mark_bit != 0 {
-            false
-        } else {
+        if !self.is_closed.swap(true, Ordering::SeqCst) {
             self.senders.abort_all();
             self.receivers.abort_all();
             true
+        } else {
+            false
         }
     }
 
     /// Returns `true` if the channel is closed.
     pub fn is_closed(&self) -> bool {
-        self.tail.load(Ordering::SeqCst) & self.mark_bit != 0
+        self.is_closed.load(Ordering::SeqCst)
     }
 
     /// Returns `true` if the channel is empty.

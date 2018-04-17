@@ -10,6 +10,69 @@ mod case_id;
 #[doc(hidden)]
 pub mod handle;
 
+use smallvec::SmallVec;
+use channel::Sel;
+use ::{Sender, Receiver};
+use channel::SendLiteral;
+pub type GenericContainer<'a> = SmallVec<[(&'a Sel, usize); 4]>;
+
+pub trait SelectArgument<'a> {
+    type Container;
+    fn init_single(&'a self, index: usize) -> Self::Container;
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>);
+}
+
+impl<'a, T: SelectArgument<'a>> SelectArgument<'a> for &'a T {
+    type Container = <T as SelectArgument<'a>>::Container;
+    fn init_single(&self, index: usize) -> Self::Container {
+        (**self).init_single(index)
+    }
+    fn init_generic(&self, index: usize, c: &mut GenericContainer<'a>) {
+        (**self).init_generic(index, c)
+    }
+}
+
+impl<'a, T: 'a> SelectArgument<'a> for Receiver<T> {
+    type Container = [(&'a Receiver<T>, usize); 1];
+    fn init_single(&'a self, index: usize) -> Self::Container {
+        [(self, index)]
+    }
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
+        c.push((self, index));
+    }
+}
+
+impl<'a, T: 'a> SelectArgument<'a> for Sender<T> {
+    type Container = [(&'a Sender<T>, usize); 1];
+    fn init_single(&'a self, index: usize) -> Self::Container {
+        [(self, index)]
+    }
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
+        c.push((self, index));
+    }
+}
+
+impl<'a, T: 'a> SelectArgument<'a> for SendLiteral<'a, T> {
+    type Container = [(&'a SendLiteral<'a, T>, usize); 1];
+    fn init_single(&'a self, index: usize) -> Self::Container {
+        [(self, index)]
+    }
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
+        c.push((self, index));
+    }
+}
+
+// impl<'a, T> SelectArgument<'a> for Option<&'a Receiver<T>> {
+//     // TODO: use arrayvec?
+//     type Container = SmallVec<[(&'a Receiver<T>, usize); 1]>;
+//     fn init_single(self) -> Self::Container {
+//         [(self, 0)]
+//     }
+//     fn init_generic(self, index: usize, c: &mut GenericContainer<'a>) {
+//         c.push([(self, index)]);
+//     }
+// }
+
 #[macro_export]
 macro_rules! select {
     // Success! The list is empty.
@@ -386,12 +449,12 @@ macro_rules! select {
         $recv:tt
         ($($send:tt)*)
         $default:tt
-        (send $t:tt => $body:tt, $($tail:tt)*)
+        (send $args:tt => $body:tt, $($tail:tt)*)
         ($index:expr)
     ) => {
         compile_error!(concat!(
             "expected an argument list after `send`, found `",
-            stringify!($t),
+            stringify!($args),
             "`",
         ))
     };
@@ -537,6 +600,7 @@ macro_rules! select {
         use $crate::utils::Backoff;
         use $crate::{Sender, Receiver};
         use $crate::channel::Token;
+        use $crate::select::{GenericContainer, SelectArgument};
 
         let deadline: Option<Instant>;
         let default_index: usize;
@@ -550,27 +614,19 @@ macro_rules! select {
         // TODO: Maybe case_id should be address of the case in `cases`?
 
         // TODO: #[allow(warnings)]
-        {
+        let cases = {
             let mut cases;
             select!(@smallvec cases $recv $send);
+            cases
+        };
 
+        loop {
+            // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
+            let backoff = &mut Backoff::new();
             loop {
-                // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
-                let backoff = &mut Backoff::new();
-                loop {
-                    for &(sel, i) in &cases {
-                        if sel.try(&mut token, backoff) {
-                            // token = t;
-                            index = i;
-                            break;
-                        }
-                    }
-
-                    if index != !0 {
-                        break;
-                    }
-
-                    if !backoff.step() {
+                for &(sel, i) in &cases {
+                    if sel.try(&mut token, backoff) {
+                        index = i;
                         break;
                     }
                 }
@@ -579,66 +635,84 @@ macro_rules! select {
                     break;
                 }
 
-                if default_index != !0 && deadline.is_none() {
-                    // token = !0;
-                    index = default_index;
+                if !backoff.step() {
                     break;
                 }
+            }
 
-                // TODO: initialize a timestamp here and use it inside waitqueue for sorting
-                // TODO: maybe initialize in second round only, but in the first round don't sleep,
-                // just yield once?
+            if index != !0 {
+                break;
+            }
 
-                handle::current_reset();
+            if default_index != !0 && deadline.is_none() {
+                index = default_index;
+                break;
+            }
 
+            // TODO: initialize a timestamp here and use it inside waitqueue for sorting
+            // TODO: maybe initialize in second round only, but in the first round don't sleep,
+            // just yield once?
+            // TODO: alternatively, for fairness, instead of removing a case from a monitor, just
+            // mark it as removed
+
+            // TODO: a test with send(foo(), msg) where foo is a FnOnce (and same for recv()).
+
+            handle::current_reset();
+
+            for case in &cases {
+                let case_id = CaseId::new(case as *const _ as usize);
+                let &(sel, _) = case;
+                sel.promise(case_id);
+            }
+
+            for &(sel, _) in &cases {
+                if !sel.is_blocked() {
+                    handle::current_try_select(CaseId::abort());
+                }
+            }
+
+            let timed_out = !handle::current_wait_until(deadline);
+            let s = handle::current_selected();
+
+            for case in &cases {
+                let case_id = CaseId::new(case as *const _ as usize);
+                let &(sel, _) = case;
+                sel.revoke(case_id);
+            }
+
+            if s != CaseId::abort() {
                 for case in &cases {
                     let case_id = CaseId::new(case as *const _ as usize);
-                    let &(sel, _) = case;
-                    sel.promise(case_id);
-                }
-
-                for &(sel, _) in &cases {
-                    if !sel.is_blocked() {
-                        handle::current_try_select(CaseId::abort());
-                    }
-                }
-
-                let timed_out = !handle::current_wait_until(deadline);
-                let s = handle::current_selected();
-
-                for case in &cases {
-                    let case_id = CaseId::new(case as *const _ as usize);
-                    let &(sel, _) = case;
-                    sel.revoke(case_id);
-                }
-
-                if s != CaseId::abort() {
-                    for case in &cases {
-                        let case_id = CaseId::new(case as *const _ as usize);
-                        let &(sel, i) = case;
-                        if case_id == s {
-                            if sel.fulfill(&mut token, &mut Backoff::new()) {
-                                // token = t;
-                                index = i;
-                                break;
-                            }
+                    let &(sel, i) = case;
+                    if case_id == s {
+                        if sel.fulfill(&mut token, &mut Backoff::new()) {
+                            index = i;
+                            break;
                         }
                     }
-
-                    if index != !0 {
-                        break;
-                    }
                 }
 
-                if timed_out {
-                    // token = !0;
-                    index = default_index;
+                if index != !0 {
                     break;
                 }
+            }
+
+            if timed_out {
+                index = default_index;
+                break;
             }
         }
 
         select!(@finish index token $recv $send $default)
+
+        // TODO: should send failure wake up a sender, not just receiver? or both?
+
+        // TODO: to be consistent, `select! { recv(rx, _) => () }` should move `rx`, not borrow!
+        // TODO: - or maybe borrow in both single and multi cases?
+        // TODO: we should be able to pass in `Box<Receiver<T>>` and `Box<Option<Receiver<T>>`
+        // TODO: - or maybe `Option<Box<Receiver<T>>>`?
+
+        // TODO: use a custom Sel impl for Sender to support may-fail sending
 
         // TODO: Run `cargo clippy` and make sure there are no warnings in here.
         // TODO: optimize try_send and try_recv cases?
@@ -649,8 +723,8 @@ macro_rules! select {
 
         // TODO: count number of steps in the loop by prepending @debug to the macro or smth
 
-        // TODO: bad error: did you mean to put a comma after `match`?
-        // fix this for `match`, `while`, `if`, etc.
+        // TODO: this does not compile - we should automatically insert comma after `}` or suggest a fix
+        // fix this for `match`, `while`, `if`, `if-else`, `if-elseif-else`, `for`, `loop`, `unsafe`
         // select! {
         //     recv(r, msg) => match msg {
         //         None => (),
@@ -659,6 +733,9 @@ macro_rules! select {
         //     default => ()
         // }
         // TODO: error message tests
+
+        // TODO: remove tail locking in flavors::list because it serves no purpose
+        // TODO: test select with duplicate cases
 
         // TODO: accept both Instant and Duration the in default case
         // TODO: Optimize single case (in send/try_recv/recv) with `select! { @single ...  }`
@@ -680,23 +757,23 @@ macro_rules! select {
         ([$i:expr] recv($r:expr, $m:pat) => $body:tt,)
         ()
     ) => {
-        let r: &Receiver<_> = &($r);
-        $cases = [(r, $i)];
+        let r = &($r);
+        $cases = SelectArgument::init_single(r, $i);
     };
     (@smallvec
         $cases:ident
         ()
         ([$i:expr] send($s:expr, $m:expr) => $body:tt,)
     ) => {
-        let s: &Sender<_> = &($s);
-        $cases = [(s, $i)];
+        let s = &($s);
+        $cases = SelectArgument::init_single(s, $i);
     };
     (@smallvec
         $cases:ident
         $recv:tt
         $send:tt
     ) => {
-        $cases = SmallVec::<[(&Sel, usize); 4]>::new();
+        $cases = GenericContainer::new();
         select!(@push $cases $recv $send);
     };
 
@@ -706,7 +783,7 @@ macro_rules! select {
         $send:tt
     ) => {
         let r = &($r);
-        $cases.push((r, $i));
+        SelectArgument::init_generic(r, $i, &mut $cases);
         select!(@push $cases ($($tail)*) $send);
     };
     (@push
@@ -715,7 +792,7 @@ macro_rules! select {
         ([$i:expr] send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
     ) => {
         let s = &($s);
-        $cases.push((s, $i));
+        SelectArgument::init_generic(s, $i, &mut $cases);
         select!(@push $cases () ($($tail)*));
     };
     (@push
@@ -758,7 +835,8 @@ macro_rules! select {
         $default:tt
     ) => {
         if $index == $i {
-            let $m = unsafe { ($r).finish_recv($token) };
+            let $m = unsafe { ($r).read(&mut $token) };
+            unsafe { ($r).finish($token) };
             $body
         } else {
             select!(
@@ -779,7 +857,22 @@ macro_rules! select {
         $default:tt
     ) => {
         if $index == $i {
-            unsafe { ($s).finish_send($token, $m) };
+            // TODO: don't catch the panic - create a guard instead!
+            /*
+            use std::panic;
+            let msg = match panic::catch_unwind(panic::AssertUnwindSafe(|| { $m })) {
+                Ok(m) => m,
+                Err(err) => {
+                    unsafe { ($s).fail_send($token); }
+                    panic::resume_unwind(err)
+                }
+            };
+            */
+            let msg = $m;
+            unsafe {
+                ($s).write(&mut $token, msg);
+                ($s).finish($token);
+            }
             $body
         } else {
             select!(
@@ -820,6 +913,10 @@ macro_rules! select {
         ()
     ) => {
         unreachable!()
+    };
+
+    (@$($tail:tt)*) => {
+        compile_error!(concat!("internal error in crossbeam-channel: ", stringify!(@$($tail)*)));
     };
 
     // The entry point.

@@ -87,6 +87,8 @@ pub struct Channel<T> {
     /// The current tail index and the node containing it.
     tail: CachePadded<Position<T>>,
 
+    is_closed: AtomicBool,
+
     /// Receivers waiting on empty channel.
     receivers: Monitor,
 
@@ -105,6 +107,7 @@ impl<T> Channel<T> {
                 index: AtomicUsize::new(0),
                 node: Atomic::null(),
             }),
+            is_closed: AtomicBool::new(false),
             receivers: Monitor::new(),
             _marker: PhantomData,
         };
@@ -117,7 +120,7 @@ impl<T> Channel<T> {
         channel
     }
 
-    pub fn send(&self, msg: T, backoff: &mut Backoff) {
+    pub fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let guard = epoch::pin();
 
         loop {
@@ -127,38 +130,54 @@ impl<T> Channel<T> {
             let tail = unsafe { tail_ptr.deref() };
             let tail_index = self.tail.index.load(Ordering::Relaxed);
 
-            // Calculate the index of the corresponding entry in the node.
-            let offset = tail_index.wrapping_sub(tail.start_index) >> 1;
+            if tail_index & 1 == 0 {
+                // Calculate the index of the corresponding entry in the node.
+                let offset = tail_index.wrapping_sub(tail.start_index) >> 1;
 
-            // Advance the current index one entry forward.
-            let new_index = tail_index.wrapping_add(1 << 1);
+                // Advance the current index one entry forward.
+                let new_index = tail_index.wrapping_add(1 << 1);
 
-            // If `tail_index` is pointing into `tail`...
-            if offset < NODE_CAP {
-                // Try moving the tail index forward.
-                if self.tail.index.compare_and_swap(tail_index, new_index, Ordering::SeqCst) == tail_index {
-                    // If this was the last entry in the node, allocate a new one.
-                    if offset + 1 == NODE_CAP {
-                        let new = Owned::new(Node::new(new_index)).into_shared(&guard);
-                        tail.next.store(new, Ordering::Release);
-                        self.tail.node.store(new, Ordering::Release);
+                // If `tail_index` is pointing into `tail`...
+                if offset < NODE_CAP {
+                    // Try moving the tail index forward.
+                    if self.tail.index.compare_and_swap(tail_index, new_index, Ordering::SeqCst) == tail_index {
+                        // If this was the last entry in the node, allocate a new one.
+                        if offset + 1 == NODE_CAP {
+                            let new = Owned::new(Node::new(new_index)).into_shared(&guard);
+                            tail.next.store(new, Ordering::Release);
+                            self.tail.node.store(new, Ordering::Release);
+                        }
+
+                        unsafe {
+                            let entry = tail.entries.get_unchecked(offset).get();
+                            token.entry = entry as *const Entry<T> as *const u8;
+                        }
+                        break;
                     }
-
-                    // Write `msg` into the corresponding entry.
-                    unsafe {
-                        let entry = tail.entries.get_unchecked(offset).get();
-                        ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
-                        (*entry).ready.store(true, Ordering::Release);
-                    }
-
-                    if let Some(case) = self.receivers.remove_one() {
-                        case.handle.unpark();
-                    }
-                    return;
                 }
             }
 
             backoff.step();
+        }
+
+        token.guard = unsafe { mem::transmute::<Guard, usize>(guard) };
+        true
+    }
+
+    pub fn write(&self, token: &mut Token, msg: T) {
+        unsafe {
+            let entry = token.entry as *const Entry<T> as *mut Entry<T>;
+            let _guard: Guard = mem::transmute::<usize, Guard>(token.guard);
+
+            // TODO: is creating a `&mut` UB?
+            ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
+            (*entry).ready.store(true, Ordering::Release);
+        }
+    }
+
+    pub fn finish_send(&self, token: Token) {
+        if let Some(case) = self.receivers.remove_one() {
+            case.handle.unpark();
         }
     }
 
@@ -192,11 +211,13 @@ impl<T> Channel<T> {
                     if tail_index & !1 == head_index {
                         // Check whether the channel is closed and return the appropriate
                         // error variant.
-                        if tail_index & 1 == 0 {
-                            return false;
+                        if self.is_closed() {
+                            if self.tail.index.load(Ordering::SeqCst) == tail_index {
+                                token.entry = ptr::null();
+                                return true;
+                            }
                         } else {
-                            token.entry = ptr::null();
-                            return true;
+                            return false;
                         }
                     }
                 }
@@ -228,16 +249,16 @@ impl<T> Channel<T> {
             backoff.step();
         }
 
-        token.guard = unsafe { mem::transmute(guard) };
+        token.guard = unsafe { mem::transmute::<Guard, usize>(guard) };
         true
     }
 
-    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
+    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
         if token.entry.is_null() {
             None
         } else {
             let entry = &*(token.entry as *const Entry<T>);
-            let _guard: Guard = mem::transmute(token.guard);
+            let _guard: Guard = mem::transmute::<usize, Guard>(token.guard);
 
             let mut backoff = Backoff::new();
             while !entry.ready.load(Ordering::Acquire) {
@@ -248,6 +269,10 @@ impl<T> Channel<T> {
             let msg = ManuallyDrop::into_inner(m);
             Some(msg)
         }
+    }
+
+    pub unsafe fn finish_recv(&self, token: Token) {
+
     }
 
     /// Returns the current number of messages inside the channel.
@@ -267,20 +292,17 @@ impl<T> Channel<T> {
 
     /// Closes the channel and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
-        let tail_index = self.tail.index.fetch_or(1, Ordering::SeqCst);
-
-        // Was the channel already closed?
-        if tail_index & 1 != 0 {
-            false
-        } else {
+        if !self.is_closed.swap(true, Ordering::SeqCst) {
             self.receivers.abort_all();
             true
+        } else {
+            false
         }
     }
 
     /// Returns `true` if the channel is closed.
     pub fn is_closed(&self) -> bool {
-        self.tail.index.load(Ordering::SeqCst) & 1 != 0
+        self.is_closed.load(Ordering::SeqCst)
     }
 
     /// Returns `true` if the channel is empty.

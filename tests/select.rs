@@ -18,16 +18,22 @@ fn ms(ms: u64) -> Duration {
 
 #[test]
 fn foo() {
-    let (s, r) = bounded::<i32>(0);
+    let (s, r) = bounded::<i32>(5);
 
     crossbeam::scope(|scope| {
-        scope.spawn(|| {
-            assert_eq!(r.recv(), Some(7));
-        });
+        // scope.spawn(|| {
+        //     assert_eq!(r.recv(), None);
+        //     assert_eq!(r.len(), 0);
+        // });
 
-        select! {
-            send(s, 7) => {}
-        }
+        use std::panic;
+        panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            select! {
+                send(s, -i32::min_value()) => {}
+            }
+        }));
+        assert_eq!(s.len(), 0);
+        drop(s);
     });
 }
 

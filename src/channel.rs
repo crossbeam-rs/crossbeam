@@ -8,12 +8,18 @@ use flavors;
 use select::CaseId;
 use utils::Backoff;
 
+// loop { try; promise; is_blocked; revoke; fulfill }
+// -> write; fail or finish
+// -> read; finish
+
 pub trait Sel {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
     fn promise(&self, case_id: CaseId);
-    fn revoke(&self, case_id: CaseId);
     fn is_blocked(&self) -> bool;
+    fn revoke(&self, case_id: CaseId);
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
+    fn finish(&self, token: Token);
+    fn fail(&self, token: Token);
 }
 impl<'a, T: Sel> Sel for &'a T {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -22,14 +28,20 @@ impl<'a, T: Sel> Sel for &'a T {
     fn promise(&self, case_id: CaseId) {
         (**self).promise(case_id);
     }
-    fn revoke(&self, case_id: CaseId) {
-        (**self).revoke(case_id);
-    }
     fn is_blocked(&self) -> bool {
         (**self).is_blocked()
     }
+    fn revoke(&self, case_id: CaseId) {
+        (**self).revoke(case_id);
+    }
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         (**self).fulfill(token, backoff)
+    }
+    fn finish(&self, token: Token) {
+        (**self).finish(token)
+    }
+    fn fail(&self, token: Token) {
+        (**self).fail(token);
     }
 }
 
@@ -62,20 +74,20 @@ impl<T> Sel for Receiver<T> {
         }
     }
 
-    fn revoke(&self, case_id: CaseId) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.receivers().unregister(case_id),
-            Flavor::List(ref chan) => chan.receivers().unregister(case_id),
-            Flavor::Zero(ref chan) => chan.receivers().unregister(case_id),
-        }
-    }
-
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_empty() && !chan.is_closed(),
             Flavor::List(ref chan) => chan.is_empty() && !chan.is_closed(),
             Flavor::Zero(ref chan) => !chan.senders().can_notify() && !chan.is_closed(),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.receivers().unregister(case_id),
+            Flavor::List(ref chan) => chan.receivers().unregister(case_id),
+            Flavor::Zero(ref chan) => chan.receivers().unregister(case_id),
         }
     }
 
@@ -88,15 +100,28 @@ impl<T> Sel for Receiver<T> {
             }
         }
     }
+
+    fn finish(&self, token: Token) {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref chan) => chan.finish_recv(token.array),
+                Flavor::List(ref chan) => chan.finish_recv(token.list),
+                Flavor::Zero(ref chan) => chan.finish_recv(token.zero),
+            }
+        }
+    }
+
+    fn fail(&self, token: Token) {
+    }
 }
 
 impl<T> Sel for Sender<T> {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.start_send(&mut token.array, backoff),
-                Flavor::List(_) => true,
-                Flavor::Zero(ref chan) => chan.start_send(&mut token.zero),
+                Flavor::Array(ref chan) => chan.start_send(true, &mut token.array, backoff),
+                Flavor::List(ref chan) => chan.start_send(&mut token.list, backoff),
+                Flavor::Zero(ref chan) => chan.start_send(&mut token.zero), // TODO: pass may_fail
             }
         }
     }
@@ -104,33 +129,115 @@ impl<T> Sel for Sender<T> {
     fn promise(&self, case_id: CaseId) {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.senders().register(case_id),
-            Flavor::List(_) => {},
+            Flavor::List(_) => unreachable!(),
             Flavor::Zero(ref chan) => chan.senders().register(case_id),
-        }
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.senders().unregister(case_id),
-            Flavor::List(ref chan) => {},
-            Flavor::Zero(ref chan) => chan.senders().unregister(case_id),
         }
     }
 
     fn is_blocked(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_full(),
-            Flavor::List(_) => true,
+            Flavor::List(_) => unreachable!(),
             Flavor::Zero(ref chan) => !chan.receivers().can_notify(),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match self.0.flavor {
+            Flavor::Array(ref chan) => chan.senders().unregister(case_id),
+            Flavor::List(ref chan) => unreachable!(),
+            Flavor::Zero(ref chan) => chan.senders().unregister(case_id),
         }
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => unsafe { chan.start_send(&mut token.array, backoff) },
+            Flavor::Array(ref chan) => unsafe { chan.start_send(true, &mut token.array, backoff) },
+            Flavor::List(ref chan) => unreachable!(),
+            Flavor::Zero(ref chan) => unsafe { token.zero = flavors::zero::Token::Fulfill; true },
+        }
+    }
+
+    fn finish(&self, token: Token) {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref chan) => chan.finish_send(true, token.array),
+                Flavor::List(ref chan) => chan.finish_send(token.list),
+                Flavor::Zero(ref chan) => chan.finish_send(token.zero), // TODO: may fail!
+            }
+        }
+    }
+
+    fn fail(&self, token: Token) {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref chan) => chan.fail_send(token.array),
+                Flavor::List(ref chan) => unreachable!(),
+                Flavor::Zero(ref chan) => unimplemented!(), // TODO
+            }
+        }
+    }
+}
+
+pub struct SendLiteral<'a, T: 'a> {
+    sender: &'a Sender<T>,
+}
+
+impl<'a, T> Sel for SendLiteral<'a, T> {
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            match self.sender.0.flavor {
+                Flavor::Array(ref chan) => chan.start_send(true, &mut token.array, backoff),
+                Flavor::List(_) => true,
+                Flavor::Zero(ref chan) => chan.start_send(&mut token.zero), // TODO: pass may_fail
+            }
+        }
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        match self.sender.0.flavor {
+            Flavor::Array(ref chan) => chan.senders().register(case_id),
+            Flavor::List(_) => {},
+            Flavor::Zero(ref chan) => chan.senders().register(case_id),
+        }
+    }
+
+    fn is_blocked(&self) -> bool {
+        match self.sender.0.flavor {
+            Flavor::Array(ref chan) => chan.is_full(),
+            Flavor::List(_) => true,
+            Flavor::Zero(ref chan) => !chan.receivers().can_notify(),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match self.sender.0.flavor {
+            Flavor::Array(ref chan) => chan.senders().unregister(case_id),
+            Flavor::List(ref chan) => {},
+            Flavor::Zero(ref chan) => chan.senders().unregister(case_id),
+        }
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match self.sender.0.flavor {
+            Flavor::Array(ref chan) => unsafe { chan.start_send(true, &mut token.array, backoff) },
             Flavor::List(ref chan) => unsafe { token.list.entry = 0 as *const _; true }
             Flavor::Zero(ref chan) => unsafe { token.zero = flavors::zero::Token::Fulfill; true },
         }
+    }
+
+    fn finish(&self, token: Token) {
+        unsafe {
+            match self.sender.0.flavor {
+                Flavor::Array(ref chan) => chan.finish_send(false, token.array),
+                Flavor::List(ref chan) => chan.finish_send(token.list),
+                Flavor::Zero(ref chan) => chan.finish_send(token.zero), // TODO: may not fail!
+            }
+        }
+    }
+
+    fn fail(&self, token: Token) {
+        unreachable!();
     }
 }
 
@@ -280,7 +387,15 @@ unsafe impl<T: Send> Sync for Sender<T> {}
 #[doc(hidden)]
 impl<T> Sender<T> {
     fn new(chan: Arc<Channel<T>>) -> Self {
-        chan.senders.fetch_add(1, Ordering::SeqCst);
+        const MAX_REFCOUNT: usize = (::std::isize::MAX) as usize;
+
+        let old_count = chan.senders.fetch_add(1, Ordering::SeqCst);
+
+        // See comments on Arc::clone() on why we do this (for `mem::forget`).
+        if old_count > MAX_REFCOUNT {
+            ::std::process::abort();
+        }
+
         Sender(chan)
     }
 
@@ -289,11 +404,15 @@ impl<T> Sender<T> {
         chan as *const Channel<T> as usize
     }
 
-    pub unsafe fn finish_send(&self, token: Token, msg: T) {
+    // TODO: fn write_send() and fn read_recv(), then finish() with just token
+    // TODO: impl these methods for SendLiteral, too!
+    // TODO: move finish and fail into Sel?
+
+    pub unsafe fn write(&self, token: &mut Token, msg: T) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.finish_send(token.array, msg),
-            Flavor::List(ref chan) => chan.send(msg, &mut Backoff::new()),
-            Flavor::Zero(ref chan) => chan.finish_send(token.zero, msg),
+            Flavor::Array(ref chan) => chan.write(&mut token.array, msg, true),
+            Flavor::List(ref chan) => chan.write(&mut token.list, msg),
+            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg),
         }
     }
 }
@@ -511,11 +630,11 @@ impl<T> Receiver<T> {
         chan as *const Channel<T> as usize
     }
 
-    pub unsafe fn finish_recv(&self, token: Token) -> Option<T> {
+    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.finish_recv(token.array),
-            Flavor::List(ref chan) => chan.finish_recv(token.list),
-            Flavor::Zero(ref chan) => chan.finish_recv(token.zero),
+            Flavor::Array(ref chan) => chan.read(&mut token.array),
+            Flavor::List(ref chan) => chan.read(&mut token.list),
+            Flavor::Zero(ref chan) => chan.read(&mut token.zero),
         }
     }
 }

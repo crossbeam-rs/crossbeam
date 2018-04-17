@@ -28,34 +28,66 @@ pub struct Channel {
 impl Channel {
     #[inline]
     pub fn start_recv(&self, token: &mut Token) -> bool {
-        self.start_exchange(1, token)
+        for _ in 0..2 {
+            if let Some(case) = self.wait_queues[0].remove_one() {
+                unsafe {
+                    *token = Token::Case(mem::transmute::<Case, [usize; 2]>(case));
+                }
+                return true;
+            }
+
+            if !self.is_closed() {
+                return false;
+            }
+        }
+
+        *token = Token::Closed;
+        true
     }
 
-    pub unsafe fn finish_recv<T>(&self, token: Token) -> Option<T> {
-        match token {
+    pub unsafe fn read<T>(&self, token: &mut Token) -> Option<T> {
+        match *token {
             Token::Closed => None,
             Token::Fulfill => Some(self.fulfill_recv()),
             Token::Case(case) => {
-                let case: Case = mem::transmute(case);
+                let case: Case = mem::transmute::<[usize; 2], Case>(case);
                 Some(finish_exchange(case, None).unwrap())
             }
         }
+        // TODO
+    }
+
+    pub unsafe fn finish_recv(&self, token: Token) {
+        // TODO
     }
 
     #[inline]
     pub fn start_send(&self, token: &mut Token) -> bool {
-        self.start_exchange(0, token)
+        // If there's someone on the other side, exchange messages with it.
+        if let Some(case) = self.wait_queues[1].remove_one() {
+            unsafe {
+                *token = Token::Case(mem::transmute::<Case, [usize; 2]>(case));
+            }
+            true
+        } else {
+            false
+        }
     }
 
-    pub unsafe fn finish_send<T>(&self, token: Token, msg: T) {
+    pub unsafe fn write<T>(&self, token: &mut Token, msg: T) {
         match token {
             Token::Closed => unreachable!(),
             Token::Fulfill => self.fulfill_send(msg),
             Token::Case(case) => {
-                let case: Case = mem::transmute(case);
+                let case: Case = mem::transmute::<[usize; 2], Case>(*case);
                 finish_exchange(case, Some(msg));
             }
         }
+        // TODO
+    }
+
+    pub unsafe fn finish_send(&self, token: Token) {
+        // TODO
     }
 
     /// Returns a new zero-capacity channel.
@@ -105,26 +137,6 @@ impl Channel {
     #[inline]
     pub fn is_closed(&self) -> bool {
         self.is_closed.load(Ordering::SeqCst)
-    }
-
-    #[inline]
-    fn start_exchange(&self, side: usize, token: &mut Token) -> bool {
-        for _ in 0..2 {
-            // If there's someone on the other side, exchange messages with it.
-            if let Some(case) = self.wait_queues[side ^ 1].remove_one() {
-                unsafe {
-                    *token = Token::Case(mem::transmute(case));
-                }
-                return true;
-            }
-
-            if !self.is_closed() {
-                return false;
-            }
-        }
-
-        *token = Token::Closed;
-        true
     }
 }
 
