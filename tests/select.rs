@@ -29,7 +29,7 @@ fn foo() {
         use std::panic;
         panic::catch_unwind(panic::AssertUnwindSafe(|| {
             select! {
-                send(s, -i32::min_value()) => {}
+                send(s, panic!()) => {}
             }
         }));
         assert_eq!(s.len(), 0);

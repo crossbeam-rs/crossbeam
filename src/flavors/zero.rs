@@ -75,10 +75,10 @@ impl Channel {
     }
 
     pub unsafe fn write<T>(&self, token: &mut Token, msg: T) {
-        match token {
+        match *token {
             Token::Closed => unreachable!(),
             Token::Fulfill => self.fulfill_send(msg),
-            Token::Case(case) => {
+            Token::Case(ref case) => {
                 let case: Case = mem::transmute::<[usize; 2], Case>(*case);
                 finish_exchange(case, Some(msg));
             }
