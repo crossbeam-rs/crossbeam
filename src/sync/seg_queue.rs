@@ -164,6 +164,12 @@ impl<T> Drop for SegQueue<T> {
     }
 }
 
+impl<T> Default for SegQueue<T> {
+    fn default() -> Self {
+        SegQueue::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     const CONC_COUNT: i64 = 1000000;
