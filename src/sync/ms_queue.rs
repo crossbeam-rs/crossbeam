@@ -339,6 +339,12 @@ impl<T> Drop for MsQueue<T> {
     }
 }
 
+impl<T> Default for MsQueue<T> {
+    fn default() -> Self {
+        MsQueue::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     const CONC_COUNT: i64 = 1000000;

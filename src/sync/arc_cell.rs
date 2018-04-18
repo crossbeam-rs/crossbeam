@@ -52,6 +52,24 @@ impl<T> ArcCell<T> {
     }
 }
 
+impl<T: Default> Default for ArcCell<T> {
+    fn default() -> Self {
+        ArcCell::new(Arc::default())
+    }
+}
+
+impl<T> From<Arc<T>> for ArcCell<T> {
+    fn from(value: Arc<T>) -> Self {
+        ArcCell::new(value)
+    }
+}
+
+impl<T> From<T> for ArcCell<T> {
+    fn from(value: T) -> Self {
+        ArcCell::new(Arc::new(value))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
