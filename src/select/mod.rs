@@ -707,6 +707,8 @@ macro_rules! select {
 
         select!(@finish index token $recv $send $default)
 
+        // TODO: test sending and receiving into the same channel from the same thread (all flavors)
+
         // TODO: should send failure wake up a sender, not just receiver? or both?
 
         // TODO: to be consistent, `select! { recv(rx, _) => () }` should move `rx`, not borrow!

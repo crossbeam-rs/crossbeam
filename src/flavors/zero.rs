@@ -16,7 +16,7 @@ use utils::Backoff;
 pub enum Token {
     Closed,
     Fulfill,
-    Case([usize; 2]),
+    Case([usize; 3]), // TODO: use [u8; mem::size_of::<Case>()]
 }
 
 /// A zero-capacity channel.
@@ -28,10 +28,23 @@ pub struct Channel {
 impl Channel {
     #[inline]
     pub fn start_recv(&self, token: &mut Token) -> bool {
-        for _ in 0..2 {
+        let mut step = 0;
+        loop {
             if let Some(case) = self.wait_queues[0].remove_one() {
                 unsafe {
-                    *token = Token::Case(mem::transmute::<Case, [usize; 2]>(case));
+                    if case.may_fail {
+                        case.handle.inner.thread.unpark();
+
+                        while case.handle.inner.request_ptr.load(Ordering::SeqCst) == 0 {
+                        }
+
+                        if case.handle.inner.request_ptr.load(Ordering::SeqCst) == 2 {
+                            continue;
+                        }
+                    }
+
+                    *token = Token::Case(mem::transmute::<Case, [usize; 3]>(case));
+                    // TODO: wake up here to speed up?
                 }
                 return true;
             }
@@ -39,18 +52,64 @@ impl Channel {
             if !self.is_closed() {
                 return false;
             }
+
+            step += 1;
+            if step == 2 {
+                *token = Token::Closed;
+                return true;
+            }
+        }
+    }
+
+    pub fn fulfill_recv(&self, token: &mut Token) -> bool {
+        // Wait until the requesting thread gives us a pointer to its `Request`.
+        let handle = handle::current();
+
+        let mut backoff = Backoff::new();
+        loop {
+            let ptr = handle.inner.request_ptr.load(Ordering::Acquire);
+            if ptr == 2 {
+                return false;
+            }
+            if ptr > 2 {
+                break;
+            }
+            backoff.step();
         }
 
-        *token = Token::Closed;
+        *token = Token::Fulfill;
         true
     }
 
     pub unsafe fn read<T>(&self, token: &mut Token) -> Option<T> {
         match *token {
             Token::Closed => None,
-            Token::Fulfill => Some(self.fulfill_recv()),
+            Token::Fulfill => {
+                let req = HANDLE.with(|handle| {
+                    let ptr = handle.inner.request_ptr.swap(0, Ordering::Acquire);
+                    ptr as *const Request<Option<T>>
+                });
+
+                let m = unsafe {
+                    // First, make a clone of the requesting thread's `Handle`.
+                    let handle = (*req).handle.clone();
+
+                    // Exchange the messages and then notify the requesting thread that it can pick up our
+                    // message.
+                    let m = (*req).exchange(None);
+                    (*req).handle.try_select(CaseId::abort());
+
+                    // Wake up the requesting thread.
+                    handle.unpark();
+
+                    // Return the exchanged message.
+                    m
+                };
+
+                Some(m.unwrap())
+            }
             Token::Case(case) => {
-                let case: Case = mem::transmute::<[usize; 2], Case>(case);
+                let case: Case = mem::transmute::<[usize; 3], Case>(case);
                 Some(finish_exchange(case, None).unwrap())
             }
         }
@@ -66,7 +125,7 @@ impl Channel {
         // If there's someone on the other side, exchange messages with it.
         if let Some(case) = self.wait_queues[1].remove_one() {
             unsafe {
-                *token = Token::Case(mem::transmute::<Case, [usize; 2]>(case));
+                *token = Token::Case(mem::transmute::<Case, [usize; 3]>(case));
             }
             true
         } else {
@@ -74,20 +133,45 @@ impl Channel {
         }
     }
 
-    pub unsafe fn write<T>(&self, token: &mut Token, msg: T) {
+    pub unsafe fn write<T>(&self, token: &mut Token, msg: T, may_fail: bool) {
         match *token {
             Token::Closed => unreachable!(),
-            Token::Fulfill => self.fulfill_send(msg),
+            Token::Fulfill => {
+                if may_fail {
+                    let handle = handle::current();
+                    handle.inner.request_ptr.store(1, Ordering::SeqCst);
+                }
+                fulfill(Some(msg));
+            }
             Token::Case(ref case) => {
-                let case: Case = mem::transmute::<[usize; 2], Case>(*case);
+                let case: Case = mem::transmute::<[usize; 3], Case>(*case);
                 finish_exchange(case, Some(msg));
             }
         }
         // TODO
     }
 
+    pub fn fulfill_send(&self, token: &mut Token, may_fail: bool) -> bool {
+        *token = Token::Fulfill;
+        true
+    }
+
     pub unsafe fn finish_send(&self, token: &mut Token) {
         // TODO
+    }
+
+    pub unsafe fn fail_send(&self, token: &mut Token) {
+        match *token {
+            Token::Closed => unreachable!(),
+            Token::Fulfill => {
+                let handle = handle::current();
+                handle.inner.request_ptr.store(2, Ordering::SeqCst);
+            }
+            Token::Case(ref case) => {
+                let case: Case = mem::transmute::<[usize; 3], Case>(*case);
+                case.handle.inner.request_ptr.store(2, Ordering::SeqCst);
+            }
+        }
     }
 
     /// Returns a new zero-capacity channel.
@@ -109,16 +193,6 @@ impl Channel {
     #[inline]
     pub fn receivers(&self) -> &Monitor {
         &self.wait_queues[1]
-    }
-
-    /// Fulfills the promised send operation.
-    pub fn fulfill_send<T>(&self, msg: T) {
-        fulfill(Some(msg));
-    }
-
-    /// Fulfills the promised receive operation.
-    pub fn fulfill_recv<T>(&self) -> T {
-        fulfill(None).unwrap()
     }
 
     /// Closes the exchanger and wakes up all currently blocked operations on it.
@@ -167,9 +241,10 @@ fn fulfill<T>(msg: T) -> T {
     let req = HANDLE.with(|handle| {
         let mut backoff = Backoff::new();
         loop {
-            let ptr = handle.inner.request_ptr.swap(0, Ordering::Acquire) as *const Request<T>;
-            if !ptr.is_null() {
-                break ptr;
+            let ptr = handle.inner.request_ptr.load(Ordering::Acquire);
+            if ptr > 2 {
+                handle.inner.request_ptr.store(0, Ordering::SeqCst);
+                break ptr as *const Request<T>;
             }
             backoff.step();
         }

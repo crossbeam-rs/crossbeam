@@ -13,6 +13,8 @@ use utils::Backoff;
 // -> write; fail or finish
 // -> read; finish
 
+// TODO: impl Sel for the three flavors, and then just forward method calls
+
 pub trait Sel {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
     fn promise(&self, case_id: CaseId);
@@ -69,9 +71,9 @@ impl<T> Sel for Receiver<T> {
 
     fn promise(&self, case_id: CaseId) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.receivers().register(case_id),
-            Flavor::List(ref chan) => chan.receivers().register(case_id),
-            Flavor::Zero(ref chan) => chan.receivers().register(case_id),
+            Flavor::Array(ref chan) => chan.receivers().register(case_id, false),
+            Flavor::List(ref chan) => chan.receivers().register(case_id, false),
+            Flavor::Zero(ref chan) => chan.receivers().register(case_id, false),
         }
     }
 
@@ -97,7 +99,7 @@ impl<T> Sel for Receiver<T> {
             match self.0.flavor {
                 Flavor::Array(ref chan) => chan.start_recv(&mut token.array, backoff),
                 Flavor::List(ref chan) => chan.start_recv(&mut token.list, backoff),
-                Flavor::Zero(ref chan) => { token.zero = flavors::zero::Token::Fulfill; true }, // TODO
+                Flavor::Zero(ref chan) => chan.fulfill_recv(&mut token.zero),
             }
         }
     }
@@ -130,9 +132,9 @@ impl<T> Sel for Sender<T> {
 
     fn promise(&self, case_id: CaseId) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.senders().register(case_id),
+            Flavor::Array(ref chan) => chan.senders().register(case_id, false),
             Flavor::List(_) => unreachable!(),
-            Flavor::Zero(ref chan) => chan.senders().register(case_id),
+            Flavor::Zero(ref chan) => chan.senders().register(case_id, true),
         }
     }
 
@@ -156,7 +158,7 @@ impl<T> Sel for Sender<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => unsafe { chan.start_send(true, &mut token.array, backoff) },
             Flavor::List(ref chan) => unreachable!(),
-            Flavor::Zero(ref chan) => unsafe { token.zero = flavors::zero::Token::Fulfill; true },
+            Flavor::Zero(ref chan) => unsafe { chan.fulfill_send(&mut token.zero, true) },
         }
     }
 
@@ -175,7 +177,7 @@ impl<T> Sel for Sender<T> {
             match self.0.flavor {
                 Flavor::Array(ref chan) => chan.fail_send(&mut token.array),
                 Flavor::List(ref chan) => {}, // just ignore
-                Flavor::Zero(ref chan) => unimplemented!(), // TODO
+                Flavor::Zero(ref chan) => chan.fail_send(&mut token.zero),
             }
         }
     }
@@ -416,7 +418,7 @@ impl<T> Sender<T> {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.write(&mut token.array, msg, true),
             Flavor::List(ref chan) => chan.write(&mut token.list, msg),
-            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg),
+            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg, true),
         }
     }
 }

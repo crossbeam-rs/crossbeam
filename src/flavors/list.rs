@@ -17,7 +17,7 @@ use utils::Backoff;
 #[derive(Copy, Clone)]
 pub struct Token {
     pub entry: *const u8, // TODO: remove pub
-    guard: usize,
+    guard: usize, // TODO: use [u8; mem::size_of::<Guard>()]
 }
 
 /// Number of messages a node can hold.

@@ -37,6 +37,8 @@ fn send_panic() {
     assert_eq!(r.recv(), None);
     assert_eq!(r.len(), 0);
 
+    // TODO: send while a receiver is blocked
+
     // TODO: mpmc where sending sometimes panics (mpmc_panic)
 }
 

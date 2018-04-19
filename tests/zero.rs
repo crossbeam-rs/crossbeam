@@ -3,6 +3,7 @@ extern crate crossbeam;
 extern crate crossbeam_channel;
 extern crate rand;
 
+use std::panic;
 use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
@@ -13,6 +14,55 @@ use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
+}
+
+#[test]
+fn send_panic() {
+    let (s, r) = bounded::<i32>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| s.send(1));
+        assert_eq!(r.recv(), Some(1));
+    });
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            panic::catch_unwind(|| {
+                select! {
+                    send(s, panic!()) => {}
+                }
+            });
+        });
+
+        thread::sleep(ms(500));
+        select! {
+            recv(r, _) => panic!(),
+            default(ms(500)) => {}
+        }
+    });
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(ms(500));
+            panic::catch_unwind(|| {
+                select! {
+                    send(s, panic!()) => {}
+                }
+            });
+        });
+
+        select! {
+            recv(r, _) => panic!(),
+            default(ms(1000)) => {}
+        }
+    });
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| s.send(2));
+        assert_eq!(r.recv(), Some(2));
+    });
+
+    // TODO: mpmc where sending sometimes panics (mpmc_panic)
 }
 
 #[test]

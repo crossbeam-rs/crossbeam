@@ -19,6 +19,8 @@ pub struct Case {
 
     /// The case ID.
     pub case_id: CaseId,
+
+    pub may_fail: bool,
 }
 
 /// A simple wait queue for list-based and array-based channels.
@@ -44,11 +46,12 @@ impl Monitor {
     }
 
     /// Registers the current thread with `case_id`.
-    pub fn register(&self, case_id: CaseId) {
+    pub fn register(&self, case_id: CaseId, may_fail: bool) {
         let mut cases = self.cases.lock();
         cases.push_back(Case {
             handle: handle::current(),
             case_id,
+            may_fail,
         });
         self.len.store(cases.len(), Ordering::SeqCst);
     }
