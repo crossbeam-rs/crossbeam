@@ -16,16 +16,18 @@ use utils::Backoff;
 // TODO: impl Sel for the three flavors, and then just forward method calls
 
 pub trait Sel {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
+    type Token;
+    fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
     fn promise(&self, case_id: CaseId);
     fn is_blocked(&self) -> bool;
     fn revoke(&self, case_id: CaseId);
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
-    fn finish(&self, token: &mut Token);
-    fn fail(&self, token: &mut Token);
+    fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
+    fn finish(&self, token: &mut Self::Token);
+    fn fail(&self, token: &mut Self::Token);
 }
 impl<'a, T: Sel> Sel for &'a T {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    type Token = <T as Sel>::Token;
+    fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
         (**self).try(token, backoff)
     }
     fn promise(&self, case_id: CaseId) {
@@ -37,13 +39,13 @@ impl<'a, T: Sel> Sel for &'a T {
     fn revoke(&self, case_id: CaseId) {
         (**self).revoke(case_id);
     }
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
         (**self).fulfill(token, backoff)
     }
-    fn finish(&self, token: &mut Token) {
+    fn finish(&self, token: &mut Self::Token) {
         (**self).finish(token)
     }
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, token: &mut Self::Token) {
         (**self).fail(token);
     }
 }
@@ -59,47 +61,49 @@ pub union Token {
 // TODO: use backoff in try()/fulfill() for zero-capacity channels?
 
 impl<T> Sel for Receiver<T> {
+    type Token = Token;
+
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.start_recv(&mut token.array, backoff),
-                Flavor::List(ref chan) => chan.start_recv(&mut token.list, backoff),
-                Flavor::Zero(ref chan) => chan.start_recv(&mut token.zero),
+                Flavor::Array(ref inner) => inner.recv().try(&mut token.array, backoff),
+                Flavor::List(ref inner) => inner.recv().try(&mut token.list, backoff),
+                Flavor::Zero(ref inner) => inner.recv().try(&mut token.zero, backoff),
             }
         }
     }
 
     fn promise(&self, case_id: CaseId) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.receivers().register(case_id, false),
-            Flavor::List(ref chan) => chan.receivers().register(case_id, false),
-            Flavor::Zero(ref chan) => chan.receivers().register(case_id, false),
+            Flavor::Array(ref inner) => inner.recv().promise(case_id),
+            Flavor::List(ref inner) => inner.recv().promise(case_id),
+            Flavor::Zero(ref inner) => inner.recv().promise(case_id),
         }
     }
 
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_empty() && !chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_empty() && !chan.is_closed(),
-            Flavor::Zero(ref chan) => !chan.senders().can_notify() && !chan.is_closed(),
+            Flavor::Array(ref inner) => inner.recv().is_blocked(),
+            Flavor::List(ref inner) => inner.recv().is_blocked(),
+            Flavor::Zero(ref inner) => inner.recv().is_blocked(),
         }
     }
 
     fn revoke(&self, case_id: CaseId) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.receivers().unregister(case_id),
-            Flavor::List(ref chan) => chan.receivers().unregister(case_id),
-            Flavor::Zero(ref chan) => chan.receivers().unregister(case_id),
+            Flavor::Array(ref inner) => inner.recv().revoke(case_id),
+            Flavor::List(ref inner) => inner.recv().revoke(case_id),
+            Flavor::Zero(ref inner) => inner.recv().revoke(case_id),
         }
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.start_recv(&mut token.array, backoff),
-                Flavor::List(ref chan) => chan.start_recv(&mut token.list, backoff),
-                Flavor::Zero(ref chan) => chan.fulfill_recv(&mut token.zero),
+                Flavor::Array(ref inner) => inner.recv().fulfill(&mut token.array, backoff),
+                Flavor::List(ref inner) => inner.recv().fulfill(&mut token.list, backoff),
+                Flavor::Zero(ref inner) => inner.recv().fulfill(&mut token.zero, backoff),
             }
         }
     }
@@ -107,9 +111,9 @@ impl<T> Sel for Receiver<T> {
     fn finish(&self, token: &mut Token) {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.finish_recv(&mut token.array),
-                Flavor::List(ref chan) => chan.finish_recv(&mut token.list),
-                Flavor::Zero(ref chan) => chan.finish_recv(&mut token.zero),
+                Flavor::Array(ref inner) => inner.recv().finish(&mut token.array),
+                Flavor::List(ref inner) => inner.recv().finish(&mut token.list),
+                Flavor::Zero(ref inner) => inner.recv().finish(&mut token.zero),
             }
         }
     }
@@ -120,6 +124,8 @@ impl<T> Sel for Receiver<T> {
 }
 
 impl<T> Sel for Sender<T> {
+    type Token = Token;
+
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {

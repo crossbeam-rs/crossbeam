@@ -10,8 +10,51 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crossbeam_utils::cache_padded::CachePadded;
 
+use channel::Sel;
 use monitor::Monitor;
+use select::CaseId;
 use utils::Backoff;
+
+pub struct Recv<'a, T: 'a>(&'a Channel<T>);
+
+impl<'a, T> Sel for Recv<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            self.0.start_recv(token, backoff)
+        }
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        self.0.receivers().register(case_id, false)
+    }
+
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        self.0.is_empty() && !self.0.is_closed()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.receivers().unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            self.0.start_recv(token, backoff)
+        }
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_recv(token);
+        }
+    }
+
+    fn fail(&self, token: &mut Token) {
+        unreachable!();
+    }
+}
 
 #[derive(Copy, Clone)]
 pub struct Token {
@@ -79,6 +122,10 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
+    pub fn recv(&self) -> Recv<T> {
+        Recv(self)
+    }
+
     /// Returns a new channel with capacity `cap`.
     ///
     /// # Panics

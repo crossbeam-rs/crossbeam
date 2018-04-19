@@ -11,10 +11,10 @@ mod case_id;
 pub mod handle;
 
 use smallvec::SmallVec;
-use channel::Sel;
+use channel::{Sel, Token};
 use ::{Sender, Receiver};
 // use channel::SendLiteral;
-pub type GenericContainer<'a> = SmallVec<[(&'a Sel, usize); 4]>;
+pub type GenericContainer<'a> = SmallVec<[(&'a Sel<Token = Token>, usize); 4]>;
 
 pub trait SelectArgument<'a> {
     type Container;
