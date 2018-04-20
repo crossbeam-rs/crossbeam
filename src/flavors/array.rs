@@ -15,9 +15,10 @@ use monitor::Monitor;
 use select::CaseId;
 use utils::Backoff;
 
-pub struct Recv<'a, T: 'a>(&'a Channel<T>);
+pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
+pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a, T> Sel for Recv<'a, T> {
+impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -53,6 +54,44 @@ impl<'a, T> Sel for Recv<'a, T> {
 
     fn fail(&self, token: &mut Token) {
         unreachable!();
+    }
+}
+
+impl<'a, T> Sel for Sender<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_send(true, token, backoff)
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        self.0.senders().register(case_id, false);
+    }
+
+    fn is_blocked(&self) -> bool {
+        self.0.is_full()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.senders().unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            self.0.start_send(true, token, backoff)
+        }
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_send(true, token);
+        }
+    }
+
+    fn fail(&self, token: &mut Token) {
+        unsafe {
+            self.0.fail_send(token);
+        }
     }
 }
 
@@ -122,8 +161,12 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn recv(&self) -> Recv<T> {
-        Recv(self)
+    pub fn receiver(&self) -> Receiver<T> {
+        Receiver(self)
+    }
+
+    pub fn sender(&self) -> Sender<T> {
+        Sender(self)
     }
 
     /// Returns a new channel with capacity `cap`.

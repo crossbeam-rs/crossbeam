@@ -16,9 +16,10 @@ use monitor::Monitor;
 use select::CaseId;
 use utils::Backoff;
 
-pub struct Recv<'a, T: 'a>(&'a Channel<T>);
+pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
+pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a, T> Sel for Recv<'a, T> {
+impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -54,6 +55,39 @@ impl<'a, T> Sel for Recv<'a, T> {
 
     fn fail(&self, token: &mut Token) {
         unreachable!();
+    }
+}
+
+impl<'a, T> Sel for Sender<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        true
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        unreachable!()
+    }
+
+    fn is_blocked(&self) -> bool {
+        unreachable!()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        unreachable!()
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unreachable!()
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_send(token);
+        }
+    }
+
+    fn fail(&self, token: &mut Token) {
     }
 }
 
@@ -140,8 +174,12 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn recv(&self) -> Recv<T> {
-        Recv(self)
+    pub fn receiver(&self) -> Receiver<T> {
+        Receiver(self)
+    }
+
+    pub fn sender(&self) -> Sender<T> {
+        Sender(self)
     }
 
     pub fn new() -> Self {
