@@ -11,8 +11,7 @@ mod case_id;
 pub mod handle;
 
 use smallvec::SmallVec;
-use channel::{Sel, Token};
-use ::{Sender, Receiver};
+use channel::{Sel, Token, ReadySender, Receiver, Sender};
 // use channel::SendLiteral;
 pub type GenericContainer<'a> = SmallVec<[(&'a Sel<Token = Token>, usize); 4]>;
 
@@ -44,6 +43,16 @@ impl<'a, T: 'a> SelectArgument<'a> for Receiver<T> {
 
 impl<'a, T: 'a> SelectArgument<'a> for Sender<T> {
     type Container = [(&'a Sender<T>, usize); 1];
+    fn init_single(&'a self, index: usize) -> Self::Container {
+        [(self, index)]
+    }
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
+        c.push((self, index));
+    }
+}
+
+impl<'a, T: 'a> SelectArgument<'a> for ReadySender<'a, T> {
+    type Container = [(&'a ReadySender<'a, T>, usize); 1];
     fn init_single(&'a self, index: usize) -> Self::Container {
         [(self, index)]
     }
@@ -659,6 +668,9 @@ macro_rules! select {
 
             // TODO: a test with send(foo(), msg) where foo is a FnOnce (and same for recv()).
 
+            // TODO: flip true/false may_fail/is_ready
+            // TODO: rename ready to prepared (is_prepared)?
+
             handle::current_reset();
 
             for case in &cases {
@@ -717,6 +729,9 @@ macro_rules! select {
         // TODO: - or maybe `Option<Box<Receiver<T>>>`?
 
         // TODO: Sender and Receiver should impl UnwindSafe and RefUnwindSafe
+
+        // TODO: allocate less memory in unbounded flavor if few elements are sent.
+        // TODO: allocate memory lazily in unbounded flavor?
 
         // TODO: use a custom Sel impl for Sender to support may-fail sending
 

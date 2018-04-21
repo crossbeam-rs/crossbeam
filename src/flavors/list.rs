@@ -18,6 +18,7 @@ use utils::Backoff;
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
+pub type ReadySender<'a, T: 'a> = Sender<'a, T>;
 
 impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
@@ -88,6 +89,7 @@ impl<'a, T> Sel for Sender<'a, T> {
     }
 
     fn fail(&self, token: &mut Token) {
+        // nothing to do
     }
 }
 
@@ -180,6 +182,10 @@ impl<T> Channel<T> {
 
     pub fn sender(&self) -> Sender<T> {
         Sender(self)
+    }
+
+    pub fn ready_sender(&self) -> ReadySender<T> {
+        self.sender()
     }
 
     pub fn new() -> Self {

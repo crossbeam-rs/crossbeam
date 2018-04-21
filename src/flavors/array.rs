@@ -17,6 +17,7 @@ use utils::Backoff;
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
+pub struct ReadySender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
@@ -65,7 +66,7 @@ impl<'a, T> Sel for Sender<'a, T> {
     }
 
     fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, false);
+        self.0.senders().register(case_id, true);
     }
 
     fn is_blocked(&self) -> bool {
@@ -92,6 +93,42 @@ impl<'a, T> Sel for Sender<'a, T> {
         unsafe {
             self.0.fail_send(token);
         }
+    }
+}
+
+impl<'a, T> Sel for ReadySender<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_send(false, token, backoff)
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        self.0.senders().register(case_id, false);
+    }
+
+    fn is_blocked(&self) -> bool {
+        self.0.is_full()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.senders().unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            self.0.start_send(false, token, backoff)
+        }
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_send(false, token);
+        }
+    }
+
+    fn fail(&self, token: &mut Token) {
+        unreachable!()
     }
 }
 
@@ -167,6 +204,10 @@ impl<T> Channel<T> {
 
     pub fn sender(&self) -> Sender<T> {
         Sender(self)
+    }
+
+    pub fn ready_sender(&self) -> ReadySender<T> {
+        ReadySender(self)
     }
 
     /// Returns a new channel with capacity `cap`.
@@ -268,7 +309,7 @@ impl<T> Channel<T> {
                 };
 
                 if may_fail {
-                    // Try moving the tail one entry forward.
+                    // Try locking the tail.
                     if self.tail
                         .compare_exchange_weak(tail, tail | self.mark_bit, Ordering::SeqCst, Ordering::Relaxed)
                         .is_ok()
@@ -306,6 +347,7 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn write(&self, token: &mut Token, msg: T, may_fail: bool) {
+        debug_assert!(!token.entry.is_null());
         let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
 
         if may_fail {
@@ -317,6 +359,7 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn finish_send(&self, may_fail: bool, token: &mut Token) {
+        debug_assert!(!token.entry.is_null());
         let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
 
         entry.lap.store(token.lap, Ordering::Release);

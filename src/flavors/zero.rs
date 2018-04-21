@@ -15,6 +15,7 @@ use utils::Backoff;
 
 pub struct Receiver<'a>(&'a Channel);
 pub struct Sender<'a>(&'a Channel);
+pub struct ReadySender<'a>(&'a Channel);
 
 impl<'a> Sel for Receiver<'a> {
     type Token = Token;
@@ -96,6 +97,45 @@ impl<'a> Sel for Sender<'a> {
     }
 }
 
+impl<'a> Sel for ReadySender<'a> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            self.0.start_send(token)
+        }
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        self.0.senders().register(case_id, false)
+    }
+
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        !self.0.receivers().can_notify()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.senders().unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        unsafe {
+            self.0.fulfill_send(token, false)
+        }
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_recv(token); // TODO: may fail!
+        }
+    }
+
+    fn fail(&self, token: &mut Token) {
+        unreachable!()
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum Token {
     Closed,
@@ -118,6 +158,11 @@ impl Channel {
     #[inline]
     pub fn sender(&self) -> Sender {
         Sender(self)
+    }
+
+    #[inline]
+    pub fn ready_sender(&self) -> ReadySender {
+        ReadySender(self)
     }
 
     #[inline]
