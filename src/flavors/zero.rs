@@ -15,7 +15,7 @@ use utils::Backoff;
 
 pub struct Receiver<'a>(&'a Channel);
 pub struct Sender<'a>(&'a Channel);
-pub struct ReadySender<'a>(&'a Channel);
+pub struct PreparedSender<'a>(&'a Channel);
 
 impl<'a> Sel for Receiver<'a> {
     type Token = Token;
@@ -27,7 +27,7 @@ impl<'a> Sel for Receiver<'a> {
     }
 
     fn promise(&self, case_id: CaseId) {
-        self.0.receivers().register(case_id, false)
+        self.0.receivers().register(case_id, true)
     }
 
     fn is_blocked(&self) -> bool {
@@ -66,7 +66,7 @@ impl<'a> Sel for Sender<'a> {
     }
 
     fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, true)
+        self.0.senders().register(case_id, false)
     }
 
     fn is_blocked(&self) -> bool {
@@ -80,7 +80,7 @@ impl<'a> Sel for Sender<'a> {
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
-            self.0.fulfill_send(token, true)
+            self.0.fulfill_send(token, false)
         }
     }
 
@@ -97,7 +97,7 @@ impl<'a> Sel for Sender<'a> {
     }
 }
 
-impl<'a> Sel for ReadySender<'a> {
+impl<'a> Sel for PreparedSender<'a> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -107,7 +107,7 @@ impl<'a> Sel for ReadySender<'a> {
     }
 
     fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, false)
+        self.0.senders().register(case_id, true)
     }
 
     fn is_blocked(&self) -> bool {
@@ -121,7 +121,7 @@ impl<'a> Sel for ReadySender<'a> {
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
-            self.0.fulfill_send(token, false)
+            self.0.fulfill_send(token, true)
         }
     }
 
@@ -161,8 +161,8 @@ impl Channel {
     }
 
     #[inline]
-    pub fn ready_sender(&self) -> ReadySender {
-        ReadySender(self)
+    pub fn prepared_sender(&self) -> PreparedSender {
+        PreparedSender(self)
     }
 
     #[inline]
@@ -171,7 +171,7 @@ impl Channel {
         loop {
             if let Some(case) = self.wait_queues[0].remove_one() {
                 unsafe {
-                    if case.may_fail {
+                    if !case.is_prepared {
                         case.handle.inner.thread.unpark();
 
                         while case.handle.inner.request_ptr.load(Ordering::SeqCst) == 0 {
@@ -272,11 +272,11 @@ impl Channel {
         }
     }
 
-    pub unsafe fn write<T>(&self, token: &mut Token, msg: T, may_fail: bool) {
+    pub unsafe fn write<T>(&self, token: &mut Token, msg: T, is_prepared: bool) {
         match *token {
             Token::Closed => unreachable!(),
             Token::Fulfill => {
-                if may_fail {
+                if !is_prepared {
                     let handle = handle::current();
                     handle.inner.request_ptr.store(1, Ordering::SeqCst);
                 }
@@ -290,7 +290,7 @@ impl Channel {
         // TODO
     }
 
-    pub fn fulfill_send(&self, token: &mut Token, may_fail: bool) -> bool {
+    pub fn fulfill_send(&self, token: &mut Token, is_prepared: bool) -> bool {
         *token = Token::Fulfill;
         true
     }

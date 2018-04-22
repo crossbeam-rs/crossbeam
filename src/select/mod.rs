@@ -11,7 +11,7 @@ mod case_id;
 pub mod handle;
 
 use smallvec::SmallVec;
-use channel::{Sel, Token, ReadySender, Receiver, Sender};
+use channel::{Sel, Token, PreparedSender, Receiver, Sender};
 // use channel::SendLiteral;
 pub type GenericContainer<'a> = SmallVec<[(&'a Sel<Token = Token>, usize); 4]>;
 
@@ -51,8 +51,8 @@ impl<'a, T: 'a> SelectArgument<'a> for Sender<T> {
     }
 }
 
-impl<'a, T: 'a> SelectArgument<'a> for ReadySender<'a, T> {
-    type Container = [(&'a ReadySender<'a, T>, usize); 1];
+impl<'a, T: 'a> SelectArgument<'a> for PreparedSender<'a, T> {
+    type Container = [(&'a PreparedSender<'a, T>, usize); 1];
     fn init_single(&'a self, index: usize) -> Self::Container {
         [(self, index)]
     }
@@ -667,9 +667,6 @@ macro_rules! select {
             // mark it as removed
 
             // TODO: a test with send(foo(), msg) where foo is a FnOnce (and same for recv()).
-
-            // TODO: flip true/false may_fail/is_ready
-            // TODO: rename ready to prepared (is_prepared)?
 
             handle::current_reset();
 

@@ -18,7 +18,7 @@ use utils::Backoff;
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
-pub type ReadySender<'a, T: 'a> = Sender<'a, T>;
+pub type PreparedSender<'a, T: 'a> = Sender<'a, T>;
 
 impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
@@ -30,7 +30,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
     }
 
     fn promise(&self, case_id: CaseId) {
-        self.0.receivers().register(case_id, false)
+        self.0.receivers().register(case_id, true)
     }
 
     fn is_blocked(&self) -> bool {
@@ -184,7 +184,7 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
-    pub fn ready_sender(&self) -> ReadySender<T> {
+    pub fn prepared_sender(&self) -> PreparedSender<T> {
         self.sender()
     }
 

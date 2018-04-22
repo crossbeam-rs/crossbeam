@@ -193,52 +193,52 @@ impl<T> Sel for Sender<T> {
     }
 }
 
-pub struct ReadySender<'a, T: 'a>(&'a Channel<T>);
+pub struct PreparedSender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a, T> Sel for ReadySender<'a, T> {
+impl<'a, T> Sel for PreparedSender<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref inner) => inner.ready_sender().try(&mut token.array, backoff),
-                Flavor::List(ref inner) => inner.ready_sender().try(&mut token.list, backoff),
-                Flavor::Zero(ref inner) => inner.ready_sender().try(&mut token.zero, backoff),
+                Flavor::Array(ref inner) => inner.prepared_sender().try(&mut token.array, backoff),
+                Flavor::List(ref inner) => inner.prepared_sender().try(&mut token.list, backoff),
+                Flavor::Zero(ref inner) => inner.prepared_sender().try(&mut token.zero, backoff),
             }
         }
     }
 
     fn promise(&self, case_id: CaseId) {
         match self.0.flavor {
-            Flavor::Array(ref inner) => inner.ready_sender().promise(case_id),
-            Flavor::List(ref inner) => inner.ready_sender().promise(case_id),
-            Flavor::Zero(ref inner) => inner.ready_sender().promise(case_id),
+            Flavor::Array(ref inner) => inner.prepared_sender().promise(case_id),
+            Flavor::List(ref inner) => inner.prepared_sender().promise(case_id),
+            Flavor::Zero(ref inner) => inner.prepared_sender().promise(case_id),
         }
     }
 
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         match self.0.flavor {
-            Flavor::Array(ref inner) => inner.ready_sender().is_blocked(),
-            Flavor::List(ref inner) => inner.ready_sender().is_blocked(),
-            Flavor::Zero(ref inner) => inner.ready_sender().is_blocked(),
+            Flavor::Array(ref inner) => inner.prepared_sender().is_blocked(),
+            Flavor::List(ref inner) => inner.prepared_sender().is_blocked(),
+            Flavor::Zero(ref inner) => inner.prepared_sender().is_blocked(),
         }
     }
 
     fn revoke(&self, case_id: CaseId) {
         match self.0.flavor {
-            Flavor::Array(ref inner) => inner.ready_sender().revoke(case_id),
-            Flavor::List(ref inner) => inner.ready_sender().revoke(case_id),
-            Flavor::Zero(ref inner) => inner.ready_sender().revoke(case_id),
+            Flavor::Array(ref inner) => inner.prepared_sender().revoke(case_id),
+            Flavor::List(ref inner) => inner.prepared_sender().revoke(case_id),
+            Flavor::Zero(ref inner) => inner.prepared_sender().revoke(case_id),
         }
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref inner) => inner.ready_sender().fulfill(&mut token.array, backoff),
-                Flavor::List(ref inner) => inner.ready_sender().fulfill(&mut token.list, backoff),
-                Flavor::Zero(ref inner) => inner.ready_sender().fulfill(&mut token.zero, backoff),
+                Flavor::Array(ref inner) => inner.prepared_sender().fulfill(&mut token.array, backoff),
+                Flavor::List(ref inner) => inner.prepared_sender().fulfill(&mut token.list, backoff),
+                Flavor::Zero(ref inner) => inner.prepared_sender().fulfill(&mut token.zero, backoff),
             }
         }
     }
@@ -246,9 +246,9 @@ impl<'a, T> Sel for ReadySender<'a, T> {
     fn finish(&self, token: &mut Token) {
         unsafe {
             match self.0.flavor {
-                Flavor::Array(ref inner) => inner.ready_sender().finish(&mut token.array),
-                Flavor::List(ref inner) => inner.ready_sender().finish(&mut token.list),
-                Flavor::Zero(ref inner) => inner.ready_sender().finish(&mut token.zero),
+                Flavor::Array(ref inner) => inner.prepared_sender().finish(&mut token.array),
+                Flavor::List(ref inner) => inner.prepared_sender().finish(&mut token.list),
+                Flavor::Zero(ref inner) => inner.prepared_sender().finish(&mut token.zero),
             }
         }
     }
@@ -260,12 +260,12 @@ impl<'a, T> Sel for ReadySender<'a, T> {
 
 
 #[doc(hidden)]
-impl<'a, T> ReadySender<'a, T> {
+impl<'a, T> PreparedSender<'a, T> {
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.write(&mut token.array, msg, false),
+            Flavor::Array(ref chan) => chan.write(&mut token.array, msg, true),
             Flavor::List(ref chan) => chan.write(&mut token.list, msg),
-            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg, false),
+            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg, true),
         }
     }
 }
@@ -439,9 +439,9 @@ impl<T> Sender<T> {
 
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.write(&mut token.array, msg, true),
+            Flavor::Array(ref chan) => chan.write(&mut token.array, msg, false),
             Flavor::List(ref chan) => chan.write(&mut token.list, msg),
-            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg, true),
+            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg, false),
         }
     }
 }
@@ -473,9 +473,9 @@ impl<T> Sender<T> {
     /// ```
     pub fn send(&self, msg: T) {
         // let sender = self;
-        let sender = ReadySender(&self.0);
+        let sender = PreparedSender(&self.0);
         select! {
-            // TODO: Make this possible: send(ReadySender(&self.0), msg) => {}
+            // TODO: Make this possible: send(PreparedSender(&self.0), msg) => {}
             send(sender, msg) => {}
         }
     }
