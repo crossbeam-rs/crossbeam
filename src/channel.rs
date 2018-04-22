@@ -623,6 +623,18 @@ impl<T> Ord for Sender<T> {
     }
 }
 
+impl<T> PartialEq<Receiver<T>> for Sender<T> {
+    fn eq(&self, other: &Receiver<T>) -> bool {
+        self.channel_address() == other.channel_address()
+    }
+}
+
+impl<T> PartialOrd<Receiver<T>> for Sender<T> {
+    fn partial_cmp(&self, other: &Receiver<T>) -> Option<cmp::Ordering> {
+        self.channel_address().partial_cmp(&other.channel_address())
+    }
+}
+
 impl<T> UnwindSafe for Sender<T> {}
 
 impl<T> RefUnwindSafe for Sender<T> {}
@@ -866,6 +878,18 @@ impl<T> PartialOrd for Receiver<T> {
 impl<T> Ord for Receiver<T> {
     fn cmp(&self, other: &Receiver<T>) -> cmp::Ordering {
         self.channel_address().cmp(&other.channel_address())
+    }
+}
+
+impl<T> PartialEq<Sender<T>> for Receiver<T> {
+    fn eq(&self, other: &Sender<T>) -> bool {
+        self.channel_address() == other.channel_address()
+    }
+}
+
+impl<T> PartialOrd<Sender<T>> for Receiver<T> {
+    fn partial_cmp(&self, other: &Sender<T>) -> Option<cmp::Ordering> {
+        self.channel_address().partial_cmp(&other.channel_address())
     }
 }
 

@@ -230,8 +230,8 @@ impl Channel {
                 });
 
                 let m = unsafe {
-                    // First, make a clone of the requesting thread's `Handle`.
-                    let handle = (*req).handle.clone();
+                    // First, make a clone of the requesting thread.
+                    let thread = (*req).handle.inner.thread.clone();
 
                     // Exchange the messages and then notify the requesting thread that it can pick up our
                     // message.
@@ -239,7 +239,7 @@ impl Channel {
                     (*req).handle.try_select(CaseId::abort());
 
                     // Wake up the requesting thread.
-                    handle.unpark();
+                    thread.unpark();
 
                     // Return the exchanged message.
                     m
@@ -390,8 +390,8 @@ fn fulfill<T>(msg: T) -> T {
     });
 
     unsafe {
-        // First, make a clone of the requesting thread's `Handle`.
-        let handle = (*req).handle.clone();
+        // First, make a clone of the requesting thread.
+        let thread = (*req).handle.inner.thread.clone();
 
         // Exchange the messages and then notify the requesting thread that it can pick up our
         // message.
@@ -399,7 +399,7 @@ fn fulfill<T>(msg: T) -> T {
         (*req).handle.try_select(CaseId::abort());
 
         // Wake up the requesting thread.
-        handle.unpark();
+        thread.unpark();
 
         // Return the exchanged message.
         m

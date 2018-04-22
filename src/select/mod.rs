@@ -660,11 +660,7 @@ macro_rules! select {
                 break;
             }
 
-            // TODO: initialize a timestamp here and use it inside waitqueue for sorting
-            // TODO: maybe initialize in second round only, but in the first round don't sleep,
-            // just yield once?
-            // TODO: alternatively, for fairness, instead of removing a case from a monitor, just
-            // mark it as removed
+            // TODO: for fairness, instead of removing a case from a monitor, just mark it as removed
 
             // TODO: a test with send(foo(), msg) where foo is a FnOnce (and same for recv()).
 
@@ -752,7 +748,6 @@ macro_rules! select {
         // }
         // TODO: error message tests
 
-        // TODO: remove tail locking in flavors::list because it serves no purpose
         // TODO: test select with duplicate cases
 
         // TODO: accept both Instant and Duration the in default case
@@ -764,9 +759,7 @@ macro_rules! select {
         // use crossbeam::channel::sync as chan;
 
         // TODO: mem::forget the token in unreachable!() case in order to eliminate the drop flag?
-        // TODO: merge Handle and Local?
 
-        // TODO: equality and ordering between Sender  Receiver
         // TODO: eliminate all thread-locals (mpsc doesn't use them!)
     }};
 
