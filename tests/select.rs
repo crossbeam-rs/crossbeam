@@ -140,8 +140,8 @@ fn closed() {
 
     crossbeam::scope(|s| {
         s.spawn(|| {
-            thread::sleep(ms(500));
             drop(tx1);
+            thread::sleep(ms(500));
             tx2.send(5);
         });
 
