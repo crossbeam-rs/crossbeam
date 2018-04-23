@@ -39,33 +39,46 @@ impl Backoff {
     }
 }
 
-/// Returns a random number in range `0..ceil`.
-#[inline]
-pub fn small_random(ceil: usize) -> usize {
-    thread_local! {
-        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
-    }
+struct Rng {
+    state: Cell<Wrapping<u32>>,
+}
 
-    // TODO(stjepang): Use `try_with` instead of `with` when it gets stabilized.
-    RNG.with(|rng| {
+impl Rng {
+    #[inline]
+    fn next(&self) -> u32 {
         // This is the 32-bit variant of Xorshift.
-        let mut x = rng.get();
+        // https://en.wikipedia.org/wiki/Xorshift
+        let mut x = self.state.get();
         x ^= x << 13;
         x ^= x >> 17;
         x ^= x << 5;
-        rng.set(x);
+        self.state.set(x);
+        x.0
+    }
+}
 
-        // A modulo operation by a constant gets compiled to simple multiplication. The general
-        // modulo instruction is in comparison much more expensive, so here we match on the most
-        // common moduli in order to avoid it.
-        let x = x.0 as usize;
-        match ceil {
-            1 => x % 1,
-            2 => x % 2,
-            3 => x % 3,
-            4 => x % 4,
-            5 => x % 5,
-            n => x % n,
+thread_local! {
+    static RNG: Rng = Rng {
+        state: Cell::new(Wrapping(1)),
+    };
+}
+
+pub fn shuffle<T>(v: &mut [T]) {
+    let len = v.len();
+    if len <= 1 {
+        return;
+    }
+
+    RNG.with(|rng| {
+        for i in 1..len {
+            let x = rng.next();
+            let n = i + 1;
+
+            // This is a fast alternative to `let j = x % n`.
+            // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+            let j = ((x as u64 * n as u64) >> 32) as u32 as usize;
+
+            v.swap(i, j);
         }
-    })
+    });
 }

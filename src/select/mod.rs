@@ -1,13 +1,7 @@
-use std::fmt;
-use std::time::{Duration, Instant};
-
-use utils::Backoff;
-
 pub use self::case_id::CaseId;
 
 mod case_id;
 
-#[doc(hidden)]
 pub mod handle;
 
 use smallvec::SmallVec;
@@ -608,7 +602,7 @@ macro_rules! select {
         use $crate::smallvec::SmallVec;
         use $crate::select::handle;
         use std::time::Instant;
-        use $crate::utils::Backoff;
+        use $crate::utils::{shuffle, Backoff};
         use $crate::{Sender, Receiver};
         use $crate::channel::Token;
         use $crate::select::{GenericContainer, SelectArgument};
@@ -628,6 +622,7 @@ macro_rules! select {
         let cases = {
             let mut cases;
             select!(@smallvec cases $recv $send);
+            shuffle(&mut cases);
             cases
         };
 
@@ -721,15 +716,10 @@ macro_rules! select {
         // TODO: we should be able to pass in `Box<Receiver<T>>` and `Box<Option<Receiver<T>>`
         // TODO: - or maybe `Option<Box<Receiver<T>>>`?
 
-        // TODO: Sender and Receiver should impl UnwindSafe and RefUnwindSafe
-
         // TODO: allocate less memory in unbounded flavor if few elements are sent.
         // TODO: allocate memory lazily in unbounded flavor?
 
-        // TODO: use a custom Sel impl for Sender to support may-fail sending
-
         // TODO: Run `cargo clippy` and make sure there are no warnings in here.
-        // TODO: optimize try_send and try_recv cases?
 
         // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
 
