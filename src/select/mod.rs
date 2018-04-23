@@ -105,18 +105,38 @@ macro_rules! select {
     // Print an error if there is a semicolon after the block.
     (@parse_list
         ($($head:tt)*)
-        ($case:ident $args:tt => { $($body:tt)* }; $($tail:tt)*)
+        ($case:ident $args:tt => $body:block; $($tail:tt)*)
     ) => {
         compile_error!("did you mean to put a comma instead of the semicolon after `}`?")
     };
     // Don't require a comma after the case if it has a proper block.
     (@parse_list
         ($($head:tt)*)
-        ($case:ident $args:tt => { $($body:tt)* } $($tail:tt)*)
+        ($case:ident $args:tt => $body:block $($tail:tt)*)
     ) => {
         select!(
             @parse_list
-            ($($head)* $case $args => { $($body)* },)
+            ($($head)* $case $args => { $body },)
+            ($($tail)*)
+        )
+    };
+    (@parse_list
+        ($($head:tt)*)
+        ($case:ident $args:tt => loop $b:block $($tail:tt)*)
+    ) => {
+        select!(
+            @parse_list
+            ($($head)* $case $args => { loop { $b } },)
+            ($($tail)*)
+        )
+    };
+    (@parse_list
+        ($($head:tt)*)
+        ($case:ident $args:tt => unsafe $b:block $($tail:tt)*)
+    ) => {
+        select!(
+            @parse_list
+            ($($head)* $case $args => { unsafe { $b } },)
             ($($tail)*)
         )
     };
@@ -655,9 +675,8 @@ macro_rules! select {
                 break;
             }
 
-            // TODO: for fairness, instead of removing a case from a monitor, just mark it as removed
-
             // TODO: a test with send(foo(), msg) where foo is a FnOnce (and same for recv()).
+            // TODO: call a hidden internal macro in order not to clutter the public one (`select!`)
 
             handle::current_reset();
 
@@ -723,19 +742,8 @@ macro_rules! select {
 
         // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
 
-        // TODO: Use $b:block
-
         // TODO: count number of steps in the loop by prepending @debug to the macro or smth
 
-        // TODO: this does not compile - we should automatically insert comma after `}` or suggest a fix
-        // fix this for `match`, `while`, `if`, `if-else`, `if-elseif-else`, `for`, `loop`, `unsafe`
-        // select! {
-        //     recv(r, msg) => match msg {
-        //         None => (),
-        //         Some(_) => (),
-        //     }
-        //     default => ()
-        // }
         // TODO: error message tests
 
         // TODO: test select with duplicate cases
@@ -926,8 +934,10 @@ macro_rules! select {
     () => {
         compile_error!("empty block in `select!`")
     };
+    ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
+        select!(@parse_list () ($($case $(($($args)*))* => $body,)*))
+    };
     ($($tail:tt)*) => {
-        // Start by parsing the list of cases.
         select!(@parse_list () ($($tail)*))
     };
 }

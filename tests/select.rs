@@ -17,6 +17,25 @@ fn ms(ms: u64) -> Duration {
 }
 
 #[test]
+fn bar() {
+    let (s, r) = unbounded::<i32>();
+    select! {
+        // recv(r, msg) => if msg.is_some() {
+        // }
+        recv(r, msg) => 3.0
+        // recv(r, _) => unsafe {
+        // }
+        // recv(r, _) => loop {
+        //     break;
+        // }
+        // recv(r, _) => match 7 + 3 {
+        //     _ => {}
+        // }
+        default() => 7.
+    };
+}
+
+#[test]
 fn foo() {
     let (s, r) = bounded::<i32>(5);
 
