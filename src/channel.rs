@@ -293,7 +293,7 @@ enum Flavor<T> {
 ///
 /// use std::thread;
 ///
-/// let (tx, rx) = unbounded();
+/// let (s, r) = unbounded();
 ///
 /// // An expensive computation.
 /// fn fib(n: i32) -> i32 {
@@ -306,13 +306,13 @@ enum Flavor<T> {
 ///
 /// // Spawn a thread doing expensive computation.
 /// thread::spawn(move || {
-///     tx.send(fib(20));
+///     s.send(fib(20));
 /// });
 ///
 /// // Do some useful work for a while...
 ///
 /// // Let's see what's the result of the expensive computation.
-/// println!("{}", rx.recv().unwrap());
+/// println!("{}", r.recv().unwrap());
 /// ```
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
@@ -337,20 +337,20 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// use std::time::Duration;
 /// use crossbeam_channel::bounded;
 ///
-/// let (tx, rx) = bounded(1);
+/// let (s, r) = bounded(1);
 ///
 /// // This call returns immediately since there is enough space in the channel.
-/// tx.send(1);
+/// s.send(1);
 ///
 /// thread::spawn(move || {
 ///     // This call blocks because the channel is full. It will be able to complete only after the
 ///     // first message is received.
-///     tx.send(2);
+///     s.send(2);
 /// });
 ///
 /// thread::sleep(Duration::from_secs(1));
-/// assert_eq!(rx.recv(), Some(1));
-/// assert_eq!(rx.recv(), Some(2));
+/// assert_eq!(r.recv(), Some(1));
+/// assert_eq!(r.recv(), Some(2));
 /// ```
 ///
 /// ```
@@ -358,15 +358,15 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// use std::time::Duration;
 /// use crossbeam_channel::bounded;
 ///
-/// let (tx, rx) = bounded(0);
+/// let (s, r) = bounded(0);
 ///
 /// thread::spawn(move || {
 ///     // This call blocks until the receive operation appears on the other end of the channel.
-///     tx.send(1);
+///     s.send(1);
 /// });
 ///
 /// thread::sleep(Duration::from_secs(1));
-/// assert_eq!(rx.recv(), Some(1));
+/// assert_eq!(r.recv(), Some(1));
 /// ```
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
@@ -392,19 +392,19 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// use std::thread;
 /// use crossbeam_channel::unbounded;
 ///
-/// let (tx1, rx) = unbounded();
-/// let tx2 = tx1.clone();
+/// let (s1, r) = unbounded();
+/// let s2 = s1.clone();
 ///
 /// thread::spawn(move || {
-///     tx1.send(1);
+///     s1.send(1);
 /// });
 ///
 /// thread::spawn(move || {
-///     tx2.send(2);
+///     s2.send(2);
 /// });
 ///
-/// let msg1 = rx.recv().unwrap();
-/// let msg2 = rx.recv().unwrap();
+/// let msg1 = r.recv().unwrap();
+/// let msg2 = r.recv().unwrap();
 ///
 /// assert_eq!(3, msg1 + msg2);
 /// ```
@@ -463,13 +463,13 @@ impl<T> Sender<T> {
     /// use std::time::Duration;
     /// use crossbeam_channel::bounded;
     ///
-    /// let (tx, rx) = bounded(0);
+    /// let (s, r) = bounded(0);
     ///
     /// thread::spawn(move || {
-    ///     tx.send(1);
+    ///     s.send(1);
     /// });
     ///
-    /// assert_eq!(rx.recv(), Some(1));
+    /// assert_eq!(r.recv(), Some(1));
     /// ```
     pub fn send(&self, msg: T) {
         // let sender = self;
@@ -489,11 +489,11 @@ impl<T> Sender<T> {
     /// ```
     /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = unbounded();
-    /// assert!(tx.is_empty());
+    /// let (s, r) = unbounded();
+    /// assert!(s.is_empty());
     ///
-    /// tx.send(0);
-    /// assert!(!tx.is_empty());
+    /// s.send(0);
+    /// assert!(!s.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
         match self.0.flavor {
@@ -512,11 +512,11 @@ impl<T> Sender<T> {
     /// ```
     /// use crossbeam_channel::bounded;
     ///
-    /// let (tx, rx) = bounded(1);
+    /// let (s, r) = bounded(1);
     ///
-    /// assert!(!tx.is_full());
-    /// tx.send(0);
-    /// assert!(tx.is_full());
+    /// assert!(!s.is_full());
+    /// s.send(0);
+    /// assert!(s.is_full());
     /// ```
     pub fn is_full(&self) -> bool {
         match self.0.flavor {
@@ -533,12 +533,12 @@ impl<T> Sender<T> {
     /// ```
     /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = unbounded();
-    /// assert_eq!(tx.len(), 0);
+    /// let (s, r) = unbounded();
+    /// assert_eq!(s.len(), 0);
     ///
-    /// tx.send(1);
-    /// tx.send(2);
-    /// assert_eq!(tx.len(), 2);
+    /// s.send(1);
+    /// s.send(2);
+    /// assert_eq!(s.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
         match self.0.flavor {
@@ -555,14 +555,14 @@ impl<T> Sender<T> {
     /// ```
     /// use crossbeam_channel::{bounded, unbounded};
     ///
-    /// let (tx, _) = unbounded::<i32>();
-    /// assert_eq!(tx.capacity(), None);
+    /// let (s, _) = unbounded::<i32>();
+    /// assert_eq!(s.capacity(), None);
     ///
-    /// let (tx, _) = bounded::<i32>(5);
-    /// assert_eq!(tx.capacity(), Some(5));
+    /// let (s, _) = bounded::<i32>(5);
+    /// assert_eq!(s.capacity(), Some(5));
     ///
-    /// let (tx, _) = bounded::<i32>(0);
-    /// assert_eq!(tx.capacity(), Some(0));
+    /// let (s, _) = bounded::<i32>(0);
+    /// assert_eq!(s.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {
@@ -650,17 +650,17 @@ impl<T> RefUnwindSafe for Sender<T> {}
 /// use std::time::Duration;
 /// use crossbeam_channel::unbounded;
 ///
-/// let (tx, rx) = unbounded();
+/// let (s, r) = unbounded();
 ///
 /// thread::spawn(move || {
-///     tx.send("Hello world!");
+///     s.send("Hello world!");
 ///     thread::sleep(Duration::from_secs(2)); // Block for two seconds.
-///     tx.send("Delayed for 2 seconds");
+///     s.send("Delayed for 2 seconds");
 /// });
 ///
-/// println!("{}", rx.recv().unwrap()); // Received immediately.
+/// println!("{}", r.recv().unwrap()); // Received immediately.
 /// println!("Waiting...");
-/// println!("{}", rx.recv().unwrap()); // Received after 2 seconds.
+/// println!("{}", r.recv().unwrap()); // Received after 2 seconds.
 /// ```
 pub struct Receiver<T>(Arc<Channel<T>>);
 
@@ -703,16 +703,16 @@ impl<T> Receiver<T> {
     /// use std::time::Duration;
     /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = unbounded();
+    /// let (s, r) = unbounded();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5);
-    ///     drop(tx);
+    ///     s.send(5);
+    ///     drop(s);
     /// });
     ///
-    /// assert_eq!(rx.recv(), Some(5));
-    /// assert_eq!(rx.recv(), None);
+    /// assert_eq!(r.recv(), Some(5));
+    /// assert_eq!(r.recv(), None);
     /// ```
     pub fn recv(&self) -> Option<T> {
         select! {
@@ -734,14 +734,14 @@ impl<T> Receiver<T> {
     /// ```
     /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = unbounded();
-    /// assert_eq!(rx.try_recv(), None);
+    /// let (s, r) = unbounded();
+    /// assert_eq!(r.try_recv(), None);
     ///
-    /// tx.send(5);
-    /// drop(tx);
+    /// s.send(5);
+    /// drop(s);
     ///
-    /// assert_eq!(rx.try_recv(), Some(5));
-    /// assert_eq!(rx.try_recv(), None);
+    /// assert_eq!(r.try_recv(), Some(5));
+    /// assert_eq!(r.try_recv(), None);
     /// ```
     pub fn try_recv(&self) -> Option<T> {
         select! {
@@ -759,11 +759,11 @@ impl<T> Receiver<T> {
     /// ```
     /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = unbounded();
+    /// let (s, r) = unbounded();
     ///
-    /// assert!(rx.is_empty());
-    /// tx.send(0);
-    /// assert!(!rx.is_empty());
+    /// assert!(r.is_empty());
+    /// s.send(0);
+    /// assert!(!r.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
         match self.0.flavor {
@@ -782,11 +782,11 @@ impl<T> Receiver<T> {
     /// ```
     /// use crossbeam_channel::bounded;
     ///
-    /// let (tx, rx) = bounded(1);
+    /// let (s, r) = bounded(1);
     ///
-    /// assert!(!rx.is_full());
-    /// tx.send(0);
-    /// assert!(rx.is_full());
+    /// assert!(!r.is_full());
+    /// s.send(0);
+    /// assert!(r.is_full());
     /// ```
     pub fn is_full(&self) -> bool {
         match self.0.flavor {
@@ -803,12 +803,12 @@ impl<T> Receiver<T> {
     /// ```
     /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = unbounded();
-    /// assert_eq!(rx.len(), 0);
+    /// let (s, r) = unbounded();
+    /// assert_eq!(r.len(), 0);
     ///
-    /// tx.send(1);
-    /// tx.send(2);
-    /// assert_eq!(rx.len(), 2);
+    /// s.send(1);
+    /// s.send(2);
+    /// assert_eq!(r.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
         match self.0.flavor {
@@ -825,14 +825,14 @@ impl<T> Receiver<T> {
     /// ```
     /// use crossbeam_channel::{bounded, unbounded};
     ///
-    /// let (tx, _) = unbounded::<i32>();
-    /// assert_eq!(tx.capacity(), None);
+    /// let (s, _) = unbounded::<i32>();
+    /// assert_eq!(s.capacity(), None);
     ///
-    /// let (tx, _) = bounded::<i32>(5);
-    /// assert_eq!(tx.capacity(), Some(5));
+    /// let (s, _) = bounded::<i32>(5);
+    /// assert_eq!(s.capacity(), Some(5));
     ///
-    /// let (tx, _) = bounded::<i32>(0);
-    /// assert_eq!(tx.capacity(), Some(0));
+    /// let (s, _) = bounded::<i32>(0);
+    /// assert_eq!(s.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {

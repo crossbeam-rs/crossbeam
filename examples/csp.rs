@@ -40,24 +40,24 @@ use channel::{Receiver, Sender};
 
 fn main() {
     let people = vec!["Anna", "Bob", "Cody", "Dave", "Eva"];
-    let (tx, rx) = channel::bounded(1); // Make room for one unmatched send.
-    let (tx, rx) = (&tx, &rx);
+    let (s, r) = channel::bounded(1); // Make room for one unmatched send.
+    let (s, r) = (&s, &r);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for name in people {
-            s.spawn(move || seek(name, tx, rx));
+            scope.spawn(move || seek(name, s, r));
         }
     });
 
-    if let Some(name) = rx.try_recv() {
+    if let Some(name) = r.try_recv() {
         println!("No one received {}’s message.", name);
     }
 }
 
 // Either send my name into the channel or receive someone else's, whatever happens first.
-fn seek<'a>(name: &'a str, tx: &Sender<&'a str>, rx: &Receiver<&'a str>) {
+fn seek<'a>(name: &'a str, s: &Sender<&'a str>, r: &Receiver<&'a str>) {
     select! {
-        recv(rx, peer) => println!("{} received a message from {}.", name, peer.unwrap()),
-        send(tx, name) => {}, // Wait for someone to receive my message.
+        recv(r, peer) => println!("{} received a message from {}.", name, peer.unwrap()),
+        send(s, name) => {}, // Wait for someone to receive my message.
     }
 }

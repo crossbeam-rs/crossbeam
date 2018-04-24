@@ -646,6 +646,8 @@ macro_rules! select {
             cases
         };
 
+        // TODO: evaluate sender/receiver just once
+
         loop {
             // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
             let backoff = &mut Backoff::new();
@@ -730,7 +732,7 @@ macro_rules! select {
 
         // TODO: should send failure wake up a sender, not just receiver? or both?
 
-        // TODO: to be consistent, `select! { recv(rx, _) => () }` should move `rx`, not borrow!
+        // TODO: to be consistent, `select! { recv(r, _) => () }` should move `r`, not borrow!
         // TODO: - or maybe borrow in both single and multi cases?
         // TODO: we should be able to pass in `Box<Receiver<T>>` and `Box<Option<Receiver<T>>`
         // TODO: - or maybe `Option<Box<Receiver<T>>>`?
@@ -844,8 +846,12 @@ macro_rules! select {
         $default:tt
     ) => {
         if $index == $i {
-            let $m = unsafe { ($r).read(&mut $token) };
-            unsafe { ($r).finish(&mut $token) };
+            let $m = {
+                let r = &($r);
+                let msg = unsafe { ($r).read(&mut $token) };
+                unsafe { r.finish(&mut $token) };
+                msg
+            };
             $body
         } else {
             select!(

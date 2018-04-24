@@ -10,7 +10,7 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
 // TODO: test that `select!` evaluates to an expression
 // TODO: two nested `select!`s
-// TODO: check `select! { recv(&&&&&rx, _) => {} }`
+// TODO: check `select! { recv(&&&&&r, _) => {} }`
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -56,18 +56,27 @@ fn foo() {
     });
 }
 
+#[test]
+fn same_variable_name() {
+    let (_, r) = unbounded::<i32>();
+    select! {
+        recv(r, r) => assert!(r.is_none()),
+    };
+    // TODO: do the same with send(s, _, s) and recv(r, _, r)
+}
+
 // #[test]
 // fn bar() {
-//     let (tx, rx) = bounded(0);
+//     let (s, r) = bounded(0);
 //
-//     crossbeam::scope(|s| {
-//         s.spawn(|| {
-//             tx.send(8);
+//     crossbeam::scope(|scope| {
+//         scope.spawn(|| {
+//             s.send(8);
 //         });
-//         s.spawn(|| {
+//         scope.spawn(|| {
 //             thread::sleep(ms(1000)); /////////////
 //             select! {
-//                 recv(rx, v) => assert_eq!(v, Some(8))
+//                 recv(r, v) => assert_eq!(v, Some(8))
 //             }
 //         });
 //     });
@@ -82,27 +91,27 @@ fn foo() {
 //         mut struct_val: Foo,
 //         mut var: String,
 //         immutable_var: String,
-//         rx0: Receiver<String>,
-//         rx1: &Receiver<u32>,
-//         rx2: Receiver<()>,
-//         tx0: &mut Sender<String>,
-//         tx1: Sender<String>,
-//         tx2: Sender<String>,
-//         tx3: Sender<String>,
-//         tx4: Sender<String>,
-//         tx5: Sender<u32>,
+//         r0: Receiver<String>,
+//         r1: &Receiver<u32>,
+//         r2: Receiver<()>,
+//         s0: &mut Sender<String>,
+//         s1: Sender<String>,
+//         s2: Sender<String>,
+//         s3: Sender<String>,
+//         s4: Sender<String>,
+//         s5: Sender<u32>,
 //     ) -> Option<String> {
 //         select! {
-//             recv(rx0, val) => Some(val),
-//             recv(rx1, val) => Some(val.to_string()),
-//             recv(rx2, ()) => None,
-//             send(tx0, mut struct_val.0) => Some(var),
-//             send(tx1, mut var) => Some(struct_val.0),
-//             send(tx1, immutable_var) => Some(struct_val.0),
-//             send(tx2, struct_val.0.clone()) => Some(struct_val.0),
-//             send(tx3, "foo".to_string()) => Some(var),
-//             send(tx4, var.clone()) => Some(var),
-//             send(tx5, 42) => None,
+//             recv(r0, val) => Some(val),
+//             recv(r1, val) => Some(val.to_string()),
+//             recv(r2, ()) => None,
+//             send(s0, mut struct_val.0) => Some(var),
+//             send(s1, mut var) => Some(struct_val.0),
+//             send(s1, immutable_var) => Some(struct_val.0),
+//             send(s2, struct_val.0.clone()) => Some(struct_val.0),
+//             send(s3, "foo".to_string()) => Some(var),
+//             send(s4, var.clone()) => Some(var),
+//             send(s5, 42) => None,
 //
 //             closed() => Some("closed".into()),
 //             would_block() => Some("would_block".into()),
@@ -115,78 +124,78 @@ fn foo() {
 
 #[test]
 fn smoke1() {
-    let (tx1, rx1) = unbounded();
-    let (tx2, rx2) = unbounded();
+    let (s1, r1) = unbounded();
+    let (s2, r2) = unbounded();
 
-    tx1.send(1);
+    s1.send(1);
 
     select! {
-        recv(rx1, v) => assert_eq!(v, Some(1)),
-        recv(rx2, _) => panic!(),
+        recv(r1, v) => assert_eq!(v, Some(1)),
+        recv(r2, _) => panic!(),
     }
 
-    tx2.send(2);
+    s2.send(2);
 
     select! {
-        recv(rx1, _) => panic!(),
-        recv(rx2, v) => assert_eq!(v, Some(2)),
+        recv(r1, _) => panic!(),
+        recv(r2, v) => assert_eq!(v, Some(2)),
     }
 }
 
 #[test]
 fn smoke2() {
-    let (_tx1, rx1) = unbounded::<i32>();
-    let (_tx2, rx2) = unbounded::<i32>();
-    let (_tx3, rx3) = unbounded::<i32>();
-    let (_tx4, rx4) = unbounded::<i32>();
-    let (tx5, rx5) = unbounded::<i32>();
+    let (_s1, r1) = unbounded::<i32>();
+    let (_s2, r2) = unbounded::<i32>();
+    let (_s3, r3) = unbounded::<i32>();
+    let (_s4, r4) = unbounded::<i32>();
+    let (s5, r5) = unbounded::<i32>();
 
-    tx5.send(5);
+    s5.send(5);
 
     select! {
-        recv(rx1, _) => panic!(),
-        recv(rx2, _) => panic!(),
-        recv(rx3, _) => panic!(),
-        recv(rx4, _) => panic!(),
-        recv(rx5, v) => assert_eq!(v, Some(5)),
+        recv(r1, _) => panic!(),
+        recv(r2, _) => panic!(),
+        recv(r3, _) => panic!(),
+        recv(r4, _) => panic!(),
+        recv(r5, v) => assert_eq!(v, Some(5)),
     }
 }
 
 #[test]
 fn closed() {
-    let (tx1, rx1) = unbounded::<i32>();
-    let (tx2, rx2) = unbounded::<i32>();
+    let (s1, r1) = unbounded::<i32>();
+    let (s2, r2) = unbounded::<i32>();
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
-            drop(tx1);
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            drop(s1);
             thread::sleep(ms(500));
-            tx2.send(5);
+            s2.send(5);
         });
 
         select! {
-            recv(rx1, v) => assert!(v.is_none()),
-            recv(rx2, _) => panic!(),
+            recv(r1, v) => assert!(v.is_none()),
+            recv(r2, _) => panic!(),
             default(ms(1000)) => panic!(),
         }
 
-        rx2.recv().unwrap();
+        r2.recv().unwrap();
     });
 
     select! {
-        recv(rx1, v) => assert!(v.is_none()),
-        recv(rx2, _) => panic!(),
+        recv(r1, v) => assert!(v.is_none()),
+        recv(r2, _) => panic!(),
         default(ms(1000)) => panic!(),
     }
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             thread::sleep(ms(500));
-            drop(tx2);
+            drop(s2);
         });
 
         select! {
-            recv(rx2, v) => assert!(v.is_none()),
+            recv(r2, v) => assert!(v.is_none()),
             default(ms(1000)) => panic!(),
         }
     });
@@ -194,32 +203,32 @@ fn closed() {
 
 #[test]
 fn default() {
-    let (tx1, rx1) = unbounded::<i32>();
-    let (tx2, rx2) = unbounded::<i32>();
+    let (s1, r1) = unbounded::<i32>();
+    let (s2, r2) = unbounded::<i32>();
 
     select! {
-        recv(rx1, _) => panic!(),
-        recv(rx2, _) => panic!(),
+        recv(r1, _) => panic!(),
+        recv(r2, _) => panic!(),
         default => {}
     }
 
-    drop(tx1);
+    drop(s1);
 
     select! {
-        recv(rx1, v) => assert!(v.is_none()),
-        recv(rx2, _) => panic!(),
+        recv(r1, v) => assert!(v.is_none()),
+        recv(r2, _) => panic!(),
         default => panic!(),
     }
 
-    tx2.send(2);
+    s2.send(2);
 
     select! {
-        recv(rx2, v) => assert_eq!(v, Some(2)),
+        recv(r2, v) => assert_eq!(v, Some(2)),
         default => panic!(),
     }
 
     select! {
-        recv(rx2, _) => panic!(),
+        recv(r2, _) => panic!(),
         default => {},
     }
 
@@ -230,40 +239,40 @@ fn default() {
 
 #[test]
 fn timeout() {
-    let (_tx1, rx1) = unbounded::<i32>();
-    let (tx2, rx2) = unbounded::<i32>();
+    let (_s1, r1) = unbounded::<i32>();
+    let (s2, r2) = unbounded::<i32>();
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             thread::sleep(ms(1500));
-            tx2.send(2);
+            s2.send(2);
         });
 
         select! {
-            recv(rx1, _) => panic!(),
-            recv(rx2, _) => panic!(),
+            recv(r1, _) => panic!(),
+            recv(r2, _) => panic!(),
             default(ms(1000)) => {},
         }
 
         select! {
-            recv(rx1, _) => panic!(),
-            recv(rx2, v) => assert_eq!(v, Some(2)),
+            recv(r1, _) => panic!(),
+            recv(r2, v) => assert_eq!(v, Some(2)),
             default(ms(1000)) => panic!(),
         }
     });
 
-    crossbeam::scope(|s| {
-        let (tx, rx) = unbounded::<i32>();
+    crossbeam::scope(|scope| {
+        let (s, r) = unbounded::<i32>();
 
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(500));
-            drop(tx);
+            drop(s);
         });
 
         select! {
             default(ms(1000)) => {
                 select! {
-                    recv(rx, v) => assert!(v.is_none()),
+                    recv(r, v) => assert!(v.is_none()),
                     default => panic!(),
                 }
             }
@@ -273,48 +282,48 @@ fn timeout() {
 
 #[test]
 fn default_when_closed() {
-    let (_, rx) = unbounded::<i32>();
+    let (_, r) = unbounded::<i32>();
 
     select! {
-        recv(rx, v) => assert!(v.is_none()),
+        recv(r, v) => assert!(v.is_none()),
         default => panic!(),
     }
 
-    let (_, rx) = unbounded::<i32>();
+    let (_, r) = unbounded::<i32>();
 
     select! {
-        recv(rx, v) => assert!(v.is_none()),
+        recv(r, v) => assert!(v.is_none()),
         default(ms(1000)) => panic!(),
     }
 }
 
 #[test]
 fn unblocks() {
-    let (tx1, rx1) = bounded(0);
-    let (tx2, rx2) = bounded(0);
+    let (s1, r1) = bounded(0);
+    let (s2, r2) = bounded(0);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             thread::sleep(ms(500));
-            tx2.send(2);
+            s2.send(2);
         });
 
         select! {
-            recv(rx1, _) => panic!(),
-            recv(rx2, v) => assert_eq!(v, Some(2)),
+            recv(r1, _) => panic!(),
+            recv(r2, v) => assert_eq!(v, Some(2)),
             default(ms(1000)) => panic!(),
         }
     });
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             thread::sleep(ms(500));
-            assert_eq!(rx1.recv().unwrap(), 1);
+            assert_eq!(r1.recv().unwrap(), 1);
         });
 
         select! {
-            send(tx1, 1) => {},
-            send(tx2, 2) => panic!(),
+            send(s1, 1) => {},
+            send(s2, 2) => panic!(),
             default(ms(1000)) => panic!(),
         }
     });
@@ -322,20 +331,20 @@ fn unblocks() {
 
 #[test]
 fn both_ready() {
-    let (tx1, rx1) = bounded(0);
-    let (tx2, rx2) = bounded(0);
+    let (s1, r1) = bounded(0);
+    let (s2, r2) = bounded(0);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             thread::sleep(ms(500));
-            tx1.send(1);
-            assert_eq!(rx2.recv().unwrap(), 2);
+            s1.send(1);
+            assert_eq!(r2.recv().unwrap(), 2);
         });
 
         for _ in 0..2 {
             select! {
-                recv(rx1, v) => assert_eq!(v, Some(1)),
-                send(tx2, 2) => {},
+                recv(r1, v) => assert_eq!(v, Some(1)),
+                send(s2, 2) => {},
             }
         }
     });
@@ -344,49 +353,49 @@ fn both_ready() {
 #[test]
 fn loop_try() {
     for _ in 0..20 {
-        let (tx1, rx1) = bounded::<i32>(0);
-        let (tx2, rx2) = bounded::<i32>(0);
-        let (tx_end, rx_end) = bounded::<()>(0);
+        let (s1, r1) = bounded::<i32>(0);
+        let (s2, r2) = bounded::<i32>(0);
+        let (s_end, r_end) = bounded::<()>(0);
 
-        crossbeam::scope(|s| {
-            s.spawn(|| {
+        crossbeam::scope(|scope| {
+            scope.spawn(|| {
                 loop {
                     select! {
-                        send(tx1, 1) => break,
+                        send(s1, 1) => break,
                         default => {}
                     }
 
                     select! {
-                        recv(rx_end, _) => break,
+                        recv(r_end, _) => break,
                         default => {}
                     }
                 }
             });
 
-            s.spawn(|| {
+            scope.spawn(|| {
                 loop {
-                    if let Some(x) = rx2.try_recv() {
+                    if let Some(x) = r2.try_recv() {
                         assert_eq!(x, 2);
                         break;
                     }
 
                     select! {
-                        recv(rx_end, _) => break,
+                        recv(r_end, _) => break,
                         default => {}
                     }
                 }
             });
 
-            s.spawn(|| {
+            scope.spawn(|| {
                 thread::sleep(ms(500));
 
                 select! {
-                    recv(rx1, v) => assert_eq!(v, Some(1)),
-                    send(tx2, 2) => {},
+                    recv(r1, v) => assert_eq!(v, Some(1)),
+                    send(s2, 2) => {},
                     default(ms(500)) => panic!(),
                 }
 
-                drop(tx_end);
+                drop(s_end);
             });
         });
     }
@@ -394,111 +403,111 @@ fn loop_try() {
 
 #[test]
 fn cloning1() {
-    crossbeam::scope(|s| {
-        let (tx1, rx1) = unbounded::<i32>();
-        let (_tx2, rx2) = unbounded::<i32>();
-        let (tx3, rx3) = unbounded::<()>();
+    crossbeam::scope(|scope| {
+        let (s1, r1) = unbounded::<i32>();
+        let (_s2, r2) = unbounded::<i32>();
+        let (s3, r3) = unbounded::<()>();
 
-        s.spawn(move || {
-            rx3.recv().unwrap();
-            tx1.clone();
-            assert_eq!(rx3.try_recv(), None);
-            tx1.send(1);
-            rx3.recv().unwrap();
+        scope.spawn(move || {
+            r3.recv().unwrap();
+            s1.clone();
+            assert_eq!(r3.try_recv(), None);
+            s1.send(1);
+            r3.recv().unwrap();
         });
 
-        tx3.send(());
+        s3.send(());
 
         select! {
-            recv(rx1, _) => {},
-            recv(rx2, _) => {},
+            recv(r1, _) => {},
+            recv(r2, _) => {},
         }
 
-        tx3.send(());
+        s3.send(());
     });
 }
 
 #[test]
 fn cloning2() {
-    let (tx1, rx1) = unbounded::<()>();
-    let (tx2, rx2) = unbounded::<()>();
-    let (_tx3, _rx3) = unbounded::<()>();
+    let (s1, r1) = unbounded::<()>();
+    let (s2, r2) = unbounded::<()>();
+    let (_s3, _r3) = unbounded::<()>();
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
             select! {
-                recv(rx1, _) => panic!(),
-                recv(rx2, _) => {},
+                recv(r1, _) => panic!(),
+                recv(r2, _) => {},
             }
         });
 
         thread::sleep(ms(500));
-        drop(tx1.clone());
-        tx2.send(());
+        drop(s1.clone());
+        s2.send(());
     })
 }
 
 #[test]
 fn preflight1() {
-    let (tx, rx) = unbounded();
-    tx.send(());
+    let (s, r) = unbounded();
+    s.send(());
 
     select! {
-        recv(rx, _) => {}
+        recv(r, _) => {}
     }
 }
 
 #[test]
 fn preflight2() {
-    let (tx, rx) = unbounded();
-    drop(tx.clone());
-    tx.send(());
-    drop(tx);
+    let (s, r) = unbounded();
+    drop(s.clone());
+    s.send(());
+    drop(s);
 
     select! {
-        recv(rx, v) => assert!(v.is_some()),
+        recv(r, v) => assert!(v.is_some()),
     }
-    assert_eq!(rx.try_recv(), None);
+    assert_eq!(r.try_recv(), None);
 }
 
 #[test]
 fn preflight3() {
-    let (tx, rx) = unbounded();
-    drop(tx.clone());
-    tx.send(());
-    drop(tx);
-    rx.recv().unwrap();
+    let (s, r) = unbounded();
+    drop(s.clone());
+    s.send(());
+    drop(s);
+    r.recv().unwrap();
 
     select! {
-        recv(rx, v) => assert!(v.is_none())
+        recv(r, v) => assert!(v.is_none())
     }
 }
 
 #[test]
 fn stress_recv() {
-    let (tx1, rx1) = unbounded();
-    let (tx2, rx2) = bounded(5);
-    let (tx3, rx3) = bounded(100);
+    let (s1, r1) = unbounded();
+    let (s2, r2) = bounded(5);
+    let (s3, r3) = bounded(100);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..10_000 {
-                tx1.send(i);
-                rx3.recv().unwrap();
+                s1.send(i);
+                r3.recv().unwrap();
 
-                tx2.send(i);
-                rx3.recv().unwrap();
+                s2.send(i);
+                r3.recv().unwrap();
             }
         });
 
         for i in 0..10_000 {
             for _ in 0..2 {
                 select! {
-                    recv(rx1, v) => assert_eq!(v, Some(i)),
-                    recv(rx2, v) => assert_eq!(v, Some(i)),
+                    recv(r1, v) => assert_eq!(v, Some(i)),
+                    recv(r2, v) => assert_eq!(v, Some(i)),
                 }
 
-                tx3.send(());
+                s3.send(());
             }
         }
     });
@@ -506,54 +515,54 @@ fn stress_recv() {
 
 #[test]
 fn stress_send() {
-    let (tx1, rx1) = bounded(0);
-    let (tx2, rx2) = bounded(0);
-    let (tx3, rx3) = bounded(100);
+    let (s1, r1) = bounded(0);
+    let (s2, r2) = bounded(0);
+    let (s3, r3) = bounded(100);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..10_000 {
-                assert_eq!(rx1.recv().unwrap(), i);
-                assert_eq!(rx2.recv().unwrap(), i);
-                rx3.recv().unwrap();
+                assert_eq!(r1.recv().unwrap(), i);
+                assert_eq!(r2.recv().unwrap(), i);
+                r3.recv().unwrap();
             }
         });
 
         for i in 0..10_000 {
             for _ in 0..2 {
                 select! {
-                    send(tx1, i) => {},
-                    send(tx2, i) => {},
+                    send(s1, i) => {},
+                    send(s2, i) => {},
                 }
             }
-            tx3.send(());
+            s3.send(());
         }
     });
 }
 
 #[test]
 fn stress_mixed() {
-    let (tx1, rx1) = bounded(0);
-    let (tx2, rx2) = bounded(0);
-    let (tx3, rx3) = bounded(100);
+    let (s1, r1) = bounded(0);
+    let (s2, r2) = bounded(0);
+    let (s3, r3) = bounded(100);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..10_000 {
-                tx1.send(i);
-                assert_eq!(rx2.recv().unwrap(), i);
-                rx3.recv().unwrap();
+                s1.send(i);
+                assert_eq!(r2.recv().unwrap(), i);
+                r3.recv().unwrap();
             }
         });
 
         for i in 0..10_000 {
             for _ in 0..2 {
                 select! {
-                    recv(rx1, v) => assert_eq!(v, Some(i)),
-                    send(tx2, i) => {},
+                    recv(r1, v) => assert_eq!(v, Some(i)),
+                    send(s2, i) => {},
                 }
             }
-            tx3.send(());
+            s3.send(());
         }
     });
 }
@@ -562,10 +571,10 @@ fn stress_mixed() {
 fn stress_timeout_two_threads() {
     const COUNT: usize = 20;
 
-    let (tx, rx) = bounded(2);
+    let (s, r) = bounded(2);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
                     thread::sleep(ms(500));
@@ -573,14 +582,14 @@ fn stress_timeout_two_threads() {
 
                 loop {
                     select! {
-                        send(tx, i) => break,
+                        send(s, i) => break,
                         default(ms(100)) => {}
                     }
                 }
             }
         });
 
-        s.spawn(|| {
+        scope.spawn(|| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
                     thread::sleep(ms(500));
@@ -588,7 +597,7 @@ fn stress_timeout_two_threads() {
 
                 loop {
                     select! {
-                        recv(rx, v) => {
+                        recv(r, v) => {
                             assert_eq!(v, Some(i));
                             break;
                         }
@@ -654,252 +663,252 @@ impl<T> WrappedReceiver<T> {
 
 #[test]
 fn recv() {
-    let (tx, rx) = bounded(100);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(100);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(rx.recv(), Some(7));
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            assert_eq!(r.recv(), Some(7));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Some(8));
+            assert_eq!(r.recv(), Some(8));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Some(9));
-            assert_eq!(rx.recv(), None);
+            assert_eq!(r.recv(), Some(9));
+            assert_eq!(r.recv(), None);
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1500));
-            tx.send(7);
-            tx.send(8);
-            tx.send(9);
+            s.send(7);
+            s.send(8);
+            s.send(9);
         });
     });
 
-    let (tx, rx) = bounded(0);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(0);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(rx.recv(), Some(7));
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            assert_eq!(r.recv(), Some(7));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Some(8));
+            assert_eq!(r.recv(), Some(8));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Some(9));
-            assert_eq!(rx.recv(), None);
+            assert_eq!(r.recv(), Some(9));
+            assert_eq!(r.recv(), None);
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1500));
-            tx.send(7);
-            tx.send(8);
-            tx.send(9);
+            s.send(7);
+            s.send(8);
+            s.send(9);
         });
     });
 }
 
 #[test]
 fn recv_timeout() {
-    let (tx, rx) = bounded(100);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(100);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(rx.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
-            assert_eq!(rx.recv_timeout(ms(1000)), Ok(7));
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            assert_eq!(r.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
+            assert_eq!(r.recv_timeout(ms(1000)), Ok(7));
             assert_eq!(
-                rx.recv_timeout(ms(1000)),
+                r.recv_timeout(ms(1000)),
                 Err(RecvTimeoutError::Closed)
             );
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1500));
-            tx.send(7);
+            s.send(7);
         });
     });
 }
 
 #[test]
 fn try_recv() {
-    let (tx, rx) = bounded(100);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(100);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(rx.try_recv(), None);
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            assert_eq!(r.try_recv(), None);
             thread::sleep(ms(1500));
-            assert_eq!(rx.try_recv(), Some(7));
+            assert_eq!(r.try_recv(), Some(7));
             thread::sleep(ms(500));
-            assert_eq!(rx.try_recv(), None);
+            assert_eq!(r.try_recv(), None);
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1000));
-            tx.send(7);
+            s.send(7);
         });
     });
 
-    let (tx, rx) = bounded(0);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(0);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(rx.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
-            assert_eq!(rx.recv_timeout(ms(1000)), Ok(7));
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            assert_eq!(r.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
+            assert_eq!(r.recv_timeout(ms(1000)), Ok(7));
             assert_eq!(
-                rx.recv_timeout(ms(1000)),
+                r.recv_timeout(ms(1000)),
                 Err(RecvTimeoutError::Closed)
             );
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1500));
-            tx.send(7);
+            s.send(7);
         });
     });
 }
 
 #[test]
 fn send() {
-    let (tx, rx) = bounded(1);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(1);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            tx.send(7);
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            s.send(7);
             thread::sleep(ms(1000));
-            tx.send(8);
+            s.send(8);
             thread::sleep(ms(1000));
-            tx.send(9);
-            // TODO: drop(rx) closes the channel
+            s.send(9);
+            // TODO: drop(r) closes the channel
             // thread::sleep(ms(1000));
-            // assert_eq!(tx.send(10), Err(SendError(10)));
+            // assert_eq!(s.send(10), Err(SendError(10)));
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(rx.recv(), Some(7));
-            assert_eq!(rx.recv(), Some(8));
-            assert_eq!(rx.recv(), Some(9));
+            assert_eq!(r.recv(), Some(7));
+            assert_eq!(r.recv(), Some(8));
+            assert_eq!(r.recv(), Some(9));
         });
     });
 
-    let (tx, rx) = bounded(0);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(0);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            tx.send(7);
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            s.send(7);
             thread::sleep(ms(1000));
-            tx.send(8);
+            s.send(8);
             thread::sleep(ms(1000));
-            tx.send(9);
-            // TODO: drop(rx) closes the channel
-            // assert_eq!(tx.send(10), Err(SendError(10)));
+            s.send(9);
+            // TODO: drop(r) closes the channel
+            // assert_eq!(s.send(10), Err(SendError(10)));
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(rx.recv(), Some(7));
-            assert_eq!(rx.recv(), Some(8));
-            assert_eq!(rx.recv(), Some(9));
+            assert_eq!(r.recv(), Some(7));
+            assert_eq!(r.recv(), Some(8));
+            assert_eq!(r.recv(), Some(9));
         });
     });
 }
 
 #[test]
 fn send_timeout() {
-    let (tx, rx) = bounded(2);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(2);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(tx.send_timeout(1, ms(1000)), Ok(()));
-            assert_eq!(tx.send_timeout(2, ms(1000)), Ok(()));
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            assert_eq!(s.send_timeout(1, ms(1000)), Ok(()));
+            assert_eq!(s.send_timeout(2, ms(1000)), Ok(()));
             assert_eq!(
-                tx.send_timeout(3, ms(500)),
+                s.send_timeout(3, ms(500)),
                 Err(SendTimeoutError::Timeout(3))
             );
             thread::sleep(ms(1000));
-            assert_eq!(tx.send_timeout(4, ms(1000)), Ok(()));
-            // TODO: drop(rx) closes the channel
+            assert_eq!(s.send_timeout(4, ms(1000)), Ok(()));
+            // TODO: drop(r) closes the channel
             // thread::sleep(ms(1000));
-            // assert_eq!(tx.send(5), Err(SendError(5)));
+            // assert_eq!(s.send(5), Err(SendError(5)));
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Some(1));
+            assert_eq!(r.recv(), Some(1));
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Some(2));
-            assert_eq!(rx.recv(), Some(4));
+            assert_eq!(r.recv(), Some(2));
+            assert_eq!(r.recv(), Some(4));
         });
     });
 
-    let (tx, rx) = bounded(0);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(0);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
             assert_eq!(
-                tx.send_timeout(7, ms(1000)),
+                s.send_timeout(7, ms(1000)),
                 Err(SendTimeoutError::Timeout(7))
             );
-            assert_eq!(tx.send_timeout(8, ms(1000)), Ok(()));
-            // TODO: drop(rx) closes the channel
+            assert_eq!(s.send_timeout(8, ms(1000)), Ok(()));
+            // TODO: drop(r) closes the channel
             // assert_eq!(
-            //     tx.send_timeout(9, ms(1000)),
+            //     s.send_timeout(9, ms(1000)),
             //     Err(SendTimeoutError::Closed(9))
             // );
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1500));
-            assert_eq!(rx.recv(), Some(8));
+            assert_eq!(r.recv(), Some(8));
         });
     });
 }
 
 #[test]
 fn try_send() {
-    let (tx, rx) = bounded(1);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(1);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(tx.try_send(1), Ok(()));
-            assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            assert_eq!(s.try_send(1), Ok(()));
+            assert_eq!(s.try_send(2), Err(TrySendError::Full(2)));
             thread::sleep(ms(1500));
-            assert_eq!(tx.try_send(3), Ok(()));
-            // TODO: drop(rx) closes the channel
+            assert_eq!(s.try_send(3), Ok(()));
+            // TODO: drop(r) closes the channel
             // thread::sleep(ms(500));
-            // assert_eq!(tx.try_send(4), Err(TrySendError::Closed(4)));
+            // assert_eq!(s.try_send(4), Err(TrySendError::Closed(4)));
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1000));
-            assert_eq!(rx.try_recv(), Some(1));
-            assert_eq!(rx.try_recv(), None);
-            assert_eq!(rx.recv(), Some(3));
+            assert_eq!(r.try_recv(), Some(1));
+            assert_eq!(r.try_recv(), None);
+            assert_eq!(r.recv(), Some(3));
         });
     });
 
-    let (tx, rx) = bounded(0);
-    let tx = WrappedSender(tx);
-    let rx = WrappedReceiver(rx);
+    let (s, r) = bounded(0);
+    let s = WrappedSender(s);
+    let r = WrappedReceiver(r);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
-            assert_eq!(tx.try_send(7), Err(TrySendError::Full(7)));
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            assert_eq!(s.try_send(7), Err(TrySendError::Full(7)));
             thread::sleep(ms(1500));
-            assert_eq!(tx.try_send(8), Ok(()));
-            // TODO: drop(rx) closes the channel
+            assert_eq!(s.try_send(8), Ok(()));
+            // TODO: drop(r) closes the channel
             // thread::sleep(ms(500));
-            // assert_eq!(tx.try_send(9), Err(TrySendError::Closed(9)));
+            // assert_eq!(s.try_send(9), Err(TrySendError::Closed(9)));
         });
-        s.spawn(move || {
+        scope.spawn(move || {
             thread::sleep(ms(1000));
-            assert_eq!(rx.recv(), Some(8));
+            assert_eq!(r.recv(), Some(8));
         });
     });
 }
@@ -907,59 +916,59 @@ fn try_send() {
 
 // #[test]
 // fn recv_after_close() {
-//     let (tx, rx) = bounded(100);
-//     let tx = WrappedSender(tx);
-//     let rx = WrappedReceiver(rx);
+//     let (s, r) = bounded(100);
+//     let s = WrappedSender(s);
+//     let r = WrappedReceiver(r);
 //
-//     tx.send(1);
-//     tx.send(2);
-//     tx.send(3);
+//     s.send(1);
+//     s.send(2);
+//     s.send(3);
 //
-//     drop(tx);
+//     drop(s);
 //
-//     assert_eq!(rx.recv(), Some(1));
-//     assert_eq!(rx.recv(), Some(2));
-//     assert_eq!(rx.recv(), Some(3));
-//     assert_eq!(rx.recv(), Err(RecvError));
+//     assert_eq!(r.recv(), Some(1));
+//     assert_eq!(r.recv(), Some(2));
+//     assert_eq!(r.recv(), Some(3));
+//     assert_eq!(r.recv(), Err(RecvError));
 // }
 
 #[test]
 fn matching() {
-    let (tx, rx) = bounded(0);
-    let (tx, rx) = (&tx, &rx);
+    let (s, r) = bounded(0);
+    let (s, r) = (&s, &r);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for i in 0..44 {
-            s.spawn(move || {
+            scope.spawn(move || {
                 select! {
-                    recv(rx, v) => assert_ne!(v.unwrap(), i),
-                    send(tx, i) => {},
+                    recv(r, v) => assert_ne!(v.unwrap(), i),
+                    send(s, i) => {},
                 }
             });
         }
     });
 
-    assert_eq!(rx.try_recv(), None);
+    assert_eq!(r.try_recv(), None);
 }
 
 #[test]
 fn matching_with_leftover() {
-    let (tx, rx) = bounded(0);
-    let (tx, rx) = (&tx, &rx);
+    let (s, r) = bounded(0);
+    let (s, r) = (&s, &r);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for i in 0..55 {
-            s.spawn(move || {
+            scope.spawn(move || {
                 select! {
-                    recv(rx, v) => assert_ne!(v.unwrap(), i),
-                    send(tx, i) => {},
+                    recv(r, v) => assert_ne!(v.unwrap(), i),
+                    send(s, i) => {},
                 }
             });
         }
-        tx.send(!0);
+        s.send(!0);
     });
 
-    assert_eq!(rx.try_recv(), None);
+    assert_eq!(r.try_recv(), None);
 }
 
 #[test]
@@ -969,31 +978,31 @@ fn channel_through_channel() {
     type T = Box<Any + Send>;
 
     for cap in 0..3 {
-        let (tx, rx) = bounded::<T>(cap);
+        let (s, r) = bounded::<T>(cap);
 
-        crossbeam::scope(|s| {
-            s.spawn(move || {
-                let mut tx = tx;
+        crossbeam::scope(|scope| {
+            scope.spawn(move || {
+                let mut s = s;
 
                 for _ in 0..COUNT {
-                    let (new_tx, new_rx) = bounded(cap);
-                    let mut new_rx: T = Box::new(Some(new_rx));
+                    let (new_s, new_r) = bounded(cap);
+                    let mut new_r: T = Box::new(Some(new_r));
 
                     select! {
-                        send(tx, new_rx) => {}
+                        send(s, new_r) => {}
                     }
 
-                    tx = new_tx;
+                    s = new_s;
                 }
             });
 
-            s.spawn(move || {
-                let mut rx = rx;
+            scope.spawn(move || {
+                let mut r = r;
 
                 for _ in 0..COUNT {
-                    rx = select! {
-                        recv(rx, mut r) => {
-                            r.unwrap()
+                    r = select! {
+                        recv(r, mut msg) => {
+                            msg.unwrap()
                                 .downcast_mut::<Option<Receiver<T>>>()
                                 .unwrap()
                                 .take()
@@ -1008,18 +1017,18 @@ fn channel_through_channel() {
 
 // #[test]
 // fn conditional_send() {
-//     let (tx, rx) = bounded(0);
+//     let (s, r) = bounded(0);
 //
-//     crossbeam::scope(|s| {
-//         s.spawn(move || rx.recv().unwrap());
+//     crossbeam::scope(|scope| {
+//         scope.spawn(move || r.recv().unwrap());
 //
 //         select! {
-//             send(tx, ()) if 1 + 1 == 3 => panic!(),
+//             send(s, ()) if 1 + 1 == 3 => panic!(),
 //             timed_out(ms(1000)) => {}
 //         }
 //
 //         select! {
-//             send(tx, ()) if 1 + 1 == 2 => {},
+//             send(s, ()) if 1 + 1 == 2 => {},
 //             timed_out(ms(1000)) => panic!(),
 //         }
 //     });
@@ -1027,33 +1036,33 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_recv() {
-//     let (tx, rx) = unbounded();
-//     tx.send(());
+//     let (s, r) = unbounded();
+//     s.send(());
 //
 //     select! {
-//         recv(rx, _) if 1 + 1 == 3 => panic!(),
+//         recv(r, _) if 1 + 1 == 3 => panic!(),
 //         timed_out(ms(1000)) => {}
 //     }
 //
 //     select! {
-//         recv(rx, _) if 1 + 1 == 2 => {},
+//         recv(r, _) if 1 + 1 == 2 => {},
 //         timed_out(ms(1000)) => panic!(),
 //     }
 // }
 //
 // #[test]
 // fn conditional_closed() {
-//     let (_, rx) = bounded::<i32>(0);
+//     let (_, r) = bounded::<i32>(0);
 //
 //     select! {
-//         recv(rx, _) => panic!(),
+//         recv(r, _) => panic!(),
 //         closed() if 1 + 1 == 3 => panic!(),
 //         would_block() => {}
 //         timed_out(ms(100)) => panic!(),
 //     }
 //
 //     select! {
-//         recv(rx, _) => panic!(),
+//         recv(r, _) => panic!(),
 //         closed() if 1 + 1 == 2 => {}
 //         would_block() => panic!(),
 //         timed_out(ms(100)) => panic!(),
@@ -1062,17 +1071,17 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_would_block() {
-//     let (_tx, rx) = bounded::<i32>(0);
+//     let (_s, r) = bounded::<i32>(0);
 //
 //     select! {
-//         recv(rx, _) => panic!(),
+//         recv(r, _) => panic!(),
 //         closed() => panic!(),
 //         would_block() if 1 + 1 == 3 => panic!(),
 //         timed_out(ms(100)) => {}
 //     }
 //
 //     select! {
-//         recv(rx, _) => panic!(),
+//         recv(r, _) => panic!(),
 //         closed() => panic!(),
 //         would_block() if 1 + 1 == 2 => {}
 //         timed_out(ms(100)) => panic!(),
@@ -1081,16 +1090,16 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_timed_out() {
-//     let (_tx, rx) = bounded::<i32>(0);
+//     let (_s, r) = bounded::<i32>(0);
 //
 //     select! {
-//         recv(rx, _) => panic!(),
+//         recv(r, _) => panic!(),
 //         timed_out(ms(100)) if 1 + 1 == 3 => panic!(),
 //         timed_out(ms(1000)) if 1 + 1 == 2 => {}
 //     }
 //
 //     select! {
-//         recv(rx, _) => panic!(),
+//         recv(r, _) => panic!(),
 //         timed_out(ms(100)) if 1 + 1 == 2 => {}
 //         timed_out(ms(1000)) if 1 + 1 == 3 => panic!(),
 //     }
@@ -1098,12 +1107,12 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_option_unwrap() {
-//     let (tx, rx) = unbounded();
-//     tx.send(());
-//     let rx = Some(&rx);
+//     let (s, r) = unbounded();
+//     s.send(());
+//     let r = Some(&r);
 //
 //     select! {
-//         recv(rx.unwrap(), _) if rx.is_some() => {}
+//         recv(r.unwrap(), _) if r.is_some() => {}
 //         would_block() => panic!()
 //     }
 // }
