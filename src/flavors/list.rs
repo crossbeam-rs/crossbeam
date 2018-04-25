@@ -12,9 +12,9 @@ use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
 use channel::Sel;
-use monitor::Monitor;
 use select::CaseId;
 use utils::Backoff;
+use waker::Waker;
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
@@ -169,7 +169,7 @@ pub struct Channel<T> {
     is_closed: AtomicBool,
 
     /// Receivers waiting on empty channel.
-    receivers: Monitor,
+    receivers: Waker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -199,7 +199,7 @@ impl<T> Channel<T> {
                 node: Atomic::null(),
             }),
             is_closed: AtomicBool::new(false),
-            receivers: Monitor::new(),
+            receivers: Waker::new(),
             _marker: PhantomData,
         };
 
@@ -389,8 +389,8 @@ impl<T> Channel<T> {
         head_index == tail_index
     }
 
-    /// Returns a reference to the monitor for this channel's receivers.
-    pub fn receivers(&self) -> &Monitor {
+    /// Returns a reference to the waker for this channel's receivers.
+    fn receivers(&self) -> &Waker {
         &self.receivers
     }
 }

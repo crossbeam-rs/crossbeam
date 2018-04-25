@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crossbeam_utils::cache_padded::CachePadded;
 
 use channel::Sel;
-use monitor::Monitor;
 use select::CaseId;
 use utils::Backoff;
+use waker::Waker;
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
@@ -186,10 +186,10 @@ pub struct Channel<T> {
     is_closed: AtomicBool,
 
     /// Senders waiting on full channel.
-    senders: Monitor,
+    senders: Waker,
 
     /// Receivers waiting on empty channel.
-    receivers: Monitor,
+    receivers: Waker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -260,8 +260,8 @@ impl<T> Channel<T> {
             is_closed: AtomicBool::new(false),
             head: CachePadded::new(AtomicUsize::new(head)),
             tail: CachePadded::new(AtomicUsize::new(tail)),
-            senders: Monitor::new(),
-            receivers: Monitor::new(),
+            senders: Waker::new(),
+            receivers: Waker::new(),
             _marker: PhantomData,
         }
     }
@@ -537,13 +537,13 @@ impl<T> Channel<T> {
         head.wrapping_add(one_lap) == tail
     }
 
-    /// Returns a reference to the monitor for this channel's senders.
-    pub fn senders(&self) -> &Monitor {
+    /// Returns a reference to the waker for this channel's senders.
+    fn senders(&self) -> &Waker {
         &self.senders
     }
 
-    /// Returns a reference to the monitor for this channel's receivers.
-    pub fn receivers(&self) -> &Monitor {
+    /// Returns a reference to the waker for this channel's receivers.
+    fn receivers(&self) -> &Waker {
         &self.receivers
     }
 }

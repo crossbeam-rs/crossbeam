@@ -27,7 +27,7 @@ pub struct Case {
 ///
 /// This data structure is used for registering selection cases before blocking and waking them
 /// up when the channel receives a message, sends one, or gets closed.
-pub struct Monitor {
+pub struct Waker {
     /// The list of registered selection cases.
     cases: Mutex<VecDeque<Case>>,
 
@@ -35,11 +35,11 @@ pub struct Monitor {
     len: AtomicUsize,
 }
 
-impl Monitor {
-    /// Creates a new `Monitor`.
+impl Waker {
+    /// Creates a new `Waker`.
     #[inline]
     pub fn new() -> Self {
-        Monitor {
+        Waker {
             cases: Mutex::new(VecDeque::new()),
             len: AtomicUsize::new(0),
         }
@@ -129,7 +129,7 @@ impl Monitor {
     }
 }
 
-impl Drop for Monitor {
+impl Drop for Waker {
     fn drop(&mut self) {
         debug_assert!(self.cases.lock().is_empty());
         debug_assert_eq!(self.len.load(Ordering::SeqCst), 0);

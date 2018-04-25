@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use parking_lot::Mutex;
 
 use channel::Sel;
-use monitor::{Monitor, Case};
 use select::CaseId;
 use select::handle::{self, HANDLE, Handle};
 use utils::Backoff;
+use waker::{Case, Waker};
 
 pub struct Receiver<'a>(&'a Channel);
 pub struct Sender<'a>(&'a Channel);
@@ -145,7 +145,7 @@ pub enum Token {
 
 /// A zero-capacity channel.
 pub struct Channel {
-    wait_queues: [Monitor; 2],
+    wait_queues: [Waker; 2],
     is_closed: AtomicBool,
 }
 
@@ -318,20 +318,20 @@ impl Channel {
     #[inline]
     pub fn new() -> Self {
         Channel {
-            wait_queues: [Monitor::new(), Monitor::new()],
+            wait_queues: [Waker::new(), Waker::new()],
             is_closed: AtomicBool::new(false),
         }
     }
 
-    /// Returns a reference to the monitor for this channel's senders.
+    /// Returns a reference to the waker for this channel's senders.
     #[inline]
-    pub fn senders(&self) -> &Monitor {
+    fn senders(&self) -> &Waker {
         &self.wait_queues[0]
     }
 
-    /// Returns a reference to the monitor for this channel's receivers.
+    /// Returns a reference to the waker for this channel's receivers.
     #[inline]
-    pub fn receivers(&self) -> &Monitor {
+    fn receivers(&self) -> &Waker {
         &self.wait_queues[1]
     }
 

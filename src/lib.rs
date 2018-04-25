@@ -317,9 +317,9 @@ pub mod select;
 #[doc(hidden)]
 pub mod channel;
 mod flavors;
-mod monitor;
 #[doc(hidden)]
 pub mod utils;
+mod waker;
 
 pub use channel::{bounded, unbounded};
 pub use channel::{Receiver, Sender};
