@@ -631,8 +631,6 @@ macro_rules! select {
         let default_index: usize;
         select!(@default deadline default_index $default);
 
-        // TODO: shuffle
-
         let mut token: Token = unsafe { ::std::mem::zeroed() };
         let mut index: usize = !0;
 
@@ -646,7 +644,7 @@ macro_rules! select {
             cases
         };
 
-        // TODO: evaluate sender/receiver just once
+        // TODO: evaluate sender/receiver just once (write a test!, maybe put it into FnOnce())
 
         loop {
             // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
@@ -730,8 +728,6 @@ macro_rules! select {
 
         // TODO: test sending and receiving into the same channel from the same thread (all flavors)
 
-        // TODO: should send failure wake up a sender, not just receiver? or both?
-
         // TODO: to be consistent, `select! { recv(r, _) => () }` should move `r`, not borrow!
         // TODO: - or maybe borrow in both single and multi cases?
         // TODO: we should be able to pass in `Box<Receiver<T>>` and `Box<Option<Receiver<T>>`
@@ -751,14 +747,6 @@ macro_rules! select {
         // TODO: test select with duplicate cases
 
         // TODO: accept both Instant and Duration the in default case
-        // TODO: Optimize single case (in send/try_recv/recv) with `select! { @single ...  }`
-        // TODO: Optimize send for unbounded channels because it never fails
-
-        // TODO: importing:
-        // use crossbeam::channel::async as chan;
-        // use crossbeam::channel::sync as chan;
-
-        // TODO: mem::forget the token in unreachable!() case in order to eliminate the drop flag?
 
         // TODO: eliminate all thread-locals (mpsc doesn't use them!)
     }};

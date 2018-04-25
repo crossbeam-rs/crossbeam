@@ -300,6 +300,7 @@ impl Channel {
     }
 
     pub unsafe fn fail_send(&self, token: &mut Token) {
+        // TODO: wake up another sender? and make a test
         match *token {
             Token::Closed => unreachable!(),
             Token::Fulfill => {
