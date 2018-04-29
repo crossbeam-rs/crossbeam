@@ -55,34 +55,65 @@ impl<'a, T: 'a> SelectArgument<'a> for PreparedSender<'a, T> {
     }
 }
 
-/*
-impl<'a, T: 'a> SelectArgument<'a> for SendLiteral<'a, T> {
-    type Container = [(&'a SendLiteral<'a, T>, usize); 1];
+impl<'a, T> SelectArgument<'a> for Option<&'a Receiver<T>> {
+    type Container = SmallVec<[(&'a Receiver<T>, usize); 1]>;
     fn init_single(&'a self, index: usize) -> Self::Container {
-        [(self, index)]
+        match *self {
+            None => SmallVec::new(),
+            Some(r) => SmallVec::from_buf([(r, index)])
+        }
     }
     fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
-        c.push((self, index));
+        if let Some(r) = *self {
+            c.push((r, index));
+        }
     }
 }
-*/
 
-// impl<'a, T> SelectArgument<'a> for Option<&'a Receiver<T>> {
-//     // TODO: use arrayvec?
-//     type Container = SmallVec<[(&'a Receiver<T>, usize); 1]>;
-//     fn init_single(self) -> Self::Container {
-//         [(self, 0)]
-//     }
-//     fn init_generic(self, index: usize, c: &mut GenericContainer<'a>) {
-//         c.push([(self, index)]);
-//     }
-// }
+impl<'a, T> SelectArgument<'a> for Option<&'a Sender<T>> {
+    type Container = SmallVec<[(&'a Sender<T>, usize); 1]>;
+    fn init_single(&'a self, index: usize) -> Self::Container {
+        match *self {
+            None => SmallVec::new(),
+            Some(s) => SmallVec::from_buf([(s, index)])
+        }
+    }
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
+        if let Some(s) = *self {
+            c.push((s, index));
+        }
+    }
+}
 
 #[macro_export]
 macro_rules! select {
     // Success! The list is empty.
     (@parse_list ($($head:tt)*) ()) => {
-        select!(@parse_case () () () ($($head)*) (0usize))
+        select!(
+            @parse_case
+            ()
+            ()
+            ()
+            ($($head)*)
+            (
+                (0usize case0)
+                (1usize case1)
+                (2usize case2)
+                (3usize case3)
+                (4usize case4)
+                (5usize case5)
+                (6usize case6)
+                (7usize case7)
+                (8usize case8)
+                (9usize case9)
+                (10usize case10)
+                (11usize case11)
+                (12usize case12)
+                (13usize case13)
+                (14usize case14)
+                (15usize case15)
+            )
+        )
     };
     // If necessary, insert an empty argument list after `default`.
     (@parse_list
@@ -117,26 +148,6 @@ macro_rules! select {
         select!(
             @parse_list
             ($($head)* $case $args => { $body },)
-            ($($tail)*)
-        )
-    };
-    (@parse_list
-        ($($head:tt)*)
-        ($case:ident $args:tt => loop $b:block $($tail:tt)*)
-    ) => {
-        select!(
-            @parse_list
-            ($($head)* $case $args => { loop { $b } },)
-            ($($tail)*)
-        )
-    };
-    (@parse_list
-        ($($head:tt)*)
-        ($case:ident $args:tt => unsafe $b:block $($tail:tt)*)
-    ) => {
-        select!(
-            @parse_list
-            ($($head)* $case $args => { unsafe { $b } },)
             ($($tail)*)
         )
     };
@@ -296,21 +307,41 @@ macro_rules! select {
         compile_error!("invalid syntax")
     };
 
+    // Success! All cases were consumed.
+    (@parse_case
+        $recv:tt
+        $send:tt
+        $default:tt
+        ()
+        $labels:tt
+    ) => {
+        select!(@generate $recv $send $default)
+    };
+    // Error: there are no labels left.
+    (@parse_case
+        $recv:tt
+        $send:tt
+        $default:tt
+        $cases:tt
+        ()
+    ) => {
+        compile_error!("too many cases in a `select!` block")
+    };
     // Check the format of a `recv` case...
     (@parse_case
         ($($recv:tt)*)
         $send:tt
         $default:tt
         (recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
-            ($($recv)* [$index] recv($r, $m) => $body,)
+            ($($recv)* $label recv($r, $m) => $body,)
             $send
             $default
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     (@parse_case
@@ -318,15 +349,15 @@ macro_rules! select {
         $send:tt
         $default:tt
         (recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
-            ($($recv)* [$index] recv($rs, $m, $r) => $body,)
+            ($($recv)* $label recv($rs, $m, $r) => $body,)
             $send
             $default
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     // Allow trailing comma...
@@ -335,15 +366,15 @@ macro_rules! select {
         $send:tt
         $default:tt
         (recv($r:expr, $m:pat,) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
-            ($($recv)* [$index] recv($r, $m) => $body,)
+            ($($recv)* $label recv($r, $m) => $body,)
             $send
             $default
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     (@parse_case
@@ -351,15 +382,15 @@ macro_rules! select {
         $send:tt
         $default:tt
         (recv($rs:expr, $m:pat, $r:pat,) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
-            ($($recv)* [$index] recv($rs, $m, $r) => $body,)
+            ($($recv)* $label recv($rs, $m, $r) => $body,)
             $send
             $default
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     // Error cases...
@@ -368,7 +399,7 @@ macro_rules! select {
         $send:tt
         $default:tt
         (recv($($args:tt)*) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!(concat!(
             "invalid arguments in `recv(",
@@ -381,7 +412,7 @@ macro_rules! select {
         $send:tt
         $default:tt
         (recv $t:tt => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!(concat!(
             "expected an argument list after `recv`, found `",
@@ -396,15 +427,15 @@ macro_rules! select {
         ($($send:tt)*)
         $default:tt
         (send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
             $recv
-            ($($send)* [$index] send($s, $m) => $body,)
+            ($($send)* $label send($s, $m) => $body,)
             $default
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     (@parse_case
@@ -412,15 +443,15 @@ macro_rules! select {
         ($($send:tt)*)
         $default:tt
         (send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
             $recv
-            ($($send)* [$index] send($ss, $m, $s) => $body,)
+            ($($send)* $label send($ss, $m, $s) => $body,)
             $default
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     // Allow trailing comma...
@@ -429,15 +460,15 @@ macro_rules! select {
         ($($send:tt)*)
         $default:tt
         (send($s:expr, $m:expr,) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
             $recv
-            ($($send)* [$index] send($s, $m) => $body,)
+            ($($send)* $label send($s, $m) => $body,)
             $default
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     (@parse_case
@@ -445,15 +476,15 @@ macro_rules! select {
         ($($send:tt)*)
         $default:tt
         (send($ss:expr, $m:expr, $s:pat,) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
             $recv
-            ($($send)* [$index] send($ss, $m, $s) => $body,)
+            ($($send)* $label send($ss, $m, $s) => $body,)
             $default
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     // Error cases...
@@ -462,7 +493,7 @@ macro_rules! select {
         ($($send:tt)*)
         $default:tt
         (send($($args:tt)*) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!(concat!(
             "invalid arguments in `send(",
@@ -475,7 +506,7 @@ macro_rules! select {
         ($($send:tt)*)
         $default:tt
         (send $args:tt => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!(concat!(
             "expected an argument list after `send`, found `",
@@ -490,15 +521,15 @@ macro_rules! select {
         $send:tt
         ()
         (default() => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
             $recv
             $send
-            ([$index] default() => $body,)
+            ($label default() => $body,)
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     (@parse_case
@@ -506,15 +537,15 @@ macro_rules! select {
         $send:tt
         ()
         (default($t:expr) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
             $recv
             $send
-            ([$index] default($t) => $body,)
+            ($label default($t) => $body,)
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     // Allow trailing comma...
@@ -523,15 +554,15 @@ macro_rules! select {
         $send:tt
         ()
         (default($t:expr,) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        ($label:tt $($labels:tt)*)
     ) => {
         select!(
             @parse_case
             $recv
             $send
-            ([$index] default($t) => $body,)
+            ($label default($t) => $body,)
             ($($tail)*)
-            ($index + 1)
+            ($($labels)*)
         )
     };
     // Valid, but duplicate cases...
@@ -540,7 +571,7 @@ macro_rules! select {
         $send:tt
         ($($default:tt)+)
         (default() => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!("there can be only one `default` case in a `select!` block")
     };
@@ -549,7 +580,7 @@ macro_rules! select {
         $send:tt
         ($($default:tt)+)
         (default($t:expr) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!("there can be only one `default` case in a `select!` block")
     };
@@ -558,7 +589,7 @@ macro_rules! select {
         $send:tt
         ($($default:tt)+)
         (default($t:expr,) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!("there can be only one `default` case in a `select!` block")
     };
@@ -568,7 +599,7 @@ macro_rules! select {
         $send:tt
         $default:tt
         (default($($args:tt)*) => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!(concat!(
             "invalid arguments in `default(",
@@ -581,7 +612,7 @@ macro_rules! select {
         $send:tt
         $default:tt
         (default $t:tt => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!(concat!(
             "expected an argument list after `default`, found `",
@@ -596,7 +627,7 @@ macro_rules! select {
         $send:tt
         $default:tt
         ($case:ident $args:tt => $body:tt, $($tail:tt)*)
-        ($index:expr)
+        $labels:tt
     ) => {
         compile_error!(concat!(
             "expected one of `recv`, `send`, or `default`, found `",
@@ -604,28 +635,16 @@ macro_rules! select {
             "`",
         ))
     };
-    // Success! All cases were consumed.
-    (@parse_case
-        $recv:tt
-        $send:tt
-        $default:tt
-        ()
-        ($index:expr)
-    ) => {
-        select!(@generate $recv $send $default)
-    };
 
     (@generate $recv:tt $send:tt $default:tt) => {{
         // TODO: Remove all these imports to avoid the "unused import" warnings.
         use $crate::select::CaseId;
         use $crate::channel::Sel;
-        use $crate::smallvec::SmallVec;
         use $crate::select::handle;
         use std::time::Instant;
         use $crate::utils::{shuffle, Backoff};
-        use $crate::{Sender, Receiver};
         use $crate::channel::Token;
-        use $crate::select::{GenericContainer, SelectArgument};
+        use $crate::select::{SelectArgument};
 
         let deadline: Option<Instant>;
         let default_index: usize;
@@ -634,17 +653,12 @@ macro_rules! select {
         let mut token: Token = unsafe { ::std::mem::zeroed() };
         let mut index: usize = !0;
 
-        // TODO: Maybe case_id should be address of the case in `cases`?
-
         // TODO: #[allow(warnings)]
-        let cases = {
-            let mut cases;
-            select!(@smallvec cases $recv $send);
-            shuffle(&mut cases);
-            cases
-        };
-
-        // TODO: evaluate sender/receiver just once (write a test!, maybe put it into FnOnce())
+        select!(@declare $recv);
+        select!(@declare $send);
+        let mut cases;
+        select!(@container cases $recv $send);
+        shuffle(&mut cases);
 
         loop {
             // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
@@ -701,6 +715,11 @@ macro_rules! select {
                 sel.revoke(case_id);
             }
 
+            if timed_out {
+                index = default_index;
+                break;
+            }
+
             if s != CaseId::abort() {
                 for case in &cases {
                     let case_id = CaseId::new(case as *const _ as usize);
@@ -717,81 +736,72 @@ macro_rules! select {
                     break;
                 }
             }
-
-            if timed_out {
-                index = default_index;
-                break;
-            }
         }
 
         select!(@finish index token $recv $send $default)
-
-        // TODO: test sending and receiving into the same channel from the same thread (all flavors)
 
         // TODO: to be consistent, `select! { recv(r, _) => () }` should move `r`, not borrow!
         // TODO: - or maybe borrow in both single and multi cases?
         // TODO: we should be able to pass in `Box<Receiver<T>>` and `Box<Option<Receiver<T>>`
         // TODO: - or maybe `Option<Box<Receiver<T>>>`?
 
-        // TODO: allocate less memory in unbounded flavor if few elements are sent.
-        // TODO: allocate memory lazily in unbounded flavor?
-
-        // TODO: Run `cargo clippy` and make sure there are no warnings in here.
-
         // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
-
-        // TODO: count number of steps in the loop by prepending @debug to the macro or smth
-
-        // TODO: error message tests
+        // TODO: eliminate all thread-locals (mpsc doesn't use them!)
 
         // TODO: test select with duplicate cases
 
         // TODO: accept both Instant and Duration the in default case
 
-        // TODO: eliminate all thread-locals (mpsc doesn't use them!)
+        // TODO: test sending and receiving into the same channel from the same thread (all flavors)
+
+        // TODO: allocate less memory in unbounded flavor if few elements are sent.
+        // TODO: allocate memory lazily in unbounded flavor?
+        // TODO: Run `cargo clippy` and make sure there are no warnings in here.
     }};
 
-    (@smallvec
+    (@declare ($(($i:tt $var:ident) $method:tt ($v:expr, $($args:tt)*) => $body:tt,)*)) => {
+        $(
+            let $var = &($v);
+        )*
+    };
+
+    (@container
         $cases:ident
-        ([$i:expr] recv($r:expr, $m:pat) => $body:tt,)
+        (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt,)
         ()
     ) => {
-        let r = &($r);
-        $cases = SelectArgument::init_single(r, $i);
+        $cases = SelectArgument::init_single($var, $i);
     };
-    (@smallvec
+    (@container
         $cases:ident
         ()
-        ([$i:expr] send($s:expr, $m:expr) => $body:tt,)
+        (($i:tt $var:ident) send($s:expr, $m:expr) => $body:tt,)
     ) => {
-        let s = &($s);
-        $cases = SelectArgument::init_single(s, $i);
+        $cases = SelectArgument::init_single($var, $i);
     };
-    (@smallvec
+    (@container
         $cases:ident
         $recv:tt
         $send:tt
     ) => {
-        $cases = GenericContainer::new();
+        $cases = $crate::select::GenericContainer::new();
         select!(@push $cases $recv $send);
     };
 
     (@push
         $cases:ident
-        ([$i:expr] recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
+        (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
         $send:tt
     ) => {
-        let r = &($r);
-        SelectArgument::init_generic(r, $i, &mut $cases);
+        SelectArgument::init_generic($var, $i, &mut $cases);
         select!(@push $cases ($($tail)*) $send);
     };
     (@push
         $cases:ident
         ()
-        ([$i:expr] send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
+        (($i:tt $var:ident) send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
     ) => {
-        let s = &($s);
-        SelectArgument::init_generic(s, $i, &mut $cases);
+        SelectArgument::init_generic($var, $i, &mut $cases);
         select!(@push $cases () ($($tail)*));
     };
     (@push
@@ -812,7 +822,7 @@ macro_rules! select {
     (@default
         $deadline:ident
         $default_index:ident
-        ([$i:expr] default() => $body:tt,)
+        (($i:tt $var:ident) default() => $body:tt,)
     ) => {
         $deadline = None;
         $default_index = $i;
@@ -820,7 +830,7 @@ macro_rules! select {
     (@default
         $deadline:ident
         $default_index:ident
-        ([$i:expr] default($t:expr) => $body:tt,)
+        (($i:tt $var:ident) default($t:expr) => $body:tt,)
     ) => {
         $deadline = Some(Instant::now() + ($t));
         $default_index = $i;
@@ -829,15 +839,14 @@ macro_rules! select {
     (@finish
         $index:ident
         $token:ident
-        ([$i:expr] recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
+        (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
         $send:tt
         $default:tt
     ) => {
         if $index == $i {
             let $m = {
-                let r = &($r);
-                let msg = unsafe { ($r).read(&mut $token) };
-                unsafe { r.finish(&mut $token) };
+                let msg = unsafe { $var.read(&mut $token) };
+                $var.finish(&mut $token);
                 msg
             };
             $body
@@ -856,7 +865,7 @@ macro_rules! select {
         $index:ident
         $token:ident
         ()
-        ([$i:expr] send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
+        (($i:tt $var:ident) send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
         $default:tt
     ) => {
         if $index == $i {
@@ -869,14 +878,14 @@ macro_rules! select {
                 }
 
                 let msg = {
-                    let guard = Guard(|| ($s).fail(&mut $token));
+                    let guard = Guard(|| $var.fail(&mut $token));
                     let msg = $m;
                     ::std::mem::forget(guard);
                     msg
                 };
 
-                ($s).write(&mut $token, msg);
-                ($s).finish(&mut $token);
+                $var.write(&mut $token, msg);
+                $var.finish(&mut $token);
             }
             $body
         } else {
@@ -895,7 +904,7 @@ macro_rules! select {
         $token:ident
         ()
         ()
-        ([$i:expr] default $args:tt => $body:tt,)
+        (($i:tt $var:ident) default $args:tt => $body:tt,)
     ) => {
         if $index == $i {
             $body

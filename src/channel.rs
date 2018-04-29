@@ -10,11 +10,10 @@ use flavors;
 use select::CaseId;
 use utils::Backoff;
 
+// TODO: explain
 // loop { try; promise; is_blocked; revoke; fulfill }
 // -> write; fail or finish
 // -> read; finish
-
-// TODO: impl Sel for the three flavors, and then just forward method calls
 
 pub trait Sel {
     type Token;
@@ -258,7 +257,6 @@ impl<'a, T> Sel for PreparedSender<'a, T> {
     }
 }
 
-
 #[doc(hidden)]
 impl<'a, T> PreparedSender<'a, T> {
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
@@ -282,9 +280,9 @@ enum Flavor<T> {
     Zero(flavors::zero::Channel),
 }
 
-/// Creates a new channel of unbounded capacity, returning the sender/receiver halves.
+/// Creates a new channel of unbounded capacity, returning the sender and receiver halves.
 ///
-/// This type of channel can hold an unbounded number of messages, i.e. it has infinite capacity.
+/// This type of channel can hold any number of messages; i.e. it has infinite capacity.
 ///
 /// # Examples
 ///
@@ -309,9 +307,7 @@ enum Flavor<T> {
 ///     s.send(fib(20));
 /// });
 ///
-/// // Do some useful work for a while...
-///
-/// // Let's see what's the result of the expensive computation.
+/// // Let's see what's the result of the computation.
 /// println!("{}", r.recv().unwrap());
 /// ```
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
@@ -322,13 +318,13 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     (Sender::new(chan.clone()), Receiver::new(chan))
 }
 
-/// Creates a new channel of bounded capacity, returning the sender/receiver halves.
+/// Creates a new channel of bounded capacity, returning the sender and receiver halves.
 ///
-/// This type of channel has an internal buffer of length `cap` in messages get queued.
+/// This type of channel has an internal buffer of length `cap` in which messages get queued.
 ///
-/// An interesting case is zero-capacity channel, also known as *rendezvous* channel. Such channel
-/// cannot hold any messages, since its buffer is of length zero. Instead, send and receive
-/// operations must execute at the same time in order to pair up and pass the message.
+/// An interesting case is zero-capacity channel, also known as *rendezvous* channel. Such a
+/// channel cannot hold any messages since its buffer is of length zero. Instead, send and receive
+/// operations must be executing at the same time in order to pair up and pass the message.
 ///
 /// # Examples
 ///
@@ -449,12 +445,16 @@ impl<T> Sender<T> {
 impl<T> Sender<T> {
     /// Sends a message into the channel, blocking if the channel is full.
     ///
-    /// If the channel is full (its capacity is fully utilized), this call will block until the
-    /// send operation can proceed. If the channel is (or gets) closed, this call will wake up and
-    /// return an error.
+    /// If called on a zero-capacity channel, this method blocks until a receive operation appears
+    /// on the other side of the channel.
     ///
-    /// If called on a zero-capacity channel, this method will wait for a receive operation to
-    /// appear on the other side of the channel.
+    /// Note that `s.send(msg)` is equivalent to the following:
+    ///
+    /// ```ignore
+    /// select! {
+    ///     send(s, msg) => {}
+    /// }
+    /// ```
     ///
     /// # Examples
     ///
@@ -482,7 +482,7 @@ impl<T> Sender<T> {
 
     /// Returns `true` if the channel is empty.
     ///
-    /// Zero-capacity channels are always empty.
+    /// Note: zero-capacity channels are always empty.
     ///
     /// # Examples
     ///
@@ -505,7 +505,7 @@ impl<T> Sender<T> {
 
     /// Returns `true` if the channel is full.
     ///
-    /// Zero-capacity channels are always full.
+    /// Note: zero-capacity channels are always full.
     ///
     /// # Examples
     ///
@@ -688,13 +688,20 @@ impl<T> Receiver<T> {
 }
 
 impl<T> Receiver<T> {
-    /// Waits for a message to be received from the channel.
+    /// Blocks until a message is received or the channel is closed.
     ///
-    /// This method will always block in order to wait for a message to become available. If the
-    /// channel is (or gets) closed and empty, this call will wake up and return an error.
+    /// Returns the message if it was received or `None` if the channel is closed.
     ///
-    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
-    /// on the other side of the channel.
+    /// If called on a zero-capacity channel, this method blocks until a send operation appears on
+    /// the other side of the channel.
+    ///
+    /// Note that `r.recv()` is equivalent to the following:
+    ///
+    /// ```ignore
+    /// select! {
+    ///     recv(r, msg) => msg
+    /// }
+    /// ```
     ///
     /// # Examples
     ///
@@ -708,7 +715,7 @@ impl<T> Receiver<T> {
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s.send(5);
-    ///     drop(s);
+    ///     // `s` gets dropped, closing the channel.
     /// });
     ///
     /// assert_eq!(r.recv(), Some(5));
@@ -722,12 +729,16 @@ impl<T> Receiver<T> {
 
     /// Attempts to receive a message from the channel without blocking.
     ///
-    /// This method will never block in order to wait for a message to become available. Instead,
-    /// this will always return immediately with a message if there is one, or an error if the
-    /// channel is empty or closed.
+    /// If there is no message ready to be received or the channel is closed, returns `None`.
     ///
-    /// If called on a zero-capacity channel, this method will receive a message only if there
-    /// happens to be a send operation on the other side of the channel at the same time.
+    /// Note that `r.try_recv()` is just a shorter version of the following:
+    ///
+    /// ```ignore
+    /// select! {
+    ///     recv(r, msg) => msg,
+    ///     default => None,
+    /// }
+    /// ```
     ///
     /// # Examples
     ///
@@ -752,7 +763,7 @@ impl<T> Receiver<T> {
 
     /// Returns `true` if the channel is empty.
     ///
-    /// Zero-capacity channels are always empty.
+    /// Note: zero-capacity channels are always empty.
     ///
     /// # Examples
     ///
@@ -775,7 +786,7 @@ impl<T> Receiver<T> {
 
     /// Returns `true` if the channel is full.
     ///
-    /// Zero-capacity channels are always full.
+    /// Note: zero-capacity channels are always full.
     ///
     /// # Examples
     ///
@@ -825,14 +836,14 @@ impl<T> Receiver<T> {
     /// ```
     /// use crossbeam_channel::{bounded, unbounded};
     ///
-    /// let (s, _) = unbounded::<i32>();
-    /// assert_eq!(s.capacity(), None);
+    /// let (_, r) = unbounded::<i32>();
+    /// assert_eq!(r.capacity(), None);
     ///
-    /// let (s, _) = bounded::<i32>(5);
-    /// assert_eq!(s.capacity(), Some(5));
+    /// let (_, r) = bounded::<i32>(5);
+    /// assert_eq!(r.capacity(), Some(5));
     ///
-    /// let (s, _) = bounded::<i32>(0);
-    /// assert_eq!(s.capacity(), Some(0));
+    /// let (_, r) = bounded::<i32>(0);
+    /// assert_eq!(r.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
         match self.0.flavor {

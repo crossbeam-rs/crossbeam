@@ -3,8 +3,12 @@
 //! Channels are concurrent FIFO queues used for passing messages between threads.
 //!
 //! Crossbeam's channels are an alternative to the [`std::sync::mpsc`] channels provided by the
-//! standard library. They are an improvement in pretty much all aspects: ergonomics, flexibility,
-//! features, performance.
+//! standard library. They aim to be an improvement in terms of:
+//!
+//! * Performance - in particular, bounded channels are faster.
+//! * Ergonomics - [`Sender`] and [`Receiver`] implement `Sync` and `Send`.
+//! * Selection - the [`select!`] macro can select over `send` operations.
+//! have a better selection mechanism.
 //!
 //! # Types of channels
 //!
@@ -296,7 +300,8 @@
 //! [`recv`]: struct.Receiver.html#method.recv
 //! [`recv_timeout`]: struct.Receiver.html#method.recv_timeout
 //! [`select_loop!`]: macro.select_loop.html
-//! [`Select`]: struct.Select.html
+//! [`Sender`]: struct.Sender.html
+//! [`Receiver`]: struct.Receiver.html
 
 #![cfg_attr(feature = "nightly", feature(spin_loop_hint))]
 

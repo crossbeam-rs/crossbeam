@@ -66,6 +66,59 @@ fn same_variable_name() {
 }
 
 // #[test]
+// fn option_receiver() {
+//     let (_, r) = unbounded::<i32>();
+//     select! {
+//         recv(Some(&r), _) => {}
+//     };
+// }
+
+#[test]
+fn once_receiver() {
+    let (_, r) = unbounded::<i32>();
+
+    let once = Box::new(());
+    let get = move || {
+        drop(once);
+        r
+    };
+
+    select! {
+        recv(get(), _) => {}
+    };
+}
+
+#[test]
+fn once_sender() {
+    let (s, _) = unbounded::<i32>();
+
+    let once = Box::new(());
+    let get = move || {
+        drop(once);
+        s
+    };
+
+    select! {
+        send(get(), 5) => {}
+    };
+}
+
+#[test]
+fn once_timeout() {
+    let once = Box::new(());
+    let get = move || {
+        drop(once);
+        ms(10)
+    };
+
+    select! {
+        default(get()) => {}
+    };
+}
+
+// TODO: also fn once_deadline
+
+// #[test]
 // fn bar() {
 //     let (s, r) = bounded(0);
 //
