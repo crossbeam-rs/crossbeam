@@ -2,18 +2,19 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::iter::FromIterator;
 
-use base;
+use map;
+use Bound;
 
 /// A set based on a lock-free skip list.
 pub struct SkipSet<T> {
-    inner: base::SkipList<T, ()>,
+    inner: map::SkipMap<T, ()>,
 }
 
 impl<T> SkipSet<T> {
     /// Returns a new, empty set.
     pub fn new() -> SkipSet<T> {
         SkipSet {
-            inner: base::SkipList::new(),
+            inner: map::SkipMap::new(),
         }
     }
 
@@ -51,7 +52,7 @@ where
         T: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        self.get(key).is_some()
+        self.inner.contains_key(key)
     }
 
     /// Returns an entry with the specified `key`.
@@ -63,14 +64,26 @@ where
         self.inner.get(key).map(Entry::new)
     }
 
-    /// Returns the first entry with a key greater than or equal to `key`, or `None` if all entries
-    /// have smaller keys.
-    pub fn seek<Q>(&self, key: &Q) -> Option<Entry<T>>
+    /// Returns an `Entry` pointing to the lowest element whose key is above
+    /// the given bound. If no such element is found then `None` is
+    /// returned.
+    pub fn lower_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, T>>
     where
         T: Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        self.inner.seek(key).map(Entry::new)
+        self.inner.lower_bound(bound).map(Entry::new)
+    }
+
+    /// Returns an `Entry` pointing to the highest element whose key is below
+    /// the given bound. If no such element is found then `None` is
+    /// returned.
+    pub fn upper_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, T>>
+    where
+        T: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        self.inner.upper_bound(bound).map(Entry::new)
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
@@ -85,7 +98,21 @@ where
         }
     }
 
-    // TODO(stjepang): Add `fn range`.
+    /// Returns an iterator over a subset of entries in the skip list.
+    pub fn range<'a, 'k, Min, Max>(
+        &'a self,
+        lower_bound: Bound<&'k Min>,
+        upper_bound: Bound<&'k Max>,
+    ) -> Range<'a, 'k, Min, Max, T>
+    where
+        T: Ord + Borrow<Min> + Borrow<Max>,
+        Min: Ord + ?Sized + 'k,
+        Max: Ord + ?Sized + 'k,
+    {
+        Range {
+            inner: self.inner.range(lower_bound, upper_bound),
+        }
+    }
 }
 
 impl<T> SkipSet<T>
@@ -131,9 +158,16 @@ impl<T> Default for SkipSet<T> {
     }
 }
 
-impl<T> fmt::Debug for SkipSet<T> {
+impl<T> fmt::Debug for SkipSet<T>
+where
+    T: Ord + fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SkipSet {{ ... }}")
+        let mut m = f.debug_set();
+        for e in self.iter() {
+            m.entry(e.value());
+        }
+        m.finish()
     }
 }
 
@@ -177,14 +211,11 @@ where
 }
 
 pub struct Entry<'a, T: 'a> {
-    inner: base::Entry<'a, T, ()>,
+    inner: map::Entry<'a, T, ()>,
 }
 
-unsafe impl<'a, T: Send + Sync> Send for Entry<'a, T> {}
-unsafe impl<'a, T: Send + Sync> Sync for Entry<'a, T> {}
-
 impl<'a, T> Entry<'a, T> {
-    fn new(inner: base::Entry<'a, T, ()>) -> Entry<'a, T> {
+    fn new(inner: map::Entry<'a, T, ()>) -> Entry<'a, T> {
         Entry { inner }
     }
 
@@ -203,22 +234,22 @@ impl<'a, T> Entry<'a, T>
 where
     T: Ord,
 {
-    pub fn next(&mut self) -> bool {
-        self.inner.next()
+    pub fn move_next(&mut self) -> bool {
+        self.inner.move_next()
     }
 
-    pub fn prev(&mut self) -> bool {
-        self.inner.prev()
+    pub fn move_prev(&mut self) -> bool {
+        self.inner.move_prev()
     }
 
     /// Returns the next entry in the set.
-    pub fn get_next(&self) -> Option<Entry<'a, T>> {
-        self.inner.get_next().map(Entry::new)
+    pub fn next(&self) -> Option<Entry<'a, T>> {
+        self.inner.next().map(Entry::new)
     }
 
     /// Returns the previous entry in the set.
-    pub fn get_prev(&self) -> Option<Entry<'a, T>> {
-        self.inner.get_prev().map(Entry::new)
+    pub fn prev(&self) -> Option<Entry<'a, T>> {
+        self.inner.prev().map(Entry::new)
     }
 }
 
@@ -255,7 +286,7 @@ where
 
 /// An owning iterator over the entries of a `SkipSet`.
 pub struct IntoIter<T> {
-    inner: base::IntoIter<T, ()>,
+    inner: map::IntoIter<T, ()>,
 }
 
 impl<T> Iterator for IntoIter<T> {
@@ -267,8 +298,6 @@ impl<T> Iterator for IntoIter<T> {
 }
 
 impl<T> fmt::Debug for IntoIter<T>
-where
-    T: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "IntoIter {{ ... }}")
@@ -277,7 +306,7 @@ where
 
 /// An iterator over the entries of a `SkipSet`.
 pub struct Iter<'a, T: 'a> {
-    inner: base::Iter<'a, T, ()>,
+    inner: map::Iter<'a, T, ()>,
 }
 
 impl<'a, T> Iterator for Iter<'a, T>
@@ -301,11 +330,54 @@ where
 }
 
 impl<'a, T> fmt::Debug for Iter<'a, T>
-where
-    T: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Iter {{ ... }}")
+    }
+}
+
+/// An iterator over the entries of a `SkipMap`.
+pub struct Range<'a, 'k, Min, Max, T: 'a>
+where
+    T: Ord + Borrow<Min> + Borrow<Max>,
+    Min: Ord + ?Sized + 'k,
+    Max: Ord + ?Sized + 'k,
+{
+    inner: map::Range<'a, 'k, Min, Max, T, ()>,
+}
+
+impl<'a, 'k, Min, Max, T> Iterator for Range<'a, 'k, Min, Max, T>
+where
+    T: Ord + Borrow<Min> + Borrow<Max>,
+    Min: Ord + ?Sized + 'k,
+    Max: Ord + ?Sized + 'k,
+{
+    type Item = Entry<'a, T>;
+
+    fn next(&mut self) -> Option<Entry<'a, T>> {
+        self.inner.next().map(Entry::new)
+    }
+}
+
+impl<'a, 'k, Min, Max, T> DoubleEndedIterator for Range<'a, 'k, Min, Max, T>
+where
+    T: Ord + Borrow<Min> + Borrow<Max>,
+    Min: Ord + ?Sized + 'k,
+    Max: Ord + ?Sized + 'k,
+{
+    fn next_back(&mut self) -> Option<Entry<'a, T>> {
+        self.inner.next_back().map(Entry::new)
+    }
+}
+
+impl<'a, 'k, Min, Max, T> fmt::Debug for Range<'a, 'k, Min, Max, T>
+where
+    T: Ord + Borrow<Min> + Borrow<Max>,
+    Min: Ord + ?Sized + 'k,
+    Max: Ord + ?Sized + 'k,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Range {{ ... }}")
     }
 }
 
