@@ -118,7 +118,7 @@ impl<T> Sel for Receiver<T> {
         }
     }
 
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, _token: &mut Token) {
         unreachable!();
     }
 }
@@ -252,7 +252,7 @@ impl<'a, T> Sel for PreparedSender<'a, T> {
         }
     }
 
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, _token: &mut Token) {
         process::abort();
     }
 }
@@ -521,7 +521,7 @@ impl<T> Sender<T> {
     pub fn is_full(&self) -> bool {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.is_full(),
-            Flavor::List(ref chan) => false,
+            Flavor::List(_) => false,
             Flavor::Zero(_) => true,
         }
     }

@@ -23,9 +23,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.start_recv(token, backoff)
-        }
+        self.0.start_recv(token, backoff)
     }
 
     fn promise(&self, case_id: CaseId) {
@@ -42,9 +40,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.start_recv(token, backoff)
-        }
+        self.0.start_recv(token, backoff)
     }
 
     fn finish(&self, token: &mut Token) {
@@ -53,7 +49,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
         }
     }
 
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, _token: &mut Token) {
         unreachable!();
     }
 }
@@ -78,9 +74,7 @@ impl<'a, T> Sel for Sender<'a, T> {
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.start_send(false, token, backoff)
-        }
+        self.0.start_send(false, token, backoff)
     }
 
     fn finish(&self, token: &mut Token) {
@@ -116,9 +110,7 @@ impl<'a, T> Sel for PreparedSender<'a, T> {
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.start_send(true, token, backoff)
-        }
+        self.0.start_send(true, token, backoff)
     }
 
     fn finish(&self, token: &mut Token) {
@@ -127,7 +119,7 @@ impl<'a, T> Sel for PreparedSender<'a, T> {
         }
     }
 
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, _token: &mut Token) {
         unreachable!()
     }
 }
@@ -276,7 +268,7 @@ impl<T> Channel<T> {
         &*self.buffer.offset(index as isize)
     }
 
-    pub fn start_send(&self, is_prepared: bool, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn start_send(&self, is_prepared: bool, token: &mut Token, backoff: &mut Backoff) -> bool {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);
@@ -358,7 +350,7 @@ impl<T> Channel<T> {
         ptr::write(entry.msg.get(), msg);
     }
 
-    pub unsafe fn finish_send(&self, is_prepared: bool, token: &mut Token) {
+    pub unsafe fn finish_send(&self, _is_prepared: bool, token: &mut Token) {
         debug_assert!(!token.entry.is_null());
         let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
 
@@ -369,7 +361,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub unsafe fn fail_send(&self, token: &mut Token) {
+    pub unsafe fn fail_send(&self, _token: &mut Token) {
         self.tail.fetch_and(!self.mark_bit, Ordering::SeqCst);
 
         if let Some(case) = self.senders.remove_one() {
@@ -380,7 +372,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let one_lap = self.mark_bit << 1;
         let index_bits = self.mark_bit - 1;
         let lap_bits = !(one_lap - 1);

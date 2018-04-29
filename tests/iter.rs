@@ -1,7 +1,7 @@
 extern crate crossbeam;
 extern crate crossbeam_channel;
 
-use crossbeam_channel::{bounded, unbounded};
+use crossbeam_channel::unbounded;
 
 #[test]
 fn nested_recv_iter() {

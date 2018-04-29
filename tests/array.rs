@@ -25,7 +25,7 @@ fn send_panic() {
         select! {
             send(s, panic!()) => {}
         }
-    });
+    }).err().unwrap();
 
     assert_eq!(s.len(), 1);
     s.send(2);

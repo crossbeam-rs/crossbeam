@@ -86,32 +86,25 @@ impl<'a, T> SelectArgument<'a> for Option<&'a Sender<T>> {
 }
 
 #[macro_export]
-macro_rules! select {
+#[doc(hidden)]
+macro_rules! select_internal {
     // Success! The list is empty.
     (@parse_list ($($head:tt)*) ()) => {
-        select!(
+        select_internal!(
             @parse_case
             ()
             ()
             ()
             ($($head)*)
             (
-                (0usize case0)
-                (1usize case1)
-                (2usize case2)
-                (3usize case3)
-                (4usize case4)
-                (5usize case5)
-                (6usize case6)
-                (7usize case7)
-                (8usize case8)
-                (9usize case9)
-                (10usize case10)
-                (11usize case11)
-                (12usize case12)
-                (13usize case13)
-                (14usize case14)
-                (15usize case15)
+                (0usize case0) (1usize case1) (2usize case2) (3usize case3) (4usize case4)
+                (5usize case5) (6usize case6) (7usize case7) (8usize case8) (9usize case9)
+                (10usize case10) (11usize case11) (12usize case12) (13usize case13)
+                (14usize case14) (15usize case15) (16usize case16) (17usize case17)
+                (20usize case18) (19usize case19) (20usize case20) (21usize case21)
+                (22usize case22) (23usize case23) (24usize case24) (25usize case25)
+                (26usize case26) (27usize case27) (28usize case28) (29usize case29)
+                (30usize case30) (31usize case31)
             )
         )
     };
@@ -120,14 +113,14 @@ macro_rules! select {
         ($($head:tt)*)
         (default => $($tail:tt)*)
     ) => {
-        select!(@parse_list ($($head)*) (default() => $($tail)*))
+        select_internal!(@parse_list ($($head)*) (default() => $($tail)*))
     };
     // The first case is separated by a comma.
     (@parse_list
         ($($head:tt)*)
         ($case:ident $args:tt => $body:expr, $($tail:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_list
             ($($head)* $case $args => { $body },)
             ($($tail)*)
@@ -145,7 +138,7 @@ macro_rules! select {
         ($($head:tt)*)
         ($case:ident $args:tt => $body:block $($tail:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_list
             ($($head)* $case $args => { $body },)
             ($($tail)*)
@@ -156,7 +149,7 @@ macro_rules! select {
         ($($head:tt)*)
         ($case:ident $args:tt => $body:expr)
     ) => {
-        select!(
+        select_internal!(
             @parse_list
             ($($head)* $case $args => { $body },)
             ()
@@ -167,7 +160,7 @@ macro_rules! select {
         ($($head:tt)*)
         ($case:ident $args:tt => $body:expr,)
     ) => {
-        select!(
+        select_internal!(
             @parse_list
             ($($head)* $case $args => { $body },)
             ()
@@ -175,17 +168,17 @@ macro_rules! select {
     };
     // Diagnose and print an error.
     (@parse_list ($($head:tt)*) ($($tail:tt)*)) => {
-        select!(@parse_list_error1 $($tail)*)
+        select_internal!(@parse_list_error1 $($tail)*)
     };
     // Stage 1: check the case type.
     (@parse_list_error1 recv $($tail:tt)*) => {
-        select!(@parse_list_error2 recv $($tail)*)
+        select_internal!(@parse_list_error2 recv $($tail)*)
     };
     (@parse_list_error1 send $($tail:tt)*) => {
-        select!(@parse_list_error2 send $($tail)*)
+        select_internal!(@parse_list_error2 send $($tail)*)
     };
     (@parse_list_error1 default $($tail:tt)*) => {
-        select!(@parse_list_error2 default $($tail)*)
+        select_internal!(@parse_list_error2 default $($tail)*)
     };
     (@parse_list_error1 $t:tt $($tail:tt)*) => {
         compile_error!(concat!(
@@ -195,7 +188,7 @@ macro_rules! select {
         ))
     };
     (@parse_list_error1 $($tail:tt)*) => {
-        select!(@parse_list_error2 $($tail)*);
+        select_internal!(@parse_list_error2 $($tail)*);
     };
     // Stage 2: check the argument list.
     (@parse_list_error2 $case:ident) => {
@@ -213,7 +206,7 @@ macro_rules! select {
         ))
     };
     (@parse_list_error2 $($tail:tt)*) => {
-        select!(@parse_list_error3 $($tail)*)
+        select_internal!(@parse_list_error3 $($tail)*)
     };
     // Stage 3: check the `=>` and what comes after it.
     (@parse_list_error3 $case:ident($($args:tt)*)) => {
@@ -300,7 +293,7 @@ macro_rules! select {
         ))
     };
     (@parse_list_error3 $($tail:tt)*) => {
-        select!(@parse_list_error4 $($tail)*)
+        select_internal!(@parse_list_error4 $($tail)*)
     };
     // Stage 4: fail with a generic error message.
     (@parse_list_error4 $($tail:tt)*) => {
@@ -315,7 +308,7 @@ macro_rules! select {
         ()
         $labels:tt
     ) => {
-        select!(@generate $recv $send $default)
+        select_internal!(@generate $recv $send $default)
     };
     // Error: there are no labels left.
     (@parse_case
@@ -325,7 +318,7 @@ macro_rules! select {
         $cases:tt
         ()
     ) => {
-        compile_error!("too many cases in a `select!` block")
+        compile_error!("too many cases in a `select_internal!` block")
     };
     // Check the format of a `recv` case...
     (@parse_case
@@ -335,7 +328,7 @@ macro_rules! select {
         (recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             ($($recv)* $label recv($r, $m) => $body,)
             $send
@@ -351,7 +344,7 @@ macro_rules! select {
         (recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             ($($recv)* $label recv($rs, $m, $r) => $body,)
             $send
@@ -368,7 +361,7 @@ macro_rules! select {
         (recv($r:expr, $m:pat,) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             ($($recv)* $label recv($r, $m) => $body,)
             $send
@@ -384,7 +377,7 @@ macro_rules! select {
         (recv($rs:expr, $m:pat, $r:pat,) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             ($($recv)* $label recv($rs, $m, $r) => $body,)
             $send
@@ -429,7 +422,7 @@ macro_rules! select {
         (send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             $recv
             ($($send)* $label send($s, $m) => $body,)
@@ -445,7 +438,7 @@ macro_rules! select {
         (send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             $recv
             ($($send)* $label send($ss, $m, $s) => $body,)
@@ -462,7 +455,7 @@ macro_rules! select {
         (send($s:expr, $m:expr,) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             $recv
             ($($send)* $label send($s, $m) => $body,)
@@ -478,7 +471,7 @@ macro_rules! select {
         (send($ss:expr, $m:expr, $s:pat,) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             $recv
             ($($send)* $label send($ss, $m, $s) => $body,)
@@ -523,7 +516,7 @@ macro_rules! select {
         (default() => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             $recv
             $send
@@ -539,7 +532,7 @@ macro_rules! select {
         (default($t:expr) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             $recv
             $send
@@ -556,7 +549,7 @@ macro_rules! select {
         (default($t:expr,) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
-        select!(
+        select_internal!(
             @parse_case
             $recv
             $send
@@ -573,7 +566,7 @@ macro_rules! select {
         (default() => $body:tt, $($tail:tt)*)
         $labels:tt
     ) => {
-        compile_error!("there can be only one `default` case in a `select!` block")
+        compile_error!("there can be only one `default` case in a `select_internal!` block")
     };
     (@parse_case
         $recv:tt
@@ -582,7 +575,7 @@ macro_rules! select {
         (default($t:expr) => $body:tt, $($tail:tt)*)
         $labels:tt
     ) => {
-        compile_error!("there can be only one `default` case in a `select!` block")
+        compile_error!("there can be only one `default` case in a `select_internal!` block")
     };
     (@parse_case
         $recv:tt
@@ -591,7 +584,7 @@ macro_rules! select {
         (default($t:expr,) => $body:tt, $($tail:tt)*)
         $labels:tt
     ) => {
-        compile_error!("there can be only one `default` case in a `select!` block")
+        compile_error!("there can be only one `default` case in a `select_internal!` block")
     };
     // Other error cases...
     (@parse_case
@@ -637,27 +630,28 @@ macro_rules! select {
     };
 
     (@generate $recv:tt $send:tt $default:tt) => {{
-        // TODO: Remove all these imports to avoid the "unused import" warnings.
-        use $crate::select::CaseId;
-        use $crate::channel::Sel;
-        use $crate::select::handle;
         use std::time::Instant;
-        use $crate::utils::{shuffle, Backoff};
+
+        // These cause warnings:
+        use $crate::channel::Sel;
+        use $crate::select::SelectArgument;
+
         use $crate::channel::Token;
-        use $crate::select::{SelectArgument};
+        use $crate::select::CaseId;
+        use $crate::select::handle;
+        use $crate::utils::{Backoff, shuffle};
 
         let deadline: Option<Instant>;
         let default_index: usize;
-        select!(@default deadline default_index $default);
+        select_internal!(@default deadline default_index $default);
 
         let mut token: Token = unsafe { ::std::mem::zeroed() };
         let mut index: usize = !0;
 
-        // TODO: #[allow(warnings)]
-        select!(@declare $recv);
-        select!(@declare $send);
+        select_internal!(@declare $recv);
+        select_internal!(@declare $send);
         let mut cases;
-        select!(@container cases $recv $send);
+        select_internal!(@container cases $recv $send);
         shuffle(&mut cases);
 
         loop {
@@ -690,7 +684,7 @@ macro_rules! select {
             }
 
             // TODO: a test with send(foo(), msg) where foo is a FnOnce (and same for recv()).
-            // TODO: call a hidden internal macro in order not to clutter the public one (`select!`)
+            // TODO: call a hidden internal macro in order not to clutter the public one (`select_internal!`)
 
             handle::current_reset();
 
@@ -738,12 +732,7 @@ macro_rules! select {
             }
         }
 
-        select!(@finish index token $recv $send $default)
-
-        // TODO: to be consistent, `select! { recv(r, _) => () }` should move `r`, not borrow!
-        // TODO: - or maybe borrow in both single and multi cases?
-        // TODO: we should be able to pass in `Box<Receiver<T>>` and `Box<Option<Receiver<T>>`
-        // TODO: - or maybe `Option<Box<Receiver<T>>>`?
+        select_internal!(@finish index token $recv $send $default)
 
         // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
         // TODO: eliminate all thread-locals (mpsc doesn't use them!)
@@ -785,7 +774,7 @@ macro_rules! select {
         $send:tt
     ) => {
         $cases = $crate::select::GenericContainer::new();
-        select!(@push $cases $recv $send);
+        select_internal!(@push $cases $recv $send);
     };
 
     (@push
@@ -794,7 +783,7 @@ macro_rules! select {
         $send:tt
     ) => {
         SelectArgument::init_generic($var, $i, &mut $cases);
-        select!(@push $cases ($($tail)*) $send);
+        select_internal!(@push $cases ($($tail)*) $send);
     };
     (@push
         $cases:ident
@@ -802,7 +791,7 @@ macro_rules! select {
         (($i:tt $var:ident) send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
     ) => {
         SelectArgument::init_generic($var, $i, &mut $cases);
-        select!(@push $cases () ($($tail)*));
+        select_internal!(@push $cases () ($($tail)*));
     };
     (@push
         $cases:ident
@@ -851,7 +840,7 @@ macro_rules! select {
             };
             $body
         } else {
-            select!(
+            select_internal!(
                 @finish
                 $index
                 $token
@@ -877,19 +866,25 @@ macro_rules! select {
                     }
                 }
 
-                let msg = {
-                    let guard = Guard(|| $var.fail(&mut $token));
-                    let msg = $m;
-                    ::std::mem::forget(guard);
-                    msg
+                let _msg = {
+                    // We have to prefix variables with an underscore to get rid of warnings in
+                    // case `$m` is of type `!`.
+                    let _guard = Guard(|| $var.fail(&mut $token));
+                    let _msg = $m;
+
+                    #[allow(unreachable_code)]
+                    {
+                        ::std::mem::forget(_guard);
+                        _msg
+                    }
                 };
 
-                $var.write(&mut $token, msg);
+                $var.write(&mut $token, _msg);
                 $var.finish(&mut $token);
             }
             $body
         } else {
-            select!(
+            select_internal!(
                 @finish
                 $index
                 $token
@@ -909,7 +904,7 @@ macro_rules! select {
         if $index == $i {
             $body
         } else {
-            select!(
+            select_internal!(
                 @finish
                 $index
                 $token
@@ -935,12 +930,22 @@ macro_rules! select {
 
     // The entry point.
     () => {
-        compile_error!("empty block in `select!`")
+        compile_error!("empty block in `select_internal!`")
     };
     ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
-        select!(@parse_list () ($($case $(($($args)*))* => $body,)*))
+        select_internal!(@parse_list () ($($case $(($($args)*))* => $body,)*))
     };
     ($($tail:tt)*) => {
-        select!(@parse_list () ($($tail)*))
+        select_internal!(@parse_list () ($($tail)*))
+    };
+}
+
+#[macro_export]
+macro_rules! select {
+    ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
+        select_internal!(@parse_list () ($($case $(($($args)*))* => $body,)*))
+    };
+    ($($tail:tt)*) => {
+        select_internal!(@parse_list () ($($tail)*))
     };
 }

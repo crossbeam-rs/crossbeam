@@ -20,10 +20,8 @@ pub struct PreparedSender<'a>(&'a Channel);
 impl<'a> Sel for Receiver<'a> {
     type Token = Token;
 
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.start_recv(token)
-        }
+    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.start_recv(token)
     }
 
     fn promise(&self, case_id: CaseId) {
@@ -39,10 +37,8 @@ impl<'a> Sel for Receiver<'a> {
         self.0.receivers().unregister(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.fulfill_recv(token)
-        }
+    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.fulfill_recv(token)
     }
 
     fn finish(&self, token: &mut Token) {
@@ -51,7 +47,7 @@ impl<'a> Sel for Receiver<'a> {
         }
     }
 
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, _token: &mut Token) {
         unreachable!();
     }
 }
@@ -59,10 +55,8 @@ impl<'a> Sel for Receiver<'a> {
 impl<'a> Sel for Sender<'a> {
     type Token = Token;
 
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.start_send(token)
-        }
+    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.start_send(token)
     }
 
     fn promise(&self, case_id: CaseId) {
@@ -78,10 +72,8 @@ impl<'a> Sel for Sender<'a> {
         self.0.senders().unregister(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.fulfill_send(token, false)
-        }
+    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.fulfill_send(token, false)
     }
 
     fn finish(&self, token: &mut Token) {
@@ -100,10 +92,8 @@ impl<'a> Sel for Sender<'a> {
 impl<'a> Sel for PreparedSender<'a> {
     type Token = Token;
 
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.start_send(token)
-        }
+    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.start_send(token)
     }
 
     fn promise(&self, case_id: CaseId) {
@@ -119,10 +109,8 @@ impl<'a> Sel for PreparedSender<'a> {
         self.0.senders().unregister(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            self.0.fulfill_send(token, true)
-        }
+    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.fulfill_send(token, true)
     }
 
     fn finish(&self, token: &mut Token) {
@@ -131,7 +119,7 @@ impl<'a> Sel for PreparedSender<'a> {
         }
     }
 
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, _token: &mut Token) {
         unreachable!()
     }
 }
@@ -166,7 +154,7 @@ impl Channel {
     }
 
     #[inline]
-    pub fn start_recv(&self, token: &mut Token) -> bool {
+    fn start_recv(&self, token: &mut Token) -> bool {
         let mut step = 0;
         loop {
             if let Some(case) = self.wait_queues[0].remove_one() {
@@ -200,7 +188,7 @@ impl Channel {
         }
     }
 
-    pub fn fulfill_recv(&self, token: &mut Token) -> bool {
+    fn fulfill_recv(&self, token: &mut Token) -> bool {
         // Wait until the requesting thread gives us a pointer to its `Request`.
         let handle = handle::current();
 
@@ -229,7 +217,7 @@ impl Channel {
                     ptr as *const Request<Option<T>>
                 });
 
-                let m = unsafe {
+                let m = {
                     // First, make a clone of the requesting thread.
                     let thread = (*req).handle.inner.thread.clone();
 
@@ -255,12 +243,12 @@ impl Channel {
         // TODO
     }
 
-    pub unsafe fn finish_recv(&self, token: &mut Token) {
+    pub unsafe fn finish_recv(&self, _token: &mut Token) {
         // TODO
     }
 
     #[inline]
-    pub fn start_send(&self, token: &mut Token) -> bool {
+    fn start_send(&self, token: &mut Token) -> bool {
         // If there's someone on the other side, exchange messages with it.
         if let Some(case) = self.wait_queues[1].remove_one() {
             unsafe {
@@ -290,13 +278,9 @@ impl Channel {
         // TODO
     }
 
-    pub fn fulfill_send(&self, token: &mut Token, is_prepared: bool) -> bool {
+    fn fulfill_send(&self, token: &mut Token, _is_prepared: bool) -> bool {
         *token = Token::Fulfill;
         true
-    }
-
-    pub unsafe fn finish_send(&self, token: &mut Token) {
-        // TODO
     }
 
     pub unsafe fn fail_send(&self, token: &mut Token) {

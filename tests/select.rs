@@ -6,7 +6,7 @@ use std::any::Any;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver};
 
 // TODO: test that `select!` evaluates to an expression
 // TODO: two nested `select!`s
@@ -50,7 +50,8 @@ fn foo() {
             select! {
                 send(s, panic!()) => {}
             }
-        }));
+        })).err().unwrap();
+
         assert_eq!(s.len(), 0);
         drop(s);
     });
@@ -63,6 +64,21 @@ fn same_variable_name() {
         recv(r, r) => assert!(r.is_none()),
     };
     // TODO: do the same with send(s, _, s) and recv(r, _, r)
+}
+
+#[test]
+fn handles_on_heap() {
+    let (s, r) = unbounded::<i32>();
+    let (s, r) = (Box::new(s), Box::new(r));
+
+    select! {
+        send(*s, 0) => {}
+        recv(*r, _) => {}
+        default => {}
+    };
+
+    drop(s);
+    drop(r);
 }
 
 // #[test]

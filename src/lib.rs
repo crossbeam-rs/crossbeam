@@ -305,25 +305,20 @@
 
 #![cfg_attr(feature = "nightly", feature(spin_loop_hint))]
 
-#![warn(missing_docs, missing_debug_implementations)]
-
-// TODO: Reexport hidden stuff through _internal module
-
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;
-#[doc(hidden)]
-pub extern crate smallvec;
+extern crate smallvec;
 
 #[doc(hidden)]
 #[macro_use]
 pub mod select;
-
 #[doc(hidden)]
 pub mod channel;
-mod flavors;
 #[doc(hidden)]
 pub mod utils;
+
+mod flavors;
 mod waker;
 
 pub use channel::{bounded, unbounded};

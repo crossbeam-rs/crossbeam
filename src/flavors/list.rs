@@ -18,15 +18,13 @@ use waker::Waker;
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
-pub type PreparedSender<'a, T: 'a> = Sender<'a, T>;
+pub type PreparedSender<'a, T> = Sender<'a, T>;
 
 impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
             self.0.start_recv(token, backoff)
-        }
     }
 
     fn promise(&self, case_id: CaseId) {
@@ -43,9 +41,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
             self.0.start_recv(token, backoff)
-        }
     }
 
     fn finish(&self, token: &mut Token) {
@@ -54,7 +50,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
         }
     }
 
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, _token: &mut Token) {
         unreachable!();
     }
 }
@@ -62,11 +58,11 @@ impl<'a, T> Sel for Receiver<'a, T> {
 impl<'a, T> Sel for Sender<'a, T> {
     type Token = Token;
 
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn try(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
         true
     }
 
-    fn promise(&self, case_id: CaseId) {
+    fn promise(&self, _case_id: CaseId) {
         unreachable!()
     }
 
@@ -74,21 +70,19 @@ impl<'a, T> Sel for Sender<'a, T> {
         unreachable!()
     }
 
-    fn revoke(&self, case_id: CaseId) {
+    fn revoke(&self, _case_id: CaseId) {
         unreachable!()
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn fulfill(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
         unreachable!()
     }
 
     fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_send(token);
-        }
+        self.0.finish_send(token);
     }
 
-    fn fail(&self, token: &mut Token) {
+    fn fail(&self, _token: &mut Token) {
         // nothing to do
     }
 }
@@ -211,7 +205,7 @@ impl<T> Channel<T> {
         channel
     }
 
-    pub fn write(&self, token: &mut Token, msg: T) {
+    pub fn write(&self, _token: &mut Token, msg: T) {
         let guard = epoch::pin();
         let mut backoff = Backoff::new();
 
@@ -254,13 +248,13 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn finish_send(&self, token: &mut Token) {
+    fn finish_send(&self, _token: &mut Token) {
         if let Some(case) = self.receivers.remove_one() {
             case.handle.unpark();
         }
     }
 
-    pub fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let guard = epoch::pin();
 
         loop {
@@ -350,7 +344,7 @@ impl<T> Channel<T> {
         }
     }
 
-    pub unsafe fn finish_recv(&self, token: &mut Token) {
+    pub unsafe fn finish_recv(&self, _token: &mut Token) {
 
     }
 

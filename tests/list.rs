@@ -25,7 +25,7 @@ fn send_panic() {
         select! {
             send(s, panic!()) => {}
         }
-    });
+    }).err().unwrap();
 
     assert_eq!(s.len(), 1);
     s.send(2);
@@ -90,7 +90,7 @@ fn recv_timeout() {
     crossbeam::scope(|scope| {
         scope.spawn(move || {
             select! {
-                recv(r, v) => panic!(),
+                recv(r, _) => panic!(),
                 default(ms(1000)) => {}
             }
             select! {
