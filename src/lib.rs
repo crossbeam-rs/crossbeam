@@ -458,8 +458,8 @@ impl<T> Deque<T> {
     /// ```
     pub fn shrink_to_fit(&self) {
         let b = self.inner.bottom.load(Relaxed);
+        let t = self.inner.top.load(Acquire);
         let cap = self.capacity();
-        let t = self.inner.top.load(Relaxed);
         let len = b.wrapping_sub(t);
 
         // Shrink the capacity as much as possible without overshooting `min_cap` or `len`.
