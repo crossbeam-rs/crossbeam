@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
@@ -15,7 +16,7 @@ use select::handle::{self, Handle};
 /// thread on multiple different channel ends.
 pub struct Case {
     /// A handle associated with the thread owning this case.
-    pub handle: Handle,
+    pub handle: Arc<Handle>,
 
     /// The case ID.
     pub case_id: CaseId,
@@ -69,11 +70,11 @@ impl Waker {
 
     pub fn remove_one(&self) -> Option<Case> {
         if self.len.load(Ordering::SeqCst) > 0 {
-            let thread_id = thread::current().id();
+            let thread_id = thread::current().id(); // TODO: optimize?
             let mut cases = self.cases.lock();
 
             for i in 0..cases.len() {
-                if cases[i].handle.thread_id() != thread_id {
+                if cases[i].handle.thread.id() != thread_id {
                     if cases[i].handle.try_select(cases[i].case_id) {
                         let case = cases.remove(i).unwrap();
                         self.len.store(cases.len(), Ordering::SeqCst);
@@ -111,7 +112,7 @@ impl Waker {
             let thread_id = thread::current().id();
 
             for i in 0..cases.len() {
-                if cases[i].handle.thread_id() != thread_id {
+                if cases[i].handle.thread.id() != thread_id {
                     return true;
                 }
             }

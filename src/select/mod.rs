@@ -5,18 +5,104 @@ mod case_id;
 pub mod handle;
 
 use smallvec::SmallVec;
-use channel::{Sel, Token, PreparedSender, Receiver, Sender};
-// use channel::SendLiteral;
-pub type GenericContainer<'a> = SmallVec<[(&'a Sel<Token = Token>, usize); 4]>;
+use channel::{Token, PreparedSender, Receiver, Sender};
+use utils::Backoff;
 
-pub trait SelectArgument<'a> {
+#[macro_export]
+macro_rules! select {
+    ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
+        select_internal!(@parse_list () ($($case $(($($args)*))* => $body,)*))
+    };
+    ($($tokens:tt)*) => {
+        select_internal!(@parse_list () ($($tokens)*))
+    };
+}
+
+pub trait SelectArgument<'a, T> {
+    fn extract(&'a self) -> &'a T;
+}
+impl<'a, T, A: SelectArgument<'a, T>> SelectArgument<'a, T> for &'a A {
+    fn extract(&'a self) -> &'a T {
+        (**self).extract()
+    }
+}
+impl<'a, T> SelectArgument<'a, Receiver<T>> for Receiver<T> {
+    fn extract(&'a self) -> &'a Receiver<T> {
+        self
+    }
+}
+impl<'a, T: 'a> SelectArgument<'a, Receiver<T>> for Option<&'a Receiver<T>> {
+    fn extract(&'a self) -> &'a Receiver<T> {
+        self.unwrap()
+    }
+}
+impl<'a, T> SelectArgument<'a, Sender<T>> for Sender<T> {
+    fn extract(&'a self) -> &'a Sender<T> {
+        self
+    }
+}
+impl<'a, T: 'a> SelectArgument<'a, Sender<T>> for Option<&'a Sender<T>> {
+    fn extract(&'a self) -> &'a Sender<T> {
+        self.unwrap()
+    }
+}
+impl<'a, T> SelectArgument<'a, PreparedSender<'a, T>> for PreparedSender<'a, T> {
+    fn extract(&'a self) -> &'a PreparedSender<'a, T> {
+        self
+    }
+}
+impl<'a, T: 'a> SelectArgument<'a, PreparedSender<'a, T>> for Option<&'a PreparedSender<'a, T>> {
+    fn extract(&'a self) -> &'a PreparedSender<'a, T> {
+        self.unwrap()
+    }
+}
+
+pub type GenericContainer<'a> = SmallVec<[(&'a Sel<Token = Token>, usize, usize); 4]>;
+
+pub trait Sel {
+    type Token;
+    fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
+    fn promise(&self, case_id: CaseId);
+    fn is_blocked(&self) -> bool;
+    fn revoke(&self, case_id: CaseId);
+    fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
+    fn finish(&self, token: &mut Self::Token);
+    fn fail(&self, token: &mut Self::Token);
+}
+
+impl<'a, T: Sel> Sel for &'a T {
+    type Token = <T as Sel>::Token;
+    fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
+        (**self).try(token, backoff)
+    }
+    fn promise(&self, case_id: CaseId) {
+        (**self).promise(case_id);
+    }
+    fn is_blocked(&self) -> bool {
+        (**self).is_blocked()
+    }
+    fn revoke(&self, case_id: CaseId) {
+        (**self).revoke(case_id);
+    }
+    fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
+        (**self).fulfill(token, backoff)
+    }
+    fn finish(&self, token: &mut Self::Token) {
+        (**self).finish(token)
+    }
+    fn fail(&self, token: &mut Self::Token) {
+        (**self).fail(token);
+    }
+}
+
+pub trait RecvArgument<'a> {
     type Container;
     fn init_single(&'a self, index: usize) -> Self::Container;
     fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>);
 }
 
-impl<'a, T: SelectArgument<'a>> SelectArgument<'a> for &'a T {
-    type Container = <T as SelectArgument<'a>>::Container;
+impl<'a, T: RecvArgument<'a>> RecvArgument<'a> for &'a T {
+    type Container = <T as RecvArgument<'a>>::Container;
     fn init_single(&self, index: usize) -> Self::Container {
         (**self).init_single(index)
     }
@@ -25,62 +111,78 @@ impl<'a, T: SelectArgument<'a>> SelectArgument<'a> for &'a T {
     }
 }
 
-impl<'a, T: 'a> SelectArgument<'a> for Receiver<T> {
-    type Container = [(&'a Receiver<T>, usize); 1];
+impl<'a, T: 'a> RecvArgument<'a> for Receiver<T> {
+    type Container = [(&'a Receiver<T>, usize, usize); 1];
     fn init_single(&'a self, index: usize) -> Self::Container {
-        [(self, index)]
+        [(self, index, self as *const Receiver<T> as usize)]
     }
     fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
-        c.push((self, index));
+        c.push((self, index, self as *const Receiver<T> as usize));
     }
 }
 
-impl<'a, T: 'a> SelectArgument<'a> for Sender<T> {
-    type Container = [(&'a Sender<T>, usize); 1];
-    fn init_single(&'a self, index: usize) -> Self::Container {
-        [(self, index)]
-    }
-    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
-        c.push((self, index));
-    }
-}
-
-impl<'a, T: 'a> SelectArgument<'a> for PreparedSender<'a, T> {
-    type Container = [(&'a PreparedSender<'a, T>, usize); 1];
-    fn init_single(&'a self, index: usize) -> Self::Container {
-        [(self, index)]
-    }
-    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
-        c.push((self, index));
-    }
-}
-
-impl<'a, T> SelectArgument<'a> for Option<&'a Receiver<T>> {
-    type Container = SmallVec<[(&'a Receiver<T>, usize); 1]>;
+impl<'a, T> RecvArgument<'a> for Option<&'a Receiver<T>> {
+    type Container = SmallVec<[(&'a Receiver<T>, usize, usize); 1]>;
     fn init_single(&'a self, index: usize) -> Self::Container {
         match *self {
             None => SmallVec::new(),
-            Some(r) => SmallVec::from_buf([(r, index)])
+            Some(r) => SmallVec::from_buf([(r, index, r as *const Receiver<T> as usize)])
         }
     }
     fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
         if let Some(r) = *self {
-            c.push((r, index));
+            c.push((r, index, r as *const Receiver<T> as usize));
         }
     }
 }
 
-impl<'a, T> SelectArgument<'a> for Option<&'a Sender<T>> {
-    type Container = SmallVec<[(&'a Sender<T>, usize); 1]>;
+pub trait SendArgument<'a> {
+    type Container;
+    fn init_single(&'a self, index: usize) -> Self::Container;
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>);
+}
+
+impl<'a, T: SendArgument<'a>> SendArgument<'a> for &'a T {
+    type Container = <T as SendArgument<'a>>::Container;
+    fn init_single(&self, index: usize) -> Self::Container {
+        (**self).init_single(index)
+    }
+    fn init_generic(&self, index: usize, c: &mut GenericContainer<'a>) {
+        (**self).init_generic(index, c)
+    }
+}
+
+impl<'a, T: 'a> SendArgument<'a> for Sender<T> {
+    type Container = [(&'a Sender<T>, usize, usize); 1];
+    fn init_single(&'a self, index: usize) -> Self::Container {
+        [(self, index, self as *const Sender<T> as usize)]
+    }
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
+        c.push((self, index, self as *const Sender<T> as usize));
+    }
+}
+
+impl<'a, T: 'a> SendArgument<'a> for PreparedSender<'a, T> {
+    type Container = [(&'a PreparedSender<'a, T>, usize, usize); 1];
+    fn init_single(&'a self, index: usize) -> Self::Container {
+        [(self, index, self as *const PreparedSender<T> as usize)]
+    }
+    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
+        c.push((self, index, self as *const PreparedSender<T> as usize));
+    }
+}
+
+impl<'a, T> SendArgument<'a> for Option<&'a Sender<T>> {
+    type Container = SmallVec<[(&'a Sender<T>, usize, usize); 1]>;
     fn init_single(&'a self, index: usize) -> Self::Container {
         match *self {
             None => SmallVec::new(),
-            Some(s) => SmallVec::from_buf([(s, index)])
+            Some(s) => SmallVec::from_buf([(s, index, s as *const Sender<T> as usize)])
         }
     }
     fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
         if let Some(s) = *self {
-            c.push((s, index));
+            c.push((s, index, s as *const Sender<T> as usize));
         }
     }
 }
@@ -302,13 +404,19 @@ macro_rules! select_internal {
 
     // Success! All cases were consumed.
     (@parse_case
-        $recv:tt
-        $send:tt
+        ($($recv:tt)*)
+        ($($send:tt)*)
         $default:tt
         ()
         $labels:tt
     ) => {
-        select_internal!(@generate $recv $send $default)
+        select_internal!(
+            @declare
+            ($($recv)* $($send)*)
+            ($($recv)*)
+            ($($send)*)
+            $default
+        )
     };
     // Error: there are no labels left.
     (@parse_case
@@ -629,11 +737,100 @@ macro_rules! select_internal {
         ))
     };
 
-    (@generate $recv:tt $send:tt $default:tt) => {{
+    (@declare
+        (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
+        $recv:tt
+        $send:tt
+        $default:tt
+    ) => {
+        match &$r {
+            $var => {
+                use $crate::select::SelectArgument;
+                let _: &SelectArgument<_> = &$var;
+                select_internal!(
+                    @declare
+                    ($($tail)*)
+                    $recv
+                    $send
+                    $default
+                )
+            }
+        }
+    };
+    (@declare
+        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
+        $recv:tt
+        $send:tt
+        $default:tt
+    ) => {
+        match &mut ($rs).into_iter() {
+            $var => {
+                let _: &Iterator<Item = &Receiver<_>> = &$var;
+                select_internal!(
+                    @declare
+                    ($($tail)*)
+                    $recv
+                    $send
+                    $default
+                )
+            }
+        }
+    };
+    (@declare
+        (($i:tt $var:ident) send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
+        $recv:tt
+        $send:tt
+        $default:tt
+    ) => {
+        match &$s {
+            $var => {
+                use $crate::select::SelectArgument;
+                let _: &SelectArgument<_> = &$var;
+                select_internal!(
+                    @declare
+                    ($($tail)*)
+                    $recv
+                    $send
+                    $default
+                )
+            }
+        }
+    };
+    (@declare
+        (($i:tt $var:ident) send($ss:expr, $m:pat, $s:pat) => $body:tt, $($tail:tt)*)
+        $recv:tt
+        $send:tt
+        $default:tt
+    ) => {
+        match &mut ($ss).into_iter() {
+            $var => {
+                let _: &Iterator<Item = &Sender<_>> = &$var;
+                select_internal!(
+                    @declare
+                    ($($tail)*)
+                    $recv
+                    $send
+                    $default
+                )
+            }
+        }
+    };
+    (@declare
+        ()
+        $recv:tt
+        $send:tt
+        $default:tt
+    ) => {
+        select_internal!(@mainloop $recv $send $default)
+    };
+
+    (@mainloop $recv:tt $send:tt $default:tt) => {{
         use std::time::Instant;
 
         // These cause warnings:
-        use $crate::channel::Sel;
+        use $crate::select::Sel;
+        use $crate::select::RecvArgument;
+        use $crate::select::SendArgument;
         use $crate::select::SelectArgument;
 
         use $crate::channel::Token;
@@ -645,22 +842,22 @@ macro_rules! select_internal {
         let default_index: usize;
         select_internal!(@default deadline default_index $default);
 
-        let mut token: Token = unsafe { ::std::mem::zeroed() };
-        let mut index: usize = !0;
-
-        select_internal!(@declare $recv);
-        select_internal!(@declare $send);
         let mut cases;
         select_internal!(@container cases $recv $send);
         shuffle(&mut cases);
+
+        let mut token: Token = unsafe { ::std::mem::zeroed() };
+        let mut index: usize = !0;
+        let mut selected: usize = 0;
 
         loop {
             // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
             let backoff = &mut Backoff::new();
             loop {
-                for &(sel, i) in &cases {
+                for &(sel, i, addr) in &cases {
                     if sel.try(&mut token, backoff) {
                         index = i;
+                        selected = addr;
                         break;
                     }
                 }
@@ -680,6 +877,7 @@ macro_rules! select_internal {
 
             if default_index != !0 && deadline.is_none() {
                 index = default_index;
+                selected = 0;
                 break;
             }
 
@@ -690,11 +888,11 @@ macro_rules! select_internal {
 
             for case in &cases {
                 let case_id = CaseId::new(case as *const _ as usize);
-                let &(sel, _) = case;
+                let &(sel, _, _) = case;
                 sel.promise(case_id);
             }
 
-            for &(sel, _) in &cases {
+            for &(sel, _, _) in &cases {
                 if !sel.is_blocked() {
                     handle::current_try_select(CaseId::abort());
                 }
@@ -705,22 +903,24 @@ macro_rules! select_internal {
 
             for case in &cases {
                 let case_id = CaseId::new(case as *const _ as usize);
-                let &(sel, _) = case;
+                let &(sel, _, _) = case;
                 sel.revoke(case_id);
             }
 
             if timed_out {
                 index = default_index;
+                selected = 0;
                 break;
             }
 
             if s != CaseId::abort() {
                 for case in &cases {
                     let case_id = CaseId::new(case as *const _ as usize);
-                    let &(sel, i) = case;
+                    let &(sel, i, addr) = case;
                     if case_id == s {
                         if sel.fulfill(&mut token, &mut Backoff::new()) {
                             index = i;
+                            selected = addr;
                             break;
                         }
                     }
@@ -732,7 +932,7 @@ macro_rules! select_internal {
             }
         }
 
-        select_internal!(@finish index token $recv $send $default)
+        select_internal!(@finish token index selected $recv $send $default)
 
         // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
         // TODO: eliminate all thread-locals (mpsc doesn't use them!)
@@ -746,27 +946,49 @@ macro_rules! select_internal {
         // TODO: allocate less memory in unbounded flavor if few elements are sent.
         // TODO: allocate memory lazily in unbounded flavor?
         // TODO: Run `cargo clippy` and make sure there are no warnings in here.
-    }};
 
-    (@declare ($(($i:tt $var:ident) $method:tt ($v:expr, $($args:tt)*) => $body:tt,)*)) => {
-        $(
-            let $var = &($v);
-        )*
-    };
+        // TODO: test init_single and init_multi
+    }};
 
     (@container
         $cases:ident
         (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt,)
         ()
     ) => {
-        $cases = SelectArgument::init_single($var, $i);
+        $cases = RecvArgument::init_single($var, $i);
+    };
+    (@container
+        $cases:ident
+        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
+        ()
+    ) => {
+        use $crate::smallvec::SmallVec;
+        let mut c: SmallVec<[_; 4]> = SmallVec::new();
+        while let Some(r) = $var.next() {
+            let addr = r as *const Receiver<_> as usize;
+            c.push((r, $i, addr));
+        }
+        $cases = c;
     };
     (@container
         $cases:ident
         ()
         (($i:tt $var:ident) send($s:expr, $m:expr) => $body:tt,)
     ) => {
-        $cases = SelectArgument::init_single($var, $i);
+        $cases = SendArgument::init_single($var, $i);
+    };
+    (@container
+        $cases:ident
+        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
+        ()
+    ) => {
+        use $crate::smallvec::SmallVec;
+        let mut c: SmallVec<[_; 4]> = SmallVec::new();
+        while let Some(r) = $var.next() {
+            let addr = r as *const Receiver<_> as usize;
+            c.push((r, $i, addr));
+        }
+        $cases = c;
     };
     (@container
         $cases:ident
@@ -782,7 +1004,18 @@ macro_rules! select_internal {
         (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
         $send:tt
     ) => {
-        SelectArgument::init_generic($var, $i, &mut $cases);
+        RecvArgument::init_generic($var, $i, &mut $cases);
+        select_internal!(@push $cases ($($tail)*) $send);
+    };
+    (@push
+        $cases:ident
+        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
+        $send:tt
+    ) => {
+        while let Some(r) = $var.next() {
+            let addr = r as *const Receiver<_> as usize;
+            $cases.push((r, $i, addr));
+        }
         select_internal!(@push $cases ($($tail)*) $send);
     };
     (@push
@@ -790,7 +1023,18 @@ macro_rules! select_internal {
         ()
         (($i:tt $var:ident) send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
     ) => {
-        SelectArgument::init_generic($var, $i, &mut $cases);
+        SendArgument::init_generic($var, $i, &mut $cases);
+        select_internal!(@push $cases () ($($tail)*));
+    };
+    (@push
+        $cases:ident
+        ()
+        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
+    ) => {
+        while let Some(s) = $var.next() {
+            let addr = s as *const Sender<_> as usize;
+            $cases.push((s, $i, addr));
+        }
         select_internal!(@push $cases () ($($tail)*));
     };
     (@push
@@ -826,24 +1070,27 @@ macro_rules! select_internal {
     };
 
     (@finish
-        $index:ident
         $token:ident
+        $index:ident
+        $selected:ident
         (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
         $send:tt
         $default:tt
     ) => {
         if $index == $i {
             let $m = {
-                let msg = unsafe { $var.read(&mut $token) };
-                $var.finish(&mut $token);
+                let r = SelectArgument::extract($var);
+                let msg = unsafe { r.read(&mut $token) };
+                r.finish(&mut $token);
                 msg
             };
             $body
         } else {
             select_internal!(
                 @finish
-                $index
                 $token
+                $index
+                $selected
                 ($($tail)*)
                 $send
                 $default
@@ -851,8 +1098,43 @@ macro_rules! select_internal {
         }
     };
     (@finish
-        $index:ident
         $token:ident
+        $index:ident
+        $selected:ident
+        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
+        $send:tt
+        $default:tt
+    ) => {
+        if $index == $i {
+            unsafe fn bind<'a, T: 'a, I>(_: &I, addr: usize) -> &'a Receiver<T>
+            where
+                I: Iterator<Item = &'a Receiver<T>>,
+            {
+                &*(addr as *const Receiver<T>)
+            }
+            let ($m, $r) = {
+                let r = unsafe { bind(&$var, $selected) };
+                let msg = unsafe { r.read(&mut $token) };
+                r.finish(&mut $token);
+                (msg, r)
+            };
+            $body
+        } else {
+            select_internal!(
+                @finish
+                $token
+                $index
+                $selected
+                ($($tail)*)
+                $send
+                $default
+            )
+        }
+    };
+    (@finish
+        $token:ident
+        $index:ident
+        $selected:ident
         ()
         (($i:tt $var:ident) send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
         $default:tt
@@ -866,10 +1148,11 @@ macro_rules! select_internal {
                     }
                 }
 
+                let s = SelectArgument::extract($var);
                 let _msg = {
                     // We have to prefix variables with an underscore to get rid of warnings in
                     // case `$m` is of type `!`.
-                    let _guard = Guard(|| $var.fail(&mut $token));
+                    let _guard = Guard(|| s.fail(&mut $token));
                     let _msg = $m;
 
                     #[allow(unreachable_code)]
@@ -879,15 +1162,16 @@ macro_rules! select_internal {
                     }
                 };
 
-                $var.write(&mut $token, _msg);
-                $var.finish(&mut $token);
+                s.write(&mut $token, _msg);
+                s.finish(&mut $token);
             }
             $body
         } else {
             select_internal!(
                 @finish
-                $index
                 $token
+                $index
+                $selected
                 ()
                 ($($tail)*)
                 $default
@@ -895,8 +1179,64 @@ macro_rules! select_internal {
         }
     };
     (@finish
-        $index:ident
         $token:ident
+        $index:ident
+        $selected:ident
+        ()
+        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
+        $default:tt
+    ) => {
+        if $index == $i {
+            let $s = unsafe {
+                struct Guard<F: FnMut()>(F);
+                impl<F: FnMut()> Drop for Guard<F> {
+                    fn drop(&mut self) {
+                        self.0();
+                    }
+                }
+
+                unsafe fn bind<'a, T: 'a, I>(_: &I, addr: usize) -> &'a Sender<T>
+                where
+                    I: Iterator<Item = &'a Sender<T>>,
+                {
+                    &*(addr as *const Sender<T>)
+                }
+                let s = unsafe { bind(&$var, $selected) };
+
+                let _msg = {
+                    // We have to prefix variables with an underscore to get rid of warnings in
+                    // case `$m` is of type `!`.
+                    let _guard = Guard(|| s.fail(&mut $token));
+                    let _msg = $m;
+
+                    #[allow(unreachable_code)]
+                    {
+                        ::std::mem::forget(_guard);
+                        _msg
+                    }
+                };
+
+                s.write(&mut $token, _msg);
+                s.finish(&mut $token);
+                s
+            };
+            $body
+        } else {
+            select_internal!(
+                @finish
+                $token
+                $index
+                $selected
+                ()
+                ($($tail)*)
+                $default
+            )
+        }
+    };
+    (@finish
+        $token:ident
+        $index:ident
+        $selected:ident
         ()
         ()
         (($i:tt $var:ident) default $args:tt => $body:tt,)
@@ -906,8 +1246,9 @@ macro_rules! select_internal {
         } else {
             select_internal!(
                 @finish
-                $index
                 $token
+                $index
+                $selected
                 ()
                 ()
                 ()
@@ -915,8 +1256,9 @@ macro_rules! select_internal {
         }
     };
     (@finish
-        $index:ident
         $token:ident
+        $index:ident
+        $selected:ident
         ()
         ()
         ()
@@ -932,16 +1274,6 @@ macro_rules! select_internal {
     () => {
         compile_error!("empty block in `select_internal!`")
     };
-    ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
-        select_internal!(@parse_list () ($($case $(($($args)*))* => $body,)*))
-    };
-    ($($tail:tt)*) => {
-        select_internal!(@parse_list () ($($tail)*))
-    };
-}
-
-#[macro_export]
-macro_rules! select {
     ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
         select_internal!(@parse_list () ($($case $(($($args)*))* => $body,)*))
     };

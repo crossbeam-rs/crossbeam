@@ -3,12 +3,13 @@
 //! Also known as *rendezvous* channel.
 
 use std::mem;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use parking_lot::Mutex;
 
-use channel::Sel;
 use select::CaseId;
+use select::Sel;
 use select::handle::{self, HANDLE, Handle};
 use utils::Backoff;
 use waker::{Case, Waker};
@@ -20,33 +21,40 @@ pub struct PreparedSender<'a>(&'a Channel);
 impl<'a> Sel for Receiver<'a> {
     type Token = Token;
 
+    #[inline]
     fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.start_recv(token)
     }
 
+    #[inline]
     fn promise(&self, case_id: CaseId) {
         self.0.receivers().register(case_id, true)
     }
 
+    #[inline]
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         !self.0.senders().can_notify() && !self.0.is_closed()
     }
 
+    #[inline]
     fn revoke(&self, case_id: CaseId) {
         self.0.receivers().unregister(case_id);
     }
 
+    #[inline]
     fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.fulfill_recv(token)
     }
 
+    #[inline]
     fn finish(&self, token: &mut Token) {
         unsafe {
             self.0.finish_recv(token);
         }
     }
 
+    #[inline]
     fn fail(&self, _token: &mut Token) {
         unreachable!();
     }
@@ -55,33 +63,40 @@ impl<'a> Sel for Receiver<'a> {
 impl<'a> Sel for Sender<'a> {
     type Token = Token;
 
+    #[inline]
     fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.start_send(token)
     }
 
+    #[inline]
     fn promise(&self, case_id: CaseId) {
         self.0.senders().register(case_id, false)
     }
 
+    #[inline]
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         !self.0.receivers().can_notify()
     }
 
+    #[inline]
     fn revoke(&self, case_id: CaseId) {
         self.0.senders().unregister(case_id);
     }
 
+    #[inline]
     fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.fulfill_send(token, false)
     }
 
+    #[inline]
     fn finish(&self, token: &mut Token) {
         unsafe {
             self.0.finish_recv(token); // TODO: may fail!
         }
     }
 
+    #[inline]
     fn fail(&self, token: &mut Token) {
         unsafe {
             self.0.fail_send(token);
@@ -92,33 +107,40 @@ impl<'a> Sel for Sender<'a> {
 impl<'a> Sel for PreparedSender<'a> {
     type Token = Token;
 
+    #[inline]
     fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.start_send(token)
     }
 
+    #[inline]
     fn promise(&self, case_id: CaseId) {
         self.0.senders().register(case_id, true)
     }
 
+    #[inline]
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         !self.0.receivers().can_notify()
     }
 
+    #[inline]
     fn revoke(&self, case_id: CaseId) {
         self.0.senders().unregister(case_id);
     }
 
+    #[inline]
     fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.fulfill_send(token, true)
     }
 
+    #[inline]
     fn finish(&self, token: &mut Token) {
         unsafe {
             self.0.finish_recv(token); // TODO: may fail!
         }
     }
 
+    #[inline]
     fn fail(&self, _token: &mut Token) {
         unreachable!()
     }
@@ -160,12 +182,12 @@ impl Channel {
             if let Some(case) = self.wait_queues[0].remove_one() {
                 unsafe {
                     if !case.is_prepared {
-                        case.handle.inner.thread.unpark();
+                        case.handle.thread.unpark();
 
-                        while case.handle.inner.request_ptr.load(Ordering::SeqCst) == 0 {
+                        while case.handle.request_ptr.load(Ordering::SeqCst) == 0 {
                         }
 
-                        if case.handle.inner.request_ptr.load(Ordering::SeqCst) == 2 {
+                        if case.handle.request_ptr.load(Ordering::SeqCst) == 2 {
                             continue;
                         }
                     }
@@ -194,7 +216,7 @@ impl Channel {
 
         let mut backoff = Backoff::new();
         loop {
-            let ptr = handle.inner.request_ptr.load(Ordering::Acquire);
+            let ptr = handle.request_ptr.load(Ordering::Acquire);
             if ptr == 2 {
                 return false;
             }
@@ -213,13 +235,13 @@ impl Channel {
             Token::Closed => None,
             Token::Fulfill => {
                 let req = HANDLE.with(|handle| {
-                    let ptr = handle.inner.request_ptr.swap(0, Ordering::Acquire);
+                    let ptr = handle.request_ptr.swap(0, Ordering::Acquire);
                     ptr as *const Request<Option<T>>
                 });
 
                 let m = {
                     // First, make a clone of the requesting thread.
-                    let thread = (*req).handle.inner.thread.clone();
+                    let thread = (*req).handle.thread.clone();
 
                     // Exchange the messages and then notify the requesting thread that it can pick up our
                     // message.
@@ -266,7 +288,7 @@ impl Channel {
             Token::Fulfill => {
                 if !is_prepared {
                     let handle = handle::current();
-                    handle.inner.request_ptr.store(1, Ordering::SeqCst);
+                    handle.request_ptr.store(1, Ordering::SeqCst);
                 }
                 fulfill(Some(msg));
             }
@@ -289,11 +311,11 @@ impl Channel {
             Token::Closed => unreachable!(),
             Token::Fulfill => {
                 let handle = handle::current();
-                handle.inner.request_ptr.store(2, Ordering::SeqCst);
+                handle.request_ptr.store(2, Ordering::SeqCst);
             }
             Token::Case(ref case) => {
                 let case: Case = mem::transmute::<[usize; 3], Case>(*case);
-                case.handle.inner.request_ptr.store(2, Ordering::SeqCst);
+                case.handle.request_ptr.store(2, Ordering::SeqCst);
             }
         }
     }
@@ -347,10 +369,10 @@ unsafe fn finish_exchange<T>(case: Case, msg: T) -> T {
 
     // Create a request on the stack and register it in the owner of this case.
     let req = Request::new(msg);
-    case.handle.inner.request_ptr.store(&req as *const _ as usize, Ordering::Release);
+    case.handle.request_ptr.store(&req as *const _ as usize, Ordering::Release);
 
     // Wake up the owner of this case.
-    case.handle.inner.thread.unpark();
+    case.handle.thread.unpark();
 
     // Wait until our selection case is woken.
     handle::current_wait_until(None);
@@ -365,9 +387,9 @@ fn fulfill<T>(msg: T) -> T {
     let req = HANDLE.with(|handle| {
         let mut backoff = Backoff::new();
         loop {
-            let ptr = handle.inner.request_ptr.load(Ordering::Acquire);
+            let ptr = handle.request_ptr.load(Ordering::Acquire);
             if ptr > 2 {
-                handle.inner.request_ptr.store(0, Ordering::SeqCst);
+                handle.request_ptr.store(0, Ordering::SeqCst);
                 break ptr as *const Request<T>;
             }
             backoff.step();
@@ -376,7 +398,7 @@ fn fulfill<T>(msg: T) -> T {
 
     unsafe {
         // First, make a clone of the requesting thread.
-        let thread = (*req).handle.inner.thread.clone();
+        let thread = (*req).handle.thread.clone();
 
         // Exchange the messages and then notify the requesting thread that it can pick up our
         // message.
@@ -394,7 +416,7 @@ fn fulfill<T>(msg: T) -> T {
 /// A request for promised message.
 struct Request<T> {
     /// The handle associated with the requestor.
-    handle: Handle,
+    handle: Arc<Handle>,
 
     /// The message for exchange.
     msg: Mutex<Option<T>>,

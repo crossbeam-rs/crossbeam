@@ -6,7 +6,7 @@ use std::any::Any;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, unbounded, Receiver};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
 // TODO: test that `select!` evaluates to an expression
 // TODO: two nested `select!`s
@@ -14,6 +14,22 @@ use crossbeam_channel::{bounded, unbounded, Receiver};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
+}
+
+#[test]
+fn refs() {
+    let (s, r) = unbounded::<i32>();
+    select! {
+        send(&&&&s, 0) => {}
+        recv(&&&&r, _) => {}
+    }
+    let ss = &&&&[s];
+    let rr = &&&&[r];
+    select! {
+        // send(ss.iter(), 0, _) => {} // TODO
+        recv(rr.iter(), _, _) => {}
+    }
+    // TODO: refs in the multi case?
 }
 
 #[test]
@@ -58,11 +74,47 @@ fn foo() {
 }
 
 #[test]
+fn multiple_receivers() {
+    let (_, r1) = unbounded::<i32>();
+    let (_, r2) = bounded::<i32>(5);
+    select! {
+        recv([&r1, &r2].iter().map(|x| *x), msg, _) => assert!(msg.is_none()),
+    }
+    select! {
+        recv([r1, r2].iter(), msg, _) => assert!(msg.is_none()),
+    }
+
+    let (_, r1) = unbounded::<i32>();
+    let (_, r2) = bounded::<i32>(5);
+    select! {
+        recv(&[r1, r2], msg, _) => assert!(msg.is_none()),
+    }
+}
+
+#[test]
+fn multiple_senders() {
+    let (s1, _) = unbounded::<i32>();
+    let (s2, _) = bounded::<i32>(5);
+    select! {
+        send([&s1, &s2].iter().map(|x| *x), 0, _) => {}
+    }
+    select! {
+        send([s1, s2].iter(), 0, _) => {}
+    }
+
+    let (s1, _) = unbounded::<i32>();
+    let (s2, _) = bounded::<i32>(5);
+    select! {
+        send(&[s1, s2], 0, _) => {},
+    }
+}
+
+#[test]
 fn same_variable_name() {
     let (_, r) = unbounded::<i32>();
     select! {
         recv(r, r) => assert!(r.is_none()),
-    };
+    }
     // TODO: do the same with send(s, _, s) and recv(r, _, r)
 }
 
@@ -75,19 +127,62 @@ fn handles_on_heap() {
         send(*s, 0) => {}
         recv(*r, _) => {}
         default => {}
-    };
+    }
 
     drop(s);
     drop(r);
 }
 
-// #[test]
-// fn option_receiver() {
-//     let (_, r) = unbounded::<i32>();
-//     select! {
-//         recv(Some(&r), _) => {}
-//     };
-// }
+#[test]
+fn option_receiver() {
+    let (_, r) = unbounded::<i32>();
+    select! {
+        recv(Some(&r), _) => {}
+    }
+
+    let r: Option<Receiver<u32>> = None;
+    select! {
+        recv(r.as_ref(), _) => {}
+        default => {}
+    }
+
+    let r: Option<&&&Box<&&Receiver<u32>>> = None;
+    let r: Option<&Receiver<u32>> = match r {
+        None => None,
+        Some(r) => Some(r),
+    };
+    select! {
+        recv(r, _) => {}
+        default => {}
+    }
+    // TODO: test with multiple cases
+}
+
+#[test]
+fn option_sender() {
+    let (s, _) = unbounded::<i32>();
+    select! {
+        send(Some(&s), 0) => {}
+        default => {}
+    }
+
+    let s: Option<Sender<u32>> = None;
+    select! {
+        send(s.as_ref(), 0) => {}
+        default => {}
+    }
+
+    let s: Option<&&&Box<&&Sender<u32>>> = None;
+    let s: Option<&Sender<u32>> = match s {
+        None => None,
+        Some(s) => Some(s),
+    };
+    select! {
+        send(s, 0) => {}
+        default => {}
+    }
+    // TODO: test with multiple cases
+}
 
 #[test]
 fn once_receiver() {
@@ -101,7 +196,7 @@ fn once_receiver() {
 
     select! {
         recv(get(), _) => {}
-    };
+    }
 }
 
 #[test]
@@ -116,7 +211,7 @@ fn once_sender() {
 
     select! {
         send(get(), 5) => {}
-    };
+    }
 }
 
 #[test]
@@ -129,7 +224,7 @@ fn once_timeout() {
 
     select! {
         default(get()) => {}
-    };
+    }
 }
 
 // TODO: also fn once_deadline

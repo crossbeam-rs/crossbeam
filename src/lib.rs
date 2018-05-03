@@ -308,7 +308,7 @@
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;
-extern crate smallvec;
+pub extern crate smallvec;
 
 #[doc(hidden)]
 #[macro_use]

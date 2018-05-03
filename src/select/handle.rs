@@ -6,39 +6,29 @@ use std::time::Instant;
 use select::CaseId;
 use utils::Backoff;
 
-pub struct Inner {
+pub struct Handle {
     pub case_id: AtomicUsize,
     pub thread: Thread,
     /// A slot into which another thread may store a pointer to its `Request`.
     pub request_ptr: AtomicUsize,
 }
 
-#[derive(Clone)]
-pub struct Handle {
-    pub inner: Arc<Inner>,
-}
-
 impl Handle {
     pub fn try_select(&self, case_id: CaseId) -> bool {
-        self.inner
-            .case_id
+        self.case_id
             .compare_and_swap(CaseId::none().into(), case_id.into(), Ordering::SeqCst) == CaseId::none().into()
     }
 
     pub fn unpark(&self) {
-        self.inner.thread.unpark();
-    }
-
-    pub fn thread_id(&self) -> ThreadId {
-        self.inner.thread.id()
+        self.thread.unpark();
     }
 
     pub fn reset(&self) {
-        self.inner.case_id.store(0, Ordering::SeqCst);
+        self.case_id.store(0, Ordering::SeqCst);
     }
 
     pub fn selected(&self) -> CaseId {
-        CaseId::from(self.inner.case_id.load(Ordering::SeqCst))
+        CaseId::from(self.case_id.load(Ordering::SeqCst))
     }
 
     pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
@@ -71,31 +61,29 @@ impl Handle {
 }
 
 thread_local! {
-    pub static HANDLE: Handle = Handle {
-        inner: Arc::new(Inner {
-            case_id: AtomicUsize::new(CaseId::none().into()),
-            thread: thread::current(),
-            request_ptr: AtomicUsize::new(0),
-        })
-    };
+    pub static HANDLE: Arc<Handle> = Arc::new(Handle {
+        case_id: AtomicUsize::new(CaseId::none().into()),
+        thread: thread::current(),
+        request_ptr: AtomicUsize::new(0),
+    });
 }
 
-pub fn current() -> Handle {
-    HANDLE.with(|a| a.clone())
+pub fn current() -> Arc<Handle> {
+    HANDLE.with(|h| h.clone())
 }
 
 pub fn current_try_select(case_id: CaseId) -> bool {
-    HANDLE.with(|a| a.try_select(case_id))
+    HANDLE.with(|h| h.try_select(case_id))
 }
 
 pub fn current_selected() -> CaseId {
-    HANDLE.with(|a| a.selected())
+    HANDLE.with(|h| h.selected())
 }
 
 pub fn current_reset() {
-    HANDLE.with(|a| a.reset())
+    HANDLE.with(|h| h.reset())
 }
 
 pub fn current_wait_until(deadline: Option<Instant>) -> bool {
-    HANDLE.with(|a| a.wait_until(deadline))
+    HANDLE.with(|h| h.wait_until(deadline))
 }

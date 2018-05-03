@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
-use channel::Sel;
 use select::CaseId;
+use select::Sel;
 use utils::Backoff;
 use waker::Waker;
 
@@ -24,7 +24,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-            self.0.start_recv(token, backoff)
+        self.0.start_recv(token, backoff)
     }
 
     fn promise(&self, case_id: CaseId) {

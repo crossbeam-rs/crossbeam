@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crossbeam_utils::cache_padded::CachePadded;
 
-use channel::Sel;
 use select::CaseId;
+use select::Sel;
 use utils::Backoff;
 use waker::Waker;
 

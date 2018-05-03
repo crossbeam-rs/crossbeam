@@ -39,39 +39,27 @@ impl Backoff {
     }
 }
 
-struct Rng {
-    state: Cell<Wrapping<u32>>,
-}
-
-impl Rng {
-    #[inline]
-    fn next(&self) -> u32 {
-        // This is the 32-bit variant of Xorshift.
-        // https://en.wikipedia.org/wiki/Xorshift
-        let mut x = self.state.get();
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.state.set(x);
-        x.0
-    }
-}
-
-thread_local! {
-    static RNG: Rng = Rng {
-        state: Cell::new(Wrapping(1)),
-    };
-}
-
 pub fn shuffle<T>(v: &mut [T]) {
     let len = v.len();
     if len <= 1 {
         return;
     }
 
+    thread_local! {
+        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
+    }
+
     RNG.with(|rng| {
         for i in 1..len {
-            let x = rng.next();
+            // This is the 32-bit variant of Xorshift.
+            // https://en.wikipedia.org/wiki/Xorshift
+            let mut x = rng.get();
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            rng.set(x);
+
+            let x = x.0;
             let n = i + 1;
 
             // This is a fast alternative to `let j = x % n`.

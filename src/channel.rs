@@ -8,47 +8,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use flavors;
 use select::CaseId;
+use select::Sel;
 use utils::Backoff;
 
 // TODO: explain
 // loop { try; promise; is_blocked; revoke; fulfill }
 // -> write; fail or finish
 // -> read; finish
-
-pub trait Sel {
-    type Token;
-    fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
-    fn promise(&self, case_id: CaseId);
-    fn is_blocked(&self) -> bool;
-    fn revoke(&self, case_id: CaseId);
-    fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
-    fn finish(&self, token: &mut Self::Token);
-    fn fail(&self, token: &mut Self::Token);
-}
-impl<'a, T: Sel> Sel for &'a T {
-    type Token = <T as Sel>::Token;
-    fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
-        (**self).try(token, backoff)
-    }
-    fn promise(&self, case_id: CaseId) {
-        (**self).promise(case_id);
-    }
-    fn is_blocked(&self) -> bool {
-        (**self).is_blocked()
-    }
-    fn revoke(&self, case_id: CaseId) {
-        (**self).revoke(case_id);
-    }
-    fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
-        (**self).fulfill(token, backoff)
-    }
-    fn finish(&self, token: &mut Self::Token) {
-        (**self).finish(token)
-    }
-    fn fail(&self, token: &mut Self::Token) {
-        (**self).fail(token);
-    }
-}
 
 pub union Token {
     array: flavors::array::Token,
@@ -259,6 +225,10 @@ impl<'a, T> Sel for PreparedSender<'a, T> {
 
 #[doc(hidden)]
 impl<'a, T> PreparedSender<'a, T> {
+    fn channel_id(&self) -> usize {
+        &*self.0 as *const Channel<T> as usize
+    }
+
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         match self.0.flavor {
             Flavor::Array(ref chan) => chan.write(&mut token.array, msg, true),
@@ -424,9 +394,8 @@ impl<T> Sender<T> {
         Sender(chan)
     }
 
-    fn channel_address(&self) -> usize {
-        let chan: &Channel<T> = &*self.0;
-        chan as *const Channel<T> as usize
+    fn channel_id(&self) -> usize {
+        &*self.0 as *const Channel<T> as usize
     }
 
     // TODO: fn write_send() and fn read_recv(), then finish() with just token
@@ -599,13 +568,13 @@ impl<T> fmt::Debug for Sender<T> {
 
 impl<T> Hash for Sender<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.channel_address().hash(state)
+        self.channel_id().hash(state)
     }
 }
 
 impl<T> PartialEq for Sender<T> {
     fn eq(&self, other: &Sender<T>) -> bool {
-        self.channel_address() == other.channel_address()
+        self.channel_id() == other.channel_id()
     }
 }
 
@@ -619,19 +588,19 @@ impl<T> PartialOrd for Sender<T> {
 
 impl<T> Ord for Sender<T> {
     fn cmp(&self, other: &Sender<T>) -> cmp::Ordering {
-        self.channel_address().cmp(&other.channel_address())
+        self.channel_id().cmp(&other.channel_id())
     }
 }
 
 impl<T> PartialEq<Receiver<T>> for Sender<T> {
     fn eq(&self, other: &Receiver<T>) -> bool {
-        self.channel_address() == other.channel_address()
+        self.channel_id() == other.channel_id()
     }
 }
 
 impl<T> PartialOrd<Receiver<T>> for Sender<T> {
     fn partial_cmp(&self, other: &Receiver<T>) -> Option<cmp::Ordering> {
-        self.channel_address().partial_cmp(&other.channel_address())
+        self.channel_id().partial_cmp(&other.channel_id())
     }
 }
 
@@ -673,9 +642,8 @@ impl<T> Receiver<T> {
         Receiver(chan)
     }
 
-    fn channel_address(&self) -> usize {
-        let chan: &Channel<T> = &*self.0;
-        chan as *const Channel<T> as usize
+    fn channel_id(&self) -> usize {
+        &*self.0 as *const Channel<T> as usize
     }
 
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
@@ -868,13 +836,13 @@ impl<T> fmt::Debug for Receiver<T> {
 
 impl<T> Hash for Receiver<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.channel_address().hash(state)
+        self.channel_id().hash(state)
     }
 }
 
 impl<T> PartialEq for Receiver<T> {
     fn eq(&self, other: &Receiver<T>) -> bool {
-        self.channel_address() == other.channel_address()
+        self.channel_id() == other.channel_id()
     }
 }
 
@@ -888,19 +856,19 @@ impl<T> PartialOrd for Receiver<T> {
 
 impl<T> Ord for Receiver<T> {
     fn cmp(&self, other: &Receiver<T>) -> cmp::Ordering {
-        self.channel_address().cmp(&other.channel_address())
+        self.channel_id().cmp(&other.channel_id())
     }
 }
 
 impl<T> PartialEq<Sender<T>> for Receiver<T> {
     fn eq(&self, other: &Sender<T>) -> bool {
-        self.channel_address() == other.channel_address()
+        self.channel_id() == other.channel_id()
     }
 }
 
 impl<T> PartialOrd<Sender<T>> for Receiver<T> {
     fn partial_cmp(&self, other: &Sender<T>) -> Option<cmp::Ordering> {
-        self.channel_address().partial_cmp(&other.channel_address())
+        self.channel_id().partial_cmp(&other.channel_id())
     }
 }
 
