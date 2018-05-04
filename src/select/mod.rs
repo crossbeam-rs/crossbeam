@@ -18,45 +18,6 @@ macro_rules! select {
     };
 }
 
-pub trait SelectArgument<'a, T> {
-    fn extract(&'a self) -> &'a T;
-}
-impl<'a, T, A: SelectArgument<'a, T>> SelectArgument<'a, T> for &'a A {
-    fn extract(&'a self) -> &'a T {
-        (**self).extract()
-    }
-}
-impl<'a, T> SelectArgument<'a, Receiver<T>> for Receiver<T> {
-    fn extract(&'a self) -> &'a Receiver<T> {
-        self
-    }
-}
-impl<'a, T: 'a> SelectArgument<'a, Receiver<T>> for Option<&'a Receiver<T>> {
-    fn extract(&'a self) -> &'a Receiver<T> {
-        self.unwrap()
-    }
-}
-impl<'a, T> SelectArgument<'a, Sender<T>> for Sender<T> {
-    fn extract(&'a self) -> &'a Sender<T> {
-        self
-    }
-}
-impl<'a, T: 'a> SelectArgument<'a, Sender<T>> for Option<&'a Sender<T>> {
-    fn extract(&'a self) -> &'a Sender<T> {
-        self.unwrap()
-    }
-}
-impl<'a, T> SelectArgument<'a, PreparedSender<'a, T>> for PreparedSender<'a, T> {
-    fn extract(&'a self) -> &'a PreparedSender<'a, T> {
-        self
-    }
-}
-impl<'a, T: 'a> SelectArgument<'a, PreparedSender<'a, T>> for Option<&'a PreparedSender<'a, T>> {
-    fn extract(&'a self) -> &'a PreparedSender<'a, T> {
-        self.unwrap()
-    }
-}
-
 pub type GenericContainer<'a> = SmallVec<[(&'a Sel<Token = Token>, usize, usize); 4]>;
 
 pub trait Sel {
@@ -95,64 +56,53 @@ impl<'a, T: Sel> Sel for &'a T {
     }
 }
 
-pub trait RecvArgument<'a> {
+pub trait RecvArgument<'a, T: 'a> {
+    type Iter: Iterator<Item = &'a Receiver<T>>;
+    fn another(&'a self) -> Self;
+    fn convert(self) -> Self::Iter;
+}
+
+impl<'a, T> RecvArgument<'a, T> for &'a Receiver<T> {
+    type Iter = ::std::option::IntoIter<&'a Receiver<T>>;
+    fn another(&'a self) -> Self {
+        self
+    }
+    fn convert(self) -> Self::Iter {
+        Some(self).into_iter()
+    }
+}
+
+impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
+    type Iter = <I as IntoIterator>::IntoIter;
+    fn another(&'a self) -> Self {
+        self.clone()
+    }
+    fn convert(self) -> Self::Iter {
+        self.into_iter()
+    }
+}
+
+pub trait SendArgument<'a, S> {
     type Container;
     fn init_single(&'a self, index: usize) -> Self::Container;
     fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>);
+    fn extract(&'a self) -> &'a S;
 }
 
-impl<'a, T: RecvArgument<'a>> RecvArgument<'a> for &'a T {
-    type Container = <T as RecvArgument<'a>>::Container;
+impl<'a, S, R: SendArgument<'a, S>> SendArgument<'a, S> for &'a R {
+    type Container = <R as SendArgument<'a, S>>::Container;
     fn init_single(&self, index: usize) -> Self::Container {
         (**self).init_single(index)
     }
     fn init_generic(&self, index: usize, c: &mut GenericContainer<'a>) {
         (**self).init_generic(index, c)
     }
-}
-
-impl<'a, T: 'a> RecvArgument<'a> for Receiver<T> {
-    type Container = [(&'a Receiver<T>, usize, usize); 1];
-    fn init_single(&'a self, index: usize) -> Self::Container {
-        [(self, index, self as *const Receiver<T> as usize)]
-    }
-    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
-        c.push((self, index, self as *const Receiver<T> as usize));
+    fn extract(&'a self) -> &'a S {
+        (**self).extract()
     }
 }
 
-impl<'a, T> RecvArgument<'a> for Option<&'a Receiver<T>> {
-    type Container = SmallVec<[(&'a Receiver<T>, usize, usize); 1]>;
-    fn init_single(&'a self, index: usize) -> Self::Container {
-        match *self {
-            None => SmallVec::new(),
-            Some(r) => SmallVec::from_buf([(r, index, r as *const Receiver<T> as usize)])
-        }
-    }
-    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
-        if let Some(r) = *self {
-            c.push((r, index, r as *const Receiver<T> as usize));
-        }
-    }
-}
-
-pub trait SendArgument<'a> {
-    type Container;
-    fn init_single(&'a self, index: usize) -> Self::Container;
-    fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>);
-}
-
-impl<'a, T: SendArgument<'a>> SendArgument<'a> for &'a T {
-    type Container = <T as SendArgument<'a>>::Container;
-    fn init_single(&self, index: usize) -> Self::Container {
-        (**self).init_single(index)
-    }
-    fn init_generic(&self, index: usize, c: &mut GenericContainer<'a>) {
-        (**self).init_generic(index, c)
-    }
-}
-
-impl<'a, T: 'a> SendArgument<'a> for Sender<T> {
+impl<'a, T: 'a> SendArgument<'a, Sender<T>> for Sender<T> {
     type Container = [(&'a Sender<T>, usize, usize); 1];
     fn init_single(&'a self, index: usize) -> Self::Container {
         [(self, index, self as *const Sender<T> as usize)]
@@ -160,9 +110,12 @@ impl<'a, T: 'a> SendArgument<'a> for Sender<T> {
     fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
         c.push((self, index, self as *const Sender<T> as usize));
     }
+    fn extract(&'a self) -> &'a Sender<T> {
+        self
+    }
 }
 
-impl<'a, T: 'a> SendArgument<'a> for PreparedSender<'a, T> {
+impl<'a, T: 'a> SendArgument<'a, PreparedSender<'a, T>> for PreparedSender<'a, T> {
     type Container = [(&'a PreparedSender<'a, T>, usize, usize); 1];
     fn init_single(&'a self, index: usize) -> Self::Container {
         [(self, index, self as *const PreparedSender<T> as usize)]
@@ -170,9 +123,12 @@ impl<'a, T: 'a> SendArgument<'a> for PreparedSender<'a, T> {
     fn init_generic(&'a self, index: usize, c: &mut GenericContainer<'a>) {
         c.push((self, index, self as *const PreparedSender<T> as usize));
     }
+    fn extract(&'a self) -> &'a PreparedSender<'a, T> {
+        self
+    }
 }
 
-impl<'a, T> SendArgument<'a> for Option<&'a Sender<T>> {
+impl<'a, T> SendArgument<'a, Sender<T>> for Option<&'a Sender<T>> {
     type Container = SmallVec<[(&'a Sender<T>, usize, usize); 1]>;
     fn init_single(&'a self, index: usize) -> Self::Container {
         match *self {
@@ -184,6 +140,9 @@ impl<'a, T> SendArgument<'a> for Option<&'a Sender<T>> {
         if let Some(s) = *self {
             c.push((s, index, s as *const Sender<T> as usize));
         }
+    }
+    fn extract(&'a self) -> &'a Sender<T> {
+        self.unwrap()
     }
 }
 
@@ -438,7 +397,7 @@ macro_rules! select_internal {
     ) => {
         select_internal!(
             @parse_case
-            ($($recv)* $label recv($r, $m) => $body,)
+            ($($recv)* $label recv(&$r, $m, _) => $body,)
             $send
             $default
             ($($tail)*)
@@ -471,7 +430,7 @@ macro_rules! select_internal {
     ) => {
         select_internal!(
             @parse_case
-            ($($recv)* $label recv($r, $m) => $body,)
+            ($($recv)* $label recv($r, $m, _) => $body,)
             $send
             $default
             ($($tail)*)
@@ -738,41 +697,25 @@ macro_rules! select_internal {
     };
 
     (@declare
-        (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
-        $recv:tt
-        $send:tt
-        $default:tt
-    ) => {
-        match &$r {
-            $var => {
-                use $crate::select::SelectArgument;
-                let _: &SelectArgument<_> = &$var;
-                select_internal!(
-                    @declare
-                    ($($tail)*)
-                    $recv
-                    $send
-                    $default
-                )
-            }
-        }
-    };
-    (@declare
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         $recv:tt
         $send:tt
         $default:tt
     ) => {
-        match &mut ($rs).into_iter() {
-            $var => {
-                let _: &Iterator<Item = &Receiver<_>> = &$var;
-                select_internal!(
-                    @declare
-                    ($($tail)*)
-                    $recv
-                    $send
-                    $default
-                )
+        {
+            use $crate::select::RecvArgument;
+            use $crate::channel::Receiver;
+            match &mut ($rs).another().convert() {
+                $var => {
+                    let _: &Iterator<Item = &Receiver<_>> = &$var;
+                    select_internal!(
+                        @declare
+                        ($($tail)*)
+                        $recv
+                        $send
+                        $default
+                    )
+                }
             }
         }
     };
@@ -784,8 +727,8 @@ macro_rules! select_internal {
     ) => {
         match &$s {
             $var => {
-                use $crate::select::SelectArgument;
-                let _: &SelectArgument<_> = &$var;
+                use $crate::select::SendArgument;
+                let _: &SendArgument<_, Container = _> = &$var;
                 select_internal!(
                     @declare
                     ($($tail)*)
@@ -829,10 +772,10 @@ macro_rules! select_internal {
 
         // These cause warnings:
         use $crate::select::Sel;
-        use $crate::select::RecvArgument;
         use $crate::select::SendArgument;
-        use $crate::select::SelectArgument;
 
+        use $crate::channel::Receiver;
+        use $crate::channel::Sender;
         use $crate::channel::Token;
         use $crate::select::CaseId;
         use $crate::select::handle;
@@ -936,6 +879,8 @@ macro_rules! select_internal {
 
         // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
         // TODO: eliminate all thread-locals (mpsc doesn't use them!)
+        // TODO: optimize send, try_recv, recv
+        // TODO: allow recv(r) case
 
         // TODO: test select with duplicate cases
 
@@ -948,15 +893,9 @@ macro_rules! select_internal {
         // TODO: Run `cargo clippy` and make sure there are no warnings in here.
 
         // TODO: test init_single and init_multi
+        // TODO: test with empty iterator
     }};
 
-    (@container
-        $cases:ident
-        (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt,)
-        ()
-    ) => {
-        $cases = RecvArgument::init_single($var, $i);
-    };
     (@container
         $cases:ident
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
@@ -999,14 +938,6 @@ macro_rules! select_internal {
         select_internal!(@push $cases $recv $send);
     };
 
-    (@push
-        $cases:ident
-        (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
-        $send:tt
-    ) => {
-        RecvArgument::init_generic($var, $i, &mut $cases);
-        select_internal!(@push $cases ($($tail)*) $send);
-    };
     (@push
         $cases:ident
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
@@ -1073,34 +1004,6 @@ macro_rules! select_internal {
         $token:ident
         $index:ident
         $selected:ident
-        (($i:tt $var:ident) recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
-        $send:tt
-        $default:tt
-    ) => {
-        if $index == $i {
-            let $m = {
-                let r = SelectArgument::extract($var);
-                let msg = unsafe { r.read(&mut $token) };
-                r.finish(&mut $token);
-                msg
-            };
-            $body
-        } else {
-            select_internal!(
-                @finish
-                $token
-                $index
-                $selected
-                ($($tail)*)
-                $send
-                $default
-            )
-        }
-    };
-    (@finish
-        $token:ident
-        $index:ident
-        $selected:ident
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         $send:tt
         $default:tt
@@ -1148,7 +1051,7 @@ macro_rules! select_internal {
                     }
                 }
 
-                let s = SelectArgument::extract($var);
+                let s = SendArgument::extract($var);
                 let _msg = {
                     // We have to prefix variables with an underscore to get rid of warnings in
                     // case `$m` is of type `!`.

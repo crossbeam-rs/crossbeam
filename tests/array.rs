@@ -91,7 +91,7 @@ fn recv() {
 
 #[test]
 fn recv_timeout() {
-    let (s, r) = bounded(100);
+    let (s, r) = bounded::<i32>(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {

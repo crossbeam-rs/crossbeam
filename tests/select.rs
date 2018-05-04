@@ -288,8 +288,8 @@ fn once_timeout() {
 
 #[test]
 fn smoke1() {
-    let (s1, r1) = unbounded();
-    let (s2, r2) = unbounded();
+    let (s1, r1) = unbounded::<usize>();
+    let (s2, r2) = unbounded::<usize>();
 
     s1.send(1);
 
@@ -463,8 +463,8 @@ fn default_when_closed() {
 
 #[test]
 fn unblocks() {
-    let (s1, r1) = bounded(0);
-    let (s2, r2) = bounded(0);
+    let (s1, r1) = bounded::<i32>(0);
+    let (s2, r2) = bounded::<i32>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -1098,8 +1098,7 @@ fn try_send() {
 
 #[test]
 fn matching() {
-    let (s, r) = bounded(0);
-    let (s, r) = (&s, &r);
+    let (s, r) = &bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
         for i in 0..44 {
@@ -1117,8 +1116,7 @@ fn matching() {
 
 #[test]
 fn matching_with_leftover() {
-    let (s, r) = bounded(0);
-    let (s, r) = (&s, &r);
+    let (s, r) = &bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
         for i in 0..55 {

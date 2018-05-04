@@ -85,7 +85,7 @@ fn recv() {
 
 #[test]
 fn recv_timeout() {
-    let (s, r) = unbounded();
+    let (s, r) = unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
