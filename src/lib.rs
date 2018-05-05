@@ -303,8 +303,6 @@
 //! [`Sender`]: struct.Sender.html
 //! [`Receiver`]: struct.Receiver.html
 
-#![cfg_attr(feature = "nightly", feature(spin_loop_hint))]
-
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;

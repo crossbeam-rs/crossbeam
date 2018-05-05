@@ -1,9 +1,10 @@
 use std::cell::Cell;
 use std::num::Wrapping;
+use std::sync::atomic;
 use std::thread;
 
 /// A counter that performs exponential backoff in spin loops.
-pub struct Backoff(u32); // TODO: maybe it should use a Cell?
+pub struct Backoff(u32);
 
 impl Backoff {
     /// Returns a new `Backoff`.
@@ -21,9 +22,8 @@ impl Backoff {
     #[inline]
     pub fn step(&mut self) -> bool {
         if self.0 <= 6 {
-            #[cfg(feature = "nightly")]
             for _ in 0..1 << self.0 {
-                ::std::sync::atomic::spin_loop_hint();
+                atomic::spin_loop_hint();
             }
             self.0 += 1;
             true
@@ -33,12 +33,14 @@ impl Backoff {
             self.0 += 1;
             true
         } else {
-            thread::yield_now();
+            // TODO: investigate why commenting this makes spsc case much faster
+            // thread::yield_now();
             false
         }
     }
 }
 
+/// Randomly shuffles the slice.
 pub fn shuffle<T>(v: &mut [T]) {
     let len = v.len();
     if len <= 1 {
@@ -49,6 +51,7 @@ pub fn shuffle<T>(v: &mut [T]) {
         static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
     }
 
+    // TODO: use try_with
     RNG.with(|rng| {
         for i in 1..len {
             // This is the 32-bit variant of Xorshift.

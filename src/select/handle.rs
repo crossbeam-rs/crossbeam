@@ -6,6 +6,7 @@ use std::time::Instant;
 use select::CaseId;
 use utils::Backoff;
 
+// TODO: Rename to Select?
 pub struct Handle {
     pub case_id: AtomicUsize,
     pub thread: Thread,

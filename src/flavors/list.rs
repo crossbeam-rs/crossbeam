@@ -16,83 +16,6 @@ use select::Sel;
 use utils::Backoff;
 use waker::Waker;
 
-pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
-pub struct Sender<'a, T: 'a>(&'a Channel<T>);
-pub type PreparedSender<'a, T> = Sender<'a, T>;
-
-impl<'a, T> Sel for Receiver<'a, T> {
-    type Token = Token;
-
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token, backoff)
-    }
-
-    fn promise(&self, case_id: CaseId) {
-        self.0.receivers().register(case_id, true)
-    }
-
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        self.0.is_empty() && !self.0.is_closed()
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        self.0.receivers().unregister(case_id);
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-            self.0.start_recv(token, backoff)
-    }
-
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token);
-        }
-    }
-
-    fn fail(&self, _token: &mut Token) {
-        unreachable!();
-    }
-}
-
-impl<'a, T> Sel for Sender<'a, T> {
-    type Token = Token;
-
-    fn try(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
-        true
-    }
-
-    fn promise(&self, _case_id: CaseId) {
-        unreachable!()
-    }
-
-    fn is_blocked(&self) -> bool {
-        unreachable!()
-    }
-
-    fn revoke(&self, _case_id: CaseId) {
-        unreachable!()
-    }
-
-    fn fulfill(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
-        unreachable!()
-    }
-
-    fn finish(&self, token: &mut Token) {
-        self.0.finish_send(token);
-    }
-
-    fn fail(&self, _token: &mut Token) {
-        // nothing to do
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct Token {
-    pub entry: *const u8, // TODO: remove pub
-    guard: usize, // TODO: use [u8; mem::size_of::<Guard>()]
-}
-
 /// Number of messages a node can hold.
 const NODE_CAP: usize = 32;
 
@@ -249,9 +172,7 @@ impl<T> Channel<T> {
     }
 
     fn finish_send(&self, _token: &mut Token) {
-        if let Some(case) = self.receivers.remove_one() {
-            case.handle.unpark();
-        }
+        self.receivers.wake_one();
     }
 
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -421,4 +342,73 @@ impl<T> Drop for Channel<T> {
             }
         }
     }
+}
+
+#[derive(Copy, Clone)]
+pub struct Token {
+    pub entry: *const u8, // TODO: remove pub
+    guard: usize, // TODO: use [u8; mem::size_of::<Guard>()]
+}
+
+pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
+pub struct Sender<'a, T: 'a>(&'a Channel<T>);
+pub type PreparedSender<'a, T> = Sender<'a, T>;
+
+impl<'a, T> Sel for Receiver<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_recv(token, backoff)
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        self.0.receivers().register(case_id, true)
+    }
+
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        self.0.is_empty() && !self.0.is_closed()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.receivers().unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_recv(token, backoff)
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_recv(token);
+        }
+    }
+
+    fn fail(&self, _token: &mut Token) {}
+}
+
+impl<'a, T> Sel for Sender<'a, T> {
+    type Token = Token;
+
+    fn try(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
+        true
+    }
+
+    fn promise(&self, _case_id: CaseId) {}
+
+    fn is_blocked(&self) -> bool {
+        false
+    }
+
+    fn revoke(&self, _case_id: CaseId) {}
+
+    fn fulfill(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
+        true
+    }
+
+    fn finish(&self, token: &mut Token) {
+        self.0.finish_send(token);
+    }
+
+    fn fail(&self, _token: &mut Token) {}
 }

@@ -15,122 +15,6 @@ use select::Sel;
 use utils::Backoff;
 use waker::Waker;
 
-pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
-pub struct Sender<'a, T: 'a>(&'a Channel<T>);
-pub struct PreparedSender<'a, T: 'a>(&'a Channel<T>);
-
-impl<'a, T> Sel for Receiver<'a, T> {
-    type Token = Token;
-
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token, backoff)
-    }
-
-    fn promise(&self, case_id: CaseId) {
-        self.0.receivers().register(case_id, true)
-    }
-
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        self.0.is_empty() && !self.0.is_closed()
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        self.0.receivers().unregister(case_id);
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token, backoff)
-    }
-
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token);
-        }
-    }
-
-    fn fail(&self, _token: &mut Token) {
-        unreachable!();
-    }
-}
-
-impl<'a, T> Sel for Sender<'a, T> {
-    type Token = Token;
-
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_send(false, token, backoff)
-    }
-
-    fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, false);
-    }
-
-    fn is_blocked(&self) -> bool {
-        self.0.is_full()
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        self.0.senders().unregister(case_id);
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_send(false, token, backoff)
-    }
-
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_send(false, token);
-        }
-    }
-
-    fn fail(&self, token: &mut Token) {
-        unsafe {
-            self.0.fail_send(token);
-        }
-    }
-}
-
-impl<'a, T> Sel for PreparedSender<'a, T> {
-    type Token = Token;
-
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_send(true, token, backoff)
-    }
-
-    fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, true);
-    }
-
-    fn is_blocked(&self) -> bool {
-        self.0.is_full()
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        self.0.senders().unregister(case_id);
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_send(true, token, backoff)
-    }
-
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_send(true, token);
-        }
-    }
-
-    fn fail(&self, _token: &mut Token) {
-        unreachable!()
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct Token {
-    entry: *const u8,
-    lap: usize,
-    tail: usize,
-}
-
 /// An entry in the channel.
 ///
 /// Entries are empty on even laps and hold messages on odd laps.
@@ -190,18 +74,6 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn receiver(&self) -> Receiver<T> {
-        Receiver(self)
-    }
-
-    pub fn sender(&self) -> Sender<T> {
-        Sender(self)
-    }
-
-    pub fn prepared_sender(&self) -> PreparedSender<T> {
-        PreparedSender(self)
-    }
-
     /// Returns a new channel with capacity `cap`.
     ///
     /// # Panics
@@ -256,6 +128,21 @@ impl<T> Channel<T> {
             receivers: Waker::new(),
             _marker: PhantomData,
         }
+    }
+
+    /// Returns a receiver handle to the channel.
+    pub fn receiver(&self) -> Receiver<T> {
+        Receiver(self)
+    }
+
+    /// Returns a sender handle to the channel.
+    pub fn sender(&self) -> Sender<T> {
+        Sender(self)
+    }
+
+    /// Returns a prepared sender handle to the channel.
+    pub fn prepared_sender(&self) -> PreparedSender<T> {
+        PreparedSender(self)
     }
 
     /// Returns a reference to the entry at `index`.
@@ -356,20 +243,14 @@ impl<T> Channel<T> {
 
         entry.lap.store(token.lap, Ordering::Release);
 
-        if let Some(case) = self.receivers.remove_one() {
-            case.handle.unpark();
-        }
+        self.receivers.wake_one();
     }
 
     pub unsafe fn fail_send(&self, _token: &mut Token) {
         self.tail.fetch_and(!self.mark_bit, Ordering::SeqCst);
 
-        if let Some(case) = self.senders.remove_one() {
-            case.handle.unpark();
-        }
-        if let Some(case) = self.receivers.remove_one() {
-            case.handle.unpark();
-        }
+        self.senders.wake_one();
+        self.receivers.wake_one();
     }
 
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -451,9 +332,7 @@ impl<T> Channel<T> {
             let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
             entry.lap.store(token.lap, Ordering::Release);
 
-            if let Some(case) = self.senders.remove_one() {
-                case.handle.unpark();
-            }
+            self.senders.wake_one();
         }
     }
 
@@ -528,16 +407,6 @@ impl<T> Channel<T> {
         let one_lap = self.mark_bit << 1;
         head.wrapping_add(one_lap) == tail
     }
-
-    /// Returns a reference to the waker for this channel's senders.
-    fn senders(&self) -> &Waker {
-        &self.senders
-    }
-
-    /// Returns a reference to the waker for this channel's receivers.
-    fn receivers(&self) -> &Waker {
-        &self.receivers
-    }
 }
 
 impl<T> Drop for Channel<T> {
@@ -563,5 +432,121 @@ impl<T> Drop for Channel<T> {
         unsafe {
             Vec::from_raw_parts(self.buffer, 0, self.cap);
         }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct Token {
+    entry: *const u8,
+    lap: usize,
+    tail: usize,
+}
+
+pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
+pub struct Sender<'a, T: 'a>(&'a Channel<T>);
+pub struct PreparedSender<'a, T: 'a>(&'a Channel<T>);
+
+impl<'a, T> Sel for Receiver<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_recv(token, backoff)
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        self.0.receivers.register(case_id, true)
+    }
+
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        self.0.is_empty() && !self.0.is_closed()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.receivers.unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_recv(token, backoff)
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_recv(token);
+        }
+    }
+
+    fn fail(&self, _token: &mut Token) {
+        unreachable!();
+    }
+}
+
+impl<'a, T> Sel for Sender<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_send(false, token, backoff)
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        self.0.senders.register(case_id, false);
+    }
+
+    fn is_blocked(&self) -> bool {
+        self.0.is_full()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.senders.unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_send(false, token, backoff)
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_send(false, token);
+        }
+    }
+
+    fn fail(&self, token: &mut Token) {
+        unsafe {
+            self.0.fail_send(token);
+        }
+    }
+}
+
+impl<'a, T> Sel for PreparedSender<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_send(true, token, backoff)
+    }
+
+    fn promise(&self, case_id: CaseId) {
+        self.0.senders.register(case_id, true);
+    }
+
+    fn is_blocked(&self) -> bool {
+        self.0.is_full()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.senders.unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        self.0.start_send(true, token, backoff)
+    }
+
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_send(true, token);
+        }
+    }
+
+    fn fail(&self, _token: &mut Token) {
+        unreachable!()
     }
 }

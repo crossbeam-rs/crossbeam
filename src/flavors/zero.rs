@@ -14,145 +14,6 @@ use select::handle::{self, HANDLE, Handle};
 use utils::Backoff;
 use waker::{Case, Waker};
 
-pub struct Receiver<'a>(&'a Channel);
-pub struct Sender<'a>(&'a Channel);
-pub struct PreparedSender<'a>(&'a Channel);
-
-impl<'a> Sel for Receiver<'a> {
-    type Token = Token;
-
-    #[inline]
-    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token)
-    }
-
-    #[inline]
-    fn promise(&self, case_id: CaseId) {
-        self.0.receivers().register(case_id, true)
-    }
-
-    #[inline]
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        !self.0.senders().can_notify() && !self.0.is_closed()
-    }
-
-    #[inline]
-    fn revoke(&self, case_id: CaseId) {
-        self.0.receivers().unregister(case_id);
-    }
-
-    #[inline]
-    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.fulfill_recv(token)
-    }
-
-    #[inline]
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token);
-        }
-    }
-
-    #[inline]
-    fn fail(&self, _token: &mut Token) {
-        unreachable!();
-    }
-}
-
-impl<'a> Sel for Sender<'a> {
-    type Token = Token;
-
-    #[inline]
-    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.start_send(token)
-    }
-
-    #[inline]
-    fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, false)
-    }
-
-    #[inline]
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        !self.0.receivers().can_notify()
-    }
-
-    #[inline]
-    fn revoke(&self, case_id: CaseId) {
-        self.0.senders().unregister(case_id);
-    }
-
-    #[inline]
-    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.fulfill_send(token, false)
-    }
-
-    #[inline]
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token); // TODO: may fail!
-        }
-    }
-
-    #[inline]
-    fn fail(&self, token: &mut Token) {
-        unsafe {
-            self.0.fail_send(token);
-        }
-    }
-}
-
-impl<'a> Sel for PreparedSender<'a> {
-    type Token = Token;
-
-    #[inline]
-    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.start_send(token)
-    }
-
-    #[inline]
-    fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, true)
-    }
-
-    #[inline]
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        !self.0.receivers().can_notify()
-    }
-
-    #[inline]
-    fn revoke(&self, case_id: CaseId) {
-        self.0.senders().unregister(case_id);
-    }
-
-    #[inline]
-    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.fulfill_send(token, true)
-    }
-
-    #[inline]
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token); // TODO: may fail!
-        }
-    }
-
-    #[inline]
-    fn fail(&self, _token: &mut Token) {
-        unreachable!()
-    }
-}
-
-#[derive(Copy, Clone)]
-pub enum Token {
-    Closed,
-    Fulfill,
-    Case([usize; 3]), // TODO: use [u8; mem::size_of::<Case>()]
-}
-
 /// A zero-capacity channel.
 pub struct Channel {
     wait_queues: [Waker; 2],
@@ -440,5 +301,144 @@ impl<T> Request<T> {
     /// Extracts the message inside the packet.
     fn into_msg(self) -> T {
         self.msg.try_lock().unwrap().take().unwrap()
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum Token {
+    Closed,
+    Fulfill,
+    Case([usize; 3]), // TODO: use [u8; mem::size_of::<Case>()]
+}
+
+pub struct Receiver<'a>(&'a Channel);
+pub struct Sender<'a>(&'a Channel);
+pub struct PreparedSender<'a>(&'a Channel);
+
+impl<'a> Sel for Receiver<'a> {
+    type Token = Token;
+
+    #[inline]
+    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.start_recv(token)
+    }
+
+    #[inline]
+    fn promise(&self, case_id: CaseId) {
+        self.0.receivers().register(case_id, true)
+    }
+
+    #[inline]
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        !self.0.senders().can_notify() && !self.0.is_closed()
+    }
+
+    #[inline]
+    fn revoke(&self, case_id: CaseId) {
+        self.0.receivers().unregister(case_id);
+    }
+
+    #[inline]
+    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.fulfill_recv(token)
+    }
+
+    #[inline]
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_recv(token);
+        }
+    }
+
+    #[inline]
+    fn fail(&self, _token: &mut Token) {
+        unreachable!();
+    }
+}
+
+impl<'a> Sel for Sender<'a> {
+    type Token = Token;
+
+    #[inline]
+    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.start_send(token)
+    }
+
+    #[inline]
+    fn promise(&self, case_id: CaseId) {
+        self.0.senders().register(case_id, false)
+    }
+
+    #[inline]
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        !self.0.receivers().can_notify()
+    }
+
+    #[inline]
+    fn revoke(&self, case_id: CaseId) {
+        self.0.senders().unregister(case_id);
+    }
+
+    #[inline]
+    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.fulfill_send(token, false)
+    }
+
+    #[inline]
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_recv(token); // TODO: may fail!
+        }
+    }
+
+    #[inline]
+    fn fail(&self, token: &mut Token) {
+        unsafe {
+            self.0.fail_send(token);
+        }
+    }
+}
+
+impl<'a> Sel for PreparedSender<'a> {
+    type Token = Token;
+
+    #[inline]
+    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.start_send(token)
+    }
+
+    #[inline]
+    fn promise(&self, case_id: CaseId) {
+        self.0.senders().register(case_id, true)
+    }
+
+    #[inline]
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        !self.0.receivers().can_notify()
+    }
+
+    #[inline]
+    fn revoke(&self, case_id: CaseId) {
+        self.0.senders().unregister(case_id);
+    }
+
+    #[inline]
+    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        self.0.fulfill_send(token, true)
+    }
+
+    #[inline]
+    fn finish(&self, token: &mut Token) {
+        unsafe {
+            self.0.finish_recv(token); // TODO: may fail!
+        }
+    }
+
+    #[inline]
+    fn fail(&self, _token: &mut Token) {
+        unreachable!()
     }
 }

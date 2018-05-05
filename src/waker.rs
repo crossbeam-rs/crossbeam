@@ -68,9 +68,10 @@ impl Waker {
         }
     }
 
+    // TODO: this is an expensive call because it's not inlined?
     pub fn remove_one(&self) -> Option<Case> {
         if self.len.load(Ordering::SeqCst) > 0 {
-            let thread_id = thread::current().id(); // TODO: optimize?
+            let thread_id = thread::current().id(); // TODO: optimize? use selection_id instead?
             let mut cases = self.cases.lock();
 
             for i in 0..cases.len() {
@@ -86,6 +87,15 @@ impl Waker {
         }
 
         None
+    }
+
+    #[inline]
+    pub fn wake_one(&self) {
+        if self.len.load(Ordering::SeqCst) > 0 {
+            if let Some(case) = self.remove_one() {
+                case.handle.unpark();
+            }
+        }
     }
 
     /// Aborts all currently registered selection cases.

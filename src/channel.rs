@@ -22,8 +22,6 @@ pub union Token {
     zero: flavors::zero::Token,
 }
 
-// pub type Token = usize;
-
 // TODO: use backoff in try()/fulfill() for zero-capacity channels?
 
 impl<T> Sel for Receiver<T> {
@@ -441,11 +439,8 @@ impl<T> Sender<T> {
     /// assert_eq!(r.recv(), Some(1));
     /// ```
     pub fn send(&self, msg: T) {
-        // let sender = self;
-        let sender = PreparedSender(&self.0);
         select! {
-            // TODO: Make this possible: send(PreparedSender(&self.0), msg) => {}
-            send(sender, msg) => {}
+            send(PreparedSender(&self.0), msg) => {}
         }
     }
 
@@ -690,6 +685,12 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.recv(), None);
     /// ```
     pub fn recv(&self) -> Option<T> {
+        // TODO: select_internal!(@mainloop recv() ())
+        // match self.0.flavor {
+        //     Flavor::Array(ref chan) => select! { recv(chan.receiver(), msg) => msg },
+        //     Flavor::List(ref chan) => select! { recv(chan.receiver(), msg) => msg },
+        //     Flavor::Zero(_) => select! { recv(chan.receiver(), msg) => msg },
+        // }
         select! {
             recv(self, msg) => msg
         }
