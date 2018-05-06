@@ -12,9 +12,7 @@ use select::Sel;
 use utils::Backoff;
 
 // TODO: explain
-// loop { try; promise; is_blocked; revoke; fulfill }
-// -> write; fail or finish
-// -> read; finish
+// loop { try; promise; is_blocked; revoke; fulfill; write/read }
 
 pub union Token {
     array: flavors::array::Token,
@@ -73,20 +71,6 @@ impl<T> Sel for Receiver<T> {
             }
         }
     }
-
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.receiver().finish(&mut token.array),
-                Flavor::List(ref inner) => inner.receiver().finish(&mut token.list),
-                Flavor::Zero(ref inner) => inner.receiver().finish(&mut token.zero),
-            }
-        }
-    }
-
-    fn fail(&self, _token: &mut Token) {
-        unreachable!();
-    }
 }
 
 impl<T> Sel for Sender<T> {
@@ -136,108 +120,6 @@ impl<T> Sel for Sender<T> {
                 Flavor::List(ref inner) => inner.sender().fulfill(&mut token.list, backoff),
                 Flavor::Zero(ref inner) => inner.sender().fulfill(&mut token.zero, backoff),
             }
-        }
-    }
-
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.sender().finish(&mut token.array),
-                Flavor::List(ref inner) => inner.sender().finish(&mut token.list),
-                Flavor::Zero(ref inner) => inner.sender().finish(&mut token.zero),
-            }
-        }
-    }
-
-    fn fail(&self, token: &mut Token) {
-        unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.sender().fail(&mut token.array),
-                Flavor::List(ref inner) => inner.sender().fail(&mut token.list),
-                Flavor::Zero(ref inner) => inner.sender().fail(&mut token.zero),
-            }
-        }
-    }
-}
-
-pub struct PreparedSender<'a, T: 'a>(&'a Channel<T>);
-
-impl<'a, T> Sel for PreparedSender<'a, T> {
-    type Token = Token;
-
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.prepared_sender().try(&mut token.array, backoff),
-                Flavor::List(ref inner) => inner.prepared_sender().try(&mut token.list, backoff),
-                Flavor::Zero(ref inner) => inner.prepared_sender().try(&mut token.zero, backoff),
-            }
-        }
-    }
-
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
-        unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.prepared_sender().promise(&mut token.array, case_id),
-                Flavor::List(ref inner) => inner.prepared_sender().promise(&mut token.list, case_id),
-                Flavor::Zero(ref inner) => inner.prepared_sender().promise(&mut token.zero, case_id),
-            }
-        }
-    }
-
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.prepared_sender().is_blocked(),
-            Flavor::List(ref inner) => inner.prepared_sender().is_blocked(),
-            Flavor::Zero(ref inner) => inner.prepared_sender().is_blocked(),
-        }
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.prepared_sender().revoke(case_id),
-            Flavor::List(ref inner) => inner.prepared_sender().revoke(case_id),
-            Flavor::Zero(ref inner) => inner.prepared_sender().revoke(case_id),
-        }
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.prepared_sender().fulfill(&mut token.array, backoff),
-                Flavor::List(ref inner) => inner.prepared_sender().fulfill(&mut token.list, backoff),
-                Flavor::Zero(ref inner) => inner.prepared_sender().fulfill(&mut token.zero, backoff),
-            }
-        }
-    }
-
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.prepared_sender().finish(&mut token.array),
-                Flavor::List(ref inner) => inner.prepared_sender().finish(&mut token.list),
-                Flavor::Zero(ref inner) => inner.prepared_sender().finish(&mut token.zero),
-            }
-        }
-    }
-
-    fn fail(&self, _token: &mut Token) {
-        process::abort();
-    }
-}
-
-#[doc(hidden)]
-impl<'a, T> PreparedSender<'a, T> {
-    fn channel_id(&self) -> usize {
-        &*self.0 as *const Channel<T> as usize
-    }
-
-    pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.write(&mut token.array, msg, true),
-            Flavor::List(ref chan) => chan.write(&mut token.list, msg),
-            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg, true),
         }
     }
 }
@@ -402,15 +284,11 @@ impl<T> Sender<T> {
         &*self.0 as *const Channel<T> as usize
     }
 
-    // TODO: fn write_send() and fn read_recv(), then finish() with just token
-    // TODO: impl these methods for SendLiteral, too!
-    // TODO: move finish and fail into Sel?
-
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.write(&mut token.array, msg, false),
+            Flavor::Array(ref chan) => chan.write(&mut token.array, msg),
             Flavor::List(ref chan) => chan.write(&mut token.list, msg),
-            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg, false),
+            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg),
         }
     }
 }
@@ -446,7 +324,7 @@ impl<T> Sender<T> {
     /// ```
     pub fn send(&self, msg: T) {
         select! {
-            send(PreparedSender(&self.0), msg) => {}
+            send(self, msg) => {}
         }
     }
 

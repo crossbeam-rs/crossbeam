@@ -93,18 +93,6 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    pub fn receiver(&self) -> Receiver<T> {
-        Receiver(self)
-    }
-
-    pub fn sender(&self) -> Sender<T> {
-        Sender(self)
-    }
-
-    pub fn prepared_sender(&self) -> PreparedSender<T> {
-        self.sender()
-    }
-
     pub fn new() -> Self {
         let channel = Channel {
             head: CachePadded::new(Position {
@@ -126,6 +114,14 @@ impl<T> Channel<T> {
         channel.tail.node.store(node, Ordering::Relaxed);
 
         channel
+    }
+
+    pub fn receiver(&self) -> Receiver<T> {
+        Receiver(self)
+    }
+
+    pub fn sender(&self) -> Sender<T> {
+        Sender(self)
     }
 
     pub fn write(&self, _token: &mut Token, msg: T) {
@@ -169,9 +165,7 @@ impl<T> Channel<T> {
 
             backoff.step();
         }
-    }
 
-    fn finish_send(&self, _token: &mut Token) {
         self.receivers.wake_one();
     }
 
@@ -265,10 +259,6 @@ impl<T> Channel<T> {
         }
     }
 
-    pub unsafe fn finish_recv(&self, _token: &mut Token) {
-
-    }
-
     /// Returns the current number of messages inside the channel.
     pub fn len(&self) -> usize {
         loop {
@@ -352,7 +342,6 @@ pub struct Token {
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
-pub type PreparedSender<'a, T> = Sender<'a, T>;
 
 impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
@@ -362,7 +351,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
     }
 
     fn promise(&self, token: &mut Token, case_id: CaseId) {
-        self.0.receivers().register(case_id, true)
+        self.0.receivers().register(case_id)
     }
 
     fn is_blocked(&self) -> bool {
@@ -377,14 +366,6 @@ impl<'a, T> Sel for Receiver<'a, T> {
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         self.0.start_recv(token, backoff)
     }
-
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token);
-        }
-    }
-
-    fn fail(&self, _token: &mut Token) {}
 }
 
 impl<'a, T> Sel for Sender<'a, T> {
@@ -405,10 +386,4 @@ impl<'a, T> Sel for Sender<'a, T> {
     fn fulfill(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
         true
     }
-
-    fn finish(&self, token: &mut Token) {
-        self.0.finish_send(token);
-    }
-
-    fn fail(&self, _token: &mut Token) {}
 }

@@ -310,7 +310,11 @@ pub extern crate smallvec;
 
 #[doc(hidden)]
 #[macro_use]
+pub mod parse;
+#[doc(hidden)]
+#[macro_use]
 pub mod select;
+
 #[doc(hidden)]
 pub mod channel;
 #[doc(hidden)]

@@ -20,10 +20,6 @@ pub struct Case {
 
     /// The case ID.
     pub case_id: CaseId,
-
-    pub is_prepared: bool,
-
-    pub payload: usize,
 }
 
 /// A simple wait queue for list-based and array-based channels.
@@ -49,24 +45,11 @@ impl Waker {
     }
 
     /// Registers the current thread with `case_id`.
-    pub fn register(&self, case_id: CaseId, is_prepared: bool) {
+    pub fn register(&self, case_id: CaseId) {
         let mut cases = self.cases.lock();
         cases.push_back(Case {
             context: context::current(),
             case_id,
-            is_prepared,
-            payload: 0,
-        });
-        self.len.store(cases.len(), Ordering::SeqCst);
-    }
-
-    pub fn register_with_payload(&self, case_id: CaseId, is_prepared: bool, payload: usize) {
-        let mut cases = self.cases.lock();
-        cases.push_back(Case {
-            context: context::current(),
-            case_id,
-            is_prepared,
-            payload,
         });
         self.len.store(cases.len(), Ordering::SeqCst);
     }
@@ -85,8 +68,8 @@ impl Waker {
         }
     }
 
-    // TODO: this is an expensive call because it's not inlined?
-    pub fn remove_one(&self) -> Option<Case> {
+    #[inline]
+    pub fn wake_one(&self) -> Option<Case> {
         if self.len.load(Ordering::SeqCst) > 0 {
             let thread_id = thread::current().id(); // TODO: optimize? use selection_id instead?
             let mut cases = self.cases.lock();
@@ -98,9 +81,7 @@ impl Waker {
                         self.len.store(cases.len(), Ordering::SeqCst);
                         Self::maybe_shrink(&mut cases);
 
-                        // TODO: automatically unpark, remove wake_one method?
                         case.context.unpark();
-
                         return Some(case);
                     }
                 }
@@ -108,15 +89,6 @@ impl Waker {
         }
 
         None
-    }
-
-    #[inline]
-    pub fn wake_one(&self) {
-        if self.len.load(Ordering::SeqCst) > 0 {
-            if let Some(case) = self.remove_one() {
-                case.context.unpark();
-            }
-        }
     }
 
     /// Aborts all currently registered selection cases.

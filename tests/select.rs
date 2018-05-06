@@ -52,28 +52,6 @@ fn bar() {
 }
 
 #[test]
-fn foo() {
-    let (s, r) = bounded::<i32>(5);
-
-    crossbeam::scope(|scope| {
-        // scope.spawn(|| {
-        //     assert_eq!(r.recv(), None);
-        //     assert_eq!(r.len(), 0);
-        // });
-
-        use std::panic;
-        panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            select! {
-                send(s, panic!()) => {}
-            }
-        })).err().unwrap();
-
-        assert_eq!(s.len(), 0);
-        drop(s);
-    });
-}
-
-#[test]
 fn multiple_receivers() {
     let (_, r1) = unbounded::<i32>();
     let (_, r2) = bounded::<i32>(5);
