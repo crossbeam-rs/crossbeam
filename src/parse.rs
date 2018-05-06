@@ -272,6 +272,24 @@ macro_rules! __crossbeam_channel_parse {
         ($($recv:tt)*)
         $send:tt
         $default:tt
+        (recv($r:expr) => $body:tt, $($tail:tt)*)
+        ($label:tt $($labels:tt)*)
+    ) => {
+        __crossbeam_channel_parse!(
+            @case
+            $callback
+            ($($recv)* $label recv(&$r, _, _) => $body,)
+            $send
+            $default
+            ($($tail)*)
+            ($($labels)*)
+        )
+    };
+    (@case
+        $callback:ident
+        ($($recv:tt)*)
+        $send:tt
+        $default:tt
         (recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
         ($label:tt $($labels:tt)*)
     ) => {
@@ -304,6 +322,24 @@ macro_rules! __crossbeam_channel_parse {
         )
     };
     // Allow trailing comma...
+    (@case
+        $callback:ident
+        ($($recv:tt)*)
+        $send:tt
+        $default:tt
+        (recv($r:expr,) => $body:tt, $($tail:tt)*)
+        ($label:tt $($labels:tt)*)
+    ) => {
+        __crossbeam_channel_parse!(
+            @case
+            $callback
+            ($($recv)* $label recv($r, _, _) => $body,)
+            $send
+            $default
+            ($($tail)*)
+            ($($labels)*)
+        )
+    };
     (@case
         $callback:ident
         ($($recv:tt)*)

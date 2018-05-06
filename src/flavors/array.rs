@@ -182,7 +182,6 @@ impl<T> Channel<T> {
                 {
                     token.entry = entry as *const Entry<T> as *const u8;
                     token.lap = next_elap;
-                    token.tail = new_tail;
                     return true;
                 }
             // But if the entry lags one lap behind the tail...
@@ -392,7 +391,6 @@ impl<T> Drop for Channel<T> {
 pub struct Token {
     entry: *const u8,
     lap: usize,
-    tail: usize,
 }
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);

@@ -42,13 +42,13 @@ impl Into<usize> for CaseId {
 macro_rules! select {
     ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
         __crossbeam_channel_parse!(
-            __crossbeam_channel_select
+            __crossbeam_channel_generate
             $($case $(($($args)*))* => $body,)*
         )
     };
     ($($tokens:tt)*) => {
         __crossbeam_channel_parse!(
-            __crossbeam_channel_select
+            __crossbeam_channel_generate
             $($tokens)*
         )
     };
@@ -122,7 +122,7 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, 
 
 #[macro_export]
 #[doc(hidden)]
-macro_rules! __crossbeam_channel_select {
+macro_rules! __crossbeam_channel_generate {
     (@declare
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         $recv:tt
@@ -134,7 +134,7 @@ macro_rules! __crossbeam_channel_select {
             use $crate::channel::Receiver;
             match &mut (&$rs).to_receivers() {
                 $var => {
-                    __crossbeam_channel_select!(
+                    __crossbeam_channel_generate!(
                         @declare
                         ($($tail)*)
                         $recv
@@ -156,7 +156,7 @@ macro_rules! __crossbeam_channel_select {
             use $crate::channel::Sender;
             match &mut (&$ss).to_senders() {
                 $var => {
-                    __crossbeam_channel_select!(
+                    __crossbeam_channel_generate!(
                         @declare
                         ($($tail)*)
                         $recv
@@ -173,7 +173,7 @@ macro_rules! __crossbeam_channel_select {
         $send:tt
         $default:tt
     ) => {
-        __crossbeam_channel_select!(@mainloop $recv $send $default)
+        __crossbeam_channel_generate!(@mainloop $recv $send $default)
     };
 
     (@mainloop $recv:tt $send:tt $default:tt) => {{
@@ -192,17 +192,14 @@ macro_rules! __crossbeam_channel_select {
 
         let deadline: Option<Instant>;
         let default_index: usize;
-        __crossbeam_channel_select!(@default deadline default_index $default);
+        __crossbeam_channel_generate!(@default deadline default_index $default);
 
         let mut cases;
-        __crossbeam_channel_select!(@container cases $recv $send);
+        __crossbeam_channel_generate!(@container cases $recv $send);
 
         let mut token: Token = unsafe { ::std::mem::zeroed() };
         let mut index: usize = !0;
         let mut selected: usize = 0;
-
-        // TODO: if cases.len() == 0, just sleep or whatever
-        // TODO: if cases.len() == 1, then call optimized try, or else call send_timeout or recv_timeout
 
         // TODO: remove `type Token` from Sel - that would allow us to push a flavor impl as &Sel
         // - also: it would allow us to specialize selects per flavor in recv/send/try_recv
@@ -229,7 +226,7 @@ macro_rules! __crossbeam_channel_select {
                 }
 
                 // TODO: break here? (should speed up zero-capacity channels!)
-                break;
+                // break;
             }
 
             if index != !0 {
@@ -241,11 +238,6 @@ macro_rules! __crossbeam_channel_select {
                 selected = 0;
                 break;
             }
-
-            // TODO: a test with send(foo(), msg) where foo is a FnOnce (and same for recv()).
-            // TODO: call a hidden internal macro in order not to clutter the public one (`__crossbeam_channel_select!`)
-
-            // TODO: need a select mpmc test for all flavors
 
             context::current_reset();
 
@@ -295,16 +287,16 @@ macro_rules! __crossbeam_channel_select {
             }
         }
 
-        __crossbeam_channel_select!(@finish token index selected $recv $send $default)
+        __crossbeam_channel_generate!(@finish token index selected $recv $send $default)
 
-        // TODO: optimize TLS in selection (or even eliminate TLS, if possible?)
-        // TODO: eliminate all thread-locals (mpsc doesn't use them!)
         // TODO: optimize send, try_recv, recv
         // TODO: allow recv(r) case
 
-        // TODO: test select with duplicate cases - and make sure all of them fire (fariness)!
+        // TODO: need a select mpmc test for all flavors
 
-        // TODO: accept both Instant and Duration the in default case
+        // TODO: test select with duplicate cases - and make sure all of them fire (fairness)!
+
+        // TODO: accept both Instant and Duration in the default case
 
         // TODO: test sending and receiving into the same channel from the same thread (all flavors)
 
@@ -349,7 +341,7 @@ macro_rules! __crossbeam_channel_select {
     ) => {
         use $crate::smallvec::SmallVec;
         $cases = SmallVec::<[(&Sel<Token = Token>, usize, usize); 4]>::new();
-        __crossbeam_channel_select!(@push $cases $recv $send);
+        __crossbeam_channel_generate!(@push $cases $recv $send);
     };
 
     (@push
@@ -361,7 +353,7 @@ macro_rules! __crossbeam_channel_select {
             let addr = r as *const Receiver<_> as usize;
             $cases.push((r, $i, addr));
         }
-        __crossbeam_channel_select!(@push $cases ($($tail)*) $send);
+        __crossbeam_channel_generate!(@push $cases ($($tail)*) $send);
     };
     (@push
         $cases:ident
@@ -372,7 +364,7 @@ macro_rules! __crossbeam_channel_select {
             let addr = s as *const Sender<_> as usize;
             $cases.push((s, $i, addr));
         }
-        __crossbeam_channel_select!(@push $cases () ($($tail)*));
+        __crossbeam_channel_generate!(@push $cases () ($($tail)*));
     };
     (@push
         $cases:ident
@@ -428,7 +420,7 @@ macro_rules! __crossbeam_channel_select {
             };
             $body
         } else {
-            __crossbeam_channel_select!(
+            __crossbeam_channel_generate!(
                 @finish
                 $token
                 $index
@@ -486,7 +478,7 @@ macro_rules! __crossbeam_channel_select {
             };
             $body
         } else {
-            __crossbeam_channel_select!(
+            __crossbeam_channel_generate!(
                 @finish
                 $token
                 $index
@@ -508,7 +500,7 @@ macro_rules! __crossbeam_channel_select {
         if $index == $i {
             $body
         } else {
-            __crossbeam_channel_select!(
+            __crossbeam_channel_generate!(
                 @finish
                 $token
                 $index
@@ -536,7 +528,7 @@ macro_rules! __crossbeam_channel_select {
 
     // The entry point.
     (($($recv:tt)*) ($($send:tt)*) $default:tt) => {
-        __crossbeam_channel_select!(
+        __crossbeam_channel_generate!(
             @declare
             ($($recv)* $($send)*)
             ($($recv)*)

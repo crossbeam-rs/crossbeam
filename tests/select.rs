@@ -10,7 +10,6 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
 // TODO: test that `select!` evaluates to an expression
 // TODO: two nested `select!`s
-// TODO: check `select! { recv(&&&&&r, _) => {} }`
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -21,13 +20,13 @@ fn refs() {
     let (s, r) = unbounded::<i32>();
     select! {
         send(&&&&s, 0) => {}
-        recv(&&&&r, _) => {}
+        recv(&&&&r) => {}
     }
     let ss = &&&&[s];
     let rr = &&&&[r];
     select! {
-        // send(ss.iter(), 0, _) => {} // TODO
-        recv(rr.iter(), _, _) => {}
+        // send(ss.iter(), 0) => {} // TODO
+        recv(rr.iter()) => {}
     }
     // TODO: refs in the multi case?
 }
@@ -39,12 +38,12 @@ fn bar() {
         // recv(r, msg) => if msg.is_some() {
         // }
         recv(r, msg) => 3.0
-        // recv(r, _) => unsafe {
+        // recv(r) => unsafe {
         // }
-        // recv(r, _) => loop {
+        // recv(r) => loop {
         //     break;
         // }
-        // recv(r, _) => match 7 + 3 {
+        // recv(r) => match 7 + 3 {
         //     _ => {}
         // }
         default() => 7.
@@ -56,16 +55,16 @@ fn multiple_receivers() {
     let (_, r1) = unbounded::<i32>();
     let (_, r2) = bounded::<i32>(5);
     select! {
-        recv([&r1, &r2].iter().map(|x| *x), msg, _) => assert!(msg.is_none()),
+        recv([&r1, &r2].iter().map(|x| *x), msg) => assert!(msg.is_none()),
     }
     select! {
-        recv([r1, r2].iter(), msg, _) => assert!(msg.is_none()),
+        recv([r1, r2].iter(), msg) => assert!(msg.is_none()),
     }
 
     let (_, r1) = unbounded::<i32>();
     let (_, r2) = bounded::<i32>(5);
     select! {
-        recv(&[r1, r2], msg, _) => assert!(msg.is_none()),
+        recv(&[r1, r2], msg) => assert!(msg.is_none()),
     }
 }
 
@@ -74,16 +73,16 @@ fn multiple_senders() {
     let (s1, _) = unbounded::<i32>();
     let (s2, _) = bounded::<i32>(5);
     select! {
-        send([&s1, &s2].iter().map(|x| *x), 0, _) => {}
+        send([&s1, &s2].iter().map(|x| *x), 0) => {}
     }
     select! {
-        send([s1, s2].iter(), 0, _) => {}
+        send([s1, s2].iter(), 0) => {}
     }
 
     let (s1, _) = unbounded::<i32>();
     let (s2, _) = bounded::<i32>(5);
     select! {
-        send(&[s1, s2], 0, _) => {},
+        send(&[s1, s2], 0) => {},
     }
 }
 
@@ -103,7 +102,7 @@ fn handles_on_heap() {
 
     select! {
         send(*s, 0) => {}
-        recv(*r, _) => {}
+        recv(*r) => {}
         default => {}
     }
 
@@ -115,12 +114,12 @@ fn handles_on_heap() {
 fn option_receiver() {
     let (_, r) = unbounded::<i32>();
     select! {
-        recv(Some(&r), _) => {}
+        recv(Some(&r)) => {}
     }
 
     let r: Option<Receiver<u32>> = None;
     select! {
-        recv(r.as_ref(), _) => {}
+        recv(r.as_ref()) => {}
         default => {}
     }
 
@@ -130,7 +129,7 @@ fn option_receiver() {
         Some(r) => Some(r),
     };
     select! {
-        recv(r, _) => {}
+        recv(r) => {}
         default => {}
     }
     // TODO: test with multiple cases
@@ -173,7 +172,7 @@ fn once_receiver() {
     };
 
     select! {
-        recv(get(), _) => {}
+        recv(get()) => {}
     }
 }
 
@@ -273,13 +272,13 @@ fn smoke1() {
 
     select! {
         recv(r1, v) => assert_eq!(v, Some(1)),
-        recv(r2, _) => panic!(),
+        recv(r2) => panic!(),
     }
 
     s2.send(2);
 
     select! {
-        recv(r1, _) => panic!(),
+        recv(r1) => panic!(),
         recv(r2, v) => assert_eq!(v, Some(2)),
     }
 }
@@ -295,10 +294,10 @@ fn smoke2() {
     s5.send(5);
 
     select! {
-        recv(r1, _) => panic!(),
-        recv(r2, _) => panic!(),
-        recv(r3, _) => panic!(),
-        recv(r4, _) => panic!(),
+        recv(r1) => panic!(),
+        recv(r2) => panic!(),
+        recv(r3) => panic!(),
+        recv(r4) => panic!(),
         recv(r5, v) => assert_eq!(v, Some(5)),
     }
 }
@@ -317,7 +316,7 @@ fn closed() {
 
         select! {
             recv(r1, v) => assert!(v.is_none()),
-            recv(r2, _) => panic!(),
+            recv(r2) => panic!(),
             default(ms(1000)) => panic!(),
         }
 
@@ -326,7 +325,7 @@ fn closed() {
 
     select! {
         recv(r1, v) => assert!(v.is_none()),
-        recv(r2, _) => panic!(),
+        recv(r2) => panic!(),
         default(ms(1000)) => panic!(),
     }
 
@@ -349,8 +348,8 @@ fn default() {
     let (s2, r2) = unbounded::<i32>();
 
     select! {
-        recv(r1, _) => panic!(),
-        recv(r2, _) => panic!(),
+        recv(r1) => panic!(),
+        recv(r2) => panic!(),
         default => {}
     }
 
@@ -358,7 +357,7 @@ fn default() {
 
     select! {
         recv(r1, v) => assert!(v.is_none()),
-        recv(r2, _) => panic!(),
+        recv(r2) => panic!(),
         default => panic!(),
     }
 
@@ -370,7 +369,7 @@ fn default() {
     }
 
     select! {
-        recv(r2, _) => panic!(),
+        recv(r2) => panic!(),
         default => {},
     }
 
@@ -391,13 +390,13 @@ fn timeout() {
         });
 
         select! {
-            recv(r1, _) => panic!(),
-            recv(r2, _) => panic!(),
+            recv(r1) => panic!(),
+            recv(r2) => panic!(),
             default(ms(1000)) => {},
         }
 
         select! {
-            recv(r1, _) => panic!(),
+            recv(r1) => panic!(),
             recv(r2, v) => assert_eq!(v, Some(2)),
             default(ms(1000)) => panic!(),
         }
@@ -451,7 +450,7 @@ fn unblocks() {
         });
 
         select! {
-            recv(r1, _) => panic!(),
+            recv(r1) => panic!(),
             recv(r2, v) => assert_eq!(v, Some(2)),
             default(ms(1000)) => panic!(),
         }
@@ -508,7 +507,7 @@ fn loop_try() {
                     }
 
                     select! {
-                        recv(r_end, _) => break,
+                        recv(r_end) => break,
                         default => {}
                     }
                 }
@@ -522,7 +521,7 @@ fn loop_try() {
                     }
 
                     select! {
-                        recv(r_end, _) => break,
+                        recv(r_end) => break,
                         default => {}
                     }
                 }
@@ -561,8 +560,8 @@ fn cloning1() {
         s3.send(());
 
         select! {
-            recv(r1, _) => {},
-            recv(r2, _) => {},
+            recv(r1) => {},
+            recv(r2) => {},
         }
 
         s3.send(());
@@ -578,8 +577,8 @@ fn cloning2() {
     crossbeam::scope(|scope| {
         scope.spawn(move || {
             select! {
-                recv(r1, _) => panic!(),
-                recv(r2, _) => {},
+                recv(r1) => panic!(),
+                recv(r2) => {},
             }
         });
 
@@ -595,7 +594,7 @@ fn preflight1() {
     s.send(());
 
     select! {
-        recv(r, _) => {}
+        recv(r) => {}
     }
 }
 
@@ -1180,12 +1179,12 @@ fn channel_through_channel() {
 //     s.send(());
 //
 //     select! {
-//         recv(r, _) if 1 + 1 == 3 => panic!(),
+//         recv(r) if 1 + 1 == 3 => panic!(),
 //         timed_out(ms(1000)) => {}
 //     }
 //
 //     select! {
-//         recv(r, _) if 1 + 1 == 2 => {},
+//         recv(r) if 1 + 1 == 2 => {},
 //         timed_out(ms(1000)) => panic!(),
 //     }
 // }
@@ -1195,14 +1194,14 @@ fn channel_through_channel() {
 //     let (_, r) = bounded::<i32>(0);
 //
 //     select! {
-//         recv(r, _) => panic!(),
+//         recv(r) => panic!(),
 //         closed() if 1 + 1 == 3 => panic!(),
 //         would_block() => {}
 //         timed_out(ms(100)) => panic!(),
 //     }
 //
 //     select! {
-//         recv(r, _) => panic!(),
+//         recv(r) => panic!(),
 //         closed() if 1 + 1 == 2 => {}
 //         would_block() => panic!(),
 //         timed_out(ms(100)) => panic!(),
@@ -1214,14 +1213,14 @@ fn channel_through_channel() {
 //     let (_s, r) = bounded::<i32>(0);
 //
 //     select! {
-//         recv(r, _) => panic!(),
+//         recv(r) => panic!(),
 //         closed() => panic!(),
 //         would_block() if 1 + 1 == 3 => panic!(),
 //         timed_out(ms(100)) => {}
 //     }
 //
 //     select! {
-//         recv(r, _) => panic!(),
+//         recv(r) => panic!(),
 //         closed() => panic!(),
 //         would_block() if 1 + 1 == 2 => {}
 //         timed_out(ms(100)) => panic!(),
@@ -1233,13 +1232,13 @@ fn channel_through_channel() {
 //     let (_s, r) = bounded::<i32>(0);
 //
 //     select! {
-//         recv(r, _) => panic!(),
+//         recv(r) => panic!(),
 //         timed_out(ms(100)) if 1 + 1 == 3 => panic!(),
 //         timed_out(ms(1000)) if 1 + 1 == 2 => {}
 //     }
 //
 //     select! {
-//         recv(r, _) => panic!(),
+//         recv(r) => panic!(),
 //         timed_out(ms(100)) if 1 + 1 == 2 => {}
 //         timed_out(ms(1000)) if 1 + 1 == 3 => panic!(),
 //     }
@@ -1252,7 +1251,7 @@ fn channel_through_channel() {
 //     let r = Some(&r);
 //
 //     select! {
-//         recv(r.unwrap(), _) if r.is_some() => {}
+//         recv(r.unwrap()) if r.is_some() => {}
 //         would_block() => panic!()
 //     }
 // }

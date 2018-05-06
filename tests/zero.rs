@@ -57,7 +57,7 @@ fn recv_timeout() {
     crossbeam::scope(|scope| {
         scope.spawn(move || {
             select! {
-                recv(r, _) => panic!(),
+                recv(r) => panic!(),
                 default(ms(1000)) => {}
             }
             select! {

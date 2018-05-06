@@ -13,24 +13,24 @@ fn references() {
     let (s, r) = unbounded::<i32>();
     select! {
         send(s, 0) => {}
-        recv(r, _) => {}
+        recv(r) => {}
     }
 
     select! {
         send(&&&&s, 0) => {}
-        recv(&&&&r, _) => {}
+        recv(&&&&r) => {}
     }
 
     select! {
-        send([&s].iter().map(|x| *x), 0, _) => {}
-        recv([&r].iter().map(|x| *x), _) => {}
+        send([&s].iter().map(|x| *x), 0) => {}
+        recv([&r].iter().map(|x| *x)) => {}
     }
 
     let ss = &&&&[s];
     let rr = &&&&[r];
     select! {
-        // TODO send(&&&ss.iter(), 0, _) => {}
-        recv(&&&&rr.iter(), _) => {}
+        // TODO send(&&&ss.iter(), 0) => {}
+        recv(&&&&rr.iter()) => {}
     }
     // TODO: refs in the multi case?
 }
