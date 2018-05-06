@@ -34,7 +34,7 @@ impl Backoff {
             true
         } else {
             // TODO: investigate why commenting this makes spsc case much faster
-            // thread::yield_now();
+            thread::yield_now();
             false
         }
     }
@@ -51,7 +51,6 @@ pub fn shuffle<T>(v: &mut [T]) {
         static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
     }
 
-    // TODO: use try_with
     RNG.with(|rng| {
         for i in 1..len {
             // This is the 32-bit variant of Xorshift.

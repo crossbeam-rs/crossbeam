@@ -1,5 +1,3 @@
-pub mod handle;
-
 use smallvec::SmallVec;
 use channel::{Token, PreparedSender, Receiver, Sender};
 use utils::Backoff;
@@ -53,7 +51,7 @@ macro_rules! select {
 pub trait Sel {
     type Token;
     fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
-    fn promise(&self, case_id: CaseId);
+    fn promise(&self, token: &mut Self::Token, case_id: CaseId);
     fn is_blocked(&self) -> bool;
     fn revoke(&self, case_id: CaseId);
     fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
@@ -66,8 +64,8 @@ impl<'a, T: Sel> Sel for &'a T {
     fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
         (**self).try(token, backoff)
     }
-    fn promise(&self, case_id: CaseId) {
-        (**self).promise(case_id);
+    fn promise(&self, token: &mut Self::Token, case_id: CaseId) {
+        (**self).promise(token, case_id);
     }
     fn is_blocked(&self) -> bool {
         (**self).is_blocked()
@@ -745,7 +743,7 @@ macro_rules! select_internal {
         use $crate::channel::Sender;
         use $crate::channel::Token;
         use $crate::select::CaseId;
-        use $crate::select::handle;
+        use $crate::context::{self, Context};
         use $crate::utils::{Backoff, shuffle};
 
         let deadline: Option<Instant>;
@@ -785,6 +783,9 @@ macro_rules! select_internal {
                 if !backoff.step() {
                     break;
                 }
+
+                // TODO: break here? (should speed up zero-capacity channels!)
+                break;
             }
 
             if index != !0 {
@@ -800,24 +801,22 @@ macro_rules! select_internal {
             // TODO: a test with send(foo(), msg) where foo is a FnOnce (and same for recv()).
             // TODO: call a hidden internal macro in order not to clutter the public one (`select_internal!`)
 
-            // TODO: create a Handle/Select here.
-
-            handle::current_reset();
+            context::current_reset();
 
             for case in &cases {
                 let case_id = CaseId::new(case as *const _ as usize);
                 let &(sel, _, _) = case;
-                sel.promise(case_id);
+                sel.promise(&mut token, case_id);
             }
 
             for &(sel, _, _) in &cases {
                 if !sel.is_blocked() {
-                    handle::current_try_select(CaseId::abort());
+                    context::current_try_select(CaseId::abort());
                 }
             }
 
-            let timed_out = !handle::current_wait_until(deadline);
-            let s = handle::current_selected();
+            let timed_out = !context::current_wait_until(deadline);
+            let s = context::current_selected();
 
             for case in &cases {
                 let case_id = CaseId::new(case as *const _ as usize);

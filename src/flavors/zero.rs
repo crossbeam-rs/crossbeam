@@ -2,212 +2,83 @@
 //!
 //! Also known as *rendezvous* channel.
 
+use std::cell::UnsafeCell;
+use std::marker::PhantomData;
 use std::mem;
+use std::mem::ManuallyDrop;
+use std::ptr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use parking_lot::Mutex;
 
 use select::CaseId;
 use select::Sel;
-use select::handle::{self, HANDLE, Handle};
+use context::{self, CONTEXT, Context};
 use utils::Backoff;
 use waker::{Case, Waker};
 
-/// A zero-capacity channel.
-pub struct Channel {
-    wait_queues: [Waker; 2],
-    is_closed: AtomicBool,
+struct Entry<T> {
+    ready: AtomicUsize,
+    msg: UnsafeCell<ManuallyDrop<Option<T>>>, // TODO: does it have to be option?
 }
 
-impl Channel {
-    #[inline]
-    pub fn receiver(&self) -> Receiver {
-        Receiver(self)
-    }
-
-    #[inline]
-    pub fn sender(&self) -> Sender {
-        Sender(self)
-    }
-
-    #[inline]
-    pub fn prepared_sender(&self) -> PreparedSender {
-        PreparedSender(self)
-    }
-
-    #[inline]
-    fn start_recv(&self, token: &mut Token) -> bool {
-        let mut step = 0;
-        loop {
-            if let Some(case) = self.wait_queues[0].remove_one() {
-                unsafe {
-                    if !case.is_prepared {
-                        case.handle.thread.unpark();
-
-                        while case.handle.request_ptr.load(Ordering::SeqCst) == 0 {
-                        }
-
-                        if case.handle.request_ptr.load(Ordering::SeqCst) == 2 {
-                            continue;
-                        }
-                    }
-
-                    *token = Token::Case(mem::transmute::<Case, [usize; 3]>(case));
-                    // TODO: wake up here to speed up?
-                }
-                return true;
-            }
-
-            if !self.is_closed() {
-                return false;
-            }
-
-            step += 1;
-            if step == 2 {
-                *token = Token::Closed;
-                return true;
-            }
-        }
-    }
-
-    fn fulfill_recv(&self, token: &mut Token) -> bool {
-        // Wait until the requesting thread gives us a pointer to its `Request`.
-        let handle = handle::current();
-
+impl<T> Entry<T> {
+    fn wait(&self) -> bool {
         let mut backoff = Backoff::new();
         loop {
-            let ptr = handle.request_ptr.load(Ordering::Acquire);
-            if ptr == 2 {
-                return false;
+            let ready = self.ready.load(Ordering::SeqCst);
+            if ready == 1 {
+                return true;
             }
-            if ptr > 2 {
-                break;
+            if ready == 2 {
+                return false;
             }
             backoff.step();
         }
+    }
+}
 
-        *token = Token::Fulfill;
-        true
+/// A zero-capacity channel.
+pub struct Channel<T> {
+    senders: Waker,
+    receivers: Waker,
+    is_closed: AtomicBool,
+    _marker: PhantomData<T>,
+}
+
+impl<T> Channel<T> {
+    pub fn receiver(&self) -> Receiver<T> {
+        Receiver(self)
     }
 
-    pub unsafe fn read<T>(&self, token: &mut Token) -> Option<T> {
-        match *token {
-            Token::Closed => None,
-            Token::Fulfill => {
-                let req = HANDLE.with(|handle| {
-                    let ptr = handle.request_ptr.swap(0, Ordering::Acquire);
-                    ptr as *const Request<Option<T>>
-                });
-
-                let m = {
-                    // First, make a clone of the requesting thread.
-                    let thread = (*req).handle.thread.clone();
-
-                    // Exchange the messages and then notify the requesting thread that it can pick up our
-                    // message.
-                    let m = (*req).exchange(None);
-                    (*req).handle.try_select(CaseId::abort());
-
-                    // Wake up the requesting thread.
-                    thread.unpark();
-
-                    // Return the exchanged message.
-                    m
-                };
-
-                Some(m.unwrap())
-            }
-            Token::Case(case) => {
-                let case: Case = mem::transmute::<[usize; 3], Case>(case);
-                Some(finish_exchange(case, None).unwrap())
-            }
-        }
-        // TODO
+    pub fn sender(&self) -> Sender<T> {
+        Sender(self)
     }
 
-    pub unsafe fn finish_recv(&self, _token: &mut Token) {
-        // TODO
-    }
-
-    #[inline]
-    fn start_send(&self, token: &mut Token) -> bool {
-        // If there's someone on the other side, exchange messages with it.
-        if let Some(case) = self.wait_queues[1].remove_one() {
-            unsafe {
-                *token = Token::Case(mem::transmute::<Case, [usize; 3]>(case));
-            }
-            true
-        } else {
-            false
-        }
-    }
-
-    pub unsafe fn write<T>(&self, token: &mut Token, msg: T, is_prepared: bool) {
-        match *token {
-            Token::Closed => unreachable!(),
-            Token::Fulfill => {
-                if !is_prepared {
-                    let handle = handle::current();
-                    handle.request_ptr.store(1, Ordering::SeqCst);
-                }
-                fulfill(Some(msg));
-            }
-            Token::Case(ref case) => {
-                let case: Case = mem::transmute::<[usize; 3], Case>(*case);
-                finish_exchange(case, Some(msg));
-            }
-        }
-        // TODO
-    }
-
-    fn fulfill_send(&self, token: &mut Token, _is_prepared: bool) -> bool {
-        *token = Token::Fulfill;
-        true
-    }
-
-    pub unsafe fn fail_send(&self, token: &mut Token) {
-        // TODO: wake up another sender? and make a test
-        match *token {
-            Token::Closed => unreachable!(),
-            Token::Fulfill => {
-                let handle = handle::current();
-                handle.request_ptr.store(2, Ordering::SeqCst);
-            }
-            Token::Case(ref case) => {
-                let case: Case = mem::transmute::<[usize; 3], Case>(*case);
-                case.handle.request_ptr.store(2, Ordering::SeqCst);
-            }
-        }
+    // pub fn prepared_sender(&self) -> PreparedSender<T> {
+    //     PreparedSender(self)
+    // }
+    // TODO: remove this
+    pub fn prepared_sender(&self) -> Sender<T> {
+        Sender(self)
     }
 
     /// Returns a new zero-capacity channel.
-    #[inline]
     pub fn new() -> Self {
         Channel {
-            wait_queues: [Waker::new(), Waker::new()],
+            senders: Waker::new(),
+            receivers: Waker::new(),
             is_closed: AtomicBool::new(false),
+            _marker: PhantomData,
         }
     }
 
-    /// Returns a reference to the waker for this channel's senders.
-    #[inline]
-    fn senders(&self) -> &Waker {
-        &self.wait_queues[0]
-    }
-
-    /// Returns a reference to the waker for this channel's receivers.
-    #[inline]
-    fn receivers(&self) -> &Waker {
-        &self.wait_queues[1]
-    }
-
     /// Closes the exchanger and wakes up all currently blocked operations on it.
-    #[inline]
     pub fn close(&self) -> bool {
         if !self.is_closed.swap(true, Ordering::SeqCst) {
-            self.wait_queues[0].abort_all();
-            self.wait_queues[1].abort_all();
+            self.senders.abort_all();
+            self.receivers.abort_all();
             true
         } else {
             false
@@ -215,230 +86,145 @@ impl Channel {
     }
 
     /// Returns `true` if the exchanger is closed.
-    #[inline]
     pub fn is_closed(&self) -> bool {
         self.is_closed.load(Ordering::SeqCst)
     }
-}
 
-unsafe fn finish_exchange<T>(case: Case, msg: T) -> T {
-    // This is a promise.
-    // We must request the message and then wait until the promise is fulfilled.
-
-    // Reset the current thread's selection case.
-    handle::current_reset();
-
-    // Create a request on the stack and register it in the owner of this case.
-    let req = Request::new(msg);
-    case.handle.request_ptr.store(&req as *const _ as usize, Ordering::Release);
-
-    // Wake up the owner of this case.
-    case.handle.thread.unpark();
-
-    // Wait until our selection case is woken.
-    handle::current_wait_until(None);
-
-    // Extract the received message from the request.
-    req.into_msg()
-}
-
-/// Fulfills the previously made promise.
-fn fulfill<T>(msg: T) -> T {
-    // Wait until the requesting thread gives us a pointer to its `Request`.
-    let req = HANDLE.with(|handle| {
-        let mut backoff = Backoff::new();
-        loop {
-            let ptr = handle.request_ptr.load(Ordering::Acquire);
-            if ptr > 2 {
-                handle.request_ptr.store(0, Ordering::SeqCst);
-                break ptr as *const Request<T>;
-            }
-            backoff.step();
-        }
-    });
-
-    unsafe {
-        // First, make a clone of the requesting thread.
-        let thread = (*req).handle.thread.clone();
-
-        // Exchange the messages and then notify the requesting thread that it can pick up our
-        // message.
-        let m = (*req).exchange(msg);
-        (*req).handle.try_select(CaseId::abort());
-
-        // Wake up the requesting thread.
-        thread.unpark();
-
-        // Return the exchanged message.
-        m
-    }
-}
-
-/// A request for promised message.
-struct Request<T> {
-    /// The handle associated with the requestor.
-    handle: Arc<Handle>,
-
-    /// The message for exchange.
-    msg: Mutex<Option<T>>,
-}
-
-impl<T> Request<T> {
-    /// Creates a new request owned by the current thread for exchanging `msg`.
-    fn new(msg: T) -> Self {
-        Request {
-            handle: handle::current(),
-            msg: Mutex::new(Some(msg)),
+    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+        if token.entry == 0 {
+            None
+        } else {
+            let entry = Box::from_raw(token.entry as *mut Entry<T>);
+            ManuallyDrop::into_inner(UnsafeCell::into_inner(entry.msg))
         }
     }
 
-    /// Exchanges `msg` for the one inside the packet.
-    fn exchange(&self, msg: T) -> T {
-        let r = mem::replace(&mut *self.msg.try_lock().unwrap(), Some(msg));
-        r.unwrap()
-    }
-
-    /// Extracts the message inside the packet.
-    fn into_msg(self) -> T {
-        self.msg.try_lock().unwrap().take().unwrap()
+    pub unsafe fn write(&self, token: &mut Token, msg: T, is_prepared: bool) {
+        let entry = unsafe { &*(token.entry as *const Entry<T>) };
+        ptr::write(entry.msg.get(), ManuallyDrop::new(Some(msg)));
+        entry.ready.store(1, Ordering::SeqCst);
     }
 }
 
 #[derive(Copy, Clone)]
-pub enum Token {
-    Closed,
-    Fulfill,
-    Case([usize; 3]), // TODO: use [u8; mem::size_of::<Case>()]
+pub struct Token {
+    entry: usize,
 }
 
-pub struct Receiver<'a>(&'a Channel);
-pub struct Sender<'a>(&'a Channel);
-pub struct PreparedSender<'a>(&'a Channel);
+pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
+pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a> Sel for Receiver<'a> {
+impl<'a, T> Sel for Receiver<'a, T> {
     type Token = Token;
 
-    #[inline]
     fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token)
-    }
+        let mut step = 0;
+        loop {
+            if let Some(case) = self.0.senders.remove_one() {
+                case.context.unpark();
+                let entry = unsafe { &*(case.payload as *const Entry<T>) };
+                if entry.wait() {
+                    token.entry = case.payload;
+                    return true;
+                } else {
+                    unsafe {
+                        drop(Box::from_raw(case.payload as *mut Entry<T>));
+                    }
+                }
+            }
 
-    #[inline]
-    fn promise(&self, case_id: CaseId) {
-        self.0.receivers().register(case_id, true)
-    }
+            if !self.0.is_closed() {
+                return false;
+            }
 
-    #[inline]
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        !self.0.senders().can_notify() && !self.0.is_closed()
-    }
-
-    #[inline]
-    fn revoke(&self, case_id: CaseId) {
-        self.0.receivers().unregister(case_id);
-    }
-
-    #[inline]
-    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.fulfill_recv(token)
-    }
-
-    #[inline]
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token);
+            step += 1;
+            if step == 2 {
+                token.entry = 0;
+                return true;
+            }
         }
     }
 
-    #[inline]
-    fn fail(&self, _token: &mut Token) {
-        unreachable!();
-    }
-}
-
-impl<'a> Sel for Sender<'a> {
-    type Token = Token;
-
-    #[inline]
-    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.start_send(token)
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
+        let entry = Box::into_raw(Box::new(Entry::<T> {
+            ready: AtomicUsize::new(0),
+            msg: UnsafeCell::new(ManuallyDrop::new(None)),
+        }));
+        token.entry = entry as usize;
+        self.0.receivers.register_with_payload(case_id, true, entry as usize);
     }
 
-    #[inline]
-    fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, false)
-    }
-
-    #[inline]
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        !self.0.receivers().can_notify()
+        !self.0.senders.can_notify() && !self.0.is_closed()
     }
 
-    #[inline]
     fn revoke(&self, case_id: CaseId) {
-        self.0.senders().unregister(case_id);
-    }
-
-    #[inline]
-    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.fulfill_send(token, false)
-    }
-
-    #[inline]
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token); // TODO: may fail!
+        if let Some(case) = self.0.receivers.unregister(case_id) {
+            // TODO: use token.entry instead
+            unsafe {
+                drop(Box::from_raw(case.payload as *mut Entry<T>));
+            }
         }
     }
 
-    #[inline]
+    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        let entry = unsafe { &*(token.entry as *const Entry<T>) };
+        if entry.wait() {
+            true
+        } else {
+            unsafe {
+                drop(Box::from_raw(token.entry as *mut Entry<T>));
+            }
+            false
+        }
+    }
+
+    fn finish(&self, token: &mut Token) {}
+
+    fn fail(&self, _token: &mut Token) {}
+}
+
+impl<'a, T> Sel for Sender<'a, T> {
+    type Token = Token;
+
+    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        if let Some(case) = self.0.receivers.remove_one() {
+            case.context.unpark();
+            let entry = unsafe { &*(case.payload as *mut Entry<T>) };
+            token.entry = case.payload;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
+        let entry = Box::into_raw(Box::new(Entry::<T> {
+            ready: AtomicUsize::new(0),
+            msg: UnsafeCell::new(ManuallyDrop::new(None)),
+        }));
+        token.entry = entry as usize;
+        self.0.senders.register_with_payload(case_id, true, entry as usize);
+    }
+
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        !self.0.receivers.can_notify()
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        self.0.senders.unregister(case_id);
+    }
+
+    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+        true
+    }
+
+    fn finish(&self, token: &mut Token) {}
+
     fn fail(&self, token: &mut Token) {
-        unsafe {
-            self.0.fail_send(token);
-        }
-    }
-}
-
-impl<'a> Sel for PreparedSender<'a> {
-    type Token = Token;
-
-    #[inline]
-    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.start_send(token)
-    }
-
-    #[inline]
-    fn promise(&self, case_id: CaseId) {
-        self.0.senders().register(case_id, true)
-    }
-
-    #[inline]
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        !self.0.receivers().can_notify()
-    }
-
-    #[inline]
-    fn revoke(&self, case_id: CaseId) {
-        self.0.senders().unregister(case_id);
-    }
-
-    #[inline]
-    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
-        self.0.fulfill_send(token, true)
-    }
-
-    #[inline]
-    fn finish(&self, token: &mut Token) {
-        unsafe {
-            self.0.finish_recv(token); // TODO: may fail!
-        }
-    }
-
-    #[inline]
-    fn fail(&self, _token: &mut Token) {
-        unreachable!()
+        let entry = unsafe { &*(token.entry as *mut Entry<T>) };
+        entry.ready.store(2, Ordering::SeqCst);
     }
 }

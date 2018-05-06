@@ -6,22 +6,24 @@ use std::thread;
 use parking_lot::Mutex;
 
 use select::CaseId;
-use select::handle::{self, Handle};
+use context::{self, Context};
 
 // TODO: Optimize current thread id
 
-/// A selection case, identified by a `Handle` and a `CaseId`.
+/// A selection case, identified by a `Context` and a `CaseId`.
 ///
 /// Note that multiple threads could be operating on a single channel end, as well as a single
 /// thread on multiple different channel ends.
 pub struct Case {
-    /// A handle associated with the thread owning this case.
-    pub handle: Arc<Handle>,
+    /// A context associated with the thread owning this case.
+    pub context: Arc<Context>,
 
     /// The case ID.
     pub case_id: CaseId,
 
     pub is_prepared: bool,
+
+    pub payload: usize,
 }
 
 /// A simple wait queue for list-based and array-based channels.
@@ -50,21 +52,36 @@ impl Waker {
     pub fn register(&self, case_id: CaseId, is_prepared: bool) {
         let mut cases = self.cases.lock();
         cases.push_back(Case {
-            handle: handle::current(),
+            context: context::current(),
             case_id,
             is_prepared,
+            payload: 0,
+        });
+        self.len.store(cases.len(), Ordering::SeqCst);
+    }
+
+    pub fn register_with_payload(&self, case_id: CaseId, is_prepared: bool, payload: usize) {
+        let mut cases = self.cases.lock();
+        cases.push_back(Case {
+            context: context::current(),
+            case_id,
+            is_prepared,
+            payload,
         });
         self.len.store(cases.len(), Ordering::SeqCst);
     }
 
     /// Unregisters the current thread with `case_id`.
-    pub fn unregister(&self, case_id: CaseId) {
+    pub fn unregister(&self, case_id: CaseId) -> Option<Case> {
         let mut cases = self.cases.lock();
 
         if let Some((i, _)) = cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
-            cases.remove(i);
+            let case = cases.remove(i);
             self.len.store(cases.len(), Ordering::SeqCst);
             Self::maybe_shrink(&mut cases);
+            case
+        } else {
+            None
         }
     }
 
@@ -75,11 +92,15 @@ impl Waker {
             let mut cases = self.cases.lock();
 
             for i in 0..cases.len() {
-                if cases[i].handle.thread.id() != thread_id {
-                    if cases[i].handle.try_select(cases[i].case_id) {
+                if cases[i].context.thread.id() != thread_id {
+                    if cases[i].context.try_select(cases[i].case_id) {
                         let case = cases.remove(i).unwrap();
                         self.len.store(cases.len(), Ordering::SeqCst);
                         Self::maybe_shrink(&mut cases);
+
+                        // TODO: automatically unpark, remove wake_one method?
+                        case.context.unpark();
+
                         return Some(case);
                     }
                 }
@@ -93,7 +114,7 @@ impl Waker {
     pub fn wake_one(&self) {
         if self.len.load(Ordering::SeqCst) > 0 {
             if let Some(case) = self.remove_one() {
-                case.handle.unpark();
+                case.context.unpark();
             }
         }
     }
@@ -105,8 +126,8 @@ impl Waker {
 
             self.len.store(0, Ordering::SeqCst);
             for case in cases.drain(..) {
-                if case.handle.try_select(CaseId::abort()) {
-                    case.handle.unpark();
+                if case.context.try_select(CaseId::abort()) {
+                    case.context.unpark();
                 }
             }
 
@@ -122,7 +143,7 @@ impl Waker {
             let thread_id = thread::current().id();
 
             for i in 0..cases.len() {
-                if cases[i].handle.thread.id() != thread_id {
+                if cases[i].context.thread.id() != thread_id {
                     return true;
                 }
             }

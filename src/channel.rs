@@ -37,11 +37,13 @@ impl<T> Sel for Receiver<T> {
         }
     }
 
-    fn promise(&self, case_id: CaseId) {
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.receiver().promise(case_id),
-            Flavor::List(ref inner) => inner.receiver().promise(case_id),
-            Flavor::Zero(ref inner) => inner.receiver().promise(case_id),
+    fn promise(&self, token: &mut Token ,case_id: CaseId) {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref inner) => inner.receiver().promise(&mut token.array, case_id),
+                Flavor::List(ref inner) => inner.receiver().promise(&mut token.list, case_id),
+                Flavor::Zero(ref inner) => inner.receiver().promise(&mut token.zero, case_id),
+            }
         }
     }
 
@@ -100,11 +102,13 @@ impl<T> Sel for Sender<T> {
         }
     }
 
-    fn promise(&self, case_id: CaseId) {
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.sender().promise(case_id),
-            Flavor::List(ref inner) => inner.sender().promise(case_id),
-            Flavor::Zero(ref inner) => inner.sender().promise(case_id),
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref inner) => inner.sender().promise(&mut token.array, case_id),
+                Flavor::List(ref inner) => inner.sender().promise(&mut token.list, case_id),
+                Flavor::Zero(ref inner) => inner.sender().promise(&mut token.zero, case_id),
+            }
         }
     }
 
@@ -171,11 +175,13 @@ impl<'a, T> Sel for PreparedSender<'a, T> {
         }
     }
 
-    fn promise(&self, case_id: CaseId) {
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.prepared_sender().promise(case_id),
-            Flavor::List(ref inner) => inner.prepared_sender().promise(case_id),
-            Flavor::Zero(ref inner) => inner.prepared_sender().promise(case_id),
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
+        unsafe {
+            match self.0.flavor {
+                Flavor::Array(ref inner) => inner.prepared_sender().promise(&mut token.array, case_id),
+                Flavor::List(ref inner) => inner.prepared_sender().promise(&mut token.list, case_id),
+                Flavor::Zero(ref inner) => inner.prepared_sender().promise(&mut token.zero, case_id),
+            }
         }
     }
 
@@ -245,7 +251,7 @@ pub struct Channel<T> {
 enum Flavor<T> {
     Array(flavors::array::Channel<T>),
     List(flavors::list::Channel<T>),
-    Zero(flavors::zero::Channel),
+    Zero(flavors::zero::Channel<T>),
 }
 
 /// Creates a new channel of unbounded capacity, returning the sender and receiver halves.

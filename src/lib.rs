@@ -315,6 +315,8 @@ pub mod select;
 pub mod channel;
 #[doc(hidden)]
 pub mod utils;
+#[doc(hidden)]
+pub mod context;
 
 mod flavors;
 mod waker;

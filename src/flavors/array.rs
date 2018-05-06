@@ -453,7 +453,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
         self.0.start_recv(token, backoff)
     }
 
-    fn promise(&self, case_id: CaseId) {
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
         self.0.receivers.register(case_id, true)
     }
 
@@ -488,7 +488,7 @@ impl<'a, T> Sel for Sender<'a, T> {
         self.0.start_send(false, token, backoff)
     }
 
-    fn promise(&self, case_id: CaseId) {
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
         self.0.senders.register(case_id, false);
     }
 
@@ -524,7 +524,7 @@ impl<'a, T> Sel for PreparedSender<'a, T> {
         self.0.start_send(true, token, backoff)
     }
 
-    fn promise(&self, case_id: CaseId) {
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
         self.0.senders.register(case_id, true);
     }
 

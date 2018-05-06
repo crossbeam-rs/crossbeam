@@ -6,15 +6,14 @@ use std::time::Instant;
 use select::CaseId;
 use utils::Backoff;
 
-// TODO: Rename to Select?
-pub struct Handle {
+pub struct Context {
     pub case_id: AtomicUsize,
     pub thread: Thread,
     /// A slot into which another thread may store a pointer to its `Request`.
     pub request_ptr: AtomicUsize,
 }
 
-impl Handle {
+impl Context {
     pub fn try_select(&self, case_id: CaseId) -> bool {
         self.case_id
             .compare_and_swap(CaseId::none().into(), case_id.into(), Ordering::SeqCst) == CaseId::none().into()
@@ -62,29 +61,29 @@ impl Handle {
 }
 
 thread_local! {
-    pub static HANDLE: Arc<Handle> = Arc::new(Handle {
+    pub static CONTEXT: Arc<Context> = Arc::new(Context {
         case_id: AtomicUsize::new(CaseId::none().into()),
         thread: thread::current(),
         request_ptr: AtomicUsize::new(0),
     });
 }
 
-pub fn current() -> Arc<Handle> {
-    HANDLE.with(|h| h.clone())
+pub fn current() -> Arc<Context> {
+    CONTEXT.with(|h| h.clone())
 }
 
 pub fn current_try_select(case_id: CaseId) -> bool {
-    HANDLE.with(|h| h.try_select(case_id))
+    CONTEXT.with(|h| h.try_select(case_id))
 }
 
 pub fn current_selected() -> CaseId {
-    HANDLE.with(|h| h.selected())
+    CONTEXT.with(|h| h.selected())
 }
 
 pub fn current_reset() {
-    HANDLE.with(|h| h.reset())
+    CONTEXT.with(|h| h.reset())
 }
 
 pub fn current_wait_until(deadline: Option<Instant>) -> bool {
-    HANDLE.with(|h| h.wait_until(deadline))
+    CONTEXT.with(|h| h.wait_until(deadline))
 }
