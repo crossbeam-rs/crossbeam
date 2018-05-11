@@ -1,5 +1,4 @@
-#![cfg_attr(feature = "nightly",
-            feature(attr_literals, repr_align, cfg_target_has_atomic, integer_atomics))]
+#![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic, integer_atomics))]
 #![cfg_attr(not(feature = "use_std"), no_std)]
 
 #[cfg(feature = "use_std")]

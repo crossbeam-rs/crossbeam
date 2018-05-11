@@ -7,16 +7,14 @@ use core::ops::{Deref, DerefMut};
 /// cacheline to avoid "false sharing": cache lines being invalidated due to unrelated concurrent
 /// activity. Use this type when you want to *avoid* cache locality.
 ///
-/// At the moment, cache lines are assumed to be 64 bytes on all architectures.
+/// Cache lines are assumed to be 64 bytes on all architectures.
 ///
 /// # Size and alignment
 ///
-/// By default, the size of `CachePadded<T>` is 64 bytes. If `T` is larger than that, then
-/// `CachePadded::<T>::new` will panic. Alignment of `CachePadded<T>` is the same as that of `T`.
+/// The size of `CachePadded<T>` is the smallest multiple of 64 bytes large enough to accommodate
+/// a value of type `T`.
 ///
-/// However, if the `nightly` feature is enabled, arbitrarily large types `T` can be stored inside
-/// a `CachePadded<T>`. The size will then be a multiple of 64 at least the size of `T`, and the
-/// alignment will be the maximum of 64 and the alignment of `T`.
+/// The alignment of `CachePadded<T>` is the maximum of 64 bytes and the alignment of `T`.
 #[derive(Clone, Default)]
 #[repr(align(64))]
 pub struct CachePadded<T> {
@@ -28,10 +26,6 @@ unsafe impl<T: Sync> Sync for CachePadded<T> {}
 
 impl<T> CachePadded<T> {
     /// Pads a value to the length of a cache line.
-    ///
-    /// # Panics
-    ///
-    /// If `nightly` is not enabled and `T` is larger than 64 bytes, this function will panic.
     pub fn new(t: T) -> CachePadded<T> {
         CachePadded::<T> { inner: t }
     }
