@@ -5,6 +5,8 @@ version = "0.1.0"
 [dependencies]
 chan = "0.1.19"
 crossbeam = "0.3.0"
+atomicring = "0.4.1"
+mpmc = "0.1.5"
 crossbeam-channel = { path = "..", features = ["nightly"] }
 
 [[bin]]
@@ -26,3 +28,12 @@ path = "ms_queue.rs"
 [[bin]]
 name = "seg_queue"
 path = "seg_queue.rs"
+
+
+[[bin]]
+name = "atomicring"
+path = "atomicring.rs"
+
+[[bin]]
+name = "mpmc"
+path = "mpmc.rs"

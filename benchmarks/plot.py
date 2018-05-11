@@ -17,7 +17,7 @@ fig = plt.figure(figsize=(10, 10))
 def plot(subplot, title, prefix, runs):
     runs.reverse()
 
-    ys = [7 * (i+1) for i in xrange(len(runs))]
+    ys = [9 * (i+1) for i in xrange(len(runs))]
     ax = fig.add_subplot(subplot)
     ax.set_title(title)
     ax.set_yticks(ys)
@@ -31,6 +31,8 @@ def plot(subplot, title, prefix, runs):
     segqueue = [0] * len(runs)
     chan = [0] * len(runs)
     channel = [0] * len(runs)
+    atomicring = [0] * len(runs)
+    mpmc = [0] * len(runs)
 
     for (i, run) in enumerate(runs):
         for (test, lang, impl, secs) in results:
@@ -47,6 +49,10 @@ def plot(subplot, title, prefix, runs):
                     chan[i] = secs
                 if lang == 'Rust' and impl == 'channel':
                     channel[i] = secs
+                if lang == 'Rust' and impl == 'atomicring':
+                    atomicring[i] = secs
+                if lang == 'Rust' and impl == 'mpmc':
+                    mpmc[i] = secs
 
     opts = dict(height=0.7, align='center')
     ax.barh([y-3 for y in ys], go, color='skyblue', **opts)
@@ -55,8 +61,10 @@ def plot(subplot, title, prefix, runs):
     ax.barh([y+0 for y in ys], chan, color='orange', **opts)
     ax.barh([y+1 for y in ys], msqueue, color='blue', **opts)
     ax.barh([y+2 for y in ys], segqueue, color='green', **opts)
+    ax.barh([y+3 for y in ys], atomicring, color='purple', **opts)
+    ax.barh([y+4 for y in ys], mpmc, color='magenta', **opts)
 
-    m = int(max(go + mpsc + msqueue + segqueue + chan + channel) * 1.2)
+    m = int(max(go + mpsc + msqueue + segqueue + chan + channel + atomicring + mpmc) * 1.2)
     if m < 10:
         ax.set_xticks(range(m + 1))
     elif m < 50:
@@ -84,6 +92,12 @@ def plot(subplot, title, prefix, runs):
     for (x, y) in zip(segqueue, ys):
         if x > 0:
             ax.text(x+m/200., y+2-0.3, 'SegQueue', fontsize=7)
+    for (x, y) in zip(atomicring, ys):
+        if x > 0:
+            ax.text(x+m/200., y+3-0.3, 'atomicring', fontsize=7)
+    for (x, y) in zip(mpmc, ys):
+        if x > 0:
+            ax.text(x+m/200., y+4-0.3, 'mpmc', fontsize=7)
 
 
 plot(
@@ -121,6 +135,8 @@ legend = [
     ('chan', 'orange'),
     ('crossbeam::sync::MsQueue', 'blue'),
     ('crossbeam::sync::SegQueue', 'green'),
+    ('atomicring::AtomicRingBuffer', 'purple'),
+    ('mpmc::Queue', 'magenta'),
 ]
 legend.reverse()
 fig.legend(

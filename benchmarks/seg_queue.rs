@@ -1,8 +1,7 @@
 extern crate crossbeam;
 
-use std::thread;
-
 use crossbeam::sync::SegQueue;
+use std::thread;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -29,8 +28,12 @@ fn spsc() {
         });
         s.spawn(|| {
             for _ in 0..MESSAGES {
-                while q.try_pop().is_none() {
-                    thread::yield_now();
+                loop {
+                    if q.try_pop().is_none() {
+                        thread::yield_now();
+                    } else {
+                        break;
+                    }
                 }
             }
         });
@@ -50,8 +53,12 @@ fn mpsc() {
         }
         s.spawn(|| {
             for _ in 0..MESSAGES {
-                while q.try_pop().is_none() {
-                    thread::yield_now();
+                loop {
+                    if q.try_pop().is_none() {
+                        thread::yield_now();
+                    } else {
+                        break;
+                    }
                 }
             }
         });
@@ -72,8 +79,12 @@ fn mpmc() {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
-                    while q.try_pop().is_none() {
-                        thread::yield_now();
+                    loop {
+                        if q.try_pop().is_none() {
+                            thread::yield_now();
+                        } else {
+                            break;
+                        }
                     }
                 }
             });
