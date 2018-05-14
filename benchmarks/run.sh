@@ -1,17 +1,3 @@
-# Benchmarks
-
-### Tests
-
-* `seq`: A single thread sends `N` messages. Then it receives `N` messages.
-* `spsc`: One thread sends `N` messages. Another thread receives `N` messages.
-* `mpsc`: `T` threads send `N / T` messages each. One thread receives `N` messages.
-* `mpmc`: `T` threads send `N / T` messages each. `T` other threads receive `N / T` messages each.
-* `select_rx`: `T` threads send `N / T` messages each into a separate channel. Another thread receives `N` messages by selecting over the `T` channels.
-* `select_both`: `T` threads send `N / T` messages each by selecting over `T` channels. `T` other threads receive `N / T` messages each by selecting over the `T` channels.
-
-### Running
-
-```
 cargo run --release --bin chan | tee small_chan.txt
 cargo run --release --bin mpsc | tee small_mpsc.txt
 cargo run --release --bin crossbeam-channel | tee small_crossbeam-channel.txt
@@ -46,16 +32,3 @@ cargo run --features large_size --release --bin atomicring | tee large_atomicrin
 cargo run --features large_size --release --bin atomicringqueue | tee large_atomicringqueue.txt
 ./plot.py large_*.txt 
 mv plot.png plot_large.png
-
-```
-
-you might need to install go and python matplotlib
-```
-easy_install matplotlib
-```
-
-### Results
-
-Benchmarked on 2017-11-09:
-
-![Benchmark results](https://i.imgur.com/W0cSEVd.png)

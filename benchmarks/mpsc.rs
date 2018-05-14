@@ -6,12 +6,14 @@ use std::sync::mpsc;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
+pub mod testtype;
+use testtype::TestType;
 
 fn seq_async() {
-    let (tx, rx) = mpsc::channel::<i32>();
+    let (tx, rx) = mpsc::channel::<TestType>();
 
     for i in 0..MESSAGES {
-        tx.send(i as i32).unwrap();
+        tx.send(TestType::new(i)).unwrap();
     }
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
@@ -19,10 +21,10 @@ fn seq_async() {
 }
 
 fn seq_sync(cap: usize) {
-    let (tx, rx) = mpsc::sync_channel::<i32>(cap);
+    let (tx, rx) = mpsc::sync_channel::<TestType>(cap);
 
     for i in 0..MESSAGES {
-        tx.send(i as i32).unwrap();
+        tx.send(TestType::new(i)).unwrap();
     }
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
@@ -30,12 +32,12 @@ fn seq_sync(cap: usize) {
 }
 
 fn spsc_async() {
-    let (tx, rx) = mpsc::channel::<i32>();
+    let (tx, rx) = mpsc::channel::<TestType>();
 
     crossbeam::scope(|s| {
         s.spawn(move || {
             for i in 0..MESSAGES {
-                tx.send(i as i32).unwrap();
+                tx.send(TestType::new(i)).unwrap();
             }
         });
         s.spawn(move || {
@@ -47,12 +49,12 @@ fn spsc_async() {
 }
 
 fn spsc_sync(cap: usize) {
-    let (tx, rx) = mpsc::sync_channel::<i32>(cap);
+    let (tx, rx) = mpsc::sync_channel::<TestType>(cap);
 
     crossbeam::scope(|s| {
         s.spawn(move || {
             for i in 0..MESSAGES {
-                tx.send(i as i32).unwrap();
+                tx.send(TestType::new(i)).unwrap();
             }
         });
         s.spawn(move || {
@@ -64,14 +66,14 @@ fn spsc_sync(cap: usize) {
 }
 
 fn mpsc_async() {
-    let (tx, rx) = mpsc::channel::<i32>();
+    let (tx, rx) = mpsc::channel::<TestType>();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             let tx = tx.clone();
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(TestType::new(i)).unwrap();
                 }
             });
         }
@@ -84,14 +86,14 @@ fn mpsc_async() {
 }
 
 fn mpsc_sync(cap: usize) {
-    let (tx, rx) = mpsc::sync_channel::<i32>(cap);
+    let (tx, rx) = mpsc::sync_channel::<TestType>(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             let tx = tx.clone();
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(TestType::new(i)).unwrap();
                 }
             });
         }
@@ -104,14 +106,14 @@ fn mpsc_sync(cap: usize) {
 }
 
 fn select_rx_async() {
-    let chans = (0..THREADS).map(|_| mpsc::channel::<i32>()).collect::<Vec<_>>();
+    let chans = (0..THREADS).map(|_| mpsc::channel::<TestType>()).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for &(ref tx, _) in &chans {
             let tx = tx.clone();
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(TestType::new(i)).unwrap();
                 }
             });
         }
@@ -136,14 +138,14 @@ fn select_rx_async() {
 }
 
 fn select_rx_sync(cap: usize) {
-    let chans = (0..THREADS).map(|_| mpsc::sync_channel::<i32>(cap)).collect::<Vec<_>>();
+    let chans = (0..THREADS).map(|_| mpsc::sync_channel::<TestType>(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for &(ref tx, _) in &chans {
             let tx = tx.clone();
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(TestType::new(i)).unwrap();
                 }
             });
         }

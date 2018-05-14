@@ -1,18 +1,19 @@
 extern crate crossbeam;
 extern crate crossbeam_channel;
-
+pub mod testtype;
+use testtype::TestType;
 use crossbeam_channel::{bounded, unbounded, Select, Receiver, Sender};
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
-type TxRx = (Sender<i32>, Receiver<i32>);
+type TxRx = (Sender<TestType>, Receiver<TestType>);
 
 fn seq<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     for i in 0..MESSAGES {
-        tx.send(i as i32).unwrap();
+        tx.send(TestType::new(i)).unwrap();
     }
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
@@ -25,7 +26,7 @@ fn spsc<F: Fn() -> TxRx>(make: F) {
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                tx.send(i as i32).unwrap();
+                tx.send(TestType::new(i)).unwrap();
             }
         });
         s.spawn(|| {
@@ -43,7 +44,7 @@ fn mpsc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(TestType::new(i)).unwrap();
                 }
             });
         }
@@ -62,7 +63,7 @@ fn mpmc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(TestType::new(i)).unwrap();
                 }
             });
         }
@@ -83,7 +84,7 @@ fn select_rx<F: Fn() -> TxRx>(make: F) {
         for &(ref tx, _) in &chans {
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(TestType::new(i)).unwrap();
                 }
             });
         }
@@ -113,7 +114,7 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
                     let mut sel = Select::new();
                     'select: loop {
                         for &(ref tx, _) in &chans {
-                            if let Ok(_) = sel.send(&tx, i as i32) {
+                            if let Ok(_) = sel.send(&tx, TestType::new(i)) {
                                 break 'select;
                             }
                         }

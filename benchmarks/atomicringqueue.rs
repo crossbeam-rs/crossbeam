@@ -1,36 +1,32 @@
 extern crate atomicring;
 extern crate crossbeam;
 
-use atomicring::AtomicRingBuffer;
-use std::thread;
+use atomicring::AtomicRingQueue;
+use testtype::TestType;
 
 pub mod testtype;
-use testtype::TestType;
+
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
 fn seq(cap: usize) {
-    let q = AtomicRingBuffer::<TestType>::with_capacity(cap);
+    let q = AtomicRingQueue::<TestType>::with_capacity(cap);
 
     for i in 0..MESSAGES {
         loop {
             if q.try_push(TestType::new(i)).is_ok() {
                 break;
-            } else {
-                if cfg!(feature = "yield") {
-                    thread::yield_now();
-                }
             }
         }
     }
     for _ in 0..MESSAGES {
-        q.try_pop().unwrap();
+        q.pop();
     }
 }
 
 fn spsc(cap: usize) {
-    let q = AtomicRingBuffer::<TestType>::with_capacity(cap);
+    let q = AtomicRingQueue::<TestType>::with_capacity(cap);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
@@ -38,32 +34,20 @@ fn spsc(cap: usize) {
                 loop {
                     if q.try_push(TestType::new(i)).is_ok() {
                         break;
-                    } else {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
                     }
                 }
             }
         });
         s.spawn(|| {
             for _ in 0..MESSAGES {
-                loop {
-                    if q.try_pop().is_none() {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
-                    } else {
-                        break;
-                    }
-                }
+                q.pop();
             }
         });
     });
 }
 
 fn mpsc(cap: usize) {
-    let q = AtomicRingBuffer::<TestType>::with_capacity(cap);
+    let q = AtomicRingQueue::<TestType>::with_capacity(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -72,10 +56,6 @@ fn mpsc(cap: usize) {
                     loop {
                         if q.try_push(TestType::new(i)).is_ok() {
                             break;
-                        } else {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
                         }
                     }
                 }
@@ -83,22 +63,14 @@ fn mpsc(cap: usize) {
         }
         s.spawn(|| {
             for _ in 0..MESSAGES {
-                loop {
-                    if q.try_pop().is_none() {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
-                    } else {
-                        break;
-                    }
-                }
+                q.pop();
             }
         });
     });
 }
 
 fn mpmc(cap: usize) {
-    let q = AtomicRingBuffer::<TestType>::with_capacity(cap);
+    let q = AtomicRingQueue::<TestType>::with_capacity(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -107,10 +79,6 @@ fn mpmc(cap: usize) {
                     loop {
                         if q.try_push(TestType::new(i)).is_ok() {
                             break;
-                        } else {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
                         }
                     }
                 }
@@ -119,15 +87,7 @@ fn mpmc(cap: usize) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
-                    loop {
-                        if q.try_pop().is_none() {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
-                        } else {
-                            break;
-                        }
-                    }
+                    q.pop();
                 }
             });
         }
@@ -143,7 +103,7 @@ fn main() {
             println!(
                 "{:25} {:15} {:7.3} sec",
                 $name,
-                "Rust atomicring",
+                "Rust atomicringqueue",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
         }
