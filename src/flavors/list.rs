@@ -12,7 +12,7 @@ use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
 use select::CaseId;
-use select::Sel;
+use select::Select;
 use utils::Backoff;
 use waker::Waker;
 
@@ -343,7 +343,7 @@ pub struct Token {
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a, T> Sel for Receiver<'a, T> {
+impl<'a, T> Select for Receiver<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -368,7 +368,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
     }
 }
 
-impl<'a, T> Sel for Sender<'a, T> {
+impl<'a, T> Select for Sender<'a, T> {
     type Token = Token;
 
     fn try(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {

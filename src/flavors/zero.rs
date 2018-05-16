@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 use parking_lot::Mutex;
 
 use select::CaseId;
-use select::Sel;
+use select::Select;
 use context::{self, CONTEXT, Context};
 use utils::Backoff;
 use waker::{Case, Waker};
@@ -250,7 +250,7 @@ pub enum Token {
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a, T> Sel for Receiver<'a, T> {
+impl<'a, T> Select for Receiver<'a, T> {
     type Token = Token;
 
     #[inline]
@@ -280,7 +280,7 @@ impl<'a, T> Sel for Receiver<'a, T> {
     }
 }
 
-impl<'a, T> Sel for Sender<'a, T> {
+impl<'a, T> Select for Sender<'a, T> {
     type Token = Token;
 
     #[inline]

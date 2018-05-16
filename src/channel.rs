@@ -8,21 +8,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use flavors;
 use select::CaseId;
-use select::Sel;
+use select::Select;
+use select::Token;
 use utils::Backoff;
 
 // TODO: explain
 // loop { try; promise; is_blocked; revoke; fulfill; write/read }
 
-pub union Token {
-    array: flavors::array::Token,
-    list: flavors::list::Token,
-    zero: flavors::zero::Token,
-}
-
 // TODO: use backoff in try()/fulfill() for zero-capacity channels?
 
-impl<T> Sel for Receiver<T> {
+impl<T> Select for Receiver<T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -73,7 +68,7 @@ impl<T> Sel for Receiver<T> {
     }
 }
 
-impl<T> Sel for Sender<T> {
+impl<T> Select for Sender<T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {

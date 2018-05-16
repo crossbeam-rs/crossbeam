@@ -2,8 +2,6 @@
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __crossbeam_channel_parse {
-    // TODO: place entry point at the end
-
     // Success! The list is empty.
     (@list
         $callback:ident
@@ -386,7 +384,7 @@ macro_rules! __crossbeam_channel_parse {
         $labels:tt
     ) => {
         compile_error!(concat!(
-            "invalid arguments in `recv(",
+            "invalid argument list in `recv(",
             stringify!($($args)*),
             ")`",
         ))
@@ -490,7 +488,7 @@ macro_rules! __crossbeam_channel_parse {
         $labels:tt
     ) => {
         compile_error!(concat!(
-            "invalid arguments in `send(",
+            "invalid argument list in `send(",
             stringify!($($args)*),
             ")`",
         ))
@@ -607,7 +605,7 @@ macro_rules! __crossbeam_channel_parse {
         $labels:tt
     ) => {
         compile_error!(concat!(
-            "invalid arguments in `default(",
+            "invalid argument list in `default(",
             stringify!($($args)*),
             ")`",
         ))
@@ -644,7 +642,10 @@ macro_rules! __crossbeam_channel_parse {
     };
 
     (@$($tokens:tt)*) => {
-        compile_error!(concat!("internal error in crossbeam-channel: ", stringify!(@$($tokens)*)));
+        compile_error!(concat!(
+            "internal error in crossbeam-channel: ",
+            stringify!(@$($tokens)*),
+        ));
     };
 
     // The entry point.

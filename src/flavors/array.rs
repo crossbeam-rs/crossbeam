@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crossbeam_utils::cache_padded::CachePadded;
 
 use select::CaseId;
-use select::Sel;
+use select::Select;
 use utils::Backoff;
 use waker::Waker;
 
@@ -396,7 +396,7 @@ pub struct Token {
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a, T> Sel for Receiver<'a, T> {
+impl<'a, T> Select for Receiver<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -421,14 +421,14 @@ impl<'a, T> Sel for Receiver<'a, T> {
     }
 }
 
-impl<'a, T> Sel for Sender<'a, T> {
+impl<'a, T> Select for Sender<'a, T> {
     type Token = Token;
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         self.0.start_send(token, backoff)
     }
 
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
+    fn promise(&self, _token: &mut Token, case_id: CaseId) {
         self.0.senders.register(case_id);
     }
 
