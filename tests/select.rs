@@ -466,6 +466,52 @@ fn multiple_senders() {
 }
 
 #[test]
+fn recv_handle() {
+    let (s1, r1) = chan::unbounded::<i32>();
+    let (s2, r2) = chan::unbounded::<i32>();
+    let rs = [r1, r2];
+
+    s2.send(0);
+    select! {
+        recv(rs, _, r) => assert_eq!(r, &s2),
+        default => panic!(),
+    }
+
+    s1.send(0);
+    select! {
+        recv(rs, _, r) => assert_eq!(r, &s1),
+        default => panic!(),
+    }
+}
+
+#[test]
+fn send_handle() {
+    let (s1, r1) = chan::bounded::<i32>(0);
+    let (s2, r2) = chan::bounded::<i32>(0);
+    let ss = [s1, s2];
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            select! {
+                send(ss, 0, s) => assert_eq!(s, &r2),
+                default => panic!(),
+            }
+        });
+        r2.recv();
+    });
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            select! {
+                send(ss, 0, s) => assert_eq!(s, &r1),
+                default => panic!(),
+            }
+        });
+        r1.recv();
+    });
+}
+
+#[test]
 fn nesting() {
     let (s, r) = chan::unbounded::<i32>();
 
