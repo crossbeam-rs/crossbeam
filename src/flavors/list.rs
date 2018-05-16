@@ -350,7 +350,7 @@ impl<'a, T> Select for Receiver<'a, T> {
         self.0.start_recv(token, backoff)
     }
 
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
+    fn promise(&self, _token: &mut Token, case_id: CaseId) {
         self.0.receivers().register(case_id)
     }
 
@@ -375,7 +375,7 @@ impl<'a, T> Select for Sender<'a, T> {
         true
     }
 
-    fn promise(&self, token: &mut Token, _case_id: CaseId) {}
+    fn promise(&self, _token: &mut Token, _case_id: CaseId) {}
 
     fn is_blocked(&self) -> bool {
         false

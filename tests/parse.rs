@@ -2,11 +2,9 @@ extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
 
-use std::any::Any;
-use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam_channel::unbounded;
 
 #[test]
 fn references() {
@@ -29,7 +27,7 @@ fn references() {
     let ss = &&&&[s];
     let rr = &&&&[r];
     select! {
-        // TODO send(&&&ss.iter(), 0) => {}
+        send(&&&ss.iter(), 0) => {}
         recv(&&&&rr.iter()) => {}
     }
     // TODO: refs in the multi case?

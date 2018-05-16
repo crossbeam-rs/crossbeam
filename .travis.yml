@@ -6,6 +6,7 @@ rust:
   - nightly
 
 script:
+  - export RUSTFLAGS="-D warnings"
   - cargo build
   - cargo build --release
   - cargo test

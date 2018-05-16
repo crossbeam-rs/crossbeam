@@ -259,7 +259,7 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 
     #[inline]
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
+    fn promise(&self, _token: &mut Token, case_id: CaseId) {
         self.0.receivers.register(case_id)
     }
 
@@ -289,7 +289,7 @@ impl<'a, T> Select for Sender<'a, T> {
     }
 
     #[inline]
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
+    fn promise(&self, _token: &mut Token, case_id: CaseId) {
         self.0.senders.register(case_id)
     }
 

@@ -26,7 +26,7 @@ fn refs() {
     let ss = &&&&[s];
     let rr = &&&&[r];
     select! {
-        // send(ss.iter(), 0) => {} // TODO
+        send(ss.iter(), 0) => {}
         recv(rr.iter()) => {}
     }
     // TODO: refs in the multi case?
@@ -36,19 +36,22 @@ fn refs() {
 fn bar() {
     let (s, r) = unbounded::<i32>();
     select! {
-        // recv(r, msg) => if msg.is_some() {
-        // }
-        recv(r, msg) => 3.0
-        // recv(r) => unsafe {
-        // }
-        // recv(r) => loop {
-        //     break;
-        // }
-        // recv(r) => match 7 + 3 {
-        //     _ => {}
-        // }
+        recv(r) => 3.0
+        recv(r) => loop {
+            unreachable!()
+        }
+        recv(r) => match 7 + 3 {
+            _ => unreachable!()
+        }
         default() => 7.
     };
+    select! {
+        recv(r, msg) => if msg.is_some() {
+            unreachable!()
+        }
+        default() => ()
+    }
+    drop(s);
 }
 
 #[test]

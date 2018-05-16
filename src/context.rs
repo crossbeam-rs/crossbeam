@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread::{self, Thread, ThreadId};
+use std::thread::{self, Thread};
 use std::time::Instant;
 
 use select::CaseId;

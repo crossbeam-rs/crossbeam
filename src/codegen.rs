@@ -9,7 +9,9 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         {
             use $crate::select::RecvArgument;
+            #[allow(unused_imports)]
             use $crate::channel::Receiver;
+
             match &mut (&$rs).to_receivers() {
                 $var => {
                     __crossbeam_channel_codegen!(
@@ -31,7 +33,9 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         {
             use $crate::select::SendArgument;
+            #[allow(unused_imports)]
             use $crate::channel::Sender;
+
             match &mut (&$ss).to_senders() {
                 $var => {
                     __crossbeam_channel_codegen!(
@@ -59,13 +63,10 @@ macro_rules! __crossbeam_channel_codegen {
 
         // These cause warnings:
         use $crate::select::Select;
-        use $crate::select::SendArgument;
 
-        use $crate::channel::Receiver;
-        use $crate::channel::Sender;
         use $crate::select::CaseId;
         use $crate::select::Token;
-        use $crate::context::{self, Context};
+        use $crate::context;
         use $crate::utils::{Backoff, shuffle};
 
         let deadline: Option<Instant>;
@@ -166,6 +167,7 @@ macro_rules! __crossbeam_channel_codegen {
             }
         }
 
+        drop(selected); // TODO: this is just to remove a warning
         __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
 
         // TODO: optimize send, try_recv, recv
@@ -288,9 +290,9 @@ macro_rules! __crossbeam_channel_codegen {
             {
                 &*(addr as *const Receiver<T>)
             }
-            let ($m, $r) = {
-                let r = unsafe { bind(&$var, $selected) };
-                let msg = unsafe { r.read(&mut $token) };
+            let ($m, $r) = unsafe {
+                let r = bind(&$var, $selected);
+                let msg = r.read(&mut $token);
                 (msg, r)
             };
             $body
@@ -330,7 +332,7 @@ macro_rules! __crossbeam_channel_codegen {
                     &*(addr as *const T)
                 }
 
-                let s = unsafe { bind(&$var, $selected) };
+                let s = bind(&$var, $selected);
 
                 let _msg = {
                     // We have to prefix variables with an underscore to get rid of warnings in
