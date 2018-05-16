@@ -11,8 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
-use select::CaseId;
-use select::Select;
+use select::{CaseId, Select, Token};
 use utils::Backoff;
 use waker::Waker;
 
@@ -170,6 +169,8 @@ impl<T> Channel<T> {
     }
 
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        let token = unsafe { &mut token.list };
+
         let guard = epoch::pin();
 
         loop {
@@ -242,6 +243,8 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+        let token = &mut token.list;
+
         if token.entry.is_null() {
             None
         } else {
@@ -335,7 +338,7 @@ impl<T> Drop for Channel<T> {
 }
 
 #[derive(Copy, Clone)]
-pub struct Token {
+pub struct ListToken {
     pub entry: *const u8, // TODO: remove pub
     guard: usize, // TODO: use [u8; mem::size_of::<Guard>()]
 }
@@ -344,8 +347,6 @@ pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
-    type Token = Token;
-
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         self.0.start_recv(token, backoff)
     }
@@ -369,8 +370,6 @@ impl<'a, T> Select for Receiver<'a, T> {
 }
 
 impl<'a, T> Select for Sender<'a, T> {
-    type Token = Token;
-
     fn try(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
         true
     }

@@ -10,8 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crossbeam_utils::cache_padded::CachePadded;
 
-use select::CaseId;
-use select::Select;
+use select::{CaseId, Select, Token};
 use utils::Backoff;
 use waker::Waker;
 
@@ -149,6 +148,8 @@ impl<T> Channel<T> {
     }
 
     fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        let token = unsafe { &mut token.array };
+
         let one_lap = self.one_lap;
         let index_bits = one_lap - 1;
         let lap_bits = !(one_lap - 1);
@@ -200,6 +201,8 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
+        let token = &mut token.array;
+
         debug_assert!(!token.entry.is_null());
         let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
 
@@ -211,6 +214,8 @@ impl<T> Channel<T> {
     }
 
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        let token = unsafe { &mut token.array };
+
         let one_lap = self.one_lap;
         let index_bits = one_lap - 1;
         let lap_bits = !(one_lap - 1);
@@ -271,6 +276,8 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+        let token = &mut token.array;
+
         let msg = if token.entry.is_null() {
             None
         } else {
@@ -388,7 +395,7 @@ impl<T> Drop for Channel<T> {
 }
 
 #[derive(Copy, Clone)]
-pub struct Token {
+pub struct ArrayToken {
     entry: *const u8,
     lap: usize,
 }
@@ -397,8 +404,6 @@ pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
-    type Token = Token;
-
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         self.0.start_recv(token, backoff)
     }
@@ -422,8 +427,6 @@ impl<'a, T> Select for Receiver<'a, T> {
 }
 
 impl<'a, T> Select for Sender<'a, T> {
-    type Token = Token;
-
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         self.0.start_send(token, backoff)
     }

@@ -80,10 +80,6 @@ macro_rules! __crossbeam_channel_codegen {
         let mut index: usize = !0;
         let mut selected: usize = 0;
 
-        // TODO: remove `type Token` from Select - that would allow us to push a flavor impl as
-        // &Select
-        // - also: it would allow us to specialize selects per flavor in recv/send/try_recv
-
         shuffle(&mut cases);
         loop {
             // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
@@ -167,11 +163,12 @@ macro_rules! __crossbeam_channel_codegen {
             }
         }
 
-        drop(selected); // TODO: this is just to remove a warning
+        // This drop is just to ignore a warning complaining about unused `selected`.
+        drop(selected);
+
         __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
 
         // TODO: optimize send, try_recv, recv
-
         // TODO: need a select mpmc test for all flavors
 
         // TODO: test select with duplicate cases - and make sure all of them fire (fairness)!
@@ -217,7 +214,7 @@ macro_rules! __crossbeam_channel_codegen {
         $send:tt
     ) => {
         use $crate::smallvec::SmallVec;
-        $cases = SmallVec::<[(&Select<Token = Token>, usize, usize); 4]>::new();
+        $cases = SmallVec::<[(&Select, usize, usize); 4]>::new();
         __crossbeam_channel_codegen!(@push $cases $recv $send);
     };
 
@@ -317,7 +314,7 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         if $index == $i {
-            let $s = unsafe {
+            let $s = {
                 struct Guard<F: FnMut()>(F);
                 impl<F: FnMut()> Drop for Guard<F> {
                     fn drop(&mut self) {
@@ -332,12 +329,12 @@ macro_rules! __crossbeam_channel_codegen {
                     &*(addr as *const T)
                 }
 
-                let s = bind(&$var, $selected);
+                let s = unsafe { bind(&$var, $selected) };
 
-                let _msg = {
+                let msg = {
                     // We have to prefix variables with an underscore to get rid of warnings in
                     // case `$m` is of type `!`.
-                    let _guard = Guard(|| {
+                    let guard = Guard(|| {
                         eprintln!(
                             "a send case triggered a panic while evaluating the message, {}:{}:{}",
                             file!(),
@@ -346,16 +343,13 @@ macro_rules! __crossbeam_channel_codegen {
                         );
                         ::std::process::abort();
                     });
-                    let _msg = $m;
 
-                    #[allow(unreachable_code)]
-                    {
-                        ::std::mem::forget(_guard);
-                        _msg
-                    }
+                    let msg = $m;
+                    ::std::mem::forget(guard);
+                    msg
                 };
 
-                s.write(&mut $token, _msg);
+                unsafe { s.write(&mut $token, msg); }
                 s
             };
             $body

@@ -21,9 +21,9 @@ macro_rules! select {
 }
 
 pub union Token {
-    pub array: flavors::array::Token,
-    pub list: flavors::list::Token,
-    pub zero: flavors::zero::Token,
+    pub array: flavors::array::ArrayToken,
+    pub list: flavors::list::ListToken,
+    pub zero: flavors::zero::ZeroToken,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -63,20 +63,18 @@ impl Into<usize> for CaseId {
 }
 
 pub trait Select {
-    type Token;
-    fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
-    fn promise(&self, token: &mut Self::Token, case_id: CaseId);
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
+    fn promise(&self, token: &mut Token, case_id: CaseId);
     fn is_blocked(&self) -> bool;
     fn revoke(&self, case_id: CaseId);
-    fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool;
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
 }
 
 impl<'a, T: Select> Select for &'a T {
-    type Token = <T as Select>::Token;
-    fn try(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         (**self).try(token, backoff)
     }
-    fn promise(&self, token: &mut Self::Token, case_id: CaseId) {
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
         (**self).promise(token, case_id);
     }
     fn is_blocked(&self) -> bool {
@@ -85,7 +83,7 @@ impl<'a, T: Select> Select for &'a T {
     fn revoke(&self, case_id: CaseId) {
         (**self).revoke(case_id);
     }
-    fn fulfill(&self, token: &mut Self::Token, backoff: &mut Backoff) -> bool {
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         (**self).fulfill(token, backoff)
     }
 }

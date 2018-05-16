@@ -9,8 +9,7 @@ use std::marker::PhantomData;
 
 use parking_lot::Mutex;
 
-use select::CaseId;
-use select::Select;
+use select::{CaseId, Select, Token};
 use context::{self, CONTEXT, Context};
 use utils::Backoff;
 use waker::{Case, Waker};
@@ -36,11 +35,13 @@ impl<T> Channel<T> {
 
     #[inline]
     fn start_recv(&self, token: &mut Token) -> bool {
+        let token = unsafe { &mut token.zero };
+
         if let Some(case) = self.senders.wake_one() {
-            *token = unsafe { Token::Case(mem::transmute::<Case, [usize; 2]>(case)) };
+            *token = unsafe { ZeroToken::Case(mem::transmute::<Case, [usize; 2]>(case)) };
             true
         } else if self.is_closed() {
-            *token = Token::Closed;
+            *token = ZeroToken::Closed;
             true
         } else {
             false
@@ -48,6 +49,8 @@ impl<T> Channel<T> {
     }
 
     fn fulfill_recv(&self, token: &mut Token) -> bool {
+        let token = unsafe { &mut token.zero };
+
         // Wait until the requesting thread gives us a pointer to its `Request`.
         let context = context::current();
 
@@ -56,14 +59,16 @@ impl<T> Channel<T> {
             backoff.step();
         }
 
-        *token = Token::Fulfill;
+        *token = ZeroToken::Fulfill;
         true
     }
 
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+        let token = &mut token.zero;
+
         match token {
-            Token::Closed => None,
-            Token::Fulfill => {
+            ZeroToken::Closed => None,
+            ZeroToken::Fulfill => {
                 let req = CONTEXT.with(|context| {
                     let ptr = context.request_ptr.swap(0, Ordering::Acquire);
                     ptr as *const Request<Option<T>>
@@ -87,7 +92,7 @@ impl<T> Channel<T> {
 
                 Some(m.unwrap())
             }
-            Token::Case(case) => {
+            ZeroToken::Case(case) => {
                 let case: Case = mem::transmute::<[usize; 2], Case>(*case);
                 Some(finish_exchange(case, None).unwrap())
             }
@@ -97,10 +102,12 @@ impl<T> Channel<T> {
 
     #[inline]
     fn start_send(&self, token: &mut Token) -> bool {
+        let token = unsafe { &mut token.zero };
+
         // If there's someone on the other side, exchange messages with it.
         if let Some(case) = self.receivers.wake_one() {
             unsafe {
-                *token = Token::Case(mem::transmute::<Case, [usize; 2]>(case));
+                *token = ZeroToken::Case(mem::transmute::<Case, [usize; 2]>(case));
             }
             true
         } else {
@@ -109,12 +116,14 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
+        let token = &mut token.zero;
+
         match token {
-            Token::Closed => unreachable!(),
-            Token::Fulfill => {
+            ZeroToken::Closed => unreachable!(),
+            ZeroToken::Fulfill => {
                 fulfill(Some(msg));
             }
-            Token::Case(case) => {
+            ZeroToken::Case(case) => {
                 let case: Case = mem::transmute::<[usize; 2], Case>(*case);
                 finish_exchange(case, Some(msg));
             }
@@ -123,7 +132,8 @@ impl<T> Channel<T> {
     }
 
     fn fulfill_send(&self, token: &mut Token) -> bool {
-        *token = Token::Fulfill;
+        let token = unsafe { &mut token.zero };
+        *token = ZeroToken::Fulfill;
         true
     }
 
@@ -241,7 +251,7 @@ impl<T> Request<T> {
 }
 
 #[derive(Copy, Clone)]
-pub enum Token {
+pub enum ZeroToken {
     Closed,
     Fulfill,
     Case([usize; 2]), // TODO: use [u8; mem::size_of::<Case>()], write and read unaligned
@@ -251,8 +261,6 @@ pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
-    type Token = Token;
-
     #[inline]
     fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.start_recv(token)
@@ -281,8 +289,6 @@ impl<'a, T> Select for Receiver<'a, T> {
 }
 
 impl<'a, T> Select for Sender<'a, T> {
-    type Token = Token;
-
     #[inline]
     fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.start_send(token)

@@ -1,12 +1,10 @@
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel;
+extern crate crossbeam_channel as chan;
 
 use std::any::Any;
 use std::thread;
 use std::time::Duration;
-
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
 // TODO: test that `select!` evaluates to an expression
 // TODO: two nested `select!`s
@@ -18,7 +16,7 @@ fn ms(ms: u64) -> Duration {
 
 #[test]
 fn refs() {
-    let (s, r) = unbounded::<i32>();
+    let (s, r) = chan::unbounded::<i32>();
     select! {
         send(&&&&s, 0) => {}
         recv(&&&&r) => {}
@@ -33,31 +31,24 @@ fn refs() {
 }
 
 #[test]
-fn bar() {
-    let (s, r) = unbounded::<i32>();
-    select! {
-        recv(r) => 3.0
-        recv(r) => loop {
-            unreachable!()
+fn duplicate_cases() {
+    let (s, r) = chan::unbounded::<i32>();
+    let mut hit = [false; 4];
+
+    while hit.iter().any(|hit| !hit) {
+        select! {
+            recv(r) => hit[0] = true,
+            recv(r) => hit[1] = true,
+            send(s, 0) => hit[2] = true,
+            send(s, 0) => hit[3] = true,
         }
-        recv(r) => match 7 + 3 {
-            _ => unreachable!()
-        }
-        default() => 7.
-    };
-    select! {
-        recv(r, msg) => if msg.is_some() {
-            unreachable!()
-        }
-        default() => ()
     }
-    drop(s);
 }
 
 #[test]
 fn multiple_receivers() {
-    let (_, r1) = unbounded::<i32>();
-    let (_, r2) = bounded::<i32>(5);
+    let (_, r1) = chan::unbounded::<i32>();
+    let (_, r2) = chan::bounded::<i32>(5);
     select! {
         recv([&r1, &r2].iter().map(|x| *x), msg) => assert!(msg.is_none()),
     }
@@ -65,8 +56,8 @@ fn multiple_receivers() {
         recv([r1, r2].iter(), msg) => assert!(msg.is_none()),
     }
 
-    let (_, r1) = unbounded::<i32>();
-    let (_, r2) = bounded::<i32>(5);
+    let (_, r1) = chan::unbounded::<i32>();
+    let (_, r2) = chan::bounded::<i32>(5);
     select! {
         recv(&[r1, r2], msg) => assert!(msg.is_none()),
     }
@@ -74,8 +65,8 @@ fn multiple_receivers() {
 
 #[test]
 fn multiple_senders() {
-    let (s1, _) = unbounded::<i32>();
-    let (s2, _) = bounded::<i32>(5);
+    let (s1, _) = chan::unbounded::<i32>();
+    let (s2, _) = chan::bounded::<i32>(5);
     select! {
         send([&s1, &s2].iter().map(|x| *x), 0) => {}
     }
@@ -83,136 +74,16 @@ fn multiple_senders() {
         send([s1, s2].iter(), 0) => {}
     }
 
-    let (s1, _) = unbounded::<i32>();
-    let (s2, _) = bounded::<i32>(5);
+    let (s1, _) = chan::unbounded::<i32>();
+    let (s2, _) = chan::bounded::<i32>(5);
     select! {
         send(&[s1, s2], 0) => {},
     }
 }
 
-#[test]
-fn same_variable_name() {
-    let (_, r) = unbounded::<i32>();
-    select! {
-        recv(r, r) => assert!(r.is_none()),
-    }
-    // TODO: do the same with send(s, _, s) and recv(r, _, r)
-}
-
-#[test]
-fn handles_on_heap() {
-    let (s, r) = unbounded::<i32>();
-    let (s, r) = (Box::new(s), Box::new(r));
-
-    select! {
-        send(*s, 0) => {}
-        recv(*r) => {}
-        default => {}
-    }
-
-    drop(s);
-    drop(r);
-}
-
-#[test]
-fn option_receiver() {
-    let (_, r) = unbounded::<i32>();
-    select! {
-        recv(Some(&r)) => {}
-    }
-
-    let r: Option<Receiver<u32>> = None;
-    select! {
-        recv(r.as_ref()) => {}
-        default => {}
-    }
-
-    let r: Option<&&&Box<&&Receiver<u32>>> = None;
-    let r: Option<&Receiver<u32>> = match r {
-        None => None,
-        Some(r) => Some(r),
-    };
-    select! {
-        recv(r) => {}
-        default => {}
-    }
-    // TODO: test with multiple cases
-}
-
-#[test]
-fn option_sender() {
-    let (s, _) = unbounded::<i32>();
-    select! {
-        send(Some(&s), 0) => {}
-        default => {}
-    }
-
-    let s: Option<Sender<u32>> = None;
-    select! {
-        send(s.as_ref(), 0) => {}
-        default => {}
-    }
-
-    let s: Option<&&&Box<&&Sender<u32>>> = None;
-    let s: Option<&Sender<u32>> = match s {
-        None => None,
-        Some(s) => Some(s),
-    };
-    select! {
-        send(s, 0) => {}
-        default => {}
-    }
-    // TODO: test with multiple cases
-}
-
-#[test]
-fn once_receiver() {
-    let (_, r) = unbounded::<i32>();
-
-    let once = Box::new(());
-    let get = move || {
-        drop(once);
-        r
-    };
-
-    select! {
-        recv(get()) => {}
-    }
-}
-
-#[test]
-fn once_sender() {
-    let (s, _) = unbounded::<i32>();
-
-    let once = Box::new(());
-    let get = move || {
-        drop(once);
-        s
-    };
-
-    select! {
-        send(get(), 5) => {}
-    }
-}
-
-#[test]
-fn once_timeout() {
-    let once = Box::new(());
-    let get = move || {
-        drop(once);
-        ms(10)
-    };
-
-    select! {
-        default(get()) => {}
-    }
-}
-
-// TODO: also fn once_deadline
-
 // #[test]
 // fn bar() {
-//     let (s, r) = bounded(0);
+//     let (s, r) = chan::bounded(0);
 //
 //     crossbeam::scope(|scope| {
 //         scope.spawn(|| {
@@ -236,15 +107,15 @@ fn once_timeout() {
 //         mut struct_val: Foo,
 //         mut var: String,
 //         immutable_var: String,
-//         r0: Receiver<String>,
-//         r1: &Receiver<u32>,
-//         r2: Receiver<()>,
-//         s0: &mut Sender<String>,
-//         s1: Sender<String>,
-//         s2: Sender<String>,
-//         s3: Sender<String>,
-//         s4: Sender<String>,
-//         s5: Sender<u32>,
+//         r0: chan::Receiver<String>,
+//         r1: &chan::Receiver<u32>,
+//         r2: chan::Receiver<()>,
+//         s0: &mut chan::Sender<String>,
+//         s1: chan::Sender<String>,
+//         s2: chan::Sender<String>,
+//         s3: chan::Sender<String>,
+//         s4: chan::Sender<String>,
+//         s5: chan::Sender<u32>,
 //     ) -> Option<String> {
 //         select! {
 //             recv(r0, val) => Some(val),
@@ -269,8 +140,8 @@ fn once_timeout() {
 
 #[test]
 fn smoke1() {
-    let (s1, r1) = unbounded::<usize>();
-    let (s2, r2) = unbounded::<usize>();
+    let (s1, r1) = chan::unbounded::<usize>();
+    let (s2, r2) = chan::unbounded::<usize>();
 
     s1.send(1);
 
@@ -289,11 +160,11 @@ fn smoke1() {
 
 #[test]
 fn smoke2() {
-    let (_s1, r1) = unbounded::<i32>();
-    let (_s2, r2) = unbounded::<i32>();
-    let (_s3, r3) = unbounded::<i32>();
-    let (_s4, r4) = unbounded::<i32>();
-    let (s5, r5) = unbounded::<i32>();
+    let (_s1, r1) = chan::unbounded::<i32>();
+    let (_s2, r2) = chan::unbounded::<i32>();
+    let (_s3, r3) = chan::unbounded::<i32>();
+    let (_s4, r4) = chan::unbounded::<i32>();
+    let (s5, r5) = chan::unbounded::<i32>();
 
     s5.send(5);
 
@@ -308,8 +179,8 @@ fn smoke2() {
 
 #[test]
 fn closed() {
-    let (s1, r1) = unbounded::<i32>();
-    let (s2, r2) = unbounded::<i32>();
+    let (s1, r1) = chan::unbounded::<i32>();
+    let (s2, r2) = chan::unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -348,8 +219,8 @@ fn closed() {
 
 #[test]
 fn default() {
-    let (s1, r1) = unbounded::<i32>();
-    let (s2, r2) = unbounded::<i32>();
+    let (s1, r1) = chan::unbounded::<i32>();
+    let (s2, r2) = chan::unbounded::<i32>();
 
     select! {
         recv(r1) => panic!(),
@@ -384,8 +255,8 @@ fn default() {
 
 #[test]
 fn timeout() {
-    let (_s1, r1) = unbounded::<i32>();
-    let (s2, r2) = unbounded::<i32>();
+    let (_s1, r1) = chan::unbounded::<i32>();
+    let (s2, r2) = chan::unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -407,7 +278,7 @@ fn timeout() {
     });
 
     crossbeam::scope(|scope| {
-        let (s, r) = unbounded::<i32>();
+        let (s, r) = chan::unbounded::<i32>();
 
         scope.spawn(move || {
             thread::sleep(ms(500));
@@ -427,14 +298,14 @@ fn timeout() {
 
 #[test]
 fn default_when_closed() {
-    let (_, r) = unbounded::<i32>();
+    let (_, r) = chan::unbounded::<i32>();
 
     select! {
         recv(r, v) => assert!(v.is_none()),
         default => panic!(),
     }
 
-    let (_, r) = unbounded::<i32>();
+    let (_, r) = chan::unbounded::<i32>();
 
     select! {
         recv(r, v) => assert!(v.is_none()),
@@ -444,8 +315,8 @@ fn default_when_closed() {
 
 #[test]
 fn unblocks() {
-    let (s1, r1) = bounded::<i32>(0);
-    let (s2, r2) = bounded::<i32>(0);
+    let (s1, r1) = chan::bounded::<i32>(0);
+    let (s2, r2) = chan::bounded::<i32>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -476,8 +347,8 @@ fn unblocks() {
 
 #[test]
 fn both_ready() {
-    let (s1, r1) = bounded(0);
-    let (s2, r2) = bounded(0);
+    let (s1, r1) = chan::bounded(0);
+    let (s2, r2) = chan::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -498,9 +369,9 @@ fn both_ready() {
 #[test]
 fn loop_try() {
     for _ in 0..20 {
-        let (s1, r1) = bounded::<i32>(0);
-        let (s2, r2) = bounded::<i32>(0);
-        let (s_end, r_end) = bounded::<()>(0);
+        let (s1, r1) = chan::bounded::<i32>(0);
+        let (s2, r2) = chan::bounded::<i32>(0);
+        let (s_end, r_end) = chan::bounded::<()>(0);
 
         crossbeam::scope(|scope| {
             scope.spawn(|| {
@@ -549,13 +420,13 @@ fn loop_try() {
 #[test]
 fn cloning1() {
     crossbeam::scope(|scope| {
-        let (s1, r1) = unbounded::<i32>();
-        let (_s2, r2) = unbounded::<i32>();
-        let (s3, r3) = unbounded::<()>();
+        let (s1, r1) = chan::unbounded::<i32>();
+        let (_s2, r2) = chan::unbounded::<i32>();
+        let (s3, r3) = chan::unbounded::<()>();
 
         scope.spawn(move || {
             r3.recv().unwrap();
-            s1.clone();
+            drop(s1.clone());
             assert_eq!(r3.try_recv(), None);
             s1.send(1);
             r3.recv().unwrap();
@@ -574,9 +445,9 @@ fn cloning1() {
 
 #[test]
 fn cloning2() {
-    let (s1, r1) = unbounded::<()>();
-    let (s2, r2) = unbounded::<()>();
-    let (_s3, _r3) = unbounded::<()>();
+    let (s1, r1) = chan::unbounded::<()>();
+    let (s2, r2) = chan::unbounded::<()>();
+    let (_s3, _r3) = chan::unbounded::<()>();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -594,7 +465,7 @@ fn cloning2() {
 
 #[test]
 fn preflight1() {
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
     s.send(());
 
     select! {
@@ -604,7 +475,7 @@ fn preflight1() {
 
 #[test]
 fn preflight2() {
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
     drop(s.clone());
     s.send(());
     drop(s);
@@ -617,7 +488,7 @@ fn preflight2() {
 
 #[test]
 fn preflight3() {
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
     drop(s.clone());
     s.send(());
     drop(s);
@@ -630,9 +501,9 @@ fn preflight3() {
 
 #[test]
 fn stress_recv() {
-    let (s1, r1) = unbounded();
-    let (s2, r2) = bounded(5);
-    let (s3, r3) = bounded(100);
+    let (s1, r1) = chan::unbounded();
+    let (s2, r2) = chan::bounded(5);
+    let (s3, r3) = chan::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -660,9 +531,9 @@ fn stress_recv() {
 
 #[test]
 fn stress_send() {
-    let (s1, r1) = bounded(0);
-    let (s2, r2) = bounded(0);
-    let (s3, r3) = bounded(100);
+    let (s1, r1) = chan::bounded(0);
+    let (s2, r2) = chan::bounded(0);
+    let (s3, r3) = chan::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -687,9 +558,9 @@ fn stress_send() {
 
 #[test]
 fn stress_mixed() {
-    let (s1, r1) = bounded(0);
-    let (s2, r2) = bounded(0);
-    let (s3, r3) = bounded(100);
+    let (s1, r1) = chan::bounded(0);
+    let (s2, r2) = chan::bounded(0);
+    let (s3, r3) = chan::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -716,7 +587,7 @@ fn stress_mixed() {
 fn stress_timeout_two_threads() {
     const COUNT: usize = 20;
 
-    let (s, r) = bounded(2);
+    let (s, r) = chan::bounded(2);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -755,7 +626,7 @@ fn stress_timeout_two_threads() {
 }
 
 /*
-struct WrappedSender<T>(Sender<T>);
+struct WrappedSender<T>(chan::Sender<T>);
 
 impl<T> WrappedSender<T> {
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -779,7 +650,7 @@ impl<T> WrappedSender<T> {
     }
 }
 
-struct WrappedReceiver<T>(Receiver<T>);
+struct WrappedReceiver<T>(chan::Receiver<T>);
 
 impl<T> WrappedReceiver<T> {
     pub fn try_recv(&self) -> Option<T> {
@@ -808,7 +679,7 @@ impl<T> WrappedReceiver<T> {
 
 #[test]
 fn recv() {
-    let (s, r) = bounded(100);
+    let (s, r) = chan::bounded(100);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -829,7 +700,7 @@ fn recv() {
         });
     });
 
-    let (s, r) = bounded(0);
+    let (s, r) = chan::bounded(0);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -853,7 +724,7 @@ fn recv() {
 
 #[test]
 fn recv_timeout() {
-    let (s, r) = bounded(100);
+    let (s, r) = chan::bounded(100);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -875,7 +746,7 @@ fn recv_timeout() {
 
 #[test]
 fn try_recv() {
-    let (s, r) = bounded(100);
+    let (s, r) = chan::bounded(100);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -893,7 +764,7 @@ fn try_recv() {
         });
     });
 
-    let (s, r) = bounded(0);
+    let (s, r) = chan::bounded(0);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -915,7 +786,7 @@ fn try_recv() {
 
 #[test]
 fn send() {
-    let (s, r) = bounded(1);
+    let (s, r) = chan::bounded(1);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -938,7 +809,7 @@ fn send() {
         });
     });
 
-    let (s, r) = bounded(0);
+    let (s, r) = chan::bounded(0);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -963,7 +834,7 @@ fn send() {
 
 #[test]
 fn send_timeout() {
-    let (s, r) = bounded(2);
+    let (s, r) = chan::bounded(2);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -990,7 +861,7 @@ fn send_timeout() {
         });
     });
 
-    let (s, r) = bounded(0);
+    let (s, r) = chan::bounded(0);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -1016,7 +887,7 @@ fn send_timeout() {
 
 #[test]
 fn try_send() {
-    let (s, r) = bounded(1);
+    let (s, r) = chan::bounded(1);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -1038,7 +909,7 @@ fn try_send() {
         });
     });
 
-    let (s, r) = bounded(0);
+    let (s, r) = chan::bounded(0);
     let s = WrappedSender(s);
     let r = WrappedReceiver(r);
 
@@ -1061,7 +932,7 @@ fn try_send() {
 
 // #[test]
 // fn recv_after_close() {
-//     let (s, r) = bounded(100);
+//     let (s, r) = chan::bounded(100);
 //     let s = WrappedSender(s);
 //     let r = WrappedReceiver(r);
 //
@@ -1079,7 +950,7 @@ fn try_send() {
 
 #[test]
 fn matching() {
-    let (s, r) = &bounded::<usize>(0);
+    let (s, r) = &chan::bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
         for i in 0..44 {
@@ -1097,7 +968,7 @@ fn matching() {
 
 #[test]
 fn matching_with_leftover() {
-    let (s, r) = &bounded::<usize>(0);
+    let (s, r) = &chan::bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
         for i in 0..55 {
@@ -1121,14 +992,14 @@ fn channel_through_channel() {
     type T = Box<Any + Send>;
 
     for cap in 0..3 {
-        let (s, r) = bounded::<T>(cap);
+        let (s, r) = chan::bounded::<T>(cap);
 
         crossbeam::scope(|scope| {
             scope.spawn(move || {
                 let mut s = s;
 
                 for _ in 0..COUNT {
-                    let (new_s, new_r) = bounded(cap);
+                    let (new_s, new_r) = chan::bounded(cap);
                     let mut new_r: T = Box::new(Some(new_r));
 
                     select! {
@@ -1146,7 +1017,7 @@ fn channel_through_channel() {
                     r = select! {
                         recv(r, mut msg) => {
                             msg.unwrap()
-                                .downcast_mut::<Option<Receiver<T>>>()
+                                .downcast_mut::<Option<chan::Receiver<T>>>()
                                 .unwrap()
                                 .take()
                                 .unwrap()
@@ -1160,7 +1031,7 @@ fn channel_through_channel() {
 
 // #[test]
 // fn conditional_send() {
-//     let (s, r) = bounded(0);
+//     let (s, r) = chan::bounded(0);
 //
 //     crossbeam::scope(|scope| {
 //         scope.spawn(move || r.recv().unwrap());
@@ -1179,7 +1050,7 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_recv() {
-//     let (s, r) = unbounded();
+//     let (s, r) = chan::unbounded();
 //     s.send(());
 //
 //     select! {
@@ -1195,7 +1066,7 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_closed() {
-//     let (_, r) = bounded::<i32>(0);
+//     let (_, r) = chan::bounded::<i32>(0);
 //
 //     select! {
 //         recv(r) => panic!(),
@@ -1214,7 +1085,7 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_would_block() {
-//     let (_s, r) = bounded::<i32>(0);
+//     let (_s, r) = chan::bounded::<i32>(0);
 //
 //     select! {
 //         recv(r) => panic!(),
@@ -1233,7 +1104,7 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_timed_out() {
-//     let (_s, r) = bounded::<i32>(0);
+//     let (_s, r) = chan::bounded::<i32>(0);
 //
 //     select! {
 //         recv(r) => panic!(),
@@ -1250,7 +1121,7 @@ fn channel_through_channel() {
 //
 // #[test]
 // fn conditional_option_unwrap() {
-//     let (s, r) = unbounded();
+//     let (s, r) = chan::unbounded();
 //     s.send(());
 //     let r = Some(&r);
 //

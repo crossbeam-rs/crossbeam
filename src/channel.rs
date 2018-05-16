@@ -18,25 +18,19 @@ use utils::Backoff;
 // TODO: use backoff in try()/fulfill() for zero-capacity channels?
 
 impl<T> Select for Receiver<T> {
-    type Token = Token;
-
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            match &self.0.flavor {
-                Flavor::Array(inner) => inner.receiver().try(&mut token.array, backoff),
-                Flavor::List(inner) => inner.receiver().try(&mut token.list, backoff),
-                Flavor::Zero(inner) => inner.receiver().try(&mut token.zero, backoff),
-            }
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().try(token, backoff),
+            Flavor::List(inner) => inner.receiver().try(token, backoff),
+            Flavor::Zero(inner) => inner.receiver().try(token, backoff),
         }
     }
 
     fn promise(&self, token: &mut Token ,case_id: CaseId) {
-        unsafe {
-            match &self.0.flavor {
-                Flavor::Array(inner) => inner.receiver().promise(&mut token.array, case_id),
-                Flavor::List(inner) => inner.receiver().promise(&mut token.list, case_id),
-                Flavor::Zero(inner) => inner.receiver().promise(&mut token.zero, case_id),
-            }
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().promise(token, case_id),
+            Flavor::List(inner) => inner.receiver().promise(token, case_id),
+            Flavor::Zero(inner) => inner.receiver().promise(token, case_id),
         }
     }
 
@@ -58,36 +52,28 @@ impl<T> Select for Receiver<T> {
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            match &self.0.flavor {
-                Flavor::Array(inner) => inner.receiver().fulfill(&mut token.array, backoff),
-                Flavor::List(inner) => inner.receiver().fulfill(&mut token.list, backoff),
-                Flavor::Zero(inner) => inner.receiver().fulfill(&mut token.zero, backoff),
-            }
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().fulfill(token, backoff),
+            Flavor::List(inner) => inner.receiver().fulfill(token, backoff),
+            Flavor::Zero(inner) => inner.receiver().fulfill(token, backoff),
         }
     }
 }
 
 impl<T> Select for Sender<T> {
-    type Token = Token;
-
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            match &self.0.flavor {
-                Flavor::Array(inner) => inner.sender().try(&mut token.array, backoff),
-                Flavor::List(inner) => inner.sender().try(&mut token.list, backoff),
-                Flavor::Zero(inner) => inner.sender().try(&mut token.zero, backoff),
-            }
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().try(token, backoff),
+            Flavor::List(inner) => inner.sender().try(token, backoff),
+            Flavor::Zero(inner) => inner.sender().try(token, backoff),
         }
     }
 
     fn promise(&self, token: &mut Token, case_id: CaseId) {
-        unsafe {
-            match &self.0.flavor {
-                Flavor::Array(inner) => inner.sender().promise(&mut token.array, case_id),
-                Flavor::List(inner) => inner.sender().promise(&mut token.list, case_id),
-                Flavor::Zero(inner) => inner.sender().promise(&mut token.zero, case_id),
-            }
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().promise(token, case_id),
+            Flavor::List(inner) => inner.sender().promise(token, case_id),
+            Flavor::Zero(inner) => inner.sender().promise(token, case_id),
         }
     }
 
@@ -109,12 +95,10 @@ impl<T> Select for Sender<T> {
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        unsafe {
-            match &self.0.flavor {
-                Flavor::Array(inner) => inner.sender().fulfill(&mut token.array, backoff),
-                Flavor::List(inner) => inner.sender().fulfill(&mut token.list, backoff),
-                Flavor::Zero(inner) => inner.sender().fulfill(&mut token.zero, backoff),
-            }
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().fulfill(token, backoff),
+            Flavor::List(inner) => inner.sender().fulfill(token, backoff),
+            Flavor::Zero(inner) => inner.sender().fulfill(token, backoff),
         }
     }
 }
@@ -281,9 +265,9 @@ impl<T> Sender<T> {
 
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.write(&mut token.array, msg),
-            Flavor::List(chan) => chan.write(&mut token.list, msg),
-            Flavor::Zero(chan) => chan.write(&mut token.zero, msg),
+            Flavor::Array(chan) => chan.write(token, msg),
+            Flavor::List(chan) => chan.write(token, msg),
+            Flavor::Zero(chan) => chan.write(token, msg),
         }
     }
 }
@@ -522,9 +506,9 @@ impl<T> Receiver<T> {
 
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.read(&mut token.array),
-            Flavor::List(chan) => chan.read(&mut token.list),
-            Flavor::Zero(chan) => chan.read(&mut token.zero),
+            Flavor::Array(chan) => chan.read(token),
+            Flavor::List(chan) => chan.read(token),
+            Flavor::Zero(chan) => chan.read(token),
         }
     }
 }
@@ -564,12 +548,6 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.recv(), None);
     /// ```
     pub fn recv(&self) -> Option<T> {
-        // TODO: select_internal!(@mainloop recv() ())
-        // match &self.0.flavor {
-        //     Flavor::Array(chan) => select! { recv(chan.receiver(), msg) => msg },
-        //     Flavor::List(chan) => select! { recv(chan.receiver(), msg) => msg },
-        //     Flavor::Zero(_) => select! { recv(chan.receiver(), msg) => msg },
-        // }
         select! {
             recv(self, msg) => msg
         }

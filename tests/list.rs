@@ -1,6 +1,6 @@
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel;
+extern crate crossbeam_channel as chan;
 extern crate rand;
 
 use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
@@ -8,7 +8,6 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::unbounded;
 use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
@@ -17,7 +16,7 @@ fn ms(ms: u64) -> Duration {
 
 #[test]
 fn smoke() {
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
     s.send(7);
     assert_eq!(r.try_recv(), Some(7));
 
@@ -36,7 +35,7 @@ fn smoke() {
 
 #[test]
 fn recv() {
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -58,7 +57,7 @@ fn recv() {
 
 #[test]
 fn recv_timeout() {
-    let (s, r) = unbounded::<i32>();
+    let (s, r) = chan::unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -84,7 +83,7 @@ fn recv_timeout() {
 
 #[test]
 fn try_recv() {
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -103,7 +102,7 @@ fn try_recv() {
 
 #[test]
 fn recv_after_close() {
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
 
     s.send(1);
     s.send(2);
@@ -119,7 +118,7 @@ fn recv_after_close() {
 
 #[test]
 fn len() {
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
 
     assert_eq!(s.len(), 0);
     assert_eq!(r.len(), 0);
@@ -140,7 +139,7 @@ fn len() {
 
 #[test]
 fn close_signals_receiver() {
-    let (s, r) = unbounded::<()>();
+    let (s, r) = chan::unbounded::<()>();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -157,7 +156,7 @@ fn close_signals_receiver() {
 fn spsc() {
     const COUNT: usize = 100_000;
 
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -179,7 +178,7 @@ fn mpmc() {
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
-    let (s, r) = unbounded::<usize>();
+    let (s, r) = chan::unbounded::<usize>();
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
     crossbeam::scope(|scope| {
@@ -211,7 +210,7 @@ fn mpmc() {
 fn stress_timeout_two_threads() {
     const COUNT: usize = 100;
 
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -262,7 +261,7 @@ fn drops() {
         let additional = rng.gen_range(0, 1000);
 
         DROPS.store(0, SeqCst);
-        let (s, r) = unbounded::<DropCounter>();
+        let (s, r) = chan::unbounded::<DropCounter>();
 
         crossbeam::scope(|scope| {
             scope.spawn(|| {
@@ -294,7 +293,7 @@ fn linearizable() {
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
-    let (s, r) = unbounded();
+    let (s, r) = chan::unbounded();
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
