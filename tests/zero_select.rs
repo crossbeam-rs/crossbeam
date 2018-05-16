@@ -94,6 +94,37 @@ fn smoke() {
 }
 
 #[test]
+fn capacity() {
+    let (s, r) = bounded::<()>(0);
+    assert_eq!(s.capacity(), Some(0));
+    assert_eq!(r.capacity(), Some(0));
+}
+
+#[test]
+fn len_empty_full() {
+    let (s, r) = bounded(0);
+
+    assert_eq!(s.len(), 0);
+    assert_eq!(s.is_empty(), true);
+    assert_eq!(s.is_full(), true);
+    assert_eq!(r.len(), 0);
+    assert_eq!(r.is_empty(), true);
+    assert_eq!(r.is_full(), true);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| s.send(0));
+        scope.spawn(|| r.recv().unwrap());
+    });
+
+    assert_eq!(s.len(), 0);
+    assert_eq!(s.is_empty(), true);
+    assert_eq!(s.is_full(), true);
+    assert_eq!(r.len(), 0);
+    assert_eq!(r.is_empty(), true);
+    assert_eq!(r.is_full(), true);
+}
+
+#[test]
 fn recv() {
     let (s, r) = bounded(0);
 

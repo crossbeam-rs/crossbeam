@@ -40,6 +40,45 @@ fn capacity() {
 }
 
 #[test]
+fn len_empty_full() {
+    let (s, r) = chan::bounded(2);
+
+    assert_eq!(s.len(), 0);
+    assert_eq!(s.is_empty(), true);
+    assert_eq!(s.is_full(), false);
+    assert_eq!(r.len(), 0);
+    assert_eq!(r.is_empty(), true);
+    assert_eq!(r.is_full(), false);
+
+    s.send(());
+
+    assert_eq!(s.len(), 1);
+    assert_eq!(s.is_empty(), false);
+    assert_eq!(s.is_full(), false);
+    assert_eq!(r.len(), 1);
+    assert_eq!(r.is_empty(), false);
+    assert_eq!(r.is_full(), false);
+
+    s.send(());
+
+    assert_eq!(r.len(), 2);
+    assert_eq!(r.is_empty(), false);
+    assert_eq!(r.is_full(), true);
+    assert_eq!(r.len(), 2);
+    assert_eq!(r.is_empty(), false);
+    assert_eq!(r.is_full(), true);
+
+    r.recv().unwrap();
+
+    assert_eq!(r.len(), 1);
+    assert_eq!(r.is_empty(), false);
+    assert_eq!(r.is_full(), false);
+    assert_eq!(r.len(), 1);
+    assert_eq!(r.is_empty(), false);
+    assert_eq!(r.is_full(), false);
+}
+
+#[test]
 fn recv() {
     let (s, r) = chan::bounded(100);
 
