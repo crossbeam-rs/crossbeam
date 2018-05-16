@@ -10,6 +10,7 @@ use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
 // TODO: test that `select!` evaluates to an expression
 // TODO: two nested `select!`s
+// TODO: tests with instant and duration
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

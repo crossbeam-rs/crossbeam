@@ -4,7 +4,7 @@ extern crate crossbeam_channel;
 
 use std::any::Any;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
@@ -33,6 +33,42 @@ fn references() {
         recv(&&&&rr.iter()) => {}
     }
     // TODO: refs in the multi case?
+}
+
+#[test]
+fn default_instant() {
+    select! {
+        default(Instant::now()) => {}
+    }
+    select! {
+        default(&&&&Instant::now()) => {}
+    }
+
+    let instant = Instant::now();
+    select! {
+        default(instant) => {}
+    }
+    select! {
+        default(&&&&instant) => {}
+    }
+}
+
+#[test]
+fn default_duration() {
+    select! {
+        default(Duration::from_secs(0)) => {}
+    }
+    select! {
+        default(&&&&Duration::from_secs(0)) => {}
+    }
+
+    let duration = Instant::now();
+    select! {
+        default(duration) => {}
+    }
+    select! {
+        default(&&&&duration) => {}
+    }
 }
 
 // TODO: for loop where only odd/even receivers from an iterator are selected

@@ -174,8 +174,6 @@ macro_rules! __crossbeam_channel_codegen {
 
         // TODO: test select with duplicate cases - and make sure all of them fire (fairness)!
 
-        // TODO: accept both Instant and Duration in the default case
-
         // TODO: test sending and receiving into the same channel from the same thread (all flavors)
 
         // TODO: allocate less memory in unbounded flavor if few elements are sent.
@@ -271,7 +269,7 @@ macro_rules! __crossbeam_channel_codegen {
         $default_index:ident
         (($i:tt $var:ident) default($t:expr) => $body:tt,)
     ) => {
-        $deadline = Some(Instant::now() + ($t));
+        $deadline = $crate::select::DefaultArgument::to_instant($t);
         $default_index = $i;
     };
 

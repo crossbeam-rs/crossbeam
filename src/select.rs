@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use channel::{Receiver, Sender};
 use flavors;
 use utils::Backoff;
@@ -123,5 +125,39 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, 
     type Iter = <I as IntoIterator>::IntoIter;
     fn to_senders(&'a self) -> Self::Iter {
         self.clone().into_iter()
+    }
+}
+
+pub trait DefaultArgument {
+    fn to_instant(self) -> Option<Instant>;
+}
+
+impl DefaultArgument for Instant {
+    fn to_instant(self) -> Option<Instant> {
+        Some(self)
+    }
+}
+
+impl DefaultArgument for Option<Instant> {
+    fn to_instant(self) -> Option<Instant> {
+        self
+    }
+}
+
+impl DefaultArgument for Duration {
+    fn to_instant(self) -> Option<Instant> {
+        Some(Instant::now() + self)
+    }
+}
+
+impl DefaultArgument for Option<Duration> {
+    fn to_instant(self) -> Option<Instant> {
+        self.map(|duration| Instant::now() + duration)
+    }
+}
+
+impl<'a, T: DefaultArgument + Clone> DefaultArgument for &'a T {
+    fn to_instant(self) -> Option<Instant> {
+        DefaultArgument::to_instant(self.clone())
     }
 }
