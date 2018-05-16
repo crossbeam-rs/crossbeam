@@ -268,8 +268,13 @@ macro_rules! __crossbeam_channel_codegen {
         $default_index:ident
         (($i:tt $var:ident) default($t:expr) => $body:tt,)
     ) => {
-        $deadline = $crate::select::DefaultArgument::to_instant($t);
-        $default_index = $i;
+        if let Some(instant) = $crate::select::DefaultArgument::to_instant($t) {
+            $deadline = Some(instant);
+            $default_index = $i;
+        } else {
+            $deadline = None;
+            $default_index = !0;
+        }
     };
 
     (@finish

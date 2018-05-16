@@ -17,98 +17,11 @@ use utils::Backoff;
 
 // TODO: use backoff in try()/fulfill() for zero-capacity channels?
 
-impl<T> Select for Receiver<T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().try(token, backoff),
-            Flavor::List(inner) => inner.receiver().try(token, backoff),
-            Flavor::Zero(inner) => inner.receiver().try(token, backoff),
-        }
-    }
-
-    fn promise(&self, token: &mut Token ,case_id: CaseId) {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().promise(token, case_id),
-            Flavor::List(inner) => inner.receiver().promise(token, case_id),
-            Flavor::Zero(inner) => inner.receiver().promise(token, case_id),
-        }
-    }
-
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().is_blocked(),
-            Flavor::List(inner) => inner.receiver().is_blocked(),
-            Flavor::Zero(inner) => inner.receiver().is_blocked(),
-        }
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().revoke(case_id),
-            Flavor::List(inner) => inner.receiver().revoke(case_id),
-            Flavor::Zero(inner) => inner.receiver().revoke(case_id),
-        }
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().fulfill(token, backoff),
-            Flavor::List(inner) => inner.receiver().fulfill(token, backoff),
-            Flavor::Zero(inner) => inner.receiver().fulfill(token, backoff),
-        }
-    }
-}
-
-impl<T> Select for Sender<T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().try(token, backoff),
-            Flavor::List(inner) => inner.sender().try(token, backoff),
-            Flavor::Zero(inner) => inner.sender().try(token, backoff),
-        }
-    }
-
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().promise(token, case_id),
-            Flavor::List(inner) => inner.sender().promise(token, case_id),
-            Flavor::Zero(inner) => inner.sender().promise(token, case_id),
-        }
-    }
-
-    fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().is_blocked(),
-            Flavor::List(inner) => inner.sender().is_blocked(),
-            Flavor::Zero(inner) => inner.sender().is_blocked(),
-        }
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().revoke(case_id),
-            Flavor::List(inner) => inner.sender().revoke(case_id),
-            Flavor::Zero(inner) => inner.sender().revoke(case_id),
-        }
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().fulfill(token, backoff),
-            Flavor::List(inner) => inner.sender().fulfill(token, backoff),
-            Flavor::Zero(inner) => inner.sender().fulfill(token, backoff),
-        }
-    }
-}
-
 pub struct Channel<T> {
     senders: AtomicUsize,
     flavor: Flavor<T>,
 }
 
-// TODO: rename to Channel?
 enum Flavor<T> {
     Array(flavors::array::Channel<T>),
     List(flavors::list::Channel<T>),
@@ -268,6 +181,49 @@ impl<T> Sender<T> {
             Flavor::Array(chan) => chan.write(token, msg),
             Flavor::List(chan) => chan.write(token, msg),
             Flavor::Zero(chan) => chan.write(token, msg),
+        }
+    }
+}
+
+impl<T> Select for Sender<T> {
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().try(token, backoff),
+            Flavor::List(inner) => inner.sender().try(token, backoff),
+            Flavor::Zero(inner) => inner.sender().try(token, backoff),
+        }
+    }
+
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().promise(token, case_id),
+            Flavor::List(inner) => inner.sender().promise(token, case_id),
+            Flavor::Zero(inner) => inner.sender().promise(token, case_id),
+        }
+    }
+
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().is_blocked(),
+            Flavor::List(inner) => inner.sender().is_blocked(),
+            Flavor::Zero(inner) => inner.sender().is_blocked(),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().revoke(case_id),
+            Flavor::List(inner) => inner.sender().revoke(case_id),
+            Flavor::Zero(inner) => inner.sender().revoke(case_id),
+        }
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().fulfill(token, backoff),
+            Flavor::List(inner) => inner.sender().fulfill(token, backoff),
+            Flavor::Zero(inner) => inner.sender().fulfill(token, backoff),
         }
     }
 }
@@ -509,6 +465,49 @@ impl<T> Receiver<T> {
             Flavor::Array(chan) => chan.read(token),
             Flavor::List(chan) => chan.read(token),
             Flavor::Zero(chan) => chan.read(token),
+        }
+    }
+}
+
+impl<T> Select for Receiver<T> {
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().try(token, backoff),
+            Flavor::List(inner) => inner.receiver().try(token, backoff),
+            Flavor::Zero(inner) => inner.receiver().try(token, backoff),
+        }
+    }
+
+    fn promise(&self, token: &mut Token ,case_id: CaseId) {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().promise(token, case_id),
+            Flavor::List(inner) => inner.receiver().promise(token, case_id),
+            Flavor::Zero(inner) => inner.receiver().promise(token, case_id),
+        }
+    }
+
+    fn is_blocked(&self) -> bool {
+        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().is_blocked(),
+            Flavor::List(inner) => inner.receiver().is_blocked(),
+            Flavor::Zero(inner) => inner.receiver().is_blocked(),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().revoke(case_id),
+            Flavor::List(inner) => inner.receiver().revoke(case_id),
+            Flavor::Zero(inner) => inner.receiver().revoke(case_id),
+        }
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().fulfill(token, backoff),
+            Flavor::List(inner) => inner.receiver().fulfill(token, backoff),
+            Flavor::Zero(inner) => inner.receiver().fulfill(token, backoff),
         }
     }
 }

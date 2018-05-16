@@ -346,3 +346,31 @@ fn drops() {
         assert_eq!(DROPS.load(SeqCst), steps);
     }
 }
+
+#[test]
+fn fairness() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = chan::bounded::<()>(0);
+    let (s2, r2) = chan::bounded::<()>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            let mut hit = [false; 2];
+            for _ in 0..COUNT {
+                select! {
+                    recv(r1) => hit[0] = true,
+                    recv(r2) => hit[1] = true,
+                }
+            }
+            assert!(hit.iter().all(|x| *x));
+        });
+
+        for _ in 0..COUNT {
+            select! {
+                send(s1, ()) => {}
+                send(s2, ()) => {}
+            }
+        }
+    });
+}

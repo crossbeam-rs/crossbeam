@@ -49,17 +49,26 @@ fn blocks() {
         recv(r) => match 7 + 3 {
             _ => unreachable!()
         }
-        default() => 7.
+        default => 7.
     };
 
     select! {
         recv(r, msg) => if msg.is_some() {
             unreachable!()
         }
-        default() => ()
+        default => ()
     }
 
     drop(s);
+}
+
+#[test]
+fn move_handles() {
+    let (s, r) = chan::unbounded::<i32>();
+    select! {
+        recv((move || r)()) => {}
+        send((move || s)(), 0) => {}
+    }
 }
 
 #[test]
@@ -157,9 +166,18 @@ fn option_receiver() {
     select! {
         recv(Some(&r)) => {}
     }
+    select! {
+        recv(Some(&r)) => {}
+        recv(Some(&r)) => {}
+    }
 
     let r: Option<chan::Receiver<u32>> = None;
     select! {
+        recv(r.as_ref()) => {}
+        default => {}
+    }
+    select! {
+        recv(r.as_ref()) => {}
         recv(r.as_ref()) => {}
         default => {}
     }
@@ -173,7 +191,11 @@ fn option_receiver() {
         recv(r) => {}
         default => {}
     }
-    // TODO: test with multiple cases
+    select! {
+        recv(r) => {}
+        recv(r) => {}
+        default => {}
+    }
 }
 
 #[test]
@@ -183,9 +205,19 @@ fn option_sender() {
         send(Some(&s), 0) => {}
         default => {}
     }
+    select! {
+        send(Some(&s), 0) => {}
+        send(Some(&s), 0) => {}
+        default => {}
+    }
 
     let s: Option<chan::Sender<u32>> = None;
     select! {
+        send(s.as_ref(), 0) => {}
+        default => {}
+    }
+    select! {
+        send(s.as_ref(), 0) => {}
         send(s.as_ref(), 0) => {}
         default => {}
     }
@@ -199,7 +231,11 @@ fn option_sender() {
         send(s, 0) => {}
         default => {}
     }
-    // TODO: test with multiple cases
+    select! {
+        send(s, 0) => {}
+        send(s, 0) => {}
+        default => {}
+    }
 }
 
 #[test]
@@ -233,7 +269,7 @@ fn once_sender() {
 }
 
 #[test]
-fn once_timeout() {
+fn once_duration() {
     let once = Box::new(());
     let get = move || {
         drop(once);
@@ -245,6 +281,77 @@ fn once_timeout() {
     }
 }
 
-// TODO: also fn once_deadline
+#[test]
+fn once_instant() {
+    let once = Box::new(());
+    let get = move || {
+        drop(once);
+        Instant::now()
+    };
 
-// TODO: for loop where only odd/even receivers from an iterator are selected
+    select! {
+        default(get()) => {}
+    }
+}
+
+#[test]
+fn nesting() {
+    let (_, r) = chan::unbounded::<i32>();
+
+    select! {
+        recv(r) => {
+            select! {
+                recv(r) => {
+                    select! {
+                        recv(r) => {
+                            select! {
+                                default => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn evaluate() {
+    let (s, r) = chan::unbounded::<i32>();
+
+    let v = select! {
+        recv(r) => "foo".into(),
+        send(s, 0) => "bar".to_owned(),
+        default => "baz".to_string(),
+    };
+    assert_eq!(v, "bar");
+
+    let v = select! {
+        recv(r) => "foo".into(),
+        default => "baz".to_string(),
+    };
+    assert_eq!(v, "foo");
+
+    let v = select! {
+        recv(r) => "foo".into(),
+        default => "baz".to_string(),
+    };
+    assert_eq!(v, "baz");
+}
+
+#[test]
+fn variety() {
+    let (s1, r1) = chan::unbounded::<i32>();
+    let (s2, r2) = chan::bounded::<String>(1);
+    let (s3, r3) = chan::bounded::<()>(0);
+
+    select! {
+        recv(r1) => {}
+        send(s1, 7) => {}
+        recv(Some(r2)) => {}
+        send(Some(s2), "foo".to_string()) => {}
+        recv([&r3].iter().map(|x| *x)) => {}
+        send([&s3].iter().map(|x| *x), ()) => {}
+        default(None::<Duration>) => {}
+    }
+}

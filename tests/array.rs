@@ -444,3 +444,25 @@ fn linearizable() {
         }
     });
 }
+
+#[test]
+fn fairness() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = chan::bounded::<()>(COUNT);
+    let (s2, r2) = chan::bounded::<()>(COUNT);
+
+    for _ in 0..COUNT {
+        s1.send(());
+        s2.send(());
+    }
+
+    let mut hit = [false; 2];
+    for _ in 0..COUNT {
+        select! {
+            recv(r1) => hit[0] = true,
+            recv(r2) => hit[1] = true,
+        }
+    }
+    assert!(hit.iter().all(|x| *x));
+}
