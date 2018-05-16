@@ -22,47 +22,47 @@ impl<T> Select for Receiver<T> {
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.receiver().try(&mut token.array, backoff),
-                Flavor::List(ref inner) => inner.receiver().try(&mut token.list, backoff),
-                Flavor::Zero(ref inner) => inner.receiver().try(&mut token.zero, backoff),
+            match &self.0.flavor {
+                Flavor::Array(inner) => inner.receiver().try(&mut token.array, backoff),
+                Flavor::List(inner) => inner.receiver().try(&mut token.list, backoff),
+                Flavor::Zero(inner) => inner.receiver().try(&mut token.zero, backoff),
             }
         }
     }
 
     fn promise(&self, token: &mut Token ,case_id: CaseId) {
         unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.receiver().promise(&mut token.array, case_id),
-                Flavor::List(ref inner) => inner.receiver().promise(&mut token.list, case_id),
-                Flavor::Zero(ref inner) => inner.receiver().promise(&mut token.zero, case_id),
+            match &self.0.flavor {
+                Flavor::Array(inner) => inner.receiver().promise(&mut token.array, case_id),
+                Flavor::List(inner) => inner.receiver().promise(&mut token.list, case_id),
+                Flavor::Zero(inner) => inner.receiver().promise(&mut token.zero, case_id),
             }
         }
     }
 
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.receiver().is_blocked(),
-            Flavor::List(ref inner) => inner.receiver().is_blocked(),
-            Flavor::Zero(ref inner) => inner.receiver().is_blocked(),
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().is_blocked(),
+            Flavor::List(inner) => inner.receiver().is_blocked(),
+            Flavor::Zero(inner) => inner.receiver().is_blocked(),
         }
     }
 
     fn revoke(&self, case_id: CaseId) {
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.receiver().revoke(case_id),
-            Flavor::List(ref inner) => inner.receiver().revoke(case_id),
-            Flavor::Zero(ref inner) => inner.receiver().revoke(case_id),
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().revoke(case_id),
+            Flavor::List(inner) => inner.receiver().revoke(case_id),
+            Flavor::Zero(inner) => inner.receiver().revoke(case_id),
         }
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.receiver().fulfill(&mut token.array, backoff),
-                Flavor::List(ref inner) => inner.receiver().fulfill(&mut token.list, backoff),
-                Flavor::Zero(ref inner) => inner.receiver().fulfill(&mut token.zero, backoff),
+            match &self.0.flavor {
+                Flavor::Array(inner) => inner.receiver().fulfill(&mut token.array, backoff),
+                Flavor::List(inner) => inner.receiver().fulfill(&mut token.list, backoff),
+                Flavor::Zero(inner) => inner.receiver().fulfill(&mut token.zero, backoff),
             }
         }
     }
@@ -73,47 +73,47 @@ impl<T> Select for Sender<T> {
 
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.sender().try(&mut token.array, backoff),
-                Flavor::List(ref inner) => inner.sender().try(&mut token.list, backoff),
-                Flavor::Zero(ref inner) => inner.sender().try(&mut token.zero, backoff),
+            match &self.0.flavor {
+                Flavor::Array(inner) => inner.sender().try(&mut token.array, backoff),
+                Flavor::List(inner) => inner.sender().try(&mut token.list, backoff),
+                Flavor::Zero(inner) => inner.sender().try(&mut token.zero, backoff),
             }
         }
     }
 
     fn promise(&self, token: &mut Token, case_id: CaseId) {
         unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.sender().promise(&mut token.array, case_id),
-                Flavor::List(ref inner) => inner.sender().promise(&mut token.list, case_id),
-                Flavor::Zero(ref inner) => inner.sender().promise(&mut token.zero, case_id),
+            match &self.0.flavor {
+                Flavor::Array(inner) => inner.sender().promise(&mut token.array, case_id),
+                Flavor::List(inner) => inner.sender().promise(&mut token.list, case_id),
+                Flavor::Zero(inner) => inner.sender().promise(&mut token.zero, case_id),
             }
         }
     }
 
     fn is_blocked(&self) -> bool {
         // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.sender().is_blocked(),
-            Flavor::List(ref inner) => inner.sender().is_blocked(),
-            Flavor::Zero(ref inner) => inner.sender().is_blocked(),
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().is_blocked(),
+            Flavor::List(inner) => inner.sender().is_blocked(),
+            Flavor::Zero(inner) => inner.sender().is_blocked(),
         }
     }
 
     fn revoke(&self, case_id: CaseId) {
-        match self.0.flavor {
-            Flavor::Array(ref inner) => inner.sender().revoke(case_id),
-            Flavor::List(ref inner) => inner.sender().revoke(case_id),
-            Flavor::Zero(ref inner) => inner.sender().revoke(case_id),
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().revoke(case_id),
+            Flavor::List(inner) => inner.sender().revoke(case_id),
+            Flavor::Zero(inner) => inner.sender().revoke(case_id),
         }
     }
 
     fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         unsafe {
-            match self.0.flavor {
-                Flavor::Array(ref inner) => inner.sender().fulfill(&mut token.array, backoff),
-                Flavor::List(ref inner) => inner.sender().fulfill(&mut token.list, backoff),
-                Flavor::Zero(ref inner) => inner.sender().fulfill(&mut token.zero, backoff),
+            match &self.0.flavor {
+                Flavor::Array(inner) => inner.sender().fulfill(&mut token.array, backoff),
+                Flavor::List(inner) => inner.sender().fulfill(&mut token.list, backoff),
+                Flavor::Zero(inner) => inner.sender().fulfill(&mut token.zero, backoff),
             }
         }
     }
@@ -280,10 +280,10 @@ impl<T> Sender<T> {
     }
 
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.write(&mut token.array, msg),
-            Flavor::List(ref chan) => chan.write(&mut token.list, msg),
-            Flavor::Zero(ref chan) => chan.write(&mut token.zero, msg),
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.write(&mut token.array, msg),
+            Flavor::List(chan) => chan.write(&mut token.list, msg),
+            Flavor::Zero(chan) => chan.write(&mut token.zero, msg),
         }
     }
 }
@@ -339,9 +339,9 @@ impl<T> Sender<T> {
     /// assert!(!s.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_empty(),
-            Flavor::List(ref chan) => chan.is_empty(),
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.is_empty(),
+            Flavor::List(chan) => chan.is_empty(),
             Flavor::Zero(_) => true,
         }
     }
@@ -362,8 +362,8 @@ impl<T> Sender<T> {
     /// assert!(s.is_full());
     /// ```
     pub fn is_full(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_full(),
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.is_full(),
             Flavor::List(_) => false,
             Flavor::Zero(_) => true,
         }
@@ -384,9 +384,9 @@ impl<T> Sender<T> {
     /// assert_eq!(s.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.len(),
-            Flavor::List(ref chan) => chan.len(),
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.len(),
+            Flavor::List(chan) => chan.len(),
             Flavor::Zero(_) => 0,
         }
     }
@@ -408,8 +408,8 @@ impl<T> Sender<T> {
     /// assert_eq!(s.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => Some(chan.capacity()),
+        match &self.0.flavor {
+            Flavor::Array(chan) => Some(chan.capacity()),
             Flavor::List(_) => None,
             Flavor::Zero(_) => Some(0),
         }
@@ -419,10 +419,10 @@ impl<T> Sender<T> {
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.0.senders.fetch_sub(1, Ordering::SeqCst) == 1 {
-            match self.0.flavor {
-                Flavor::Array(ref chan) => chan.close(),
-                Flavor::List(ref chan) => chan.close(),
-                Flavor::Zero(ref chan) => chan.close(),
+            match &self.0.flavor {
+                Flavor::Array(chan) => chan.close(),
+                Flavor::List(chan) => chan.close(),
+                Flavor::Zero(chan) => chan.close(),
             };
         }
     }
@@ -521,10 +521,10 @@ impl<T> Receiver<T> {
     }
 
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.read(&mut token.array),
-            Flavor::List(ref chan) => chan.read(&mut token.list),
-            Flavor::Zero(ref chan) => chan.read(&mut token.zero),
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.read(&mut token.array),
+            Flavor::List(chan) => chan.read(&mut token.list),
+            Flavor::Zero(chan) => chan.read(&mut token.zero),
         }
     }
 }
@@ -565,9 +565,9 @@ impl<T> Receiver<T> {
     /// ```
     pub fn recv(&self) -> Option<T> {
         // TODO: select_internal!(@mainloop recv() ())
-        // match self.0.flavor {
-        //     Flavor::Array(ref chan) => select! { recv(chan.receiver(), msg) => msg },
-        //     Flavor::List(ref chan) => select! { recv(chan.receiver(), msg) => msg },
+        // match &self.0.flavor {
+        //     Flavor::Array(chan) => select! { recv(chan.receiver(), msg) => msg },
+        //     Flavor::List(chan) => select! { recv(chan.receiver(), msg) => msg },
         //     Flavor::Zero(_) => select! { recv(chan.receiver(), msg) => msg },
         // }
         select! {
@@ -625,9 +625,9 @@ impl<T> Receiver<T> {
     /// assert!(!r.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_empty(),
-            Flavor::List(ref chan) => chan.is_empty(),
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.is_empty(),
+            Flavor::List(chan) => chan.is_empty(),
             Flavor::Zero(_) => true,
         }
     }
@@ -648,8 +648,8 @@ impl<T> Receiver<T> {
     /// assert!(r.is_full());
     /// ```
     pub fn is_full(&self) -> bool {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_full(),
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.is_full(),
             Flavor::List(_) => false,
             Flavor::Zero(_) => true,
         }
@@ -670,9 +670,9 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => chan.len(),
-            Flavor::List(ref chan) => chan.len(),
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.len(),
+            Flavor::List(chan) => chan.len(),
             Flavor::Zero(_) => 0,
         }
     }
@@ -694,8 +694,8 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
-        match self.0.flavor {
-            Flavor::Array(ref chan) => Some(chan.capacity()),
+        match &self.0.flavor {
+            Flavor::Array(chan) => Some(chan.capacity()),
             Flavor::List(_) => None,
             Flavor::Zero(_) => Some(0),
         }

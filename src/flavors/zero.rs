@@ -61,7 +61,7 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
-        match *token {
+        match token {
             Token::Closed => None,
             Token::Fulfill => {
                 let req = CONTEXT.with(|context| {
@@ -88,7 +88,7 @@ impl<T> Channel<T> {
                 Some(m.unwrap())
             }
             Token::Case(case) => {
-                let case: Case = mem::transmute::<[usize; 2], Case>(case);
+                let case: Case = mem::transmute::<[usize; 2], Case>(*case);
                 Some(finish_exchange(case, None).unwrap())
             }
         }
@@ -109,12 +109,12 @@ impl<T> Channel<T> {
     }
 
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        match *token {
+        match token {
             Token::Closed => unreachable!(),
             Token::Fulfill => {
                 fulfill(Some(msg));
             }
-            Token::Case(ref case) => {
+            Token::Case(case) => {
                 let case: Case = mem::transmute::<[usize; 2], Case>(*case);
                 finish_exchange(case, Some(msg));
             }
