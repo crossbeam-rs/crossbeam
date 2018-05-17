@@ -505,3 +505,26 @@ fn fairness() {
     }
     assert!(hit.iter().all(|x| *x));
 }
+
+#[test]
+fn fairness_duplicates() {
+    const COUNT: usize = 10_000;
+
+    let (s, r) = chan::bounded::<()>(COUNT);
+
+    for _ in 0..COUNT {
+        s.send(());
+    }
+
+    let mut hit = [false; 5];
+    for _ in 0..COUNT {
+        select! {
+            recv(r) => hit[0] = true,
+            recv(r) => hit[1] = true,
+            recv(r) => hit[2] = true,
+            recv(r) => hit[3] = true,
+            recv(r) => hit[4] = true,
+        }
+    }
+    assert!(hit.iter().all(|x| *x));
+}

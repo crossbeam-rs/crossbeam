@@ -471,3 +471,38 @@ fn fairness() {
         }
     });
 }
+
+#[test]
+fn fairness_duplicates() {
+    const COUNT: usize = 10_000;
+
+    let (s, r) = bounded::<()>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            let mut hit = [false; 5];
+            for _ in 0..COUNT {
+                select! {
+                    recv(r.0) => hit[0] = true,
+                    recv(r.0) => hit[1] = true,
+                    recv(r.0) => hit[2] = true,
+                    recv(r.0) => hit[3] = true,
+                    recv(r.0) => hit[4] = true,
+                }
+            }
+            assert!(hit.iter().all(|x| *x));
+        });
+
+        for _ in 0..COUNT {
+            let mut hit = [false; 5];
+            select! {
+                send(s.0, ()) => hit[0] = true,
+                send(s.0, ()) => hit[1] = true,
+                send(s.0, ()) => hit[2] = true,
+                send(s.0, ()) => hit[3] = true,
+                send(s.0, ()) => hit[4] = true,
+            }
+            assert!(hit.iter().all(|x| *x));
+        }
+    });
+}

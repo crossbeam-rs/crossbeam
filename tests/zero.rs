@@ -398,10 +398,47 @@ fn fairness() {
         });
 
         for _ in 0..COUNT {
+            let mut hit = [false; 2];
             select! {
-                send(s1, ()) => {}
-                send(s2, ()) => {}
+                send(s1, ()) => hit[0] = true,
+                send(s2, ()) => hit[1] = true,
             }
+            assert!(hit.iter().all(|x| *x));
+        }
+    });
+}
+
+#[test]
+fn fairness_duplicates() {
+    const COUNT: usize = 10_000;
+
+    let (s, r) = chan::bounded::<()>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            let mut hit = [false; 5];
+            for _ in 0..COUNT {
+                select! {
+                    recv(r) => hit[0] = true,
+                    recv(r) => hit[1] = true,
+                    recv(r) => hit[2] = true,
+                    recv(r) => hit[3] = true,
+                    recv(r) => hit[4] = true,
+                }
+            }
+            assert!(hit.iter().all(|x| *x));
+        });
+
+        for _ in 0..COUNT {
+            let mut hit = [false; 5];
+            select! {
+                send(s, ()) => hit[0] = true,
+                send(s, ()) => hit[1] = true,
+                send(s, ()) => hit[2] = true,
+                send(s, ()) => hit[3] = true,
+                send(s, ()) => hit[4] = true,
+            }
+            assert!(hit.iter().all(|x| *x));
         }
     });
 }
