@@ -429,8 +429,8 @@ fn fairness_duplicates() {
             assert!(hit.iter().all(|x| *x));
         });
 
+        let mut hit = [false; 5];
         for _ in 0..COUNT {
-            let mut hit = [false; 5];
             select! {
                 send(s, ()) => hit[0] = true,
                 send(s, ()) => hit[1] = true,
@@ -438,7 +438,7 @@ fn fairness_duplicates() {
                 send(s, ()) => hit[3] = true,
                 send(s, ()) => hit[4] = true,
             }
-            assert!(hit.iter().all(|x| *x));
         }
+        assert!(hit.iter().all(|x| *x));
     });
 }
