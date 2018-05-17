@@ -110,7 +110,7 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 use std::ops::DerefMut;
 use std::rc::Rc;
 use std::thread;
@@ -188,7 +188,7 @@ impl<T: Send> JoinState<T> {
     fn join(self) -> thread::Result<T> {
         let result = self.result;
         self.join_handle.join().map(|_| {
-            unsafe { *Box::from_raw(result as *mut T) }
+            unsafe { ManuallyDrop::into_inner(*Box::from_raw(result as *mut ManuallyDrop<T>))}
         })
     }
 }
@@ -331,12 +331,12 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
         // The `Box` constructed below is written only by the spawned thread,
         // and read by the current thread only after the spawned thread is
         // joined (`JoinState::join()`). Thus there are no data races.
-        let result = Box::into_raw(Box::<T>::new(unsafe { mem::uninitialized() })) as usize;
+        let result = Box::into_raw(Box::<ManuallyDrop<T>>::new(unsafe { mem::uninitialized() })) as usize;
 
         let join_handle = try!(unsafe {
             builder_spawn_unsafe(self.builder, move || {
-                let mut result = Box::from_raw(result as *mut T);
-                *result = f();
+                let mut result = Box::from_raw(result as *mut ManuallyDrop<T>);
+                *result = ManuallyDrop::new(f());
                 mem::forget(result);
             })
         });
