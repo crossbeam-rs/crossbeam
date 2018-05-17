@@ -5,8 +5,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.4.0] - 2018-05-17
 ### Fixed
 - `CachePadded` supports types bigger than 64 bytes.
+- Fix a bug in scoped threads where unitialized memory was being dropped.
 
 ### Changed
 - Minimum required Rust version is now 1.25.
@@ -59,7 +62,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Old implementation of `CachePadded` from `crossbeam` version 0.3.0
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.2.2...v0.3.0
