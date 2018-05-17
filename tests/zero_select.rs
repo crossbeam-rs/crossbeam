@@ -463,12 +463,14 @@ fn fairness() {
             assert!(hit.iter().all(|x| *x));
         });
 
+        let mut hit = [false; 2];
         for _ in 0..COUNT {
             select! {
-                send(s1.0, ()) => {}
-                send(s2.0, ()) => {}
+                send(s1.0, ()) => hit[0] = true,
+                send(s2.0, ()) => hit[1] = true,
             }
         }
+        assert!(hit.iter().all(|x| *x));
     });
 }
 
