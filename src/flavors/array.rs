@@ -10,9 +10,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crossbeam_utils::cache_padded::CachePadded;
 
-use select::{CaseId, Select, Token};
-use utils::Backoff;
-use waker::Waker;
+use internal::select::{CaseId, Select, Token};
+use internal::utils::Backoff;
+use internal::waker::Waker;
 
 /// An entry in the channel.
 ///
@@ -413,7 +413,6 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 
     fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         self.0.is_empty() && !self.0.is_closed()
     }
 

@@ -5,8 +5,8 @@ use std::thread;
 
 use parking_lot::Mutex;
 
-use select::CaseId;
-use context::{self, Context};
+use internal::context::{self, Context};
+use internal::select::CaseId;
 
 // TODO: Optimize current thread id
 

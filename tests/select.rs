@@ -1,6 +1,6 @@
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as chan;
+extern crate crossbeam_channel as channel;
 
 use std::any::Any;
 use std::thread;
@@ -12,8 +12,8 @@ fn ms(ms: u64) -> Duration {
 
 #[test]
 fn smoke1() {
-    let (s1, r1) = chan::unbounded::<usize>();
-    let (s2, r2) = chan::unbounded::<usize>();
+    let (s1, r1) = channel::unbounded::<usize>();
+    let (s2, r2) = channel::unbounded::<usize>();
 
     s1.send(1);
 
@@ -32,11 +32,11 @@ fn smoke1() {
 
 #[test]
 fn smoke2() {
-    let (_s1, r1) = chan::unbounded::<i32>();
-    let (_s2, r2) = chan::unbounded::<i32>();
-    let (_s3, r3) = chan::unbounded::<i32>();
-    let (_s4, r4) = chan::unbounded::<i32>();
-    let (s5, r5) = chan::unbounded::<i32>();
+    let (_s1, r1) = channel::unbounded::<i32>();
+    let (_s2, r2) = channel::unbounded::<i32>();
+    let (_s3, r3) = channel::unbounded::<i32>();
+    let (_s4, r4) = channel::unbounded::<i32>();
+    let (s5, r5) = channel::unbounded::<i32>();
 
     s5.send(5);
 
@@ -51,8 +51,8 @@ fn smoke2() {
 
 #[test]
 fn closed() {
-    let (s1, r1) = chan::unbounded::<i32>();
-    let (s2, r2) = chan::unbounded::<i32>();
+    let (s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -91,8 +91,8 @@ fn closed() {
 
 #[test]
 fn default() {
-    let (s1, r1) = chan::unbounded::<i32>();
-    let (s2, r2) = chan::unbounded::<i32>();
+    let (s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::unbounded::<i32>();
 
     select! {
         recv(r1) => panic!(),
@@ -127,8 +127,8 @@ fn default() {
 
 #[test]
 fn timeout() {
-    let (_s1, r1) = chan::unbounded::<i32>();
-    let (s2, r2) = chan::unbounded::<i32>();
+    let (_s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -150,7 +150,7 @@ fn timeout() {
     });
 
     crossbeam::scope(|scope| {
-        let (s, r) = chan::unbounded::<i32>();
+        let (s, r) = channel::unbounded::<i32>();
 
         scope.spawn(move || {
             thread::sleep(ms(500));
@@ -170,8 +170,8 @@ fn timeout() {
 
 #[test]
 fn deadline() {
-    let (_s1, r1) = chan::unbounded::<i32>();
-    let (s2, r2) = chan::unbounded::<i32>();
+    let (_s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -193,7 +193,7 @@ fn deadline() {
     });
 
     crossbeam::scope(|scope| {
-        let (s, r) = chan::unbounded::<i32>();
+        let (s, r) = channel::unbounded::<i32>();
 
         scope.spawn(move || {
             thread::sleep(ms(500));
@@ -213,14 +213,14 @@ fn deadline() {
 
 #[test]
 fn default_when_closed() {
-    let (_, r) = chan::unbounded::<i32>();
+    let (_, r) = channel::unbounded::<i32>();
 
     select! {
         recv(r, v) => assert!(v.is_none()),
         default => panic!(),
     }
 
-    let (_, r) = chan::unbounded::<i32>();
+    let (_, r) = channel::unbounded::<i32>();
 
     select! {
         recv(r, v) => assert!(v.is_none()),
@@ -230,8 +230,8 @@ fn default_when_closed() {
 
 #[test]
 fn unblocks() {
-    let (s1, r1) = chan::bounded::<i32>(0);
-    let (s2, r2) = chan::bounded::<i32>(0);
+    let (s1, r1) = channel::bounded::<i32>(0);
+    let (s2, r2) = channel::bounded::<i32>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -262,8 +262,8 @@ fn unblocks() {
 
 #[test]
 fn both_ready() {
-    let (s1, r1) = chan::bounded(0);
-    let (s2, r2) = chan::bounded(0);
+    let (s1, r1) = channel::bounded(0);
+    let (s2, r2) = channel::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -284,9 +284,9 @@ fn both_ready() {
 #[test]
 fn loop_try() {
     for _ in 0..20 {
-        let (s1, r1) = chan::bounded::<i32>(0);
-        let (s2, r2) = chan::bounded::<i32>(0);
-        let (s_end, r_end) = chan::bounded::<()>(0);
+        let (s1, r1) = channel::bounded::<i32>(0);
+        let (s2, r2) = channel::bounded::<i32>(0);
+        let (s_end, r_end) = channel::bounded::<()>(0);
 
         crossbeam::scope(|scope| {
             scope.spawn(|| {
@@ -335,9 +335,9 @@ fn loop_try() {
 #[test]
 fn cloning1() {
     crossbeam::scope(|scope| {
-        let (s1, r1) = chan::unbounded::<i32>();
-        let (_s2, r2) = chan::unbounded::<i32>();
-        let (s3, r3) = chan::unbounded::<()>();
+        let (s1, r1) = channel::unbounded::<i32>();
+        let (_s2, r2) = channel::unbounded::<i32>();
+        let (s3, r3) = channel::unbounded::<()>();
 
         scope.spawn(move || {
             r3.recv().unwrap();
@@ -360,9 +360,9 @@ fn cloning1() {
 
 #[test]
 fn cloning2() {
-    let (s1, r1) = chan::unbounded::<()>();
-    let (s2, r2) = chan::unbounded::<()>();
-    let (_s3, _r3) = chan::unbounded::<()>();
+    let (s1, r1) = channel::unbounded::<()>();
+    let (s2, r2) = channel::unbounded::<()>();
+    let (_s3, _r3) = channel::unbounded::<()>();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -380,7 +380,7 @@ fn cloning2() {
 
 #[test]
 fn preflight1() {
-    let (s, r) = chan::unbounded();
+    let (s, r) = channel::unbounded();
     s.send(());
 
     select! {
@@ -390,7 +390,7 @@ fn preflight1() {
 
 #[test]
 fn preflight2() {
-    let (s, r) = chan::unbounded();
+    let (s, r) = channel::unbounded();
     drop(s.clone());
     s.send(());
     drop(s);
@@ -403,7 +403,7 @@ fn preflight2() {
 
 #[test]
 fn preflight3() {
-    let (s, r) = chan::unbounded();
+    let (s, r) = channel::unbounded();
     drop(s.clone());
     s.send(());
     drop(s);
@@ -416,7 +416,7 @@ fn preflight3() {
 
 #[test]
 fn duplicate_cases() {
-    let (s, r) = chan::unbounded::<i32>();
+    let (s, r) = channel::unbounded::<i32>();
     let mut hit = [false; 4];
 
     while hit.iter().any(|hit| !hit) {
@@ -431,8 +431,8 @@ fn duplicate_cases() {
 
 #[test]
 fn multiple_receivers() {
-    let (_, r1) = chan::unbounded::<i32>();
-    let (_, r2) = chan::bounded::<i32>(5);
+    let (_, r1) = channel::unbounded::<i32>();
+    let (_, r2) = channel::bounded::<i32>(5);
     select! {
         recv([&r1, &r2].iter().map(|x| *x), msg) => assert!(msg.is_none()),
     }
@@ -440,8 +440,8 @@ fn multiple_receivers() {
         recv([r1, r2].iter(), msg) => assert!(msg.is_none()),
     }
 
-    let (_, r1) = chan::unbounded::<i32>();
-    let (_, r2) = chan::bounded::<i32>(5);
+    let (_, r1) = channel::unbounded::<i32>();
+    let (_, r2) = channel::bounded::<i32>(5);
     select! {
         recv(&[r1, r2], msg) => assert!(msg.is_none()),
     }
@@ -449,8 +449,8 @@ fn multiple_receivers() {
 
 #[test]
 fn multiple_senders() {
-    let (s1, _) = chan::unbounded::<i32>();
-    let (s2, _) = chan::bounded::<i32>(5);
+    let (s1, _) = channel::unbounded::<i32>();
+    let (s2, _) = channel::bounded::<i32>(5);
     select! {
         send([&s1, &s2].iter().map(|x| *x), 0) => {}
     }
@@ -458,8 +458,8 @@ fn multiple_senders() {
         send([s1, s2].iter(), 0) => {}
     }
 
-    let (s1, _) = chan::unbounded::<i32>();
-    let (s2, _) = chan::bounded::<i32>(5);
+    let (s1, _) = channel::unbounded::<i32>();
+    let (s2, _) = channel::bounded::<i32>(5);
     select! {
         send(&[s1, s2], 0) => {},
     }
@@ -467,8 +467,8 @@ fn multiple_senders() {
 
 #[test]
 fn recv_handle() {
-    let (s1, r1) = chan::unbounded::<i32>();
-    let (s2, r2) = chan::unbounded::<i32>();
+    let (s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::unbounded::<i32>();
     let rs = [r1, r2];
 
     s2.send(0);
@@ -486,8 +486,8 @@ fn recv_handle() {
 
 #[test]
 fn send_handle() {
-    let (s1, r1) = chan::bounded::<i32>(0);
-    let (s2, r2) = chan::bounded::<i32>(0);
+    let (s1, r1) = channel::bounded::<i32>(0);
+    let (s2, r2) = channel::bounded::<i32>(0);
     let ss = [s1, s2];
 
     crossbeam::scope(|scope| {
@@ -515,7 +515,7 @@ fn send_handle() {
 
 #[test]
 fn nesting() {
-    let (s, r) = chan::unbounded::<i32>();
+    let (s, r) = channel::unbounded::<i32>();
 
     select! {
         send(s, 0) => {
@@ -539,7 +539,7 @@ fn nesting() {
 
 #[test]
 fn conditional_send() {
-    let (s, _) = chan::unbounded();
+    let (s, _) = channel::unbounded();
 
     select! {
         send(if 1 + 1 == 3 { Some(&s) } else { None }, ()) => panic!(),
@@ -554,7 +554,7 @@ fn conditional_send() {
 
 #[test]
 fn conditional_recv() {
-    let (s, r) = chan::unbounded();
+    let (s, r) = channel::unbounded();
     s.send(());
 
     select! {
@@ -570,7 +570,7 @@ fn conditional_recv() {
 
 #[test]
 fn conditional_default() {
-    let (s, r) = chan::unbounded::<i32>();
+    let (s, r) = channel::unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -597,9 +597,9 @@ fn conditional_default() {
 
 #[test]
 fn stress_recv() {
-    let (s1, r1) = chan::unbounded();
-    let (s2, r2) = chan::bounded(5);
-    let (s3, r3) = chan::bounded(100);
+    let (s1, r1) = channel::unbounded();
+    let (s2, r2) = channel::bounded(5);
+    let (s3, r3) = channel::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -627,9 +627,9 @@ fn stress_recv() {
 
 #[test]
 fn stress_send() {
-    let (s1, r1) = chan::bounded(0);
-    let (s2, r2) = chan::bounded(0);
-    let (s3, r3) = chan::bounded(100);
+    let (s1, r1) = channel::bounded(0);
+    let (s2, r2) = channel::bounded(0);
+    let (s3, r3) = channel::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -654,9 +654,9 @@ fn stress_send() {
 
 #[test]
 fn stress_mixed() {
-    let (s1, r1) = chan::bounded(0);
-    let (s2, r2) = chan::bounded(0);
-    let (s3, r3) = chan::bounded(100);
+    let (s1, r1) = channel::bounded(0);
+    let (s2, r2) = channel::bounded(0);
+    let (s3, r3) = channel::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -683,7 +683,7 @@ fn stress_mixed() {
 fn stress_timeout_two_threads() {
     const COUNT: usize = 20;
 
-    let (s, r) = chan::bounded(2);
+    let (s, r) = channel::bounded(2);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -723,7 +723,7 @@ fn stress_timeout_two_threads() {
 
 #[test]
 fn matching() {
-    let (s, r) = &chan::bounded::<usize>(0);
+    let (s, r) = &channel::bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
         for i in 0..44 {
@@ -741,7 +741,7 @@ fn matching() {
 
 #[test]
 fn matching_with_leftover() {
-    let (s, r) = &chan::bounded::<usize>(0);
+    let (s, r) = &channel::bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
         for i in 0..55 {
@@ -765,14 +765,14 @@ fn channel_through_channel() {
     type T = Box<Any + Send>;
 
     for cap in 0..3 {
-        let (s, r) = chan::bounded::<T>(cap);
+        let (s, r) = channel::bounded::<T>(cap);
 
         crossbeam::scope(|scope| {
             scope.spawn(move || {
                 let mut s = s;
 
                 for _ in 0..COUNT {
-                    let (new_s, new_r) = chan::bounded(cap);
+                    let (new_s, new_r) = channel::bounded(cap);
                     let mut new_r: T = Box::new(Some(new_r));
 
                     select! {
@@ -790,7 +790,7 @@ fn channel_through_channel() {
                     r = select! {
                         recv(r, mut msg) => {
                             msg.unwrap()
-                                .downcast_mut::<Option<chan::Receiver<T>>>()
+                                .downcast_mut::<Option<channel::Receiver<T>>>()
                                 .unwrap()
                                 .take()
                                 .unwrap()
@@ -806,8 +806,8 @@ fn channel_through_channel() {
 fn fairness() {
     const COUNT: usize = 10_000;
 
-    let (s1, r1) = chan::bounded::<()>(COUNT);
-    let (s2, r2) = chan::unbounded::<()>();
+    let (s1, r1) = channel::bounded::<()>(COUNT);
+    let (s2, r2) = channel::unbounded::<()>();
 
     for _ in 0..COUNT {
         s1.send(());

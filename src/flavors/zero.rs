@@ -9,10 +9,10 @@ use std::marker::PhantomData;
 
 use parking_lot::Mutex;
 
-use select::{CaseId, Select, Token};
-use context::{self, CONTEXT, Context};
-use utils::Backoff;
-use waker::{Case, Waker};
+use internal::select::{CaseId, Select, Token};
+use internal::context::{self, CONTEXT, Context};
+use internal::utils::Backoff;
+use internal::waker::{Case, Waker};
 
 /// A zero-capacity channel.
 pub struct Channel<T> {
@@ -273,7 +273,6 @@ impl<'a, T> Select for Receiver<'a, T> {
 
     #[inline]
     fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         !self.0.senders.can_notify() && !self.0.is_closed()
     }
 
@@ -301,7 +300,6 @@ impl<'a, T> Select for Sender<'a, T> {
 
     #[inline]
     fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         !self.0.receivers.can_notify()
     }
 

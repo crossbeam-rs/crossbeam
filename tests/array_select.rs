@@ -1,6 +1,6 @@
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as chan;
+extern crate crossbeam_channel as channel;
 extern crate rand;
 
 use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
@@ -14,8 +14,8 @@ fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
 
-struct Sender<T>(chan::Sender<T>);
-struct Receiver<T>(chan::Receiver<T>);
+struct Sender<T>(channel::Sender<T>);
+struct Receiver<T>(channel::Receiver<T>);
 
 impl<T> Sender<T> {
     fn send(&self, msg: T) {
@@ -76,7 +76,7 @@ impl<T> Receiver<T> {
 }
 
 fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
-    let (s, r) = chan::bounded(cap);
+    let (s, r) = channel::bounded(cap);
     (Sender(s), Receiver(r))
 }
 

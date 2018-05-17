@@ -8,11 +8,13 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         {
-            use $crate::select::RecvArgument;
             #[allow(unused_imports)]
-            use $crate::channel::Receiver;
+            use $crate::internal::select::RecvArgument;
+            #[allow(unused_imports)]
+            use $crate::internal::channel::Receiver;
 
-            match &mut (&$rs).to_receivers() {
+            // TODO: document that we can't expect a mut iterator here because of Clone
+            match &mut (&$rs).recv_argument() {
                 $var => {
                     __crossbeam_channel_codegen!(
                         @declare
@@ -32,11 +34,12 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         {
-            use $crate::select::SendArgument;
             #[allow(unused_imports)]
-            use $crate::channel::Sender;
+            use $crate::internal::select::SendArgument;
+            #[allow(unused_imports)]
+            use $crate::internal::channel::Sender;
 
-            match &mut (&$ss).to_senders() {
+            match &mut (&$ss).send_argument() {
                 $var => {
                     __crossbeam_channel_codegen!(
                         @declare
@@ -61,13 +64,13 @@ macro_rules! __crossbeam_channel_codegen {
     (@mainloop $recv:tt $send:tt $default:tt) => {{
         use std::time::Instant;
 
-        // These cause warnings:
-        use $crate::select::Select;
+        use $crate::internal::select::CaseId;
+        use $crate::internal::select::Token;
+        use $crate::internal::context;
+        use $crate::internal::utils::{Backoff, shuffle};
 
-        use $crate::select::CaseId;
-        use $crate::select::Token;
-        use $crate::context;
-        use $crate::utils::{Backoff, shuffle};
+        #[allow(unused_imports)]
+        use $crate::internal::select::Select;
 
         let deadline: Option<Instant>;
         let default_index: usize;
@@ -169,17 +172,13 @@ macro_rules! __crossbeam_channel_codegen {
         __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
 
         // TODO: optimize send, try_recv, recv
-        // TODO: need a select mpmc test for all flavors
-
-        // TODO: test select with duplicate cases - and make sure all of them fire (fairness)!
-
-        // TODO: test sending and receiving into the same channel from the same thread (all flavors)
+        // TODO: special-case send_until and recv_until
 
         // TODO: allocate less memory in unbounded flavor if few elements are sent.
         // TODO: allocate memory lazily in unbounded flavor?
-        // TODO: Run `cargo clippy` and make sure there are no warnings in here.
 
-        // TODO: test with empty iterator
+        // TODO: Run `cargo clippy` and make sure there are no warnings in here.
+        // TODO: Add a Travis test for clippy
     }};
 
     (@container
@@ -187,9 +186,9 @@ macro_rules! __crossbeam_channel_codegen {
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
         ()
     ) => {
-        use $crate::smallvec::SmallVec;
+        use $crate::internal::smallvec::SmallVec;
         let mut c: SmallVec<[_; 4]> = SmallVec::new();
-        for r in $var.clone() {
+        while let Some(r) = $var.next() {
             let addr = r as *const Receiver<_> as usize;
             c.push((r, $i, addr));
         }
@@ -200,9 +199,9 @@ macro_rules! __crossbeam_channel_codegen {
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
         ()
     ) => {
-        use $crate::smallvec::SmallVec;
+        use $crate::internal::smallvec::SmallVec;
         let mut c: SmallVec<[_; 4]> = SmallVec::new();
-        for s in $var.clone() {
+        while let Some(s) = $var.next() {
             let addr = s as *const Sender<_> as usize;
             c.push((s, $i, addr));
         }
@@ -213,7 +212,7 @@ macro_rules! __crossbeam_channel_codegen {
         $recv:tt
         $send:tt
     ) => {
-        use $crate::smallvec::SmallVec;
+        use $crate::internal::smallvec::SmallVec;
         $cases = SmallVec::<[(&Select, usize, usize); 4]>::new();
         __crossbeam_channel_codegen!(@push $cases $recv $send);
     };
@@ -223,7 +222,7 @@ macro_rules! __crossbeam_channel_codegen {
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         $send:tt
     ) => {
-        for r in $var.clone() {
+        while let Some(r) = $var.next() {
             let addr = r as *const Receiver<_> as usize;
             $cases.push((r, $i, addr));
         }
@@ -234,7 +233,7 @@ macro_rules! __crossbeam_channel_codegen {
         ()
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
     ) => {
-        for s in $var.clone() {
+        while let Some(s) = $var.next() {
             let addr = s as *const Sender<_> as usize;
             $cases.push((s, $i, addr));
         }
@@ -268,7 +267,7 @@ macro_rules! __crossbeam_channel_codegen {
         $default_index:ident
         (($i:tt $var:ident) default($t:expr) => $body:tt,)
     ) => {
-        if let Some(instant) = $crate::select::DefaultArgument::to_instant($t) {
+        if let Some(instant) = $crate::internal::select::DefaultArgument::default_argument($t) {
             $deadline = Some(instant);
             $default_index = $i;
         } else {
@@ -294,7 +293,7 @@ macro_rules! __crossbeam_channel_codegen {
             }
             let ($m, $r) = unsafe {
                 let r = bind(&$var, $selected);
-                let msg = r.read(&mut $token);
+                let msg = r.__read(&mut $token);
                 (msg, r)
             };
             $body
@@ -354,7 +353,7 @@ macro_rules! __crossbeam_channel_codegen {
                     msg
                 };
 
-                unsafe { s.write(&mut $token, msg); }
+                unsafe { s.__write(&mut $token, msg); }
                 s
             };
             $body

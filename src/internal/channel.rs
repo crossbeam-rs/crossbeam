@@ -1,16 +1,17 @@
 use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::isize;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use internal::select::CaseId;
+use internal::select::Select;
+use internal::select::Token;
+use internal::utils::Backoff;
 use flavors;
-use select::CaseId;
-use select::Select;
-use select::Token;
-use utils::Backoff;
 
 // TODO: explain
 // loop { try; promise; is_blocked; revoke; fulfill; write/read }
@@ -35,11 +36,11 @@ enum Flavor<T> {
 /// # Examples
 ///
 /// ```
-/// use crossbeam_channel::unbounded;
+/// use crossbeam_channel as channel;
 ///
 /// use std::thread;
 ///
-/// let (s, r) = unbounded();
+/// let (s, r) = channel::unbounded();
 ///
 /// // An expensive computation.
 /// fn fib(n: i32) -> i32 {
@@ -50,7 +51,7 @@ enum Flavor<T> {
 ///     }
 /// }
 ///
-/// // Spawn a thread doing expensive computation.
+/// // Spawn a thread doing an expensive computation.
 /// thread::spawn(move || {
 ///     s.send(fib(20));
 /// });
@@ -63,25 +64,29 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
         senders: AtomicUsize::new(0),
         flavor: Flavor::List(flavors::list::Channel::new()),
     });
-    (Sender::new(chan.clone()), Receiver::new(chan))
+
+    let s = Sender::new(chan.clone());
+    let r = Receiver::new(chan);
+    (s, r)
 }
 
 /// Creates a new channel of bounded capacity, returning the sender and receiver halves.
 ///
 /// This type of channel has an internal buffer of length `cap` in which messages get queued.
 ///
-/// An interesting case is zero-capacity channel, also known as *rendezvous* channel. Such a
+/// An rather special case is zero-capacity channel, also known as *rendezvous* channel. Such a
 /// channel cannot hold any messages since its buffer is of length zero. Instead, send and receive
-/// operations must be executing at the same time in order to pair up and pass the message.
+/// operations must be executing at the same time in order to pair up and pass the message over.
 ///
 /// # Examples
 ///
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel::bounded;
 ///
-/// let (s, r) = bounded(1);
+/// use crossbeam_channel as channel;
+///
+/// let (s, r) = channel::bounded(1);
 ///
 /// // This call returns immediately since there is enough space in the channel.
 /// s.send(1);
@@ -100,12 +105,13 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel::bounded;
 ///
-/// let (s, r) = bounded(0);
+/// use crossbeam_channel as channel;
+///
+/// let (s, r) = channel::bounded(0);
 ///
 /// thread::spawn(move || {
-///     // This call blocks until the receive operation appears on the other end of the channel.
+///     // This call blocks until a receive operation appears on the other side of the channel.
 ///     s.send(1);
 /// });
 ///
@@ -123,7 +129,10 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
             }
         },
     });
-    (Sender::new(chan.clone()), Receiver::new(chan))
+
+    let s = Sender::new(chan.clone());
+    let r = Receiver::new(chan);
+    (s, r)
 }
 
 /// The sending half of a channel.
@@ -134,56 +143,24 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 ///
 /// ```
 /// use std::thread;
-/// use crossbeam_channel::unbounded;
 ///
-/// let (s1, r) = unbounded();
+/// use crossbeam_channel as channel;
+///
+/// let (s1, r) = channel::unbounded();
 /// let s2 = s1.clone();
 ///
-/// thread::spawn(move || {
-///     s1.send(1);
-/// });
-///
-/// thread::spawn(move || {
-///     s2.send(2);
-/// });
+/// thread::spawn(move || s1.send(1));
+/// thread::spawn(move || s2.send(2));
 ///
 /// let msg1 = r.recv().unwrap();
 /// let msg2 = r.recv().unwrap();
 ///
-/// assert_eq!(3, msg1 + msg2);
+/// assert_eq!(msg1 + msg2, 3);
 /// ```
 pub struct Sender<T>(Arc<Channel<T>>);
 
 unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Sync for Sender<T> {}
-
-#[doc(hidden)]
-impl<T> Sender<T> {
-    fn new(chan: Arc<Channel<T>>) -> Self {
-        const MAX_REFCOUNT: usize = (::std::isize::MAX) as usize;
-
-        let old_count = chan.senders.fetch_add(1, Ordering::SeqCst);
-
-        // See comments on Arc::clone() on why we do this (for `mem::forget`).
-        if old_count > MAX_REFCOUNT {
-            process::abort();
-        }
-
-        Sender(chan)
-    }
-
-    fn channel_id(&self) -> usize {
-        &*self.0 as *const Channel<T> as usize
-    }
-
-    pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        match &self.0.flavor {
-            Flavor::Array(chan) => chan.write(token, msg),
-            Flavor::List(chan) => chan.write(token, msg),
-            Flavor::Zero(chan) => chan.write(token, msg),
-        }
-    }
-}
 
 impl<T> Select for Sender<T> {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
@@ -203,7 +180,6 @@ impl<T> Select for Sender<T> {
     }
 
     fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         match &self.0.flavor {
             Flavor::Array(inner) => inner.sender().is_blocked(),
             Flavor::List(inner) => inner.sender().is_blocked(),
@@ -229,31 +205,52 @@ impl<T> Select for Sender<T> {
 }
 
 impl<T> Sender<T> {
+    /// Creates a new sender handle for the channel and increments the sender count.
+    fn new(chan: Arc<Channel<T>>) -> Self {
+        let old_count = chan.senders.fetch_add(1, Ordering::SeqCst);
+
+        // Cloning senders and calling `mem::forget` on the clones could potentially overflow the
+        // counter. It's very difficult to recover sensibly from such degenerate scenarios so we
+        // just abort the process when the count becomes very large.
+        if old_count > isize::MAX as usize {
+            process::abort();
+        }
+
+        Sender(chan)
+    }
+
+    /// Returns a unique identifier for the channel.
+    fn channel_id(&self) -> usize {
+        &*self.0 as *const Channel<T> as usize
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn __write(&self, token: &mut Token, msg: T) {
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.write(token, msg),
+            Flavor::List(chan) => chan.write(token, msg),
+            Flavor::Zero(chan) => chan.write(token, msg),
+        }
+    }
+
     /// Sends a message into the channel, blocking if the channel is full.
     ///
     /// If called on a zero-capacity channel, this method blocks until a receive operation appears
     /// on the other side of the channel.
     ///
-    /// Note that `s.send(msg)` is equivalent to the following:
-    ///
-    /// ```ignore
-    /// select! {
-    ///     send(s, msg) => {}
-    /// }
-    /// ```
+    /// Note: `s.send(msg)` is equivalent to `select! { send(s, msg) => {} }`.
     ///
     /// # Examples
     ///
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use crossbeam_channel::bounded;
     ///
-    /// let (s, r) = bounded(0);
+    /// use crossbeam_channel as channel;
     ///
-    /// thread::spawn(move || {
-    ///     s.send(1);
-    /// });
+    /// let (s, r) = channel::bounded(0);
+    ///
+    /// thread::spawn(move || s.send(1));
     ///
     /// assert_eq!(r.recv(), Some(1));
     /// ```
@@ -419,7 +416,6 @@ impl<T> PartialOrd<Receiver<T>> for Sender<T> {
 }
 
 impl<T> UnwindSafe for Sender<T> {}
-
 impl<T> RefUnwindSafe for Sender<T> {}
 
 /// The receiving half of a channel.
@@ -450,25 +446,6 @@ pub struct Receiver<T>(Arc<Channel<T>>);
 unsafe impl<T: Send> Send for Receiver<T> {}
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
-#[doc(hidden)]
-impl<T> Receiver<T> {
-    fn new(chan: Arc<Channel<T>>) -> Self {
-        Receiver(chan)
-    }
-
-    fn channel_id(&self) -> usize {
-        &*self.0 as *const Channel<T> as usize
-    }
-
-    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
-        match &self.0.flavor {
-            Flavor::Array(chan) => chan.read(token),
-            Flavor::List(chan) => chan.read(token),
-            Flavor::Zero(chan) => chan.read(token),
-        }
-    }
-}
-
 impl<T> Select for Receiver<T> {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         match &self.0.flavor {
@@ -487,7 +464,6 @@ impl<T> Select for Receiver<T> {
     }
 
     fn is_blocked(&self) -> bool {
-        // TODO: Add recv_is_blocked() and send_is_blocked() to the three impls
         match &self.0.flavor {
             Flavor::Array(inner) => inner.receiver().is_blocked(),
             Flavor::List(inner) => inner.receiver().is_blocked(),
@@ -513,6 +489,25 @@ impl<T> Select for Receiver<T> {
 }
 
 impl<T> Receiver<T> {
+    /// Creates a new receiver handle for the channel.
+    fn new(chan: Arc<Channel<T>>) -> Self {
+        Receiver(chan)
+    }
+
+    /// Returns a unique identifier for the channel.
+    fn channel_id(&self) -> usize {
+        &*self.0 as *const Channel<T> as usize
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn __read(&self, token: &mut Token) -> Option<T> {
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.read(token),
+            Flavor::List(chan) => chan.read(token),
+            Flavor::Zero(chan) => chan.read(token),
+        }
+    }
+
     /// Blocks until a message is received or the channel is closed.
     ///
     /// Returns the message if it was received or `None` if the channel is closed.
@@ -520,13 +515,7 @@ impl<T> Receiver<T> {
     /// If called on a zero-capacity channel, this method blocks until a send operation appears on
     /// the other side of the channel.
     ///
-    /// Note that `r.recv()` is equivalent to the following:
-    ///
-    /// ```ignore
-    /// select! {
-    ///     recv(r, msg) => msg
-    /// }
-    /// ```
+    /// Note: `r.recv()` is equivalent to `select! { recv(r, msg) => msg }`.
     ///
     /// # Examples
     ///
@@ -556,14 +545,7 @@ impl<T> Receiver<T> {
     ///
     /// If there is no message ready to be received or the channel is closed, returns `None`.
     ///
-    /// Note that `r.try_recv()` is just a shorter version of the following:
-    ///
-    /// ```ignore
-    /// select! {
-    ///     recv(r, msg) => msg,
-    ///     default => None,
-    /// }
-    /// ```
+    /// Note: `r.try_recv()` is equivalent to `select! { recv(r, msg) => msg, default => None }`.
     ///
     /// # Examples
     ///
@@ -747,5 +729,4 @@ impl<'a, T> IntoIterator for &'a Receiver<T> {
 }
 
 impl<T> UnwindSafe for Receiver<T> {}
-
 impl<T> RefUnwindSafe for Receiver<T> {}

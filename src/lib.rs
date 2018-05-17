@@ -303,21 +303,14 @@
 //! [`Sender`]: struct.Sender.html
 //! [`Receiver`]: struct.Receiver.html
 
-#[doc(hidden)] pub extern crate smallvec;
-
-#[doc(hidden)] #[macro_use] pub mod codegen;
-#[doc(hidden)] #[macro_use] pub mod parse;
-#[doc(hidden)] #[macro_use] pub mod select;
-
-#[doc(hidden)] pub mod channel;
-#[doc(hidden)] pub mod context;
-#[doc(hidden)] pub mod flavors;
-#[doc(hidden)] pub mod utils;
-#[doc(hidden)] pub mod waker;
-
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;
 
-pub use channel::{bounded, unbounded};
-pub use channel::{Receiver, Sender};
+mod flavors;
+
+#[doc(hidden)]
+pub mod internal;
+
+pub use internal::channel::{bounded, unbounded};
+pub use internal::channel::{Receiver, Sender};

@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Thread};
 use std::time::Instant;
 
-use select::CaseId;
-use utils::Backoff;
+use internal::select::CaseId;
+use internal::utils::Backoff;
 
 pub struct Context {
     pub case_id: AtomicUsize,

@@ -1,6 +1,6 @@
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as chan;
+extern crate crossbeam_channel as channel;
 extern crate rand;
 
 use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
@@ -16,7 +16,7 @@ fn ms(ms: u64) -> Duration {
 
 #[test]
 fn smoke() {
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
     select! {
         send(s, 7) => panic!(),
         default => {}
@@ -29,14 +29,14 @@ fn smoke() {
 
 #[test]
 fn capacity() {
-    let (s, r) = chan::bounded::<()>(0);
+    let (s, r) = channel::bounded::<()>(0);
     assert_eq!(s.capacity(), Some(0));
     assert_eq!(r.capacity(), Some(0));
 }
 
 #[test]
 fn len_empty_full() {
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     assert_eq!(s.len(), 0);
     assert_eq!(s.is_empty(), true);
@@ -60,7 +60,7 @@ fn len_empty_full() {
 
 #[test]
 fn recv() {
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -82,7 +82,7 @@ fn recv() {
 
 #[test]
 fn recv_timeout() {
-    let (s, r) = chan::bounded::<i32>(0);
+    let (s, r) = channel::bounded::<i32>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -108,7 +108,7 @@ fn recv_timeout() {
 
 #[test]
 fn try_recv() {
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -127,7 +127,7 @@ fn try_recv() {
 
 #[test]
 fn send() {
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -148,7 +148,7 @@ fn send() {
 
 #[test]
 fn send_timeout() {
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -174,7 +174,7 @@ fn send_timeout() {
 
 #[test]
 fn try_send() {
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -204,7 +204,7 @@ fn try_send() {
 fn len() {
     const COUNT: usize = 25_000;
 
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     assert_eq!(s.len(), 0);
     assert_eq!(r.len(), 0);
@@ -231,7 +231,7 @@ fn len() {
 
 #[test]
 fn close_signals_receiver() {
-    let (s, r) = chan::bounded::<()>(0);
+    let (s, r) = channel::bounded::<()>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -248,7 +248,7 @@ fn close_signals_receiver() {
 fn spsc() {
     const COUNT: usize = 100_000;
 
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -270,7 +270,7 @@ fn mpmc() {
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
-    let (s, r) = chan::bounded::<usize>(0);
+    let (s, r) = channel::bounded::<usize>(0);
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
     crossbeam::scope(|scope| {
@@ -300,7 +300,7 @@ fn mpmc() {
 fn stress_timeout_two_threads() {
     const COUNT: usize = 100;
 
-    let (s, r) = chan::bounded(0);
+    let (s, r) = channel::bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -355,7 +355,7 @@ fn drops() {
         let steps = rng.gen_range(0, 3_000);
 
         DROPS.store(0, SeqCst);
-        let (s, r) = chan::bounded::<DropCounter>(0);
+        let (s, r) = channel::bounded::<DropCounter>(0);
 
         crossbeam::scope(|scope| {
             scope.spawn(|| {
@@ -382,8 +382,8 @@ fn drops() {
 fn fairness() {
     const COUNT: usize = 10_000;
 
-    let (s1, r1) = chan::bounded::<()>(0);
-    let (s2, r2) = chan::bounded::<()>(0);
+    let (s1, r1) = channel::bounded::<()>(0);
+    let (s2, r2) = channel::bounded::<()>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -412,7 +412,7 @@ fn fairness() {
 fn fairness_duplicates() {
     const COUNT: usize = 10_000;
 
-    let (s, r) = chan::bounded::<()>(0);
+    let (s, r) = channel::bounded::<()>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {

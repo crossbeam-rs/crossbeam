@@ -1,6 +1,6 @@
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as chan;
+extern crate crossbeam_channel as channel;
 
 use std::time::{Duration, Instant};
 
@@ -10,7 +10,7 @@ fn ms(ms: u64) -> Duration {
 
 #[test]
 fn references() {
-    let (s, r) = chan::unbounded::<i32>();
+    let (s, r) = channel::unbounded::<i32>();
     select! {
         send(s, 0) => {}
         recv(r) => {}
@@ -39,7 +39,7 @@ fn references() {
 
 #[test]
 fn blocks() {
-    let (s, r) = chan::unbounded::<i32>();
+    let (s, r) = channel::unbounded::<i32>();
 
     select! {
         recv(r) => 3.0
@@ -64,7 +64,7 @@ fn blocks() {
 
 #[test]
 fn move_handles() {
-    let (s, r) = chan::unbounded::<i32>();
+    let (s, r) = channel::unbounded::<i32>();
     select! {
         recv((move || r)()) => {}
         send((move || s)(), 0) => {}
@@ -133,12 +133,12 @@ fn default_duration() {
 
 #[test]
 fn same_variable_name() {
-    let (_, r) = chan::unbounded::<i32>();
+    let (_, r) = channel::unbounded::<i32>();
     select! {
         recv(r, r) => assert!(r.is_none()),
     }
 
-    let (s, _) = chan::unbounded::<i32>();
+    let (s, _) = channel::unbounded::<i32>();
     let s2 = s.clone();
     select! {
         send(s, 0, s) => assert_eq!(s, &s2),
@@ -147,7 +147,7 @@ fn same_variable_name() {
 
 #[test]
 fn handles_on_heap() {
-    let (s, r) = chan::unbounded::<i32>();
+    let (s, r) = channel::unbounded::<i32>();
     let (s, r) = (Box::new(s), Box::new(r));
 
     select! {
@@ -162,7 +162,7 @@ fn handles_on_heap() {
 
 #[test]
 fn option_receiver() {
-    let (_, r) = chan::unbounded::<i32>();
+    let (_, r) = channel::unbounded::<i32>();
     select! {
         recv(Some(&r)) => {}
     }
@@ -171,7 +171,7 @@ fn option_receiver() {
         recv(Some(&r)) => {}
     }
 
-    let r: Option<chan::Receiver<u32>> = None;
+    let r: Option<channel::Receiver<u32>> = None;
     select! {
         recv(r.as_ref()) => {}
         default => {}
@@ -182,8 +182,8 @@ fn option_receiver() {
         default => {}
     }
 
-    let r: Option<&&&Box<&&chan::Receiver<u32>>> = None;
-    let r: Option<&chan::Receiver<u32>> = match r {
+    let r: Option<&&&Box<&&channel::Receiver<u32>>> = None;
+    let r: Option<&channel::Receiver<u32>> = match r {
         None => None,
         Some(r) => Some(r),
     };
@@ -200,7 +200,7 @@ fn option_receiver() {
 
 #[test]
 fn option_sender() {
-    let (s, _) = chan::unbounded::<i32>();
+    let (s, _) = channel::unbounded::<i32>();
     select! {
         send(Some(&s), 0) => {}
         default => {}
@@ -211,7 +211,7 @@ fn option_sender() {
         default => {}
     }
 
-    let s: Option<chan::Sender<u32>> = None;
+    let s: Option<channel::Sender<u32>> = None;
     select! {
         send(s.as_ref(), 0) => {}
         default => {}
@@ -222,8 +222,8 @@ fn option_sender() {
         default => {}
     }
 
-    let s: Option<&&&Box<&&chan::Sender<u32>>> = None;
-    let s: Option<&chan::Sender<u32>> = match s {
+    let s: Option<&&&Box<&&channel::Sender<u32>>> = None;
+    let s: Option<&channel::Sender<u32>> = match s {
         None => None,
         Some(s) => Some(s),
     };
@@ -240,7 +240,7 @@ fn option_sender() {
 
 #[test]
 fn once_receiver() {
-    let (_, r) = chan::unbounded::<i32>();
+    let (_, r) = channel::unbounded::<i32>();
 
     let once = Box::new(());
     let get = move || {
@@ -255,7 +255,7 @@ fn once_receiver() {
 
 #[test]
 fn once_sender() {
-    let (s, _) = chan::unbounded::<i32>();
+    let (s, _) = channel::unbounded::<i32>();
 
     let once = Box::new(());
     let get = move || {
@@ -296,7 +296,7 @@ fn once_instant() {
 
 #[test]
 fn nesting() {
-    let (_, r) = chan::unbounded::<i32>();
+    let (_, r) = channel::unbounded::<i32>();
 
     select! {
         recv(r) => {
@@ -317,7 +317,7 @@ fn nesting() {
 
 #[test]
 fn evaluate() {
-    let (s, r) = chan::unbounded::<i32>();
+    let (s, r) = channel::unbounded::<i32>();
 
     let v = select! {
         recv(r) => "foo".into(),
@@ -341,9 +341,9 @@ fn evaluate() {
 
 #[test]
 fn variety() {
-    let (s1, r1) = chan::unbounded::<i32>();
-    let (s2, r2) = chan::bounded::<String>(1);
-    let (s3, r3) = chan::bounded::<()>(0);
+    let (s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::bounded::<String>(1);
+    let (s3, r3) = channel::bounded::<()>(0);
 
     select! {
         recv(r1) => {}

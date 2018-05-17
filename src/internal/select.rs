@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
-use channel::{Receiver, Sender};
+use internal::channel::{Receiver, Sender};
+use internal::utils::Backoff;
 use flavors;
-use utils::Backoff;
 
 #[macro_export]
 macro_rules! select {
@@ -90,72 +90,72 @@ impl<'a, T: Select> Select for &'a T {
 
 pub trait RecvArgument<'a, T: 'a> {
     type Iter: Iterator<Item = &'a Receiver<T>>;
-    fn to_receivers(&'a self) -> Self::Iter;
+    fn recv_argument(&'a self) -> Self::Iter;
 }
 
 impl<'a, T> RecvArgument<'a, T> for &'a Receiver<T> {
     type Iter = ::std::option::IntoIter<&'a Receiver<T>>;
-    fn to_receivers(&'a self) -> Self::Iter {
+    fn recv_argument(&'a self) -> Self::Iter {
         Some(*self).into_iter()
     }
 }
 
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
-    fn to_receivers(&'a self) -> Self::Iter {
+    fn recv_argument(&'a self) -> Self::Iter {
         self.clone().into_iter()
     }
 }
 
 pub trait SendArgument<'a, T: 'a> {
     type Iter: Iterator<Item = &'a Sender<T>>;
-    fn to_senders(&'a self) -> Self::Iter;
+    fn send_argument(&'a self) -> Self::Iter;
 }
 
 impl<'a, T> SendArgument<'a, T> for &'a Sender<T> {
     type Iter = ::std::option::IntoIter<&'a Sender<T>>;
-    fn to_senders(&'a self) -> Self::Iter {
+    fn send_argument(&'a self) -> Self::Iter {
         Some(*self).into_iter()
     }
 }
 
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
-    fn to_senders(&'a self) -> Self::Iter {
+    fn send_argument(&'a self) -> Self::Iter {
         self.clone().into_iter()
     }
 }
 
 pub trait DefaultArgument {
-    fn to_instant(self) -> Option<Instant>;
+    fn default_argument(self) -> Option<Instant>;
 }
 
 impl DefaultArgument for Instant {
-    fn to_instant(self) -> Option<Instant> {
+    fn default_argument(self) -> Option<Instant> {
         Some(self)
     }
 }
 
 impl DefaultArgument for Option<Instant> {
-    fn to_instant(self) -> Option<Instant> {
+    fn default_argument(self) -> Option<Instant> {
         self
     }
 }
 
 impl DefaultArgument for Duration {
-    fn to_instant(self) -> Option<Instant> {
+    fn default_argument(self) -> Option<Instant> {
         Some(Instant::now() + self)
     }
 }
 
 impl DefaultArgument for Option<Duration> {
-    fn to_instant(self) -> Option<Instant> {
+    fn default_argument(self) -> Option<Instant> {
         self.map(|duration| Instant::now() + duration)
     }
 }
 
 impl<'a, T: DefaultArgument + Clone> DefaultArgument for &'a T {
-    fn to_instant(self) -> Option<Instant> {
-        DefaultArgument::to_instant(self.clone())
+    fn default_argument(self) -> Option<Instant> {
+        DefaultArgument::default_argument(self.clone())
     }
 }
