@@ -492,6 +492,7 @@ fn send_handle() {
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
+            thread::sleep(ms(500));
             select! {
                 send(ss, 0, s) => assert_eq!(s, &r2),
                 default => panic!(),
@@ -502,6 +503,7 @@ fn send_handle() {
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
+            thread::sleep(ms(500));
             select! {
                 send(ss, 0, s) => assert_eq!(s, &r1),
                 default => panic!(),
