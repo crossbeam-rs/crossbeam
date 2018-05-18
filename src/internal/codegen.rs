@@ -293,7 +293,7 @@ macro_rules! __crossbeam_channel_codegen {
             }
             let ($m, $r) = unsafe {
                 let r = bind(&$var, $selected);
-                let msg = r.__read(&mut $token);
+                let msg = $crate::internal::channel::read(r, &mut $token);
                 (msg, r)
             };
             $body
@@ -353,7 +353,7 @@ macro_rules! __crossbeam_channel_codegen {
                     msg
                 };
 
-                unsafe { s.__write(&mut $token, msg); }
+                unsafe { $crate::internal::channel::write(s, &mut $token, msg); }
                 s
             };
             $body
@@ -402,11 +402,12 @@ macro_rules! __crossbeam_channel_codegen {
         unreachable!()
     };
 
+    // Catches a bug within this macro (should not happen).
     (@$($tokens:tt)*) => {
         compile_error!(concat!(
             "internal error in crossbeam-channel: ",
             stringify!(@$($tokens)*),
-        ));
+        ))
     };
 
     // The entry point.

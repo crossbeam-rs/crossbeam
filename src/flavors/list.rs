@@ -35,11 +35,11 @@ struct Node<T> {
     /// The start index of this node.
     start_index: usize,
 
-    /// The entries containing messages.
-    entries: [UnsafeCell<Entry<T>>; NODE_CAP],
-
     /// The next node in the linked list.
     next: Atomic<Node<T>>,
+
+    /// The entries containing messages.
+    entries: [UnsafeCell<Entry<T>>; NODE_CAP],
 }
 
 impl<T> Node<T> {
@@ -92,6 +92,7 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
+    /// Constructs a new unbounded channel.
     pub fn new() -> Self {
         let channel = Channel {
             head: CachePadded::new(Position {
@@ -115,14 +116,17 @@ impl<T> Channel<T> {
         channel
     }
 
+    /// Returns a receiver handle to the channel.
     pub fn receiver(&self) -> Receiver<T> {
         Receiver(self)
     }
 
+    /// Returns a sender handle to the channel.
     pub fn sender(&self) -> Sender<T> {
         Sender(self)
     }
 
+    /// TODO
     pub fn write(&self, _token: &mut Token, msg: T) {
         let guard = epoch::pin();
         let mut backoff = Backoff::new();
@@ -154,7 +158,6 @@ impl<T> Channel<T> {
                     unsafe {
                         let entry = tail.entries.get_unchecked(offset).get();
 
-                        // TODO: is creating a `&mut` UB? any other similar places?
                         ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
                         (*entry).ready.store(true, Ordering::Release);
                     }
@@ -168,13 +171,13 @@ impl<T> Channel<T> {
         self.receivers.wake_one();
     }
 
+    /// TODO
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let token = unsafe { &mut token.list };
-
         let guard = epoch::pin();
 
         loop {
-            // Loading the head node doesn't't have to be a `SeqCst` operation. If we get a stale
+            // Loading the head node doesn't have to be a `SeqCst` operation. If we get a stale
             // value, the following CAS will fail or not even be attempted. Loading the head index
             // must be `SeqCst` because we need the up-to-date value when checking whether the
             // channel is empty.
@@ -242,6 +245,7 @@ impl<T> Channel<T> {
         true
     }
 
+    /// TODO
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
         let token = &mut token.list;
 

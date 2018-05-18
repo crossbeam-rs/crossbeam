@@ -2,6 +2,7 @@ use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::isize;
+use std::iter::FusedIterator;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::process;
 use std::sync::Arc;
@@ -162,48 +163,6 @@ pub struct Sender<T>(Arc<Channel<T>>);
 unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Sync for Sender<T> {}
 
-impl<T> Select for Sender<T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().try(token, backoff),
-            Flavor::List(inner) => inner.sender().try(token, backoff),
-            Flavor::Zero(inner) => inner.sender().try(token, backoff),
-        }
-    }
-
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().promise(token, case_id),
-            Flavor::List(inner) => inner.sender().promise(token, case_id),
-            Flavor::Zero(inner) => inner.sender().promise(token, case_id),
-        }
-    }
-
-    fn is_blocked(&self) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().is_blocked(),
-            Flavor::List(inner) => inner.sender().is_blocked(),
-            Flavor::Zero(inner) => inner.sender().is_blocked(),
-        }
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().revoke(case_id),
-            Flavor::List(inner) => inner.sender().revoke(case_id),
-            Flavor::Zero(inner) => inner.sender().revoke(case_id),
-        }
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().fulfill(token, backoff),
-            Flavor::List(inner) => inner.sender().fulfill(token, backoff),
-            Flavor::Zero(inner) => inner.sender().fulfill(token, backoff),
-        }
-    }
-}
-
 impl<T> Sender<T> {
     /// Creates a new sender handle for the channel and increments the sender count.
     fn new(chan: Arc<Channel<T>>) -> Self {
@@ -222,15 +181,6 @@ impl<T> Sender<T> {
     /// Returns a unique identifier for the channel.
     fn channel_id(&self) -> usize {
         &*self.0 as *const Channel<T> as usize
-    }
-
-    #[doc(hidden)]
-    pub unsafe fn __write(&self, token: &mut Token, msg: T) {
-        match &self.0.flavor {
-            Flavor::Array(chan) => chan.write(token, msg),
-            Flavor::List(chan) => chan.write(token, msg),
-            Flavor::Zero(chan) => chan.write(token, msg),
-        }
     }
 
     /// Sends a message into the channel, blocking if the channel is full.
@@ -267,9 +217,9 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::unbounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, r) = unbounded();
+    /// let (s, r) = channel::unbounded();
     /// assert!(s.is_empty());
     ///
     /// s.send(0);
@@ -290,9 +240,9 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::bounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, r) = bounded(1);
+    /// let (s, r) = channel::bounded(1);
     ///
     /// assert!(!s.is_full());
     /// s.send(0);
@@ -311,9 +261,9 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::unbounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, r) = unbounded();
+    /// let (s, r) = channel::unbounded();
     /// assert_eq!(s.len(), 0);
     ///
     /// s.send(1);
@@ -333,15 +283,15 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::{bounded, unbounded};
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, _) = unbounded::<i32>();
+    /// let (s, _) = channel::unbounded::<i32>();
     /// assert_eq!(s.capacity(), None);
     ///
-    /// let (s, _) = bounded::<i32>(5);
+    /// let (s, _) = channel::bounded::<i32>(5);
     /// assert_eq!(s.capacity(), Some(5));
     ///
-    /// let (s, _) = bounded::<i32>(0);
+    /// let (s, _) = channel::bounded::<i32>(0);
     /// assert_eq!(s.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
@@ -427,9 +377,9 @@ impl<T> RefUnwindSafe for Sender<T> {}
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel::unbounded;
+/// use crossbeam_channel as channel;
 ///
-/// let (s, r) = unbounded();
+/// let (s, r) = channel::unbounded();
 ///
 /// thread::spawn(move || {
 ///     s.send("Hello world!");
@@ -446,48 +396,6 @@ pub struct Receiver<T>(Arc<Channel<T>>);
 unsafe impl<T: Send> Send for Receiver<T> {}
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
-impl<T> Select for Receiver<T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().try(token, backoff),
-            Flavor::List(inner) => inner.receiver().try(token, backoff),
-            Flavor::Zero(inner) => inner.receiver().try(token, backoff),
-        }
-    }
-
-    fn promise(&self, token: &mut Token ,case_id: CaseId) {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().promise(token, case_id),
-            Flavor::List(inner) => inner.receiver().promise(token, case_id),
-            Flavor::Zero(inner) => inner.receiver().promise(token, case_id),
-        }
-    }
-
-    fn is_blocked(&self) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().is_blocked(),
-            Flavor::List(inner) => inner.receiver().is_blocked(),
-            Flavor::Zero(inner) => inner.receiver().is_blocked(),
-        }
-    }
-
-    fn revoke(&self, case_id: CaseId) {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().revoke(case_id),
-            Flavor::List(inner) => inner.receiver().revoke(case_id),
-            Flavor::Zero(inner) => inner.receiver().revoke(case_id),
-        }
-    }
-
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().fulfill(token, backoff),
-            Flavor::List(inner) => inner.receiver().fulfill(token, backoff),
-            Flavor::Zero(inner) => inner.receiver().fulfill(token, backoff),
-        }
-    }
-}
-
 impl<T> Receiver<T> {
     /// Creates a new receiver handle for the channel.
     fn new(chan: Arc<Channel<T>>) -> Self {
@@ -497,15 +405,6 @@ impl<T> Receiver<T> {
     /// Returns a unique identifier for the channel.
     fn channel_id(&self) -> usize {
         &*self.0 as *const Channel<T> as usize
-    }
-
-    #[doc(hidden)]
-    pub unsafe fn __read(&self, token: &mut Token) -> Option<T> {
-        match &self.0.flavor {
-            Flavor::Array(chan) => chan.read(token),
-            Flavor::List(chan) => chan.read(token),
-            Flavor::Zero(chan) => chan.read(token),
-        }
     }
 
     /// Blocks until a message is received or the channel is closed.
@@ -522,9 +421,9 @@ impl<T> Receiver<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use crossbeam_channel::unbounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, r) = unbounded();
+    /// let (s, r) = channel::unbounded();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
@@ -550,9 +449,9 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::unbounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, r) = unbounded();
+    /// let (s, r) = channel::unbounded();
     /// assert_eq!(r.try_recv(), None);
     ///
     /// s.send(5);
@@ -575,9 +474,9 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::unbounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, r) = unbounded();
+    /// let (s, r) = channel::unbounded();
     ///
     /// assert!(r.is_empty());
     /// s.send(0);
@@ -598,9 +497,9 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::bounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, r) = bounded(1);
+    /// let (s, r) = channel::bounded(1);
     ///
     /// assert!(!r.is_full());
     /// s.send(0);
@@ -619,9 +518,9 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::unbounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (s, r) = unbounded();
+    /// let (s, r) = channel::unbounded();
     /// assert_eq!(r.len(), 0);
     ///
     /// s.send(1);
@@ -641,15 +540,15 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::{bounded, unbounded};
+    /// use crossbeam_channel as channel;
     ///
-    /// let (_, r) = unbounded::<i32>();
+    /// let (_, r) = channel::unbounded::<i32>();
     /// assert_eq!(r.capacity(), None);
     ///
-    /// let (_, r) = bounded::<i32>(5);
+    /// let (_, r) = channel::bounded::<i32>(5);
     /// assert_eq!(r.capacity(), Some(5));
     ///
-    /// let (_, r) = bounded::<i32>(0);
+    /// let (_, r) = channel::bounded::<i32>(0);
     /// assert_eq!(r.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
@@ -719,6 +618,8 @@ impl<T> Iterator for Receiver<T> {
     }
 }
 
+impl<T> FusedIterator for Receiver<T> {}
+
 impl<'a, T> IntoIterator for &'a Receiver<T> {
     type Item = T;
     type IntoIter = Receiver<T>;
@@ -730,3 +631,103 @@ impl<'a, T> IntoIterator for &'a Receiver<T> {
 
 impl<T> UnwindSafe for Receiver<T> {}
 impl<T> RefUnwindSafe for Receiver<T> {}
+
+impl<T> Select for Sender<T> {
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().try(token, backoff),
+            Flavor::List(inner) => inner.sender().try(token, backoff),
+            Flavor::Zero(inner) => inner.sender().try(token, backoff),
+        }
+    }
+
+    fn promise(&self, token: &mut Token, case_id: CaseId) {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().promise(token, case_id),
+            Flavor::List(inner) => inner.sender().promise(token, case_id),
+            Flavor::Zero(inner) => inner.sender().promise(token, case_id),
+        }
+    }
+
+    fn is_blocked(&self) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().is_blocked(),
+            Flavor::List(inner) => inner.sender().is_blocked(),
+            Flavor::Zero(inner) => inner.sender().is_blocked(),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().revoke(case_id),
+            Flavor::List(inner) => inner.sender().revoke(case_id),
+            Flavor::Zero(inner) => inner.sender().revoke(case_id),
+        }
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().fulfill(token, backoff),
+            Flavor::List(inner) => inner.sender().fulfill(token, backoff),
+            Flavor::Zero(inner) => inner.sender().fulfill(token, backoff),
+        }
+    }
+}
+
+pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) {
+    match &s.0.flavor {
+        Flavor::Array(chan) => chan.write(token, msg),
+        Flavor::List(chan) => chan.write(token, msg),
+        Flavor::Zero(chan) => chan.write(token, msg),
+    }
+}
+
+impl<T> Select for Receiver<T> {
+    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().try(token, backoff),
+            Flavor::List(inner) => inner.receiver().try(token, backoff),
+            Flavor::Zero(inner) => inner.receiver().try(token, backoff),
+        }
+    }
+
+    fn promise(&self, token: &mut Token ,case_id: CaseId) {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().promise(token, case_id),
+            Flavor::List(inner) => inner.receiver().promise(token, case_id),
+            Flavor::Zero(inner) => inner.receiver().promise(token, case_id),
+        }
+    }
+
+    fn is_blocked(&self) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().is_blocked(),
+            Flavor::List(inner) => inner.receiver().is_blocked(),
+            Flavor::Zero(inner) => inner.receiver().is_blocked(),
+        }
+    }
+
+    fn revoke(&self, case_id: CaseId) {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().revoke(case_id),
+            Flavor::List(inner) => inner.receiver().revoke(case_id),
+            Flavor::Zero(inner) => inner.receiver().revoke(case_id),
+        }
+    }
+
+    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().fulfill(token, backoff),
+            Flavor::List(inner) => inner.receiver().fulfill(token, backoff),
+            Flavor::Zero(inner) => inner.receiver().fulfill(token, backoff),
+        }
+    }
+}
+
+pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
+    match &r.0.flavor {
+        Flavor::Array(chan) => chan.read(token),
+        Flavor::List(chan) => chan.read(token),
+        Flavor::Zero(chan) => chan.read(token),
+    }
+}

@@ -23,17 +23,27 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    #[inline]
+    /// Constructs a new zero-capacity channel.
+    pub fn new() -> Self {
+        Channel {
+            senders: Waker::new(),
+            receivers: Waker::new(),
+            is_closed: AtomicBool::new(false),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Returns a receiver handle to the channel.
     pub fn receiver(&self) -> Receiver<T> {
         Receiver(self)
     }
 
-    #[inline]
+    /// Returns a sender handle to the channel.
     pub fn sender(&self) -> Sender<T> {
         Sender(self)
     }
 
-    #[inline]
+    /// TODO
     fn start_recv(&self, token: &mut Token) -> bool {
         let token = unsafe { &mut token.zero };
 
@@ -48,6 +58,7 @@ impl<T> Channel<T> {
         }
     }
 
+    /// TODO
     fn fulfill_recv(&self, token: &mut Token) -> bool {
         let token = unsafe { &mut token.zero };
 
@@ -63,6 +74,7 @@ impl<T> Channel<T> {
         true
     }
 
+    /// TODO
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
         let token = &mut token.zero;
 
@@ -100,7 +112,7 @@ impl<T> Channel<T> {
         // TODO
     }
 
-    #[inline]
+    /// TODO
     fn start_send(&self, token: &mut Token) -> bool {
         let token = unsafe { &mut token.zero };
 
@@ -115,6 +127,7 @@ impl<T> Channel<T> {
         }
     }
 
+    /// TODO
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         let token = &mut token.zero;
 
@@ -131,25 +144,14 @@ impl<T> Channel<T> {
         // TODO
     }
 
+    /// TODO
     fn fulfill_send(&self, token: &mut Token) -> bool {
         let token = unsafe { &mut token.zero };
         *token = ZeroToken::Fulfill;
         true
     }
 
-    /// Returns a new zero-capacity channel.
-    #[inline]
-    pub fn new() -> Self {
-        Channel {
-            senders: Waker::new(),
-            receivers: Waker::new(),
-            is_closed: AtomicBool::new(false),
-            _marker: PhantomData,
-        }
-    }
-
     /// Closes the exchanger and wakes up all currently blocked operations on it.
-    #[inline]
     pub fn close(&self) -> bool {
         if !self.is_closed.swap(true, Ordering::SeqCst) {
             self.senders.abort_all();
@@ -161,12 +163,12 @@ impl<T> Channel<T> {
     }
 
     /// Returns `true` if the exchanger is closed.
-    #[inline]
     pub fn is_closed(&self) -> bool {
         self.is_closed.load(Ordering::SeqCst)
     }
 }
 
+/// TODO
 unsafe fn finish_exchange<T>(case: Case, msg: T) -> T {
     // This is a promise.
     // We must request the message and then wait until the promise is fulfilled.
@@ -261,54 +263,44 @@ pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
-    #[inline]
     fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.start_recv(token)
     }
 
-    #[inline]
     fn promise(&self, _token: &mut Token, case_id: CaseId) {
         self.0.receivers.register(case_id)
     }
 
-    #[inline]
     fn is_blocked(&self) -> bool {
         !self.0.senders.can_notify() && !self.0.is_closed()
     }
 
-    #[inline]
     fn revoke(&self, case_id: CaseId) {
         self.0.receivers.unregister(case_id);
     }
 
-    #[inline]
     fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.fulfill_recv(token)
     }
 }
 
 impl<'a, T> Select for Sender<'a, T> {
-    #[inline]
     fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.start_send(token)
     }
 
-    #[inline]
     fn promise(&self, _token: &mut Token, case_id: CaseId) {
         self.0.senders.register(case_id)
     }
 
-    #[inline]
     fn is_blocked(&self) -> bool {
         !self.0.receivers.can_notify()
     }
 
-    #[inline]
     fn revoke(&self, case_id: CaseId) {
         self.0.senders.unregister(case_id);
     }
 
-    #[inline]
     fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
         self.0.fulfill_send(token)
     }

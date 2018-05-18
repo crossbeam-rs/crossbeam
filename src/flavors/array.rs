@@ -36,14 +36,14 @@ struct Entry<T> {
 pub struct Channel<T> {
     /// Head of the channel (the next index to read from).
     ///
-    /// Bits lower than the lock bit represent the index, while the upper bits represent the lap.
+    /// The lower bits (`one_lap - 1`) represent the index, while the upper bits (`!(one_lap - 1)`)
+    /// represent the lap.
     head: CachePadded<AtomicUsize>,
 
     /// Tail of the channel (the next index to write to).
     ///
-    /// Bits lower than the lock bit represent the index, while the upper bits represent the lap.
-    /// If the lock bit is set, that means the tail is locked and senders have to spin until it
-    /// becomes unlocked.
+    /// The lower bits (`one_lap - 1`) represent the index, while the upper bits (`!(one_lap - 1)`)
+    /// represent the lap.
     tail: CachePadded<AtomicUsize>,
 
     /// Buffer holding entries in the channel.
@@ -52,7 +52,7 @@ pub struct Channel<T> {
     /// Channel capacity.
     cap: usize,
 
-    /// The lock bit, which is used for locking the tail. TODO
+    /// A value that represents the pair `{ lap: 1, index: 0 }`.
     one_lap: usize,
 
     /// `true` if the channel is closed.
@@ -66,12 +66,10 @@ pub struct Channel<T> {
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
-
-    // TODO: use a lock on 16-bit architectures?
 }
 
 impl<T> Channel<T> {
-    /// Returns a new channel with capacity `cap`.
+    /// Constructs a new bounded channel with capacity `cap`.
     ///
     /// # Panics
     ///
@@ -79,9 +77,9 @@ impl<T> Channel<T> {
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
-        // Make sure there are at least two most significant bits to encode laps, plus one more bit
-        // for locking the tail to indicate that the channel is closed. If we can't reserve three
-        // bits, then panic. In that case, the buffer is likely too large to allocate anyway.
+        // Make sure there are at least two most significant bits to encode laps. If we can't
+        // reserve two bits, then panic. In that case, the buffer is likely too large to allocate
+        // anyway.
         let cap_limit = usize::max_value() / 4;
         assert!(
             cap <= cap_limit,
@@ -98,7 +96,7 @@ impl<T> Channel<T> {
             ptr
         };
 
-        // Initialize all laps in entries with zero.
+        // Initialize all laps in entries to zero.
         for i in 0..cap {
             unsafe {
                 let entry = buffer.offset(i as isize);
@@ -106,11 +104,11 @@ impl<T> Channel<T> {
             }
         }
 
-        // The lock bit is the smallest power of two greater than or equal to `cap`. TODO
+        // One lap is the smallest power of two greater than or equal to `cap`.
         let one_lap = cap.next_power_of_two();
 
-        // Head is initialized with (lap: 1, index: 0).
-        // Tail is initialized with (lap: 0, index: 0).
+        // Head is initialized to `{ lap: 1, index: 0 }`.
+        // Tail is initialized to `{ lap: 0, index: 0 }`.
         let head = one_lap;
         let tail = 0;
 
@@ -147,6 +145,7 @@ impl<T> Channel<T> {
         &*self.buffer.offset(index as isize)
     }
 
+    /// TODO
     fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let token = unsafe { &mut token.array };
 
@@ -200,6 +199,7 @@ impl<T> Channel<T> {
         }
     }
 
+    /// TODO
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         let token = &mut token.array;
 
@@ -208,11 +208,13 @@ impl<T> Channel<T> {
 
         // Write the message into the entry and increment the lap.
         ptr::write(entry.msg.get(), msg);
-
         entry.lap.store(token.lap, Ordering::Release);
+
+        // Wake a sleeping receiver.
         self.receivers.wake_one();
     }
 
+    /// TODO
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
         let token = unsafe { &mut token.array };
 
@@ -275,6 +277,7 @@ impl<T> Channel<T> {
         }
     }
 
+    /// TODO
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
         let token = &mut token.array;
 
@@ -294,6 +297,7 @@ impl<T> Channel<T> {
             let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
             entry.lap.store(token.lap, Ordering::Release);
 
+            // Wake a sleeping sender.
             self.senders.wake_one();
         }
 
