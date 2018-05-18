@@ -1,8 +1,43 @@
-// TODO: explain input and output, and error reporting
+//! Parser for the `select!` macro.
+
+/// Parses the contents of the `select!` macro and passes the result to the `$callback` macro.
+///
+/// If there is a syntax error, fails with a compile-time error.
+///
+/// Otherwise, it parses the macro into three token trees and passes them to the `$callback`
+/// macro. The three token trees are lists of comma-separated cases, written inside parentheses:
+///
+/// 1. Receive cases.
+/// 2. Send cases.
+/// 3. Default cases (there can be at most one).
+///
+/// All lists, if not empty, have a trailing comma at the end.
+///
+/// For example, this invocation of `select!`:
+///
+/// ```
+/// select! {
+///     recv(a) => x,
+///     recv(b, m) => y,
+///     send(s, msg) => { z }
+///     default => {}
+/// }
+/// ```
+///
+/// Would be parsed as:
+///
+/// ```
+/// ((0usize case0) recv(a, _, _) => { x }, (1usize, case1) recv(b, m, _) => { y },)
+/// ((2usize case2) send(s, msg, _) => { { z } },)
+/// (default() => { {} },)
+/// ```
+///
+/// These three lists are then passed to `$callback` as three arguments.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __crossbeam_channel_parse {
     // Success! The list is empty.
+    // Now check the arguments of each processed case.
     (@list
         $callback:ident
         ($($head:tt)*)
@@ -262,7 +297,7 @@ macro_rules! __crossbeam_channel_parse {
         compile_error!("invalid syntax")
     };
 
-    // Success! All cases were consumed.
+    // Success! All cases were parsed.
     (@case
         $callback:ident
         ($($recv:tt)*)
@@ -588,7 +623,7 @@ macro_rules! __crossbeam_channel_parse {
             ($($labels)*)
         )
     };
-    // Valid, but duplicate cases...
+    // Valid, but duplicate default cases...
     (@case
         $callback:ident
         $recv:tt
@@ -665,11 +700,12 @@ macro_rules! __crossbeam_channel_parse {
         ))
     };
 
+    // Catches a bug within this macro (should not happen).
     (@$($tokens:tt)*) => {
         compile_error!(concat!(
             "internal error in crossbeam-channel: ",
             stringify!(@$($tokens)*),
-        ));
+        ))
     };
 
     // The entry point.
