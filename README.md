@@ -22,12 +22,13 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-channel = "0.1"
+crossbeam-channel = "0.2"
 ```
 
 Next, add this to your crate:
 
 ```rust
+#[macro_use]
 extern crate crossbeam_channel;
 ```
 
