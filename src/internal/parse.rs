@@ -11,11 +11,18 @@
 /// 2. Send cases.
 /// 3. Default cases (there can be at most one).
 ///
+/// Each case is of the form `(index, variable) case(arguments) => block`, where:
+///
+/// - `index` is a unique index for the case.
+/// - `variable` is a unique variable name associated with it.
+/// - `case` is one of `recv`, `send`, or `default`
+/// - `arguments` is a list of arguments, and in case of `send` and `recv` is in the expanded form
+///
 /// All lists, if not empty, have a trailing comma at the end.
 ///
 /// For example, this invocation of `select!`:
 ///
-/// ```
+/// ```ignore
 /// select! {
 ///     recv(a) => x,
 ///     recv(b, m) => y,
@@ -26,10 +33,10 @@
 ///
 /// Would be parsed as:
 ///
-/// ```
+/// ```ignore
 /// ((0usize case0) recv(a, _, _) => { x }, (1usize, case1) recv(b, m, _) => { y },)
 /// ((2usize case2) send(s, msg, _) => { { z } },)
-/// (default() => { {} },)
+/// ((3usize case3) default() => { {} },)
 /// ```
 ///
 /// These three lists are then passed to `$callback` as three arguments.
