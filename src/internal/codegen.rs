@@ -104,7 +104,7 @@ macro_rules! __crossbeam_channel_codegen {
                 }
 
                 // TODO: break here if we have only zero-capacity channels
-                // break;//////////////////
+                break;//////////////////
 
                 if !backoff.step() {
                     break;
@@ -129,24 +129,21 @@ macro_rules! __crossbeam_channel_codegen {
                 let case_id = CaseId::new(case as *const _ as usize);
                 let &(sel, _, _) = case;
                 if !sel.promise(&mut token, case_id) {
-
-                // TODO: merge promise and is_blocked into a single method in order not to relock
-                // if !sel.is_blocked() {
-                    // context::current_try_abort();
-                    // break;
+                    context::current_try_abort();
+                    break;
                 }
                 if context::current_selected() != CaseId::none() {
                     break;
                 }
             }
 
-            if context::current_selected() == CaseId::none() {
-                for &(sel, _, _) in &cases {
-                    if !sel.is_blocked() {
-                        context::current_try_abort();
-                    }
-                }
-            }
+            // if context::current_selected() == CaseId::none() {
+            //     for &(sel, _, _) in &cases {
+            //         if !sel.is_blocked() {
+            //             context::current_try_abort();
+            //         }
+            //     }
+            // }
 
             let timed_out = !context::current_wait_until(deadline);
             let s = context::current_selected();

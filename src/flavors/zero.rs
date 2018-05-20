@@ -16,12 +16,12 @@ use internal::waker::{Case, Waker};
 struct Inner {
     senders: Waker,
     receivers: Waker,
+    is_closed: bool,
 }
 
 /// A zero-capacity channel.
 pub struct Channel<T> {
     inner: Mutex<Inner>,
-    is_closed: AtomicBool,
     _marker: PhantomData<T>,
 }
 
@@ -32,8 +32,8 @@ impl<T> Channel<T> {
             inner: Mutex::new(Inner {
                 senders: Waker::new(),
                 receivers: Waker::new(),
+                is_closed: false,
             }),
-            is_closed: AtomicBool::new(false),
             _marker: PhantomData,
         }
     }
@@ -58,7 +58,7 @@ impl<T> Channel<T> {
         if let Some(case) = inner.senders.wake_one() {
             *token = unsafe { ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case)) };
             true
-        } else if self.is_closed() {
+        } else if inner.is_closed {
             // TODO: try recv again?
             *token = ZeroToken::Closed;
             true
@@ -235,7 +235,7 @@ impl<T> Channel<T> {
                     }
                 }
 
-                if self.is_closed() {
+                if inner.is_closed {
                     return None;
                 }
 
@@ -264,25 +264,17 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Closes the exchanger and wakes up all currently blocked operations on it.
+    /// Closes the channel and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
-        if self.is_closed.load(Ordering::SeqCst) {
-            return false;
-        }
-
         let mut inner = self.inner.lock();
-        if self.is_closed.load(Ordering::SeqCst) {
-            return false;
+
+        if inner.is_closed {
+            false
+        } else {
+            inner.is_closed = true;
+            inner.receivers.abort_all();
+            true
         }
-
-        self.is_closed.store(true, Ordering::SeqCst);
-        inner.receivers.abort_all();
-        true
-    }
-
-    /// Returns `true` if the exchanger is closed.
-    pub fn is_closed(&self) -> bool {
-        self.is_closed.load(Ordering::SeqCst)
     }
 }
 
@@ -316,11 +308,12 @@ impl<'a, T> Select for Receiver<'a, T> {
 
         let mut inner = self.0.inner.lock();
         inner.receivers.register_with_packet(case_id, packet as usize);
-        !inner.senders.can_notify() && !self.0.is_closed()
+        !inner.senders.can_notify() && !inner.is_closed
     }
 
     fn is_blocked(&self) -> bool {
-        !self.0.inner.lock().senders.can_notify() && !self.0.is_closed()
+        let inner = self.0.inner.lock();
+        !inner.is_closed && !inner.senders.can_notify()
     }
 
     fn revoke(&self, case_id: CaseId) {
