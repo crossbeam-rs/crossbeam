@@ -508,3 +508,21 @@ fn fairness_duplicates() {
         assert!(hit.iter().all(|x| *x));
     });
 }
+
+#[test]
+fn recv_in_send() {
+    let (s, r) = bounded(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| r.recv());
+
+        scope.spawn(|| {
+            thread::sleep(ms(500));
+            s.send(());
+        });
+
+        select! {
+            send(s.0, r.recv().unwrap()) => {}
+        }
+    });
+}

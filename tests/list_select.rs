@@ -454,3 +454,13 @@ fn fairness_duplicates() {
     }
     assert!(hit.iter().all(|x| *x));
 }
+
+#[test]
+fn recv_in_send() {
+    let (s, r) = unbounded();
+    s.send(());
+
+    select! {
+        send(s.0, assert_eq!(r.recv(), Some(()))) => {}
+    }
+}

@@ -528,3 +528,21 @@ fn fairness_duplicates() {
     }
     assert!(hit.iter().all(|x| *x));
 }
+
+#[test]
+fn recv_in_send() {
+    let (s, r) = channel::bounded(1);
+    s.send(());
+
+    select! {
+        send(s, panic!()) => panic!(),
+        default => {}
+    }
+
+    let (s, r) = channel::bounded(2);
+    s.send(());
+
+    select! {
+        send(s, assert_eq!(r.recv(), Some(()))) => {}
+    }
+}

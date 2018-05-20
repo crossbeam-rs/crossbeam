@@ -442,3 +442,24 @@ fn fairness_duplicates() {
         assert!(hit.iter().all(|x| *x));
     });
 }
+
+#[test]
+fn recv_in_send() {
+    let (s, r) = channel::bounded(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(ms(100));
+            r.recv()
+        });
+
+        scope.spawn(|| {
+            thread::sleep(ms(500));
+            s.send(());
+        });
+
+        select! {
+            send(s, r.recv().unwrap()) => {}
+        }
+    });
+}
