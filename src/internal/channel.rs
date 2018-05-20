@@ -19,6 +19,8 @@ use flavors;
 
 // TODO: use backoff in try()/fulfill() for zero-capacity channels?
 
+// TODO: select! { send(s, r.recv()) => {} } should be a bug because of contexts!
+
 pub struct Channel<T> {
     senders: AtomicUsize,
     flavor: Flavor<T>,
@@ -205,8 +207,10 @@ impl<T> Sender<T> {
     /// assert_eq!(r.recv(), Some(1));
     /// ```
     pub fn send(&self, msg: T) {
-        select! {
-            send(self, msg) => {}
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.send(msg),
+            Flavor::List(chan) => chan.send(msg),
+            Flavor::Zero(chan) => chan.send(msg),
         }
     }
 
@@ -435,8 +439,10 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.recv(), None);
     /// ```
     pub fn recv(&self) -> Option<T> {
-        select! {
-            recv(self, msg) => msg
+        match &self.0.flavor {
+            Flavor::Array(chan) => chan.recv(),
+            Flavor::List(chan) => chan.recv(),
+            Flavor::Zero(chan) => chan.recv(),
         }
     }
 

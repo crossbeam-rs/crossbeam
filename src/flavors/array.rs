@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crossbeam_utils::cache_padded::CachePadded;
 
+use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
@@ -291,9 +292,7 @@ impl<T> Channel<T> {
             Some(msg)
         };
 
-        if token.entry.is_null() {
-
-        } else {
+        if !token.entry.is_null() {
             let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
             entry.lap.store(token.lap, Ordering::Release);
 
@@ -302,6 +301,65 @@ impl<T> Channel<T> {
         }
 
         msg
+    }
+
+    pub fn send(&self, msg: T) {
+        let mut token: Token = unsafe { ::std::mem::zeroed() }; // TODO: this is costly
+        let case_id = CaseId::new(&token as *const Token as usize);
+        let sender = self.sender();
+
+        loop {
+            let backoff = &mut Backoff::new();
+            loop {
+                if sender.try(&mut token, backoff) {
+                    unsafe { self.write(&mut token, msg); }
+                    return;
+                }
+                if !backoff.step() {
+                    break;
+                }
+            }
+
+            context::current_reset();
+            sender.promise(&mut token, case_id);
+
+            if !sender.is_blocked() {
+                context::current_try_abort();
+            }
+
+            context::current_wait_until(None);
+            sender.revoke(case_id);
+        }
+    }
+
+    pub fn recv(&self) -> Option<T> {
+        let mut token: Token = unsafe { ::std::mem::zeroed() }; // TODO: this is costly
+        let case_id = CaseId::new(&token as *const Token as usize);
+        let receiver = self.receiver();
+
+        loop {
+            let backoff = &mut Backoff::new();
+            loop {
+                if receiver.try(&mut token, backoff) {
+                    unsafe {
+                        return self.read(&mut token);
+                    }
+                }
+                if !backoff.step() {
+                    break;
+                }
+            }
+
+            context::current_reset();
+            receiver.promise(&mut token, case_id);
+
+            if !receiver.is_blocked() {
+                context::current_try_abort();
+            }
+
+            context::current_wait_until(None);
+            receiver.revoke(case_id);
+        }
     }
 
     /// Returns the current number of messages inside the channel.

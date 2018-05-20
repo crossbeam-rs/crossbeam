@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
+use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
@@ -263,6 +264,44 @@ impl<T> Channel<T> {
             let m = ptr::read(&entry.msg);
             let msg = ManuallyDrop::into_inner(m);
             Some(msg)
+        }
+    }
+
+    pub fn send(&self, msg: T) {
+        let mut token: Token = unsafe { ::std::mem::uninitialized() }; // TODO: this is costly
+        let sender = self.sender();
+
+        sender.try(&mut token, &mut Backoff::new());
+        self.write(&mut token, msg);
+    }
+
+    pub fn recv(&self) -> Option<T> {
+        let mut token: Token = unsafe { ::std::mem::uninitialized() }; // TODO: this is costly
+        let case_id = CaseId::new(&token as *const Token as usize);
+        let receiver = self.receiver();
+
+        loop {
+            let backoff = &mut Backoff::new();
+            loop {
+                if receiver.try(&mut token, backoff) {
+                    unsafe {
+                        return self.read(&mut token);
+                    }
+                }
+                if !backoff.step() {
+                    break;
+                }
+            }
+
+            context::current_reset();
+            receiver.promise(&mut token, case_id);
+
+            if !receiver.is_blocked() {
+                context::current_try_abort();
+            }
+
+            context::current_wait_until(None);
+            receiver.revoke(case_id);
         }
     }
 

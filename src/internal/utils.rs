@@ -1,4 +1,5 @@
 use std::cell::Cell;
+
 use std::num::Wrapping;
 use std::sync::atomic;
 use std::thread;
@@ -28,16 +29,13 @@ impl Backoff {
             self.0 += 1;
             true
         } else if self.0 <= 10 {
-            // TODO: return false without yielding
             thread::yield_now();
             self.0 += 1;
             true
         } else {
-            // TODO: investigate why commenting this makes spsc case much faster
             thread::yield_now();
             false
         }
-        // TODO: sleep for 1 ms after many steps
     }
 }
 

@@ -1,3 +1,6 @@
+/// Code generator for the `select!` macro.
+
+/// TODO
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __crossbeam_channel_codegen {
@@ -14,7 +17,7 @@ macro_rules! __crossbeam_channel_codegen {
             use $crate::internal::channel::Receiver;
 
             // TODO: document that we can't expect a mut iterator here because of Clone
-            match &mut (&$rs).recv_argument() {
+            match &mut (&$rs).__as_recv_argument() {
                 $var => {
                     __crossbeam_channel_codegen!(
                         @declare
@@ -39,7 +42,7 @@ macro_rules! __crossbeam_channel_codegen {
             #[allow(unused_imports)]
             use $crate::internal::channel::Sender;
 
-            match &mut (&$ss).send_argument() {
+            match &mut (&$ss).__as_send_argument() {
                 $var => {
                     __crossbeam_channel_codegen!(
                         @declare
@@ -100,12 +103,11 @@ macro_rules! __crossbeam_channel_codegen {
                     break;
                 }
 
+                // TODO: break here if we have only zero-capacity channels
+
                 if !backoff.step() {
                     break;
                 }
-
-                // TODO: break here? (should speed up zero-capacity channels!)
-                // break;
             }
 
             if index != !0 {
@@ -128,7 +130,7 @@ macro_rules! __crossbeam_channel_codegen {
 
             for &(sel, _, _) in &cases {
                 if !sel.is_blocked() {
-                    context::current_try_select(CaseId::abort());
+                    context::current_try_abort();
                 }
             }
 
@@ -170,9 +172,6 @@ macro_rules! __crossbeam_channel_codegen {
         drop(selected);
 
         __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
-
-        // TODO: optimize send, try_recv, recv
-        // TODO: special-case send_until and recv_until
 
         // TODO: allocate less memory in unbounded flavor if few elements are sent.
         // TODO: allocate memory lazily in unbounded flavor?

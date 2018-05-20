@@ -1,14 +1,11 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
 
 use parking_lot::Mutex;
 
 use internal::context::{self, Context};
 use internal::select::CaseId;
-
-// TODO: Optimize current thread id
 
 /// A selection case, identified by a `Context` and a `CaseId`.
 ///
@@ -20,6 +17,8 @@ pub struct Case {
 
     /// The case ID.
     pub case_id: CaseId,
+
+    pub packet: usize,
 }
 
 /// A simple wait queue for list-based and array-based channels.
@@ -34,6 +33,7 @@ pub struct Waker {
     len: AtomicUsize,
 }
 
+// TODO: inline everything?
 impl Waker {
     /// Creates a new `Waker`.
     #[inline]
@@ -50,19 +50,34 @@ impl Waker {
         cases.push_back(Case {
             context: context::current(),
             case_id,
+            packet: 0,
+        });
+        self.len.store(cases.len(), Ordering::SeqCst);
+    }
+
+    pub fn register_with_packet(&self, case_id: CaseId, packet: usize) {
+        let mut cases = self.cases.lock();
+        cases.push_back(Case {
+            context: context::current(),
+            case_id,
+            packet,
         });
         self.len.store(cases.len(), Ordering::SeqCst);
     }
 
     /// Unregisters the current thread with `case_id`.
     pub fn unregister(&self, case_id: CaseId) -> Option<Case> {
-        let mut cases = self.cases.lock();
+        if self.len.load(Ordering::SeqCst) > 0 {
+            let mut cases = self.cases.lock();
 
-        if let Some((i, _)) = cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
-            let case = cases.remove(i);
-            self.len.store(cases.len(), Ordering::SeqCst);
-            Self::maybe_shrink(&mut cases);
-            case
+            if let Some((i, _)) = cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
+                let case = cases.remove(i);
+                self.len.store(cases.len(), Ordering::SeqCst);
+                Self::maybe_shrink(&mut cases);
+                case
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -71,16 +86,17 @@ impl Waker {
     #[inline]
     pub fn wake_one(&self) -> Option<Case> {
         if self.len.load(Ordering::SeqCst) > 0 {
-            let thread_id = thread::current().id(); // TODO: optimize? use selection_id instead?
+            let thread_id = context::current_thread_id();
             let mut cases = self.cases.lock();
 
             for i in 0..cases.len() {
                 if cases[i].context.thread.id() != thread_id {
-                    if cases[i].context.try_select(cases[i].case_id) {
+                    if cases[i].context.try_select(cases[i].case_id, cases[i].packet) {
                         let case = cases.remove(i).unwrap();
                         self.len.store(cases.len(), Ordering::SeqCst);
                         Self::maybe_shrink(&mut cases);
 
+                        drop(cases);
                         case.context.unpark();
                         return Some(case);
                     }
@@ -98,7 +114,7 @@ impl Waker {
 
             self.len.store(0, Ordering::SeqCst);
             for case in cases.drain(..) {
-                if case.context.try_select(CaseId::abort()) {
+                if case.context.try_abort() {
                     case.context.unpark();
                 }
             }
@@ -112,7 +128,7 @@ impl Waker {
     pub fn can_notify(&self) -> bool {
         if self.len.load(Ordering::SeqCst) > 0 {
             let cases = self.cases.lock();
-            let thread_id = thread::current().id();
+            let thread_id = context::current_thread_id();
 
             for i in 0..cases.len() {
                 if cases[i].context.thread.id() != thread_id {
