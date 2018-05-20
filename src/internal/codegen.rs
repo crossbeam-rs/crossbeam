@@ -104,7 +104,7 @@ macro_rules! __crossbeam_channel_codegen {
                 }
 
                 // TODO: break here if we have only zero-capacity channels
-                break;//////////////////
+                // break;//////////////////
 
                 if !backoff.step() {
                     break;
