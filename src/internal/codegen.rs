@@ -348,28 +348,30 @@ macro_rules! __crossbeam_channel_codegen {
                     &*(addr as *const T)
                 }
 
+                #[allow(unused_variables)]
                 let s = unsafe { bind(&$var, $selected) };
 
-                let msg = {
-                    // We have to prefix variables with an underscore to get rid of warnings in
-                    // case `$m` is of type `!`.
-                    let guard = Guard(|| {
-                        eprintln!(
-                            "a send case triggered a panic while evaluating the message, {}:{}:{}",
-                            file!(),
-                            line!(),
-                            column!(),
-                        );
-                        ::std::process::abort();
-                    });
+                // We have to prefix variables with an underscore to get rid of warnings in
+                // case `$m` is of type `!`.
+                #[allow(unused_variables)]
+                let guard = Guard(|| {
+                    eprintln!(
+                        "a send case triggered a panic while evaluating the message, {}:{}:{}",
+                        file!(),
+                        line!(),
+                        column!(),
+                    );
+                    ::std::process::abort();
+                });
 
-                    let msg = $m;
+                let _msg = $m;
+
+                #[allow(unreachable_code)]
+                {
                     ::std::mem::forget(guard);
-                    msg
-                };
-
-                unsafe { $crate::internal::channel::write(s, &mut $token, msg); }
-                s
+                    unsafe { $crate::internal::channel::write(s, &mut $token, _msg); }
+                    s
+                }
             };
             $body
         } else {
