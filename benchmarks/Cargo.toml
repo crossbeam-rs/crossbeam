@@ -3,11 +3,11 @@ name = "benchmark"
 version = "0.1.0"
 
 [dependencies]
+atomicring = "0.4.1"
 chan = "0.1.19"
 crossbeam = "0.3.0"
-atomicring = "0.4.1"
+crossbeam-channel = { path = ".." }
 mpmc = "0.1.5"
-crossbeam-channel = { path = "..", features = ["nightly"] }
 
 [[bin]]
 name = "crossbeam-channel"

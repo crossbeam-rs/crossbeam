@@ -1,7 +1,8 @@
 extern crate crossbeam;
+#[macro_use]
 extern crate crossbeam_channel;
 
-use crossbeam_channel::{bounded, unbounded, Select, Receiver, Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -12,7 +13,7 @@ fn seq<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     for i in 0..MESSAGES {
-        tx.send(i as i32).unwrap();
+        tx.send(i as i32);
     }
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
@@ -25,7 +26,7 @@ fn spsc<F: Fn() -> TxRx>(make: F) {
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                tx.send(i as i32).unwrap();
+                tx.send(i as i32);
             }
         });
         s.spawn(|| {
@@ -43,7 +44,7 @@ fn mpsc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(i as i32);
                 }
             });
         }
@@ -62,7 +63,7 @@ fn mpmc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(i as i32);
                 }
             });
         }
@@ -83,20 +84,15 @@ fn select_rx<F: Fn() -> TxRx>(make: F) {
         for &(ref tx, _) in &chans {
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32).unwrap();
+                    tx.send(i as i32);
                 }
             });
         }
 
         s.spawn(|| {
             for _ in 0..MESSAGES {
-                let mut sel = Select::new();
-                'select: loop {
-                    for &(_, ref rx) in &chans {
-                        if let Ok(_) = sel.recv(&rx) {
-                            break 'select;
-                        }
-                    }
+                select! {
+                    recv(chans.iter().map(|c| &c.1), msg, _) => assert!(msg.is_some()),
                 }
             }
         });
@@ -110,13 +106,8 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    let mut sel = Select::new();
-                    'select: loop {
-                        for &(ref tx, _) in &chans {
-                            if let Ok(_) = sel.send(&tx, i as i32) {
-                                break 'select;
-                            }
-                        }
+                    select! {
+                        send(chans.iter().map(|c| &c.0), i as i32, _) => {}
                     }
                 }
             });
@@ -125,13 +116,8 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
-                    let mut sel = Select::new();
-                    'select: loop {
-                        for &(_, ref rx) in &chans {
-                            if let Ok(_) = sel.recv(&rx) {
-                                break 'select;
-                            }
-                        }
+                    select! {
+                        recv(chans.iter().map(|c| &c.1), msg) => assert!(msg.is_some()),
                     }
                 }
             });
