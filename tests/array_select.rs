@@ -597,7 +597,7 @@ fn fairness_duplicates() {
 
 #[test]
 fn recv_in_send() {
-    let (s, r) = bounded(1);
+    let (s, _r) = bounded(1);
     s.send(());
 
     select! {

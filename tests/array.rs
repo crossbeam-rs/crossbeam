@@ -531,7 +531,7 @@ fn fairness_duplicates() {
 
 #[test]
 fn recv_in_send() {
-    let (s, r) = channel::bounded(1);
+    let (s, _r) = channel::bounded(1);
     s.send(());
 
     select! {
