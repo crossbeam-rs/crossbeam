@@ -1,8 +1,5 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use parking_lot::Mutex;
 
 use internal::context::{self, Context};
 use internal::select::CaseId;
@@ -21,16 +18,13 @@ pub struct Case {
     pub packet: usize,
 }
 
-/// A simple wait queue for list-based and array-based channels.
+/// A simple wait queue for zero-capacity channels.
 ///
 /// This data structure is used for registering selection cases before blocking and waking them
 /// up when the channel receives a message, sends one, or gets closed.
 pub struct Waker {
     /// The list of registered selection cases.
-    cases: Mutex<VecDeque<Case>>,
-
-    /// Number of cases in the list.
-    len: AtomicUsize,
+    cases: VecDeque<Case>,
 }
 
 // TODO: inline everything?
@@ -39,64 +33,50 @@ impl Waker {
     #[inline]
     pub fn new() -> Self {
         Waker {
-            cases: Mutex::new(VecDeque::new()),
-            len: AtomicUsize::new(0),
+            cases: VecDeque::new(),
         }
     }
 
     /// Registers the current thread with `case_id`.
-    pub fn register(&self, case_id: CaseId) {
-        let mut cases = self.cases.lock();
-        cases.push_back(Case {
+    pub fn register(&mut self, case_id: CaseId) {
+        self.cases.push_back(Case {
             context: context::current(),
             case_id,
             packet: 0,
         });
-        self.len.store(cases.len(), Ordering::SeqCst);
     }
 
-    pub fn register_with_packet(&self, case_id: CaseId, packet: usize) {
-        let mut cases = self.cases.lock();
-        cases.push_back(Case {
+    #[inline]
+    pub fn register_with_packet(&mut self, case_id: CaseId, packet: usize) {
+        self.cases.push_back(Case {
             context: context::current(),
             case_id,
             packet,
         });
-        self.len.store(cases.len(), Ordering::SeqCst);
     }
 
     /// Unregisters the current thread with `case_id`.
-    pub fn unregister(&self, case_id: CaseId) -> Option<Case> {
-        if self.len.load(Ordering::SeqCst) > 0 {
-            let mut cases = self.cases.lock();
-
-            if let Some((i, _)) = cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
-                let case = cases.remove(i);
-                self.len.store(cases.len(), Ordering::SeqCst);
-                Self::maybe_shrink(&mut cases);
-                case
-            } else {
-                None
-            }
+    pub fn unregister(&mut self, case_id: CaseId) -> Option<Case> {
+        if let Some((i, _)) = self.cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
+            let case = self.cases.remove(i);
+            Self::maybe_shrink(&mut self.cases);
+            case
         } else {
             None
         }
     }
 
     #[inline]
-    pub fn wake_one(&self) -> Option<Case> {
-        if self.len.load(Ordering::SeqCst) > 0 {
+    pub fn wake_one(&mut self) -> Option<Case> {
+        if !self.cases.is_empty() {
             let thread_id = context::current_thread_id();
-            let mut cases = self.cases.lock();
 
-            for i in 0..cases.len() {
-                if cases[i].context.thread.id() != thread_id {
-                    if cases[i].context.try_select(cases[i].case_id, cases[i].packet) {
-                        let case = cases.remove(i).unwrap();
-                        self.len.store(cases.len(), Ordering::SeqCst);
-                        Self::maybe_shrink(&mut cases);
+            for i in 0..self.cases.len() {
+                if self.cases[i].context.thread.id() != thread_id {
+                    if self.cases[i].context.try_select(self.cases[i].case_id, self.cases[i].packet) {
+                        let case = self.cases.remove(i).unwrap();
+                        Self::maybe_shrink(&mut self.cases);
 
-                        drop(cases);
                         case.context.unpark();
                         return Some(case);
                     }
@@ -108,30 +88,25 @@ impl Waker {
     }
 
     /// Aborts all currently registered selection cases.
-    pub fn abort_all(&self) {
-        if self.len.load(Ordering::SeqCst) > 0 {
-            let mut cases = self.cases.lock();
-
-            self.len.store(0, Ordering::SeqCst);
-            for case in cases.drain(..) {
-                if case.context.try_abort() {
-                    case.context.unpark();
-                }
+    #[inline]
+    pub fn abort_all(&mut self) {
+        for case in self.cases.drain(..) {
+            if case.context.try_abort() {
+                case.context.unpark();
             }
-
-            Self::maybe_shrink(&mut cases);
         }
+
+        Self::maybe_shrink(&mut self.cases);
     }
 
     /// Returns `true` if there exists a case which isn't owned by the current thread.
     #[inline]
     pub fn can_notify(&self) -> bool {
-        if self.len.load(Ordering::SeqCst) > 0 {
-            let cases = self.cases.lock();
+        if !self.cases.is_empty() {
             let thread_id = context::current_thread_id();
 
-            for i in 0..cases.len() {
-                if cases[i].context.thread.id() != thread_id {
+            for i in 0..self.cases.len() {
+                if self.cases[i].context.thread.id() != thread_id {
                     return true;
                 }
             }
@@ -150,8 +125,8 @@ impl Waker {
 }
 
 impl Drop for Waker {
+    #[inline]
     fn drop(&mut self) {
-        debug_assert!(self.cases.lock().is_empty());
-        debug_assert_eq!(self.len.load(Ordering::SeqCst), 0);
+        debug_assert!(self.cases.is_empty());
     }
 }

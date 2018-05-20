@@ -13,12 +13,15 @@ use internal::context;
 use internal::utils::Backoff;
 use internal::waker::{Case, Waker};
 
-/// A zero-capacity channel.
-pub struct Channel<T> {
+struct Inner {
     senders: Waker,
     receivers: Waker,
+}
+
+/// A zero-capacity channel.
+pub struct Channel<T> {
+    inner: Mutex<Inner>,
     is_closed: AtomicBool,
-    lock: Mutex<()>,
     _marker: PhantomData<T>,
 }
 
@@ -26,10 +29,11 @@ impl<T> Channel<T> {
     /// Constructs a new zero-capacity channel.
     pub fn new() -> Self {
         Channel {
-            senders: Waker::new(),
-            receivers: Waker::new(),
+            inner: Mutex::new(Inner {
+                senders: Waker::new(),
+                receivers: Waker::new(),
+            }),
             is_closed: AtomicBool::new(false),
-            lock: Mutex::new(()),
             _marker: PhantomData,
         }
     }
@@ -47,8 +51,11 @@ impl<T> Channel<T> {
     /// TODO
     fn start_recv(&self, token: &mut Token) -> bool {
         let token = unsafe { &mut token.zero };
+        let mut inner = self.inner.lock();
 
-        if let Some(case) = self.senders.wake_one() {
+        // TODO: remove lock here?
+
+        if let Some(case) = inner.senders.wake_one() {
             *token = unsafe { ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case)) };
             true
         } else if self.is_closed() {
@@ -112,9 +119,12 @@ impl<T> Channel<T> {
     /// TODO
     fn start_send(&self, token: &mut Token) -> bool {
         let token = unsafe { &mut token.zero };
+        let mut inner = self.inner.lock();
+
+        // TODO: remove lock here?
 
         // If there's someone on the other side, exchange message with it.
-        if let Some(case) = self.receivers.wake_one() {
+        if let Some(case) = inner.receivers.wake_one() {
             unsafe {
                 *token = ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case));
             }
@@ -165,16 +175,19 @@ impl<T> Channel<T> {
     pub fn send(&self, mut msg: T) {
         let mut token: Token = unsafe { ::std::mem::zeroed() }; // TODO: this is costly
         let case_id = CaseId::new(&token as *const Token as usize);
-        let sender = self.sender();
 
         // TODO: maybe put a lock around wait queues?
 
         loop {
             let packet;
             {
-                let guard = self.lock.lock();
-                if sender.try(&mut token, &mut Backoff::new()) {
-                    drop(guard);
+                let mut inner = self.inner.lock();
+                // If there's someone on the other side, exchange message with it.
+                if let Some(case) = inner.receivers.wake_one() {
+                    token.zero = unsafe {
+                        ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case))
+                    };
+                    drop(inner);
                     unsafe { self.write(&mut token, msg); }
                     break;
                 }
@@ -186,12 +199,7 @@ impl<T> Channel<T> {
                     ready: AtomicBool::new(false),
                     msg: Mutex::new(Some(msg)),
                 };
-                self.senders.register_with_packet(case_id, &packet as *const _ as usize);
-
-            }
-
-            if !sender.is_blocked() {
-                context::current_try_abort();
+                inner.senders.register_with_packet(case_id, &packet as *const _ as usize);
             }
 
             context::current_wait_until(None);
@@ -204,7 +212,7 @@ impl<T> Channel<T> {
                 }
                 break;
             } else {
-                self.senders.unregister(case_id);
+                self.inner.lock().senders.unregister(case_id);
                 msg = packet.msg.into_inner().unwrap();
             }
         }
@@ -213,17 +221,22 @@ impl<T> Channel<T> {
     pub fn recv(&self) -> Option<T> {
         let mut token: Token = unsafe { ::std::mem::zeroed() }; // TODO: this is costly
         let case_id = CaseId::new(&token as *const Token as usize);
-        let receiver = self.receiver();
 
         loop {
             let packet;
             {
-                let guard = self.lock.lock();
-                if receiver.try(&mut token, &mut Backoff::new()) {
-                    drop(guard);
+                let mut inner = self.inner.lock();
+
+                if let Some(case) = inner.senders.wake_one() {
+                    token.zero = unsafe { ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case)) };
+                    drop(inner);
                     unsafe {
                         return self.read(&mut token);
                     }
+                }
+
+                if self.is_closed() {
+                    return None;
                 }
 
                 context::current_reset();
@@ -233,11 +246,7 @@ impl<T> Channel<T> {
                     ready: AtomicBool::new(false),
                     msg: Mutex::new(None::<T>),
                 };
-                self.receivers.register_with_packet(case_id, &packet as *const _ as usize);
-            }
-
-            if !receiver.is_blocked() {
-                context::current_try_abort();
+                inner.receivers.register_with_packet(case_id, &packet as *const _ as usize);
             }
 
             context::current_wait_until(None);
@@ -250,20 +259,25 @@ impl<T> Channel<T> {
                 }
                 return Some(packet.msg.into_inner().unwrap());
             } else {
-                self.receivers.unregister(case_id);
+                self.inner.lock().receivers.unregister(case_id);
             }
         }
     }
 
     /// Closes the exchanger and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
-        if !self.is_closed.swap(true, Ordering::SeqCst) {
-            self.senders.abort_all();
-            self.receivers.abort_all();
-            true
-        } else {
-            false
+        if self.is_closed.load(Ordering::SeqCst) {
+            return false;
         }
+
+        let mut inner = self.inner.lock();
+        if self.is_closed.load(Ordering::SeqCst) {
+            return false;
+        }
+
+        self.is_closed.store(true, Ordering::SeqCst);
+        inner.receivers.abort_all();
+        true
     }
 
     /// Returns `true` if the exchanger is closed.
@@ -293,21 +307,24 @@ impl<'a, T> Select for Receiver<'a, T> {
         self.0.start_recv(token)
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) {
+    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
         let packet = Box::into_raw(Box::new(Packet {
             on_stack: false,
             ready: AtomicBool::new(false),
             msg: Mutex::new(None::<T>),
         }));
-        self.0.receivers.register_with_packet(case_id, packet as usize);
+
+        let mut inner = self.0.inner.lock();
+        inner.receivers.register_with_packet(case_id, packet as usize);
+        !inner.senders.can_notify() && !self.0.is_closed()
     }
 
     fn is_blocked(&self) -> bool {
-        !self.0.senders.can_notify() && !self.0.is_closed()
+        !self.0.inner.lock().senders.can_notify() && !self.0.is_closed()
     }
 
     fn revoke(&self, case_id: CaseId) {
-        if let Some(case) = self.0.receivers.unregister(case_id) {
+        if let Some(case) = self.0.inner.lock().receivers.unregister(case_id) {
             unsafe {
                 drop(Box::from_raw(case.packet as *mut Packet<T>));
             }
@@ -324,21 +341,24 @@ impl<'a, T> Select for Sender<'a, T> {
         self.0.start_send(token)
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) {
+    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
         let packet = Box::into_raw(Box::new(Packet {
             on_stack: false,
             ready: AtomicBool::new(false),
             msg: Mutex::new(None::<T>),
         }));
-        self.0.senders.register_with_packet(case_id, packet as usize);
+
+        let mut inner = self.0.inner.lock();
+        inner.senders.register_with_packet(case_id, packet as usize);
+        !inner.receivers.can_notify()
     }
 
     fn is_blocked(&self) -> bool {
-        !self.0.receivers.can_notify()
+        !self.0.inner.lock().receivers.can_notify()
     }
 
     fn revoke(&self, case_id: CaseId) {
-        if let Some(case) = self.0.senders.unregister(case_id) {
+        if let Some(case) = self.0.inner.lock().senders.unregister(case_id) {
             unsafe {
                 drop(Box::from_raw(case.packet as *mut Packet<T>));
             }

@@ -14,7 +14,7 @@ use crossbeam_utils::cache_padded::CachePadded;
 use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils::Backoff;
-use internal::waker::Waker;
+use internal::sync_waker::SyncWaker;
 
 /// Number of messages a node can hold.
 const NODE_CAP: usize = 32;
@@ -86,7 +86,7 @@ pub struct Channel<T> {
     is_closed: AtomicBool,
 
     /// Receivers waiting on empty channel.
-    receivers: Waker,
+    receivers: SyncWaker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -105,7 +105,7 @@ impl<T> Channel<T> {
                 node: Atomic::null(),
             }),
             is_closed: AtomicBool::new(false),
-            receivers: Waker::new(),
+            receivers: SyncWaker::new(),
             _marker: PhantomData,
         };
 
@@ -341,7 +341,7 @@ impl<T> Channel<T> {
     }
 
     /// Returns a reference to the waker for this channel's receivers.
-    fn receivers(&self) -> &Waker {
+    fn receivers(&self) -> &SyncWaker {
         &self.receivers
     }
 }
@@ -394,8 +394,9 @@ impl<'a, T> Select for Receiver<'a, T> {
         self.0.start_recv(token, backoff)
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) {
-        self.0.receivers().register(case_id)
+    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
+        self.0.receivers().register(case_id);
+        self.0.is_empty() && !self.0.is_closed()
     }
 
     fn is_blocked(&self) -> bool {
@@ -416,7 +417,9 @@ impl<'a, T> Select for Sender<'a, T> {
         true
     }
 
-    fn promise(&self, _token: &mut Token, _case_id: CaseId) {}
+    fn promise(&self, _token: &mut Token, _case_id: CaseId) -> bool {
+        false
+    }
 
     fn is_blocked(&self) -> bool {
         false

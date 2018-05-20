@@ -134,7 +134,7 @@ pub trait Select {
     fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
 
     // TODO: register
-    fn promise(&self, token: &mut Token, case_id: CaseId);
+    fn promise(&self, token: &mut Token, case_id: CaseId) -> bool;
 
     fn is_blocked(&self) -> bool;
 
@@ -149,8 +149,8 @@ impl<'a, T: Select> Select for &'a T {
         (**self).try(token, backoff)
     }
 
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
-        (**self).promise(token, case_id);
+    fn promise(&self, token: &mut Token, case_id: CaseId) -> bool {
+        (**self).promise(token, case_id)
     }
 
     fn is_blocked(&self) -> bool {

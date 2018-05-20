@@ -104,6 +104,7 @@ macro_rules! __crossbeam_channel_codegen {
                 }
 
                 // TODO: break here if we have only zero-capacity channels
+                // break;//////////////////
 
                 if !backoff.step() {
                     break;
@@ -122,15 +123,28 @@ macro_rules! __crossbeam_channel_codegen {
 
             context::current_reset();
 
+            // TODO: do we need a try_or_register() call here?
+
             for case in &cases {
                 let case_id = CaseId::new(case as *const _ as usize);
                 let &(sel, _, _) = case;
-                sel.promise(&mut token, case_id);
+                if !sel.promise(&mut token, case_id) {
+
+                // TODO: merge promise and is_blocked into a single method in order not to relock
+                // if !sel.is_blocked() {
+                    // context::current_try_abort();
+                    // break;
+                }
+                if context::current_selected() != CaseId::none() {
+                    break;
+                }
             }
 
-            for &(sel, _, _) in &cases {
-                if !sel.is_blocked() {
-                    context::current_try_abort();
+            if context::current_selected() == CaseId::none() {
+                for &(sel, _, _) in &cases {
+                    if !sel.is_blocked() {
+                        context::current_try_abort();
+                    }
                 }
             }
 
@@ -166,6 +180,8 @@ macro_rules! __crossbeam_channel_codegen {
                     break;
                 }
             }
+
+            // TODO: reshuffle cases here?
         }
 
         // This drop is just to ignore a warning complaining about unused `selected`.

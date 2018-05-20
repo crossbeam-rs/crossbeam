@@ -95,8 +95,8 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// s.send(1);
 ///
 /// thread::spawn(move || {
-///     // This call blocks because the channel is full. It will be able to complete only after the
-///     // first message is received.
+///     // This call blocks the current thread because the channel is full. It will be able to
+///     // complete only after the first message is received.
 ///     s.send(2);
 /// });
 ///
@@ -114,7 +114,8 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// let (s, r) = channel::bounded(0);
 ///
 /// thread::spawn(move || {
-///     // This call blocks until a receive operation appears on the other side of the channel.
+///     // This call blocks the current thread until a receive operation appears on the other side
+///     // of the channel.
 ///     s.send(1);
 /// });
 ///
@@ -185,10 +186,10 @@ impl<T> Sender<T> {
         &*self.0 as *const Channel<T> as usize
     }
 
-    /// Sends a message into the channel, blocking if the channel is full.
+    /// Sends a message into the channel, blocking the current thread if the channel is full.
     ///
-    /// If called on a zero-capacity channel, this method blocks until a receive operation appears
-    /// on the other side of the channel.
+    /// If called on a zero-capacity channel, this method blocks the current thread until a receive
+    /// operation appears on the other side of the channel.
     ///
     /// Note: `s.send(msg)` is equivalent to `select! { send(s, msg) => {} }`.
     ///
@@ -387,7 +388,7 @@ impl<T> RefUnwindSafe for Sender<T> {}
 ///
 /// thread::spawn(move || {
 ///     s.send("Hello world!");
-///     thread::sleep(Duration::from_secs(2)); // Block for two seconds.
+///     thread::sleep(Duration::from_secs(2)); // Block the current thread for two seconds.
 ///     s.send("Delayed for 2 seconds");
 /// });
 ///
@@ -411,12 +412,12 @@ impl<T> Receiver<T> {
         &*self.0 as *const Channel<T> as usize
     }
 
-    /// Blocks until a message is received or the channel is closed.
+    /// Blocks the current thread until a message is received or the channel is closed.
     ///
     /// Returns the message if it was received or `None` if the channel is closed.
     ///
-    /// If called on a zero-capacity channel, this method blocks until a send operation appears on
-    /// the other side of the channel.
+    /// If called on a zero-capacity channel, this method blocks the current thread until a send
+    /// operation appears on the other side of the channel.
     ///
     /// Note: `r.recv()` is equivalent to `select! { recv(r, msg) => msg }`.
     ///
@@ -467,6 +468,7 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.try_recv(), None);
     /// ```
     pub fn try_recv(&self) -> Option<T> {
+        // TODO: specialize! do we need try_send for zero-capacity?
         select! {
             recv(self, msg) => msg,
             default => None,
@@ -647,7 +649,7 @@ impl<T> Select for Sender<T> {
         }
     }
 
-    fn promise(&self, token: &mut Token, case_id: CaseId) {
+    fn promise(&self, token: &mut Token, case_id: CaseId) -> bool {
         match &self.0.flavor {
             Flavor::Array(inner) => inner.sender().promise(token, case_id),
             Flavor::List(inner) => inner.sender().promise(token, case_id),
@@ -697,7 +699,7 @@ impl<T> Select for Receiver<T> {
         }
     }
 
-    fn promise(&self, token: &mut Token ,case_id: CaseId) {
+    fn promise(&self, token: &mut Token ,case_id: CaseId) -> bool {
         match &self.0.flavor {
             Flavor::Array(inner) => inner.receiver().promise(token, case_id),
             Flavor::List(inner) => inner.receiver().promise(token, case_id),

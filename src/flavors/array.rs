@@ -13,7 +13,7 @@ use crossbeam_utils::cache_padded::CachePadded;
 use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils::Backoff;
-use internal::waker::Waker;
+use internal::sync_waker::SyncWaker;
 
 /// An entry in the channel.
 ///
@@ -60,10 +60,10 @@ pub struct Channel<T> {
     is_closed: AtomicBool,
 
     /// Senders waiting on full channel.
-    senders: Waker,
+    senders: SyncWaker,
 
     /// Receivers waiting on empty channel.
-    receivers: Waker,
+    receivers: SyncWaker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -120,8 +120,8 @@ impl<T> Channel<T> {
             is_closed: AtomicBool::new(false),
             head: CachePadded::new(AtomicUsize::new(head)),
             tail: CachePadded::new(AtomicUsize::new(tail)),
-            senders: Waker::new(),
-            receivers: Waker::new(),
+            senders: SyncWaker::new(),
+            receivers: SyncWaker::new(),
             _marker: PhantomData,
         }
     }
@@ -398,7 +398,6 @@ impl<T> Channel<T> {
     /// Closes the channel and wakes up all currently blocked operations on it.
     pub fn close(&self) -> bool {
         if !self.is_closed.swap(true, Ordering::SeqCst) {
-            self.senders.abort_all();
             self.receivers.abort_all();
             true
         } else {
@@ -470,8 +469,9 @@ impl<'a, T> Select for Receiver<'a, T> {
         self.0.start_recv(token, backoff)
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) {
-        self.0.receivers.register(case_id)
+    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
+        self.0.receivers.register(case_id);
+        self.0.is_empty() && !self.0.is_closed()
     }
 
     fn is_blocked(&self) -> bool {
@@ -492,8 +492,9 @@ impl<'a, T> Select for Sender<'a, T> {
         self.0.start_send(token, backoff)
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) {
+    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
         self.0.senders.register(case_id);
+        self.0.is_full()
     }
 
     fn is_blocked(&self) -> bool {
