@@ -1,5 +1,90 @@
 /// Code generator for the `select!` macro.
 
+use std::time::Instant;
+
+use internal::context;
+use internal::select::{CaseId, Select, Token};
+use internal::utils;
+
+pub fn mainloop<'a, S>(
+    cases: &mut [(&'a S, usize, usize)],
+    deadline: Option<Instant>,
+    default_index: usize,
+) -> (Token, usize, usize)
+where
+    S: Select + ?Sized + 'a,
+{
+    let mut token: Token = unsafe { ::std::mem::uninitialized() };
+
+    if cases.len() >= 2 {
+        utils::shuffle(cases);
+    }
+
+    loop {
+        for &(sel, i, addr) in cases.iter() {
+            if sel.try(&mut token) {
+                return (token, i, addr);
+            }
+        }
+
+        if default_index != !0 && deadline.is_none() {
+            return (token, default_index, 0);
+        }
+
+        for &(sel, i, addr) in cases.iter() {
+            if sel.retry(&mut token) {
+                return (token, i, addr);
+            }
+        }
+
+        context::current_reset();
+
+        for case in cases.iter() {
+            let case_id = CaseId::new(case as *const _ as usize);
+            let &(sel, _, _) = case;
+
+            if !sel.promise(&mut token, case_id) {
+                context::current_try_abort();
+                break;
+            }
+
+            if context::current_selected() != CaseId::none() {
+                break;
+            }
+        }
+
+        let timed_out = !context::current_wait_until(deadline);
+        let s = context::current_selected();
+
+        for case in cases.iter() {
+            let case_id = CaseId::new(case as *const _ as usize);
+            let &(sel, _, _) = case;
+            sel.revoke(case_id);
+        }
+
+        if timed_out {
+            return (token, default_index, 0);
+        }
+
+        if s != CaseId::abort() {
+            for case in cases.iter() {
+                let case_id = CaseId::new(case as *const _ as usize);
+                let &(sel, i, addr) = case;
+
+                if case_id == s {
+                    if sel.fulfill(&mut token) {
+                        return (token, i, addr);
+                    }
+                }
+            }
+        }
+
+        if cases.len() >= 2 {
+            utils::shuffle(cases);
+        }
+    }
+}
+
 /// TODO
 #[macro_export]
 #[doc(hidden)]
@@ -11,13 +96,11 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         {
-            #[allow(unused_imports)]
-            use $crate::internal::select::RecvArgument;
-            #[allow(unused_imports)]
-            use $crate::internal::channel::Receiver;
-
             // TODO: document that we can't expect a mut iterator here because of Clone
-            match &mut (&$rs).__as_recv_argument() {
+            match {
+                use $crate::internal::select::RecvArgument;
+                &mut (&$rs).__as_recv_argument()
+            } {
                 $var => {
                     __crossbeam_channel_codegen!(
                         @declare
@@ -37,12 +120,10 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         {
-            #[allow(unused_imports)]
-            use $crate::internal::select::SendArgument;
-            #[allow(unused_imports)]
-            use $crate::internal::channel::Sender;
-
-            match &mut (&$ss).__as_send_argument() {
+            match {
+                use $crate::internal::select::SendArgument;
+                &mut (&$ss).__as_send_argument()
+            } {
                 $var => {
                     __crossbeam_channel_codegen!(
                         @declare
@@ -65,118 +146,19 @@ macro_rules! __crossbeam_channel_codegen {
     };
 
     (@mainloop $recv:tt $send:tt $default:tt) => {{
-        use std::time::Instant;
-
-        use $crate::internal::select::CaseId;
-        use $crate::internal::select::Token;
-        use $crate::internal::context;
-        use $crate::internal::utils;
-
-        #[allow(unused_imports)]
-        use $crate::internal::select::Select;
-
-        let deadline: Option<Instant>;
+        let deadline: Option<::std::time::Instant>;
         let default_index: usize;
         __crossbeam_channel_codegen!(@default deadline default_index $default);
 
-        let mut cases;
-        __crossbeam_channel_codegen!(@container cases $recv $send);
+        let mut cases = __crossbeam_channel_codegen!(@container $recv $send);
 
-        // TODO: move the mainloop into a separate function that returns (token, index, selected)
-        let mut token: Token = unsafe { ::std::mem::uninitialized() };
-        let mut index: usize = !0;
-        let mut selected: usize = 0;
-
-        if cases.len() >= 2 {
-            utils::shuffle(&mut cases);
-        }
-
-        loop {
-            for &(sel, i, addr) in &cases {
-                if sel.try(&mut token) {
-                    index = i;
-                    selected = addr;
-                    break;
-                }
-            }
-
-            if index != !0 {
-                break;
-            }
-
-            if default_index != !0 && deadline.is_none() {
-                index = default_index;
-                selected = 0;
-                break;
-            }
-
-            for &(sel, i, addr) in &cases {
-                if sel.retry(&mut token) {
-                    index = i;
-                    selected = addr;
-                    break;
-                }
-            }
-
-            if index != !0 {
-                break;
-            }
-
-            context::current_reset();
-
-            for case in &cases {
-                let case_id = CaseId::new(case as *const _ as usize);
-                let &(sel, _, _) = case;
-
-                if !sel.promise(&mut token, case_id) {
-                    context::current_try_abort();
-                    break;
-                }
-                if context::current_selected() != CaseId::none() {
-                    break;
-                }
-            }
-
-            let timed_out = !context::current_wait_until(deadline);
-            let s = context::current_selected();
-
-            for case in &cases {
-                let case_id = CaseId::new(case as *const _ as usize);
-                let &(sel, _, _) = case;
-                sel.revoke(case_id);
-            }
-
-            if timed_out {
-                index = default_index;
-                selected = 0;
-                break;
-            }
-
-            if s != CaseId::abort() {
-                for case in &cases {
-                    let case_id = CaseId::new(case as *const _ as usize);
-                    let &(sel, i, addr) = case;
-                    if case_id == s {
-                        if sel.fulfill(&mut token) {
-                            index = i;
-                            selected = addr;
-                            break;
-                        }
-                    }
-                }
-
-                if index != !0 {
-                    break;
-                }
-            }
-
-            if cases.len() >= 2 {
-                utils::shuffle(&mut cases);
-            }
-        }
-
-        // This drop is just to ignore a warning complaining about unused `selected`.
-        drop(selected);
+        #[allow(unused_mut)]
+        #[allow(unused_variables)]
+        let (mut token, index, selected) = $crate::internal::codegen::mainloop(
+            &mut cases,
+            deadline,
+            default_index,
+        );
 
         __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
 
@@ -185,40 +167,37 @@ macro_rules! __crossbeam_channel_codegen {
     }};
 
     (@container
-        $cases:ident
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
         ()
-    ) => {
-        use $crate::internal::smallvec::SmallVec;
-        let mut c: SmallVec<[_; 4]> = SmallVec::new();
+    ) => {{
+        let mut c = $crate::internal::smallvec::SmallVec::<[_; 4]>::new();
         while let Some(r) = $var.next() {
-            let addr = r as *const Receiver<_> as usize;
+            let addr = r as *const $crate::Receiver<_> as usize;
             c.push((r, $i, addr));
         }
-        $cases = c;
-    };
+        c
+    }};
     (@container
-        $cases:ident
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
         ()
-    ) => {
-        use $crate::internal::smallvec::SmallVec;
-        let mut c: SmallVec<[_; 4]> = SmallVec::new();
+    ) => {{
+        let mut c = $crate::internal::smallvec::SmallVec::<[_; 4]>::new();
         while let Some(s) = $var.next() {
-            let addr = s as *const Sender<_> as usize;
+            let addr = s as *const $crate::Sender<_> as usize;
             c.push((s, $i, addr));
         }
-        $cases = c;
-    };
+        c
+    }};
     (@container
-        $cases:ident
         $recv:tt
         $send:tt
-    ) => {
-        use $crate::internal::smallvec::SmallVec;
-        $cases = SmallVec::<[(&Select, usize, usize); 4]>::new();
-        __crossbeam_channel_codegen!(@push $cases $recv $send);
-    };
+    ) => {{
+        let mut c = $crate::internal::smallvec::SmallVec::<
+            [(&$crate::internal::select::Select, usize, usize); 4]
+        >::new();
+        __crossbeam_channel_codegen!(@push c $recv $send);
+        c
+    }};
 
     (@push
         $cases:ident
@@ -226,7 +205,7 @@ macro_rules! __crossbeam_channel_codegen {
         $send:tt
     ) => {
         while let Some(r) = $var.next() {
-            let addr = r as *const Receiver<_> as usize;
+            let addr = r as *const $crate::Receiver<_> as usize;
             $cases.push((r, $i, addr));
         }
         __crossbeam_channel_codegen!(@push $cases ($($tail)*) $send);
@@ -237,7 +216,7 @@ macro_rules! __crossbeam_channel_codegen {
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
     ) => {
         while let Some(s) = $var.next() {
-            let addr = s as *const Sender<_> as usize;
+            let addr = s as *const $crate::Sender<_> as usize;
             $cases.push((s, $i, addr));
         }
         __crossbeam_channel_codegen!(@push $cases () ($($tail)*));
@@ -288,11 +267,11 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         if $index == $i {
-            unsafe fn bind<'a, T: 'a, I>(_: &I, addr: usize) -> &'a Receiver<T>
+            unsafe fn bind<'a, T: 'a, I>(_: &I, addr: usize) -> &'a T
             where
-                I: Iterator<Item = &'a Receiver<T>>,
+                I: Iterator<Item = &'a T>,
             {
-                &*(addr as *const Receiver<T>)
+                &*(addr as *const T)
             }
             let ($m, $r) = unsafe {
                 let r = bind(&$var, $selected);

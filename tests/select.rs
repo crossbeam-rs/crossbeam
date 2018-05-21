@@ -4,7 +4,7 @@ extern crate crossbeam_channel as channel;
 
 use std::any::Any;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
