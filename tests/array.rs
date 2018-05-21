@@ -496,14 +496,14 @@ fn fairness() {
         s2.send(());
     }
 
-    let mut hit = [false; 2];
+    let mut hits = [0usize; 2];
     for _ in 0..COUNT {
         select! {
-            recv(r1) => hit[0] = true,
-            recv(r2) => hit[1] = true,
+            recv(r1) => hits[0] += 1,
+            recv(r2) => hits[1] += 1,
         }
     }
-    assert!(hit.iter().all(|x| *x));
+    assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
 }
 
 #[test]
@@ -516,17 +516,17 @@ fn fairness_duplicates() {
         s.send(());
     }
 
-    let mut hit = [false; 5];
+    let mut hits = [0usize; 5];
     for _ in 0..COUNT {
         select! {
-            recv(r) => hit[0] = true,
-            recv(r) => hit[1] = true,
-            recv(r) => hit[2] = true,
-            recv(r) => hit[3] = true,
-            recv(r) => hit[4] = true,
+            recv(r) => hits[0] += 1,
+            recv(r) => hits[1] += 1,
+            recv(r) => hits[2] += 1,
+            recv(r) => hits[3] += 1,
+            recv(r) => hits[4] += 1,
         }
     }
-    assert!(hit.iter().all(|x| *x));
+    assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
 }
 
 #[test]

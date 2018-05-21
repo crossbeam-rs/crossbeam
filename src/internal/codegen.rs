@@ -82,6 +82,7 @@ macro_rules! __crossbeam_channel_codegen {
         let mut cases;
         __crossbeam_channel_codegen!(@container cases $recv $send);
 
+        // TODO: move the mainloop into a separate function that returns (token, index, selected)
         let mut token: Token = unsafe { ::std::mem::uninitialized() };
         let mut index: usize = !0;
         let mut selected: usize = 0;
@@ -103,6 +104,12 @@ macro_rules! __crossbeam_channel_codegen {
                 break;
             }
 
+            if default_index != !0 && deadline.is_none() {
+                index = default_index;
+                selected = 0;
+                break;
+            }
+
             for &(sel, i, addr) in &cases {
                 if sel.retry(&mut token) {
                     index = i;
@@ -115,16 +122,7 @@ macro_rules! __crossbeam_channel_codegen {
                 break;
             }
 
-            if default_index != !0 && deadline.is_none() {
-                index = default_index;
-                selected = 0;
-                break;
-            }
-
             context::current_reset();
-
-            // TODO: fairness test with three channel types: unbounded, bounded(1), bounded(0)
-            // TODO: change fairness tests: track counters and verify hits/rounds >= X%
 
             for case in &cases {
                 let case_id = CaseId::new(case as *const _ as usize);

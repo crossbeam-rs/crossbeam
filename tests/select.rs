@@ -803,7 +803,7 @@ fn channel_through_channel() {
 }
 
 #[test]
-fn fairness() {
+fn fairness1() {
     const COUNT: usize = 10_000;
 
     let (s1, r1) = channel::bounded::<()>(COUNT);
@@ -814,12 +814,43 @@ fn fairness() {
         s2.send(());
     }
 
-    let mut hit = [false; 2];
+    let mut hits = [0usize; 2];
     for _ in 0..COUNT {
         select! {
-            recv(r1) => hit[0] = true,
-            recv(r2) => hit[1] = true,
+            recv(r1) => hits[0] += 1,
+            recv(r2) => hits[1] += 1,
         }
     }
-    assert!(hit.iter().all(|x| *x));
+    assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
+}
+
+#[test]
+fn fairness2() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = channel::unbounded::<()>();
+    let (s2, r2) = channel::bounded::<()>(1);
+    let (s3, r3) = channel::bounded::<()>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            for _ in 0..COUNT {
+                select! {
+                    send(if s1.is_empty() { Some(&s1) } else { None }, ()) => {}
+                    send(if s2.is_empty() { Some(&s2) } else { None }, ()) => {}
+                    send(s3, ()) => {}
+                }
+            }
+        });
+
+        let mut hits = [0usize; 3];
+        for _ in 0..COUNT {
+            select! {
+                recv(r1) => hits[0] += 1,
+                recv(r2) => hits[1] += 1,
+                recv(r3) => hits[2] += 1,
+            }
+        }
+        assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 10));
+    });
 }

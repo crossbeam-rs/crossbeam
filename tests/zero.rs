@@ -387,24 +387,24 @@ fn fairness() {
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
-            let mut hit = [false; 2];
+            let mut hits = [0usize; 2];
             for _ in 0..COUNT {
                 select! {
-                    recv(r1) => hit[0] = true,
-                    recv(r2) => hit[1] = true,
+                    recv(r1) => hits[0] += 1,
+                    recv(r2) => hits[1] += 1,
                 }
             }
-            assert!(hit.iter().all(|x| *x));
+            assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
         });
 
-        let mut hit = [false; 2];
+        let mut hits = [0usize; 2];
         for _ in 0..COUNT {
             select! {
-                send(s1, ()) => hit[0] = true,
-                send(s2, ()) => hit[1] = true,
+                send(s1, ()) => hits[0] += 1,
+                send(s2, ()) => hits[1] += 1,
             }
         }
-        assert!(hit.iter().all(|x| *x));
+        assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
     });
 }
 
@@ -416,30 +416,30 @@ fn fairness_duplicates() {
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
-            let mut hit = [false; 5];
+            let mut hits = [0usize; 5];
             for _ in 0..COUNT {
                 select! {
-                    recv(r) => hit[0] = true,
-                    recv(r) => hit[1] = true,
-                    recv(r) => hit[2] = true,
-                    recv(r) => hit[3] = true,
-                    recv(r) => hit[4] = true,
+                    recv(r) => hits[0] += 1,
+                    recv(r) => hits[1] += 1,
+                    recv(r) => hits[2] += 1,
+                    recv(r) => hits[3] += 1,
+                    recv(r) => hits[4] += 1,
                 }
             }
-            assert!(hit.iter().all(|x| *x));
+            assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
         });
 
-        let mut hit = [false; 5];
+        let mut hits = [0usize; 5];
         for _ in 0..COUNT {
             select! {
-                send(s, ()) => hit[0] = true,
-                send(s, ()) => hit[1] = true,
-                send(s, ()) => hit[2] = true,
-                send(s, ()) => hit[3] = true,
-                send(s, ()) => hit[4] = true,
+                send(s, ()) => hits[0] += 1,
+                send(s, ()) => hits[1] += 1,
+                send(s, ()) => hits[2] += 1,
+                send(s, ()) => hits[3] += 1,
+                send(s, ()) => hits[4] += 1,
             }
         }
-        assert!(hit.iter().all(|x| *x));
+        assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
     });
 }
 
