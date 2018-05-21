@@ -298,5 +298,6 @@ mod flavors;
 #[doc(hidden)]
 pub mod internal;
 
-pub use internal::channel::{bounded, unbounded};
 pub use internal::channel::{Receiver, Sender};
+pub use internal::channel::{bounded, unbounded};
+pub use internal::channel::after;

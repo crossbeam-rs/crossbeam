@@ -2,12 +2,6 @@ extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel as channel;
 
-use std::time::{Duration, Instant};
-
-fn ms(ms: u64) -> Duration {
-    Duration::from_millis(ms)
-}
-
 #[test]
 fn references() {
     let (s, r) = channel::unbounded::<i32>();
@@ -72,62 +66,22 @@ fn move_handles() {
 }
 
 #[test]
-fn default_instant() {
-    select! {
-        default(Instant::now()) => {}
-    }
-    select! {
-        default(&&&&Instant::now()) => {}
-    }
-    select! {
-        default(Some(Instant::now())) => {}
-    }
-    select! {
-        default(&&&&Some(Instant::now())) => {}
-    }
+fn default() {
+    let (s, r) = channel::bounded::<i32>(0);
 
-    let instant = Instant::now();
     select! {
-        default(instant) => {}
+        recv(r) => panic!(),
+        default => {}
     }
     select! {
-        default(&&&&instant) => {}
+        send(s, 0) => panic!(),
+        default() => {}
     }
     select! {
-        default(Some(instant)) => {}
+        default => {}
     }
     select! {
-        default(&&&&Some(instant)) => {}
-    }
-}
-
-#[test]
-fn default_duration() {
-    select! {
-        default(ms(0)) => {}
-    }
-    select! {
-        default(&&&&ms(0)) => {}
-    }
-    select! {
-        default(Some(ms(0))) => {}
-    }
-    select! {
-        default(&&&&Some(ms(0))) => {}
-    }
-
-    let duration = ms(0);
-    select! {
-        default(duration) => {}
-    }
-    select! {
-        default(&&&&duration) => {}
-    }
-    select! {
-        default(Some(duration)) => {}
-    }
-    select! {
-        default(&&&&Some(duration)) => {}
+        default() => {}
     }
 }
 
@@ -269,32 +223,6 @@ fn once_sender() {
 }
 
 #[test]
-fn once_duration() {
-    let once = Box::new(());
-    let get = move || {
-        drop(once);
-        ms(10)
-    };
-
-    select! {
-        default(get()) => {}
-    }
-}
-
-#[test]
-fn once_instant() {
-    let once = Box::new(());
-    let get = move || {
-        drop(once);
-        Instant::now()
-    };
-
-    select! {
-        default(get()) => {}
-    }
-}
-
-#[test]
 fn nesting() {
     let (_, r) = channel::unbounded::<i32>();
 
@@ -352,6 +280,6 @@ fn variety() {
         send(Some(s2), "foo".to_string()) => {}
         recv([&r3].iter().map(|x| *x)) => {}
         send([&s3].iter().map(|x| *x), ()) => {}
-        default(None::<Duration>) => {}
+        default => {}
     }
 }

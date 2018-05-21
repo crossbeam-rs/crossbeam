@@ -33,7 +33,6 @@ pub struct SyncWaker {
     len: AtomicUsize,
 }
 
-// TODO: inline everything?
 impl SyncWaker {
     /// Creates a new `SyncWaker`.
     #[inline]
@@ -45,6 +44,7 @@ impl SyncWaker {
     }
 
     /// Registers the current thread with `case_id`.
+    #[inline]
     pub fn register(&self, case_id: CaseId) {
         let mut cases = self.cases.lock();
         cases.push_back(Case {
@@ -67,11 +67,15 @@ impl SyncWaker {
     }
 
     /// Unregisters the current thread with `case_id`.
+    #[inline]
     pub fn unregister(&self, case_id: CaseId) -> Option<Case> {
         if self.len.load(Ordering::SeqCst) > 0 {
             let mut cases = self.cases.lock();
 
-            if let Some((i, _)) = cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
+            if let Some((i, _)) = cases.iter()
+                .enumerate()
+                .find(|&(_, case)| case.case_id == case_id)
+            {
                 let case = cases.remove(i);
                 self.len.store(cases.len(), Ordering::SeqCst);
                 Self::maybe_shrink(&mut cases);
@@ -87,29 +91,33 @@ impl SyncWaker {
     #[inline]
     pub fn wake_one(&self) -> Option<Case> {
         if self.len.load(Ordering::SeqCst) > 0 {
-            let thread_id = context::current_thread_id();
-            let mut cases = self.cases.lock();
+            self.wake_one_check()
+        } else {
+            None
+        }
+    }
 
-            for i in 0..cases.len() {
-                if cases[i].context.thread.id() != thread_id {
-                    if cases[i].context.try_select(cases[i].case_id, cases[i].packet) {
-                        let case = cases.remove(i).unwrap();
-                        self.len.store(cases.len(), Ordering::SeqCst);
-                        Self::maybe_shrink(&mut cases);
+    fn wake_one_check(&self) -> Option<Case> {
+        let thread_id = context::current_thread_id();
+        let mut cases = self.cases.lock();
 
-                        drop(cases);
-                        case.context.unpark();
-                        return Some(case);
-                    }
+        for i in 0..cases.len() {
+            if cases[i].context.thread.id() != thread_id {
+                if cases[i].context.try_select(cases[i].case_id, cases[i].packet) {
+                    let case = cases.remove(i).unwrap();
+                    self.len.store(cases.len(), Ordering::SeqCst);
+                    Self::maybe_shrink(&mut cases);
+
+                    drop(cases);
+                    case.context.unpark();
+                    return Some(case);
                 }
             }
         }
-
         None
     }
 
     /// Aborts all currently registered selection cases.
-    #[inline]
     pub fn abort_all(&self) {
         if self.len.load(Ordering::SeqCst) > 0 {
             let mut cases = self.cases.lock();
@@ -129,25 +137,36 @@ impl SyncWaker {
     #[inline]
     pub fn can_notify(&self) -> bool {
         if self.len.load(Ordering::SeqCst) > 0 {
-            let cases = self.cases.lock();
-            let thread_id = context::current_thread_id();
+            self.can_notify_check()
+        } else {
+            false
+        }
+    }
 
-            for i in 0..cases.len() {
-                if cases[i].context.thread.id() != thread_id {
-                    return true;
-                }
+    fn can_notify_check(&self) -> bool {
+        let cases = self.cases.lock();
+        let thread_id = context::current_thread_id();
+
+        for i in 0..cases.len() {
+            if cases[i].context.thread.id() != thread_id {
+                return true;
             }
         }
         false
     }
 
     /// Shrinks the internal deque if it's capacity is much larger than length.
+    #[inline]
     fn maybe_shrink(cases: &mut VecDeque<Case>) {
         if cases.capacity() > 32 && cases.len() < cases.capacity() / 4 {
-            let mut v = VecDeque::with_capacity(cases.capacity() / 2);
-            v.extend(cases.drain(..));
-            *cases = v;
+            Self::shrink(cases);
         }
+    }
+
+    fn shrink(cases: &mut VecDeque<Case>) {
+        let mut v = VecDeque::with_capacity(cases.capacity() / 2);
+        v.extend(cases.drain(..));
+        *cases = v;
     }
 }
 

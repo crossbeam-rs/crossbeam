@@ -26,7 +26,7 @@ fn smoke() {
     assert_eq!(r.try_recv(), None);
     select! {
         recv(r) => panic!(),
-        default(ms(1000)) => {}
+        recv(channel::after(ms(1000))) => {}
     }
 }
 
@@ -108,15 +108,15 @@ fn recv_timeout() {
         scope.spawn(move || {
             select! {
                 recv(r) => panic!(),
-                default(ms(1000)) => {}
+                recv(channel::after(ms(1000))) => {}
             }
             select! {
                 recv(r, v) => assert_eq!(v, Some(7)),
-                default(ms(1000)) => panic!(),
+                recv(channel::after(ms(1000))) => panic!(),
             }
             select! {
                 recv(r, v) => assert_eq!(v, None),
-                default(ms(1000)) => panic!(),
+                recv(channel::after(ms(1000))) => panic!(),
             }
         });
         scope.spawn(move || {
@@ -176,20 +176,20 @@ fn send_timeout() {
         scope.spawn(move || {
             select! {
                 send(s, 1) => {}
-                default(ms(1000)) => panic!(),
+                recv(channel::after(ms(1000))) => panic!(),
             }
             select! {
                 send(s, 2) => {}
-                default(ms(1000)) => panic!(),
+                recv(channel::after(ms(1000))) => panic!(),
             }
             select! {
                 send(s, 3) => panic!(),
-                default(ms(500)) => {}
+                recv(channel::after(ms(500))) => {}
             }
             thread::sleep(ms(1000));
             select! {
                 send(s, 4) => {}
-                default(ms(1000)) => panic!(),
+                recv(channel::after(ms(1000))) => panic!(),
             }
         });
         scope.spawn(move || {
@@ -393,7 +393,7 @@ fn stress_timeout_two_threads() {
                 loop {
                     select! {
                         send(s, i) => break,
-                        default(ms(10)) => {}
+                        recv(channel::after(ms(10))) => {}
                     }
                 }
             }
@@ -410,7 +410,7 @@ fn stress_timeout_two_threads() {
                             assert_eq!(v, Some(i));
                             break;
                         }
-                        default(ms(10)) => {}
+                        recv(channel::after(ms(10))) => {}
                     }
                 }
             }

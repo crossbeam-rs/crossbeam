@@ -4,7 +4,7 @@ extern crate crossbeam_channel as channel;
 
 use std::any::Any;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -64,7 +64,7 @@ fn closed() {
         select! {
             recv(r1, v) => assert!(v.is_none()),
             recv(r2) => panic!(),
-            default(ms(1000)) => panic!(),
+            recv(channel::after(ms(1000))) => panic!(),
         }
 
         r2.recv().unwrap();
@@ -73,7 +73,7 @@ fn closed() {
     select! {
         recv(r1, v) => assert!(v.is_none()),
         recv(r2) => panic!(),
-        default(ms(1000)) => panic!(),
+        recv(channel::after(ms(1000))) => panic!(),
     }
 
     crossbeam::scope(|scope| {
@@ -84,7 +84,7 @@ fn closed() {
 
         select! {
             recv(r2, v) => assert!(v.is_none()),
-            default(ms(1000)) => panic!(),
+            recv(channel::after(ms(1000))) => panic!(),
         }
     });
 }
@@ -139,13 +139,13 @@ fn timeout() {
         select! {
             recv(r1) => panic!(),
             recv(r2) => panic!(),
-            default(ms(1000)) => {},
+            recv(channel::after(ms(1000))) => {},
         }
 
         select! {
             recv(r1) => panic!(),
             recv(r2, v) => assert_eq!(v, Some(2)),
-            default(ms(1000)) => panic!(),
+            recv(channel::after(ms(1000))) => panic!(),
         }
     });
 
@@ -158,7 +158,7 @@ fn timeout() {
         });
 
         select! {
-            default(ms(1000)) => {
+            recv(channel::after(ms(1000))) => {
                 select! {
                     recv(r, v) => assert!(v.is_none()),
                     default => panic!(),
@@ -182,13 +182,13 @@ fn deadline() {
         select! {
             recv(r1) => panic!(),
             recv(r2) => panic!(),
-            default(Instant::now() + ms(1000)) => {},
+            recv(channel::after(ms(1000))) => {},
         }
 
         select! {
             recv(r1) => panic!(),
             recv(r2, v) => assert_eq!(v, Some(2)),
-            default(Instant::now() + ms(1000)) => panic!(),
+            recv(channel::after(ms(1000))) => panic!(),
         }
     });
 
@@ -201,7 +201,7 @@ fn deadline() {
         });
 
         select! {
-            default(ms(1000)) => {
+            recv(channel::after(ms(1000))) => {
                 select! {
                     recv(r, v) => assert!(v.is_none()),
                     default => panic!(),
@@ -224,7 +224,7 @@ fn default_when_closed() {
 
     select! {
         recv(r, v) => assert!(v.is_none()),
-        default(ms(1000)) => panic!(),
+        recv(channel::after(ms(1000))) => panic!(),
     }
 }
 
@@ -242,7 +242,7 @@ fn unblocks() {
         select! {
             recv(r1) => panic!(),
             recv(r2, v) => assert_eq!(v, Some(2)),
-            default(ms(1000)) => panic!(),
+            recv(channel::after(ms(1000))) => panic!(),
         }
     });
 
@@ -255,7 +255,7 @@ fn unblocks() {
         select! {
             send(s1, 1) => {},
             send(s2, 2) => panic!(),
-            default(ms(1000)) => panic!(),
+            recv(channel::after(ms(1000))) => panic!(),
         }
     });
 }
@@ -323,7 +323,7 @@ fn loop_try() {
                 select! {
                     recv(r1, v) => assert_eq!(v, Some(1)),
                     send(s2, 2) => {},
-                    default(ms(500)) => panic!(),
+                    recv(channel::after(ms(500))) => panic!(),
                 }
 
                 drop(s_end);
@@ -543,12 +543,12 @@ fn conditional_send() {
 
     select! {
         send(if 1 + 1 == 3 { Some(&s) } else { None }, ()) => panic!(),
-        default(ms(1000)) => {}
+        recv(channel::after(ms(1000))) => {}
     }
 
     select! {
         send(if 1 + 1 == 2 { Some(&s) } else { None }, ()) => {},
-        default(ms(1000)) => panic!(),
+        recv(channel::after(ms(1000))) => panic!(),
     }
 }
 
@@ -559,40 +559,13 @@ fn conditional_recv() {
 
     select! {
         recv(if 1 + 1 == 3 { Some(&r) } else { None }) => panic!(),
-        default(ms(1000)) => {}
+        recv(channel::after(ms(1000))) => {}
     }
 
     select! {
         recv(if 1 + 1 == 2 { Some(&r) } else { None }) => {},
-        default(ms(1000)) => panic!(),
+        recv(channel::after(ms(1000))) => panic!(),
     }
-}
-
-#[test]
-fn conditional_default() {
-    let (s, r) = channel::unbounded::<i32>();
-
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
-            select! {
-                recv(r) => {},
-                default(if 1 + 1 == 3 { Some(ms(0)) } else { None }) => panic!(),
-            }
-        });
-        thread::sleep(ms(500));
-        s.send(0);
-    });
-
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
-            select! {
-                recv(r) => panic!(),
-                default(if 1 + 1 == 2 { Some(ms(0)) } else { None }) => {},
-            }
-        });
-        thread::sleep(ms(500));
-        s.send(0);
-    });
 }
 
 #[test]
@@ -695,7 +668,7 @@ fn stress_timeout_two_threads() {
                 loop {
                     select! {
                         send(s, i) => break,
-                        default(ms(100)) => {}
+                        recv(channel::after(ms(100))) => {}
                     }
                 }
             }
@@ -713,7 +686,7 @@ fn stress_timeout_two_threads() {
                             assert_eq!(v, Some(i));
                             break;
                         }
-                        default(ms(100)) => {}
+                        recv(channel::after(ms(100))) => {}
                     }
                 }
             }

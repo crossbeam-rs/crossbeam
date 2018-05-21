@@ -5,6 +5,7 @@
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::marker::PhantomData;
+use std::time::Instant;
 
 use parking_lot::Mutex;
 
@@ -73,7 +74,7 @@ impl<T> Channel<T> {
         loop {
             let packet = context.packet.load(Ordering::SeqCst);
             if packet != 0 {
-                *token = ZeroToken::Fulfill(packet);
+                *token = ZeroToken::Accept(packet);
                 break;
             }
             backoff.step();
@@ -89,7 +90,7 @@ impl<T> Channel<T> {
 
         match token {
             ZeroToken::Closed => return None,
-            ZeroToken::Fulfill(p) => {
+            ZeroToken::Accept(p) => {
                 packet = *p as *const Packet<T>;
             }
             ZeroToken::Case(case) => {
@@ -138,7 +139,7 @@ impl<T> Channel<T> {
         loop {
             let packet = context.packet.load(Ordering::SeqCst);
             if packet != 0 {
-                *token = ZeroToken::Fulfill(packet);
+                *token = ZeroToken::Accept(packet);
                 break;
             }
             backoff.step();
@@ -154,7 +155,7 @@ impl<T> Channel<T> {
 
         match token {
             ZeroToken::Closed => unreachable!(),
-            ZeroToken::Fulfill(p) => {
+            ZeroToken::Accept(p) => {
                 packet = *p as *const Packet<T>;
             }
             ZeroToken::Case(case) => {
@@ -284,7 +285,7 @@ type SerCase = [u8; mem::size_of::<Case>()];
 #[derive(Copy, Clone)]
 pub enum ZeroToken {
     Closed,
-    Fulfill(usize),
+    Accept(usize),
     Case(SerCase),
 }
 
@@ -331,7 +332,7 @@ impl<'a, T> Select for Receiver<'a, T> {
             loop {
                 let packet = context.packet.load(Ordering::SeqCst);
                 if packet != 0 {
-                    *token = ZeroToken::Fulfill(packet);
+                    *token = ZeroToken::Accept(packet);
                     break;
                 }
                 backoff.step();
@@ -348,7 +349,11 @@ impl<'a, T> Select for Receiver<'a, T> {
         }
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
+    fn deadline(&self) -> Option<Instant> {
+        None
+    }
+
+    fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
         let packet = Box::into_raw(Box::new(Packet {
             on_stack: false,
             ready: AtomicBool::new(false),
@@ -360,7 +365,7 @@ impl<'a, T> Select for Receiver<'a, T> {
         !inner.senders.can_notify() && !inner.is_closed
     }
 
-    fn revoke(&self, case_id: CaseId) {
+    fn unregister(&self, case_id: CaseId) {
         if let Some(case) = self.0.inner.lock().receivers.unregister(case_id) {
             unsafe {
                 drop(Box::from_raw(case.packet as *mut Packet<T>));
@@ -368,7 +373,7 @@ impl<'a, T> Select for Receiver<'a, T> {
         }
     }
 
-    fn fulfill(&self, token: &mut Token) -> bool {
+    fn accept(&self, token: &mut Token) -> bool {
         self.0.fulfill_recv(token)
     }
 }
@@ -413,7 +418,7 @@ impl<'a, T> Select for Sender<'a, T> {
             loop {
                 let packet = context.packet.load(Ordering::SeqCst);
                 if packet != 0 {
-                    *token = ZeroToken::Fulfill(packet);
+                    *token = ZeroToken::Accept(packet);
                     break;
                 }
                 backoff.step();
@@ -430,7 +435,11 @@ impl<'a, T> Select for Sender<'a, T> {
         }
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
+    fn deadline(&self) -> Option<Instant> {
+        None
+    }
+
+    fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
         let packet = Box::into_raw(Box::new(Packet {
             on_stack: false,
             ready: AtomicBool::new(false),
@@ -442,7 +451,7 @@ impl<'a, T> Select for Sender<'a, T> {
         !inner.receivers.can_notify()
     }
 
-    fn revoke(&self, case_id: CaseId) {
+    fn unregister(&self, case_id: CaseId) {
         if let Some(case) = self.0.inner.lock().senders.unregister(case_id) {
             unsafe {
                 drop(Box::from_raw(case.packet as *mut Packet<T>));
@@ -450,7 +459,7 @@ impl<'a, T> Select for Sender<'a, T> {
         }
     }
 
-    fn fulfill(&self, token: &mut Token) -> bool {
+    fn accept(&self, token: &mut Token) -> bool {
         self.0.fulfill_send(token)
     }
 }

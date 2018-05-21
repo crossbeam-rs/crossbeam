@@ -593,43 +593,6 @@ macro_rules! __crossbeam_channel_parse {
             ($($labels)*)
         )
     };
-    (@case
-        $callback:ident
-        $recv:tt
-        $send:tt
-        ()
-        (default($t:expr) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        __crossbeam_channel_parse!(
-            @case
-            $callback
-            $recv
-            $send
-            ($label default($t) => $body,)
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    // Allow trailing comma...
-    (@case
-        $callback:ident
-        $recv:tt
-        $send:tt
-        ()
-        (default($t:expr,) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        __crossbeam_channel_parse!(
-            @case
-            $callback
-            $recv
-            $send
-            ($label default($t) => $body,)
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
     // Valid, but duplicate default cases...
     (@case
         $callback:ident
@@ -637,26 +600,6 @@ macro_rules! __crossbeam_channel_parse {
         $send:tt
         ($($default:tt)+)
         (default() => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!("there can be only one `default` case in a `select!` block")
-    };
-    (@case
-        $callback:ident
-        $recv:tt
-        $send:tt
-        ($($default:tt)+)
-        (default($t:expr) => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!("there can be only one `default` case in a `select!` block")
-    };
-    (@case
-        $callback:ident
-        $recv:tt
-        $send:tt
-        ($($default:tt)+)
-        (default($t:expr,) => $body:tt, $($tail:tt)*)
         $labels:tt
     ) => {
         compile_error!("there can be only one `default` case in a `select!` block")

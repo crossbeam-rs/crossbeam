@@ -154,15 +154,15 @@ fn recv_timeout() {
         scope.spawn(move || {
             select! {
                 recv(r.0) => panic!(),
-                default(ms(1000)) => {}
+                recv(channel::after(ms(1000))) => {}
             }
             select! {
                 recv(r.0, v) => assert_eq!(v, Some(7)),
-                default(ms(1000)) => panic!(),
+                recv(channel::after(ms(1000))) => panic!(),
             }
             select! {
                 recv(r.0, v) => assert_eq!(v, None),
-                default(ms(1000)) => panic!(),
+                recv(channel::after(ms(1000))) => panic!(),
             }
         });
         scope.spawn(move || {
@@ -220,15 +220,15 @@ fn send_timeout() {
         scope.spawn(move || {
             select! {
                 send(s.0, 7) => panic!(),
-                default(ms(1000)) => {}
+                recv(channel::after(ms(1000))) => {}
             }
             select! {
                 send(s.0, 8) => {}
-                default(ms(1000)) => panic!(),
+                recv(channel::after(ms(1000))) => panic!(),
             }
             select! {
                 send(s.0, 9) => panic!(),
-                default(ms(1000)) => {}
+                recv(channel::after(ms(1000))) => {}
             }
         });
         scope.spawn(move || {
@@ -377,7 +377,7 @@ fn stress_timeout_two_threads() {
                 loop {
                     select! {
                         send(s.0, i) => break,
-                        default(ms(10)) => {}
+                        recv(channel::after(ms(10))) => {}
                     }
                 }
             }
@@ -394,7 +394,7 @@ fn stress_timeout_two_threads() {
                             assert_eq!(v, Some(i));
                             break;
                         }
-                        default(ms(10)) => {}
+                        recv(channel::after(ms(10))) => {}
                     }
                 }
             }

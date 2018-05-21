@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Instant;
 
 use crossbeam_utils::cache_padded::CachePadded;
 
@@ -321,14 +322,14 @@ impl<T> Channel<T> {
             }
 
             context::current_reset();
-            sender.promise(&mut token, case_id);
+            sender.register(&mut token, case_id);
 
             if !self.is_full() {
                 context::current_try_abort();
             }
 
             context::current_wait_until(None);
-            sender.revoke(case_id);
+            sender.unregister(case_id);
         }
     }
 
@@ -351,14 +352,14 @@ impl<T> Channel<T> {
             }
 
             context::current_reset();
-            receiver.promise(&mut token, case_id);
+            receiver.register(&mut token, case_id);
 
             if !self.is_empty() || self.is_closed() {
                 context::current_try_abort();
             }
 
             context::current_wait_until(None);
-            receiver.revoke(case_id);
+            receiver.unregister(case_id);
         }
     }
 
@@ -473,16 +474,20 @@ impl<'a, T> Select for Receiver<'a, T> {
         self.0.start_recv(token, &mut Backoff::new())
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
+    fn deadline(&self) -> Option<Instant> {
+        None
+    }
+
+    fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
         self.0.receivers.register(case_id);
         self.0.is_empty() && !self.0.is_closed()
     }
 
-    fn revoke(&self, case_id: CaseId) {
+    fn unregister(&self, case_id: CaseId) {
         self.0.receivers.unregister(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token) -> bool {
+    fn accept(&self, token: &mut Token) -> bool {
         self.0.start_recv(token, &mut Backoff::new())
     }
 }
@@ -496,16 +501,20 @@ impl<'a, T> Select for Sender<'a, T> {
         self.0.start_send(token, &mut Backoff::new())
     }
 
-    fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
+    fn deadline(&self) -> Option<Instant> {
+        None
+    }
+
+    fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
         self.0.senders.register(case_id);
         self.0.is_full()
     }
 
-    fn revoke(&self, case_id: CaseId) {
+    fn unregister(&self, case_id: CaseId) {
         self.0.senders.unregister(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token) -> bool {
+    fn accept(&self, token: &mut Token) -> bool {
         self.0.start_send(token, &mut Backoff::new())
     }
 }

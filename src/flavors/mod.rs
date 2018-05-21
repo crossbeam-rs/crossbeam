@@ -4,6 +4,7 @@
 //! 2. `list`: unbounded channel implemented as a linked list
 //! 3. `zero`: zero-capacity channel, or sometimes called *rendezvous* channel
 
+pub mod after;
 pub mod array;
 pub mod list;
 pub mod zero;

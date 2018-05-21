@@ -27,7 +27,6 @@ pub struct Waker {
     cases: VecDeque<Case>,
 }
 
-// TODO: inline everything?
 impl Waker {
     /// Creates a new `Waker`.
     #[inline]
@@ -38,6 +37,7 @@ impl Waker {
     }
 
     /// Registers the current thread with `case_id`.
+    #[inline]
     pub fn register(&mut self, case_id: CaseId) {
         self.cases.push_back(Case {
             context: context::current(),
@@ -56,8 +56,13 @@ impl Waker {
     }
 
     /// Unregisters the current thread with `case_id`.
+    #[inline]
     pub fn unregister(&mut self, case_id: CaseId) -> Option<Case> {
-        if let Some((i, _)) = self.cases.iter().enumerate().find(|&(_, case)| case.case_id == case_id) {
+        if let Some((i, _)) = self.cases
+            .iter()
+            .enumerate()
+            .find(|&(_, case)| case.case_id == case_id)
+        {
             let case = self.cases.remove(i);
             Self::maybe_shrink(&mut self.cases);
             case
@@ -73,7 +78,10 @@ impl Waker {
 
             for i in 0..self.cases.len() {
                 if self.cases[i].context.thread.id() != thread_id {
-                    if self.cases[i].context.try_select(self.cases[i].case_id, self.cases[i].packet) {
+                    if self.cases[i].context.try_select(
+                        self.cases[i].case_id,
+                        self.cases[i].packet,
+                    ) {
                         let case = self.cases.remove(i).unwrap();
                         Self::maybe_shrink(&mut self.cases);
 
@@ -115,6 +123,7 @@ impl Waker {
     }
 
     /// Shrinks the internal deque if it's capacity is much larger than length.
+    #[inline]
     fn maybe_shrink(cases: &mut VecDeque<Case>) {
         if cases.capacity() > 32 && cases.len() < cases.capacity() / 4 {
             let mut v = VecDeque::with_capacity(cases.capacity() / 2);

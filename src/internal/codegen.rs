@@ -2,13 +2,13 @@
 
 use std::time::Instant;
 
+use internal::channel::{Receiver, Sender};
 use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils;
 
 pub fn mainloop<'a, S>(
     cases: &mut [(&'a S, usize, usize)],
-    deadline: Option<Instant>,
     default_index: usize,
 ) -> (Token, usize, usize)
 where
@@ -27,7 +27,7 @@ where
             }
         }
 
-        if default_index != !0 && deadline.is_none() {
+        if default_index != !0 {
             return (token, default_index, 0);
         }
 
@@ -43,7 +43,7 @@ where
             let case_id = CaseId::new(case as *const _ as usize);
             let &(sel, _, _) = case;
 
-            if !sel.promise(&mut token, case_id) {
+            if !sel.register(&mut token, case_id) {
                 context::current_try_abort();
                 break;
             }
@@ -53,17 +53,20 @@ where
             }
         }
 
-        let timed_out = !context::current_wait_until(deadline);
+        let mut deadline: Option<Instant> = None;
+        for &(sel, _, _) in cases.iter() {
+            if let Some(x) = sel.deadline() {
+                deadline = deadline.map(|y| x.min(y)).or(Some(x));
+            }
+        }
+
+        context::current_wait_until(deadline); // TODO: return value is not used here - just remove the bool
         let s = context::current_selected();
 
         for case in cases.iter() {
             let case_id = CaseId::new(case as *const _ as usize);
             let &(sel, _, _) = case;
-            sel.revoke(case_id);
-        }
-
-        if timed_out {
-            return (token, default_index, 0);
+            sel.unregister(case_id);
         }
 
         if s != CaseId::abort() {
@@ -72,7 +75,7 @@ where
                 let &(sel, i, addr) = case;
 
                 if case_id == s {
-                    if sel.fulfill(&mut token) {
+                    if sel.accept(&mut token) {
                         return (token, i, addr);
                     }
                 }
@@ -82,6 +85,50 @@ where
         if cases.len() >= 2 {
             utils::shuffle(cases);
         }
+    }
+}
+
+pub trait RecvArgument<'a, T: 'a> {
+    type Iter: Iterator<Item = &'a Receiver<T>>;
+
+    fn __as_recv_argument(&'a self) -> Self::Iter;
+}
+
+impl<'a, T> RecvArgument<'a, T> for &'a Receiver<T> {
+    type Iter = ::std::option::IntoIter<&'a Receiver<T>>;
+
+    fn __as_recv_argument(&'a self) -> Self::Iter {
+        Some(*self).into_iter()
+    }
+}
+
+impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
+    type Iter = <I as IntoIterator>::IntoIter;
+
+    fn __as_recv_argument(&'a self) -> Self::Iter {
+        self.clone().into_iter()
+    }
+}
+
+pub trait SendArgument<'a, T: 'a> {
+    type Iter: Iterator<Item = &'a Sender<T>>;
+
+    fn __as_send_argument(&'a self) -> Self::Iter;
+}
+
+impl<'a, T> SendArgument<'a, T> for &'a Sender<T> {
+    type Iter = ::std::option::IntoIter<&'a Sender<T>>;
+
+    fn __as_send_argument(&'a self) -> Self::Iter {
+        Some(*self).into_iter()
+    }
+}
+
+impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, T> for I {
+    type Iter = <I as IntoIterator>::IntoIter;
+
+    fn __as_send_argument(&'a self) -> Self::Iter {
+        self.clone().into_iter()
     }
 }
 
@@ -98,7 +145,7 @@ macro_rules! __crossbeam_channel_codegen {
         {
             // TODO: document that we can't expect a mut iterator here because of Clone
             match {
-                use $crate::internal::select::RecvArgument;
+                use $crate::internal::codegen::RecvArgument;
                 &mut (&$rs).__as_recv_argument()
             } {
                 $var => {
@@ -121,7 +168,7 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         {
             match {
-                use $crate::internal::select::SendArgument;
+                use $crate::internal::codegen::SendArgument;
                 &mut (&$ss).__as_send_argument()
             } {
                 $var => {
@@ -146,9 +193,8 @@ macro_rules! __crossbeam_channel_codegen {
     };
 
     (@mainloop $recv:tt $send:tt $default:tt) => {{
-        let deadline: Option<::std::time::Instant>;
         let default_index: usize;
-        __crossbeam_channel_codegen!(@default deadline default_index $default);
+        __crossbeam_channel_codegen!(@default default_index $default);
 
         let mut cases = __crossbeam_channel_codegen!(@container $recv $send);
 
@@ -156,7 +202,6 @@ macro_rules! __crossbeam_channel_codegen {
         #[allow(unused_variables)]
         let (mut token, index, selected) = $crate::internal::codegen::mainloop(
             &mut cases,
-            deadline,
             default_index,
         );
 
@@ -178,8 +223,8 @@ macro_rules! __crossbeam_channel_codegen {
         c
     }};
     (@container
-        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
         ()
+        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
     ) => {{
         let mut c = $crate::internal::smallvec::SmallVec::<[_; 4]>::new();
         while let Some(s) = $var.next() {
@@ -229,33 +274,16 @@ macro_rules! __crossbeam_channel_codegen {
     };
 
     (@default
-        $deadline:ident
         $default_index:ident
         ()
     ) => {
-        $deadline = None;
         $default_index = !0;
     };
     (@default
-        $deadline:ident
         $default_index:ident
         (($i:tt $var:ident) default() => $body:tt,)
     ) => {
-        $deadline = None;
         $default_index = $i;
-    };
-    (@default
-        $deadline:ident
-        $default_index:ident
-        (($i:tt $var:ident) default($t:expr) => $body:tt,)
-    ) => {
-        if let Some(instant) = $crate::internal::select::DefaultArgument::default_argument($t) {
-            $deadline = Some(instant);
-            $default_index = $i;
-        } else {
-            $deadline = None;
-            $default_index = !0;
-        }
     };
 
     (@finish
@@ -381,7 +409,7 @@ macro_rules! __crossbeam_channel_codegen {
         ()
         ()
     ) => {
-        unreachable!()
+        unreachable!("internal error in crossbeam-channel")
     };
 
     // Catches a bug within this macro (should not happen).
