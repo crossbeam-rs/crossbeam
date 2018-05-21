@@ -7,7 +7,8 @@
 /// # What is selection?
 ///
 /// It is possible to declare a set of possible send and/or receive operations on channels, and
-/// then wait until exactly one of them fires (in other words, one of them is *selected*).
+/// then wait until exactly one of them fires (in other words, one of them is *selected*). Once the
+/// selected operation fires, the loop is broken.
 ///
 /// For example, we might want to receive a message from a set of two channels and block until a
 /// message is received from any of them. To do that, we would write:
