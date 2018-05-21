@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 
 use internal::select::{CaseId, Select, Token};
 use internal::context;
-use internal::utils::Backoff;
+use internal::utils::{Backoff, serialize};
 use internal::waker::{Case, Waker};
 
 struct Inner {
@@ -53,13 +53,10 @@ impl<T> Channel<T> {
         let token = unsafe { &mut token.zero };
         let mut inner = self.inner.lock();
 
-        // TODO: remove lock here?
-
         if let Some(case) = inner.senders.wake_one() {
-            *token = unsafe { ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case)) };
+            *token = unsafe { ZeroToken::Case(serialize::<Case, SerCase>(case)) };
             true
         } else if inner.is_closed {
-            // TODO: try recv again?
             *token = ZeroToken::Closed;
             true
         } else {
@@ -96,7 +93,7 @@ impl<T> Channel<T> {
                 packet = *p as *const Packet<T>;
             }
             ZeroToken::Case(case) => {
-                let case: Case = mem::transmute::<[usize; 3], Case>(*case);
+                let case = serialize::<SerCase, Case>(*case);
                 packet = case.packet as *const Packet<T>;
             }
         }
@@ -121,12 +118,10 @@ impl<T> Channel<T> {
         let token = unsafe { &mut token.zero };
         let mut inner = self.inner.lock();
 
-        // TODO: remove lock here?
-
         // If there's someone on the other side, exchange message with it.
         if let Some(case) = inner.receivers.wake_one() {
             unsafe {
-                *token = ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case));
+                *token = ZeroToken::Case(serialize::<Case, SerCase>(case));
             }
             true
         } else {
@@ -163,7 +158,7 @@ impl<T> Channel<T> {
                 packet = *p as *const Packet<T>;
             }
             ZeroToken::Case(case) => {
-                let case: Case = mem::transmute::<[usize; 3], Case>(*case);
+                let case = serialize::<SerCase, Case>(*case);
                 packet = case.packet as *const Packet<T>;
             }
         }
@@ -173,7 +168,7 @@ impl<T> Channel<T> {
     }
 
     pub fn send(&self, mut msg: T) {
-        let mut token: Token = unsafe { ::std::mem::zeroed() }; // TODO: this is costly
+        let mut token: Token = unsafe { ::std::mem::uninitialized() };
         let case_id = CaseId::new(&token as *const Token as usize);
 
         // TODO: maybe put a lock around wait queues?
@@ -185,7 +180,7 @@ impl<T> Channel<T> {
                 // If there's someone on the other side, exchange message with it.
                 if let Some(case) = inner.receivers.wake_one() {
                     token.zero = unsafe {
-                        ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case))
+                        ZeroToken::Case(serialize::<Case, SerCase>(case))
                     };
                     drop(inner);
                     unsafe { self.write(&mut token, msg); }
@@ -219,7 +214,7 @@ impl<T> Channel<T> {
     }
 
     pub fn recv(&self) -> Option<T> {
-        let mut token: Token = unsafe { ::std::mem::zeroed() }; // TODO: this is costly
+        let mut token: Token = unsafe { ::std::mem::uninitialized() };
         let case_id = CaseId::new(&token as *const Token as usize);
 
         loop {
@@ -228,7 +223,7 @@ impl<T> Channel<T> {
                 let mut inner = self.inner.lock();
 
                 if let Some(case) = inner.senders.wake_one() {
-                    token.zero = unsafe { ZeroToken::Case(mem::transmute::<Case, [usize; 3]>(case)) };
+                    token.zero = unsafe { ZeroToken::Case(serialize::<Case, SerCase>(case)) };
                     drop(inner);
                     unsafe {
                         return self.read(&mut token);
@@ -284,19 +279,73 @@ struct Packet<T> {
     msg: Mutex<Option<T>>,
 }
 
+type SerCase = [u8; mem::size_of::<Case>()];
+
 #[derive(Copy, Clone)]
 pub enum ZeroToken {
     Closed,
     Fulfill(usize),
-    Case([usize; 3]), // TODO: use [u8; mem::size_of::<Case>()], write and read unaligned
+    Case(SerCase),
 }
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
-    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+    fn try(&self, token: &mut Token) -> bool {
         self.0.start_recv(token)
+    }
+
+    fn retry(&self, token: &mut Token) -> bool {
+        // self.0.start_recv(token)
+
+        let case_id = CaseId::new(&token as *const _ as usize);
+        let token = unsafe { &mut token.zero };
+        let mut inner = self.0.inner.lock();
+
+        if let Some(case) = inner.senders.wake_one() {
+            *token = unsafe { ZeroToken::Case(serialize::<Case, SerCase>(case)) };
+            return true;
+        } else if inner.is_closed {
+            *token = ZeroToken::Closed;
+            return true;
+        }
+
+        context::current_reset();
+
+        let packet = Box::into_raw(Box::new(Packet {
+            on_stack: false,
+            ready: AtomicBool::new(false),
+            msg: Mutex::new(None::<T>),
+        }));
+        inner.receivers.register_with_packet(case_id, packet as usize);
+
+        drop(inner);
+
+        ::std::thread::yield_now();
+        context::current_try_abort();
+
+        if context::current_selected() != CaseId::abort() {
+            let context = context::current();
+            let mut backoff = Backoff::new();
+            loop {
+                let packet = context.packet.load(Ordering::SeqCst);
+                if packet != 0 {
+                    *token = ZeroToken::Fulfill(packet);
+                    break;
+                }
+                backoff.step();
+            }
+
+            true
+        } else {
+            if let Some(case) = self.0.inner.lock().receivers.unregister(case_id) {
+                unsafe {
+                    drop(Box::from_raw(case.packet as *mut Packet<T>));
+                }
+            }
+            false
+        }
     }
 
     fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
@@ -311,11 +360,6 @@ impl<'a, T> Select for Receiver<'a, T> {
         !inner.senders.can_notify() && !inner.is_closed
     }
 
-    fn is_blocked(&self) -> bool {
-        let inner = self.0.inner.lock();
-        !inner.is_closed && !inner.senders.can_notify()
-    }
-
     fn revoke(&self, case_id: CaseId) {
         if let Some(case) = self.0.inner.lock().receivers.unregister(case_id) {
             unsafe {
@@ -324,14 +368,66 @@ impl<'a, T> Select for Receiver<'a, T> {
         }
     }
 
-    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+    fn fulfill(&self, token: &mut Token) -> bool {
         self.0.fulfill_recv(token)
     }
 }
 
 impl<'a, T> Select for Sender<'a, T> {
-    fn try(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+    fn try(&self, token: &mut Token) -> bool {
         self.0.start_send(token)
+    }
+
+    fn retry(&self, token: &mut Token) -> bool {
+        // self.0.start_send(token)
+
+        let case_id = CaseId::new(&token as *const _ as usize);
+        let token = unsafe { &mut token.zero };
+        let mut inner = self.0.inner.lock();
+
+        // If there's someone on the other side, exchange message with it.
+        if let Some(case) = inner.receivers.wake_one() {
+            unsafe {
+                *token = ZeroToken::Case(serialize::<Case, SerCase>(case));
+            }
+            return true;
+        }
+
+        context::current_reset();
+
+        let packet = Box::into_raw(Box::new(Packet {
+            on_stack: false,
+            ready: AtomicBool::new(false),
+            msg: Mutex::new(None::<T>),
+        }));
+        inner.senders.register_with_packet(case_id, packet as usize);
+
+        drop(inner);
+
+        ::std::thread::yield_now();
+        context::current_try_abort();
+
+        if context::current_selected() != CaseId::abort() {
+            let context = context::current();
+            let mut backoff = Backoff::new();
+            loop {
+                let packet = context.packet.load(Ordering::SeqCst);
+                if packet != 0 {
+                    *token = ZeroToken::Fulfill(packet);
+                    break;
+                }
+                backoff.step();
+            }
+
+            true
+        } else {
+            if let Some(case) = self.0.inner.lock().senders.unregister(case_id) {
+                unsafe {
+                    drop(Box::from_raw(case.packet as *mut Packet<T>));
+                }
+            }
+            false
+        }
     }
 
     fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
@@ -346,10 +442,6 @@ impl<'a, T> Select for Sender<'a, T> {
         !inner.receivers.can_notify()
     }
 
-    fn is_blocked(&self) -> bool {
-        !self.0.inner.lock().receivers.can_notify()
-    }
-
     fn revoke(&self, case_id: CaseId) {
         if let Some(case) = self.0.inner.lock().senders.unregister(case_id) {
             unsafe {
@@ -358,7 +450,7 @@ impl<'a, T> Select for Sender<'a, T> {
         }
     }
 
-    fn fulfill(&self, token: &mut Token, _backoff: &mut Backoff) -> bool {
+    fn fulfill(&self, token: &mut Token) -> bool {
         self.0.fulfill_send(token)
     }
 }

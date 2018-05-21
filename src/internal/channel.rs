@@ -8,11 +8,10 @@ use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use flavors;
 use internal::select::CaseId;
 use internal::select::Select;
 use internal::select::Token;
-use internal::utils::Backoff;
-use flavors;
 
 // TODO: explain
 // loop { try; promise; is_blocked; revoke; fulfill; write/read }
@@ -641,11 +640,19 @@ impl<T> UnwindSafe for Receiver<T> {}
 impl<T> RefUnwindSafe for Receiver<T> {}
 
 impl<T> Select for Sender<T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn try(&self, token: &mut Token) -> bool {
         match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().try(token, backoff),
-            Flavor::List(inner) => inner.sender().try(token, backoff),
-            Flavor::Zero(inner) => inner.sender().try(token, backoff),
+            Flavor::Array(inner) => inner.sender().try(token),
+            Flavor::List(inner) => inner.sender().try(token),
+            Flavor::Zero(inner) => inner.sender().try(token),
+        }
+    }
+
+    fn retry(&self, token: &mut Token) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.sender().retry(token),
+            Flavor::List(inner) => inner.sender().retry(token),
+            Flavor::Zero(inner) => inner.sender().retry(token),
         }
     }
 
@@ -657,14 +664,6 @@ impl<T> Select for Sender<T> {
         }
     }
 
-    fn is_blocked(&self) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().is_blocked(),
-            Flavor::List(inner) => inner.sender().is_blocked(),
-            Flavor::Zero(inner) => inner.sender().is_blocked(),
-        }
-    }
-
     fn revoke(&self, case_id: CaseId) {
         match &self.0.flavor {
             Flavor::Array(inner) => inner.sender().revoke(case_id),
@@ -673,11 +672,11 @@ impl<T> Select for Sender<T> {
         }
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn fulfill(&self, token: &mut Token) -> bool {
         match &self.0.flavor {
-            Flavor::Array(inner) => inner.sender().fulfill(token, backoff),
-            Flavor::List(inner) => inner.sender().fulfill(token, backoff),
-            Flavor::Zero(inner) => inner.sender().fulfill(token, backoff),
+            Flavor::Array(inner) => inner.sender().fulfill(token),
+            Flavor::List(inner) => inner.sender().fulfill(token),
+            Flavor::Zero(inner) => inner.sender().fulfill(token),
         }
     }
 }
@@ -691,11 +690,19 @@ pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) {
 }
 
 impl<T> Select for Receiver<T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn try(&self, token: &mut Token) -> bool {
         match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().try(token, backoff),
-            Flavor::List(inner) => inner.receiver().try(token, backoff),
-            Flavor::Zero(inner) => inner.receiver().try(token, backoff),
+            Flavor::Array(inner) => inner.receiver().try(token),
+            Flavor::List(inner) => inner.receiver().try(token),
+            Flavor::Zero(inner) => inner.receiver().try(token),
+        }
+    }
+
+    fn retry(&self, token: &mut Token) -> bool {
+        match &self.0.flavor {
+            Flavor::Array(inner) => inner.receiver().retry(token),
+            Flavor::List(inner) => inner.receiver().retry(token),
+            Flavor::Zero(inner) => inner.receiver().retry(token),
         }
     }
 
@@ -707,14 +714,6 @@ impl<T> Select for Receiver<T> {
         }
     }
 
-    fn is_blocked(&self) -> bool {
-        match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().is_blocked(),
-            Flavor::List(inner) => inner.receiver().is_blocked(),
-            Flavor::Zero(inner) => inner.receiver().is_blocked(),
-        }
-    }
-
     fn revoke(&self, case_id: CaseId) {
         match &self.0.flavor {
             Flavor::Array(inner) => inner.receiver().revoke(case_id),
@@ -723,11 +722,11 @@ impl<T> Select for Receiver<T> {
         }
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn fulfill(&self, token: &mut Token) -> bool {
         match &self.0.flavor {
-            Flavor::Array(inner) => inner.receiver().fulfill(token, backoff),
-            Flavor::List(inner) => inner.receiver().fulfill(token, backoff),
-            Flavor::Zero(inner) => inner.receiver().fulfill(token, backoff),
+            Flavor::Array(inner) => inner.receiver().fulfill(token),
+            Flavor::List(inner) => inner.receiver().fulfill(token),
+            Flavor::Zero(inner) => inner.receiver().fulfill(token),
         }
     }
 }

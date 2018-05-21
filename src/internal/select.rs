@@ -1,8 +1,7 @@
 use std::time::{Duration, Instant};
 
-use internal::channel::{Receiver, Sender};
-use internal::utils::Backoff;
 use flavors;
+use internal::channel::{Receiver, Sender};
 
 /// TODO
 ///
@@ -131,38 +130,38 @@ impl Into<usize> for CaseId {
 }
 
 pub trait Select {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
+    fn try(&self, token: &mut Token) -> bool;
+
+    fn retry(&self, token: &mut Token) -> bool;
 
     // TODO: register
     fn promise(&self, token: &mut Token, case_id: CaseId) -> bool;
 
-    fn is_blocked(&self) -> bool;
-
     // TODO: unregister
     fn revoke(&self, case_id: CaseId);
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool;
+    fn fulfill(&self, token: &mut Token) -> bool;
 }
 
 impl<'a, T: Select> Select for &'a T {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        (**self).try(token, backoff)
+    fn try(&self, token: &mut Token) -> bool {
+        (**self).try(token)
+    }
+
+    fn retry(&self, token: &mut Token) -> bool {
+        (**self).retry(token)
     }
 
     fn promise(&self, token: &mut Token, case_id: CaseId) -> bool {
         (**self).promise(token, case_id)
     }
 
-    fn is_blocked(&self) -> bool {
-        (**self).is_blocked()
-    }
-
     fn revoke(&self, case_id: CaseId) {
         (**self).revoke(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        (**self).fulfill(token, backoff)
+    fn fulfill(&self, token: &mut Token) -> bool {
+        (**self).fulfill(token)
     }
 }
 

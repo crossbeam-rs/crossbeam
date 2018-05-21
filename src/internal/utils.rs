@@ -1,5 +1,5 @@
 use std::cell::Cell;
-
+use std::mem;
 use std::num::Wrapping;
 use std::sync::atomic;
 use std::thread;
@@ -70,4 +70,15 @@ pub fn shuffle<T>(v: &mut [T]) {
             v.swap(i, j);
         }
     });
+}
+
+/// TODO
+pub unsafe fn serialize<A, B>(a: A) -> B {
+    let size_a = mem::size_of::<A>();
+    let size_b = mem::size_of::<B>();
+    assert!(size_a > 0 && size_a == size_b);
+
+    let mut b: B = mem::uninitialized();
+    (&mut b as *mut B as *mut A).write_unaligned(a);
+    b
 }

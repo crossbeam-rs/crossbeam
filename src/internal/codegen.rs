@@ -70,7 +70,7 @@ macro_rules! __crossbeam_channel_codegen {
         use $crate::internal::select::CaseId;
         use $crate::internal::select::Token;
         use $crate::internal::context;
-        use $crate::internal::utils::{Backoff, shuffle};
+        use $crate::internal::utils;
 
         #[allow(unused_imports)]
         use $crate::internal::select::Select;
@@ -82,31 +82,31 @@ macro_rules! __crossbeam_channel_codegen {
         let mut cases;
         __crossbeam_channel_codegen!(@container cases $recv $send);
 
-        let mut token: Token = unsafe { ::std::mem::zeroed() };
+        let mut token: Token = unsafe { ::std::mem::uninitialized() };
         let mut index: usize = !0;
         let mut selected: usize = 0;
 
-        shuffle(&mut cases);
-        loop {
-            // TODO: Tune backoff for zero flavor performance (too much yielding is bad)
-            let backoff = &mut Backoff::new();
-            loop {
-                for &(sel, i, addr) in &cases {
-                    if sel.try(&mut token, backoff) {
-                        index = i;
-                        selected = addr;
-                        break;
-                    }
-                }
+        if cases.len() >= 2 {
+            utils::shuffle(&mut cases);
+        }
 
-                if index != !0 {
+        loop {
+            for &(sel, i, addr) in &cases {
+                if sel.try(&mut token) {
+                    index = i;
+                    selected = addr;
                     break;
                 }
+            }
 
-                // TODO: break here if we have only zero-capacity channels
-                // break;//////////////////
+            if index != !0 {
+                break;
+            }
 
-                if !backoff.step() {
+            for &(sel, i, addr) in &cases {
+                if sel.retry(&mut token) {
+                    index = i;
+                    selected = addr;
                     break;
                 }
             }
@@ -123,11 +123,13 @@ macro_rules! __crossbeam_channel_codegen {
 
             context::current_reset();
 
-            // TODO: do we need a try_or_register() call here?
+            // TODO: fairness test with three channel types: unbounded, bounded(1), bounded(0)
+            // TODO: change fairness tests: track counters and verify hits/rounds >= X%
 
             for case in &cases {
                 let case_id = CaseId::new(case as *const _ as usize);
                 let &(sel, _, _) = case;
+
                 if !sel.promise(&mut token, case_id) {
                     context::current_try_abort();
                     break;
@@ -136,14 +138,6 @@ macro_rules! __crossbeam_channel_codegen {
                     break;
                 }
             }
-
-            // if context::current_selected() == CaseId::none() {
-            //     for &(sel, _, _) in &cases {
-            //         if !sel.is_blocked() {
-            //             context::current_try_abort();
-            //         }
-            //     }
-            // }
 
             let timed_out = !context::current_wait_until(deadline);
             let s = context::current_selected();
@@ -165,7 +159,7 @@ macro_rules! __crossbeam_channel_codegen {
                     let case_id = CaseId::new(case as *const _ as usize);
                     let &(sel, i, addr) = case;
                     if case_id == s {
-                        if sel.fulfill(&mut token, &mut Backoff::new()) {
+                        if sel.fulfill(&mut token) {
                             index = i;
                             selected = addr;
                             break;
@@ -178,16 +172,15 @@ macro_rules! __crossbeam_channel_codegen {
                 }
             }
 
-            // TODO: reshuffle cases here?
+            if cases.len() >= 2 {
+                utils::shuffle(&mut cases);
+            }
         }
 
         // This drop is just to ignore a warning complaining about unused `selected`.
         drop(selected);
 
         __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
-
-        // TODO: allocate less memory in unbounded flavor if few elements are sent.
-        // TODO: allocate memory lazily in unbounded flavor?
 
         // TODO: Run `cargo clippy` and make sure there are no warnings in here.
         // TODO: Add a Travis test for clippy
@@ -345,13 +338,11 @@ macro_rules! __crossbeam_channel_codegen {
                     &*(addr as *const T)
                 }
 
-                #[allow(unused_variables)]
-                let s = unsafe { bind(&$var, $selected) };
-
                 // We have to prefix variables with an underscore to get rid of warnings in
                 // case `$m` is of type `!`.
-                #[allow(unused_variables)]
-                let guard = Guard(|| {
+                let _s = unsafe { bind(&$var, $selected) };
+
+                let _guard = Guard(|| {
                     eprintln!(
                         "a send case triggered a panic while evaluating the message, {}:{}:{}",
                         file!(),
@@ -365,9 +356,9 @@ macro_rules! __crossbeam_channel_codegen {
 
                 #[allow(unreachable_code)]
                 {
-                    ::std::mem::forget(guard);
-                    unsafe { $crate::internal::channel::write(s, &mut $token, _msg); }
-                    s
+                    ::std::mem::forget(_guard);
+                    unsafe { $crate::internal::channel::write(_s, &mut $token, _msg); }
+                    _s
                 }
             };
             $body

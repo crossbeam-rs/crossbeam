@@ -304,14 +304,14 @@ impl<T> Channel<T> {
     }
 
     pub fn send(&self, msg: T) {
-        let mut token: Token = unsafe { ::std::mem::zeroed() }; // TODO: this is costly
+        let mut token: Token = unsafe { ::std::mem::uninitialized() };
         let case_id = CaseId::new(&token as *const Token as usize);
         let sender = self.sender();
 
         loop {
             let backoff = &mut Backoff::new();
             loop {
-                if sender.try(&mut token, backoff) {
+                if self.start_send(&mut token, backoff) {
                     unsafe { self.write(&mut token, msg); }
                     return;
                 }
@@ -323,7 +323,7 @@ impl<T> Channel<T> {
             context::current_reset();
             sender.promise(&mut token, case_id);
 
-            if !sender.is_blocked() {
+            if !self.is_full() {
                 context::current_try_abort();
             }
 
@@ -333,14 +333,14 @@ impl<T> Channel<T> {
     }
 
     pub fn recv(&self) -> Option<T> {
-        let mut token: Token = unsafe { ::std::mem::zeroed() }; // TODO: this is costly
+        let mut token: Token = unsafe { ::std::mem::uninitialized() };
         let case_id = CaseId::new(&token as *const Token as usize);
         let receiver = self.receiver();
 
         loop {
             let backoff = &mut Backoff::new();
             loop {
-                if receiver.try(&mut token, backoff) {
+                if self.start_recv(&mut token, backoff) {
                     unsafe {
                         return self.read(&mut token);
                     }
@@ -353,7 +353,7 @@ impl<T> Channel<T> {
             context::current_reset();
             receiver.promise(&mut token, case_id);
 
-            if !receiver.is_blocked() {
+            if !self.is_empty() || self.is_closed() {
                 context::current_try_abort();
             }
 
@@ -465,8 +465,12 @@ pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token, backoff)
+    fn try(&self, token: &mut Token) -> bool {
+        self.0.start_recv(token, &mut Backoff::new())
+    }
+
+    fn retry(&self, token: &mut Token) -> bool {
+        self.0.start_recv(token, &mut Backoff::new())
     }
 
     fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
@@ -474,22 +478,22 @@ impl<'a, T> Select for Receiver<'a, T> {
         self.0.is_empty() && !self.0.is_closed()
     }
 
-    fn is_blocked(&self) -> bool {
-        self.0.is_empty() && !self.0.is_closed()
-    }
-
     fn revoke(&self, case_id: CaseId) {
         self.0.receivers.unregister(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token, backoff)
+    fn fulfill(&self, token: &mut Token) -> bool {
+        self.0.start_recv(token, &mut Backoff::new())
     }
 }
 
 impl<'a, T> Select for Sender<'a, T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_send(token, backoff)
+    fn try(&self, token: &mut Token) -> bool {
+        self.0.start_send(token, &mut Backoff::new())
+    }
+
+    fn retry(&self, token: &mut Token) -> bool {
+        self.0.start_send(token, &mut Backoff::new())
     }
 
     fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
@@ -497,15 +501,11 @@ impl<'a, T> Select for Sender<'a, T> {
         self.0.is_full()
     }
 
-    fn is_blocked(&self) -> bool {
-        self.0.is_full()
-    }
-
     fn revoke(&self, case_id: CaseId) {
         self.0.senders.unregister(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_send(token, backoff)
+    fn fulfill(&self, token: &mut Token) -> bool {
+        self.0.start_send(token, &mut Backoff::new())
     }
 }

@@ -13,8 +13,11 @@ use crossbeam_utils::cache_padded::CachePadded;
 
 use internal::context;
 use internal::select::{CaseId, Select, Token};
-use internal::utils::Backoff;
+use internal::utils::{Backoff, serialize};
 use internal::sync_waker::SyncWaker;
+
+// TODO: allocate less memory in unbounded flavor if few elements are sent.
+// TODO: allocate memory lazily in unbounded flavor?
 
 /// Number of messages a node can hold.
 const NODE_CAP: usize = 32;
@@ -242,7 +245,7 @@ impl<T> Channel<T> {
             backoff.step();
         }
 
-        token.guard = unsafe { mem::transmute::<Guard, usize>(guard) };
+        unsafe { token.guard = serialize::<Guard, SerGuard>(guard); }
         true
     }
 
@@ -254,7 +257,7 @@ impl<T> Channel<T> {
             None
         } else {
             let entry = &*(token.entry as *const Entry<T>);
-            let _guard: Guard = mem::transmute::<usize, Guard>(token.guard);
+            let _guard: Guard = serialize::<SerGuard, Guard>(token.guard);
 
             let mut backoff = Backoff::new();
             while !entry.ready.load(Ordering::Acquire) {
@@ -268,22 +271,19 @@ impl<T> Channel<T> {
     }
 
     pub fn send(&self, msg: T) {
-        let mut token: Token = unsafe { ::std::mem::uninitialized() }; // TODO: this is costly
-        let sender = self.sender();
-
-        sender.try(&mut token, &mut Backoff::new());
+        let mut token: Token = unsafe { ::std::mem::uninitialized() };
         self.write(&mut token, msg);
     }
 
     pub fn recv(&self) -> Option<T> {
-        let mut token: Token = unsafe { ::std::mem::uninitialized() }; // TODO: this is costly
+        let mut token: Token = unsafe { ::std::mem::uninitialized() };
         let case_id = CaseId::new(&token as *const Token as usize);
         let receiver = self.receiver();
 
         loop {
             let backoff = &mut Backoff::new();
             loop {
-                if receiver.try(&mut token, backoff) {
+                if self.start_recv(&mut token, backoff) {
                     unsafe {
                         return self.read(&mut token);
                     }
@@ -296,7 +296,7 @@ impl<T> Channel<T> {
             context::current_reset();
             receiver.promise(&mut token, case_id);
 
-            if !receiver.is_blocked() {
+            if !self.is_empty() || self.is_closed() {
                 context::current_try_abort();
             }
 
@@ -380,18 +380,24 @@ impl<T> Drop for Channel<T> {
     }
 }
 
+type SerGuard = [u8; mem::size_of::<Guard>()];
+
 #[derive(Copy, Clone)]
 pub struct ListToken {
-    pub entry: *const u8, // TODO: remove pub
-    guard: usize, // TODO: use [u8; mem::size_of::<Guard>()]
+    entry: *const u8,
+    guard: SerGuard,
 }
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
-    fn try(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token, backoff)
+    fn try(&self, token: &mut Token) -> bool {
+        self.0.start_recv(token, &mut Backoff::new())
+    }
+
+    fn retry(&self, token: &mut Token) -> bool {
+        self.0.start_recv(token, &mut Backoff::new())
     }
 
     fn promise(&self, _token: &mut Token, case_id: CaseId) -> bool {
@@ -399,21 +405,21 @@ impl<'a, T> Select for Receiver<'a, T> {
         self.0.is_empty() && !self.0.is_closed()
     }
 
-    fn is_blocked(&self) -> bool {
-        self.0.is_empty() && !self.0.is_closed()
-    }
-
     fn revoke(&self, case_id: CaseId) {
         self.0.receivers().unregister(case_id);
     }
 
-    fn fulfill(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        self.0.start_recv(token, backoff)
+    fn fulfill(&self, token: &mut Token) -> bool {
+        self.0.start_recv(token, &mut Backoff::new())
     }
 }
 
 impl<'a, T> Select for Sender<'a, T> {
-    fn try(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
+    fn try(&self, _token: &mut Token) -> bool {
+        true
+    }
+
+    fn retry(&self, _token: &mut Token) -> bool {
         true
     }
 
@@ -421,13 +427,9 @@ impl<'a, T> Select for Sender<'a, T> {
         false
     }
 
-    fn is_blocked(&self) -> bool {
-        false
-    }
-
     fn revoke(&self, _case_id: CaseId) {}
 
-    fn fulfill(&self, _token: &mut Token, _backoff: &mut Backoff) -> bool {
+    fn fulfill(&self, _token: &mut Token) -> bool {
         true
     }
 }
