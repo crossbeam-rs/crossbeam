@@ -55,17 +55,6 @@ impl SyncWaker {
         self.len.store(cases.len(), Ordering::SeqCst);
     }
 
-    #[inline]
-    pub fn register_with_packet(&self, case_id: CaseId, packet: usize) {
-        let mut cases = self.cases.lock();
-        cases.push_back(Case {
-            context: context::current(),
-            case_id,
-            packet,
-        });
-        self.len.store(cases.len(), Ordering::SeqCst);
-    }
-
     /// Unregisters the current thread with `case_id`.
     #[inline]
     pub fn unregister(&self, case_id: CaseId) -> Option<Case> {

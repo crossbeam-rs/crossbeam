@@ -292,6 +292,8 @@ extern crate crossbeam_utils;
 extern crate parking_lot;
 
 // TODO: tokio benchmark
+// TODO: test in select! where receiver/sender panics
+// TODO: copy examples from chan crate
 
 mod flavors;
 

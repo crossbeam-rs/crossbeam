@@ -421,7 +421,7 @@ impl<T> Receiver<T> {
     fn channel_id(&self) -> usize {
         match self {
             Receiver::Channel(chan) => &**chan as *const Channel<T> as usize,
-            Receiver::After(_) => unimplemented!(), // TODO: upgrade and take the address of arc
+            Receiver::After(chan) => chan.channel_id(),
         }
     }
 
@@ -602,7 +602,7 @@ impl<T> Clone for Receiver<T> {
     fn clone(&self) -> Self {
         match self {
             Receiver::Channel(arc) => Receiver::new(arc.clone()),
-            Receiver::After(_) => unimplemented!(), // TODO
+            Receiver::After(chan) => Receiver::After(chan.clone()),
         }
     }
 }

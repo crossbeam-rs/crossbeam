@@ -2,7 +2,8 @@ use std::time::Instant;
 
 use flavors;
 
-pub union Token {
+#[derive(Default)]
+pub struct Token {
     pub after: flavors::after::AfterToken,
     pub array: flavors::array::ArrayToken,
     pub list: flavors::list::ListToken,
@@ -140,7 +141,10 @@ impl<'a, T: Select> Select for &'a T {
 /// TODO: explain there must be at least one case (select { default => () } is permitted)
 ///
 /// TODO: explain that select is slower than recv()/send()/try_recv()
-/// TODO: explain that senders/receivers are first evaluated, and after that messages
+/// TODO: explain that senders/receivers are first evaluated, and one message only on success
+/// TODO: explain that panicking message computation will abort
+///
+/// TODO: document that we can't expect a mut iterator because of Clone requirement
 #[macro_export]
 macro_rules! select {
     ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {

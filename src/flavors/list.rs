@@ -14,7 +14,7 @@ use crossbeam_utils::cache_padded::CachePadded;
 
 use internal::context;
 use internal::select::{CaseId, Select, Token};
-use internal::utils::{Backoff, serialize};
+use internal::utils::Backoff;
 use internal::sync_waker::SyncWaker;
 
 // TODO: allocate less memory in unbounded flavor if few elements are sent.
@@ -178,7 +178,7 @@ impl<T> Channel<T> {
 
     /// TODO
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        let token = unsafe { &mut token.list };
+        let token = &mut token.list;
         let guard = epoch::pin();
 
         loop {
@@ -246,7 +246,7 @@ impl<T> Channel<T> {
             backoff.step();
         }
 
-        unsafe { token.guard = serialize::<Guard, SerGuard>(guard); }
+        token.guard = Some(guard);
         true
     }
 
@@ -258,7 +258,7 @@ impl<T> Channel<T> {
             None
         } else {
             let entry = &*(token.entry as *const Entry<T>);
-            let _guard: Guard = serialize::<SerGuard, Guard>(token.guard);
+            let _guard: Guard = token.guard.take().unwrap();
 
             let mut backoff = Backoff::new();
             while !entry.ready.load(Ordering::Acquire) {
@@ -272,12 +272,12 @@ impl<T> Channel<T> {
     }
 
     pub fn send(&self, msg: T) {
-        let mut token: Token = unsafe { ::std::mem::uninitialized() };
+        let mut token: Token = Default::default();
         self.write(&mut token, msg);
     }
 
     pub fn recv(&self) -> Option<T> {
-        let mut token: Token = unsafe { ::std::mem::uninitialized() };
+        let mut token: Token = Default::default();
         let case_id = CaseId::new(&token as *const Token as usize);
         let receiver = self.receiver();
 
@@ -381,12 +381,19 @@ impl<T> Drop for Channel<T> {
     }
 }
 
-type SerGuard = [u8; mem::size_of::<Guard>()];
-
-#[derive(Copy, Clone)]
 pub struct ListToken {
     entry: *const u8,
-    guard: SerGuard,
+    guard: Option<Guard>,
+}
+
+impl Default for ListToken {
+    #[inline]
+    fn default() -> Self {
+        ListToken {
+            entry: ptr::null(),
+            guard: None,
+        }
+    }
 }
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);

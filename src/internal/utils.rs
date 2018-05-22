@@ -1,5 +1,4 @@
 use std::cell::Cell;
-use std::mem;
 use std::num::Wrapping;
 use std::sync::atomic;
 use std::thread;
@@ -39,6 +38,22 @@ impl Backoff {
     }
 }
 
+pub struct AbortGuard(pub &'static str);
+
+impl Drop for AbortGuard {
+    fn drop(&mut self) {
+        // TODO: also print panic message
+        eprintln!(
+            "{}, {}:{}:{}",
+            self.0,
+            file!(),
+            line!(),
+            column!(),
+        );
+        ::std::process::abort();
+    }
+}
+
 /// Randomly shuffles the slice.
 pub fn shuffle<T>(v: &mut [T]) {
     let len = v.len();
@@ -70,15 +85,4 @@ pub fn shuffle<T>(v: &mut [T]) {
             v.swap(i, j);
         }
     });
-}
-
-/// TODO
-pub unsafe fn serialize<A, B>(a: A) -> B {
-    let size_a = mem::size_of::<A>();
-    let size_b = mem::size_of::<B>();
-    assert!(size_a > 0 && size_a == size_b);
-
-    let mut b: B = mem::uninitialized();
-    (&mut b as *mut B as *mut A).write_unaligned(a);
-    b
 }

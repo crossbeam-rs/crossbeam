@@ -14,7 +14,7 @@ pub fn mainloop<'a, S>(
 where
     S: Select + ?Sized + 'a,
 {
-    let mut token: Token = unsafe { ::std::mem::uninitialized() };
+    let mut token: Token = Default::default();
 
     if cases.len() >= 2 {
         utils::shuffle(cases);
@@ -88,6 +88,13 @@ where
     }
 }
 
+pub unsafe fn bind_address<'a, T: 'a, I>(_: &I, addr: usize) -> &'a T
+where
+    I: Iterator<Item = &'a T>,
+{
+    &*(addr as *const T)
+}
+
 pub trait RecvArgument<'a, T: 'a> {
     type Iter: Iterator<Item = &'a Receiver<T>>;
 
@@ -143,7 +150,6 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         {
-            // TODO: document that we can't expect a mut iterator here because of Clone
             match {
                 use $crate::internal::codegen::RecvArgument;
                 &mut (&$rs).__as_recv_argument()
@@ -196,7 +202,13 @@ macro_rules! __crossbeam_channel_codegen {
         let default_index: usize;
         __crossbeam_channel_codegen!(@default default_index $default);
 
+        // TODO: optimize:
+        // - select! { recv(r) => {} }
+        // - select! { recv(r) => {} default => {} }
+
         let mut cases = __crossbeam_channel_codegen!(@container $recv $send);
+
+        // TODO: set up a guard that aborts if anything panics before actually finishing
 
         #[allow(unused_mut)]
         #[allow(unused_variables)]
@@ -215,7 +227,9 @@ macro_rules! __crossbeam_channel_codegen {
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
         ()
     ) => {{
-        let mut c = $crate::internal::smallvec::SmallVec::<[_; 4]>::new();
+        let mut c = $crate::internal::smallvec::SmallVec::<
+            [(&$crate::Receiver<_>, usize, usize); 4]
+        >::new();
         while let Some(r) = $var.next() {
             let addr = r as *const $crate::Receiver<_> as usize;
             c.push((r, $i, addr));
@@ -226,7 +240,9 @@ macro_rules! __crossbeam_channel_codegen {
         ()
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
     ) => {{
-        let mut c = $crate::internal::smallvec::SmallVec::<[_; 4]>::new();
+        let mut c = $crate::internal::smallvec::SmallVec::<
+            [(&$crate::Sender<_>, usize, usize); 4]
+        >::new();
         while let Some(s) = $var.next() {
             let addr = s as *const $crate::Sender<_> as usize;
             c.push((s, $i, addr));
@@ -295,14 +311,8 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         if $index == $i {
-            unsafe fn bind<'a, T: 'a, I>(_: &I, addr: usize) -> &'a T
-            where
-                I: Iterator<Item = &'a T>,
-            {
-                &*(addr as *const T)
-            }
             let ($m, $r) = unsafe {
-                let r = bind(&$var, $selected);
+                let r = $crate::internal::codegen::bind_address(&$var, $selected);
                 let msg = $crate::internal::channel::read(r, &mut $token);
                 (msg, r)
             };
@@ -329,34 +339,12 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         if $index == $i {
             let $s = {
-                struct Guard<F: FnMut()>(F);
-                impl<F: FnMut()> Drop for Guard<F> {
-                    fn drop(&mut self) {
-                        self.0();
-                    }
-                }
-
-                unsafe fn bind<'a, T: 'a, I>(_: &I, addr: usize) -> &'a T
-                where
-                    I: Iterator<Item = &'a T>,
-                {
-                    &*(addr as *const T)
-                }
-
                 // We have to prefix variables with an underscore to get rid of warnings in
                 // case `$m` is of type `!`.
-                let _s = unsafe { bind(&$var, $selected) };
-
-                let _guard = Guard(|| {
-                    eprintln!(
-                        "a send case triggered a panic while evaluating the message, {}:{}:{}",
-                        file!(),
-                        line!(),
-                        column!(),
-                    );
-                    ::std::process::abort();
-                });
-
+                let _s = unsafe { $crate::internal::codegen::bind_address(&$var, $selected) };
+                let _guard = $crate::internal::utils::AbortGuard(
+                    "a send case triggered a panic while evaluating its message"
+                );
                 let _msg = $m;
 
                 #[allow(unreachable_code)]

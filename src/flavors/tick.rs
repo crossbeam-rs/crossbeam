@@ -18,14 +18,15 @@ pub struct Channel {
 impl Clone for Channel {
     #[inline]
     fn clone(&self) -> Channel {
-        let flag = self.flag();
+        self.upgrade();
 
-        let arc = unsafe { Arc::from_raw(&flag) };
+        let ptr = self.ptr.load(Ordering::SeqCst);
+        let arc = unsafe { Arc::from_raw(ptr) };
         mem::forget(arc.clone());
         mem::forget(arc);
         Channel {
             deadline: self.deadline,
-            ptr: AtomicPtr::new(flag as *const _ as *mut _),
+            ptr: AtomicPtr::new(ptr),
         }
     }
 }
@@ -42,28 +43,18 @@ impl Drop for Channel {
 
 impl Channel {
     #[inline]
-    pub fn channel_id(&self) -> usize {
-        self.flag() as *const _ as usize
-    }
-
-    #[inline]
     pub unsafe fn read(&self, token: &mut Token) -> Option<Instant> {
         token.after
     }
 
     #[inline]
-    fn flag(&self) -> &AtomicBool {
-        unsafe {
-            let mut ptr = self.ptr.load(Ordering::SeqCst);
-            if ptr.is_null() {
-                ptr = Arc::into_raw(Arc::new(AtomicBool::new(false))) as *mut _;
+    fn upgrade(&self) {
+        if self.ptr.load(Ordering::SeqCst).is_null() {
+            let ptr = Arc::into_raw(Arc::new(AtomicBool::new(false))) as *mut _;
 
-                if let Err(p) = self.ptr.compare_exchange(ptr::null_mut(), ptr, Ordering::SeqCst, Ordering::SeqCst) {
-                    drop(Arc::from_raw(ptr));
-                    ptr = p;
-                }
+            if !self.ptr.compare_and_swap(ptr::null_mut(), ptr, Ordering::SeqCst).is_null() {
+                unsafe { Arc::from_raw(ptr); }
             }
-            &*(ptr as *const AtomicBool)
         }
     }
 }
@@ -92,7 +83,10 @@ impl Channel {
             ::std::thread::sleep(self.deadline - now);
         }
 
-        if !self.flag().swap(true, Ordering::SeqCst) {
+        self.upgrade();
+        let ptr = self.ptr.load(Ordering::SeqCst);
+
+        if unsafe { !(*ptr).swap(true, Ordering::SeqCst) } {
             Some(now)
         } else {
             None
@@ -105,7 +99,10 @@ impl Channel {
             return true;
         }
 
-        !self.flag().load(Ordering::SeqCst)
+        self.upgrade();
+        let ptr = self.ptr.load(Ordering::SeqCst);
+
+        unsafe { !(*ptr).load(Ordering::SeqCst) }
     }
 
     #[inline]
@@ -125,7 +122,7 @@ impl Select for Channel {
 
         let ptr = self.ptr.load(Ordering::SeqCst);
         if !ptr.is_null() {
-            if self.flag().load(Ordering::SeqCst) {
+            if unsafe { (*ptr).load(Ordering::SeqCst) } {
                 *token = None;
                 return true;
             }
@@ -136,7 +133,12 @@ impl Select for Channel {
             return false;
         }
 
-        if !self.flag().swap(true, Ordering::SeqCst) {
+        if ptr.is_null() {
+            self.upgrade();
+        }
+        let ptr = self.ptr.load(Ordering::SeqCst);
+
+        if unsafe { !(*ptr).swap(true, Ordering::SeqCst) } {
             *token = Some(now);
         } else {
             *token = None;

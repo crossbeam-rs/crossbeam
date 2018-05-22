@@ -2,7 +2,6 @@
 //!
 //! Also known as *rendezvous* channel.
 
-use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::marker::PhantomData;
 use std::time::Instant;
@@ -11,7 +10,7 @@ use parking_lot::Mutex;
 
 use internal::select::{CaseId, Select, Token};
 use internal::context;
-use internal::utils::{Backoff, serialize};
+use internal::utils::Backoff;
 use internal::waker::{Case, Waker};
 
 struct Inner {
@@ -51,11 +50,11 @@ impl<T> Channel<T> {
 
     /// TODO
     fn start_recv(&self, token: &mut Token) -> bool {
-        let token = unsafe { &mut token.zero };
+        let token = &mut token.zero;
         let mut inner = self.inner.lock();
 
         if let Some(case) = inner.senders.wake_one() {
-            *token = unsafe { ZeroToken::Case(serialize::<Case, SerCase>(case)) };
+            *token = ZeroToken::Case(case);
             true
         } else if inner.is_closed {
             *token = ZeroToken::Closed;
@@ -67,7 +66,7 @@ impl<T> Channel<T> {
 
     /// TODO
     fn fulfill_recv(&self, token: &mut Token) -> bool {
-        let token = unsafe { &mut token.zero };
+        let token = &mut token.zero;
 
         let context = context::current();
         let mut backoff = Backoff::new();
@@ -94,7 +93,6 @@ impl<T> Channel<T> {
                 packet = *p as *const Packet<T>;
             }
             ZeroToken::Case(case) => {
-                let case = serialize::<SerCase, Case>(*case);
                 packet = case.packet as *const Packet<T>;
             }
         }
@@ -116,14 +114,12 @@ impl<T> Channel<T> {
 
     /// TODO
     fn start_send(&self, token: &mut Token) -> bool {
-        let token = unsafe { &mut token.zero };
+        let token = &mut token.zero;
         let mut inner = self.inner.lock();
 
         // If there's someone on the other side, exchange message with it.
         if let Some(case) = inner.receivers.wake_one() {
-            unsafe {
-                *token = ZeroToken::Case(serialize::<Case, SerCase>(case));
-            }
+            *token = ZeroToken::Case(case);
             true
         } else {
             false
@@ -132,7 +128,7 @@ impl<T> Channel<T> {
 
     /// TODO
     fn fulfill_send(&self, token: &mut Token) -> bool {
-        let token = unsafe { &mut token.zero };
+        let token = &mut token.zero;
 
         let context = context::current();
         let mut backoff = Backoff::new();
@@ -159,7 +155,6 @@ impl<T> Channel<T> {
                 packet = *p as *const Packet<T>;
             }
             ZeroToken::Case(case) => {
-                let case = serialize::<SerCase, Case>(*case);
                 packet = case.packet as *const Packet<T>;
             }
         }
@@ -169,7 +164,7 @@ impl<T> Channel<T> {
     }
 
     pub fn send(&self, mut msg: T) {
-        let mut token: Token = unsafe { ::std::mem::uninitialized() };
+        let mut token: Token = Default::default();
         let case_id = CaseId::new(&token as *const Token as usize);
 
         // TODO: maybe put a lock around wait queues?
@@ -180,9 +175,7 @@ impl<T> Channel<T> {
                 let mut inner = self.inner.lock();
                 // If there's someone on the other side, exchange message with it.
                 if let Some(case) = inner.receivers.wake_one() {
-                    token.zero = unsafe {
-                        ZeroToken::Case(serialize::<Case, SerCase>(case))
-                    };
+                    token.zero = ZeroToken::Case(case);
                     drop(inner);
                     unsafe { self.write(&mut token, msg); }
                     break;
@@ -215,7 +208,7 @@ impl<T> Channel<T> {
     }
 
     pub fn recv(&self) -> Option<T> {
-        let mut token: Token = unsafe { ::std::mem::uninitialized() };
+        let mut token: Token = Default::default();
         let case_id = CaseId::new(&token as *const Token as usize);
 
         loop {
@@ -224,7 +217,7 @@ impl<T> Channel<T> {
                 let mut inner = self.inner.lock();
 
                 if let Some(case) = inner.senders.wake_one() {
-                    token.zero = unsafe { ZeroToken::Case(serialize::<Case, SerCase>(case)) };
+                    token.zero = ZeroToken::Case(case);
                     drop(inner);
                     unsafe {
                         return self.read(&mut token);
@@ -280,13 +273,17 @@ struct Packet<T> {
     msg: Mutex<Option<T>>,
 }
 
-type SerCase = [u8; mem::size_of::<Case>()];
-
-#[derive(Copy, Clone)]
 pub enum ZeroToken {
     Closed,
     Accept(usize),
-    Case(SerCase),
+    Case(Case),
+}
+
+impl Default for ZeroToken {
+    #[inline]
+    fn default() -> Self {
+        ZeroToken::Closed
+    }
 }
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
@@ -301,11 +298,11 @@ impl<'a, T> Select for Receiver<'a, T> {
         // self.0.start_recv(token)
 
         let case_id = CaseId::new(&token as *const _ as usize);
-        let token = unsafe { &mut token.zero };
+        let token = &mut token.zero;
         let mut inner = self.0.inner.lock();
 
         if let Some(case) = inner.senders.wake_one() {
-            *token = unsafe { ZeroToken::Case(serialize::<Case, SerCase>(case)) };
+            *token = ZeroToken::Case(case);
             return true;
         } else if inner.is_closed {
             *token = ZeroToken::Closed;
@@ -387,14 +384,12 @@ impl<'a, T> Select for Sender<'a, T> {
         // self.0.start_send(token)
 
         let case_id = CaseId::new(&token as *const _ as usize);
-        let token = unsafe { &mut token.zero };
+        let token = &mut token.zero;
         let mut inner = self.0.inner.lock();
 
         // If there's someone on the other side, exchange message with it.
         if let Some(case) = inner.receivers.wake_one() {
-            unsafe {
-                *token = ZeroToken::Case(serialize::<Case, SerCase>(case));
-            }
+            *token = ZeroToken::Case(case);
             return true;
         }
 

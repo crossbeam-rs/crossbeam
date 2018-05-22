@@ -149,7 +149,7 @@ impl<T> Channel<T> {
 
     /// TODO
     fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        let token = unsafe { &mut token.array };
+        let token = &mut token.array;
 
         let one_lap = self.one_lap;
         let index_bits = one_lap - 1;
@@ -218,7 +218,7 @@ impl<T> Channel<T> {
 
     /// TODO
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        let token = unsafe { &mut token.array };
+        let token = &mut token.array;
 
         let one_lap = self.one_lap;
         let index_bits = one_lap - 1;
@@ -305,7 +305,7 @@ impl<T> Channel<T> {
     }
 
     pub fn send(&self, msg: T) {
-        let mut token: Token = unsafe { ::std::mem::uninitialized() };
+        let mut token: Token = Default::default();
         let case_id = CaseId::new(&token as *const Token as usize);
         let sender = self.sender();
 
@@ -334,7 +334,7 @@ impl<T> Channel<T> {
     }
 
     pub fn recv(&self) -> Option<T> {
-        let mut token: Token = unsafe { ::std::mem::uninitialized() };
+        let mut token: Token = Default::default();
         let case_id = CaseId::new(&token as *const Token as usize);
         let receiver = self.receiver();
 
@@ -456,10 +456,19 @@ impl<T> Drop for Channel<T> {
     }
 }
 
-#[derive(Copy, Clone)]
 pub struct ArrayToken {
     entry: *const u8,
     lap: usize,
+}
+
+impl Default for ArrayToken {
+    #[inline]
+    fn default() -> Self {
+        ArrayToken {
+            entry: ptr::null(),
+            lap: 0,
+        }
+    }
 }
 
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);

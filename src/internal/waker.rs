@@ -36,16 +36,6 @@ impl Waker {
         }
     }
 
-    /// Registers the current thread with `case_id`.
-    #[inline]
-    pub fn register(&mut self, case_id: CaseId) {
-        self.cases.push_back(Case {
-            context: context::current(),
-            case_id,
-            packet: 0,
-        });
-    }
-
     #[inline]
     pub fn register_with_packet(&mut self, case_id: CaseId, packet: usize) {
         self.cases.push_back(Case {
