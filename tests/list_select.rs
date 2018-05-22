@@ -19,6 +19,7 @@ struct Receiver<T>(channel::Receiver<T>);
 
 impl<T> Sender<T> {
     fn send(&self, msg: T) {
+        // Two cases to prevent internal optimizations from triggering (if they exist).
         select! {
             send(self.0, msg) => {}
             send(self.0, msg) => {}
@@ -44,6 +45,7 @@ impl<T> Sender<T> {
 
 impl<T> Receiver<T> {
     fn try_recv(&self) -> Option<T> {
+        // Two cases to prevent internal optimizations from triggering (if they exist).
         select! {
             recv(self.0, msg) => msg,
             recv(self.0, msg) => msg,
@@ -52,6 +54,7 @@ impl<T> Receiver<T> {
     }
 
     fn recv(&self) -> Option<T> {
+        // Two cases to prevent internal optimizations from triggering (if they exist).
         select! {
             recv(self.0, msg) => msg,
             recv(self.0, msg) => msg,
