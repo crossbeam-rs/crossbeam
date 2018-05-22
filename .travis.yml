@@ -4,6 +4,7 @@ rust:
   - stable
   - beta
   - nightly
+  - 1.26.0
 
 script:
   - export RUSTFLAGS="-D warnings"
