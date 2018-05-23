@@ -2,6 +2,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use internal::select::CaseId;
@@ -79,9 +80,11 @@ impl Channel {
 
     #[inline]
     pub fn recv(&self) -> Option<Instant> {
-        if self.ptr.load(Ordering::SeqCst).is_null() {
-            return None;
-        }
+        // if let Some(flag) = self.try_get() {
+        //     if flag.load(Ordering::SeqCst) {
+        //         return None;
+        //     }
+        // }
 
         let mut now;
         loop {
@@ -89,7 +92,7 @@ impl Channel {
             if now >= self.deadline {
                 break;
             }
-            ::std::thread::sleep(self.deadline - now);
+            thread::sleep(self.deadline - now);
         }
 
         if !self.flag().swap(true, Ordering::SeqCst) {

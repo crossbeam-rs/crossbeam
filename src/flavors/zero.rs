@@ -13,6 +13,8 @@ use internal::context;
 use internal::utils::Backoff;
 use internal::waker::{Case, Waker};
 
+// TODO: anything that calls read/write in any flavor should have an abort guard
+
 struct Inner {
     senders: Waker,
     receivers: Waker,
@@ -88,6 +90,7 @@ impl<T> Channel<T> {
         let packet;
 
         match token {
+            ZeroToken::Uninit => unreachable!(),
             ZeroToken::Closed => return None,
             ZeroToken::Accept(p) => {
                 packet = *p as *const Packet<T>;
@@ -150,6 +153,7 @@ impl<T> Channel<T> {
         let packet;
 
         match token {
+            ZeroToken::Uninit => unreachable!(),
             ZeroToken::Closed => unreachable!(),
             ZeroToken::Accept(p) => {
                 packet = *p as *const Packet<T>;
@@ -274,6 +278,7 @@ struct Packet<T> {
 }
 
 pub enum ZeroToken {
+    Uninit,
     Closed,
     Accept(usize),
     Case(Case),
@@ -282,7 +287,7 @@ pub enum ZeroToken {
 impl Default for ZeroToken {
     #[inline]
     fn default() -> Self {
-        ZeroToken::Closed
+        ZeroToken::Uninit
     }
 }
 
