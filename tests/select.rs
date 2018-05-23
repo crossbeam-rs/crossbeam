@@ -169,49 +169,6 @@ fn timeout() {
 }
 
 #[test]
-fn deadline() {
-    let (_s1, r1) = channel::unbounded::<i32>();
-    let (s2, r2) = channel::unbounded::<i32>();
-
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
-            thread::sleep(ms(1500));
-            s2.send(2);
-        });
-
-        select! {
-            recv(r1) => panic!(),
-            recv(r2) => panic!(),
-            recv(channel::after(ms(1000))) => {},
-        }
-
-        select! {
-            recv(r1) => panic!(),
-            recv(r2, v) => assert_eq!(v, Some(2)),
-            recv(channel::after(ms(1000))) => panic!(),
-        }
-    });
-
-    crossbeam::scope(|scope| {
-        let (s, r) = channel::unbounded::<i32>();
-
-        scope.spawn(move || {
-            thread::sleep(ms(500));
-            drop(s);
-        });
-
-        select! {
-            recv(channel::after(ms(1000))) => {
-                select! {
-                    recv(r, v) => assert!(v.is_none()),
-                    default => panic!(),
-                }
-            }
-        }
-    });
-}
-
-#[test]
 fn default_when_closed() {
     let (_, r) = channel::unbounded::<i32>();
 
@@ -692,6 +649,23 @@ fn stress_timeout_two_threads() {
             }
         });
     });
+}
+
+#[test]
+fn send_recv_same_channel() {
+    let (s, r) = channel::bounded::<i32>(0);
+    select! {
+        send(s, 0) => panic!(),
+        recv(r) => panic!(),
+        recv(channel::after(ms(500))) => {}
+    }
+
+    let (s, r) = channel::unbounded::<i32>();
+    select! {
+        send(s, 0) => panic!(),
+        recv(r) => panic!(),
+        recv(channel::after(ms(500))) => {}
+    }
 }
 
 #[test]

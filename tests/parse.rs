@@ -2,6 +2,8 @@ extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel as channel;
 
+use std::ops::Deref;
+
 #[test]
 fn references() {
     let (s, r) = channel::unbounded::<i32>();
@@ -280,6 +282,37 @@ fn variety() {
         send(Some(s2), "foo".to_string()) => {}
         recv([&r3].iter().map(|x| *x)) => {}
         send([&s3].iter().map(|x| *x), ()) => {}
+        default => {}
+    }
+}
+
+#[test]
+fn deref() {
+    struct Sender<T>(channel::Sender<T>);
+    struct Receiver<T>(channel::Receiver<T>);
+
+    impl<T> Deref for Receiver<T> {
+        type Target = channel::Receiver<T>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl<T> Deref for Sender<T> {
+        type Target = channel::Sender<T>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    let (s, r) = channel::bounded::<i32>(0);
+    let (s, r) = (Sender(s), Receiver(r));
+
+    select! {
+        send(s, 0) => panic!(),
+        recv(r) => panic!(),
         default => {}
     }
 }
