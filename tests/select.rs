@@ -662,9 +662,9 @@ fn send_recv_same_channel() {
 
     let (s, r) = channel::unbounded::<i32>();
     select! {
-        send(s, 0) => panic!(),
+        send(s, 0) => {},
         recv(r) => panic!(),
-        recv(channel::after(ms(500))) => {}
+        recv(channel::after(ms(500))) => panic!(),
     }
 }
 
