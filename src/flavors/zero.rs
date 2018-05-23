@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 use internal::select::{CaseId, Select, Token};
 use internal::context;
 use internal::utils::Backoff;
-use internal::waker::{Case, Waker};
+use internal::waker::Waker;
 
 // TODO: anything that calls read/write in any flavor should have an abort guard
 
@@ -57,7 +57,7 @@ impl<T> Channel<T> {
         let mut inner = self.inner.lock();
 
         if let Some(case) = inner.senders.wake_one() {
-            *token = ZeroToken::Case(case);
+            *token = ZeroToken::Packet(case.packet);
             true
         } else if inner.is_closed {
             *token = ZeroToken::Closed;
@@ -68,7 +68,7 @@ impl<T> Channel<T> {
     }
 
     /// TODO
-    fn fulfill_recv(&self, token: &mut Token) -> bool {
+    fn accept_recv(&self, token: &mut Token) -> bool {
         let token = &mut token.zero;
 
         let context = context::current();
@@ -76,7 +76,7 @@ impl<T> Channel<T> {
         loop {
             let packet = context.packet.load(Ordering::SeqCst);
             if packet != 0 {
-                *token = ZeroToken::Accept(packet);
+                *token = ZeroToken::Packet(packet);
                 break;
             }
             backoff.step();
@@ -93,11 +93,8 @@ impl<T> Channel<T> {
         match token {
             ZeroToken::Uninit => unreachable!(),
             ZeroToken::Closed => return None,
-            ZeroToken::Accept(p) => {
+            ZeroToken::Packet(p) => {
                 packet = *p as *const Packet<T>;
-            }
-            ZeroToken::Case(case) => {
-                packet = case.packet as *const Packet<T>;
             }
         }
 
@@ -123,7 +120,7 @@ impl<T> Channel<T> {
 
         // If there's someone on the other side, exchange message with it.
         if let Some(case) = inner.receivers.wake_one() {
-            *token = ZeroToken::Case(case);
+            *token = ZeroToken::Packet(case.packet);
             true
         } else {
             false
@@ -131,7 +128,7 @@ impl<T> Channel<T> {
     }
 
     /// TODO
-    fn fulfill_send(&self, token: &mut Token) -> bool {
+    fn accept_send(&self, token: &mut Token) -> bool {
         let token = &mut token.zero;
 
         let context = context::current();
@@ -139,7 +136,7 @@ impl<T> Channel<T> {
         loop {
             let packet = context.packet.load(Ordering::SeqCst);
             if packet != 0 {
-                *token = ZeroToken::Accept(packet);
+                *token = ZeroToken::Packet(packet);
                 break;
             }
             backoff.step();
@@ -156,11 +153,8 @@ impl<T> Channel<T> {
         match token {
             ZeroToken::Uninit => unreachable!(),
             ZeroToken::Closed => unreachable!(),
-            ZeroToken::Accept(p) => {
+            ZeroToken::Packet(p) => {
                 packet = *p as *const Packet<T>;
-            }
-            ZeroToken::Case(case) => {
-                packet = case.packet as *const Packet<T>;
             }
         }
 
@@ -180,7 +174,7 @@ impl<T> Channel<T> {
                 let mut inner = self.inner.lock();
                 // If there's someone on the other side, exchange message with it.
                 if let Some(case) = inner.receivers.wake_one() {
-                    token.zero = ZeroToken::Case(case);
+                    token.zero = ZeroToken::Packet(case.packet);
                     drop(inner);
                     unsafe { self.write(&mut token, msg); }
                     break;
@@ -222,7 +216,7 @@ impl<T> Channel<T> {
                 let mut inner = self.inner.lock();
 
                 if let Some(case) = inner.senders.wake_one() {
-                    token.zero = ZeroToken::Case(case);
+                    token.zero = ZeroToken::Packet(case.packet);
                     drop(inner);
                     unsafe {
                         return self.read(&mut token);
@@ -281,8 +275,7 @@ struct Packet<T> {
 pub enum ZeroToken {
     Uninit,
     Closed,
-    Accept(usize),
-    Case(Case),
+    Packet(usize),
 }
 
 impl Default for ZeroToken {
@@ -308,7 +301,7 @@ impl<'a, T> Select for Receiver<'a, T> {
         let mut inner = self.0.inner.lock();
 
         if let Some(case) = inner.senders.wake_one() {
-            *token = ZeroToken::Case(case);
+            *token = ZeroToken::Packet(case.packet);
             return true;
         } else if inner.is_closed {
             *token = ZeroToken::Closed;
@@ -335,7 +328,7 @@ impl<'a, T> Select for Receiver<'a, T> {
             loop {
                 let packet = context.packet.load(Ordering::SeqCst);
                 if packet != 0 {
-                    *token = ZeroToken::Accept(packet);
+                    *token = ZeroToken::Packet(packet);
                     break;
                 }
                 backoff.step();
@@ -377,7 +370,7 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 
     fn accept(&self, token: &mut Token) -> bool {
-        self.0.fulfill_recv(token)
+        self.0.accept_recv(token)
     }
 }
 
@@ -395,7 +388,7 @@ impl<'a, T> Select for Sender<'a, T> {
 
         // If there's someone on the other side, exchange message with it.
         if let Some(case) = inner.receivers.wake_one() {
-            *token = ZeroToken::Case(case);
+            *token = ZeroToken::Packet(case.packet);
             return true;
         }
 
@@ -419,7 +412,7 @@ impl<'a, T> Select for Sender<'a, T> {
             loop {
                 let packet = context.packet.load(Ordering::SeqCst);
                 if packet != 0 {
-                    *token = ZeroToken::Accept(packet);
+                    *token = ZeroToken::Packet(packet);
                     break;
                 }
                 backoff.step();
@@ -461,6 +454,6 @@ impl<'a, T> Select for Sender<'a, T> {
     }
 
     fn accept(&self, token: &mut Token) -> bool {
-        self.0.fulfill_send(token)
+        self.0.accept_send(token)
     }
 }
