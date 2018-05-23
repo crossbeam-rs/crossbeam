@@ -1,2 +1,4 @@
-/target/
+target/
 Cargo.lock
+/benchmarks/*.txt
+/benchmarks/*.png
