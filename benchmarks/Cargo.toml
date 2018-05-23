@@ -6,6 +6,7 @@ version = "0.1.0"
 atomicring = "0.5.3"
 chan = "0.1.19"
 crossbeam = "0.3.0"
+crossbeam-channel = { path = ".." }
 mpmc = "0.1.5"
 
 [features]
@@ -32,7 +33,6 @@ path = "ms_queue.rs"
 [[bin]]
 name = "seg_queue"
 path = "seg_queue.rs"
-
 
 [[bin]]
 name = "atomicring"

@@ -3,7 +3,7 @@ extern crate crossbeam;
 extern crate crossbeam_channel;
 pub mod testtype;
 use testtype::TestType;
-use crossbeam_channel::{bounded, unbounded, Select, Receiver, Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -14,7 +14,7 @@ fn seq<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     for i in 0..MESSAGES {
-        tx.send(TestType::new(i)).unwrap();
+        tx.send(TestType::new(i));
     }
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
@@ -27,7 +27,7 @@ fn spsc<F: Fn() -> TxRx>(make: F) {
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                tx.send(TestType::new(i)).unwrap();
+                tx.send(TestType::new(i));
             }
         });
         s.spawn(|| {
@@ -45,7 +45,7 @@ fn mpsc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i)).unwrap();
+                    tx.send(TestType::new(i));
                 }
             });
         }
@@ -64,7 +64,7 @@ fn mpmc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i)).unwrap();
+                    tx.send(TestType::new(i));
                 }
             });
         }
@@ -85,7 +85,7 @@ fn select_rx<F: Fn() -> TxRx>(make: F) {
         for &(ref tx, _) in &chans {
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i)).unwrap();
+                    tx.send(TestType::new(i));
                 }
             });
         }
@@ -108,7 +108,7 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     select! {
-                        send(chans.iter().map(|c| &c.0), i as i32, _) => {}
+                        send(chans.iter().map(|c| &c.0), TestType::new(i), _) => {}
                     }
                 }
             });
