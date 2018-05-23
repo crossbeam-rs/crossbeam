@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::num::Wrapping;
+use std::process;
 use std::sync::atomic;
 use std::thread;
 
@@ -50,7 +51,7 @@ impl Drop for AbortGuard {
             line!(),
             column!(),
         );
-        ::std::process::abort();
+        process::abort();
     }
 }
 

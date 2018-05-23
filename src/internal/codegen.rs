@@ -1,5 +1,6 @@
 /// Code generator for the `select!` macro.
 
+use std::option;
 use std::time::Instant;
 
 use internal::channel::{Receiver, Sender};
@@ -102,7 +103,7 @@ pub trait RecvArgument<'a, T: 'a> {
 }
 
 impl<'a, T> RecvArgument<'a, T> for &'a Receiver<T> {
-    type Iter = ::std::option::IntoIter<&'a Receiver<T>>;
+    type Iter = option::IntoIter<&'a Receiver<T>>;
 
     fn __as_recv_argument(&'a self) -> Self::Iter {
         Some(*self).into_iter()
@@ -124,7 +125,7 @@ pub trait SendArgument<'a, T: 'a> {
 }
 
 impl<'a, T> SendArgument<'a, T> for &'a Sender<T> {
-    type Iter = ::std::option::IntoIter<&'a Sender<T>>;
+    type Iter = option::IntoIter<&'a Sender<T>>;
 
     fn __as_send_argument(&'a self) -> Self::Iter {
         Some(*self).into_iter()
@@ -151,6 +152,7 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         {
             match {
+                #[allow(unused_imports)]
                 use $crate::internal::codegen::RecvArgument;
                 &mut (&$rs).__as_recv_argument()
             } {
@@ -174,6 +176,7 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         {
             match {
+                #[allow(unused_imports)]
                 use $crate::internal::codegen::SendArgument;
                 &mut (&$ss).__as_send_argument()
             } {

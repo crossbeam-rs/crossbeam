@@ -2,8 +2,9 @@
 //!
 //! Also known as *rendezvous* channel.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::time::Instant;
 
 use parking_lot::Mutex;
@@ -325,7 +326,7 @@ impl<'a, T> Select for Receiver<'a, T> {
 
         drop(inner);
 
-        ::std::thread::yield_now();
+        thread::yield_now();
         context::current_try_abort();
 
         if context::current_selected() != CaseId::abort() {
@@ -409,7 +410,7 @@ impl<'a, T> Select for Sender<'a, T> {
 
         drop(inner);
 
-        ::std::thread::yield_now();
+        thread::yield_now();
         context::current_try_abort();
 
         if context::current_selected() != CaseId::abort() {
