@@ -50,8 +50,8 @@
 /// 2. A *send* case, which fires when the message can be sent into the channel.
 /// 3. A *would block* case, which fires when all receive and send operations in the loop would
 ///    block.
-/// 4. A *closed* case, which fires when all operations in the loop are working with closed
-///    channels.
+/// 4. A *disconnected* case, which fires when all operations in the loop are working with
+///    disconnected channels.
 /// 5. A *timed out* case, which fires when selection is blocked for longer than the specified
 ///    timeout.
 ///
@@ -77,7 +77,7 @@
 /// 1. Exactly one case fires.
 /// 2. If none of the cases can fire at the time, the current thread will be blocked.
 /// 3. If blocked, the current thread will be woken up as soon a message is pushed/popped into/from
-///    any channel waited on by a receive/send case, or if all channels get closed.
+///    any channel waited on by a receive/send case, or if all channels become disconnected.
 ///
 /// Finally, if more than one send or receive case can fire at the same time, a pseudorandom case
 /// will be selected, but on a best-effort basis only. The mechanism isn't promising any strict
@@ -134,8 +134,8 @@
 ///     // Receive `msg` from the optional receiver, if it exists (`Option<Receiver<_>>`).
 ///     recv(opt_rx4.as_ref().unwrap(), msg) if opt_rx4.is_some() => { ... }
 ///
-///     // This case fires if all declared send/receive operations are on closed channels.
-///     closed() => { ... }
+///     // This case fires if all declared send/receive operations are on disconnected channels.
+///     disconnected() => { ... }
 ///
 ///     // This case fires if all declared send/receive operations would block.
 ///     would_block() => { ... }
@@ -203,7 +203,7 @@
 /// # }
 /// ```
 ///
-/// ## Stop if all channels are closed
+/// ## Stop if all channels are disconnected
 ///
 /// ```
 /// # #[macro_use]
@@ -212,17 +212,17 @@
 ///
 /// let (tx, rx) = channel::unbounded();
 ///
-/// // Close the channel.
+/// // Disconnect the channel.
 /// drop(rx);
 ///
 /// select_loop! {
-///     // Won't happen. The channel is closed.
+///     // Won't happen. The channel is disconnected.
 ///     send(tx, "message") => {
 ///         println!("Sent the message.");
 ///         panic!();
 ///     }
 ///
-///     closed() => println!("All channels are closed! Stopping selection."),
+///     disconnected() => println!("All channels are disconnected! Stopping selection."),
 /// }
 ///
 /// # }
@@ -422,8 +422,8 @@ macro_rules! select_loop {
             $body
         }
     };
-    {@impl($state:ident) closed() => $body:expr} => {
-        if $state.closed() {
+    {@impl($state:ident) disconnected() => $body:expr} => {
+        if $state.disconnected() {
             $body
         }
     };

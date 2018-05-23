@@ -3,8 +3,8 @@ use std::fmt;
 
 /// An error returned from the [`Sender::send`] method.
 ///
-/// A send operation can only fail if the receiving end of a channel is closed, implying that the
-/// data could never be received. The error contains the data being sent as a payload so it can
+/// A send operation can only fail if the receiving end of a channel is disconnected, implying that
+/// the data could never be received. The error contains the data being sent as a payload so it can
 /// be recovered.
 ///
 /// [`Sender::send`]: struct.Sender.html#method.send
@@ -23,9 +23,9 @@ pub enum TrySendError<T> {
     /// available to receive the message at the time.
     Full(T),
 
-    /// This channel is closed, so the data could not be sent. The data is returned back to the
-    /// callee in this case.
-    Closed(T),
+    /// This channel's receiving half has disconnected, so the data could not be sent. The data is
+    /// returned back to the callee in this case.
+    Disconnected(T),
 }
 
 /// This enumeration is the list of possible errors that made [`send_timeout`] unable to return
@@ -34,11 +34,11 @@ pub enum TrySendError<T> {
 /// [`send_timeout`]: struct.Sender.html#method.send_timeout
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum SendTimeoutError<T> {
-    /// This channel is currently full, but not yet closed.
+    /// This channel is currently full, but the receivers have not yet disconnected.
     Timeout(T),
 
-    /// The channel is closed.
-    Closed(T),
+    /// The channel's receiving half has become disconnected.
+    Disconnected(T),
 }
 
 /// An error returned from the [`Select::send`] method.
@@ -53,8 +53,8 @@ pub struct SelectSendError<T>(pub T);
 
 /// An error returned from the [`Receiver::recv`] method.
 ///
-/// The [`recv`] operation can only fail if the channel is closed and empty, implying that no
-/// further messages will ever be received.
+/// The [`recv`] operation can only fail if the sending half of a channel is disconnected and the
+/// channel is empty, implying that no further messages will ever be received.
 ///
 /// [`Receiver::recv`]: struct.Receiver.html#method.recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -66,14 +66,16 @@ pub struct RecvError;
 /// [`try_recv`]: struct.Receiver.html#method.recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum TryRecvError {
-    /// This channel is currently empty, but not yet closed, so data may yet become available.
+    /// This channel is currently empty, but the senders have not yet disconnected, so data may yet
+    /// become available.
     ///
     /// If this is a zero-capacity channel, then the error indicates that there was no sender
     /// available to at the time.
     Empty,
 
-    /// The channel is closed, and there will never be any more data received on it.
-    Closed,
+    /// The channel's sending half has become disconnected, and there will never be any more data
+    /// received on it.
+    Disconnected,
 }
 
 /// This enumeration is the list of possible errors that made [`recv_timeout`] unable to return
@@ -82,11 +84,13 @@ pub enum TryRecvError {
 /// [`recv_timeout`]: struct.Receiver.html#method.recv_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum RecvTimeoutError {
-    /// This channel is currently empty, but not closed, so data may yet become available.
+    /// This channel is currently empty, but the senders have not yet disconnected, so data may yet
+    /// become available.
     Timeout,
 
-    /// The channel is closed, and there will never be any more data received on it.
-    Closed,
+    /// The channel's sending half has become disconnected, and there will never be any more data
+    /// received on it.
+    Disconnected,
 }
 
 /// An error returned from the [`Select::recv`] method.
@@ -107,13 +111,13 @@ impl<T> fmt::Debug for SendError<T> {
 
 impl<T> fmt::Display for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "sending on a closed channel".fmt(f)
+        "sending on a disconnected channel".fmt(f)
     }
 }
 
 impl<T: Send> error::Error for SendError<T> {
     fn description(&self) -> &str {
-        "sending on a closed channel"
+        "sending on a disconnected channel"
     }
 
     fn cause(&self) -> Option<&error::Error> {
@@ -145,7 +149,7 @@ impl<T> fmt::Debug for TrySendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             TrySendError::Full(..) => "Full(..)".fmt(f),
-            TrySendError::Closed(..) => "Closed(..)".fmt(f),
+            TrySendError::Disconnected(..) => "Disconnected(..)".fmt(f),
         }
     }
 }
@@ -154,7 +158,7 @@ impl<T> fmt::Display for TrySendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             TrySendError::Full(..) => "sending on a full channel".fmt(f),
-            TrySendError::Closed(..) => "sending on a closed channel".fmt(f),
+            TrySendError::Disconnected(..) => "sending on a disconnected channel".fmt(f),
         }
     }
 }
@@ -163,7 +167,7 @@ impl<T: Send> error::Error for TrySendError<T> {
     fn description(&self) -> &str {
         match *self {
             TrySendError::Full(..) => "sending on a full channel",
-            TrySendError::Closed(..) => "sending on a closed channel",
+            TrySendError::Disconnected(..) => "sending on a disconnected channel",
         }
     }
 
@@ -175,7 +179,7 @@ impl<T: Send> error::Error for TrySendError<T> {
 impl<T> From<SendError<T>> for TrySendError<T> {
     fn from(err: SendError<T>) -> TrySendError<T> {
         match err {
-            SendError(t) => TrySendError::Closed(t),
+            SendError(t) => TrySendError::Disconnected(t),
         }
     }
 }
@@ -197,7 +201,7 @@ impl<T> TrySendError<T> {
     pub fn into_inner(self) -> T {
         match self {
             TrySendError::Full(v) => v,
-            TrySendError::Closed(v) => v,
+            TrySendError::Disconnected(v) => v,
         }
     }
 }
@@ -212,14 +216,14 @@ impl<T> fmt::Display for SendTimeoutError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             SendTimeoutError::Timeout(..) => "timed out waiting on channel".fmt(f),
-            SendTimeoutError::Closed(..) => "sending on a closed channel".fmt(f),
+            SendTimeoutError::Disconnected(..) => "sending on a disconnected channel".fmt(f),
         }
     }
 }
 
 impl<T: Send> error::Error for SendTimeoutError<T> {
     fn description(&self) -> &str {
-        "sending on an empty and closed channel"
+        "sending on an empty and disconnected channel"
     }
 
     fn cause(&self) -> Option<&error::Error> {
@@ -230,7 +234,7 @@ impl<T: Send> error::Error for SendTimeoutError<T> {
 impl<T> From<SendError<T>> for SendTimeoutError<T> {
     fn from(err: SendError<T>) -> SendTimeoutError<T> {
         match err {
-            SendError(e) => SendTimeoutError::Closed(e),
+            SendError(e) => SendTimeoutError::Disconnected(e),
         }
     }
 }
@@ -253,7 +257,7 @@ impl<T> SendTimeoutError<T> {
     pub fn into_inner(self) -> T {
         match self {
             SendTimeoutError::Timeout(v) => v,
-            SendTimeoutError::Closed(v) => v,
+            SendTimeoutError::Disconnected(v) => v,
         }
     }
 }
@@ -307,13 +311,13 @@ impl<T> SelectSendError<T> {
 
 impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "receiving on an empty and closed channel".fmt(f)
+        "receiving on an empty and disconnected channel".fmt(f)
     }
 }
 
 impl error::Error for RecvError {
     fn description(&self) -> &str {
-        "receiving on an empty and closed channel"
+        "receiving on an empty and disconnected channel"
     }
 
     fn cause(&self) -> Option<&error::Error> {
@@ -325,7 +329,7 @@ impl fmt::Display for TryRecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             TryRecvError::Empty => "receiving on an empty channel".fmt(f),
-            TryRecvError::Closed => "receiving on an empty and closed channel".fmt(f),
+            TryRecvError::Disconnected => "receiving on an empty and disconnected channel".fmt(f),
         }
     }
 }
@@ -334,7 +338,7 @@ impl error::Error for TryRecvError {
     fn description(&self) -> &str {
         match *self {
             TryRecvError::Empty => "receiving on an empty channel",
-            TryRecvError::Closed => "receiving on an empty and closed channel",
+            TryRecvError::Disconnected => "receiving on an empty and disconnected channel",
         }
     }
 
@@ -346,7 +350,7 @@ impl error::Error for TryRecvError {
 impl From<RecvError> for TryRecvError {
     fn from(err: RecvError) -> TryRecvError {
         match err {
-            RecvError => TryRecvError::Closed,
+            RecvError => TryRecvError::Disconnected,
         }
     }
 }
@@ -355,7 +359,7 @@ impl fmt::Display for RecvTimeoutError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             RecvTimeoutError::Timeout => "timed out waiting on channel".fmt(f),
-            RecvTimeoutError::Closed => "channel is empty and closed".fmt(f),
+            RecvTimeoutError::Disconnected => "channel is empty and disconnected".fmt(f),
         }
     }
 }
@@ -364,7 +368,7 @@ impl error::Error for RecvTimeoutError {
     fn description(&self) -> &str {
         match *self {
             RecvTimeoutError::Timeout => "timed out waiting on channel",
-            RecvTimeoutError::Closed => "channel is empty and closed",
+            RecvTimeoutError::Disconnected => "channel is empty and sending half is Disconnected",
         }
     }
 
@@ -376,7 +380,7 @@ impl error::Error for RecvTimeoutError {
 impl From<RecvError> for RecvTimeoutError {
     fn from(err: RecvError) -> RecvTimeoutError {
         match err {
-            RecvError => RecvTimeoutError::Closed,
+            RecvError => RecvTimeoutError::Disconnected,
         }
     }
 }

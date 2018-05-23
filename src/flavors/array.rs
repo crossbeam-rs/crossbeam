@@ -36,8 +36,8 @@ enum PushError<T> {
     /// The channel is full.
     Full(T),
 
-    /// The channel is closed.
-    Closed(T),
+    /// The channel is disconnected.
+    Disconnected(T),
 }
 
 /// The list of possible error outcomes for the `pop` operation.
@@ -45,8 +45,8 @@ enum PopError {
     /// The channel is empty.
     Empty,
 
-    /// The channel is closed.
-    Closed,
+    /// The channel is disconnected.
+    Disconnected,
 }
 
 /// An array-based channel with fixed capacity.
@@ -65,8 +65,8 @@ pub struct Channel<T> {
     /// Tail of the channel (the next index to write to).
     ///
     /// Bits lower than the mark bit represent the index, while the upper bits represent the lap.
-    /// If the mark bit is set, that means the channel is closed and the tail cannot move forward
-    /// any further.
+    /// If the mark bit is set, that means the channel is disconnected and the tail cannot move
+    /// forward any further.
     tail: CachePadded<AtomicUsize>,
 
     /// Buffer holding entries in the channel.
@@ -77,7 +77,7 @@ pub struct Channel<T> {
 
     /// The mark bit.
     ///
-    /// If the mark bit in the tail is set, that indicates the channel is closed.
+    /// If the mark bit in the tail is set, that indicates the channel is disconnected.
     mark_bit: usize,
 
     /// Senders waiting on full channel.
@@ -100,8 +100,8 @@ impl<T> Channel<T> {
         assert!(cap > 0, "capacity must be positive");
 
         // Make sure there are at least two most significant bits to encode laps, plus one more bit
-        // for marking the tail to indicate that the channel is closed. If we can't reserve three
-        // bits, then panic. In that case, the buffer is likely too large to allocate anyway.
+        // for marking the tail to indicate that the channel is disconnected. If we can't reserve
+        // three bits, then panic. In that case, the buffer is likely too large to allocate anyway.
         let cap_limit = usize::max_value() / (1 << 3);
         assert!(
             cap <= cap_limit,
@@ -168,9 +168,9 @@ impl<T> Channel<T> {
             // Load the tail.
             let tail = self.tail.load(SeqCst);
 
-            // If the tail is marked, the channel is closed.
+            // If the tail is marked, the channel is disconnected.
             if tail & self.mark_bit != 0 {
-                return Err(PushError::Closed(msg));
+                return Err(PushError::Disconnected(msg));
             }
 
             let index = tail & index_bits;
@@ -262,10 +262,10 @@ impl<T> Channel<T> {
                 // ...and if the tail lags one lap behind the head as well, that means the channel
                 // is empty.
                 if (tail & !self.mark_bit).wrapping_add(one_lap) == head {
-                    // Check whether the channel is closed and return the appropriate error
+                    // Check whether the channel is disconnected and return the appropriate error
                     // variant.
                     if tail & self.mark_bit != 0 {
-                        return Err(PopError::Closed);
+                        return Err(PopError::Disconnected);
                     } else {
                         return Err(PopError::Empty);
                     }
@@ -315,7 +315,7 @@ impl<T> Channel<T> {
                 Ok(())
             }
             Err(PushError::Full(m)) => Err(TrySendError::Full(m)),
-            Err(PushError::Closed(m)) => Err(TrySendError::Closed(m)),
+            Err(PushError::Disconnected(m)) => Err(TrySendError::Disconnected(m)),
         }
     }
 
@@ -335,8 +335,8 @@ impl<T> Channel<T> {
                         return Ok(());
                     }
                     Err(PushError::Full(m)) => msg = m,
-                    Err(PushError::Closed(m)) => {
-                        return Err(SendTimeoutError::Closed(m));
+                    Err(PushError::Disconnected(m)) => {
+                        return Err(SendTimeoutError::Disconnected(m));
                     }
                 }
 
@@ -348,7 +348,7 @@ impl<T> Channel<T> {
             handle::current_reset();
             self.senders.register(case_id);
             let timed_out =
-                !self.is_closed() && self.is_full() && !handle::current_wait_until(deadline);
+                !self.is_disconnected() && self.is_full() && !handle::current_wait_until(deadline);
             self.senders.unregister(case_id);
 
             if timed_out {
@@ -365,7 +365,7 @@ impl<T> Channel<T> {
                 Ok(m)
             }
             Err(PopError::Empty) => Err(TryRecvError::Empty),
-            Err(PopError::Closed) => Err(TryRecvError::Closed),
+            Err(PopError::Disconnected) => Err(TryRecvError::Disconnected),
         }
     }
 
@@ -384,7 +384,7 @@ impl<T> Channel<T> {
                         return Ok(m);
                     }
                     Err(PopError::Empty) => {},
-                    Err(PopError::Closed) => return Err(RecvTimeoutError::Closed),
+                    Err(PopError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
                 }
 
                 if !backoff.step() {
@@ -395,7 +395,7 @@ impl<T> Channel<T> {
             handle::current_reset();
             self.receivers.register(case_id);
             let timed_out =
-                !self.is_closed() && self.is_empty() && !handle::current_wait_until(deadline);
+                !self.is_disconnected() && self.is_empty() && !handle::current_wait_until(deadline);
             self.receivers.unregister(case_id);
 
             if timed_out {
@@ -409,11 +409,11 @@ impl<T> Channel<T> {
         self.cap
     }
 
-    /// Closes the channel and wakes up all currently blocked operations on it.
-    pub fn close(&self) -> bool {
+    /// Disconnects the channel and wakes up all currently blocked operations on it.
+    pub fn disconnect(&self) -> bool {
         let tail = self.tail.fetch_or(self.mark_bit, SeqCst);
 
-        // Was the channel already closed?
+        // Was the channel already disconnected?
         if tail & self.mark_bit != 0 {
             false
         } else {
@@ -423,8 +423,8 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns `true` if the channel is closed.
-    pub fn is_closed(&self) -> bool {
+    /// Returns `true` if the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
         self.tail.load(SeqCst) & self.mark_bit != 0
     }
 

@@ -199,7 +199,7 @@ impl<T> Sender<T> {
             Flavor::Array(_) | Flavor::List(_) => match self.try_send(msg) {
                 Ok(()) => Ok(()),
                 Err(TrySendError::Full(m)) => Err(m),
-                Err(TrySendError::Closed(m)) => Err(m),
+                Err(TrySendError::Disconnected(m)) => Err(m),
             },
             Flavor::Zero(ref chan) => {
                 chan.fulfill_send(msg);
@@ -211,7 +211,7 @@ impl<T> Sender<T> {
     /// Attempts to send a message into the channel without blocking.
     ///
     /// This method will either send a message into the channel immediately, or return an error if
-    /// the channel is full or closed. The returned error contains the original message.
+    /// the channel is full or disconnected. The returned error contains the original message.
     ///
     /// If called on a zero-capacity channel, this method will send a message the message only if
     /// there happens to be a receive operation on the other side of the channel at the same time.
@@ -225,7 +225,7 @@ impl<T> Sender<T> {
     /// assert_eq!(tx.try_send(1), Ok(()));
     /// assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
     /// drop(rx);
-    /// assert_eq!(tx.try_send(2), Err(TrySendError::Closed(2)));
+    /// assert_eq!(tx.try_send(2), Err(TrySendError::Disconnected(2)));
     /// ```
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         match self.0.flavor {
@@ -238,8 +238,8 @@ impl<T> Sender<T> {
     /// Sends a message into the channel, blocking if the channel is full.
     ///
     /// If the channel is full (its capacity is fully utilized), this call will block until the
-    /// send operation can proceed. If the channel is (or gets) closed, this call will wake up and
-    /// return an error.
+    /// send operation can proceed. If the channel is (or becomes) disconnected, this call will
+    /// wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel.
@@ -271,7 +271,7 @@ impl<T> Sender<T> {
         };
         match res {
             Ok(()) => Ok(()),
-            Err(SendTimeoutError::Closed(m)) => Err(SendError(m)),
+            Err(SendTimeoutError::Disconnected(m)) => Err(SendError(m)),
             Err(SendTimeoutError::Timeout(m)) => Err(SendError(m)),
         }
     }
@@ -279,8 +279,8 @@ impl<T> Sender<T> {
     /// Sends a message into the channel, blocking if the channel is full for a limited time.
     ///
     /// If the channel is full (its capacity is fully utilized), this call will block until the
-    /// send operation can proceed. If the channel is (or gets) closed, or if it waits for longer
-    /// than `timeout`, this call will wake up and return an error.
+    /// send operation can proceed. If the channel is (or becomes) disconnected, or if it waits for
+    /// longer than `timeout`, this call will wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel.
@@ -302,7 +302,7 @@ impl<T> Sender<T> {
     ///
     /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
     /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Closed));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
     /// ```
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
         let deadline = Some(Instant::now() + timeout);
@@ -328,9 +328,9 @@ impl<T> Sender<T> {
     /// tx.send(0).unwrap();
     /// assert!(!tx.is_empty());
     ///
-    /// // Drop the only receiver, thus closing the channel.
+    /// // Drop the only receiver, thus disconnecting the channel.
     /// drop(rx);
-    /// // Even a closed channel can be non-empty.
+    /// // Even a disconnected channel can be non-empty.
     /// assert!(!tx.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
@@ -387,7 +387,7 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns `true` if the channel is closed.
+    /// Returns `true` if the channel is disconnected.
     ///
     /// # Examples
     ///
@@ -397,23 +397,24 @@ impl<T> Sender<T> {
     /// let (tx, rx) = unbounded::<i32>();
     /// tx.send(1).unwrap();
     ///
-    /// assert!(!tx.is_closed());
+    /// assert!(!tx.is_disconnected());
     /// drop(rx);
-    /// assert!(tx.is_closed());
+    /// assert!(tx.is_disconnected());
     /// ```
-    pub fn is_closed(&self) -> bool {
+    pub fn is_disconnected(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_closed(),
-            Flavor::Zero(ref chan) => chan.is_closed(),
+            Flavor::Array(ref chan) => chan.is_disconnected(),
+            Flavor::List(ref chan) => chan.is_disconnected(),
+            Flavor::Zero(ref chan) => chan.is_disconnected(),
         }
     }
 
-    /// Closes the channel.
+    /// Disconnects the channel.
     ///
-    /// Returns `true` if this call closed the channel and `false` if it was already closed.
+    /// Returns `true` if this call disconnected the channel and `false` if it was already
+    /// disconnected.
     ///
-    /// Closing prevents any further messages from being sent into the channel, while still
+    /// Disconnection prevents any further messages from being sent into the channel, while still
     /// allowing the receiver to drain any existing buffered messages.
     ///
     /// # Examples
@@ -425,16 +426,16 @@ impl<T> Sender<T> {
     /// tx.send(1);
     /// tx.send(2);
     ///
-    /// rx.close();
+    /// rx.disconnect();
     /// assert_eq!(rx.recv(), Ok(1));
     /// assert_eq!(rx.recv(), Ok(2));
     /// assert!(rx.recv().is_err());
     /// ```
-    pub fn close(&self) -> bool {
+    pub fn disconnect(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.close(),
-            Flavor::List(ref chan) => chan.close(),
-            Flavor::Zero(ref chan) => chan.close(),
+            Flavor::Array(ref chan) => chan.disconnect(),
+            Flavor::List(ref chan) => chan.disconnect(),
+            Flavor::Zero(ref chan) => chan.disconnect(),
         }
     }
 }
@@ -443,9 +444,9 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.0.senders.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.close(),
-                Flavor::List(ref chan) => chan.close(),
-                Flavor::Zero(ref chan) => chan.close(),
+                Flavor::Array(ref chan) => chan.disconnect(),
+                Flavor::List(ref chan) => chan.disconnect(),
+                Flavor::Zero(ref chan) => chan.disconnect(),
             };
         }
     }
@@ -567,7 +568,7 @@ impl<T> Receiver<T> {
     ///
     /// This method will never block in order to wait for a message to become available. Instead,
     /// this will always return immediately with a message if there is one, or an error if the
-    /// channel is empty or closed.
+    /// channel is empty or disconnected.
     ///
     /// If called on a zero-capacity channel, this method will receive a message only if there
     /// happens to be a send operation on the other side of the channel at the same time.
@@ -584,7 +585,7 @@ impl<T> Receiver<T> {
     /// drop(tx);
     ///
     /// assert_eq!(rx.try_recv(), Ok(5));
-    /// assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+    /// assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
     /// ```
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.0.flavor {
@@ -597,7 +598,7 @@ impl<T> Receiver<T> {
     /// Waits for a message to be received from the channel.
     ///
     /// This method will always block in order to wait for a message to become available. If the
-    /// channel is (or gets) closed and empty, this call will wake up and return an error.
+    /// channel is (or becomes) empty and disconnected, this call will wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
     /// on the other side of the channel.
@@ -636,8 +637,8 @@ impl<T> Receiver<T> {
     /// Waits for a message to be received from the channel but only for a limited time.
     ///
     /// This method will always block in order to wait for a message to become available. If the
-    /// channel is (or gets) closed and empty, or if it waits for longer than `timeout`, it will
-    /// wake up and return an error.
+    /// channel is (or becomes) empty and disconnected, or if it waits for longer than `timeout`,
+    /// it will wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
     /// on the other side of the channel.
@@ -659,7 +660,7 @@ impl<T> Receiver<T> {
     ///
     /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
     /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Closed));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
     /// ```
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         let deadline = Some(Instant::now() + timeout);
@@ -685,9 +686,9 @@ impl<T> Receiver<T> {
     /// tx.send(0).unwrap();
     /// assert!(!rx.is_empty());
     ///
-    /// // Drop the only sender, thus closing the channel.
+    /// // Drop the only sender, thus disconnecting the channel.
     /// drop(tx);
-    /// // Even a closed channel can be non-empty.
+    /// // Even a disconnected channel can be non-empty.
     /// assert!(!rx.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
@@ -744,7 +745,7 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns `true` if the channel is closed.
+    /// Returns `true` if the channel is disconnected.
     ///
     /// # Examples
     ///
@@ -754,24 +755,24 @@ impl<T> Receiver<T> {
     /// let (tx, rx) = unbounded::<i32>();
     /// tx.send(1).unwrap();
     ///
-    /// assert!(!rx.is_closed());
+    /// assert!(!rx.is_disconnected());
     /// drop(tx);
-    /// assert!(rx.is_closed());
+    /// assert!(rx.is_disconnected());
     ///
     /// assert_eq!(rx.recv(), Ok(1));
     /// ```
-    pub fn is_closed(&self) -> bool {
+    pub fn is_disconnected(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.is_closed(),
-            Flavor::List(ref chan) => chan.is_closed(),
-            Flavor::Zero(ref chan) => chan.is_closed(),
+            Flavor::Array(ref chan) => chan.is_disconnected(),
+            Flavor::List(ref chan) => chan.is_disconnected(),
+            Flavor::Zero(ref chan) => chan.is_disconnected(),
         }
     }
 
-    /// Returns an iterator that waits for messages until the channel is closed.
+    /// Returns an iterator that waits for messages until the channel is disconnected.
     ///
     /// Each call to `next` will block waiting for the next message. It will finally return `None`
-    /// when the channel is empty and closed.
+    /// when the channel is empty and disconnected.
     ///
     /// # Examples
     ///
@@ -794,7 +795,7 @@ impl<T> Receiver<T> {
         Iter { rx: self }
     }
 
-    /// Returns an iterator that receives messages until the channel is empty or closed.
+    /// Returns an iterator that receives messages until the channel is empty or disconnected.
     ///
     /// Each call to `next` will return a message if there is at least one in the channel. The
     /// iterator will never block waiting for new messages.
@@ -824,11 +825,12 @@ impl<T> Receiver<T> {
         TryIter { rx: self }
     }
 
-    /// Closes the channel.
+    /// Disconnects the channel.
     ///
-    /// Returns `true` if this call closed the channel and `false` if it was already closed.
+    /// Returns `true` if this call disconnected the channel and `false` if it was already
+    /// disconnected.
     ///
-    /// Closing prevents any further messages from being sent into the channel, while still
+    /// Disconnection prevents any further messages from being sent into the channel, while still
     /// allowing the receiver to drain any existing buffered messages.
     ///
     /// # Examples
@@ -839,17 +841,17 @@ impl<T> Receiver<T> {
     /// let (tx, rx) = unbounded::<i32>();
     /// tx.send(1);
     /// tx.send(2);
-    /// tx.close();
+    /// tx.disconnect();
     ///
     /// assert_eq!(rx.recv(), Ok(1));
     /// assert_eq!(rx.recv(), Ok(2));
     /// assert!(rx.recv().is_err());
     /// ```
-    pub fn close(&self) -> bool {
+    pub fn disconnect(&self) -> bool {
         match self.0.flavor {
-            Flavor::Array(ref chan) => chan.close(),
-            Flavor::List(ref chan) => chan.close(),
-            Flavor::Zero(ref chan) => chan.close(),
+            Flavor::Array(ref chan) => chan.disconnect(),
+            Flavor::List(ref chan) => chan.disconnect(),
+            Flavor::Zero(ref chan) => chan.disconnect(),
         }
     }
 }
@@ -858,9 +860,9 @@ impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         if self.0.receivers.fetch_sub(1, SeqCst) == 1 {
             match self.0.flavor {
-                Flavor::Array(ref chan) => chan.close(),
-                Flavor::List(ref chan) => chan.close(),
-                Flavor::Zero(ref chan) => chan.close(),
+                Flavor::Array(ref chan) => chan.disconnect(),
+                Flavor::List(ref chan) => chan.disconnect(),
+                Flavor::Zero(ref chan) => chan.disconnect(),
             };
         }
     }
@@ -922,10 +924,10 @@ impl<T> IntoIterator for Receiver<T> {
     }
 }
 
-/// An iterator that waits for messages until the channel is closed.
+/// An iterator that waits for messages until the channel is disconnected.
 ///
 /// Each call to `next` will block waiting for the next message. It will finally return `None` when
-/// the channel is empty and closed.
+/// the channel is empty and disconnected.
 ///
 /// # Examples
 ///
@@ -957,7 +959,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-/// An iterator that receives messages until the channel is empty or closed.
+/// An iterator that receives messages until the channel is empty or disconnected.
 ///
 /// Each call to `next` will return a message if there is at least one in the channel. The iterator
 /// will never block waiting for new messages.
@@ -996,10 +998,10 @@ impl<'a, T> Iterator for TryIter<'a, T> {
     }
 }
 
-/// An owning iterator that waits for messages until the channel is closed.
+/// An owning iterator that waits for messages until the channel is disconnected.
 ///
 /// Each call to `next` will block waiting for the next message. It will finally return `None` when
-/// the channel is empty and closed.
+/// the channel is empty and disconnected.
 ///
 /// # Examples
 ///

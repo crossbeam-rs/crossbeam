@@ -58,7 +58,7 @@ fn recv_timeout() {
             assert_eq!(rx.recv_timeout(ms(1000)), Ok(7));
             assert_eq!(
                 rx.recv_timeout(ms(1000)),
-                Err(RecvTimeoutError::Closed)
+                Err(RecvTimeoutError::Disconnected)
             );
         });
         s.spawn(move || {
@@ -78,7 +78,7 @@ fn try_recv() {
             thread::sleep(ms(1500));
             assert_eq!(rx.try_recv(), Ok(7));
             thread::sleep(ms(500));
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+            assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -122,7 +122,7 @@ fn send_timeout() {
             assert_eq!(tx.send_timeout(8, ms(1000)), Ok(()));
             assert_eq!(
                 tx.send_timeout(9, ms(1000)),
-                Err(SendTimeoutError::Closed(9))
+                Err(SendTimeoutError::Disconnected(9))
             );
         });
         s.spawn(move || {
@@ -142,7 +142,7 @@ fn try_send() {
             thread::sleep(ms(1500));
             assert_eq!(tx.try_send(8), Ok(()));
             thread::sleep(ms(500));
-            assert_eq!(tx.try_send(9), Err(TrySendError::Closed(9)));
+            assert_eq!(tx.try_send(9), Err(TrySendError::Disconnected(9)));
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
@@ -152,40 +152,40 @@ fn try_send() {
 }
 
 #[test]
-fn is_closed() {
+fn is_disconnected() {
     let (tx, rx) = bounded::<()>(0);
-    assert!(!tx.is_closed());
-    assert!(!rx.is_closed());
+    assert!(!tx.is_disconnected());
+    assert!(!rx.is_disconnected());
 
     let tx2 = tx.clone();
     drop(tx);
     let tx3 = tx2.clone();
-    assert!(!tx2.is_closed());
-    assert!(!rx.is_closed());
+    assert!(!tx2.is_disconnected());
+    assert!(!rx.is_disconnected());
 
     drop(tx2);
-    assert!(!tx3.is_closed());
-    assert!(!rx.is_closed());
+    assert!(!tx3.is_disconnected());
+    assert!(!rx.is_disconnected());
 
     drop(tx3);
-    assert!(rx.is_closed());
+    assert!(rx.is_disconnected());
 
     let (tx, rx) = bounded::<()>(0);
-    assert!(!tx.is_closed());
-    assert!(!rx.is_closed());
+    assert!(!tx.is_disconnected());
+    assert!(!rx.is_disconnected());
 
     let rx2 = rx.clone();
     drop(rx);
     let rx3 = rx2.clone();
-    assert!(!rx2.is_closed());
-    assert!(!tx.is_closed());
+    assert!(!rx2.is_disconnected());
+    assert!(!tx.is_disconnected());
 
     drop(rx2);
-    assert!(!rx3.is_closed());
-    assert!(!tx.is_closed());
+    assert!(!rx3.is_disconnected());
+    assert!(!tx.is_disconnected());
 
     drop(rx3);
-    assert!(tx.is_closed());
+    assert!(tx.is_disconnected());
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn dropping_receiver_signals_sender() {
 }
 
 #[test]
-fn close_signals_sender() {
+fn disconnect_signals_sender() {
     let (tx, rx) = bounded(0);
 
     crossbeam::scope(|s| {
@@ -242,13 +242,13 @@ fn close_signals_sender() {
         });
         s.spawn(move || {
             thread::sleep(ms(1000));
-            rx.close();
+            rx.disconnect();
         });
     });
 }
 
 #[test]
-fn close_signals_receiver() {
+fn disconnect_signals_receiver() {
     let (tx, rx) = bounded::<()>(0);
 
     crossbeam::scope(|s| {

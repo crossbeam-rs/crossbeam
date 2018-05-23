@@ -125,10 +125,10 @@
 //! });
 //! ```
 //!
-//! # Closing
+//! # Disconnection
 //!
 //! As soon as all senders or all receivers associated with a channel are dropped, it becomes
-//! closed. Messages cannot be sent into a closed channel anymore, but the remaining
+//! disconnected. Messages cannot be sent into a disconnected channel anymore, but the remaining
 //! messages can still be received.
 //!
 //! ```
@@ -136,11 +136,11 @@
 //!
 //! let (tx, rx) = unbounded();
 //!
-//! // The only receiver is dropped, closing the channel.
+//! // The only receiver is dropped, disconnecting the channel.
 //! drop(rx);
 //!
 //! // Attempting to send a message will result in an error.
-//! assert_eq!(tx.try_send("hello"), Err(TrySendError::Closed("hello")));
+//! assert_eq!(tx.try_send("hello"), Err(TrySendError::Disconnected("hello")));
 //! ```
 //!
 //! ```
@@ -151,7 +151,7 @@
 //! tx.try_send(2).unwrap();
 //! tx.try_send(3).unwrap();
 //!
-//! // The only sender is dropped, closing the channel.
+//! // The only sender is dropped, disconnecting the channel.
 //! drop(tx);
 //!
 //! // The remaining messages can be received.
@@ -160,7 +160,7 @@
 //! assert_eq!(rx.try_recv(), Ok(3));
 //!
 //! // However, attempting to receive another message will result in an error.
-//! assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+//! assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
 //! ```
 //!
 //! # Blocking and non-blocking operations
@@ -174,7 +174,8 @@
 //! The non-blocking variant attempts to perform the operation, but doesn't block the current
 //! thread on failure (e.g. if receiving a message from an empty channel).
 //!
-//! The blocking variant will wait until the operation can be performed or the channel gets closed.
+//! The blocking variant will wait until the operation can be performed or the channel becomes
+//! disconnected.
 //!
 //! Blocking with a timeout does the same thing, but blocks the current thread only for a limited
 //! amount time.
@@ -182,7 +183,7 @@
 //! # Iteration
 //!
 //! Receivers can be turned into iterators. For example, calling [`iter`] creates an iterator that
-//! returns messages until the channel is closed. Note that iteration may block while waiting
+//! returns messages until the channel is disconnected. Note that iteration may block while waiting
 //! for the next message.
 //!
 //! ```
@@ -193,7 +194,7 @@
 //! tx.send(2).unwrap();
 //! tx.send(3).unwrap();
 //!
-//! // Drop the sender in order to close the channel.
+//! // Drop the sender in order to disconnect the channel.
 //! drop(tx);
 //!
 //! // Receive all remaining messages.
