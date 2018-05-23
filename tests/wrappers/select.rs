@@ -1,33 +1,34 @@
-use std::option;
+///! TODO: Optimizations in select might kick in.
+
+use std::ops::Deref;
 use std::time::{Duration, Instant};
 
 use channel;
 
-pub struct Sender<T>(channel::Sender<T>);
-pub struct Receiver<T>(channel::Receiver<T>);
+pub struct Sender<T>(pub channel::Sender<T>);
+pub struct Receiver<T>(pub channel::Receiver<T>);
+
+impl<T> Deref for Receiver<T> {
+    type Target = channel::Receiver<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> Deref for Sender<T> {
+    type Target = channel::Sender<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl<T> Sender<T> {
     pub fn send(&self, msg: T) {
-        // Optimizations in select might kick in.
         select! {
             send(self.0, msg) => {}
         }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn is_full(&self) -> bool {
-        self.0.is_full()
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn capacity(&self) -> Option<usize> {
-        self.0.capacity()
     }
 }
 
@@ -45,38 +46,6 @@ impl<T> Receiver<T> {
         select! {
             recv(self.0, msg) => msg,
         }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn is_full(&self) -> bool {
-        self.0.is_full()
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn capacity(&self) -> Option<usize> {
-        self.0.capacity()
-    }
-}
-
-impl<'a, T> channel::internal::codegen::SendArgument<'a, T> for &'a Sender<T> {
-    type Iter = option::IntoIter<&'a channel::Sender<T>>;
-
-    fn __as_send_argument(&'a self) -> Self::Iter {
-        Some(&self.0).into_iter()
-    }
-}
-
-impl<'a, T> channel::internal::codegen::RecvArgument<'a, T> for &'a Receiver<T> {
-    type Iter = option::IntoIter<&'a channel::Receiver<T>>;
-
-    fn __as_recv_argument(&'a self) -> Self::Iter {
-        Some(&self.0).into_iter()
     }
 }
 

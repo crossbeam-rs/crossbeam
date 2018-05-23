@@ -287,6 +287,8 @@
 //! [`Sender`]: struct.Sender.html
 //! [`Receiver`]: struct.Receiver.html
 
+// TODO: explain comparison operators (with clones and multiple channels!)
+
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;

@@ -18,11 +18,12 @@ use internal::select::Token;
 // TODO: explain
 // loop { try; register; is_blocked; unregister; accept; write/read }
 
-// TODO: be careful with overflowing instant/duration arithmetic (saturate instead!)
-// TODO: inline after
+// TODO: after and tick should be bounded(1) channels
+// TODO: ticker start measuring time only when the channel is empty (document this!)
+// TODO: after/ticker mut send the instant at which the event was fired, not when the message was received! (test this)
+// TODO: add a note saying that ticker/after don't spawn a thread/goroutine, i.e. they're cheap
 
-// TODO: maybe after and tick should be unbounded channels, where len says how many unconsumed events there are
-
+#[inline]
 pub fn after(dur: Duration) -> Receiver<Instant> {
     Receiver::After(flavors::after::Channel::new(dur))
 }

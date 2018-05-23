@@ -557,7 +557,7 @@ macro_rules! tests {
 }
 
 mod normal {
-    tests!(wrappers::channel);
+    tests!(wrappers::normal);
 }
 
 mod select {

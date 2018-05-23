@@ -102,11 +102,11 @@ pub trait RecvArgument<'a, T: 'a> {
     fn __as_recv_argument(&'a self) -> Self::Iter;
 }
 
-impl<'a, T> RecvArgument<'a, T> for &'a Receiver<T> {
+impl<'a, T: 'a> RecvArgument<'a, T> for Receiver<T> {
     type Iter = option::IntoIter<&'a Receiver<T>>;
 
     fn __as_recv_argument(&'a self) -> Self::Iter {
-        Some(*self).into_iter()
+        Some(self).into_iter()
     }
 }
 
@@ -124,11 +124,11 @@ pub trait SendArgument<'a, T: 'a> {
     fn __as_send_argument(&'a self) -> Self::Iter;
 }
 
-impl<'a, T> SendArgument<'a, T> for &'a Sender<T> {
+impl<'a, T: 'a> SendArgument<'a, T> for Sender<T> {
     type Iter = option::IntoIter<&'a Sender<T>>;
 
     fn __as_send_argument(&'a self) -> Self::Iter {
-        Some(*self).into_iter()
+        Some(self).into_iter()
     }
 }
 
