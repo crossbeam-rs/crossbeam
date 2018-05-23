@@ -1,5 +1,5 @@
 extern crate crossbeam;
-#[macro_use]
+// #[macro_use]
 extern crate crossbeam_channel as channel;
 extern crate rand;
 
