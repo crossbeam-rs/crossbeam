@@ -6,11 +6,14 @@ use std::thread;
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
+pub mod testtype;
+use testtype::TestType;
+
 fn seq() {
-    let q = SegQueue::<i32>::new();
+    let q = SegQueue::<TestType>::new();
 
     for i in 0..MESSAGES {
-        q.push(i as i32);
+        q.push(TestType::new(i));
     }
     for _ in 0..MESSAGES {
         q.try_pop().unwrap();
@@ -18,19 +21,21 @@ fn seq() {
 }
 
 fn spsc() {
-    let q = SegQueue::<i32>::new();
+    let q = SegQueue::<TestType>::new();
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                q.push(i as i32);
+                q.push(TestType::new(i));
             }
         });
         s.spawn(|| {
             for _ in 0..MESSAGES {
                 loop {
                     if q.try_pop().is_none() {
-                        thread::yield_now();
+                        if cfg!(feature = "yield") {
+                            thread::yield_now();
+                        }
                     } else {
                         break;
                     }
@@ -41,13 +46,13 @@ fn spsc() {
 }
 
 fn mpsc() {
-    let q = SegQueue::<i32>::new();
+    let q = SegQueue::<TestType>::new();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    q.push(i as i32);
+                    q.push(TestType::new(i));
                 }
             });
         }
@@ -55,7 +60,9 @@ fn mpsc() {
             for _ in 0..MESSAGES {
                 loop {
                     if q.try_pop().is_none() {
-                        thread::yield_now();
+                        if cfg!(feature = "yield") {
+                            thread::yield_now();
+                        }
                     } else {
                         break;
                     }
@@ -66,13 +73,13 @@ fn mpsc() {
 }
 
 fn mpmc() {
-    let q = SegQueue::<i32>::new();
+    let q = SegQueue::<TestType>::new();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    q.push(i as i32);
+                    q.push(TestType::new(i));
                 }
             });
         }
@@ -81,7 +88,9 @@ fn mpmc() {
                 for _ in 0..MESSAGES / THREADS {
                     loop {
                         if q.try_pop().is_none() {
-                            thread::yield_now();
+                            if cfg!(feature = "yield") {
+                                thread::yield_now();
+                            }
                         } else {
                             break;
                         }
