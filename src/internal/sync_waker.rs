@@ -17,8 +17,6 @@ pub struct Case {
 
     /// The case ID.
     pub case_id: CaseId,
-
-    pub packet: usize,
 }
 
 /// A simple wait queue for list-based and array-based channels.
@@ -50,7 +48,6 @@ impl SyncWaker {
         cases.push_back(Case {
             context: context::current(),
             case_id,
-            packet: 0,
         });
         self.len.store(cases.len(), Ordering::SeqCst);
     }
@@ -92,7 +89,7 @@ impl SyncWaker {
 
         for i in 0..cases.len() {
             if cases[i].context.thread.id() != thread_id {
-                if cases[i].context.try_select(cases[i].case_id, cases[i].packet) {
+                if cases[i].context.try_select(cases[i].case_id, 0) {
                     let case = cases.remove(i).unwrap();
                     self.len.store(cases.len(), Ordering::SeqCst);
                     Self::maybe_shrink(&mut cases);

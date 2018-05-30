@@ -20,9 +20,12 @@ use internal::select::Token;
 
 // TODO: after and tick should be bounded(1) channels
 // TODO: ticker start measuring time only when the channel is empty (document this!)
-// TODO: after/ticker mut send the instant at which the event was fired, not when the message was received! (test this)
+// TODO: after/ticker must send the instant at which the event was fired, not when the message was received! (test this)
 // TODO: add a note saying that ticker/after don't spawn a thread/goroutine, i.e. they're cheap
 
+// TODO: document what after is equivalent to in terms of thread::spawn code
+// TODO: document the same for tick
+// TODO: document that after never closes the channel (it's like mem::forgetting the sender)
 #[inline]
 pub fn after(dur: Duration) -> Receiver<Instant> {
     Receiver::After(flavors::after::Channel::new(dur))
@@ -542,7 +545,7 @@ impl<T> Receiver<T> {
                 Flavor::List(_) => false,
                 Flavor::Zero(_) => true,
             },
-            Receiver::After(_) => false,
+            Receiver::After(chan) => !chan.is_empty(),
         }
     }
 
@@ -594,7 +597,7 @@ impl<T> Receiver<T> {
                 Flavor::List(_) => None,
                 Flavor::Zero(_) => Some(0),
             },
-            Receiver::After(_) => None,
+            Receiver::After(_) => Some(1),
         }
     }
 }

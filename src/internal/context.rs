@@ -39,6 +39,7 @@ impl Context {
 
     #[inline]
     pub fn reset(&self) {
+        // TODO: Using relaxed here would make spsc in bounded case much faster
         self.case_id.store(0, Ordering::SeqCst);
         self.packet.store(0, Ordering::SeqCst);
     }

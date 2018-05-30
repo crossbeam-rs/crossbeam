@@ -112,6 +112,11 @@ impl Waker {
         false
     }
 
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.cases.len()
+    }
+
     /// Shrinks the internal deque if it's capacity is much larger than length.
     #[inline]
     fn maybe_shrink(cases: &mut VecDeque<Case>) {

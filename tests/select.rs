@@ -761,14 +761,21 @@ fn fairness1() {
         s2.send(());
     }
 
-    let mut hits = [0usize; 2];
-    for _ in 0..COUNT {
+    let mut hits = [0usize; 3];
+    while hits[0] + hits[1] < 2 * COUNT {
         select! {
             recv(r1) => hits[0] += 1,
             recv(r2) => hits[1] += 1,
+            recv(channel::after(ms(0))) => hits[2] += 1,
+            // TODO: also add channel::tick()
         }
     }
-    assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
+
+    assert!(r1.is_empty());
+    assert!(r2.is_empty());
+
+    let sum: usize = hits.iter().sum();
+    assert!(hits.iter().all(|x| *x >= sum / hits.len() / 2));
 }
 
 #[test]

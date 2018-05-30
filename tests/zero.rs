@@ -8,8 +8,8 @@ mod wrappers;
 
 macro_rules! tests {
     ($channel:path) => {
-        use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
-        use std::sync::atomic::Ordering::SeqCst;
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
         use std::thread;
         use std::time::Duration;
 
@@ -285,7 +285,7 @@ macro_rules! tests {
                     scope.spawn(|| {
                         for _ in 0..COUNT {
                             let n = r.recv().unwrap();
-                            v[n].fetch_add(1, SeqCst);
+                            v[n].fetch_add(1, Ordering::SeqCst);
                         }
                     });
                 }
@@ -299,7 +299,7 @@ macro_rules! tests {
             });
 
             for c in v {
-                assert_eq!(c.load(SeqCst), THREADS);
+                assert_eq!(c.load(Ordering::SeqCst), THREADS);
             }
         }
 
@@ -345,14 +345,14 @@ macro_rules! tests {
 
         #[test]
         fn drops() {
-            static DROPS: AtomicUsize = ATOMIC_USIZE_INIT;
+            static DROPS: AtomicUsize = AtomicUsize::new(0);
 
             #[derive(Debug, PartialEq)]
             struct DropCounter;
 
             impl Drop for DropCounter {
                 fn drop(&mut self) {
-                    DROPS.fetch_add(1, SeqCst);
+                    DROPS.fetch_add(1, Ordering::SeqCst);
                 }
             }
 
@@ -361,7 +361,7 @@ macro_rules! tests {
             for _ in 0..100 {
                 let steps = rng.gen_range(0, 3_000);
 
-                DROPS.store(0, SeqCst);
+                DROPS.store(0, Ordering::SeqCst);
                 let (s, r) = channel::bounded::<DropCounter>(0);
 
                 crossbeam::scope(|scope| {
@@ -378,10 +378,10 @@ macro_rules! tests {
                     });
                 });
 
-                assert_eq!(DROPS.load(SeqCst), steps);
+                assert_eq!(DROPS.load(Ordering::SeqCst), steps);
                 drop(s);
                 drop(r);
-                assert_eq!(DROPS.load(SeqCst), steps);
+                assert_eq!(DROPS.load(Ordering::SeqCst), steps);
             }
         }
 

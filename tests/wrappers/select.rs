@@ -5,7 +5,10 @@ use std::time::{Duration, Instant};
 
 use channel;
 
+#[derive(Clone)]
 pub struct Sender<T>(pub channel::Sender<T>);
+
+#[derive(Clone)]
 pub struct Receiver<T>(pub channel::Receiver<T>);
 
 impl<T> Deref for Receiver<T> {

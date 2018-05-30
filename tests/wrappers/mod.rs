@@ -1,3 +1,4 @@
+pub mod cloned;
 pub mod multiselect;
+pub mod normal;
 pub mod select;
-pub use channel as normal;

@@ -1,4 +1,4 @@
-//! TODO Two cases to prevent internal optimizations from triggering (if they exist).
+///! TODO
 
 use std::ops::Deref;
 use std::time::{Duration, Instant};
@@ -27,45 +27,19 @@ impl<T> Deref for Sender<T> {
     }
 }
 
-impl<T> Sender<T> {
-    pub fn send(&self, msg: T) {
-        select! {
-            send(self.0, msg) => {}
-            send(self.0, msg) => {}
-        }
-    }
-}
-
-impl<T> Receiver<T> {
-    pub fn try_recv(&self) -> Option<T> {
-        select! {
-            recv(self.0, msg) => msg,
-            recv(self.0, msg) => msg,
-            default => None,
-        }
-    }
-
-    pub fn recv(&self) -> Option<T> {
-        select! {
-            recv(self.0, msg) => msg,
-            recv(self.0, msg) => msg,
-        }
-    }
-}
-
 #[allow(dead_code)]
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let (s, r) = channel::bounded(cap);
-    (Sender(s), Receiver(r))
+    (Sender(s.clone()), Receiver(r.clone()))
 }
 
 #[allow(dead_code)]
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let (s, r) = channel::unbounded();
-    (Sender(s), Receiver(r))
+    (Sender(s.clone()), Receiver(r.clone()))
 }
 
 pub fn after(dur: Duration) -> Receiver<Instant> {
     let r = channel::after(dur);
-    Receiver(r)
+    Receiver(r.clone())
 }

@@ -21,12 +21,13 @@ impl Clone for Channel {
     fn clone(&self) -> Channel {
         let flag = self.flag();
 
-        let arc = unsafe { Arc::from_raw(&flag) };
+        let arc = unsafe { Arc::from_raw(flag as *const AtomicBool as *mut AtomicBool) };
         mem::forget(arc.clone());
         mem::forget(arc);
+
         Channel {
             deadline: self.deadline,
-            ptr: AtomicPtr::new(flag as *const _ as *mut _),
+            ptr: AtomicPtr::new(flag as *const AtomicBool as *mut AtomicBool),
         }
     }
 }
@@ -36,7 +37,7 @@ impl Drop for Channel {
     fn drop(&mut self) {
         let ptr = self.ptr.load(Ordering::SeqCst);
         if !ptr.is_null() {
-            unsafe { Arc::from_raw(ptr); }
+            unsafe { drop(Arc::from_raw(ptr)); }
         }
     }
 }
@@ -54,17 +55,16 @@ impl Channel {
 
     #[inline]
     fn flag(&self) -> &AtomicBool {
-        unsafe {
-            let mut ptr = self.ptr.load(Ordering::SeqCst);
-            if ptr.is_null() {
-                ptr = Arc::into_raw(Arc::new(AtomicBool::new(false))) as *mut _;
-
-                if let Err(p) = self.ptr.compare_exchange(ptr::null_mut(), ptr, Ordering::SeqCst, Ordering::SeqCst) {
-                    drop(Arc::from_raw(ptr));
-                    ptr = p;
-                }
+        loop {
+            let ptr = self.ptr.load(Ordering::SeqCst);
+            if !ptr.is_null() {
+                return unsafe { &*(ptr as *const AtomicBool) };
             }
-            &*(ptr as *const AtomicBool)
+
+            let new = Arc::into_raw(Arc::new(AtomicBool::new(false))) as *mut AtomicBool;
+            if !self.ptr.compare_and_swap(ptr::null_mut(), new, Ordering::SeqCst).is_null() {
+                unsafe { drop(Arc::from_raw(new)) }
+            }
         }
     }
 }
@@ -80,15 +80,15 @@ impl Channel {
 
     #[inline]
     pub fn recv(&self) -> Option<Instant> {
-        // if let Some(flag) = self.try_get() {
-        //     if flag.load(Ordering::SeqCst) {
-        //         return None;
-        //     }
-        // }
+        if self.flag().load(Ordering::SeqCst) {
+            // TODO: should we panic instead?
+            loop {
+                thread::sleep(Duration::from_secs(1000));
+            }
+        }
 
-        let mut now;
         loop {
-            now = Instant::now();
+            let now = Instant::now();
             if now >= self.deadline {
                 break;
             }
@@ -96,19 +96,18 @@ impl Channel {
         }
 
         if !self.flag().swap(true, Ordering::SeqCst) {
-            Some(now)
+            Some(self.deadline)
         } else {
-            None
+            // TODO: should we panic instead?
+            loop {
+                thread::sleep(Duration::from_secs(1000));
+            }
         }
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        if Instant::now() < self.deadline {
-            return true;
-        }
-
-        !self.flag().load(Ordering::SeqCst)
+        self.flag().load(Ordering::SeqCst) || Instant::now() < self.deadline
     }
 
     #[inline]
@@ -126,12 +125,8 @@ impl Select for Channel {
     fn try(&self, token: &mut Token) -> bool {
         let token = &mut token.after;
 
-        let ptr = self.ptr.load(Ordering::SeqCst);
-        if !ptr.is_null() {
-            if self.flag().load(Ordering::SeqCst) {
-                *token = None;
-                return true;
-            }
+        if !self.ptr.load(Ordering::SeqCst).is_null() && self.flag().load(Ordering::SeqCst) {
+            return false;
         }
 
         let now = Instant::now();
@@ -139,11 +134,11 @@ impl Select for Channel {
             return false;
         }
 
-        if !self.flag().swap(true, Ordering::SeqCst) {
-            *token = Some(now);
-        } else {
-            *token = None;
+        if self.flag().swap(true, Ordering::SeqCst) {
+            return false;
         }
+
+        *token = Some(self.deadline);
         true
     }
 

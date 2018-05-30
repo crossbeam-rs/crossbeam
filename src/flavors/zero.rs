@@ -157,8 +157,6 @@ impl<T> Channel<T> {
         let mut token: Token = Default::default();
         let case_id = CaseId::new(&token as *const Token as usize);
 
-        // TODO: maybe put a lock around wait queues?
-
         loop {
             let packet;
             {
