@@ -1,4 +1,3 @@
-use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::isize;

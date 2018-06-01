@@ -178,7 +178,6 @@ macro_rules! tests {
         #[test]
         fn select() {
             const THREADS: usize = 4;
-            const COUNT: usize = 1000;
 
             let hits = AtomicUsize::new(0);
             let r1 = channel::tick(ms(150));
@@ -192,7 +191,7 @@ macro_rules! tests {
 
                         loop {
                             select! {
-                                recv(v, msg) => {
+                                recv(v) => {
                                     hits.fetch_add(1, Ordering::SeqCst);
                                 }
                                 recv(timeout) => break
