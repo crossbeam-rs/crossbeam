@@ -158,7 +158,7 @@ macro_rules! tests {
 
         #[test]
         fn stress_default() {
-            const COUNT: usize = 10_000;
+            const COUNT: usize = 10;
 
             for _ in 0..COUNT {
                 select! {
