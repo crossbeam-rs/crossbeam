@@ -240,7 +240,7 @@ fn both_ready() {
 
 #[test]
 fn loop_try() {
-    const RUNS: usize = 10_000;
+    const RUNS: usize = 20;
 
     for _ in 0..RUNS {
         let (s1, r1) = channel::bounded::<i32>(0);
