@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod cloned;
 pub mod multiselect;
 pub mod normal;

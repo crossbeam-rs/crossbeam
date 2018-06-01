@@ -31,6 +31,11 @@ pub fn after(dur: Duration) -> Receiver<Instant> {
     Receiver::After(flavors::after::Channel::new(dur))
 }
 
+#[inline]
+pub fn tick(dur: Duration) -> Receiver<Instant> {
+    Receiver::Tick(flavors::tick::Channel::new(dur))
+}
+
 pub struct Channel<T> {
     senders: AtomicUsize,
     flavor: Flavor<T>,
@@ -410,6 +415,7 @@ impl<T> RefUnwindSafe for Sender<T> {}
 pub enum Receiver<T> {
     Channel(Arc<Channel<T>>),
     After(flavors::after::Channel),
+    Tick(flavors::tick::Channel),
 }
 
 unsafe impl<T: Send> Send for Receiver<T> {}
@@ -426,6 +432,7 @@ impl<T> Receiver<T> {
         match self {
             Receiver::Channel(chan) => &**chan as *const Channel<T> as usize,
             Receiver::After(chan) => chan.channel_id(),
+            Receiver::Tick(chan) => chan.channel_id(),
         }
     }
 
@@ -464,6 +471,9 @@ impl<T> Receiver<T> {
                 Flavor::Zero(chan) => chan.recv(),
             },
             Receiver::After(chan) => unsafe {
+                mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.recv())
+            }
+            Receiver::Tick(chan) => unsafe {
                 mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.recv())
             }
         }
@@ -520,6 +530,7 @@ impl<T> Receiver<T> {
                 Flavor::Zero(_) => true,
             },
             Receiver::After(chan) => chan.is_empty(),
+            Receiver::Tick(chan) => chan.is_empty(),
         }
     }
 
@@ -546,6 +557,7 @@ impl<T> Receiver<T> {
                 Flavor::Zero(_) => true,
             },
             Receiver::After(chan) => !chan.is_empty(),
+            Receiver::Tick(chan) => !chan.is_empty(),
         }
     }
 
@@ -571,6 +583,7 @@ impl<T> Receiver<T> {
                 Flavor::Zero(_) => 0,
             },
             Receiver::After(chan) => chan.len(),
+            Receiver::Tick(chan) => chan.len(),
         }
     }
 
@@ -598,6 +611,7 @@ impl<T> Receiver<T> {
                 Flavor::Zero(_) => Some(0),
             },
             Receiver::After(_) => Some(1),
+            Receiver::Tick(_) => Some(1),
         }
     }
 }
@@ -607,6 +621,7 @@ impl<T> Clone for Receiver<T> {
         match self {
             Receiver::Channel(arc) => Receiver::new(arc.clone()),
             Receiver::After(chan) => Receiver::After(chan.clone()),
+            Receiver::Tick(chan) => Receiver::Tick(chan.clone()),
         }
     }
 }
@@ -740,6 +755,7 @@ impl<T> Select for Receiver<T> {
                 Flavor::Zero(chan) => chan.receiver().try(token),
             },
             Receiver::After(chan) => chan.try(token),
+            Receiver::Tick(chan) => chan.try(token),
         }
     }
 
@@ -751,6 +767,7 @@ impl<T> Select for Receiver<T> {
                 Flavor::Zero(chan) => chan.receiver().retry(token),
             },
             Receiver::After(chan) => chan.retry(token),
+            Receiver::Tick(chan) => chan.retry(token),
         }
     }
 
@@ -758,6 +775,7 @@ impl<T> Select for Receiver<T> {
         match self {
             Receiver::Channel(_) => None,
             Receiver::After(chan) => chan.deadline(),
+            Receiver::Tick(chan) => chan.deadline(),
         }
     }
 
@@ -769,6 +787,7 @@ impl<T> Select for Receiver<T> {
                 Flavor::Zero(chan) => chan.receiver().register(token, case_id),
             },
             Receiver::After(_) => true,
+            Receiver::Tick(_) => true,
         }
     }
 
@@ -780,6 +799,7 @@ impl<T> Select for Receiver<T> {
                 Flavor::Zero(chan) => chan.receiver().unregister(case_id),
             },
             Receiver::After(_) => {}
+            Receiver::Tick(_) => {}
         }
     }
 
@@ -791,6 +811,7 @@ impl<T> Select for Receiver<T> {
                 Flavor::Zero(chan) => chan.receiver().accept(token),
             },
             Receiver::After(chan) => chan.accept(token),
+            Receiver::Tick(chan) => chan.accept(token),
         }
     }
 }
@@ -803,6 +824,9 @@ pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
             Flavor::Zero(chan) => chan.read(token),
         },
         Receiver::After(chan) => {
+            mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
+        },
+        Receiver::Tick(chan) => {
             mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
         },
     }

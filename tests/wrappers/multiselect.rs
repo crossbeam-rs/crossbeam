@@ -53,13 +53,11 @@ impl<T> Receiver<T> {
     }
 }
 
-#[allow(dead_code)]
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let (s, r) = channel::bounded(cap);
     (Sender(s), Receiver(r))
 }
 
-#[allow(dead_code)]
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let (s, r) = channel::unbounded();
     (Sender(s), Receiver(r))
@@ -67,5 +65,10 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 
 pub fn after(dur: Duration) -> Receiver<Instant> {
     let r = channel::after(dur);
+    Receiver(r)
+}
+
+pub fn tick(dur: Duration) -> Receiver<Instant> {
+    let r = channel::tick(dur);
     Receiver(r)
 }

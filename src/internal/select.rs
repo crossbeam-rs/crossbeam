@@ -7,6 +7,7 @@ pub struct Token {
     pub after: flavors::after::AfterToken,
     pub array: flavors::array::ArrayToken,
     pub list: flavors::list::ListToken,
+    pub tick: flavors::tick::TickToken,
     pub zero: flavors::zero::ZeroToken,
 }
 
