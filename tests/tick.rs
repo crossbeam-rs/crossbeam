@@ -169,7 +169,7 @@ macro_rules! tests {
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::tick(ms(50))) => panic!(),
+                    recv(channel::tick(ms(100))) => panic!(),
                     default => {}
                 }
             }
