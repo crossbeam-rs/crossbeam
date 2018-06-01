@@ -23,7 +23,7 @@ macro_rules! tests {
         #[test]
         fn fire() {
             let start = Instant::now();
-            let r = channel::after(ms(50));
+            let r = channel::tick(ms(50));
 
             assert_eq!(r.try_recv(), None);
             thread::sleep(ms(100));
@@ -44,9 +44,31 @@ macro_rules! tests {
             }
 
             select! {
-                recv(r) => panic!(),
-                recv(channel::after(ms(200))) => {}
+                recv(r) => {}
+                recv(channel::after(ms(200))) => panic!(),
             }
+        }
+
+        #[test]
+        fn intervals() {
+            let start = Instant::now();
+            let r = channel::tick(ms(50));
+
+            let t1 = r.recv().unwrap();
+            assert!(start + ms(50) <= t1);
+            assert!(start + ms(100) > t1);
+
+            thread::sleep(ms(300));
+            let t2 = r.try_recv().unwrap();
+            assert!(start + ms(100) <= t2);
+            assert!(start + ms(150) > t2);
+
+            assert_eq!(r.try_recv(), None);
+            let t3 = r.recv().unwrap();
+            assert!(start + ms(400) <= t3);
+            assert!(start + ms(450) > t3);
+
+            assert_eq!(r.try_recv(), None);
         }
 
         #[test]
@@ -54,14 +76,14 @@ macro_rules! tests {
             const COUNT: usize = 10;
 
             for i in 0..COUNT {
-                let r = channel::after(ms(i as u64));
+                let r = channel::tick(ms(i as u64));
                 assert_eq!(r.capacity(), Some(1));
             }
         }
 
         #[test]
         fn len_empty_full() {
-            let r = channel::after(ms(50));
+            let r = channel::tick(ms(50));
 
             assert_eq!(r.len(), 0);
             assert_eq!(r.is_empty(), true);
@@ -83,7 +105,7 @@ macro_rules! tests {
         #[test]
         fn recv() {
             let start = Instant::now();
-            let r = channel::after(ms(50));
+            let r = channel::tick(ms(50));
 
             let fired = r.recv().unwrap();
             assert!(start < fired);
@@ -98,20 +120,24 @@ macro_rules! tests {
 
         #[test]
         fn recv_two() {
-            let r1 = channel::after(ms(50));
-            let r2 = channel::after(ms(50));
+            let r1 = channel::tick(ms(50));
+            let r2 = channel::tick(ms(50));
 
             crossbeam::scope(|scope| {
                 scope.spawn(|| {
-                    select! {
-                        recv(r1) => {}
-                        recv(r2) => {}
+                    for _ in 0..10 {
+                        select! {
+                            recv(r1) => {}
+                            recv(r2) => {}
+                        }
                     }
                 });
                 scope.spawn(|| {
-                    select! {
-                        recv(r1) => {}
-                        recv(r2) => {}
+                    for _ in 0..10 {
+                        select! {
+                            recv(r1) => {}
+                            recv(r2) => {}
+                        }
                     }
                 });
             });
@@ -120,13 +146,13 @@ macro_rules! tests {
         #[test]
         fn recv_race() {
             select! {
-                recv(channel::after(ms(50))) => {}
-                recv(channel::after(ms(100))) => panic!(),
+                recv(channel::tick(ms(50))) => {}
+                recv(channel::tick(ms(100))) => panic!(),
             }
 
             select! {
-                recv(channel::after(ms(100))) => panic!(),
-                recv(channel::after(ms(50))) => {}
+                recv(channel::tick(ms(100))) => panic!(),
+                recv(channel::tick(ms(50))) => {}
             }
         }
 
@@ -136,115 +162,65 @@ macro_rules! tests {
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::after(ms(0))) => {}
+                    recv(channel::tick(ms(0))) => {}
                     default => panic!(),
                 }
             }
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::after(ms(50))) => panic!(),
+                    recv(channel::tick(ms(50))) => panic!(),
                     default => {}
                 }
             }
         }
 
         #[test]
-        fn select_shared() {
+        fn select() {
             const THREADS: usize = 4;
             const COUNT: usize = 1000;
-            const TIMEOUT_MS: u64 = 100;
 
-            let v = (0..COUNT).map(|i| channel::after(ms(i as u64 / TIMEOUT_MS / 2)))
-                .collect::<Vec<_>>();
             let hits = AtomicUsize::new(0);
+            let r1 = channel::tick(ms(150));
+            let r2 = channel::tick(ms(100));
 
             crossbeam::scope(|scope| {
                 for _ in 0..THREADS {
                     scope.spawn(|| {
-                        let v: Vec<&_> = v.iter().collect();
+                        let v = vec![&r1.0, &r2.0];
+                        let timeout = channel::after(ms(950));
 
                         loop {
                             select! {
-                                recv(v.iter().map(|r| &r.0)) => {
+                                recv(v, msg) => {
                                     hits.fetch_add(1, Ordering::SeqCst);
                                 }
-                                recv(channel::after(ms(TIMEOUT_MS))) => break
+                                recv(timeout) => break
                             }
                         }
                     });
                 }
             });
 
-            assert_eq!(hits.load(Ordering::SeqCst), COUNT);
-        }
-
-        #[test]
-        fn select_cloned() {
-            const THREADS: usize = 4;
-            const COUNT: usize = 1000;
-            const TIMEOUT_MS: u64 = 100;
-
-            let v = (0..COUNT).map(|i| channel::after(ms(i as u64 / TIMEOUT_MS / 2)))
-                .collect::<Vec<_>>();
-            let hits = AtomicUsize::new(0);
-
-            crossbeam::scope(|scope| {
-                for _ in 0..THREADS {
-                    scope.spawn(|| {
-                        let v = v.iter().map(|r| &r.0).collect::<Vec<_>>();
-
-                        loop {
-                            select! {
-                                recv(v) => {
-                                    hits.fetch_add(1, Ordering::SeqCst);
-                                }
-                                recv(channel::after(ms(TIMEOUT_MS))) => break
-                            }
-                        }
-                    });
-                }
-            });
-
-            assert_eq!(hits.load(Ordering::SeqCst), COUNT);
-        }
-
-        #[test]
-        fn stress_clone() {
-            const RUNS: usize = 1000;
-            const THREADS: usize = 10;
-            const COUNT: usize = 50;
-
-            for i in 0..RUNS {
-                let r = channel::after(ms(i as u64));
-
-                crossbeam::scope(|scope| {
-                    for _ in 0..THREADS {
-                        scope.spawn(|| {
-                            let r = r.clone();
-                            r.try_recv();
-
-                            for _ in 0..COUNT {
-                                drop(r.clone());
-                                thread::yield_now();
-                            }
-                        });
-                    }
-                });
-            }
+            assert_eq!(hits.load(Ordering::SeqCst), 15);
         }
 
         #[test]
         fn fairness() {
-            const COUNT: usize = 1000;
+            const COUNT: usize = 30;
 
             for &dur in &[0, 1] {
                 let mut hits = [0usize; 2];
 
                 for _ in 0..COUNT {
-                    select! {
-                        recv(channel::after(ms(dur))) => hits[0] += 1,
-                        recv(channel::after(ms(dur))) => hits[1] += 1,
+                    let r1 = channel::tick(ms(dur));
+                    let r2 = channel::tick(ms(dur));
+
+                    for _ in 0..COUNT {
+                        select! {
+                            recv(r1) => hits[0] += 1,
+                            recv(r2) => hits[1] += 1,
+                        }
                     }
                 }
 
@@ -254,19 +230,22 @@ macro_rules! tests {
 
         #[test]
         fn fairness_duplicates() {
-            const COUNT: usize = 1000;
+            const COUNT: usize = 30;
 
             for &dur in &[0, 1] {
                 let mut hits = [0usize; 5];
 
                 for _ in 0..COUNT {
-                    let r = channel::after(ms(dur));
-                    select! {
-                        recv(r) => hits[0] += 1,
-                        recv(r) => hits[1] += 1,
-                        recv(r) => hits[2] += 1,
-                        recv(r) => hits[3] += 1,
-                        recv(r) => hits[4] += 1,
+                    let r = channel::tick(ms(dur));
+
+                    for _ in 0..COUNT {
+                        select! {
+                            recv(r) => hits[0] += 1,
+                            recv(r) => hits[1] += 1,
+                            recv(r) => hits[2] += 1,
+                            recv(r) => hits[3] += 1,
+                            recv(r) => hits[4] += 1,
+                        }
                     }
                 }
 
@@ -278,10 +257,6 @@ macro_rules! tests {
 
 mod normal {
     tests!(wrappers::normal);
-}
-
-mod cloned {
-    tests!(wrappers::cloned);
 }
 
 mod select {

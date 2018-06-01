@@ -240,7 +240,9 @@ fn both_ready() {
 
 #[test]
 fn loop_try() {
-    for _ in 0..20 {
+    const RUNS: usize = 10_000;
+
+    for _ in 0..RUNS {
         let (s1, r1) = channel::bounded::<i32>(0);
         let (s2, r2) = channel::bounded::<i32>(0);
         let (s_end, r_end) = channel::bounded::<()>(0);
@@ -527,13 +529,15 @@ fn conditional_recv() {
 
 #[test]
 fn stress_recv() {
+    const COUNT: usize = 10_000;
+
     let (s1, r1) = channel::unbounded();
     let (s2, r2) = channel::bounded(5);
     let (s3, r3) = channel::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
-            for i in 0..10_000 {
+            for i in 0..COUNT {
                 s1.send(i);
                 r3.recv().unwrap();
 
@@ -542,7 +546,7 @@ fn stress_recv() {
             }
         });
 
-        for i in 0..10_000 {
+        for i in 0..COUNT {
             for _ in 0..2 {
                 select! {
                     recv(r1, v) => assert_eq!(v, Some(i)),
@@ -557,20 +561,22 @@ fn stress_recv() {
 
 #[test]
 fn stress_send() {
+    const COUNT: usize = 10_000;
+
     let (s1, r1) = channel::bounded(0);
     let (s2, r2) = channel::bounded(0);
     let (s3, r3) = channel::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
-            for i in 0..10_000 {
+            for i in 0..COUNT {
                 assert_eq!(r1.recv().unwrap(), i);
                 assert_eq!(r2.recv().unwrap(), i);
                 r3.recv().unwrap();
             }
         });
 
-        for i in 0..10_000 {
+        for i in 0..COUNT {
             for _ in 0..2 {
                 select! {
                     send(s1, i) => {},
@@ -584,20 +590,22 @@ fn stress_send() {
 
 #[test]
 fn stress_mixed() {
+    const COUNT: usize = 10_000;
+
     let (s1, r1) = channel::bounded(0);
     let (s2, r2) = channel::bounded(0);
     let (s3, r3) = channel::bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
-            for i in 0..10_000 {
+            for i in 0..COUNT {
                 s1.send(i);
                 assert_eq!(r2.recv().unwrap(), i);
                 r3.recv().unwrap();
             }
         });
 
-        for i in 0..10_000 {
+        for i in 0..COUNT {
             for _ in 0..2 {
                 select! {
                     recv(r1, v) => assert_eq!(v, Some(i)),
@@ -670,10 +678,12 @@ fn send_recv_same_channel() {
 
 #[test]
 fn matching() {
+    const THREADS: usize = 44;
+
     let (s, r) = &channel::bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
-        for i in 0..44 {
+        for i in 0..THREADS {
             scope.spawn(move || {
                 select! {
                     recv(r, v) => assert_ne!(v.unwrap(), i),
@@ -688,10 +698,12 @@ fn matching() {
 
 #[test]
 fn matching_with_leftover() {
+    const THREADS: usize = 55;
+
     let (s, r) = &channel::bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
-        for i in 0..55 {
+        for i in 0..THREADS {
             scope.spawn(move || {
                 select! {
                     recv(r, v) => assert_ne!(v.unwrap(), i),

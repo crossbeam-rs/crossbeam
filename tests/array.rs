@@ -427,6 +427,8 @@ macro_rules! tests {
 
         #[test]
         fn drops() {
+            const RUNS: usize = 100;
+
             static DROPS: AtomicUsize = AtomicUsize::new(0);
 
             #[derive(Debug, PartialEq)]
@@ -440,7 +442,7 @@ macro_rules! tests {
 
             let mut rng = thread_rng();
 
-            for _ in 0..100 {
+            for _ in 0..RUNS {
                 let steps = rng.gen_range(0, 10_000);
                 let additional = rng.gen_range(0, 50);
 
