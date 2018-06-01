@@ -361,27 +361,9 @@ impl<T> PartialEq for Sender<T> {
 
 impl<T> Eq for Sender<T> {}
 
-impl<T> PartialOrd for Sender<T> {
-    fn partial_cmp(&self, other: &Sender<T>) -> Option<cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T> Ord for Sender<T> {
-    fn cmp(&self, other: &Sender<T>) -> cmp::Ordering {
-        self.channel_id().cmp(&other.channel_id())
-    }
-}
-
 impl<T> PartialEq<Receiver<T>> for Sender<T> {
     fn eq(&self, other: &Receiver<T>) -> bool {
         self.channel_id() == other.channel_id()
-    }
-}
-
-impl<T> PartialOrd<Receiver<T>> for Sender<T> {
-    fn partial_cmp(&self, other: &Receiver<T>) -> Option<cmp::Ordering> {
-        self.channel_id().partial_cmp(&other.channel_id())
     }
 }
 
@@ -646,27 +628,9 @@ impl<T> PartialEq for Receiver<T> {
 
 impl<T> Eq for Receiver<T> {}
 
-impl<T> PartialOrd for Receiver<T> {
-    fn partial_cmp(&self, other: &Receiver<T>) -> Option<cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T> Ord for Receiver<T> {
-    fn cmp(&self, other: &Receiver<T>) -> cmp::Ordering {
-        self.channel_id().cmp(&other.channel_id())
-    }
-}
-
 impl<T> PartialEq<Sender<T>> for Receiver<T> {
     fn eq(&self, other: &Sender<T>) -> bool {
         self.channel_id() == other.channel_id()
-    }
-}
-
-impl<T> PartialOrd<Sender<T>> for Receiver<T> {
-    fn partial_cmp(&self, other: &Sender<T>) -> Option<cmp::Ordering> {
-        self.channel_id().partial_cmp(&other.channel_id())
     }
 }
 
