@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
+use internal::channel::RecvNonblocking;
 use internal::select::CaseId;
 use internal::select::Select;
 use internal::select::Token;
@@ -64,6 +65,20 @@ impl Channel {
             };
 
             thread::sleep(offset);
+        }
+    }
+
+    #[inline]
+    pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
+        let mut deadline = self.deadline.lock();
+        let now = Instant::now();
+
+        if now >= *deadline {
+            let msg = RecvNonblocking::Message(*deadline);
+            *deadline = now + self.duration;
+            msg
+        } else {
+            RecvNonblocking::Empty
         }
     }
 

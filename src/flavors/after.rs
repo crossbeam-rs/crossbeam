@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use internal::channel::RecvNonblocking;
 use internal::select::CaseId;
 use internal::select::Select;
 use internal::select::Token;
@@ -46,7 +47,7 @@ impl Drop for Channel {
 impl Channel {
     #[inline]
     pub fn channel_id(&self) -> usize {
-        self.flag() as *const _ as usize
+        self.flag() as *const AtomicBool as usize
     }
 
     #[inline]
@@ -97,6 +98,24 @@ impl Channel {
             Some(self.deadline)
         } else {
             utils::sleep_forever();
+        }
+    }
+
+    #[inline]
+    pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
+        if self.flag().load(Ordering::SeqCst) {
+            return RecvNonblocking::Empty; // TODO: try using closed here
+        }
+
+        let now = Instant::now();
+        if now < self.deadline {
+            return RecvNonblocking::Empty;
+        }
+
+        if !self.flag().swap(true, Ordering::SeqCst) {
+            RecvNonblocking::Message(self.deadline)
+        } else {
+            RecvNonblocking::Empty // TODO: try using closed here
         }
     }
 

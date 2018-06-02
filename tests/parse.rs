@@ -5,6 +5,30 @@ extern crate crossbeam_channel as channel;
 use std::ops::Deref;
 
 #[test]
+fn recv() {
+    let (s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::unbounded::<i32>();
+    let rs = [r1, r2];
+
+    s1.send(0);
+    s2.send(0);
+
+    select! {
+        recv(rs) => {}
+    }
+
+    select! {
+        recv(rs) => {}
+        default => panic!(),
+    }
+
+    select! {
+        recv(rs) => panic!(),
+        default => {}
+    }
+}
+
+#[test]
 fn references() {
     let (s, r) = channel::unbounded::<i32>();
     select! {

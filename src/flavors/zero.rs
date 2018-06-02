@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use parking_lot::Mutex;
 
+use internal::channel::RecvNonblocking;
 use internal::select::{CaseId, Select, Token};
 use internal::context;
 use internal::utils::Backoff;
@@ -238,6 +239,26 @@ impl<T> Channel<T> {
             } else {
                 self.inner.lock().receivers.unregister(case_id);
             }
+        }
+    }
+
+    pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
+        let mut token: Token = Default::default();
+
+        let mut inner = self.inner.lock();
+
+        if let Some(case) = inner.senders.wake_one() {
+            token.zero = Some(case.packet);
+            drop(inner);
+
+            match unsafe { self.read(&mut token) } {
+                None => RecvNonblocking::Closed,
+                Some(msg) => RecvNonblocking::Message(msg),
+            }
+        } else if inner.is_closed {
+            RecvNonblocking::Closed
+        } else {
+            RecvNonblocking::Empty
         }
     }
 

@@ -478,10 +478,10 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.try_recv(), None);
     /// ```
     pub fn try_recv(&self) -> Option<T> {
-        // TODO: specialize! do we need try_send for zero-capacity?
-        select! {
-            recv(self, msg) => msg,
-            default => None,
+        match recv_nonblocking(self) {
+            RecvNonblocking::Message(msg) => Some(msg),
+            RecvNonblocking::Empty => None,
+            RecvNonblocking::Closed => None,
         }
     }
 
@@ -792,12 +792,30 @@ pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
     }
 }
 
-pub enum TryRecv<T> {
+pub enum RecvNonblocking<T> {
     Message(T),
     Empty,
     Closed,
 }
 
-pub fn try_recv<T>(r: &Receiver<T>) -> TryRecv<T> {
-    unimplemented!()
+pub fn recv_nonblocking<T>(r: &Receiver<T>) -> RecvNonblocking<T> {
+    match r {
+        Receiver::Channel(arc) => match &arc.flavor {
+            Flavor::Array(chan) => chan.recv_nonblocking(),
+            Flavor::List(chan) => chan.recv_nonblocking(),
+            Flavor::Zero(chan) => chan.recv_nonblocking(),
+        },
+        Receiver::After(chan) => {
+            let res = chan.recv_nonblocking();
+            unsafe {
+                mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res)
+            }
+        },
+        Receiver::Tick(chan) => {
+            let res = chan.recv_nonblocking();
+            unsafe {
+                mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res)
+            }
+        },
+    }
 }

@@ -12,6 +12,7 @@ use std::time::Instant;
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::cache_padded::CachePadded;
 
+use internal::channel::RecvNonblocking;
 use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils::Backoff;
@@ -303,6 +304,19 @@ impl<T> Channel<T> {
 
             context::current_wait_until(None);
             receiver.unregister(case_id);
+        }
+    }
+
+    pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
+        let mut token: Token = Default::default();
+
+        if self.start_recv(&mut token, &mut Backoff::new()) {
+            match unsafe { self.read(&mut token) } {
+                None => RecvNonblocking::Closed,
+                Some(msg) => RecvNonblocking::Message(msg),
+            }
+        } else {
+            RecvNonblocking::Empty
         }
     }
 

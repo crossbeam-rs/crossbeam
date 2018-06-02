@@ -210,53 +210,63 @@ macro_rules! __crossbeam_channel_codegen {
         __crossbeam_channel_codegen!(@fastpath $recv $send $default cases)
     }};
 
-    // (@fastpath
-    //     (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
-    //     ()
-    //     ()
-    //     $cases:ident
-    // ) => {{
-    //     if $cases.len() == 1 {
-    //         let $r = $cases[0].0;
-    //         let $m = $cases[0].0.recv();
-    //         $body
-    //     } else {
-    //         __crossbeam_channel_codegen!(
-    //             @mainloop
-    //             (($i $var) recv($rs, $m, $r) => $body,)
-    //             ()
-    //             ()
-    //             $cases
-    //         )
-    //     }
-    // }};
-    // (@fastpath
-    //     (($recv_i:tt $recv_var:ident) recv($rs:expr, $m:pat, $r:pat) => $recv_body:tt,)
-    //     ()
-    //     (($default_i:tt $default_var:ident) default() => $default_body:tt,)
-    //     $cases:ident
-    // ) => {{
-    //     if $cases.len() == 1 {
-    //         let $r = $cases[0].0;
-    //         let is_closed = $cases[0].0.__is_closed();
-    //         let msg = $cases[0].0.try_recv(); // TODO: actually implement try_recv()
-    //
-    //         if is_closed || msg.is_some() {
-    //             let $m = msg;
-    //             $recv_body
-    //         } else {
-    //             $default_body
-    //         }
-    //     } else {
-    //         __crossbeam_channel_codegen!(
-    //             @mainloop
-    //             (($recv_i $recv_var) recv($rs, $m, $r) => $recv_body,)
-    //             ()
-    //             (($default_i $default_var) default() => $default_body,)
-    //             $cases
-    //         )
-    //     }
-    // }};
+    (@fastpath
+        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
+        ()
+        ()
+        $cases:ident
+    ) => {{
+        if $cases.len() == 1 {
+            let $r = $cases[0].0;
+            let $m = $cases[0].0.recv();
+            $body
+        } else {
+            __crossbeam_channel_codegen!(
+                @mainloop
+                (($i $var) recv($rs, $m, $r) => $body,)
+                ()
+                ()
+                $cases
+            )
+        }
+    }};
+    (@fastpath
+        (($recv_i:tt $recv_var:ident) recv($rs:expr, $m:pat, $r:pat) => $recv_body:tt,)
+        ()
+        (($default_i:tt $default_var:ident) default() => $default_body:tt,)
+        $cases:ident
+    ) => {{
+        if $cases.len() == 1 {
+            let r = $cases[0].0;
+            let msg;
+
+            match $crate::internal::channel::recv_nonblocking(r) {
+                $crate::internal::channel::RecvNonblocking::Message(m) => {
+                    msg = Some(m);
+                    let $m = msg;
+                    let $r = r;
+                    $recv_body
+                }
+                $crate::internal::channel::RecvNonblocking::Closed => {
+                    msg = None;
+                    let $m = msg;
+                    let $r = r;
+                    $recv_body
+                }
+                $crate::internal::channel::RecvNonblocking::Empty => {
+                    $default_body
+                }
+            }
+        } else {
+            __crossbeam_channel_codegen!(
+                @mainloop
+                (($recv_i $recv_var) recv($rs, $m, $r) => $recv_body,)
+                ()
+                (($default_i $default_var) default() => $default_body,)
+                $cases
+            )
+        }
+    }};
     (@fastpath
         $recv:tt
         $send:tt
@@ -272,10 +282,6 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
         $cases:ident
     ) => {{
-        // TODO: optimize:
-        // - select! { recv(r) => {} }
-        // - select! { recv(r) => {} default => {} }
-
         // TODO: set up a guard that aborts if anything panics before actually finishing
 
         let default_index: usize;
