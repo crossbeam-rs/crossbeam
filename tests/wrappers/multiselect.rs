@@ -1,4 +1,7 @@
-//! TODO Two cases to prevent internal optimizations from triggering (if they exist).
+//! Channels with send and receive operations implemented using `select!` with duplicate cases.
+//!
+//! A `select!` with duplicate cases avoids optimizations that simply convert the macro invocation
+//! into a call to `recv()`, `try_recv()`, or `send()`.
 
 use std::ops::Deref;
 use std::time::{Duration, Instant};

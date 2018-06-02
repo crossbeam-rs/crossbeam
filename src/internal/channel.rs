@@ -28,16 +28,15 @@ enum Flavor<T> {
     Zero(flavors::zero::Channel<T>),
 }
 
-/// Creates a new channel of unbounded capacity, returning the sender and receiver halves.
+/// Creates a channel of unbounded capacity.
 ///
 /// This type of channel can hold any number of messages; i.e. it has infinite capacity.
 ///
 /// # Examples
 ///
 /// ```
-/// use crossbeam_channel as channel;
-///
 /// use std::thread;
+/// use crossbeam_channel as channel;
 ///
 /// let (s, r) = channel::unbounded();
 ///
@@ -69,7 +68,7 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     (s, r)
 }
 
-/// Creates a new channel of bounded capacity, returning the sender and receiver halves.
+/// Creates a channel of bounded capacity.
 ///
 /// This type of channel has an internal buffer of length `cap` in which messages get queued.
 ///
@@ -82,7 +81,6 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
-///
 /// use crossbeam_channel as channel;
 ///
 /// let (s, r) = channel::bounded(1);
@@ -104,7 +102,6 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
-///
 /// use crossbeam_channel as channel;
 ///
 /// let (s, r) = channel::bounded(0);
@@ -135,19 +132,93 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     (s, r)
 }
 
-// TODO: document what after is equivalent to in terms of thread::spawn code
-// TODO: document that after never closes the channel (it's like mem::forgetting the sender)
-#[inline]
-pub fn after(dur: Duration) -> Receiver<Instant> {
-    Receiver(Inner::After(flavors::after::Channel::new(dur)))
+/// Creates a receiver that delivers a message after the specified duration of time.
+///
+/// The channel is bounded with capacity of 1 and is never closed. Exactly one message will be
+/// automatically sent into the channel after `duration` elapses. The message is the instant at
+/// which it is sent into the channel.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel as channel;
+///
+/// // Converts a number into a `Duration` in milliseconds.
+/// let ms = |ms| Duration::from_millis(ms);
+///
+/// // Returns `true` if `a` and `b` are very close `Instant`s.
+/// let eq = |a, b| a + ms(50) > b && b + ms(50) > a;
+///
+/// let start = Instant::now();
+/// let r = channel::after(ms(100));
+///
+/// thread::sleep(ms(500));
+///
+/// // This message was sent 100 ms from the start and received 500 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(100)));
+/// assert!(eq(Instant::now(), start + ms(500)));
+/// ```
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate crossbeam_channel;
+/// # fn main() {
+/// use std::time::Duration;
+/// use crossbeam_channel as channel;
+///
+/// let (s, r) = channel::unbounded::<i32>();
+///
+/// let timeout = Duration::from_millis(100);
+/// select! {
+///     recv(r, msg) => println!("got {:?}", msg),
+///     recv(channel::after(timeout)) => println!("timed out"),
+/// }
+/// # }
+/// ```
+pub fn after(duration: Duration) -> Receiver<Instant> {
+    Receiver(Inner::After(flavors::after::Channel::new(duration)))
 }
 
-// TODO: add a note saying that ticker/after don't spawn a thread/goroutine, i.e. they're cheap
-// TODO: ticker start measuring time only when the channel is empty (document this!)
-// TODO: document what after is equivalent to in terms of thread::spawn code
-#[inline]
-pub fn tick(dur: Duration) -> Receiver<Instant> {
-    Receiver(Inner::Tick(flavors::tick::Channel::new(dur)))
+/// Creates a receiver that delivers messages in regular periods of time.
+///
+/// The channel is bounded with capacity of 1 and is never closed. Messages will be automatically
+/// sent into the channel in intervals of `duration`, but the time intervals are only measured
+/// while the channel is empty. Each message is the instant at which it is sent into the channel.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel as channel;
+///
+/// // Converts a number into a `Duration` in milliseconds.
+/// let ms = |ms| Duration::from_millis(ms);
+///
+/// // Returns `true` if `a` and `b` are very close `Instant`s.
+/// let eq = |a, b| a + ms(50) > b && b + ms(50) > a;
+///
+/// let start = Instant::now();
+/// let r = channel::tick(ms(100));
+///
+/// // This message was sent 100 ms from the start and received 100 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(100)));
+/// assert!(eq(Instant::now(), start + ms(100)));
+///
+/// thread::sleep(ms(500));
+///
+/// // This message was sent 200 ms from the start and received 600 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(200)));
+/// assert!(eq(Instant::now(), start + ms(600)));
+///
+/// // This message was sent 700 ms from the start and received 700 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(700)));
+/// assert!(eq(Instant::now(), start + ms(700)));
+/// ```
+pub fn tick(duration: Duration) -> Receiver<Instant> {
+    Receiver(Inner::Tick(flavors::tick::Channel::new(duration)))
 }
 
 /// The sending half of a channel.
@@ -158,7 +229,6 @@ pub fn tick(dur: Duration) -> Receiver<Instant> {
 ///
 /// ```
 /// use std::thread;
-///
 /// use crossbeam_channel as channel;
 ///
 /// let (s1, r) = channel::unbounded();
@@ -178,7 +248,7 @@ unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Sync for Sender<T> {}
 
 impl<T> Sender<T> {
-    /// Creates a new sender handle for the channel and increments the sender count.
+    /// Creates a sender handle for the channel and increments the sender count.
     fn new(chan: Arc<Channel<T>>) -> Self {
         let old_count = chan.senders.fetch_add(1, Ordering::SeqCst);
 
@@ -209,7 +279,6 @@ impl<T> Sender<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    ///
     /// use crossbeam_channel as channel;
     ///
     /// let (s, r) = channel::bounded(0);

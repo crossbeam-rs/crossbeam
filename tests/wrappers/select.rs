@@ -1,4 +1,7 @@
-///! TODO: Optimizations in select might kick in.
+//! Channels with send and receive operations implemented using `select!`.
+//!
+//! Such `select!` invocations will often try to optimize the macro invocations by converting them
+//! into calls to `recv()`, `try_recv()`, or `send()`.
 
 use std::ops::Deref;
 use std::time::{Duration, Instant};

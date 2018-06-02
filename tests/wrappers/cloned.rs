@@ -1,4 +1,7 @@
-///! TODO
+//! Channels with cloned senders and receivers immediately upon construction.
+//!
+//! Some channel types might take advantage of the fact that the first sender or receiver was never
+//! cloned, so this wrapper turns off such optimizations right away.
 
 use std::ops::Deref;
 use std::time::{Duration, Instant};
