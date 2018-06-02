@@ -69,7 +69,7 @@ where
             }
         }
 
-        context::current_wait_until(deadline); // TODO: return value is not used here - just remove the bool
+        context::current_wait_until(deadline);
         let s = context::current_selected();
 
         for case in cases.iter() {
