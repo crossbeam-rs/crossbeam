@@ -195,6 +195,42 @@ fn option_sender() {
 }
 
 #[test]
+fn once_blocks() {
+    let (s, r) = channel::unbounded::<i32>();
+
+    let once = Box::new(());
+    select! {
+        send(s, 0) => drop(once),
+    }
+
+    let once = Box::new(());
+    select! {
+        recv(r) => drop(once),
+    }
+
+    let once1 = Box::new(());
+    let once2 = Box::new(());
+    select! {
+        send(s, 0) => drop(once1),
+        default => drop(once2),
+    }
+
+    let once1 = Box::new(());
+    let once2 = Box::new(());
+    select! {
+        recv(r) => drop(once1),
+        default => drop(once2),
+    }
+
+    let once1 = Box::new(());
+    let once2 = Box::new(());
+    select! {
+        recv(r) => drop(once1),
+        send(s, 0) => drop(once2),
+    }
+}
+
+#[test]
 fn once_receiver() {
     let (_, r) = channel::unbounded::<i32>();
 
@@ -222,6 +258,11 @@ fn once_sender() {
     select! {
         send(get(), 5) => {}
     }
+}
+
+#[test]
+fn once_receive() {
+
 }
 
 #[test]
