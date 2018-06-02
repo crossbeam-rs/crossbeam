@@ -180,14 +180,14 @@ macro_rules! tests {
             const THREADS: usize = 4;
 
             let hits = AtomicUsize::new(0);
-            let r1 = channel::tick(ms(150));
-            let r2 = channel::tick(ms(100));
+            let r1 = channel::tick(ms(200));
+            let r2 = channel::tick(ms(300));
 
             crossbeam::scope(|scope| {
                 for _ in 0..THREADS {
                     scope.spawn(|| {
                         let v = vec![&r1.0, &r2.0];
-                        let timeout = channel::after(ms(950));
+                        let timeout = channel::after(ms(1100));
 
                         loop {
                             select! {
@@ -201,7 +201,7 @@ macro_rules! tests {
                 }
             });
 
-            assert_eq!(hits.load(Ordering::SeqCst), 15);
+            assert_eq!(hits.load(Ordering::SeqCst), 8);
         }
 
         #[test]
