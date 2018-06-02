@@ -10,5 +10,5 @@ script:
   - export RUSTFLAGS="-D warnings"
   - cargo build
   - cargo build --release
-  - cargo test
-  - cargo test --release
+  - cargo test -- --test-threads=1
+  - cargo test --release -- --test-threads=1
