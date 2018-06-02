@@ -3,6 +3,7 @@ use std::num::Wrapping;
 use std::process;
 use std::sync::atomic;
 use std::thread;
+use std::time::Duration;
 
 /// A counter that performs exponential backoff in spin loops.
 pub struct Backoff(u32);
@@ -86,4 +87,10 @@ pub fn shuffle<T>(v: &mut [T]) {
             v.swap(i, j);
         }
     });
+}
+
+pub fn sleep_forever() -> ! {
+    loop {
+        thread::sleep(Duration::from_secs(1000));
+    }
 }

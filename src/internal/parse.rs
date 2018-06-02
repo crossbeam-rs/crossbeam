@@ -659,9 +659,6 @@ macro_rules! __crossbeam_channel_parse {
     };
 
     // The entry point.
-    ($callback:ident) => {
-        compile_error!("empty block in `select!`")
-    };
     ($callback:ident $($tokens:tt)*) => {
         __crossbeam_channel_parse!(
             @list

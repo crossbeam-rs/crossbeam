@@ -17,24 +17,6 @@ use internal::select::Token;
 // TODO: explain
 // loop { try; register; is_blocked; unregister; accept; write/read }
 
-// TODO: after and tick should be bounded(1) channels
-// TODO: ticker start measuring time only when the channel is empty (document this!)
-// TODO: after/ticker must send the instant at which the event was fired, not when the message was received! (test this)
-// TODO: add a note saying that ticker/after don't spawn a thread/goroutine, i.e. they're cheap
-
-// TODO: document what after is equivalent to in terms of thread::spawn code
-// TODO: document the same for tick
-// TODO: document that after never closes the channel (it's like mem::forgetting the sender)
-#[inline]
-pub fn after(dur: Duration) -> Receiver<Instant> {
-    Receiver::After(flavors::after::Channel::new(dur))
-}
-
-#[inline]
-pub fn tick(dur: Duration) -> Receiver<Instant> {
-    Receiver::Tick(flavors::tick::Channel::new(dur))
-}
-
 pub struct Channel<T> {
     senders: AtomicUsize,
     flavor: Flavor<T>,
@@ -151,6 +133,21 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let s = Sender::new(chan.clone());
     let r = Receiver::new(chan);
     (s, r)
+}
+
+// TODO: document what after is equivalent to in terms of thread::spawn code
+// TODO: document that after never closes the channel (it's like mem::forgetting the sender)
+#[inline]
+pub fn after(dur: Duration) -> Receiver<Instant> {
+    Receiver::After(flavors::after::Channel::new(dur))
+}
+
+// TODO: add a note saying that ticker/after don't spawn a thread/goroutine, i.e. they're cheap
+// TODO: ticker start measuring time only when the channel is empty (document this!)
+// TODO: document what after is equivalent to in terms of thread::spawn code
+#[inline]
+pub fn tick(dur: Duration) -> Receiver<Instant> {
+    Receiver::Tick(flavors::tick::Channel::new(dur))
 }
 
 /// The sending half of a channel.
@@ -793,4 +790,14 @@ pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
             mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
         },
     }
+}
+
+pub enum TryRecv<T> {
+    Message(T),
+    Empty,
+    Closed,
+}
+
+pub fn try_recv<T>(r: &Receiver<T>) -> TryRecv<T> {
+    unimplemented!()
 }

@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use internal::select::CaseId;
 use internal::select::Select;
 use internal::select::Token;
+use internal::utils;
 
 pub type AfterToken = Option<Instant>;
 
@@ -81,10 +82,7 @@ impl Channel {
     #[inline]
     pub fn recv(&self) -> Option<Instant> {
         if self.flag().load(Ordering::SeqCst) {
-            // TODO: should we panic instead?
-            loop {
-                thread::sleep(Duration::from_secs(1000));
-            }
+            utils::sleep_forever();
         }
 
         loop {
@@ -98,10 +96,7 @@ impl Channel {
         if !self.flag().swap(true, Ordering::SeqCst) {
             Some(self.deadline)
         } else {
-            // TODO: should we panic instead?
-            loop {
-                thread::sleep(Duration::from_secs(1000));
-            }
+            utils::sleep_forever();
         }
     }
 

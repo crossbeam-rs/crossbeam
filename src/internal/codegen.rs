@@ -21,6 +21,14 @@ where
         utils::shuffle(cases);
     }
 
+    if cases.is_empty() {
+        if default_index != !0 {
+            return (token, default_index, 0);
+        } else {
+            utils::sleep_forever();
+        }
+    }
+
     loop {
         for &(sel, i, addr) in cases.iter() {
             if sel.try(&mut token) {
@@ -197,26 +205,86 @@ macro_rules! __crossbeam_channel_codegen {
         $recv:tt
         $send:tt
         $default:tt
-    ) => {
-        __crossbeam_channel_codegen!(@mainloop $recv $send $default)
-    };
+    ) => {{
+        let mut cases = __crossbeam_channel_codegen!(@container $recv $send);
+        __crossbeam_channel_codegen!(@fastpath $recv $send $default cases)
+    }};
 
-    (@mainloop $recv:tt $send:tt $default:tt) => {{
-        let default_index: usize;
-        __crossbeam_channel_codegen!(@default default_index $default);
+    // (@fastpath
+    //     (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
+    //     ()
+    //     ()
+    //     $cases:ident
+    // ) => {{
+    //     if $cases.len() == 1 {
+    //         let $r = $cases[0].0;
+    //         let $m = $cases[0].0.recv();
+    //         $body
+    //     } else {
+    //         __crossbeam_channel_codegen!(
+    //             @mainloop
+    //             (($i $var) recv($rs, $m, $r) => $body,)
+    //             ()
+    //             ()
+    //             $cases
+    //         )
+    //     }
+    // }};
+    // (@fastpath
+    //     (($recv_i:tt $recv_var:ident) recv($rs:expr, $m:pat, $r:pat) => $recv_body:tt,)
+    //     ()
+    //     (($default_i:tt $default_var:ident) default() => $default_body:tt,)
+    //     $cases:ident
+    // ) => {{
+    //     if $cases.len() == 1 {
+    //         let $r = $cases[0].0;
+    //         let is_closed = $cases[0].0.__is_closed();
+    //         let msg = $cases[0].0.try_recv(); // TODO: actually implement try_recv()
+    //
+    //         if is_closed || msg.is_some() {
+    //             let $m = msg;
+    //             $recv_body
+    //         } else {
+    //             $default_body
+    //         }
+    //     } else {
+    //         __crossbeam_channel_codegen!(
+    //             @mainloop
+    //             (($recv_i $recv_var) recv($rs, $m, $r) => $recv_body,)
+    //             ()
+    //             (($default_i $default_var) default() => $default_body,)
+    //             $cases
+    //         )
+    //     }
+    // }};
+    (@fastpath
+        $recv:tt
+        $send:tt
+        $default:tt
+        $cases:ident
+    ) => {{
+        __crossbeam_channel_codegen!(@mainloop $recv $send $default $cases)
+    }};
 
+    (@mainloop
+        $recv:tt
+        $send:tt
+        $default:tt
+        $cases:ident
+    ) => {{
         // TODO: optimize:
         // - select! { recv(r) => {} }
         // - select! { recv(r) => {} default => {} }
 
-        let mut cases = __crossbeam_channel_codegen!(@container $recv $send);
-
         // TODO: set up a guard that aborts if anything panics before actually finishing
+
+        let default_index: usize;
+        __crossbeam_channel_codegen!(@default default_index $default);
 
         #[allow(unused_mut)]
         #[allow(unused_variables)]
         let (mut token, index, selected) = $crate::internal::codegen::mainloop(
-            &mut cases,
+            &mut $cases,
             default_index,
         );
 
@@ -376,7 +444,7 @@ macro_rules! __crossbeam_channel_codegen {
         $selected:ident
         ()
         ()
-        (($i:tt $var:ident) default $args:tt => $body:tt,)
+        (($i:tt $var:ident) default() => $body:tt,)
     ) => {
         if $index == $i {
             $body
