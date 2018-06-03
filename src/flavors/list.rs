@@ -18,8 +18,7 @@ use internal::select::{CaseId, Select, Token};
 use internal::utils::Backoff;
 use internal::sync_waker::SyncWaker;
 
-// TODO: allocate less memory in unbounded flavor if few elements are sent.
-// TODO: allocate memory lazily in unbounded flavor?
+// TODO: Allocate less memory: blocks should start small and grow exponentially.
 
 /// Number of messages a node can hold.
 const NODE_CAP: usize = 32;

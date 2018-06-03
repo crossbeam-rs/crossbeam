@@ -773,13 +773,13 @@ fn fairness1() {
         s2.send(());
     }
 
-    let mut hits = [0usize; 3];
+    let mut hits = [0usize; 4];
     while hits[0] + hits[1] < 2 * COUNT {
         select! {
             recv(r1) => hits[0] += 1,
             recv(r2) => hits[1] += 1,
             recv(channel::after(ms(0))) => hits[2] += 1,
-            // TODO: also add channel::tick()
+            recv(channel::tick(ms(0))) => hits[3] += 1,
         }
     }
 

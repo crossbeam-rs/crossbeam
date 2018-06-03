@@ -44,7 +44,6 @@ pub struct AbortGuard(pub &'static str);
 
 impl Drop for AbortGuard {
     fn drop(&mut self) {
-        // TODO: also print panic message
         eprintln!(
             "{}, {}:{}:{}",
             self.0,

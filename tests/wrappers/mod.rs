@@ -10,8 +10,7 @@
 #![allow(dead_code)]
 
 pub mod cloned;
-pub mod multiselect;
 pub mod normal;
 pub mod select;
-
-// TODO: Add a ZST wrapper?
+pub mod select_multi;
+pub mod select_spin;

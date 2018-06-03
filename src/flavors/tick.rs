@@ -12,7 +12,7 @@ use internal::select::Token;
 pub type TickToken = Option<Instant>;
 
 pub struct Channel {
-    // TODO(stjepang): Use `Arc<AtomicCell<Instant>>` here once we implement `AtomicCell`.
+    // TODO: Use `Arc<AtomicCell<Instant>>` here once we implement `AtomicCell`.
     deadline: Arc<Mutex<Instant>>,
     duration: Duration,
 }

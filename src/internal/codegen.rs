@@ -134,6 +134,7 @@ impl<'a, T: 'a> RecvArgument<'a, T> for &'a &'a Receiver<T> {
     }
 }
 
+// TODO: Try supporting `IntoIterator<Item = &'a &'a Receiver<T>>` once we get specialization.
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
 
@@ -299,7 +300,6 @@ macro_rules! __crossbeam_channel_codegen {
             )
         }
     }};
-    // TODO: Add an optimization for non-blocking send.
     (@fastpath
         $recv:tt
         $send:tt
@@ -308,6 +308,8 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {{
         __crossbeam_channel_codegen!(@mainloop $recv $send $default $cases)
     }};
+    // TODO: Optimize `select! { send(s, msg) => {} }`.
+    // TODO: Optimize `select! { send(s, msg) => {} default => {} }`.
 
     (@mainloop
         $recv:tt
@@ -317,7 +319,7 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {{
         // TODO: set up a guard that aborts if anything panics before actually finishing
 
-        let default_index: usize;
+        let default_index: usize; // TODO: turn into has_default
         __crossbeam_channel_codegen!(@default default_index $default);
 
         #[allow(unused_mut)]

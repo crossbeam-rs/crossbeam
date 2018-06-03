@@ -1,9 +1,10 @@
-//! Channels with send and receive operations implemented using `select!`.
+//! Channels with send and receive operations implemented using strictly non-blocking `select!`.
 //!
 //! Such `select!` invocations will often try to optimize the macro invocations by converting them
-//! into calls to `recv()`, `try_recv()`, or `send()`.
+//! into special non-blocking function calls.
 
 use std::ops::Deref;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use channel;
@@ -32,8 +33,18 @@ impl<T> Deref for Sender<T> {
 
 impl<T> Sender<T> {
     pub fn send(&self, msg: T) {
-        select! {
-            send(self.0, msg) => {}
+        if self.0.capacity() == Some(0) {
+            // Zero-capacity channel are an exception - they need truly blocking operations.
+            select! {
+                send(self.0, msg) => {}
+            }
+        } else {
+            loop {
+                select! {
+                    send(self.0, msg) => break,
+                    default => thread::yield_now(),
+                }
+            }
         }
     }
 }
@@ -47,8 +58,18 @@ impl<T> Receiver<T> {
     }
 
     pub fn recv(&self) -> Option<T> {
-        select! {
-            recv(self.0, msg) => msg,
+        if self.0.capacity() == Some(0) {
+            // Zero-capacity channel are an exception - they need truly blocking operations.
+            select! {
+                recv(self.0, msg) => msg,
+            }
+        } else {
+            loop {
+                select! {
+                    recv(self.0, msg) => break msg,
+                    default => thread::yield_now(),
+                }
+            }
         }
     }
 }

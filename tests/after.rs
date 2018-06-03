@@ -288,6 +288,11 @@ mod select {
     tests!(wrappers::select);
 }
 
-mod multiselect {
-    tests!(wrappers::multiselect);
+mod select_spin {
+    tests!(wrappers::select_spin);
 }
+
+mod select_multi {
+    tests!(wrappers::select_multi);
+}
+

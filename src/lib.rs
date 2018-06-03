@@ -242,9 +242,10 @@
 //!
 //! # Selection
 //!
-//! The [`select!`] macro allows one to block on multiple channel operations. Selection blocks
-//! until any case from the specified set can run, and then it executes that case. Only one case in
-//! a `select!` is executed. A random one is chosen if multiple channels operations are ready.
+//! The [`select!`] macro allows one to declare a set of channel operations and block until any one
+//! of them becomes ready. In the end, exactly one operation is executed. If multiple operations
+//! are ready at the same time, a random one is chosen. It is also possible to specify a `default`
+//! case that gets executed if none of the operations are initially ready.
 //!
 //! An example of receiving one message from two channels, whichever becomes ready first:
 //!
@@ -288,6 +289,7 @@
 //! [`Receiver`]: struct.Receiver.html
 
 // TODO: explain comparison operators (with clones and multiple channels!)
+// TODO: benchmarks with mpsc wrapper
 
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
