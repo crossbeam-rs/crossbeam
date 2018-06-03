@@ -34,9 +34,9 @@
 /// Would be parsed as:
 ///
 /// ```ignore
-/// ((0usize case0) recv(a, _, _) => { x }, (1usize, case1) recv(b, m, _) => { y },)
-/// ((2usize case2) send(s, msg, _) => { { z } },)
-/// ((3usize case3) default() => { {} },)
+/// ((1usize case1) recv(a, _, _) => { x }, (2usize, case2) recv(b, m, _) => { y },)
+/// ((3usize case3) send(s, msg, _) => { { z } },)
+/// ((0usize case0) default() => { {} },)
 /// ```
 ///
 /// These three lists are then passed to `$callback` as three arguments.
@@ -58,7 +58,6 @@ macro_rules! __crossbeam_channel_parse {
             ()
             ($($head)*)
             (
-                (0usize case0)
                 (1usize case1)
                 (2usize case2)
                 (3usize case3)
@@ -581,14 +580,14 @@ macro_rules! __crossbeam_channel_parse {
         $send:tt
         ()
         (default() => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
+        ($($labels:tt)*)
     ) => {
         __crossbeam_channel_parse!(
             @case
             $callback
             $recv
             $send
-            ($label default() => $body,)
+            ((0usize case0) default() => $body,)
             ($($tail)*)
             ($($labels)*)
         )

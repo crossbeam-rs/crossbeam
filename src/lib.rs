@@ -289,14 +289,13 @@
 //! [`Receiver`]: struct.Receiver.html
 
 // TODO: explain comparison operators (with clones and multiple channels!)
-// TODO: benchmarks with mpsc wrapper
 
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate parking_lot;
 
 // TODO: tokio benchmark
-// TODO: test in select! where receiver/sender panics
+// TODO: benchmarks with mpsc wrapper
 // TODO: copy examples from chan crate
 
 mod flavors;

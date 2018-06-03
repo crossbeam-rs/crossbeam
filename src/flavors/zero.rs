@@ -75,7 +75,7 @@ impl<T> Channel<T> {
         let context = context::current();
         let mut backoff = Backoff::new();
         loop {
-            let packet = context.packet.load(Ordering::SeqCst);
+            let packet = context.packet.load(Ordering::Acquire);
             if packet != 0 {
                 *token = Some(packet);
                 break;
@@ -134,7 +134,7 @@ impl<T> Channel<T> {
         let context = context::current();
         let mut backoff = Backoff::new();
         loop {
-            let packet = context.packet.load(Ordering::SeqCst);
+            let packet = context.packet.load(Ordering::Acquire);
             if packet != 0 {
                 *token = Some(packet);
                 break;
@@ -325,7 +325,7 @@ impl<'a, T> Select for Receiver<'a, T> {
             let context = context::current();
             let mut backoff = Backoff::new();
             loop {
-                let packet = context.packet.load(Ordering::SeqCst);
+                let packet = context.packet.load(Ordering::Acquire);
                 if packet != 0 {
                     *token = Some(packet);
                     break;
@@ -409,7 +409,7 @@ impl<'a, T> Select for Sender<'a, T> {
             let context = context::current();
             let mut backoff = Backoff::new();
             loop {
-                let packet = context.packet.load(Ordering::SeqCst);
+                let packet = context.packet.load(Ordering::Acquire);
                 if packet != 0 {
                     *token = Some(packet);
                     break;

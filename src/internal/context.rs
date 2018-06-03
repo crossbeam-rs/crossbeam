@@ -6,6 +6,8 @@ use std::time::Instant;
 use internal::select::CaseId;
 use internal::utils::Backoff;
 
+// TODO: explain all orderings here
+
 pub struct Context {
     pub case_id: AtomicUsize,
     pub thread: Thread,
@@ -18,8 +20,8 @@ impl Context {
     #[inline]
     pub fn try_select(&self, case_id: CaseId, packet: usize) -> bool {
         if self.case_id
-            .compare_and_swap(CaseId::none().into(), case_id.into(), Ordering::SeqCst) == CaseId::none().into() {
-            self.packet.store(packet, Ordering::SeqCst);
+            .compare_and_swap(CaseId::none().into(), case_id.into(), Ordering::Relaxed) == CaseId::none().into() {
+            self.packet.store(packet, Ordering::Release);
             true
         } else {
             false
@@ -29,7 +31,7 @@ impl Context {
     #[inline]
     pub fn try_abort(&self) -> bool {
         self.case_id
-            .compare_and_swap(CaseId::none().into(), CaseId::abort().into(), Ordering::SeqCst) == CaseId::none().into()
+            .compare_and_swap(CaseId::none().into(), CaseId::abort().into(), Ordering::Relaxed) == CaseId::none().into()
     }
 
     #[inline]
@@ -39,14 +41,15 @@ impl Context {
 
     #[inline]
     pub fn reset(&self) {
-        // TODO: Using relaxed here would make spsc in bounded case much faster
-        self.case_id.store(0, Ordering::SeqCst);
-        self.packet.store(0, Ordering::SeqCst);
+        // Using relaxed orderings is safe because these store operations will be visibile to other
+        // threads only through a waker wrapped within a mutex.
+        self.case_id.store(0, Ordering::Relaxed);
+        self.packet.store(0, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn selected(&self) -> CaseId {
-        CaseId::from(self.case_id.load(Ordering::SeqCst))
+        CaseId::from(self.case_id.load(Ordering::Acquire))
     }
 
     #[inline]
@@ -91,11 +94,6 @@ thread_local! {
 pub fn current() -> Arc<Context> {
     CONTEXT.with(|c| c.clone())
 }
-
-#[inline]
-// pub fn current_try_select(case_id: CaseId) -> bool {
-//     CONTEXT.with(|c| c.try_select(case_id))
-// }
 
 #[inline]
 pub fn current_try_abort() -> bool {

@@ -10,7 +10,7 @@ use internal::utils;
 
 pub fn mainloop<'a, S>(
     cases: &mut [(&'a S, usize, usize)],
-    default_index: usize,
+    has_default: bool,
 ) -> (Token, usize, usize)
 where
     S: Select + ?Sized + 'a,
@@ -22,8 +22,8 @@ where
     }
 
     if cases.is_empty() {
-        if default_index != !0 {
-            return (token, default_index, 0);
+        if has_default {
+            return (token, 0, 0);
         } else {
             utils::sleep_forever();
         }
@@ -36,8 +36,8 @@ where
             }
         }
 
-        if default_index != !0 {
-            return (token, default_index, 0);
+        if has_default {
+            return (token, 0, 0);
         }
 
         for &(sel, i, addr) in cases.iter() {
@@ -319,14 +319,13 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {{
         // TODO: set up a guard that aborts if anything panics before actually finishing
 
-        let default_index: usize; // TODO: turn into has_default
-        __crossbeam_channel_codegen!(@default default_index $default);
+        let has_default = __crossbeam_channel_codegen!(@has_default $default);
 
         #[allow(unused_mut)]
         #[allow(unused_variables)]
         let (mut token, index, selected) = $crate::internal::codegen::mainloop(
             &mut $cases,
-            default_index,
+            has_default,
         );
 
         __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
@@ -398,17 +397,15 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
     };
 
-    (@default
-        $default_index:ident
+    (@has_default
         ()
     ) => {
-        $default_index = !0;
+        false
     };
-    (@default
-        $default_index:ident
+    (@has_default
         (($i:tt $var:ident) default() => $body:tt,)
     ) => {
-        $default_index = $i;
+        true
     };
 
     (@finish
