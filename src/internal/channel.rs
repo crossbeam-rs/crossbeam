@@ -132,7 +132,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     (s, r)
 }
 
-/// Creates a receiver that delivers a message after the specified duration of time.
+/// Creates a receiver that delivers a message after a certain duration of time.
 ///
 /// The channel is bounded with capacity of 1 and is never closed. Exactly one message will be
 /// automatically sent into the channel after `duration` elapses. The message is the instant at
@@ -181,11 +181,12 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
     Receiver(Inner::After(flavors::after::Channel::new(duration)))
 }
 
-/// Creates a receiver that delivers messages in regular periods of time.
+/// Creates a receiver that delivers messages periodically.
 ///
 /// The channel is bounded with capacity of 1 and is never closed. Messages will be automatically
 /// sent into the channel in intervals of `duration`, but the time intervals are only measured
-/// while the channel is empty. Each message is the instant at which it is sent into the channel.
+/// while the channel is empty. The channel always contains at most one message. Each message is
+/// the instant at which it is sent into the channel.
 ///
 /// # Examples
 ///
@@ -221,7 +222,7 @@ pub fn tick(duration: Duration) -> Receiver<Instant> {
     Receiver(Inner::Tick(flavors::tick::Channel::new(duration)))
 }
 
-/// The sending half of a channel.
+/// The sending side of a channel.
 ///
 /// Senders can be cloned and shared among multiple threads.
 ///
@@ -435,7 +436,7 @@ impl<T> PartialEq<Receiver<T>> for Sender<T> {
 impl<T> UnwindSafe for Sender<T> {}
 impl<T> RefUnwindSafe for Sender<T> {}
 
-/// The receiving half of a channel.
+/// The receiving side of a channel.
 ///
 /// Receivers can be cloned and shared among multiple threads.
 ///

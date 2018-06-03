@@ -54,14 +54,13 @@ impl<T> Channel<T> {
 
     /// TODO
     fn start_recv(&self, token: &mut Token) -> bool {
-        let token = &mut token.zero;
         let mut inner = self.inner.lock();
 
         if let Some(case) = inner.senders.wake_one() {
-            *token = Some(case.packet);
+            token.zero = Some(case.packet);
             true
         } else if inner.is_closed {
-            *token = None;
+            token.zero = None;
             true
         } else {
             false
@@ -70,14 +69,12 @@ impl<T> Channel<T> {
 
     /// TODO
     fn accept_recv(&self, token: &mut Token) -> bool {
-        let token = &mut token.zero;
-
         let context = context::current();
         let mut backoff = Backoff::new();
         loop {
             let packet = context.packet.load(Ordering::Acquire);
             if packet != 0 {
-                *token = Some(packet);
+                token.zero = Some(packet);
                 break;
             }
             backoff.step();
@@ -88,13 +85,12 @@ impl<T> Channel<T> {
 
     /// TODO
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
-        let token = &mut token.zero;
         let packet;
 
-        match token {
+        match token.zero {
             None => return None,
             Some(p) => {
-                packet = *p as *const Packet<T>;
+                packet = p as *const Packet<T>;
             }
         }
 
@@ -115,12 +111,11 @@ impl<T> Channel<T> {
 
     /// TODO
     fn start_send(&self, token: &mut Token) -> bool {
-        let token = &mut token.zero;
         let mut inner = self.inner.lock();
 
         // If there's someone on the other side, exchange message with it.
         if let Some(case) = inner.receivers.wake_one() {
-            *token = Some(case.packet);
+            token.zero = Some(case.packet);
             true
         } else {
             false
@@ -129,14 +124,12 @@ impl<T> Channel<T> {
 
     /// TODO
     fn accept_send(&self, token: &mut Token) -> bool {
-        let token = &mut token.zero;
-
         let context = context::current();
         let mut backoff = Backoff::new();
         loop {
             let packet = context.packet.load(Ordering::Acquire);
             if packet != 0 {
-                *token = Some(packet);
+                token.zero = Some(packet);
                 break;
             }
             backoff.step();
@@ -147,8 +140,7 @@ impl<T> Channel<T> {
 
     /// TODO
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        let token = &mut token.zero;
-        let packet = token.unwrap() as *const Packet<T>;
+        let packet = token.zero.unwrap() as *const Packet<T>;
 
         *(*packet).msg.lock() = Some(msg);
         (*packet).ready.store(true, Ordering::Release);
@@ -296,14 +288,13 @@ impl<'a, T> Select for Receiver<'a, T> {
         // self.0.start_recv(token)
 
         let case_id = CaseId::new(&token as *const _ as usize);
-        let token = &mut token.zero;
         let mut inner = self.0.inner.lock();
 
         if let Some(case) = inner.senders.wake_one() {
-            *token = Some(case.packet);
+            token.zero = Some(case.packet);
             return true;
         } else if inner.is_closed {
-            *token = None;
+            token.zero = None;
             return true;
         }
 
@@ -327,7 +318,7 @@ impl<'a, T> Select for Receiver<'a, T> {
             loop {
                 let packet = context.packet.load(Ordering::Acquire);
                 if packet != 0 {
-                    *token = Some(packet);
+                    token.zero = Some(packet);
                     break;
                 }
                 backoff.step();
@@ -382,12 +373,11 @@ impl<'a, T> Select for Sender<'a, T> {
         // self.0.start_send(token)
 
         let case_id = CaseId::new(&token as *const _ as usize);
-        let token = &mut token.zero;
         let mut inner = self.0.inner.lock();
 
         // If there's someone on the other side, exchange message with it.
         if let Some(case) = inner.receivers.wake_one() {
-            *token = Some(case.packet);
+            token.zero = Some(case.packet);
             return true;
         }
 
@@ -411,7 +401,7 @@ impl<'a, T> Select for Sender<'a, T> {
             loop {
                 let packet = context.packet.load(Ordering::Acquire);
                 if packet != 0 {
-                    *token = Some(packet);
+                    token.zero = Some(packet);
                     break;
                 }
                 backoff.step();

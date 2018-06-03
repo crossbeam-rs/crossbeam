@@ -2,16 +2,16 @@ use std::time::Instant;
 
 use flavors;
 
-/// Waits on multiple channel operations.
+/// Waits on a set of channel operations.
 ///
 /// This macro allows one to declare a set of channel operations and block until any one of them
-/// becomes ready. In the end, exactly one operation is executed. If multiple operations are ready
-/// at the same time, a random one is chosen. It is also possible to declare a special `default`
-/// case that gets executed if none of the operations are initially ready.
+/// becomes ready. Finally, one of the operations is executed. If multiple operations are ready at
+/// the same time, a random one is chosen. It is also possible to declare a `default` case that
+/// gets executed if none of the operations are initially ready.
 ///
 /// # Receiving
 ///
-/// Receiving one message from two channels, whichever becomes ready first:
+/// Receiving a message from two channels, whichever becomes ready first:
 ///
 /// ```
 /// # #[macro_use]

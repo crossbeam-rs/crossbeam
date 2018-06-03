@@ -1,9 +1,7 @@
 //! Multi-producer multi-consumer channels for message passing.
 //!
-//! A channel is a concurrent FIFO queue used for passing messages between threads.
-//!
-//! Crossbeam's channel is an alternative to the [`std::sync::mpsc`] channel provided by the
-//! standard library. It is an improvement in terms of performance, ergonomics, and features.
+//! Crossbeam's channels are an alternative to the [`std::sync::mpsc`] channels provided by the
+//! standard library. They are an improvement in terms of performance, ergonomics, and features.
 //!
 //! Here's a simple example:
 //!
@@ -22,14 +20,14 @@
 //!
 //! # Types of channels
 //!
-//! A channel can be constructed by calling functions [`unbounded`] and [`bounded`]. The former
-//! creates a channel of unbounded capacity (i.e. it can contain an arbitrary number of messages
-//! at a same time), while the latter creates a channel of bounded capacity (i.e. there is a limit
-//! to how many messages it can hold at a time).
+//! A channel can be constructed by calling [`bounded`] ore [`unbounded`]. The former creates a
+//! channel of bounded capacity (i.e. there is a limit to how many messages it can hold), while
+//! the latter creates a channel of unbounded capacity (i.e. it can contain an arbitrary number of
+//! messages).
 //!
-//! Both constructors return a pair of two values: a sender and a receiver. Senders and receivers
-//! represent two opposite sides of a channel. Messages are sent into the channel using senders and
-//! received from the channel using receivers.
+//! Both constructors return two handles: a sender and a receiver. Senders and receivers represent
+//! two opposite sides of a channel. Messages are sent into the channel using senders and received
+//! using receivers.
 //!
 //! Creating an unbounded channel:
 //!
@@ -109,7 +107,6 @@
 //!     });
 //!
 //!     // Spawn another thread that does the same thing.
-//!     // Both closures capture `s` and `r` by reference.
 //!     scope.spawn(|| {
 //!         s.send(2);
 //!         r.recv().unwrap();
@@ -119,35 +116,33 @@
 //! # }
 //! ```
 //!
-//! Sharing by sending clones:
+//! Sharing by cloning:
 //!
 //! ```
 //! use std::thread;
 //! use crossbeam_channel as channel;
 //!
-//! let (s, r) = channel::unbounded();
-//! let (s2, r2) = (s.clone(), r.clone());
+//! let (s1, r1) = channel::unbounded();
+//! let (s2, r2) = (s1.clone(), r1.clone());
 //!
 //! // Spawn a thread that sends one message and then receives one.
-//! // Here, `s` and `r` are moved into the closure.
 //! thread::spawn(move || {
-//!     s.send(1);
-//!     r.recv().unwrap();
+//!     s1.send(1);
+//!     r1.recv().unwrap();
 //! });
 //!
-//! // Spawn another thread that does the same thing.
-//! // Here, `s2` and `r2` are moved into the closure.
+//! // Spawn another thread that receives a message and then sends one.
 //! thread::spawn(move || {
-//!     s2.send(2);
 //!     r2.recv().unwrap();
+//!     s2.send(2);
 //! });
 //! ```
 //!
 //! # Closing
 //!
-//! As soon as all senders associated with a channel are dropped, it becomes closed. No more
-//! messages can be sent, but the remaining messages can still be received. Receiving messages from
-//! a closed channel never blocks.
+//! When all senders associated with a channel get dropped, the channel becomes closed. No more
+//! messages can be sent, but any remaining messages can still be received. Receive operations on a
+//! closed channel never block, even if the channel is empty.
 //!
 //! ```
 //! use crossbeam_channel as channel;
@@ -168,23 +163,23 @@
 //! // There are no more messages in the channel.
 //! assert!(r.is_empty());
 //!
-//! // Note that calling `r.recv()` will not block. Instead, it returns `None` immediately.
+//! // Note that calling `r.recv()` will not block. Instead, `None` is returned immediately.
 //! assert_eq!(r.recv(), None);
 //! ```
 //!
 //! # Blocking and non-blocking operations
 //!
-//! If a bounded channel is full, a send operation will block until an empty slot in the channel
+//! Sending a message into a full bounded channel will block until an empty slot in the channel
 //! becomes available. Sending into an unbounded channel never blocks because there is always
-//! enough space in it. A zero-capacity channel is always empty, and a send operation will block
-//! until a receive operation appears on the other side of the channel.
+//! enough space in it. Zero-capacity channels are always empty, and sending blocks until a receive
+//! operation appears on the other side of the channel.
 //!
-//! If a channel is empty, a receive operation will block until a message is sent into the channel.
-//! In particular, a zero-capacity channel is always empty, and a receive operation will block
-//! until a send operation appears on the other side of the channel.
+//! Receiving from an empty channel blocks until a message is sent into the channel or the channel
+//! becomes closed. Zero-capacity channels are always empty, and receiving blocks until a send
+//! operation appears on the other side of the channel.
 //!
-//! There is also a non-blocking method [`try_recv`], which receives a message if it is already
-//! available, or returns `None` otherwise.
+//! There is also a non-blocking method [`try_recv`], which receives a message if it is available,
+//! or returns `None` otherwise.
 //!
 //! ```
 //! use crossbeam_channel as channel;
@@ -217,9 +212,9 @@
 //!
 //! # Iteration
 //!
-//! A channel is essentially just a special kind of iterator, where items can be dynamically
-//! produced by the sender side and consumed by the receiver side. Indeed, [`Receiver`] implements
-//! the [`Iterator`] trait. Calling [`next`] on a receiver is equivalent to calling [`recv`].
+//! A channel is a special kind of iterator, where items can be dynamically produced by senders and
+//! consumed by receivers. Indeed, [`Receiver`] implements the [`Iterator`] trait, and calling
+//! [`next`] is equivalent to calling [`recv`].
 //!
 //! ```
 //! use std::thread;
@@ -243,11 +238,11 @@
 //! # Selection
 //!
 //! The [`select!`] macro allows one to declare a set of channel operations and block until any one
-//! of them becomes ready. In the end, exactly one operation is executed. If multiple operations
-//! are ready at the same time, a random one is chosen. It is also possible to specify a `default`
+//! of them becomes ready. Finally, one of the operations is executed. If multiple operations
+//! are ready at the same time, a random one is chosen. It is also possible to declare a `default`
 //! case that gets executed if none of the operations are initially ready.
 //!
-//! An example of receiving one message from two channels, whichever becomes ready first:
+//! An example of receiving a message from two channels, whichever becomes ready first:
 //!
 //! ```
 //! # #[macro_use]
@@ -270,11 +265,7 @@
 //! # }
 //! ```
 //!
-//! Send operations can be written inside [`select!`], too. It is also possible to specify what to
-//! do in case none of the operations can be executed immediately, within a certain timeout, or
-//! before a certain deadline.
-//!
-//! For more details, take a look at the documentation of [`select!`].
+//! For more details, take a look at the documentation for [`select!`].
 //!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
@@ -287,8 +278,6 @@
 //! [`select!`]: macro.select.html
 //! [`Sender`]: struct.Sender.html
 //! [`Receiver`]: struct.Receiver.html
-
-// TODO: explain comparison operators (with clones and multiple channels!)
 
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;

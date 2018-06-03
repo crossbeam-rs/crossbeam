@@ -134,7 +134,7 @@ impl<'a, T: 'a> RecvArgument<'a, T> for &'a &'a Receiver<T> {
     }
 }
 
-// TODO: Try supporting `IntoIterator<Item = &'a &'a Receiver<T>>` once we get specialization.
+// TODO: Try supporting `IntoIterator<Item = &'a &'b Receiver<T>>` once we get specialization.
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
 
@@ -173,6 +173,7 @@ impl<'a, T: 'a> SendArgument<'a, T> for &'a &'a Sender<T> {
     }
 }
 
+// TODO: Try supporting `IntoIterator<Item = &'a &'b Sender<T>>` once we get specialization.
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
 

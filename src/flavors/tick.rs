@@ -1,3 +1,7 @@
+//! A channel that delivers messages periodically.
+//!
+//! Messages cannot be sent in this kind of channel; they appear implicitly.
+
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -5,41 +9,23 @@ use std::time::{Duration, Instant};
 use parking_lot::Mutex;
 
 use internal::channel::RecvNonblocking;
-use internal::select::CaseId;
-use internal::select::Select;
-use internal::select::Token;
+use internal::select::{CaseId, Select, Token};
 
+/// Result of the receive operation.
 pub type TickToken = Option<Instant>;
 
+/// A channel that delivers messages periodically.
 pub struct Channel {
+    /// The instant at which the next message will be delivered.
     // TODO: Use `Arc<AtomicCell<Instant>>` here once we implement `AtomicCell`.
     deadline: Arc<Mutex<Instant>>,
+
+    /// The time interval in which messages get delivered.
     duration: Duration,
 }
 
-impl Clone for Channel {
-    #[inline]
-    fn clone(&self) -> Channel {
-        Channel {
-            deadline: self.deadline.clone(),
-            duration: self.duration,
-        }
-    }
-}
-
 impl Channel {
-    #[inline]
-    pub fn channel_id(&self) -> usize {
-        self.deadline.as_ref() as *const Mutex<Instant> as usize
-    }
-
-    #[inline]
-    pub unsafe fn read(&self, token: &mut Token) -> Option<Instant> {
-        token.tick
-    }
-}
-
-impl Channel {
+    /// Creates a channel that delivers messages periodically.
     #[inline]
     pub fn new(dur: Duration) -> Self {
         Channel {
@@ -48,13 +34,22 @@ impl Channel {
         }
     }
 
+    /// Returns a unique identifier for the channel.
+    #[inline]
+    pub fn channel_id(&self) -> usize {
+        self.deadline.as_ref() as *const Mutex<Instant> as usize
+    }
+
+    /// Receives a message from the channel.
     #[inline]
     pub fn recv(&self) -> Option<Instant> {
         loop {
+            // Compute the time to sleep until the next message.
             let offset = {
                 let mut deadline = self.deadline.lock();
                 let now = Instant::now();
 
+                // If the deadline has been reached, we can receive the next message.
                 if now >= *deadline {
                     let msg = Some(*deadline);
                     *deadline = now + self.duration;
@@ -68,11 +63,13 @@ impl Channel {
         }
     }
 
+    /// Attempts to receive a message without blocking.
     #[inline]
     pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
         let mut deadline = self.deadline.lock();
         let now = Instant::now();
 
+        // If the deadline has been reached, we can receive the next message.
         if now >= *deadline {
             let msg = RecvNonblocking::Message(*deadline);
             *deadline = now + self.duration;
@@ -82,12 +79,20 @@ impl Channel {
         }
     }
 
+    /// Reads a message from the channel.
+    #[inline]
+    pub unsafe fn read(&self, token: &mut Token) -> Option<Instant> {
+        token.tick
+    }
+
+    /// Returns `true` if the channel is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         let deadline = *self.deadline.lock();
         Instant::now() < deadline
     }
 
+    /// Returns the number of messages in the channel.
     #[inline]
     pub fn len(&self) -> usize {
         if self.is_empty() {
@@ -98,21 +103,32 @@ impl Channel {
     }
 }
 
+impl Clone for Channel {
+    #[inline]
+    fn clone(&self) -> Channel {
+        Channel {
+            deadline: self.deadline.clone(),
+            duration: self.duration,
+        }
+    }
+}
+
 impl Select for Channel {
     #[inline]
     fn try(&self, token: &mut Token) -> bool {
-        let token = &mut token.tick;
-
-        let mut deadline = self.deadline.lock();
-        let now = Instant::now();
-
-        if now < *deadline {
-            return false;
+        match self.recv_nonblocking() {
+            RecvNonblocking::Message(msg) => {
+                token.tick = Some(msg);
+                true
+            }
+            RecvNonblocking::Closed => {
+                token.tick = None;
+                true
+            }
+            RecvNonblocking::Empty => {
+                false
+            }
         }
-
-        *token = Some(*deadline);
-        *deadline = now + self.duration;
-        true
     }
 
     #[inline]
