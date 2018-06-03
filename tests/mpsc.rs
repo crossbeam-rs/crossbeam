@@ -1,3 +1,14 @@
+//! Tests borrowed from `std::sync::mpsc`.
+//!
+//! This is a channel implementation mimicking MPSC channels from the standard library, but the
+//! internals actually use `crossbeam-channel`. This channel is then tested against the original
+//! tests for MPSC channels.
+//!
+//! Two minor tweaks were needed to make the tests compile:
+//!
+//! - Replace `box` syntax with `Box::new`.
+//! - Replace all uses of `Select` with `select!`.
+
 #[macro_use]
 extern crate crossbeam_channel as channel;
 
@@ -7,18 +18,18 @@ pub use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, 
 #[derive(Clone, Debug)]
 pub struct Sender<T> {
     inner: channel::Sender<T>,
-    closed: channel::Receiver<()>,
+    disconnected: channel::Receiver<()>,
 }
 
 impl<T> Sender<T> {
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         select! {
-            recv(self.closed) => return Err(SendError(t)),
+            recv(self.disconnected) => return Err(SendError(t)),
             default => {}
         }
         select! {
             send(self.inner, t) => Ok(()),
-            recv(self.closed) => Err(SendError(t)),
+            recv(self.disconnected) => Err(SendError(t)),
         }
     }
 }
@@ -26,25 +37,25 @@ impl<T> Sender<T> {
 #[derive(Clone, Debug)]
 pub struct SyncSender<T> {
     inner: channel::Sender<T>,
-    closed: channel::Receiver<()>,
+    disconnected: channel::Receiver<()>,
 }
 
 impl<T> SyncSender<T> {
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         select! {
-            recv(self.closed) => return Err(SendError(t)),
+            recv(self.disconnected) => return Err(SendError(t)),
             default => {}
         }
         select! {
             send(self.inner, t) => Ok(()),
-            recv(self.closed) => Err(SendError(t)),
+            recv(self.disconnected) => Err(SendError(t)),
         }
     }
 
     pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
         select! {
             send(self.inner, t) => Ok(()),
-            recv(self.closed) => Err(TrySendError::Disconnected(t)),
+            recv(self.disconnected) => Err(TrySendError::Disconnected(t)),
             default => Err(TrySendError::Full(t)),
         }
     }
@@ -53,7 +64,7 @@ impl<T> SyncSender<T> {
 #[derive(Debug)]
 pub struct Receiver<T> {
     pub inner: channel::Receiver<T>,
-    closed: channel::Sender<()>,
+    disconnected: channel::Sender<()>,
 }
 
 impl<T> Receiver<T> {
@@ -153,31 +164,31 @@ impl<T> Iterator for IntoIter<T> {
 }
 
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
-    let (s, r) = channel::unbounded();
-    let (s_closed, r_closed) = channel::bounded(1);
+    let (s1, r1) = channel::unbounded();
+    let (s2, r2) = channel::bounded(1);
 
     let s = Sender {
-        inner: s,
-        closed: r_closed,
+        inner: s1,
+        disconnected: r2,
     };
     let r = Receiver {
-        inner: r,
-        closed: s_closed,
+        inner: r1,
+        disconnected: s2,
     };
     (s, r)
 }
 
 pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
-    let (s, r) = channel::bounded(bound);
-    let (s_closed, r_closed) = channel::bounded(1);
+    let (s1, r1) = channel::bounded(bound);
+    let (s2, r2) = channel::bounded(1);
 
     let s = SyncSender {
-        inner: s,
-        closed: r_closed,
+        inner: s1,
+        disconnected: r2,
     };
     let r = Receiver {
-        inner: r,
-        closed: s_closed,
+        inner: r1,
+        disconnected: s2,
     };
     (s, r)
 }
@@ -1728,6 +1739,67 @@ mod select_tests {
         tx.send(()).unwrap();
         mpsc_select! {
             _n = rx.recv() => {}
+        }
+    }
+
+    #[test]
+    fn preflight4() {
+        let (tx, rx) = channel();
+        tx.send(()).unwrap();
+        mpsc_select! {
+            _ = rx.recv() => {}
+        }
+    }
+
+    #[test]
+    fn preflight5() {
+        let (tx, rx) = channel();
+        tx.send(()).unwrap();
+        tx.send(()).unwrap();
+        mpsc_select! {
+            _ = rx.recv() => {}
+        }
+    }
+
+    #[test]
+    fn preflight6() {
+        let (tx, rx) = channel();
+        drop(tx.clone());
+        tx.send(()).unwrap();
+        mpsc_select! {
+            _ = rx.recv() => {}
+        }
+    }
+
+    #[test]
+    fn preflight7() {
+        let (tx, rx) = channel::<()>();
+        drop(tx);
+        mpsc_select! {
+            _ = rx.recv() => {}
+        }
+    }
+
+    #[test]
+    fn preflight8() {
+        let (tx, rx) = channel();
+        tx.send(()).unwrap();
+        drop(tx);
+        rx.recv().unwrap();
+        mpsc_select! {
+            _ = rx.recv() => {}
+        }
+    }
+
+    #[test]
+    fn preflight9() {
+        let (tx, rx) = channel();
+        drop(tx.clone());
+        tx.send(()).unwrap();
+        drop(tx);
+        rx.recv().unwrap();
+        mpsc_select! {
+            _ = rx.recv() => {}
         }
     }
 
