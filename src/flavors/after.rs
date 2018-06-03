@@ -104,7 +104,7 @@ impl Channel {
     #[inline]
     pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
         if self.flag().load(Ordering::SeqCst) {
-            return RecvNonblocking::Empty; // TODO: try using closed here
+            return RecvNonblocking::Empty;
         }
 
         let now = Instant::now();
@@ -115,7 +115,7 @@ impl Channel {
         if !self.flag().swap(true, Ordering::SeqCst) {
             RecvNonblocking::Message(self.deadline)
         } else {
-            RecvNonblocking::Empty // TODO: try using closed here
+            RecvNonblocking::Empty
         }
     }
 

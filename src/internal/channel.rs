@@ -515,10 +515,10 @@ impl<T> Receiver<T> {
             },
             Inner::After(chan) => unsafe {
                 mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.recv())
-            }
+            },
             Inner::Tick(chan) => unsafe {
                 mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.recv())
-            }
+            },
         }
     }
 

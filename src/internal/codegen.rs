@@ -118,6 +118,22 @@ impl<'a, T: 'a> RecvArgument<'a, T> for Receiver<T> {
     }
 }
 
+impl<'a, T: 'a> RecvArgument<'a, T> for &'a Receiver<T> {
+    type Iter = option::IntoIter<&'a Receiver<T>>;
+
+    fn __as_recv_argument(&'a self) -> Self::Iter {
+        Some(*self).into_iter()
+    }
+}
+
+impl<'a, T: 'a> RecvArgument<'a, T> for &'a &'a Receiver<T> {
+    type Iter = option::IntoIter<&'a Receiver<T>>;
+
+    fn __as_recv_argument(&'a self) -> Self::Iter {
+        Some(**self).into_iter()
+    }
+}
+
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
 
@@ -137,6 +153,22 @@ impl<'a, T: 'a> SendArgument<'a, T> for Sender<T> {
 
     fn __as_send_argument(&'a self) -> Self::Iter {
         Some(self).into_iter()
+    }
+}
+
+impl<'a, T: 'a> SendArgument<'a, T> for &'a Sender<T> {
+    type Iter = option::IntoIter<&'a Sender<T>>;
+
+    fn __as_send_argument(&'a self) -> Self::Iter {
+        Some(*self).into_iter()
+    }
+}
+
+impl<'a, T: 'a> SendArgument<'a, T> for &'a &'a Sender<T> {
+    type Iter = option::IntoIter<&'a Sender<T>>;
+
+    fn __as_send_argument(&'a self) -> Self::Iter {
+        Some(**self).into_iter()
     }
 }
 
@@ -162,7 +194,7 @@ macro_rules! __crossbeam_channel_codegen {
             match {
                 #[allow(unused_imports)]
                 use $crate::internal::codegen::RecvArgument;
-                &mut (&$rs).__as_recv_argument()
+                &mut (&&$rs).__as_recv_argument()
             } {
                 $var => {
                     __crossbeam_channel_codegen!(
@@ -186,7 +218,7 @@ macro_rules! __crossbeam_channel_codegen {
             match {
                 #[allow(unused_imports)]
                 use $crate::internal::codegen::SendArgument;
-                &mut (&$ss).__as_send_argument()
+                &mut (&&$ss).__as_send_argument()
             } {
                 $var => {
                     __crossbeam_channel_codegen!(
@@ -267,6 +299,7 @@ macro_rules! __crossbeam_channel_codegen {
             )
         }
     }};
+    // TODO: Add an optimization for non-blocking send.
     (@fastpath
         $recv:tt
         $send:tt
@@ -295,9 +328,6 @@ macro_rules! __crossbeam_channel_codegen {
         );
 
         __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
-
-        // TODO: Run `cargo clippy` and make sure there are no warnings in here.
-        // TODO: Add a Travis test for clippy
     }};
 
     (@container

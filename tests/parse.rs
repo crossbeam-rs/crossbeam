@@ -92,6 +92,22 @@ fn move_handles() {
 }
 
 #[test]
+fn infer_types() {
+    let (s, r) = channel::unbounded();
+    select! {
+        recv(r) => {}
+        default => {}
+    }
+    s.send(());
+
+    let (s, r) = channel::unbounded();
+    select! {
+        send(s, ()) => {}
+    }
+    r.recv();
+}
+
+#[test]
 fn default() {
     let (s, r) = channel::bounded::<i32>(0);
 
