@@ -193,6 +193,7 @@ pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
     (s, r)
 }
 
+// https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
 mod channel_tests {
     use std::env;
     use super::*;
@@ -873,6 +874,7 @@ mod channel_tests {
     }
 }
 
+// https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
 mod sync_channel_tests {
     use std::env;
     use std::thread;
@@ -1495,6 +1497,7 @@ mod sync_channel_tests {
     }
 }
 
+// https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/select.rs
 mod select_tests {
     use std::thread;
     use super::*;
