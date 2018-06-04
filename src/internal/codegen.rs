@@ -8,6 +8,7 @@ use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils;
 
+#[inline(never)]
 pub fn mainloop<'a, S>(
     cases: &mut [(&'a S, usize, usize)],
     has_default: bool,

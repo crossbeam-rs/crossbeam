@@ -1,4 +1,4 @@
-//! Channel implementation based on a pre-allocated array.
+//! A bounded channel based on a preallocated array.
 //!
 //! This flavor has a fixed, positive capacity.
 
@@ -14,57 +14,83 @@ use crossbeam_utils::cache_padded::CachePadded;
 use internal::channel::RecvNonblocking;
 use internal::context;
 use internal::select::{CaseId, Select, Token};
-use internal::utils::Backoff;
 use internal::sync_waker::SyncWaker;
+use internal::utils::Backoff;
 
-/// An entry in the channel.
-///
-/// Entries are empty on even laps and hold messages on odd laps.
-struct Entry<T> {
-    /// The current lap.
+/// A slot in the channel.
+struct Slot<T> {
+    /// The current stamp.
     ///
-    /// Entries are ready for writing on even laps and ready for reading on odd laps.
-    lap: AtomicUsize,
+    /// If the stamp equals the tail, this node will be next written to. If it equals the head,
+    /// this node will be next read from.
+    stamp: AtomicUsize,
 
-    /// The message in this entry.
+    /// The message in this slot.
+    ///
+    /// If the lap in the stamp is odd, this value contains a message. Otherwise, it is empty.
     msg: UnsafeCell<T>,
 }
 
-/// An array-based channel with fixed capacity.
+/// The token type for the array flavor.
+pub struct ArrayToken {
+    /// Slot to read from or write to.
+    slot: *const u8,
+
+    /// Stamp to store into the slot after reading or writing.
+    stamp: usize,
+}
+
+impl Default for ArrayToken {
+    #[inline]
+    fn default() -> Self {
+        ArrayToken {
+            slot: ptr::null(),
+            stamp: 0,
+        }
+    }
+}
+
+/// A bounded channel based on a preallocated array.
 ///
 /// The implementation is based on Dmitry Vyukov's bounded MPMC queue:
 ///
 /// - http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
 /// - https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
 pub struct Channel<T> {
-    /// Head of the channel (the next index to read from).
+    /// The head of the channel.
     ///
-    /// The lower bits (`one_lap - 1`) represent the index, while the upper bits (`!(one_lap - 1)`)
-    /// represent the lap.
+    /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
+    /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
+    /// The lap in the head is always an odd number.
+    ///
+    /// Messages are popped from the head of the channel.
     head: CachePadded<AtomicUsize>,
 
-    /// Tail of the channel (the next index to write to).
+    /// The tail of the channel.
     ///
-    /// The lower bits (`one_lap - 1`) represent the index, while the upper bits (`!(one_lap - 1)`)
-    /// represent the lap.
+    /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
+    /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
+    /// The lap in the tail is always an even number.
+    ///
+    /// Messages are pushed into the tail of the channel.
     tail: CachePadded<AtomicUsize>,
 
-    /// Buffer holding entries in the channel.
-    buffer: *mut Entry<T>,
+    /// The buffer holding slots.
+    buffer: *mut Slot<T>,
 
-    /// Channel capacity.
+    /// The channel capacity.
     cap: usize,
 
-    /// A value that represents the pair `{ lap: 1, index: 0 }`.
+    /// A stamp with the value of `{ lap: 1, index: 0 }`.
     one_lap: usize,
 
-    /// `true` if the channel is closed.
+    /// Equals `true` when the channel is closed.
     is_closed: AtomicBool,
 
-    /// Senders waiting on full channel.
+    /// Senders waiting while the channel is full.
     senders: SyncWaker,
 
-    /// Receivers waiting on empty channel.
+    /// Receivers waiting while the channel is empty.
     receivers: SyncWaker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
@@ -72,7 +98,7 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    /// Constructs a new bounded channel with capacity `cap`.
+    /// Creates a bounded channel with capacity of `cap`.
     ///
     /// # Panics
     ///
@@ -91,22 +117,6 @@ impl<T> Channel<T> {
             cap_limit
         );
 
-        // Allocate a buffer of `cap` entries.
-        let buffer = {
-            let mut v = Vec::<Entry<T>>::with_capacity(cap);
-            let ptr = v.as_mut_ptr();
-            mem::forget(v);
-            ptr
-        };
-
-        // Initialize all laps in entries to zero.
-        for i in 0..cap {
-            unsafe {
-                let entry = buffer.offset(i as isize);
-                ptr::write(&mut (*entry).lap, AtomicUsize::new(0));
-            }
-        }
-
         // One lap is the smallest power of two greater than or equal to `cap`.
         let one_lap = cap.next_power_of_two();
 
@@ -114,6 +124,23 @@ impl<T> Channel<T> {
         // Tail is initialized to `{ lap: 0, index: 0 }`.
         let head = one_lap;
         let tail = 0;
+
+        // Allocate a buffer of `cap` slots.
+        let buffer = {
+            let mut v = Vec::<Slot<T>>::with_capacity(cap);
+            let ptr = v.as_mut_ptr();
+            mem::forget(v);
+            ptr
+        };
+
+        // Initialize stamps in the slots.
+        for i in 0..cap {
+            unsafe {
+                // Set the stamp to `{ lap: 0, index: i }`.
+                let slot = buffer.offset(i as isize);
+                ptr::write(&mut (*slot).stamp, AtomicUsize::new(i));
+            }
+        }
 
         Channel {
             buffer,
@@ -138,61 +165,46 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
-    /// Returns a reference to the entry at `index`.
-    ///
-    /// # Safety
-    ///
-    /// The index must be valid, i.e. less than the capacity.
-    #[inline]
-    unsafe fn entry_at(&self, index: usize) -> &Entry<T> {
-        &*self.buffer.offset(index as isize)
-    }
-
-    /// TODO
+    /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        let token = &mut token.array;
-
-        let one_lap = self.one_lap;
-        let index_bits = one_lap - 1;
-        let lap_bits = !(one_lap - 1);
-
         loop {
-            // Load the tail.
+            // Load the tail and deconstruct it.
             let tail = self.tail.load(Ordering::SeqCst);
+            let index = tail & (self.one_lap - 1);
+            let lap = tail & !(self.one_lap - 1);
 
-            let index = tail & index_bits;
-            let lap = tail & lap_bits;
+            // Inspect the corresponding slot.
+            let slot = unsafe { &*self.buffer.offset(index as isize) };
+            let stamp = slot.stamp.load(Ordering::SeqCst);
 
-            // Inspect the corresponding entry.
-            let entry = unsafe { self.entry_at(index) };
-            let elap = entry.lap.load(Ordering::SeqCst);
-            let next_elap = elap.wrapping_add(one_lap);
-
-            // If the laps of the tail and the entry match, we may attempt to push.
-            if lap == elap {
+            // If the tail and the stamp match, we may attempt to push.
+            if tail == stamp {
                 let new_tail = if index + 1 < self.cap {
-                    // Same lap; incremented index.
+                    // Same lap, incremented index.
+                    // Set to `{ lap: lap, index: index + 1 }`.
                     tail + 1
                 } else {
-                    // Two laps forward; index wraps around to zero.
-                    lap.wrapping_add(one_lap.wrapping_mul(2))
+                    // Two laps forward, index wraps around to zero.
+                    // Set to `{ lap: lap.wrapping_add(2), index: 0 }`.
+                    lap.wrapping_add(self.one_lap.wrapping_mul(2))
                 };
 
-                // Try moving the tail one entry forward.
+                // Try moving the tail.
                 if self.tail
                     .compare_exchange_weak(tail, new_tail, Ordering::SeqCst, Ordering::Relaxed)
                     .is_ok()
                 {
-                    token.entry = entry as *const Entry<T> as *const u8;
-                    token.lap = next_elap;
+                    // Prepare the token for the follow-up call to `write`.
+                    token.array.slot = slot as *const Slot<T> as *const u8;
+                    token.array.stamp = stamp.wrapping_add(self.one_lap);
                     return true;
                 }
-            // But if the entry lags one lap behind the tail...
-            } else if next_elap == lap {
+            // But if the slot lags one lap behind the tail...
+            } else if stamp.wrapping_add(self.one_lap) == tail {
                 let head = self.head.load(Ordering::SeqCst);
 
-                // ...and if head lags one lap behind tail as well...
-                if head.wrapping_add(one_lap) == tail {
+                // ...and if the head lags one lap behind the tail as well...
+                if head.wrapping_add(self.one_lap) == tail {
                     // ...then the channel is full.
                     return false;
                 }
@@ -202,72 +214,66 @@ impl<T> Channel<T> {
         }
     }
 
-    /// TODO
+    /// Writes a message into the channel.
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        let token = &mut token.array;
+        debug_assert!(!token.array.slot.is_null());
+        let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
-        debug_assert!(!token.entry.is_null());
-        let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
-
-        // Write the message into the entry and increment the lap.
-        ptr::write(entry.msg.get(), msg);
-        entry.lap.store(token.lap, Ordering::Release);
+        // Write the message into the slot and update the stamp.
+        ptr::write(slot.msg.get(), msg);
+        slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping receiver.
         self.receivers.wake_one();
     }
 
-    /// TODO
+    /// Attempts to reserve a slot for receiving a message.
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        let token = &mut token.array;
-
-        let one_lap = self.one_lap;
-        let index_bits = one_lap - 1;
-        let lap_bits = !(one_lap - 1);
-
         loop {
-            // Load the head.
+            // Load the head and deconstruct it.
             let head = self.head.load(Ordering::SeqCst);
-            let index = head & index_bits;
-            let lap = head & lap_bits;
+            let index = head & (self.one_lap - 1);
+            let lap = head & !(self.one_lap - 1);
 
-            // Inspect the corresponding entry.
-            let entry = unsafe { self.entry_at(index) };
-            let elap = entry.lap.load(Ordering::SeqCst);
-            let next_elap = elap.wrapping_add(one_lap);
+            // Inspect the corresponding slot.
+            let slot = unsafe { &*self.buffer.offset(index as isize) };
+            let stamp = slot.stamp.load(Ordering::SeqCst);
 
-            // If the laps of the head and the entry match, we may attempt to pop.
-            if lap == elap {
+            // If the the head and the stamp match, we may attempt to pop.
+            if head == stamp {
                 let new = if index + 1 < self.cap {
-                    // Same lap; incremented index.
+                    // Same lap, incremented index.
+                    // Set to `{ lap: lap, index: index + 1 }`.
                     head + 1
                 } else {
-                    // Two laps forward; index wraps around to zero.
-                    lap.wrapping_add(one_lap.wrapping_mul(2))
+                    // Two laps forward, index wraps around to zero.
+                    // Set to `{ lap: lap.wrapping_add(2), index: 0 }`.
+                    lap.wrapping_add(self.one_lap.wrapping_mul(2))
                 };
 
-                // Try moving the head one entry forward.
+                // Try moving the head.
                 if self.head
                     .compare_exchange_weak(head, new, Ordering::SeqCst, Ordering::Relaxed)
                     .is_ok()
                 {
-                    token.entry = entry as *const Entry<T> as *const u8;
-                    token.lap = next_elap;
+                    // Prepare the token for the follow-up call to `read`.
+                    token.array.slot = slot as *const Slot<T> as *const u8;
+                    token.array.stamp = stamp.wrapping_add(self.one_lap);
                     return true;
                 }
-            // But if the entry lags one lap behind the head...
-            } else if next_elap == lap {
+            // But if the slot lags one lap behind the head...
+            } else if stamp.wrapping_add(self.one_lap) == head {
                 let tail = self.tail.load(Ordering::SeqCst);
 
                 // ...and if the tail lags one lap behind the head as well, that means the channel
                 // is empty.
-                if tail.wrapping_add(one_lap) == head {
+                if tail.wrapping_add(self.one_lap) == head {
                     // Check whether the channel is closed and return the appropriate error
                     // variant.
                     if self.is_closed() {
                         if self.tail.load(Ordering::SeqCst) == tail {
-                            token.entry = ptr::null();
-                            token.lap = 0;
+                            token.array.slot = ptr::null();
+                            token.array.stamp = 0;
                             return true;
                         }
                     } else {
@@ -280,37 +286,33 @@ impl<T> Channel<T> {
         }
     }
 
-    /// TODO
+    /// Reads a message from the channel.
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
-        let token = &mut token.array;
-
-        let msg = if token.entry.is_null() {
-            None
-        } else {
-            let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
-
-            // Read the message from the entry and increment the lap.
-            let msg = ptr::read(entry.msg.get());
-            Some(msg)
-        };
-
-        if !token.entry.is_null() {
-            let entry: &Entry<T> = &*(token.entry as *const Entry<T>);
-            entry.lap.store(token.lap, Ordering::Release);
-
-            // Wake a sleeping sender.
-            self.senders.wake_one();
+        if token.array.slot.is_null() {
+            // The channel is closed.
+            return None;
         }
 
-        msg
+        let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
+
+        // Read the message from the slot and update the stamp.
+        let msg = ptr::read(slot.msg.get());
+        slot.stamp.store(token.array.stamp, Ordering::Release);
+
+        // Wake a sleeping sender.
+        self.senders.wake_one();
+
+        Some(msg)
     }
 
+    /// Sends a message into the channel.
     pub fn send(&self, msg: T) {
         let mut token: Token = Default::default();
         let case_id = CaseId::new(&token as *const Token as usize);
         let sender = self.sender();
 
         loop {
+            // Try sending a message several times.
             let backoff = &mut Backoff::new();
             loop {
                 if self.start_send(&mut token, backoff) {
@@ -322,24 +324,29 @@ impl<T> Channel<T> {
                 }
             }
 
+            // Prepare for blocking until a receiver wakes us up.
             context::current_reset();
             sender.register(&mut token, case_id);
 
+            // Has the channel become ready just now?
             if !self.is_full() {
                 context::current_try_abort();
             }
 
+            // Block the current thread.
             context::current_wait_until(None);
             sender.unregister(case_id);
         }
     }
 
+    /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let mut token: Token = Default::default();
         let case_id = CaseId::new(&token as *const Token as usize);
         let receiver = self.receiver();
 
         loop {
+            // Try receiving a message several times.
             let backoff = &mut Backoff::new();
             loop {
                 if self.start_recv(&mut token, backoff) {
@@ -352,18 +359,22 @@ impl<T> Channel<T> {
                 }
             }
 
+            // Prepare for blocking until a sender wakes us up.
             context::current_reset();
             receiver.register(&mut token, case_id);
 
+            // Has the channel become ready just now?
             if !self.is_empty() || self.is_closed() {
                 context::current_try_abort();
             }
 
+            // Block the current thread.
             context::current_wait_until(None);
             receiver.unregister(case_id);
         }
     }
 
+    /// Attempts to receive a message without blocking.
     pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
         let mut token: Token = Default::default();
 
@@ -379,9 +390,6 @@ impl<T> Channel<T> {
 
     /// Returns the current number of messages inside the channel.
     pub fn len(&self) -> usize {
-        let one_lap = self.one_lap;
-        let index_bits = one_lap - 1;
-
         loop {
             // Load the tail, then load the head.
             let tail = self.tail.load(Ordering::SeqCst);
@@ -389,14 +397,14 @@ impl<T> Channel<T> {
 
             // If the tail didn't change, we've got consistent values to work with.
             if self.tail.load(Ordering::SeqCst) == tail {
-                let hix = head & index_bits;
-                let tix = tail & index_bits;
+                let hix = head & (self.one_lap - 1);
+                let tix = tail & (self.one_lap - 1);
 
                 return if hix < tix {
                     tix - hix
                 } else if hix > tix {
                     self.cap - hix + tix
-                } else if tail.wrapping_add(one_lap) == head {
+                } else if tail.wrapping_add(self.one_lap) == head {
                     0
                 } else {
                     self.cap
@@ -410,7 +418,7 @@ impl<T> Channel<T> {
         self.cap
     }
 
-    /// Closes the channel and wakes up all currently blocked operations on it.
+    /// Closes the channel and wakes up all blocked receivers.
     pub fn close(&self) -> bool {
         if !self.is_closed.swap(true, Ordering::SeqCst) {
             self.receivers.abort_all();
@@ -431,6 +439,9 @@ impl<T> Channel<T> {
         let tail = self.tail.load(Ordering::SeqCst);
 
         // Is the tail lagging one lap behind head?
+        //
+        // If the head changes just before we load the tail, that means there was a moment when the
+        // channel was not empty, so we can just return `false`.
         tail.wrapping_add(self.one_lap) == head
     }
 
@@ -440,26 +451,30 @@ impl<T> Channel<T> {
         let head = self.head.load(Ordering::SeqCst);
 
         // Is the head lagging one lap behind tail?
+        //
+        // If the tail changes just before we load the head, that means there was a moment when the
+        // channel was not full, so we can just return `false`.
         head.wrapping_add(self.one_lap) == tail
     }
 }
 
 impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
-        let index_bits = self.one_lap - 1;
-        let head = self.head.load(Ordering::Relaxed) & index_bits;
+        // Get the index of the head.
+        let hix = self.head.load(Ordering::Relaxed) & (self.one_lap - 1);
 
-        // Loop over all entries that hold a message and drop them.
+        // Loop over all slots that hold a message and drop them.
         for i in 0..self.len() {
-            let index = if head + i < self.cap {
-                head + i
+            // Compute the index of the next slot holding a message.
+            let index = if hix + i < self.cap {
+                hix + i
             } else {
-                head + i - self.cap
+                hix + i - self.cap
             };
 
             unsafe {
-                let entry = self.buffer.offset(index as isize);
-                ptr::drop_in_place(entry);
+                let slot = self.buffer.offset(index as isize);
+                ptr::drop_in_place(slot);
             }
         }
 
@@ -470,22 +485,10 @@ impl<T> Drop for Channel<T> {
     }
 }
 
-pub struct ArrayToken {
-    entry: *const u8,
-    lap: usize,
-}
-
-impl Default for ArrayToken {
-    #[inline]
-    fn default() -> Self {
-        ArrayToken {
-            entry: ptr::null(),
-            lap: 0,
-        }
-    }
-}
-
+/// A receiver handle to a channel.
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
+
+/// A sender handle to a channel.
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {

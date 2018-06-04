@@ -1,6 +1,4 @@
-//! Zero-capacity channel.
-//!
-//! Also known as *rendezvous* channel.
+//! A zero-capacity channel, or sometimes called *rendezvous* channel.
 
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,8 +8,8 @@ use std::time::Instant;
 use parking_lot::Mutex;
 
 use internal::channel::RecvNonblocking;
-use internal::select::{CaseId, Select, Token};
 use internal::context;
+use internal::select::{CaseId, Select, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
 

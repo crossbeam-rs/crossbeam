@@ -3,7 +3,7 @@
 //! Crossbeam's channels are an alternative to the [`std::sync::mpsc`] channels provided by the
 //! standard library. They are an improvement in terms of performance, ergonomics, and features.
 //!
-//! Here's a simple example:
+//! Here's a quick example:
 //!
 //! ```
 //! use crossbeam_channel as channel;
@@ -138,7 +138,7 @@
 //! });
 //! ```
 //!
-//! # Closing
+//! # Closing channels
 //!
 //! When all senders associated with a channel get dropped, the channel becomes closed. No more
 //! messages can be sent, but any remaining messages can still be received. Receive operations on a

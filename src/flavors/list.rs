@@ -1,6 +1,4 @@
-//! Channel implementation based on a linked list.
-//!
-//! This flavor has unbounded capacity.
+//! An unbounded channel implemented as a linked list.
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -15,17 +13,17 @@ use crossbeam_utils::cache_padded::CachePadded;
 use internal::channel::RecvNonblocking;
 use internal::context;
 use internal::select::{CaseId, Select, Token};
-use internal::utils::Backoff;
 use internal::sync_waker::SyncWaker;
+use internal::utils::Backoff;
 
-// TODO: Allocate less memory: blocks should start small and grow exponentially.
+// TODO: Allocate less memory in the beginning: blocks should start small and grow exponentially.
 
 /// Number of messages a node can hold.
 const NODE_CAP: usize = 32;
 
-/// An entry in a node of the linked list.
-struct Entry<T> {
-    /// The message in this entry.
+/// A slot in a node of the linked list.
+struct Slot<T> {
+    /// The message in this slot.
     msg: ManuallyDrop<T>,
 
     /// Whether the message is ready for reading.
@@ -43,8 +41,8 @@ struct Node<T> {
     /// The next node in the linked list.
     next: Atomic<Node<T>>,
 
-    /// The entries containing messages.
-    entries: [UnsafeCell<Entry<T>>; NODE_CAP],
+    /// The slots containing messages.
+    slots: [UnsafeCell<Slot<T>>; NODE_CAP],
 }
 
 impl<T> Node<T> {
@@ -52,7 +50,7 @@ impl<T> Node<T> {
     fn new(start_index: usize) -> Node<T> {
         Node {
             start_index,
-            entries: unsafe { mem::zeroed() },
+            slots: unsafe { mem::zeroed() },
             next: Atomic::null(),
         }
     }
@@ -75,7 +73,7 @@ struct Position<T> {
 /// list of nodes, each of which has enough space to contain a few dozen messages. Fitting multiple
 /// messages into a single node improves cache locality and reduces the number of allocations.
 ///
-/// An index is a number of type `usize` that represents an entry in the message queue. Each node
+/// An index is a number of type `usize` that represents a slot in the message queue. Each node
 /// contains a `start_index` representing the index of its first message. Indices simply wrap
 /// around on overflow. Also note that the last bit of an index is reserved for marking, while the
 /// rest of the bits represent the actual position in the sequence of messages. When the tail index
@@ -143,17 +141,17 @@ impl<T> Channel<T> {
             let tail = unsafe { tail_ptr.deref() };
             let tail_index = self.tail.index.load(Ordering::Relaxed);
 
-            // Calculate the index of the corresponding entry in the node.
+            // Calculate the index of the corresponding slot in the node.
             let offset = tail_index.wrapping_sub(tail.start_index);
 
-            // Advance the current index one entry forward.
+            // Advance the current index one slot forward.
             let new_index = tail_index.wrapping_add(1);
 
             // If `tail_index` is pointing into `tail`...
             if offset < NODE_CAP {
                 // Try moving the tail index forward.
                 if self.tail.index.compare_and_swap(tail_index, new_index, Ordering::SeqCst) == tail_index {
-                    // If this was the last entry in the node, allocate a new one.
+                    // If this was the last slot in the node, allocate a new one.
                     if offset + 1 == NODE_CAP {
                         let new = Owned::new(Node::new(new_index)).into_shared(&guard);
                         tail.next.store(new, Ordering::Release);
@@ -161,10 +159,10 @@ impl<T> Channel<T> {
                     }
 
                     unsafe {
-                        let entry = tail.entries.get_unchecked(offset).get();
+                        let slot = tail.slots.get_unchecked(offset).get();
 
-                        ptr::write(&mut (*entry).msg, ManuallyDrop::new(msg));
-                        (*entry).ready.store(true, Ordering::Release);
+                        ptr::write(&mut (*slot).msg, ManuallyDrop::new(msg));
+                        (*slot).ready.store(true, Ordering::Release);
                     }
                     break;
                 }
@@ -178,7 +176,6 @@ impl<T> Channel<T> {
 
     /// TODO
     fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
-        let token = &mut token.list;
         let guard = epoch::pin();
 
         loop {
@@ -190,18 +187,18 @@ impl<T> Channel<T> {
             let head = unsafe { head_ptr.deref() };
             let head_index = self.head.index.load(Ordering::SeqCst);
 
-            // Calculate the index of the corresponding entry in the node.
+            // Calculate the index of the corresponding slot in the node.
             let offset = head_index.wrapping_sub(head.start_index);
 
-            // Advance the current index one entry forward.
+            // Advance the current index one slot forward.
             let new_index = head_index.wrapping_add(1);
 
             // If `head_index` is pointing into `head`...
             if offset < NODE_CAP {
-                let entry = unsafe { &*head.entries.get_unchecked(offset).get() };
+                let slot = unsafe { &*head.slots.get_unchecked(offset).get() };
 
-                // If this entry does not contain a message...
-                if !entry.ready.load(Ordering::Relaxed) {
+                // If this slot does not contain a message...
+                if !slot.ready.load(Ordering::Relaxed) {
                     let tail_index = self.tail.index.load(Ordering::SeqCst);
 
                     // If the tail equals the head, that means the channel is empty.
@@ -210,7 +207,7 @@ impl<T> Channel<T> {
                         // error variant.
                         if self.is_closed() {
                             if self.tail.index.load(Ordering::SeqCst) == tail_index {
-                                token.entry = ptr::null();
+                                token.list.slot = ptr::null();
                                 return true;
                             }
                         } else {
@@ -221,7 +218,7 @@ impl<T> Channel<T> {
 
                 // Try moving the head index forward.
                 if self.head.index.compare_and_swap(head_index, new_index, Ordering::SeqCst) == head_index {
-                    // If this was the last entry in the node, defer its destruction.
+                    // If this was the last slot in the node, defer its destruction.
                     if offset + 1 == NODE_CAP {
                         // Wait until the next pointer becomes non-null.
                         loop {
@@ -238,7 +235,7 @@ impl<T> Channel<T> {
                         }
                     }
 
-                    token.entry = entry as *const Entry<T> as *const u8;
+                    token.list.slot = slot as *const Slot<T> as *const u8;
                     break;
                 }
             }
@@ -246,26 +243,24 @@ impl<T> Channel<T> {
             backoff.step();
         }
 
-        token.guard = Some(guard);
+        token.list.guard = Some(guard);
         true
     }
 
     /// TODO
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
-        let token = &mut token.list;
-
-        if token.entry.is_null() {
+        if token.list.slot.is_null() {
             None
         } else {
-            let entry = &*(token.entry as *const Entry<T>);
-            let _guard: Guard = token.guard.take().unwrap();
+            let slot = &*(token.list.slot as *const Slot<T>);
+            let _guard: Guard = token.list.guard.take().unwrap();
 
             let mut backoff = Backoff::new();
-            while !entry.ready.load(Ordering::Acquire) {
+            while !slot.ready.load(Ordering::Acquire) {
                 backoff.step();
             }
 
-            let m = ptr::read(&entry.msg);
+            let m = ptr::read(&slot.msg);
             let msg = ManuallyDrop::into_inner(m);
             Some(msg)
         }
@@ -332,7 +327,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Closes the channel and wakes up all currently blocked operations on it.
+    /// Closes the channel and wakes up all blocked receivers.
     pub fn close(&self) -> bool {
         if !self.is_closed.swap(true, Ordering::SeqCst) {
             self.receivers.abort_all();
@@ -374,8 +369,8 @@ impl<T> Drop for Channel<T> {
                 let head = head_ptr.deref();
                 let offset = head_index.wrapping_sub(head.start_index);
 
-                let entry = &mut *head.entries.get_unchecked(offset).get();
-                ManuallyDrop::drop(&mut (*entry).msg);
+                let slot = &mut *head.slots.get_unchecked(offset).get();
+                ManuallyDrop::drop(&mut (*slot).msg);
 
                 if offset + 1 == NODE_CAP {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
@@ -395,7 +390,7 @@ impl<T> Drop for Channel<T> {
 }
 
 pub struct ListToken {
-    entry: *const u8,
+    slot: *const u8,
     guard: Option<Guard>,
 }
 
@@ -403,7 +398,7 @@ impl Default for ListToken {
     #[inline]
     fn default() -> Self {
         ListToken {
-            entry: ptr::null(),
+            slot: ptr::null(),
             guard: None,
         }
     }

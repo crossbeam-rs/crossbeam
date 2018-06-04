@@ -1,8 +1,12 @@
-//! There are three flavors:
+//! Channel flavors.
 //!
-//! 1. `array`: bounded channel that uses a preallocated array
-//! 2. `list`: unbounded channel implemented as a linked list
-//! 3. `zero`: zero-capacity channel, or sometimes called *rendezvous* channel
+//! There are five flavors:
+//!
+//! 1. `after` - A channel that delivers a message after a certain amount of time.
+//! 2. `array` - A bounded channel based on a preallocated array.
+//! 3. `list` - An unbounded channel implemented as a linked list.
+//! 4. `tick` - A channel that delivers messages periodically.
+//! 5. `zero` - A zero-capacity channel, or sometimes called *rendezvous* channel.
 
 pub mod after;
 pub mod array;

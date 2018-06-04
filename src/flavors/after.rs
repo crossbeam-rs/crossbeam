@@ -25,7 +25,7 @@ pub struct Channel {
     /// gets consumed.
     ///
     /// This `AtomicPtr` holds the raw value of an `Arc<AtomicBool>`.
-    // TODO: Use `AtomicPtr<AtomicBool>` here once we implement `AtomicCell`.
+    // TODO: Use `AtomicPtr<AtomicCell<bool>>` here once we implement `AtomicCell`.
     ptr: AtomicPtr<AtomicBool>,
 }
 
@@ -67,7 +67,7 @@ impl Channel {
             } else {
                 // Another thread has initialized the flag before us.
                 ptr = old;
-                unsafe { drop(Arc::from_raw(new)) }
+                unsafe { drop(Arc::<AtomicBool>::from_raw(new)) }
             }
         }
     }
@@ -163,9 +163,10 @@ impl Channel {
 impl Drop for Channel {
     #[inline]
     fn drop(&mut self) {
-        let ptr = self.ptr.load(Ordering::SeqCst);
+        // Destroy the `Arc<AtomicBool>` if it was initialized.
+        let ptr = self.ptr.load(Ordering::Relaxed);
         if !ptr.is_null() {
-            unsafe { drop(Arc::from_raw(ptr)); }
+            unsafe { drop(Arc::<AtomicBool>::from_raw(ptr)); }
         }
     }
 }
@@ -176,7 +177,7 @@ impl Clone for Channel {
         let flag = self.flag();
 
         // Increment the reference count.
-        let arc = unsafe { Arc::from_raw(flag as *const AtomicBool as *mut AtomicBool) };
+        let arc = unsafe { Arc::<AtomicBool>::from_raw(flag) };
         mem::forget(arc.clone());
         mem::forget(arc);
 
