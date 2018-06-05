@@ -365,6 +365,11 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Returns the capacity of the channel.
+    pub fn capacity(&self) -> Option<usize> {
+        None
+    }
+
     /// Closes the channel and wakes up all blocked receivers.
     pub fn close(&self) -> bool {
         if !self.is_closed.swap(true, Ordering::SeqCst) {
@@ -385,6 +390,11 @@ impl<T> Channel<T> {
         let head_index = self.head.index.load(Ordering::SeqCst);
         let tail_index = self.tail.index.load(Ordering::SeqCst);
         head_index == tail_index
+    }
+
+    /// Returns `true` if the channel is full.
+    pub fn is_full(&self) -> bool {
+        false
     }
 }
 

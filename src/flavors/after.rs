@@ -158,6 +158,12 @@ impl Channel {
             1
         }
     }
+
+    /// Returns the capacity of the channel.
+    #[inline]
+    pub fn capacity(&self) -> Option<usize> {
+        Some(1)
+    }
 }
 
 impl Drop for Channel {

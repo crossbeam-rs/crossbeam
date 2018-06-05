@@ -315,7 +315,7 @@ impl<T> Sender<T> {
         match &self.0.flavor {
             Flavor::Array(chan) => chan.is_empty(),
             Flavor::List(chan) => chan.is_empty(),
-            Flavor::Zero(_) => true,
+            Flavor::Zero(chan) => chan.is_empty(),
         }
     }
 
@@ -337,8 +337,8 @@ impl<T> Sender<T> {
     pub fn is_full(&self) -> bool {
         match &self.0.flavor {
             Flavor::Array(chan) => chan.is_full(),
-            Flavor::List(_) => false,
-            Flavor::Zero(_) => true,
+            Flavor::List(chan) => chan.is_full(),
+            Flavor::Zero(chan) => chan.is_full(),
         }
     }
 
@@ -360,7 +360,7 @@ impl<T> Sender<T> {
         match &self.0.flavor {
             Flavor::Array(chan) => chan.len(),
             Flavor::List(chan) => chan.len(),
-            Flavor::Zero(_) => 0,
+            Flavor::Zero(chan) => chan.len(),
         }
     }
 
@@ -382,9 +382,9 @@ impl<T> Sender<T> {
     /// ```
     pub fn capacity(&self) -> Option<usize> {
         match &self.0.flavor {
-            Flavor::Array(chan) => Some(chan.capacity()),
-            Flavor::List(_) => None,
-            Flavor::Zero(_) => Some(0),
+            Flavor::Array(chan) => chan.capacity(),
+            Flavor::List(chan) => chan.capacity(),
+            Flavor::Zero(chan) => chan.capacity(),
         }
     }
 }
@@ -571,7 +571,7 @@ impl<T> Receiver<T> {
             Inner::Channel(arc) => match &arc.flavor {
                 Flavor::Array(chan) => chan.is_empty(),
                 Flavor::List(chan) => chan.is_empty(),
-                Flavor::Zero(_) => true,
+                Flavor::Zero(chan) => chan.is_empty(),
             },
             Inner::After(chan) => chan.is_empty(),
             Inner::Tick(chan) => chan.is_empty(),
@@ -597,8 +597,8 @@ impl<T> Receiver<T> {
         match &self.0 {
             Inner::Channel(arc) => match &arc.flavor {
                 Flavor::Array(chan) => chan.is_full(),
-                Flavor::List(_) => false,
-                Flavor::Zero(_) => true,
+                Flavor::List(chan) => chan.is_full(),
+                Flavor::Zero(chan) => chan.is_full(),
             },
             Inner::After(chan) => !chan.is_empty(),
             Inner::Tick(chan) => !chan.is_empty(),
@@ -624,7 +624,7 @@ impl<T> Receiver<T> {
             Inner::Channel(arc) => match &arc.flavor {
                 Flavor::Array(chan) => chan.len(),
                 Flavor::List(chan) => chan.len(),
-                Flavor::Zero(_) => 0,
+                Flavor::Zero(chan) => chan.len(),
             },
             Inner::After(chan) => chan.len(),
             Inner::Tick(chan) => chan.len(),
@@ -650,12 +650,12 @@ impl<T> Receiver<T> {
     pub fn capacity(&self) -> Option<usize> {
         match &self.0 {
             Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => Some(chan.capacity()),
-                Flavor::List(_) => None,
-                Flavor::Zero(_) => Some(0),
+                Flavor::Array(chan) => chan.capacity(),
+                Flavor::List(chan) => chan.capacity(),
+                Flavor::Zero(chan) => chan.capacity(),
             },
-            Inner::After(_) => Some(1),
-            Inner::Tick(_) => Some(1),
+            Inner::After(chan) => chan.capacity(),
+            Inner::Tick(chan) => chan.capacity(),
         }
     }
 }
@@ -813,8 +813,8 @@ impl<T> Select for Receiver<T> {
                 Flavor::List(chan) => chan.receiver().register(token, case_id),
                 Flavor::Zero(chan) => chan.receiver().register(token, case_id),
             },
-            Inner::After(_) => true,
-            Inner::Tick(_) => true,
+            Inner::After(chan) => chan.register(token, case_id),
+            Inner::Tick(chan) => chan.register(token, case_id),
         }
     }
 
@@ -825,8 +825,8 @@ impl<T> Select for Receiver<T> {
                 Flavor::List(chan) => chan.receiver().unregister(case_id),
                 Flavor::Zero(chan) => chan.receiver().unregister(case_id),
             },
-            Inner::After(_) => {}
-            Inner::Tick(_) => {}
+            Inner::After(chan) => chan.unregister(case_id),
+            Inner::Tick(chan) => chan.unregister(case_id),
         }
     }
 

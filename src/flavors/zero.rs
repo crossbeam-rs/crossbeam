@@ -264,6 +264,26 @@ impl<T> Channel<T> {
             true
         }
     }
+
+    /// Returns the current number of messages inside the channel.
+    pub fn len(&self) -> usize {
+        0
+    }
+
+    /// Returns the capacity of the channel.
+    pub fn capacity(&self) -> Option<usize> {
+        Some(0)
+    }
+
+    /// Returns `true` if the channel is empty.
+    pub fn is_empty(&self) -> bool {
+        true
+    }
+
+    /// Returns `true` if the channel is full.
+    pub fn is_full(&self) -> bool {
+        true
+    }
 }
 
 struct Packet<T> {

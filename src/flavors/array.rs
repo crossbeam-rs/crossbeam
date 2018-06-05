@@ -415,8 +415,8 @@ impl<T> Channel<T> {
     }
 
     /// Returns the capacity of the channel.
-    pub fn capacity(&self) -> usize {
-        self.cap
+    pub fn capacity(&self) -> Option<usize> {
+        Some(self.cap)
     }
 
     /// Closes the channel and wakes up all blocked receivers.

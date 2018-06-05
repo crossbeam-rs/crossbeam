@@ -284,7 +284,6 @@ extern crate parking_lot;
 
 // TODO: tokio benchmark
 // TODO: benchmarks with mpsc wrapper
-// TODO: copy examples from chan crate
 
 mod flavors;
 
