@@ -2,7 +2,10 @@
 //!
 //! This kind of channel also known as *rendezvous* channel.
 
+use std::cell::UnsafeCell;
 use std::marker::PhantomData;
+use std::mem::{self, ManuallyDrop};
+use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Instant;
@@ -24,7 +27,7 @@ pub type ZeroToken = Option<usize>;
 struct Packet<T> {
     on_stack: bool,
     ready: AtomicBool,
-    msg: Mutex<Option<T>>,
+    msg: ManuallyDrop<UnsafeCell<T>>,
 }
 
 /// Inner representation of a zero-capacity channel.
@@ -88,7 +91,7 @@ impl<T> Channel<T> {
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         let packet = token.zero.unwrap() as *const Packet<T>;
 
-        *(*packet).msg.lock() = Some(msg);
+        ptr::write((*packet).msg.get(), msg);
         (*packet).ready.store(true, Ordering::Release);
     }
 
@@ -119,17 +122,17 @@ impl<T> Channel<T> {
         }
 
         if (*packet).on_stack {
-            let msg = (*packet).msg.lock().take();
+            let msg = ptr::read((*packet).msg.get());
             (*packet).ready.store(true, Ordering::Release);
-            msg
+            Some(msg)
         } else {
             let mut backoff = Backoff::new();
             while !(*packet).ready.load(Ordering::Acquire) {
                 backoff.step();
             }
-            let msg = (*packet).msg.lock().take();
+            let msg = ptr::read((*packet).msg.get());
             drop(Box::from_raw(packet as *mut Packet<T>));
-            msg
+            Some(msg)
         }
     }
 
@@ -154,7 +157,7 @@ impl<T> Channel<T> {
                 packet = Packet {
                     on_stack: true,
                     ready: AtomicBool::new(false),
-                    msg: Mutex::new(Some(msg)),
+                    msg: ManuallyDrop::new(UnsafeCell::new(msg)),
                 };
                 inner.senders.register_with_packet(case_id, &packet as *const _ as usize);
             }
@@ -170,7 +173,7 @@ impl<T> Channel<T> {
                 break;
             } else {
                 self.inner.lock().senders.unregister(case_id);
-                msg = packet.msg.into_inner().unwrap();
+                msg = unsafe { ptr::read(packet.msg.get()) };
             }
         }
     }
@@ -198,10 +201,10 @@ impl<T> Channel<T> {
 
                 context::current_reset();
 
-                packet = Packet {
+                packet = Packet::<T> {
                     on_stack: true,
                     ready: AtomicBool::new(false),
-                    msg: Mutex::new(None::<T>),
+                    msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
                 };
                 inner.receivers.register_with_packet(case_id, &packet as *const _ as usize);
             }
@@ -214,7 +217,8 @@ impl<T> Channel<T> {
                 while !packet.ready.load(Ordering::Acquire) {
                     backoff.step();
                 }
-                return Some(packet.msg.into_inner().unwrap());
+                let msg = unsafe { ptr::read(packet.msg.get()) };
+                return Some(msg);
             } else {
                 self.inner.lock().receivers.unregister(case_id);
             }
@@ -302,10 +306,10 @@ impl<'a, T> Select for Receiver<'a, T> {
 
         context::current_reset();
 
-        let packet = Box::into_raw(Box::new(Packet {
+        let packet = Box::into_raw(Box::new(Packet::<T> {
             on_stack: false,
             ready: AtomicBool::new(false),
-            msg: Mutex::new(None::<T>),
+            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
         }));
         inner.receivers.register_with_packet(case_id, packet as usize);
 
@@ -332,10 +336,10 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 
     fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
-        let packet = Box::into_raw(Box::new(Packet {
+        let packet = Box::into_raw(Box::new(Packet::<T> {
             on_stack: false,
             ready: AtomicBool::new(false),
-            msg: Mutex::new(None::<T>),
+            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
         }));
 
         let mut inner = self.0.inner.lock();
@@ -376,10 +380,10 @@ impl<'a, T> Select for Sender<'a, T> {
 
         context::current_reset();
 
-        let packet = Box::into_raw(Box::new(Packet {
+        let packet = Box::into_raw(Box::new(Packet::<T> {
             on_stack: false,
             ready: AtomicBool::new(false),
-            msg: Mutex::new(None::<T>),
+            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
         }));
         inner.senders.register_with_packet(case_id, packet as usize);
 
@@ -406,10 +410,10 @@ impl<'a, T> Select for Sender<'a, T> {
     }
 
     fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
-        let packet = Box::into_raw(Box::new(Packet {
+        let packet = Box::into_raw(Box::new(Packet::<T> {
             on_stack: false,
             ready: AtomicBool::new(false),
-            msg: Mutex::new(None::<T>),
+            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
         }));
 
         let mut inner = self.0.inner.lock();
