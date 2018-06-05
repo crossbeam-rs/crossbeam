@@ -1,8 +1,11 @@
 //! Tests borrowed from `std::sync::mpsc`.
 //!
 //! This is a channel implementation mimicking MPSC channels from the standard library, but the
-//! internals actually use `crossbeam-channel`. This channel is then tested against the original
-//! tests for MPSC channels.
+//! internals actually use `crossbeam-channel`. There's an auxilliary channel `disconnected`, which
+//! becomes closed once the receiver gets dropped, thus notifying the senders that the MPSC channel
+//! is disconnected.
+//!
+//! This channel is then tested against the original tests for MPSC channels.
 //!
 //! Two minor tweaks were needed to make the tests compile:
 //!
@@ -13,6 +16,8 @@
 extern crate crossbeam_channel as channel;
 
 use std::time::Duration;
+
+// Re-export the error types.
 pub use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError};
 
 #[derive(Clone, Debug)]
@@ -23,10 +28,13 @@ pub struct Sender<T> {
 
 impl<T> Sender<T> {
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
+        // Check if all receivers have been dropped.
         select! {
             recv(self.disconnected) => return Err(SendError(t)),
             default => {}
         }
+
+        // Send the message or wait for all receivers to get dropped, whatever happens first.
         select! {
             send(self.inner, t) => Ok(()),
             recv(self.disconnected) => Err(SendError(t)),
@@ -42,10 +50,13 @@ pub struct SyncSender<T> {
 
 impl<T> SyncSender<T> {
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
+        // Check if all receivers have been dropped.
         select! {
             recv(self.disconnected) => return Err(SendError(t)),
             default => {}
         }
+
+        // Send the message or wait for all receivers to get dropped, whatever happens first.
         select! {
             send(self.inner, t) => Ok(()),
             recv(self.disconnected) => Err(SendError(t)),
@@ -53,6 +64,13 @@ impl<T> SyncSender<T> {
     }
 
     pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+        // Check if all receivers have been dropped.
+        select! {
+            recv(self.disconnected) => return Err(TrySendError::Disconnected(t)),
+            default => {}
+        }
+
+        // Send the message or wait for all receivers to get dropped, whatever happens first.
         select! {
             send(self.inner, t) => Ok(()),
             recv(self.disconnected) => Err(TrySendError::Disconnected(t)),
@@ -63,7 +81,7 @@ impl<T> SyncSender<T> {
 
 #[derive(Debug)]
 pub struct Receiver<T> {
-    pub inner: channel::Receiver<T>,
+    inner: channel::Receiver<T>,
     disconnected: channel::Sender<()>,
 }
 
