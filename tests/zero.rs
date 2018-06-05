@@ -485,6 +485,6 @@ mod select_spin {
     tests!(wrappers::select_spin);
 }
 
-mod selet_multi {
+mod select_multi {
     tests!(wrappers::select_multi);
 }
