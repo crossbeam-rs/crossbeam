@@ -20,12 +20,11 @@
 //!
 //! # Types of channels
 //!
-//! A channel can be constructed by calling [`bounded`] ore [`unbounded`]. The former creates a
-//! channel of bounded capacity (i.e. there is a limit to how many messages it can hold), while
-//! the latter creates a channel of unbounded capacity (i.e. it can contain an arbitrary number of
-//! messages).
+//! A channel can be created by calling [`bounded`] or [`unbounded`]. The former creates a channel
+//! of bounded capacity (i.e. there is a limit to how many messages it can hold), while the latter
+//! creates a channel of unbounded capacity (i.e. it can contain an arbitrary number of messages).
 //!
-//! Both constructors return two handles: a sender and a receiver. Senders and receivers represent
+//! Both functions return two handles: a sender and a receiver. Senders and receivers represent
 //! two opposite sides of a channel. Messages are sent into the channel using senders and received
 //! using receivers.
 //!

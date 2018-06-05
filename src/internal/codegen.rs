@@ -16,7 +16,7 @@ pub fn mainloop<'a, S>(
 where
     S: Select + ?Sized + 'a,
 {
-    let mut token: Token = Default::default();
+    let mut token = Token::default();
 
     if cases.len() >= 2 {
         utils::shuffle(cases);
@@ -49,9 +49,9 @@ where
 
         context::current_reset();
 
-        for case in cases.iter() {
-            let case_id = CaseId::new(case as *const _ as usize);
-            let &(sel, _, _) = case;
+        for case in cases.iter_mut() {
+            let case_id = CaseId::new(case as *mut (&S, usize, usize) as usize);
+            let &mut (sel, _, _) = case;
 
             if !sel.register(&mut token, case_id) {
                 context::current_try_abort();
@@ -73,16 +73,16 @@ where
         context::current_wait_until(deadline);
         let s = context::current_selected();
 
-        for case in cases.iter() {
-            let case_id = CaseId::new(case as *const _ as usize);
-            let &(sel, _, _) = case;
+        for case in cases.iter_mut() {
+            let case_id = CaseId::new(case as *mut (&S, usize, usize) as usize);
+            let &mut (sel, _, _) = case;
             sel.unregister(case_id);
         }
 
         if s != CaseId::abort() {
-            for case in cases.iter() {
-                let case_id = CaseId::new(case as *const _ as usize);
-                let &(sel, i, addr) = case;
+            for case in cases.iter_mut() {
+                let case_id = CaseId::new(case as *mut (&S, usize, usize) as usize);
+                let &mut (sel, i, addr) = case;
 
                 if case_id == s {
                     if sel.accept(&mut token) {

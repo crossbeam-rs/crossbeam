@@ -151,7 +151,9 @@ use flavors;
 /// # }
 /// ```
 ///
-/// # The complete syntax
+/// # Syntax
+///
+/// TODO: maybe model after https://golang.org/ref/spec#Select_statements
 ///
 /// An invocation of `select!` consists of a list of cases. Consecutive cases are delimited by a
 /// comma, but it's not required if the previous case has a block expression (the syntax is very
@@ -184,9 +186,9 @@ use flavors;
 /// 1. `send(s, msg) => body`
 /// 2. `send(s, msg, fired) => body`
 ///
-/// Inputs: expressions `r` and `body`.
+/// Inputs: expressions `s`, `msg`, and `body`.
 ///
-/// Outputs: patterns `msg` and `fired`.
+/// Outputs: pattern `fired`.
 ///
 /// Types:
 ///
@@ -203,13 +205,14 @@ use flavors;
 ///
 /// Inputs: expression `body`.
 ///
-/// There can be at most one default case, which gets executed only if none of the other cases are
-/// ready.
+/// There can be at most one default case.
 ///
-/// ### Evaluation order
+/// # Behaviora
+///
+/// TODO: model after https://golang.org/ref/spec#Select_statements
 ///
 /// First, all sender and receiver arguments (`s` and `r`) are evaluated. Then, the current thread
-/// is blocked until until one of the cases becomes ready, which is then executed.
+/// is blocked until one of the cases becomes ready, which is then executed.
 ///
 /// If a `recv` operation gets executed, `msg` and `fired` are assigned, and `body` is finally
 /// evaluated.
@@ -218,7 +221,7 @@ use flavors;
 /// assigned, and `body` is finally evaluated.
 ///
 /// **Note**: If evaluation of `msg` panics, the process will be aborted because it's very
-/// difficult to handle the panic in any other sensible way.
+/// difficult to sensibly recover from the panic.
 ///
 /// [`send`]: struct.Sender.html#method.send
 /// [`try_recv`]: struct.Receiver.html#method.try_recv

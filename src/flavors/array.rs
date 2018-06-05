@@ -90,7 +90,7 @@ pub struct Channel<T> {
     /// Senders waiting while the channel is full.
     senders: SyncWaker,
 
-    /// Receivers waiting while the channel is empty.
+    /// Receivers waiting while the channel is empty and not closed.
     receivers: SyncWaker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
@@ -307,16 +307,16 @@ impl<T> Channel<T> {
 
     /// Sends a message into the channel.
     pub fn send(&self, msg: T) {
-        let mut token: Token = Default::default();
-        let case_id = CaseId::new(&token as *const Token as usize);
+        let token = &mut Token::default();
+        let case_id = CaseId::new(token as *mut Token as usize);
         let sender = self.sender();
 
         loop {
             // Try sending a message several times.
             let backoff = &mut Backoff::new();
             loop {
-                if self.start_send(&mut token, backoff) {
-                    unsafe { self.write(&mut token, msg); }
+                if self.start_send(token, backoff) {
+                    unsafe { self.write(token, msg); }
                     return;
                 }
                 if !backoff.step() {
@@ -326,7 +326,7 @@ impl<T> Channel<T> {
 
             // Prepare for blocking until a receiver wakes us up.
             context::current_reset();
-            sender.register(&mut token, case_id);
+            sender.register(token, case_id);
 
             // Has the channel become ready just now?
             if !self.is_full() {
@@ -341,17 +341,17 @@ impl<T> Channel<T> {
 
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
-        let mut token: Token = Default::default();
-        let case_id = CaseId::new(&token as *const Token as usize);
+        let token = &mut Token::default();
+        let case_id = CaseId::new(token as *mut Token as usize);
         let receiver = self.receiver();
 
         loop {
             // Try receiving a message several times.
             let backoff = &mut Backoff::new();
             loop {
-                if self.start_recv(&mut token, backoff) {
+                if self.start_recv(token, backoff) {
                     unsafe {
-                        return self.read(&mut token);
+                        return self.read(token);
                     }
                 }
                 if !backoff.step() {
@@ -361,7 +361,7 @@ impl<T> Channel<T> {
 
             // Prepare for blocking until a sender wakes us up.
             context::current_reset();
-            receiver.register(&mut token, case_id);
+            receiver.register(token, case_id);
 
             // Has the channel become ready just now?
             if !self.is_empty() || self.is_closed() {
@@ -376,10 +376,11 @@ impl<T> Channel<T> {
 
     /// Attempts to receive a message without blocking.
     pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
-        let mut token: Token = Default::default();
+        let token = &mut Token::default();
+        let backoff = &mut Backoff::new();
 
-        if self.start_recv(&mut token, &mut Backoff::new()) {
-            match unsafe { self.read(&mut token) } {
+        if self.start_recv(token, backoff) {
+            match unsafe { self.read(token) } {
                 None => RecvNonblocking::Closed,
                 Some(msg) => RecvNonblocking::Message(msg),
             }

@@ -145,8 +145,8 @@ impl<T> Channel<T> {
     }
 
     pub fn send(&self, mut msg: T) {
-        let mut token: Token = Default::default();
-        let case_id = CaseId::new(&token as *const Token as usize);
+        let token = &mut Token::default();
+        let case_id = CaseId::new(token as *mut Token as usize);
 
         loop {
             let packet;
@@ -156,7 +156,7 @@ impl<T> Channel<T> {
                 if let Some(case) = inner.receivers.wake_one() {
                     token.zero = Some(case.packet);
                     drop(inner);
-                    unsafe { self.write(&mut token, msg); }
+                    unsafe { self.write(token, msg); }
                     break;
                 }
 
@@ -187,8 +187,8 @@ impl<T> Channel<T> {
     }
 
     pub fn recv(&self) -> Option<T> {
-        let mut token: Token = Default::default();
-        let case_id = CaseId::new(&token as *const Token as usize);
+        let token = &mut Token::default();
+        let case_id = CaseId::new(token as *mut Token as usize);
 
         loop {
             let packet;
@@ -199,7 +199,7 @@ impl<T> Channel<T> {
                     token.zero = Some(case.packet);
                     drop(inner);
                     unsafe {
-                        return self.read(&mut token);
+                        return self.read(token);
                     }
                 }
 
@@ -233,7 +233,7 @@ impl<T> Channel<T> {
     }
 
     pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
-        let mut token: Token = Default::default();
+        let token = &mut Token::default();
 
         let mut inner = self.inner.lock();
 
@@ -241,7 +241,7 @@ impl<T> Channel<T> {
             token.zero = Some(case.packet);
             drop(inner);
 
-            match unsafe { self.read(&mut token) } {
+            match unsafe { self.read(token) } {
                 None => RecvNonblocking::Closed,
                 Some(msg) => RecvNonblocking::Message(msg),
             }
