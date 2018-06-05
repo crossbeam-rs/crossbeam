@@ -1,4 +1,6 @@
-//! A zero-capacity channel, or sometimes called *rendezvous* channel.
+//! A zero-capacity channel.
+//!
+//! This kind of channel also known as *rendezvous* channel.
 
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,15 +17,34 @@ use internal::waker::Waker;
 
 // TODO: anything that calls read/write in any flavor should have an abort guard
 
+/// Result of a receive operation.
+pub type ZeroToken = Option<usize>;
+
+/// TODO
+struct Packet<T> {
+    on_stack: bool,
+    ready: AtomicBool,
+    msg: Mutex<Option<T>>,
+}
+
+/// Inner representation of a zero-capacity channel.
 struct Inner {
+    /// Senders waiting to pair up with a receive operation.
     senders: Waker,
+
+    /// Receivers waiting to pair up with a send operation.
     receivers: Waker,
+
+    /// Equals `true` when the channel is closed.
     is_closed: bool,
 }
 
 /// A zero-capacity channel.
 pub struct Channel<T> {
+    /// Inner representation of the channel.
     inner: Mutex<Inner>,
+
+    /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
 }
 
@@ -50,6 +71,27 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
+    /// Attempts to reserve a slot for sending a message.
+    fn start_send(&self, token: &mut Token) -> bool {
+        let mut inner = self.inner.lock();
+
+        // If there's someone on the other side, exchange message with it.
+        if let Some(case) = inner.receivers.wake_one() {
+            token.zero = Some(case.packet);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// TODO
+    pub unsafe fn write(&self, token: &mut Token, msg: T) {
+        let packet = token.zero.unwrap() as *const Packet<T>;
+
+        *(*packet).msg.lock() = Some(msg);
+        (*packet).ready.store(true, Ordering::Release);
+    }
+
     /// TODO
     fn start_recv(&self, token: &mut Token) -> bool {
         let mut inner = self.inner.lock();
@@ -63,22 +105,6 @@ impl<T> Channel<T> {
         } else {
             false
         }
-    }
-
-    /// TODO
-    fn accept_recv(&self, token: &mut Token) -> bool {
-        let context = context::current();
-        let mut backoff = Backoff::new();
-        loop {
-            let packet = context.packet.load(Ordering::Acquire);
-            if packet != 0 {
-                token.zero = Some(packet);
-                break;
-            }
-            backoff.step();
-        }
-
-        true
     }
 
     /// TODO
@@ -105,43 +131,6 @@ impl<T> Channel<T> {
             drop(Box::from_raw(packet as *mut Packet<T>));
             msg
         }
-    }
-
-    /// TODO
-    fn start_send(&self, token: &mut Token) -> bool {
-        let mut inner = self.inner.lock();
-
-        // If there's someone on the other side, exchange message with it.
-        if let Some(case) = inner.receivers.wake_one() {
-            token.zero = Some(case.packet);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// TODO
-    fn accept_send(&self, token: &mut Token) -> bool {
-        let context = context::current();
-        let mut backoff = Backoff::new();
-        loop {
-            let packet = context.packet.load(Ordering::Acquire);
-            if packet != 0 {
-                token.zero = Some(packet);
-                break;
-            }
-            backoff.step();
-        }
-
-        true
-    }
-
-    /// TODO
-    pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        let packet = token.zero.unwrap() as *const Packet<T>;
-
-        *(*packet).msg.lock() = Some(msg);
-        (*packet).ready.store(true, Ordering::Release);
     }
 
     pub fn send(&self, mut msg: T) {
@@ -286,15 +275,10 @@ impl<T> Channel<T> {
     }
 }
 
-struct Packet<T> {
-    on_stack: bool,
-    ready: AtomicBool,
-    msg: Mutex<Option<T>>,
-}
-
-pub type ZeroToken = Option<usize>;
-
+/// A receiver handle to a channel.
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
+
+/// A sender handle to a channel.
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
@@ -331,17 +315,7 @@ impl<'a, T> Select for Receiver<'a, T> {
         context::current_try_abort();
 
         if context::current_selected() != CaseId::abort() {
-            let context = context::current();
-            let mut backoff = Backoff::new();
-            loop {
-                let packet = context.packet.load(Ordering::Acquire);
-                if packet != 0 {
-                    token.zero = Some(packet);
-                    break;
-                }
-                backoff.step();
-            }
-
+            token.zero = Some(context::current_wait_packet());
             true
         } else {
             if let Some(case) = self.0.inner.lock().receivers.unregister(case_id) {
@@ -378,7 +352,8 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 
     fn accept(&self, token: &mut Token) -> bool {
-        self.0.accept_recv(token)
+        token.zero = Some(context::current_wait_packet());
+        true
     }
 }
 
@@ -414,17 +389,7 @@ impl<'a, T> Select for Sender<'a, T> {
         context::current_try_abort();
 
         if context::current_selected() != CaseId::abort() {
-            let context = context::current();
-            let mut backoff = Backoff::new();
-            loop {
-                let packet = context.packet.load(Ordering::Acquire);
-                if packet != 0 {
-                    token.zero = Some(packet);
-                    break;
-                }
-                backoff.step();
-            }
-
+            token.zero = Some(context::current_wait_packet());
             true
         } else {
             if let Some(case) = self.0.inner.lock().senders.unregister(case_id) {
@@ -461,6 +426,7 @@ impl<'a, T> Select for Sender<'a, T> {
     }
 
     fn accept(&self, token: &mut Token) -> bool {
-        self.0.accept_send(token)
+        token.zero = Some(context::current_wait_packet());
+        true
     }
 }

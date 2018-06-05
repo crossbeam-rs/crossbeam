@@ -13,7 +13,7 @@ use internal::channel::RecvNonblocking;
 use internal::select::{CaseId, Select, Token};
 use internal::utils;
 
-/// Result of the receive operation.
+/// Result of a receive operation.
 pub type AfterToken = Option<Instant>;
 
 /// A channel that delivers a message after a certain amount of time.

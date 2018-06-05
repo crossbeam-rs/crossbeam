@@ -6,7 +6,7 @@
 //! 2. `array` - A bounded channel based on a preallocated array.
 //! 3. `list` - An unbounded channel implemented as a linked list.
 //! 4. `tick` - A channel that delivers messages periodically.
-//! 5. `zero` - A zero-capacity channel, or sometimes called *rendezvous* channel.
+//! 5. `zero` - A zero-capacity channel.
 
 pub mod after;
 pub mod array;

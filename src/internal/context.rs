@@ -79,6 +79,18 @@ impl Context {
 
         true
     }
+
+    #[inline]
+    fn wait_packet(&self) -> usize {
+        let mut backoff = Backoff::new();
+        loop {
+            let packet = self.packet.load(Ordering::Acquire);
+            if packet != 0 {
+                return packet;
+            }
+            backoff.step();
+        }
+    }
 }
 
 thread_local! {
@@ -118,4 +130,9 @@ pub fn current_wait_until(deadline: Option<Instant>) -> bool {
 #[inline]
 pub fn current_thread_id() -> ThreadId {
     CONTEXT.with(|c| c.thread_id)
+}
+
+#[inline]
+pub fn current_wait_packet() -> usize {
+    CONTEXT.with(|c| c.wait_packet())
 }

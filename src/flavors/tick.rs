@@ -11,7 +11,7 @@ use parking_lot::Mutex;
 use internal::channel::RecvNonblocking;
 use internal::select::{CaseId, Select, Token};
 
-/// Result of the receive operation.
+/// Result of a receive operation.
 pub type TickToken = Option<Instant>;
 
 /// A channel that delivers messages periodically.
