@@ -88,7 +88,7 @@ impl SyncWaker {
         let mut cases = self.cases.lock();
 
         for i in 0..cases.len() {
-            if cases[i].context.thread.id() != thread_id {
+            if cases[i].context.thread_id != thread_id {
                 if cases[i].context.try_select(cases[i].case_id, 0) {
                     let case = cases.remove(i).unwrap();
                     self.len.store(cases.len(), Ordering::SeqCst);
@@ -128,7 +128,7 @@ impl SyncWaker {
         let thread_id = context::current_thread_id();
 
         for i in 0..cases.len() {
-            if cases[i].context.thread.id() != thread_id {
+            if cases[i].context.thread_id != thread_id {
                 return true;
             }
         }

@@ -67,7 +67,7 @@ impl Waker {
             let thread_id = context::current_thread_id();
 
             for i in 0..self.cases.len() {
-                if self.cases[i].context.thread.id() != thread_id {
+                if self.cases[i].context.thread_id != thread_id {
                     if self.cases[i].context.try_select(
                         self.cases[i].case_id,
                         self.cases[i].packet,
@@ -104,7 +104,7 @@ impl Waker {
             let thread_id = context::current_thread_id();
 
             for i in 0..self.cases.len() {
-                if self.cases[i].context.thread.id() != thread_id {
+                if self.cases[i].context.thread_id != thread_id {
                     return true;
                 }
             }

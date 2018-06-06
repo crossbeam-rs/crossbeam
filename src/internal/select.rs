@@ -261,6 +261,7 @@ pub enum CaseId {
 }
 
 impl CaseId {
+    #[inline]
     pub fn hook<T>(r: &mut T) -> CaseId {
         CaseId::Case(r as *mut T as usize)
     }

@@ -378,12 +378,8 @@ impl<T> Channel<T> {
 
             match sel {
                 CaseId::Waiting => unreachable!(),
-                CaseId::Aborted => {
+                CaseId::Aborted | CaseId::Closed => {
                     self.receivers.unregister(case_id).unwrap();
-                },
-                CaseId::Closed => {
-                    self.receivers.unregister(case_id).unwrap();
-                    return None;
                 },
                 CaseId::Case(_) => {}
             }
