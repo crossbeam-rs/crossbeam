@@ -103,19 +103,13 @@ impl SyncWaker {
         None
     }
 
-    /// Aborts all registered selection cases.
-    pub fn abort_all(&self) {
-        if self.len.load(Ordering::SeqCst) > 0 {
-            let mut cases = self.cases.lock();
-
-            self.len.store(0, Ordering::SeqCst);
-            for case in cases.drain(..) {
-                if case.context.try_abort() == CaseId::abort() {
-                    case.context.unpark();
-                }
+    /// TODO Aborts all registered selection cases.
+    pub fn close(&self) {
+        // TODO: explain why not drain
+        for case in self.cases.lock().iter() {
+            if case.context.try_select(CaseId::Closed, 0) {
+                case.context.unpark();
             }
-
-            Self::maybe_shrink(&mut cases);
         }
     }
 

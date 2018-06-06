@@ -252,38 +252,41 @@ pub struct Token {
     pub zero: flavors::zero::ZeroToken,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct CaseId {
-    pub id: usize,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaseId {
+    Waiting,
+    Aborted,
+    Closed,
+    Case(usize),
 }
 
 impl CaseId {
-    #[inline]
-    pub fn none() -> Self {
-        CaseId { id: 0 }
-    }
-
-    #[inline]
-    pub fn abort() -> Self {
-        CaseId { id: 1 }
-    }
-
-    pub fn new<T>(r: &mut T) -> Self {
-        CaseId { id: r as *mut T as usize }
+    pub fn hook<T>(r: &mut T) -> CaseId {
+        CaseId::Case(r as *mut T as usize)
     }
 }
 
 impl From<usize> for CaseId {
     #[inline]
-    fn from(id: usize) -> Self {
-        CaseId { id }
+    fn from(id: usize) -> CaseId {
+        match id {
+            0 => CaseId::Waiting,
+            1 => CaseId::Aborted,
+            2 => CaseId::Closed,
+            id => CaseId::Case(id),
+        }
     }
 }
 
 impl Into<usize> for CaseId {
     #[inline]
     fn into(self) -> usize {
-        self.id
+        match self {
+            CaseId::Waiting => 0,
+            CaseId::Aborted => 1,
+            CaseId::Closed => 2,
+            CaseId::Case(id) => id,
+        }
     }
 }
 

@@ -8,6 +8,8 @@ use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils;
 
+// TODO: help with type inference in send(s, 0) by binding s to write() somehow
+
 #[inline(never)]
 pub fn mainloop<'a, S>(
     cases: &mut [(&'a S, usize, usize)],
@@ -52,12 +54,12 @@ where
         for case in cases.iter_mut() {
             let &mut (select, _, _) = case;
 
-            if !select.register(&mut token, CaseId::new(case)) {
+            if !select.register(&mut token, CaseId::hook(case)) {
                 context::current_try_abort();
                 break;
             }
 
-            if context::current_selected() != CaseId::none() {
+            if context::current_selected() != CaseId::Waiting {
                 break;
             }
         }
@@ -73,19 +75,23 @@ where
 
         for case in cases.iter_mut() {
             let &mut (select, _, _) = case;
-            select.unregister(CaseId::new(case));
+            select.unregister(CaseId::hook(case));
         }
 
-        if sel != CaseId::abort() {
-            for case in cases.iter_mut() {
-                let &mut (select, i, addr) = case;
+        match sel {
+            CaseId::Waiting => unreachable!(),
+            CaseId::Aborted => {},
+            CaseId::Closed | CaseId::Case(_) => {
+                for case in cases.iter_mut() {
+                    let &mut (select, i, addr) = case;
 
-                if sel == CaseId::new(case) {
-                    if select.accept(&mut token) {
-                        return (token, i, addr);
+                    if sel == CaseId::hook(case) {
+                        if select.accept(&mut token) {
+                            return (token, i, addr);
+                        }
                     }
                 }
-            }
+            },
         }
 
         if cases.len() >= 2 {

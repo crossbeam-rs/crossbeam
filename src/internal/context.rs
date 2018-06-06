@@ -21,8 +21,8 @@ impl Context {
     pub fn try_select(&self, case_id: CaseId, packet: usize) -> bool {
         if self
             .case_id
-            .compare_and_swap(CaseId::none().into(), case_id.into(), Ordering::Relaxed)
-            == CaseId::none().into()
+            .compare_and_swap(CaseId::Waiting.into(), case_id.into(), Ordering::Relaxed)
+            == CaseId::Waiting.into()
         {
             self.packet.store(packet, Ordering::Release);
             true
@@ -36,13 +36,13 @@ impl Context {
         match self
             .case_id
             .compare_exchange(
-                CaseId::none().into(),
-                CaseId::abort().into(),
+                CaseId::Waiting.into(),
+                CaseId::Aborted.into(),
                 Ordering::Relaxed,
                 Ordering::Relaxed,
             )
         {
-            Ok(_) => CaseId::abort(),
+            Ok(_) => CaseId::Aborted,
             Err(id) => CaseId::from(id),
         }
     }
@@ -70,7 +70,7 @@ impl Context {
         let backoff = &mut Backoff::new();
         loop {
             let sel = self.selected();
-            if sel != CaseId::none() {
+            if sel != CaseId::Waiting {
                 return sel;
             }
 
@@ -81,7 +81,7 @@ impl Context {
 
         loop {
             let sel = self.selected();
-            if sel != CaseId::none() {
+            if sel != CaseId::Waiting {
                 return sel;
             }
 
@@ -114,7 +114,7 @@ impl Context {
 
 thread_local! {
     pub static CONTEXT: Arc<Context> = Arc::new(Context {
-        case_id: AtomicUsize::new(CaseId::none().into()),
+        case_id: AtomicUsize::new(CaseId::Waiting.into()),
         thread: thread::current(),
         thread_id: thread::current().id(),
         packet: AtomicUsize::new(0),

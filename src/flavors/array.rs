@@ -308,7 +308,7 @@ impl<T> Channel<T> {
     /// Sends a message into the channel.
     pub fn send(&self, msg: T) {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token);
+        let case_id = CaseId::hook(token);
         let sender = self.sender();
 
         loop {
@@ -342,7 +342,7 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token);
+        let case_id = CaseId::hook(token);
         let receiver = self.receiver();
 
         loop {
@@ -422,7 +422,7 @@ impl<T> Channel<T> {
     /// Closes the channel and wakes up all blocked receivers.
     pub fn close(&self) -> bool {
         if !self.is_closed.swap(true, Ordering::SeqCst) {
-            self.receivers.abort_all();
+            self.receivers.close();
             true
         } else {
             false

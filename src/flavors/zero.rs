@@ -117,7 +117,7 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token, short_pause: bool) -> bool {
-        let case_id = CaseId::new(token);
+        let case_id = CaseId::hook(token);
 
         {
             let mut inner = self.inner.lock();
@@ -142,17 +142,21 @@ impl<T> Channel<T> {
         thread::yield_now();
         let sel = context::current_try_abort();
 
-        if sel != CaseId::abort() {
-            // Success! A receiver has paired up with this operation.
-            token.zero = context::current_wait_packet();
-            true
-        } else {
-            // Unregister and destroy the packet.
-            let case = self.inner.lock().senders.unregister(case_id).unwrap();
-            unsafe {
-                drop(Box::from_raw(case.packet as *mut Packet<T>));
-            }
-            false
+        match sel {
+            CaseId::Waiting | CaseId::Closed => unreachable!(),
+            CaseId::Aborted => {
+                // Unregister and destroy the packet.
+                let case = self.inner.lock().senders.unregister(case_id).unwrap();
+                unsafe {
+                    drop(Box::from_raw(case.packet as *mut Packet<T>));
+                }
+                false
+            },
+            CaseId::Case(_) => {
+                // Success! A receiver has paired up with this operation.
+                token.zero = context::current_wait_packet();
+                true
+            },
         }
     }
 
@@ -165,7 +169,7 @@ impl<T> Channel<T> {
 
     /// Attempts to pair up with a sender.
     fn start_recv(&self, token: &mut Token, short_pause: bool) -> bool {
-        let case_id = CaseId::new(token);
+        let case_id = CaseId::hook(token);
 
         {
             let mut inner = self.inner.lock();
@@ -193,17 +197,33 @@ impl<T> Channel<T> {
         thread::yield_now();
         let sel = context::current_try_abort();
 
-        if sel != CaseId::abort() {
-            // Success! A sender has paired up with this operation.
-            token.zero = context::current_wait_packet();
-            true
-        } else {
-            // Unregister and destroy the packet.
-            let case = self.inner.lock().receivers.unregister(case_id).unwrap();
-            unsafe {
-                drop(Box::from_raw(case.packet as *mut Packet<T>));
-            }
-            false
+        match sel {
+            CaseId::Waiting => unreachable!(),
+            CaseId::Aborted => {
+                // Unregister and destroy the packet.
+                let case = self.inner.lock().receivers.unregister(case_id).unwrap();
+                unsafe {
+                    drop(Box::from_raw(case.packet as *mut Packet<T>));
+                }
+                false
+            },
+            CaseId::Closed => {
+                // Unregister and destroy the packet.
+                self.inner.lock().receivers.unregister(case_id).unwrap();
+                let case = self.inner.lock().receivers.unregister(case_id).unwrap();
+                unsafe {
+                    drop(Box::from_raw(case.packet as *mut Packet<T>));
+                }
+
+                // All senders have just been dropped.
+                token.zero = 0;
+                true
+            },
+            CaseId::Case(_) => {
+                // Success! A sender has paired up with this operation.
+                token.zero = context::current_wait_packet();
+                true
+            },
         }
     }
 
@@ -234,88 +254,86 @@ impl<T> Channel<T> {
     }
 
     /// Sends a message into the channel.
-    pub fn send(&self, mut msg: T) {
+    pub fn send(&self, msg: T) {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token);
+        let case_id = CaseId::hook(token);
 
-        loop {
-            let packet;
-            {
-                let mut inner = self.inner.lock();
+        let packet;
+        {
+            let mut inner = self.inner.lock();
 
-                // If there's a waiting receiver, pair up with it.
-                if let Some(case) = inner.receivers.wake_one() {
-                    token.zero = case.packet;
-                    drop(inner);
-                    unsafe { self.write(token, msg); }
-                    break;
-                }
-
-                // Prepare for blocking until a receiver wakes us up.
-                context::current_reset();
-                packet = Packet::message_on_stack(msg);
-                inner.senders.register_with_packet(
-                    case_id,
-                    &packet as *const Packet<T> as usize,
-                );
+            // If there's a waiting receiver, pair up with it.
+            if let Some(case) = inner.receivers.wake_one() {
+                token.zero = case.packet;
+                drop(inner);
+                unsafe { self.write(token, msg); }
+                return;
             }
 
-            // Block the current thread.
-            let sel = context::current_wait_until(None);
+            // Prepare for blocking until a receiver wakes us up.
+            context::current_reset();
+            packet = Packet::message_on_stack(msg);
+            inner.senders.register_with_packet(
+                case_id,
+                &packet as *const Packet<T> as usize,
+            );
+        }
 
-            if sel == case_id {
+        // Block the current thread.
+        let sel = context::current_wait_until(None);
+
+        match sel {
+            CaseId::Waiting | CaseId::Aborted | CaseId::Closed => unreachable!(),
+            CaseId::Case(_) => {
                 // Wait until the message is read, then drop the packet.
                 packet.wait_ready();
-                break;
-            } else {
-                // Unregister and regain ownership of the message.
-                self.inner.lock().senders.unregister(case_id);
-                msg = unsafe { packet.msg.get().read() };
-            }
+            },
         }
     }
 
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token);
+        let case_id = CaseId::hook(token);
 
-        loop {
-            let packet;
-            {
-                let mut inner = self.inner.lock();
+        let packet;
+        {
+            let mut inner = self.inner.lock();
 
-                // If there's a waiting sender, pair up with it.
-                if let Some(case) = inner.senders.wake_one() {
-                    token.zero = case.packet;
-                    drop(inner);
-                    unsafe { return self.read(token); }
-                }
-
-                if inner.is_closed {
-                    return None;
-                }
-
-                // Prepare for blocking until a sender wakes us up.
-                context::current_reset();
-                packet = Packet::<T>::empty_on_stack();
-                inner.receivers.register_with_packet(
-                    case_id,
-                    &packet as *const Packet<T> as usize,
-                );
+            // If there's a waiting sender, pair up with it.
+            if let Some(case) = inner.senders.wake_one() {
+                token.zero = case.packet;
+                drop(inner);
+                unsafe { return self.read(token); }
             }
 
-            // Block the current thread.
-            let sel = context::current_wait_until(None);
+            if inner.is_closed {
+                return None;
+            }
 
-            if sel == case_id {
+            // Prepare for blocking until a sender wakes us up.
+            context::current_reset();
+            packet = Packet::<T>::empty_on_stack();
+            inner.receivers.register_with_packet(
+                case_id,
+                &packet as *const Packet<T> as usize,
+            );
+        }
+
+        // Block the current thread.
+        let sel = context::current_wait_until(None);
+
+        match sel {
+            CaseId::Waiting | CaseId::Aborted => unreachable!(),
+            CaseId::Closed => {
+                self.inner.lock().receivers.unregister(case_id).unwrap();
+                None
+            }
+            CaseId::Case(_) => {
                 // Wait until the message is provided, then read it.
                 packet.wait_ready();
-                let msg = unsafe { packet.msg.get().read() };
-                return Some(msg);
-            } else {
-                self.inner.lock().receivers.unregister(case_id);
-            }
+                unsafe { Some(packet.msg.get().read()) }
+            },
         }
     }
 
@@ -348,7 +366,7 @@ impl<T> Channel<T> {
             false
         } else {
             inner.is_closed = true;
-            inner.receivers.abort_all();
+            inner.receivers.close();
             true
         }
     }
@@ -406,6 +424,8 @@ impl<'a, T> Select for Receiver<'a, T> {
             unsafe {
                 drop(Box::from_raw(case.packet as *mut Packet<T>));
             }
+        } else {
+            // debug_assert_ne!(context::current_selected(), CaseId::abort());
         }
     }
 
@@ -441,6 +461,8 @@ impl<'a, T> Select for Sender<'a, T> {
             unsafe {
                 drop(Box::from_raw(case.packet as *mut Packet<T>));
             }
+        } else {
+            // debug_assert_ne!(context::current_selected(), CaseId::abort());
         }
     }
 

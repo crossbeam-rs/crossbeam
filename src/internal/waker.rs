@@ -85,16 +85,15 @@ impl Waker {
         None
     }
 
-    /// Aborts all registered selection cases.
+    /// TODO Aborts all registered selection cases.
     #[inline]
-    pub fn abort_all(&mut self) {
-        for case in self.cases.drain(..) {
-            if case.context.try_abort() == CaseId::abort() {
+    pub fn close(&mut self) {
+        // TODO: explain why not drain
+        for case in self.cases.iter() {
+            if case.context.try_select(CaseId::Closed, 0) {
                 case.context.unpark();
             }
         }
-
-        Self::maybe_shrink(&mut self.cases);
     }
 
     /// Returns `true` if there exists a case which isn't owned by the current thread.
