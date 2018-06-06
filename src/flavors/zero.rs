@@ -116,14 +116,42 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to reserve a slot for sending a message.
-    fn start_send(&self, token: &mut Token) -> bool {
-        let mut inner = self.inner.lock();
+    fn start_send(&self, token: &mut Token, short_pause: bool) -> bool {
+        let case_id = CaseId::new(token);
 
-        // If there's a waiting receiver, pair up with it.
-        if let Some(case) = inner.receivers.wake_one() {
-            token.zero = case.packet;
+        {
+            let mut inner = self.inner.lock();
+
+            // If there's a waiting receiver, pair up with it.
+            if let Some(case) = inner.receivers.wake_one() {
+                token.zero = case.packet;
+                return true;
+            }
+
+            if !short_pause {
+                return false;
+            }
+
+            // Register this send operation so that another receiver can pair up with it.
+            context::current_reset();
+            let packet = Box::into_raw(Packet::<T>::empty_on_heap());
+            inner.senders.register_with_packet(case_id, packet as usize);
+        }
+
+        // Yield to give receivers a chance to pair up with this operation.
+        thread::yield_now();
+        let sel = context::current_try_abort();
+
+        if sel != CaseId::abort() {
+            // Success! A receiver has paired up with this operation.
+            token.zero = context::current_wait_packet();
             true
         } else {
+            // Unregister and destroy the packet.
+            let case = self.inner.lock().senders.unregister(case_id).unwrap();
+            unsafe {
+                drop(Box::from_raw(case.packet as *mut Packet<T>));
+            }
             false
         }
     }
@@ -136,17 +164,45 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to pair up with a sender.
-    fn start_recv(&self, token: &mut Token) -> bool {
-        let mut inner = self.inner.lock();
+    fn start_recv(&self, token: &mut Token, short_pause: bool) -> bool {
+        let case_id = CaseId::new(token);
 
-        // If there's a waiting sender, pair up with it.
-        if let Some(case) = inner.senders.wake_one() {
-            token.zero = case.packet;
-            true
-        } else if inner.is_closed {
-            token.zero = 0;
+        {
+            let mut inner = self.inner.lock();
+
+            // If there's a waiting sender, pair up with it.
+            if let Some(case) = inner.senders.wake_one() {
+                token.zero = case.packet;
+                return true;
+            } else if inner.is_closed {
+                token.zero = 0;
+                return true;
+            }
+
+            if !short_pause {
+                return false;
+            }
+
+            // Register this receive operation so that another sender can pair up with it.
+            context::current_reset();
+            let packet = Box::into_raw(Packet::<T>::empty_on_heap());
+            inner.receivers.register_with_packet(case_id, packet as usize);
+        }
+
+        // Yield to give senders a chance to pair up with this operation.
+        thread::yield_now();
+        let sel = context::current_try_abort();
+
+        if sel != CaseId::abort() {
+            // Success! A sender has paired up with this operation.
+            token.zero = context::current_wait_packet();
             true
         } else {
+            // Unregister and destroy the packet.
+            let case = self.inner.lock().receivers.unregister(case_id).unwrap();
+            unsafe {
+                drop(Box::from_raw(case.packet as *mut Packet<T>));
+            }
             false
         }
     }
@@ -326,46 +382,11 @@ pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {
     fn try(&self, token: &mut Token) -> bool {
-        self.0.start_recv(token)
+        self.0.start_recv(token, false)
     }
 
     fn retry(&self, token: &mut Token) -> bool {
-        let case_id = CaseId::new(token);
-
-        {
-            let mut inner = self.0.inner.lock();
-
-            // If there's a waiting sender, pair up with it.
-            if let Some(case) = inner.senders.wake_one() {
-                token.zero = case.packet;
-                return true;
-            } else if inner.is_closed {
-                token.zero = 0;
-                return true;
-            }
-
-            // Register this receive operation so that another sender can find it.
-            context::current_reset();
-            let packet = Box::into_raw(Packet::<T>::empty_on_heap());
-            inner.receivers.register_with_packet(case_id, packet as usize);
-        }
-
-        // Yield to give senders some time to pair up with this operation.
-        thread::yield_now();
-        let sel = context::current_try_abort();
-
-        if sel != CaseId::abort() {
-            // Success! A sender has paired up with this operation.
-            token.zero = context::current_wait_packet();
-            true
-        } else {
-            // Unregister and destroy the packet.
-            let case = self.0.inner.lock().receivers.unregister(case_id).unwrap();
-            unsafe {
-                drop(Box::from_raw(case.packet as *mut Packet<T>));
-            }
-            false
-        }
+        self.0.start_recv(token, true)
     }
 
     fn deadline(&self) -> Option<Instant> {
@@ -396,40 +417,11 @@ impl<'a, T> Select for Receiver<'a, T> {
 
 impl<'a, T> Select for Sender<'a, T> {
     fn try(&self, token: &mut Token) -> bool {
-        self.0.start_send(token)
+        self.0.start_send(token, false)
     }
 
     fn retry(&self, token: &mut Token) -> bool {
-        // self.0.start_send(token)
-
-        let case_id = CaseId::new(token);
-        let mut inner = self.0.inner.lock();
-
-        // If there's a waiting receiver, pair up with it.
-        if let Some(case) = inner.receivers.wake_one() {
-            token.zero = case.packet;
-            return true;
-        }
-
-        context::current_reset();
-        let packet = Box::into_raw(Packet::<T>::empty_on_heap());
-        inner.senders.register_with_packet(case_id, packet as usize);
-
-        drop(inner);
-
-        thread::yield_now();
-        context::current_try_abort();
-
-        if context::current_selected() != CaseId::abort() {
-            token.zero = context::current_wait_packet();
-            true
-        } else {
-            let case = self.0.inner.lock().senders.unregister(case_id).unwrap();
-            unsafe {
-                drop(Box::from_raw(case.packet as *mut Packet<T>));
-            }
-            false
-        }
+        self.0.start_send(token, true)
     }
 
     fn deadline(&self) -> Option<Instant> {

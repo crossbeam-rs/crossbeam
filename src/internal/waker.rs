@@ -99,6 +99,7 @@ impl Waker {
 
     /// Returns `true` if there exists a case which isn't owned by the current thread.
     #[inline]
+    // TODO: rename contains_other_threads?
     pub fn can_notify(&self) -> bool {
         if !self.cases.is_empty() {
             let thread_id = context::current_thread_id();

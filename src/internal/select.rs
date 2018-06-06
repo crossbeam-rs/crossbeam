@@ -175,7 +175,7 @@ use flavors;
 ///
 /// Types:
 ///
-/// * `r`: one of `Receiver<T>`, `&Receiver<T>`, or `impl IntoIterator<Item = &Receiver<T>> + Clone`
+/// * `r`: one of `Receiver<T>`, `&Receiver<T>`, or `impl IntoIterator<Item = &Receiver<T>>`
 /// * `msg`: `Option<T>`
 /// * `fired`: `&Receiver<T>`
 ///
@@ -192,7 +192,7 @@ use flavors;
 ///
 /// Types:
 ///
-/// * `s`: one of `Sender<T>`, `&Sender<T>`, or `impl IntoIterator<Item = &Sender<T>> + Clone`
+/// * `s`: one of `Sender<T>`, `&Sender<T>`, or `impl IntoIterator<Item = &Sender<T>>`
 /// * `msg`: `T`
 /// * `fired`: `&Sender<T>`
 ///
