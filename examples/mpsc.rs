@@ -8,75 +8,88 @@
 #[macro_use]
 extern crate crossbeam_channel as channel;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError};
 use std::thread;
 use std::time::Duration;
 
-// Re-export the error types.
-pub use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError};
-
-#[derive(Clone, Debug)]
 pub struct Sender<T> {
     inner: channel::Sender<T>,
     disconnected: channel::Receiver<()>,
+    is_disconnected: Arc<AtomicBool>,
 }
 
 impl<T> Sender<T> {
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
-        // Check if all receivers have been dropped.
-        select! {
-            recv(self.disconnected) => return Err(SendError(t)),
-            default => {}
-        }
-
-        // Send the message or wait for all receivers to get dropped, whatever happens first.
-        select! {
-            send(self.inner, t) => Ok(()),
-            recv(self.disconnected) => Err(SendError(t)),
+        if self.is_disconnected.load(Ordering::SeqCst) {
+            Err(SendError(t))
+        } else {
+            self.inner.send(t);
+            Ok(())
         }
     }
 }
 
-#[derive(Clone, Debug)]
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Sender<T> {
+        Sender {
+            inner: self.inner.clone(),
+            disconnected: self.disconnected.clone(),
+            is_disconnected: self.is_disconnected.clone(),
+        }
+    }
+}
+
 pub struct SyncSender<T> {
     inner: channel::Sender<T>,
     disconnected: channel::Receiver<()>,
+    is_disconnected: Arc<AtomicBool>,
 }
 
 impl<T> SyncSender<T> {
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
-        // Check if all receivers have been dropped.
-        select! {
-            recv(self.disconnected) => return Err(SendError(t)),
-            default => {}
-        }
-
-        // Send the message or wait for all receivers to get dropped, whatever happens first.
-        select! {
-            send(self.inner, t) => Ok(()),
-            recv(self.disconnected) => Err(SendError(t)),
+        if self.is_disconnected.load(Ordering::SeqCst) {
+            Err(SendError(t))
+        } else {
+            select! {
+                send(self.inner, t) => Ok(()),
+                default => {
+                    select! {
+                        send(self.inner, t) => Ok(()),
+                        recv(self.disconnected) => Err(SendError(t)),
+                    }
+                }
+            }
         }
     }
 
     pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
-        // Check if all receivers have been dropped.
-        select! {
-            recv(self.disconnected) => return Err(TrySendError::Disconnected(t)),
-            default => {}
-        }
-
-        // Send the message or wait for all receivers to get dropped, whatever happens first.
-        select! {
-            send(self.inner, t) => Ok(()),
-            recv(self.disconnected) => Err(TrySendError::Disconnected(t)),
-            default => Err(TrySendError::Full(t)),
+        if self.is_disconnected.load(Ordering::SeqCst) {
+            Err(TrySendError::Disconnected(t))
+        } else {
+            select! {
+                send(self.inner, t) => Ok(()),
+                default => Err(TrySendError::Full(t)),
+            }
         }
     }
 }
 
-#[derive(Debug)]
+impl<T> Clone for SyncSender<T> {
+    fn clone(&self) -> SyncSender<T> {
+        SyncSender {
+            inner: self.inner.clone(),
+            disconnected: self.disconnected.clone(),
+            is_disconnected: self.is_disconnected.clone(),
+        }
+    }
+}
+
 pub struct Receiver<T> {
     inner: channel::Receiver<T>,
-    disconnected: channel::Sender<()>,
+    _disconnected: channel::Sender<()>,
+    is_disconnected: Arc<AtomicBool>,
 }
 
 impl<T> Receiver<T> {
@@ -91,11 +104,9 @@ impl<T> Receiver<T> {
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {
-        select! {
-            recv(self.inner, msg) => match msg {
-                None => Err(RecvError),
-                Some(msg) => Ok(msg),
-            }
+        match self.inner.recv() {
+            None => Err(RecvError),
+            Some(msg) => Ok(msg),
         }
     }
 
@@ -105,7 +116,15 @@ impl<T> Receiver<T> {
                 None => Err(RecvTimeoutError::Disconnected),
                 Some(msg) => Ok(msg),
             }
-            recv(channel::after(timeout)) => Err(RecvTimeoutError::Timeout),
+            default => {
+                select! {
+                    recv(self.inner, msg) => match msg {
+                        None => Err(RecvTimeoutError::Disconnected),
+                        Some(msg) => Ok(msg),
+                    }
+                    recv(channel::after(timeout)) => Err(RecvTimeoutError::Timeout),
+                }
+            }
         }
     }
 
@@ -115,6 +134,12 @@ impl<T> Receiver<T> {
 
     pub fn try_iter(&self) -> TryIter<T> {
         TryIter { inner: self }
+    }
+}
+
+impl<T> Drop for Receiver<T> {
+    fn drop(&mut self) {
+        self.is_disconnected.store(true, Ordering::SeqCst);
     }
 }
 
@@ -136,7 +161,6 @@ impl<T> IntoIterator for Receiver<T> {
     }
 }
 
-#[derive(Debug)]
 pub struct TryIter<'a, T: 'a> {
     inner: &'a Receiver<T>,
 }
@@ -149,7 +173,6 @@ impl<'a, T> Iterator for TryIter<'a, T> {
     }
 }
 
-#[derive(Debug)]
 pub struct Iter<'a, T: 'a> {
     inner: &'a Receiver<T>,
 }
@@ -162,7 +185,6 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-#[derive(Debug)]
 pub struct IntoIter<T> {
     inner: Receiver<T>,
 }
@@ -178,14 +200,17 @@ impl<T> Iterator for IntoIter<T> {
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let (s1, r1) = channel::unbounded();
     let (s2, r2) = channel::bounded(1);
+    let is_disconnected = Arc::new(AtomicBool::new(false));
 
     let s = Sender {
         inner: s1,
         disconnected: r2,
+        is_disconnected: is_disconnected.clone(),
     };
     let r = Receiver {
         inner: r1,
-        disconnected: s2,
+        _disconnected: s2,
+        is_disconnected,
     };
     (s, r)
 }
@@ -193,14 +218,17 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
     let (s1, r1) = channel::bounded(bound);
     let (s2, r2) = channel::bounded(1);
+    let is_disconnected = Arc::new(AtomicBool::new(false));
 
     let s = SyncSender {
         inner: s1,
         disconnected: r2,
+        is_disconnected: is_disconnected.clone(),
     };
     let r = Receiver {
         inner: r1,
-        disconnected: s2,
+        _disconnected: s2,
+        is_disconnected,
     };
     (s, r)
 }
