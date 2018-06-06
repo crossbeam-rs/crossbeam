@@ -182,7 +182,7 @@ macro_rules! tests {
         }
 
         #[test]
-        fn close_signals_receiver() {
+        fn close_wakes_receiver() {
             let (s, r) = channel::unbounded::<()>();
 
             crossbeam::scope(|scope| {
