@@ -209,7 +209,6 @@ impl<T> Channel<T> {
             },
             CaseId::Closed => {
                 // Unregister and destroy the packet.
-                self.inner.lock().receivers.unregister(case_id).unwrap();
                 let case = self.inner.lock().receivers.unregister(case_id).unwrap();
                 unsafe {
                     drop(Box::from_raw(case.packet as *mut Packet<T>));
@@ -328,7 +327,7 @@ impl<T> Channel<T> {
             CaseId::Closed => {
                 self.inner.lock().receivers.unregister(case_id).unwrap();
                 None
-            }
+            },
             CaseId::Case(_) => {
                 // Wait until the message is provided, then read it.
                 packet.wait_ready();

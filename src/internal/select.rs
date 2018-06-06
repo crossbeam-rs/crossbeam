@@ -257,7 +257,7 @@ pub enum CaseId {
     Waiting,
     Aborted,
     Closed,
-    Case(usize),
+    Case(usize), // TODO: rename to Selected
 }
 
 impl CaseId {

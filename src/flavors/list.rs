@@ -305,7 +305,6 @@ impl<T> Channel<T> {
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
         let case_id = CaseId::hook(token);
-        let receiver = self.receiver();
 
         loop {
             // Try receiving a message several times.
@@ -323,7 +322,7 @@ impl<T> Channel<T> {
 
             // Prepare for blocking until a sender wakes us up.
             context::current_reset();
-            receiver.register(token, case_id);
+            self.receivers.register(case_id);
 
             // Has the channel become ready just now?
             if !self.is_empty() || self.is_closed() {
@@ -331,8 +330,19 @@ impl<T> Channel<T> {
             }
 
             // Block the current thread.
-            context::current_wait_until(None);
-            receiver.unregister(case_id);
+            let sel = context::current_wait_until(None);
+
+            match sel {
+                CaseId::Waiting => unreachable!(),
+                CaseId::Aborted => {
+                    self.receivers.unregister(case_id).unwrap();
+                },
+                CaseId::Closed => {
+                    self.receivers.unregister(case_id).unwrap();
+                    return None;
+                },
+                CaseId::Case(_) => {},
+            }
         }
     }
 
