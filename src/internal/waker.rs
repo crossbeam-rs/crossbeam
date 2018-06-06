@@ -85,11 +85,11 @@ impl Waker {
         None
     }
 
-    /// Aborts all currently registered selection cases.
+    /// Aborts all registered selection cases.
     #[inline]
     pub fn abort_all(&mut self) {
         for case in self.cases.drain(..) {
-            if case.context.try_abort() {
+            if case.context.try_abort() == CaseId::abort() {
                 case.context.unpark();
             }
         }

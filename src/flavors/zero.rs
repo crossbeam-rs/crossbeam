@@ -5,7 +5,6 @@
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
-use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Instant;
@@ -20,14 +19,56 @@ use internal::waker::Waker;
 
 // TODO: anything that calls read/write in any flavor should have an abort guard
 
-/// Result of a receive operation.
-pub type ZeroToken = Option<usize>;
+/// A pointer to a packet.
+pub type ZeroToken = usize;
 
-/// TODO
+/// A slot for passing one message from a sender to a receiver.
 struct Packet<T> {
+    /// Equals `true` if the packet is allocated on the stack.
     on_stack: bool,
+
+    /// Equals `true` once the packet is ready for reading or writing.
     ready: AtomicBool,
+
+    /// A message.
     msg: ManuallyDrop<UnsafeCell<T>>,
+}
+
+impl<T> Packet<T> {
+    /// Creates an empty packet on the stack.
+    fn empty_on_stack() -> Packet<T> {
+        Packet {
+            on_stack: true,
+            ready: AtomicBool::new(false),
+            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
+        }
+    }
+
+    /// Creates an empty packet on the heap.
+    fn empty_on_heap() -> Box<Packet<T>> {
+        Box::new(Packet {
+            on_stack: false,
+            ready: AtomicBool::new(false),
+            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
+        })
+    }
+
+    /// Creates an packet on the heap, containing a message.
+    fn message_on_stack(msg: T) -> Packet<T> {
+        Packet {
+            on_stack: true,
+            ready: AtomicBool::new(false),
+            msg: ManuallyDrop::new(UnsafeCell::new(msg)),
+        }
+    }
+
+    /// Waits until the packet becomes ready for reading or writing.
+    fn wait_ready(&self) {
+        let backoff = &mut Backoff::new();
+        while !self.ready.load(Ordering::Acquire) {
+            backoff.step();
+        }
+    }
 }
 
 /// Inner representation of a zero-capacity channel.
@@ -78,146 +119,143 @@ impl<T> Channel<T> {
     fn start_send(&self, token: &mut Token) -> bool {
         let mut inner = self.inner.lock();
 
-        // If there's someone on the other side, exchange message with it.
+        // If there's a waiting receiver, pair up with it.
         if let Some(case) = inner.receivers.wake_one() {
-            token.zero = Some(case.packet);
+            token.zero = case.packet;
             true
         } else {
             false
         }
     }
 
-    /// TODO
+    /// Writes a message into the packet.
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        let packet = token.zero.unwrap() as *const Packet<T>;
-
-        ptr::write((*packet).msg.get(), msg);
-        (*packet).ready.store(true, Ordering::Release);
+        let packet = &*(token.zero as *const Packet<T>);
+        packet.msg.get().write(msg);
+        packet.ready.store(true, Ordering::Release);
     }
 
-    /// TODO
+    /// Attempts to pair up with a sender.
     fn start_recv(&self, token: &mut Token) -> bool {
         let mut inner = self.inner.lock();
 
+        // If there's a waiting sender, pair up with it.
         if let Some(case) = inner.senders.wake_one() {
-            token.zero = Some(case.packet);
+            token.zero = case.packet;
             true
         } else if inner.is_closed {
-            token.zero = None;
+            token.zero = 0;
             true
         } else {
             false
         }
     }
 
-    /// TODO
+    /// Reads a message from the packet.
     pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
-        let packet;
-
-        match token.zero {
-            None => return None,
-            Some(p) => {
-                packet = p as *const Packet<T>;
-            }
+        // If there is no packet, the channel is closed.
+        if token.zero == 0 {
+            return None;
         }
 
-        if (*packet).on_stack {
-            let msg = ptr::read((*packet).msg.get());
-            (*packet).ready.store(true, Ordering::Release);
+        let packet = &*(token.zero as *const Packet<T>);
+
+        if packet.on_stack {
+            // The message was there since the packet was constructed. After reading the message,
+            // we need to set `ready` to `true` in order to signal that the packet can be
+            // destroyed.
+            let msg = packet.msg.get().read();
+            packet.ready.store(true, Ordering::Release);
             Some(msg)
         } else {
-            let mut backoff = Backoff::new();
-            while !(*packet).ready.load(Ordering::Acquire) {
-                backoff.step();
-            }
-            let msg = ptr::read((*packet).msg.get());
-            drop(Box::from_raw(packet as *mut Packet<T>));
+            // Wait until the message becomes available, then read it and destroy the
+            // heap-allocated packet.
+            packet.wait_ready();
+            let msg = packet.msg.get().read();
+            drop(Box::from_raw(packet as *const Packet<T> as *mut Packet<T>));
             Some(msg)
         }
     }
 
+    /// Sends a message into the channel.
     pub fn send(&self, mut msg: T) {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token as *mut Token as usize);
+        let case_id = CaseId::new(token);
 
         loop {
             let packet;
             {
                 let mut inner = self.inner.lock();
-                // If there's someone on the other side, exchange message with it.
+
+                // If there's a waiting receiver, pair up with it.
                 if let Some(case) = inner.receivers.wake_one() {
-                    token.zero = Some(case.packet);
+                    token.zero = case.packet;
                     drop(inner);
                     unsafe { self.write(token, msg); }
                     break;
                 }
 
+                // Prepare for blocking until a receiver wakes us up.
                 context::current_reset();
-
-                packet = Packet {
-                    on_stack: true,
-                    ready: AtomicBool::new(false),
-                    msg: ManuallyDrop::new(UnsafeCell::new(msg)),
-                };
-                inner.senders.register_with_packet(case_id, &packet as *const _ as usize);
+                packet = Packet::message_on_stack(msg);
+                inner.senders.register_with_packet(
+                    case_id,
+                    &packet as *const Packet<T> as usize,
+                );
             }
 
-            context::current_wait_until(None);
+            // Block the current thread.
+            let sel = context::current_wait_until(None);
 
-            let s = context::current_selected();
-            if s == case_id {
-                let mut backoff = Backoff::new();
-                while !packet.ready.load(Ordering::Acquire) {
-                    backoff.step();
-                }
+            if sel == case_id {
+                // Wait until the message is read, then drop the packet.
+                packet.wait_ready();
                 break;
             } else {
+                // Unregister and regain ownership of the message.
                 self.inner.lock().senders.unregister(case_id);
-                msg = unsafe { ptr::read(packet.msg.get()) };
+                msg = unsafe { packet.msg.get().read() };
             }
         }
     }
 
+    /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token as *mut Token as usize);
+        let case_id = CaseId::new(token);
 
         loop {
             let packet;
             {
                 let mut inner = self.inner.lock();
 
+                // If there's a waiting sender, pair up with it.
                 if let Some(case) = inner.senders.wake_one() {
-                    token.zero = Some(case.packet);
+                    token.zero = case.packet;
                     drop(inner);
-                    unsafe {
-                        return self.read(token);
-                    }
+                    unsafe { return self.read(token); }
                 }
 
                 if inner.is_closed {
                     return None;
                 }
 
+                // Prepare for blocking until a sender wakes us up.
                 context::current_reset();
-
-                packet = Packet::<T> {
-                    on_stack: true,
-                    ready: AtomicBool::new(false),
-                    msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
-                };
-                inner.receivers.register_with_packet(case_id, &packet as *const _ as usize);
+                packet = Packet::<T>::empty_on_stack();
+                inner.receivers.register_with_packet(
+                    case_id,
+                    &packet as *const Packet<T> as usize,
+                );
             }
 
-            context::current_wait_until(None);
+            // Block the current thread.
+            let sel = context::current_wait_until(None);
 
-            let s = context::current_selected();
-            if s == case_id {
-                let mut backoff = Backoff::new();
-                while !packet.ready.load(Ordering::Acquire) {
-                    backoff.step();
-                }
-                let msg = unsafe { ptr::read(packet.msg.get()) };
+            if sel == case_id {
+                // Wait until the message is provided, then read it.
+                packet.wait_ready();
+                let msg = unsafe { packet.msg.get().read() };
                 return Some(msg);
             } else {
                 self.inner.lock().receivers.unregister(case_id);
@@ -225,13 +263,14 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Attempts to receive a message without blocking.
     pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
         let token = &mut Token::default();
-
         let mut inner = self.inner.lock();
 
+        // If there's a waiting sender, pair up with it.
         if let Some(case) = inner.senders.wake_one() {
-            token.zero = Some(case.packet);
+            token.zero = case.packet;
             drop(inner);
 
             match unsafe { self.read(token) } {
@@ -245,7 +284,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Closes the channel and wakes up all currently blocked operations on it.
+    /// Closes the channel and wakes up all blocked receivers.
     pub fn close(&self) -> bool {
         let mut inner = self.inner.lock();
 
@@ -291,41 +330,39 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 
     fn retry(&self, token: &mut Token) -> bool {
-        // self.0.start_recv(token)
+        let case_id = CaseId::new(token);
 
-        let case_id = CaseId::new(&token as *const _ as usize);
-        let mut inner = self.0.inner.lock();
+        {
+            let mut inner = self.0.inner.lock();
 
-        if let Some(case) = inner.senders.wake_one() {
-            token.zero = Some(case.packet);
-            return true;
-        } else if inner.is_closed {
-            token.zero = None;
-            return true;
+            // If there's a waiting sender, pair up with it.
+            if let Some(case) = inner.senders.wake_one() {
+                token.zero = case.packet;
+                return true;
+            } else if inner.is_closed {
+                token.zero = 0;
+                return true;
+            }
+
+            // Register this receive operation so that another sender can find it.
+            context::current_reset();
+            let packet = Box::into_raw(Packet::<T>::empty_on_heap());
+            inner.receivers.register_with_packet(case_id, packet as usize);
         }
 
-        context::current_reset();
-
-        let packet = Box::into_raw(Box::new(Packet::<T> {
-            on_stack: false,
-            ready: AtomicBool::new(false),
-            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
-        }));
-        inner.receivers.register_with_packet(case_id, packet as usize);
-
-        drop(inner);
-
+        // Yield to give senders some time to pair up with this operation.
         thread::yield_now();
-        context::current_try_abort();
+        let sel = context::current_try_abort();
 
-        if context::current_selected() != CaseId::abort() {
-            token.zero = Some(context::current_wait_packet());
+        if sel != CaseId::abort() {
+            // Success! A sender has paired up with this operation.
+            token.zero = context::current_wait_packet();
             true
         } else {
-            if let Some(case) = self.0.inner.lock().receivers.unregister(case_id) {
-                unsafe {
-                    drop(Box::from_raw(case.packet as *mut Packet<T>));
-                }
+            // Unregister and destroy the packet.
+            let case = self.0.inner.lock().receivers.unregister(case_id).unwrap();
+            unsafe {
+                drop(Box::from_raw(case.packet as *mut Packet<T>));
             }
             false
         }
@@ -336,11 +373,7 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 
     fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
-        let packet = Box::into_raw(Box::new(Packet::<T> {
-            on_stack: false,
-            ready: AtomicBool::new(false),
-            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
-        }));
+        let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock();
         inner.receivers.register_with_packet(case_id, packet as usize);
@@ -356,7 +389,7 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 
     fn accept(&self, token: &mut Token) -> bool {
-        token.zero = Some(context::current_wait_packet());
+        token.zero = context::current_wait_packet();
         true
     }
 }
@@ -369,22 +402,17 @@ impl<'a, T> Select for Sender<'a, T> {
     fn retry(&self, token: &mut Token) -> bool {
         // self.0.start_send(token)
 
-        let case_id = CaseId::new(&token as *const _ as usize);
+        let case_id = CaseId::new(token);
         let mut inner = self.0.inner.lock();
 
-        // If there's someone on the other side, exchange message with it.
+        // If there's a waiting receiver, pair up with it.
         if let Some(case) = inner.receivers.wake_one() {
-            token.zero = Some(case.packet);
+            token.zero = case.packet;
             return true;
         }
 
         context::current_reset();
-
-        let packet = Box::into_raw(Box::new(Packet::<T> {
-            on_stack: false,
-            ready: AtomicBool::new(false),
-            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
-        }));
+        let packet = Box::into_raw(Packet::<T>::empty_on_heap());
         inner.senders.register_with_packet(case_id, packet as usize);
 
         drop(inner);
@@ -393,13 +421,12 @@ impl<'a, T> Select for Sender<'a, T> {
         context::current_try_abort();
 
         if context::current_selected() != CaseId::abort() {
-            token.zero = Some(context::current_wait_packet());
+            token.zero = context::current_wait_packet();
             true
         } else {
-            if let Some(case) = self.0.inner.lock().senders.unregister(case_id) {
-                unsafe {
-                    drop(Box::from_raw(case.packet as *mut Packet<T>));
-                }
+            let case = self.0.inner.lock().senders.unregister(case_id).unwrap();
+            unsafe {
+                drop(Box::from_raw(case.packet as *mut Packet<T>));
             }
             false
         }
@@ -410,11 +437,7 @@ impl<'a, T> Select for Sender<'a, T> {
     }
 
     fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
-        let packet = Box::into_raw(Box::new(Packet::<T> {
-            on_stack: false,
-            ready: AtomicBool::new(false),
-            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
-        }));
+        let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock();
         inner.senders.register_with_packet(case_id, packet as usize);
@@ -430,7 +453,7 @@ impl<'a, T> Select for Sender<'a, T> {
     }
 
     fn accept(&self, token: &mut Token) -> bool {
-        token.zero = Some(context::current_wait_packet());
+        token.zero = context::current_wait_packet();
         true
     }
 }

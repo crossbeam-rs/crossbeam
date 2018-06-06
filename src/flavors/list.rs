@@ -149,7 +149,7 @@ impl<T> Channel<T> {
     /// Writes a message into the channel.
     pub fn write(&self, _token: &mut Token, msg: T) {
         let guard = epoch::pin();
-        let mut backoff = Backoff::new();
+        let backoff = &mut Backoff::new();
 
         loop {
             // These two load operations don't have to be `SeqCst`. If they happen to retrieve
@@ -284,7 +284,7 @@ impl<T> Channel<T> {
         let _guard: Guard = token.list.guard.take().unwrap();
 
         // Wait until the message becomes ready.
-        let mut backoff = Backoff::new();
+        let backoff = &mut Backoff::new();
         while !slot.ready.load(Ordering::Acquire) {
             backoff.step();
         }
@@ -304,7 +304,7 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token as *mut Token as usize);
+        let case_id = CaseId::new(token);
         let receiver = self.receiver();
 
         loop {

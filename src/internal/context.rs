@@ -19,8 +19,11 @@ pub struct Context {
 impl Context {
     #[inline]
     pub fn try_select(&self, case_id: CaseId, packet: usize) -> bool {
-        if self.case_id
-            .compare_and_swap(CaseId::none().into(), case_id.into(), Ordering::Relaxed) == CaseId::none().into() {
+        if self
+            .case_id
+            .compare_and_swap(CaseId::none().into(), case_id.into(), Ordering::Relaxed)
+            == CaseId::none().into()
+        {
             self.packet.store(packet, Ordering::Release);
             true
         } else {
@@ -29,9 +32,19 @@ impl Context {
     }
 
     #[inline]
-    pub fn try_abort(&self) -> bool {
-        self.case_id
-            .compare_and_swap(CaseId::none().into(), CaseId::abort().into(), Ordering::Relaxed) == CaseId::none().into()
+    pub fn try_abort(&self) -> CaseId {
+        match self
+            .case_id
+            .compare_exchange(
+                CaseId::none().into(),
+                CaseId::abort().into(),
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            )
+        {
+            Ok(_) => CaseId::abort(),
+            Err(id) => CaseId::from(id),
+        }
     }
 
     #[inline]
@@ -53,36 +66,42 @@ impl Context {
     }
 
     #[inline]
-    pub fn wait_until(&self, deadline: Option<Instant>) -> bool {
-        let mut backoff = Backoff::new();
+    pub fn wait_until(&self, deadline: Option<Instant>) -> CaseId {
+        let backoff = &mut Backoff::new();
         loop {
-            if self.selected() != CaseId::none() {
-                return true;
+            let sel = self.selected();
+            if sel != CaseId::none() {
+                return sel;
             }
+
             if !backoff.step() {
                 break;
             }
         }
 
-        while self.selected() == CaseId::none() {
+        loop {
+            let sel = self.selected();
+            if sel != CaseId::none() {
+                return sel;
+            }
+
             if let Some(end) = deadline {
                 let now = Instant::now();
+
                 if now < end {
                     thread::park_timeout(end - now);
-                } else if self.try_abort() {
-                    return false;
+                } else {
+                    return self.try_abort();
                 }
             } else {
                 thread::park();
             }
         }
-
-        true
     }
 
     #[inline]
     fn wait_packet(&self) -> usize {
-        let mut backoff = Backoff::new();
+        let backoff = &mut Backoff::new();
         loop {
             let packet = self.packet.load(Ordering::Acquire);
             if packet != 0 {
@@ -108,7 +127,7 @@ pub fn current() -> Arc<Context> {
 }
 
 #[inline]
-pub fn current_try_abort() -> bool {
+pub fn current_try_abort() -> CaseId {
     CONTEXT.with(|c| c.try_abort())
 }
 
@@ -123,7 +142,7 @@ pub fn current_reset() {
 }
 
 #[inline]
-pub fn current_wait_until(deadline: Option<Instant>) -> bool {
+pub fn current_wait_until(deadline: Option<Instant>) -> CaseId {
     CONTEXT.with(|c| c.wait_until(deadline))
 }
 

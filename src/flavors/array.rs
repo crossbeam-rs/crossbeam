@@ -137,7 +137,7 @@ impl<T> Channel<T> {
         for i in 0..cap {
             unsafe {
                 // Set the stamp to `{ lap: 0, index: i }`.
-                let slot = buffer.offset(i as isize);
+                let slot = buffer.add(i);
                 ptr::write(&mut (*slot).stamp, AtomicUsize::new(i));
             }
         }
@@ -174,7 +174,7 @@ impl<T> Channel<T> {
             let lap = tail & !(self.one_lap - 1);
 
             // Inspect the corresponding slot.
-            let slot = unsafe { &*self.buffer.offset(index as isize) };
+            let slot = unsafe { &*self.buffer.add(index) };
             let stamp = slot.stamp.load(Ordering::SeqCst);
 
             // If the tail and the stamp match, we may attempt to push.
@@ -220,7 +220,7 @@ impl<T> Channel<T> {
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
         // Write the message into the slot and update the stamp.
-        ptr::write(slot.msg.get(), msg);
+        slot.msg.get().write(msg);
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping receiver.
@@ -236,7 +236,7 @@ impl<T> Channel<T> {
             let lap = head & !(self.one_lap - 1);
 
             // Inspect the corresponding slot.
-            let slot = unsafe { &*self.buffer.offset(index as isize) };
+            let slot = unsafe { &*self.buffer.add(index) };
             let stamp = slot.stamp.load(Ordering::SeqCst);
 
             // If the the head and the stamp match, we may attempt to pop.
@@ -296,7 +296,7 @@ impl<T> Channel<T> {
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
         // Read the message from the slot and update the stamp.
-        let msg = ptr::read(slot.msg.get());
+        let msg = slot.msg.get().read();
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping sender.
@@ -308,7 +308,7 @@ impl<T> Channel<T> {
     /// Sends a message into the channel.
     pub fn send(&self, msg: T) {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token as *mut Token as usize);
+        let case_id = CaseId::new(token);
         let sender = self.sender();
 
         loop {
@@ -342,7 +342,7 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let case_id = CaseId::new(token as *mut Token as usize);
+        let case_id = CaseId::new(token);
         let receiver = self.receiver();
 
         loop {
@@ -474,8 +474,7 @@ impl<T> Drop for Channel<T> {
             };
 
             unsafe {
-                let slot = self.buffer.offset(index as isize);
-                ptr::drop_in_place(slot);
+                self.buffer.add(index).drop_in_place();
             }
         }
 

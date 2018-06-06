@@ -31,8 +31,8 @@ where
     }
 
     loop {
-        for &(sel, i, addr) in cases.iter() {
-            if sel.try(&mut token) {
+        for &(select, i, addr) in cases.iter() {
+            if select.try(&mut token) {
                 return (token, i, addr);
             }
         }
@@ -41,8 +41,8 @@ where
             return (token, 0, 0);
         }
 
-        for &(sel, i, addr) in cases.iter() {
-            if sel.retry(&mut token) {
+        for &(select, i, addr) in cases.iter() {
+            if select.retry(&mut token) {
                 return (token, i, addr);
             }
         }
@@ -50,10 +50,9 @@ where
         context::current_reset();
 
         for case in cases.iter_mut() {
-            let case_id = CaseId::new(case as *mut (&S, usize, usize) as usize);
-            let &mut (sel, _, _) = case;
+            let &mut (select, _, _) = case;
 
-            if !sel.register(&mut token, case_id) {
+            if !select.register(&mut token, CaseId::new(case)) {
                 context::current_try_abort();
                 break;
             }
@@ -64,28 +63,25 @@ where
         }
 
         let mut deadline: Option<Instant> = None;
-        for &(sel, _, _) in cases.iter() {
-            if let Some(x) = sel.deadline() {
+        for &(select, _, _) in cases.iter() {
+            if let Some(x) = select.deadline() {
                 deadline = deadline.map(|y| x.min(y)).or(Some(x));
             }
         }
 
-        context::current_wait_until(deadline);
-        let s = context::current_selected();
+        let sel = context::current_wait_until(deadline);
 
         for case in cases.iter_mut() {
-            let case_id = CaseId::new(case as *mut (&S, usize, usize) as usize);
-            let &mut (sel, _, _) = case;
-            sel.unregister(case_id);
+            let &mut (select, _, _) = case;
+            select.unregister(CaseId::new(case));
         }
 
-        if s != CaseId::abort() {
+        if sel != CaseId::abort() {
             for case in cases.iter_mut() {
-                let case_id = CaseId::new(case as *mut (&S, usize, usize) as usize);
-                let &mut (sel, i, addr) = case;
+                let &mut (select, i, addr) = case;
 
-                if case_id == s {
-                    if sel.accept(&mut token) {
+                if sel == CaseId::new(case) {
+                    if select.accept(&mut token) {
                         return (token, i, addr);
                     }
                 }

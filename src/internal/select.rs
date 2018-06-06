@@ -268,9 +268,8 @@ impl CaseId {
         CaseId { id: 1 }
     }
 
-    #[inline]
-    pub fn new(id: usize) -> Self {
-        CaseId { id }
+    pub fn new<T>(r: &mut T) -> Self {
+        CaseId { id: r as *mut T as usize }
     }
 }
 
