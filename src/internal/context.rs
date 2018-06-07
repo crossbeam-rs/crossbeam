@@ -17,6 +17,7 @@ pub struct Context {
 }
 
 impl Context {
+    // TODO: return Result<(), CaseId>?
     #[inline]
     pub fn try_select(&self, case_id: CaseId, packet: usize) -> bool {
         if self
@@ -126,6 +127,7 @@ pub fn current() -> Arc<Context> {
     CONTEXT.with(|c| c.clone())
 }
 
+// TODO: replace with try_select(CaseId::Aborted, 0)?
 #[inline]
 pub fn current_try_abort() -> CaseId {
     CONTEXT.with(|c| c.try_abort())

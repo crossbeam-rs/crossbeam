@@ -423,8 +423,6 @@ impl<'a, T> Select for Receiver<'a, T> {
             unsafe {
                 drop(Box::from_raw(case.packet as *mut Packet<T>));
             }
-        } else {
-            // debug_assert_ne!(context::current_selected(), CaseId::abort());
         }
     }
 
@@ -460,8 +458,6 @@ impl<'a, T> Select for Sender<'a, T> {
             unsafe {
                 drop(Box::from_raw(case.packet as *mut Packet<T>));
             }
-        } else {
-            // debug_assert_ne!(context::current_selected(), CaseId::abort());
         }
     }
 

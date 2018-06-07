@@ -380,6 +380,7 @@ impl<T> Channel<T> {
                 CaseId::Waiting => unreachable!(),
                 CaseId::Aborted | CaseId::Closed => {
                     self.receivers.unregister(case_id).unwrap();
+                    // If the channel was closed, we still have to check for remaining messages.
                 },
                 CaseId::Case(_) => {}
             }

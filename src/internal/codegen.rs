@@ -8,8 +8,6 @@ use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils;
 
-// TODO: help with type inference in send(s, 0) by binding s to write() somehow
-
 #[inline(never)]
 pub fn mainloop<'a, S>(
     cases: &mut [(&'a S, usize, usize)],
