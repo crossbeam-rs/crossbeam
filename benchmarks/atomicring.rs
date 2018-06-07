@@ -1,26 +1,22 @@
 extern crate atomicring;
 extern crate crossbeam;
 
-use atomicring::AtomicRingBuffer;
 use std::thread;
 
-pub mod testtype;
-use testtype::TestType;
+use atomicring::AtomicRingBuffer;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
 fn seq(cap: usize) {
-    let q = AtomicRingBuffer::<TestType>::with_capacity(cap);
+    let q = AtomicRingBuffer::<i32>::with_capacity(cap);
 
     for i in 0..MESSAGES {
         loop {
-            if q.try_push(TestType::new(i)).is_ok() {
+            if q.try_push(i as i32).is_ok() {
                 break;
             } else {
-                if cfg!(feature = "yield") {
-                    thread::yield_now();
-                }
+                thread::yield_now();
             }
         }
     }
@@ -30,18 +26,16 @@ fn seq(cap: usize) {
 }
 
 fn spsc(cap: usize) {
-    let q = AtomicRingBuffer::<TestType>::with_capacity(cap);
+    let q = AtomicRingBuffer::<i32>::with_capacity(cap);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
                 loop {
-                    if q.try_push(TestType::new(i)).is_ok() {
+                    if q.try_push(i as i32).is_ok() {
                         break;
                     } else {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
+                        thread::yield_now();
                     }
                 }
             }
@@ -50,9 +44,7 @@ fn spsc(cap: usize) {
             for _ in 0..MESSAGES {
                 loop {
                     if q.try_pop().is_none() {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
+                        thread::yield_now();
                     } else {
                         break;
                     }
@@ -63,19 +55,17 @@ fn spsc(cap: usize) {
 }
 
 fn mpsc(cap: usize) {
-    let q = AtomicRingBuffer::<TestType>::with_capacity(cap);
+    let q = AtomicRingBuffer::<i32>::with_capacity(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
-                        if q.try_push(TestType::new(i)).is_ok() {
+                        if q.try_push(i as i32).is_ok() {
                             break;
                         } else {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
+                            thread::yield_now();
                         }
                     }
                 }
@@ -85,9 +75,7 @@ fn mpsc(cap: usize) {
             for _ in 0..MESSAGES {
                 loop {
                     if q.try_pop().is_none() {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
+                        thread::yield_now();
                     } else {
                         break;
                     }
@@ -98,19 +86,17 @@ fn mpsc(cap: usize) {
 }
 
 fn mpmc(cap: usize) {
-    let q = AtomicRingBuffer::<TestType>::with_capacity(cap);
+    let q = AtomicRingBuffer::<i32>::with_capacity(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
-                        if q.try_push(TestType::new(i)).is_ok() {
+                        if q.try_push(i as i32).is_ok() {
                             break;
                         } else {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
+                            thread::yield_now();
                         }
                     }
                 }
@@ -121,9 +107,7 @@ fn mpmc(cap: usize) {
                 for _ in 0..MESSAGES / THREADS {
                     loop {
                         if q.try_pop().is_none() {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
+                            thread::yield_now();
                         } else {
                             break;
                         }

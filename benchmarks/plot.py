@@ -1,8 +1,8 @@
 #!/usr/bin/env python2
 
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
 import sys
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 results = []
 for f in sys.argv[1:]:
@@ -17,7 +17,7 @@ fig = plt.figure(figsize=(10, 10))
 def plot(subplot, title, prefix, runs):
     runs.reverse()
 
-    ys = [10 * (i + 1) for i in xrange(len(runs))]
+    ys = [6 * (i+1) for i in xrange(len(runs))]
     ax = fig.add_subplot(subplot)
     ax.set_title(title)
     ax.set_yticks(ys)
@@ -27,13 +27,9 @@ def plot(subplot, title, prefix, runs):
 
     go = [0] * len(runs)
     mpsc = [0] * len(runs)
-    msqueue = [0] * len(runs)
-    segqueue = [0] * len(runs)
+    futures_channel = [0] * len(runs)
     chan = [0] * len(runs)
-    channel = [0] * len(runs)
-    atomicring = [0] * len(runs)
-    atomicringqueue = [0] * len(runs)
-    mpmc = [0] * len(runs)
+    crossbeam_channel = [0] * len(runs)
 
     for (i, run) in enumerate(runs):
         for (test, lang, impl, secs) in results:
@@ -42,70 +38,47 @@ def plot(subplot, title, prefix, runs):
                     go[i] = secs
                 if lang == 'Rust' and impl == 'mpsc':
                     mpsc[i] = secs
-                if lang == 'Rust' and impl == 'MsQueue':
-                    msqueue[i] = secs
-                if lang == 'Rust' and impl == 'SegQueue':
-                    segqueue[i] = secs
+                if lang == 'Rust' and impl == 'futures-channel':
+                    futures_channel[i] = secs
                 if lang == 'Rust' and impl == 'chan':
                     chan[i] = secs
-                if lang == 'Rust' and impl == 'channel':
-                    channel[i] = secs
-                if lang == 'Rust' and impl == 'atomicring':
-                    atomicring[i] = secs
-                if lang == 'Rust' and impl == 'atomicringqueue':
-                    atomicringqueue[i] = secs
-                if lang == 'Rust' and impl == 'mpmc':
-                    mpmc[i] = secs
+                if lang == 'Rust' and impl == 'crossbeam-channel':
+                    crossbeam_channel[i] = secs
 
     opts = dict(height=0.7, align='center')
-    ax.barh([y - 3 for y in ys], go, color='skyblue', **opts)
-    ax.barh([y - 2 for y in ys], channel, color='red', **opts)
-    ax.barh([y - 1 for y in ys], mpsc, color='black', **opts)
-    ax.barh([y + 0 for y in ys], chan, color='orange', **opts)
-    ax.barh([y + 1 for y in ys], msqueue, color='blue', **opts)
-    ax.barh([y + 2 for y in ys], segqueue, color='green', **opts)
-    ax.barh([y + 3 for y in ys], atomicring, color='purple', **opts)
-    ax.barh([y + 4 for y in ys], atomicringqueue, color='purple', **opts)
-    ax.barh([y + 5 for y in ys], mpmc, color='magenta', **opts)
+    ax.barh([y-2 for y in ys], go, color='skyblue', **opts)
+    ax.barh([y-1 for y in ys], crossbeam_channel, color='red', **opts)
+    ax.barh([y+0 for y in ys], chan, color='orange', **opts)
+    ax.barh([y+1 for y in ys], mpsc, color='black', **opts)
+    ax.barh([y+2 for y in ys], futures_channel, color='blue', **opts)
 
-    m = int(max(go + mpsc + msqueue + segqueue + chan + channel + atomicring + atomicringqueue + mpmc) * 1.2)
+    m = int(max(go + mpsc + futures_channel + chan + crossbeam_channel) * 1.3)
     if m < 10:
         ax.set_xticks(range(m + 1))
     elif m < 50:
-        ax.set_xticks([x * 5 for x in range(m / 5 + 1)])
-    elif m < 200:
-        ax.set_xticks([x * 20 for x in range(m / 20 + 1)])
+        ax.set_xticks([x*5 for x in range(m / 5 + 1)])
+    elif m < 100:
+        ax.set_xticks([x*10 for x in range(m / 10 + 1)])
+    elif m < 100:
+        ax.set_xticks([x*20 for x in range(m / 20 + 1)])
     else:
-        ax.set_xticks([x * 100 for x in range(m / 100 + 1)])
+        ax.set_xticks([x*100 for x in range(m / 100 + 1)])
 
     for (x, y) in zip(go, ys):
         if x > 0:
-            ax.text(x + m / 200., y - 3 - 0.3, 'Go', fontsize=7)
-    for (x, y) in zip(channel, ys):
+            ax.text(x+m/200., y-2-0.3, 'Go', fontsize=9)
+    for (x, y) in zip(crossbeam_channel, ys):
         if x > 0:
-            ax.text(x + m / 200., y - 2 - 0.3, 'crossbeam-channel', fontsize=7)
-    for (x, y) in zip(mpsc, ys):
-        if x > 0:
-            ax.text(x + m / 200., y - 1 - 0.3, 'mpsc', fontsize=7)
+            ax.text(x+m/200., y-1-0.3, 'crossbeam-channel', fontsize=9)
     for (x, y) in zip(chan, ys):
         if x > 0:
-            ax.text(x + m / 200., y + 0 - 0.3, 'chan', fontsize=7)
-    for (x, y) in zip(msqueue, ys):
+            ax.text(x+m/200., y+0-0.3, 'chan', fontsize=9)
+    for (x, y) in zip(mpsc, ys):
         if x > 0:
-            ax.text(x + m / 200., y + 1 - 0.3, 'MsQueue', fontsize=7)
-    for (x, y) in zip(segqueue, ys):
+            ax.text(x+m/200., y+1-0.3, 'mpsc', fontsize=9)
+    for (x, y) in zip(futures_channel, ys):
         if x > 0:
-            ax.text(x + m / 200., y + 2 - 0.3, 'SegQueue', fontsize=7)
-    for (x, y) in zip(atomicring, ys):
-        if x > 0:
-            ax.text(x + m / 200., y + 3 - 0.3, 'atomicring', fontsize=7)
-    for (x, y) in zip(atomicringqueue, ys):
-        if x > 0:
-            ax.text(x + m / 200., y + 4 - 0.3, 'atomicringqueue', fontsize=7)
-    for (x, y) in zip(mpmc, ys):
-        if x > 0:
-            ax.text(x + m / 200., y + 5 - 0.3, 'mpmc', fontsize=7)
-
+            ax.text(x+m/200., y+2-0.3, 'futures-channel', fontsize=9)
 
 plot(
     221,
@@ -135,27 +108,8 @@ plot(
     ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
-legend = [
-    ('Go channel', 'skyblue'),
-    ('crossbeam-channel', 'red'),
-    ('std::sync::mpsc', 'black'),
-    ('chan', 'orange'),
-    ('crossbeam::sync::MsQueue', 'blue'),
-    ('crossbeam::sync::SegQueue', 'green'),
-    ('atomicring::AtomicRingBuffer', 'purple'),
-    ('atomicring::AtomicRingQueue', 'purple'),
-    ('mpmc::Queue', 'magenta'),
-]
-legend.reverse()
-fig.legend(
-    [mpatches.Patch(label=label, color=color) for (label, color) in legend],
-    [label for (label, color) in legend],
-    'upper center',
-    ncol=2,
-)
-
 plt.subplots_adjust(
-    top=0.88,
+    top=0.95,
     bottom=0.05,
     left=0.1,
     right=0.95,

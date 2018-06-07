@@ -52,17 +52,13 @@ func mpsc(cap int) {
         }()
     }
 
-    go func() {
-        for i := 0; i < MESSAGES; i++ {
-            <-c
-        }
-        done <- true
-    }()
+    for i := 0; i < MESSAGES; i++ {
+        <-c
+    }
 
     for t := 0; t < THREADS; t++ {
         <-done
     }
-    <-done
 }
 
 func mpmc(cap int) {
@@ -89,8 +85,6 @@ func mpmc(cap int) {
 
     for t := 0; t < THREADS; t++ {
         <-done
-    }
-    for t := 0; t < THREADS; t++ {
         <-done
     }
 }
@@ -113,22 +107,18 @@ func select_rx(cap int) {
     go producer(c2)
     go producer(c3)
 
-    go func() {
-        for i := 0; i < MESSAGES; i++ {
-            select {
-            case <-c0:
-            case <-c1:
-            case <-c2:
-            case <-c3:
-            }
+    for i := 0; i < MESSAGES; i++ {
+        select {
+        case <-c0:
+        case <-c1:
+        case <-c2:
+        case <-c3:
         }
-        done <- true
-    }()
+    }
 
     for t := 0; t < THREADS; t++ {
         <-done
     }
-    <-done
 }
 
 func select_both(cap int) {
@@ -165,8 +155,6 @@ func select_both(cap int) {
 
     for t := 0; t < THREADS; t++ {
         <-done
-    }
-    for t := 0; t < THREADS; t++ {
         <-done
     }
 }

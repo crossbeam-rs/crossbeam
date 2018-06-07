@@ -1,21 +1,19 @@
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel;
-pub mod testtype;
-use testtype::TestType;
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+extern crate crossbeam_channel as channel;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
-type TxRx = (Sender<TestType>, Receiver<TestType>);
+type TxRx = (channel::Sender<i32>, channel::Receiver<i32>);
 
 fn seq<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     for i in 0..MESSAGES {
-        tx.send(TestType::new(i));
+        tx.send(i as i32);
     }
+
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
     }
@@ -27,14 +25,13 @@ fn spsc<F: Fn() -> TxRx>(make: F) {
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                tx.send(TestType::new(i));
+                tx.send(i as i32);
             }
         });
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                rx.recv().unwrap();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            rx.recv().unwrap();
+        }
     });
 }
 
@@ -45,15 +42,14 @@ fn mpsc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i));
+                    tx.send(i as i32);
                 }
             });
         }
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                rx.recv().unwrap();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            rx.recv().unwrap();
+        }
     });
 }
 
@@ -64,7 +60,7 @@ fn mpmc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i));
+                    tx.send(i as i32);
                 }
             });
         }
@@ -82,21 +78,20 @@ fn select_rx<F: Fn() -> TxRx>(make: F) {
     let chans = (0..THREADS).map(|_| make()).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
-        for &(ref tx, _) in &chans {
+        for (tx, _) in &chans {
+            let tx = tx.clone();
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i));
+                    tx.send(i as i32);
                 }
             });
         }
 
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                select! {
-                    recv(chans.iter().map(|c| &c.1), msg, _) => assert!(msg.is_some()),
-                }
+        for _ in 0..MESSAGES {
+            select! {
+                recv(chans.iter().map(|c| &c.1), msg, _) => assert!(msg.is_some()),
             }
-        });
+        }
     });
 }
 
@@ -108,7 +103,7 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     select! {
-                        send(chans.iter().map(|c| &c.0), TestType::new(i), _) => {}
+                        send(chans.iter().map(|c| &c.0), i as i32, _) => {}
                     }
                 }
             });
@@ -135,35 +130,35 @@ fn main() {
             println!(
                 "{:25} {:15} {:7.3} sec",
                 $name,
-                "Rust channel",
+                "Rust crossbeam-channel",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
         }
     }
 
-    run!("bounded0_mpmc", mpmc(|| bounded(0)));
-    run!("bounded0_mpsc", mpsc(|| bounded(0)));
-    run!("bounded0_select_both", select_both(|| bounded(0)));
-    run!("bounded0_select_rx", select_rx(|| bounded(0)));
-    run!("bounded0_spsc", spsc(|| bounded(0)));
+    run!("bounded0_mpmc", mpmc(|| channel::bounded(0)));
+    run!("bounded0_mpsc", mpsc(|| channel::bounded(0)));
+    run!("bounded0_select_both", select_both(|| channel::bounded(0)));
+    run!("bounded0_select_rx", select_rx(|| channel::bounded(0)));
+    run!("bounded0_spsc", spsc(|| channel::bounded(0)));
 
-    run!("bounded1_mpmc", mpmc(|| bounded(1)));
-    run!("bounded1_mpsc", mpsc(|| bounded(1)));
-    run!("bounded1_select_both", select_both(|| bounded(1)));
-    run!("bounded1_select_rx", select_rx(|| bounded(1)));
-    run!("bounded1_spsc", spsc(|| bounded(1)));
+    run!("bounded1_mpmc", mpmc(|| channel::bounded(1)));
+    run!("bounded1_mpsc", mpsc(|| channel::bounded(1)));
+    run!("bounded1_select_both", select_both(|| channel::bounded(1)));
+    run!("bounded1_select_rx", select_rx(|| channel::bounded(1)));
+    run!("bounded1_spsc", spsc(|| channel::bounded(1)));
 
-    run!("bounded_mpmc", mpmc(|| bounded(MESSAGES)));
-    run!("bounded_mpsc", mpsc(|| bounded(MESSAGES)));
-    run!("bounded_select_both", select_both(|| bounded(MESSAGES)));
-    run!("bounded_select_rx", select_rx(|| bounded(MESSAGES)));
-    run!("bounded_seq", seq(|| bounded(MESSAGES)));
-    run!("bounded_spsc", spsc(|| bounded(MESSAGES)));
+    run!("bounded_mpmc", mpmc(|| channel::bounded(MESSAGES)));
+    run!("bounded_mpsc", mpsc(|| channel::bounded(MESSAGES)));
+    run!("bounded_select_both", select_both(|| channel::bounded(MESSAGES)));
+    run!("bounded_select_rx", select_rx(|| channel::bounded(MESSAGES)));
+    run!("bounded_seq", seq(|| channel::bounded(MESSAGES)));
+    run!("bounded_spsc", spsc(|| channel::bounded(MESSAGES)));
 
-    run!("unbounded_mpmc", mpmc(|| unbounded()));
-    run!("unbounded_mpsc", mpsc(|| unbounded()));
-    run!("unbounded_select_both", select_both(|| unbounded()));
-    run!("unbounded_select_rx", select_rx(|| unbounded()));
-    run!("unbounded_seq", seq(|| unbounded()));
-    run!("unbounded_spsc", spsc(|| unbounded()));
+    run!("unbounded_mpmc", mpmc(|| channel::unbounded()));
+    run!("unbounded_mpsc", mpsc(|| channel::unbounded()));
+    run!("unbounded_select_both", select_both(|| channel::unbounded()));
+    run!("unbounded_select_rx", select_rx(|| channel::unbounded()));
+    run!("unbounded_seq", seq(|| channel::unbounded()));
+    run!("unbounded_spsc", spsc(|| channel::unbounded()));
 }

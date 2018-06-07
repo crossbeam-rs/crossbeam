@@ -2,20 +2,18 @@
 extern crate chan;
 extern crate crossbeam;
 
-use chan::{Sender, Receiver};
-pub mod testtype;
-use testtype::TestType;
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
-type TxRx = (Sender<TestType>, Receiver<TestType>);
+type TxRx = (chan::Sender<i32>, chan::Receiver<i32>);
 
 fn seq<F: Fn() -> TxRx>(make: F) {
     let (tx, rx) = make();
 
     for i in 0..MESSAGES {
-        tx.send(TestType::new(i));
+        tx.send(i as i32);
     }
+
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
     }
@@ -27,14 +25,13 @@ fn spsc<F: Fn() -> TxRx>(make: F) {
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                tx.send(TestType::new(i));
+                tx.send(i as i32);
             }
         });
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                rx.recv().unwrap();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            rx.recv().unwrap();
+        }
     });
 }
 
@@ -45,15 +42,14 @@ fn mpsc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i));
+                    tx.send(i as i32);
                 }
             });
         }
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                rx.recv().unwrap();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            rx.recv().unwrap();
+        }
     });
 }
 
@@ -64,10 +60,11 @@ fn mpmc<F: Fn() -> TxRx>(make: F) {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i));
+                    tx.send(i as i32);
                 }
             });
         }
+
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
@@ -82,10 +79,11 @@ fn select_rx<F: Fn() -> TxRx>(make: F) {
     let chans = (0..THREADS).map(|_| make()).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
-        for &(ref tx, _) in &chans {
+        for (tx, _) in &chans {
+            let tx = tx.clone();
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(TestType::new(i));
+                    tx.send(i as i32);
                 }
             });
         }
@@ -121,10 +119,10 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
                 let tx3 = &chans[3].0;
                 for i in 0..MESSAGES / THREADS {
                     chan_select! {
-                        tx0.send(TestType::new(i)) => {},
-                        tx1.send(TestType::new(i)) => {},
-                        tx2.send(TestType::new(i)) => {},
-                        tx3.send(TestType::new(i)) => {},
+                        tx0.send(i as i32) => {},
+                        tx1.send(i as i32) => {},
+                        tx2.send(i as i32) => {},
+                        tx3.send(i as i32) => {},
                     }
                 }
             });
