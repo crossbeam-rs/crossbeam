@@ -2,11 +2,11 @@
 //!
 //! There are five flavors:
 //!
-//! 1. `after` - A channel that delivers a message after a certain amount of time.
-//! 2. `array` - A bounded channel based on a preallocated array.
-//! 3. `list` - An unbounded channel implemented as a linked list.
-//! 4. `tick` - A channel that delivers messages periodically.
-//! 5. `zero` - A zero-capacity channel.
+//! 1. `after` - Channel that delivers a message after a certain amount of time.
+//! 2. `array` - Bounded channel based on a preallocated array.
+//! 3. `list` - Unbounded channel implemented as a linked list.
+//! 4. `tick` - Channel that delivers messages periodically.
+//! 5. `zero` - Zero-capacity channel.
 
 pub mod after;
 pub mod array;

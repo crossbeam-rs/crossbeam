@@ -1,4 +1,4 @@
-//! An unbounded channel implemented as a linked list.
+//! Unbounded channel implemented as a linked list.
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -21,7 +21,7 @@ use internal::utils::Backoff;
 /// The maximum number of messages a block can hold.
 const BLOCK_CAP: usize = 32;
 
-/// A slot in a block.
+/// Slot in a block.
 struct Slot<T> {
     /// The message.
     msg: ManuallyDrop<T>,
@@ -35,7 +35,7 @@ pub struct ListToken {
     /// Slot to read from or write to.
     slot: *const u8,
 
-    /// A guard keeping alive the block that contains the slot.
+    /// Guard keeping alive the block that contains the slot.
     guard: Option<Guard>,
 }
 
@@ -49,7 +49,7 @@ impl Default for ListToken {
     }
 }
 
-/// A block in a linked list.
+/// Block in a linked list.
 ///
 /// Each block in the list can hold up to `BLOCK_CAP` messages.
 struct Block<T> {
@@ -76,7 +76,7 @@ impl<T> Block<T> {
     }
 }
 
-/// A position in the channel (index and block).
+/// Position in the channel (index and block).
 ///
 /// This struct describes the current position of the head and the tail in a linked list.
 struct Position<T> {
@@ -87,7 +87,7 @@ struct Position<T> {
     block: Atomic<Block<T>>,
 }
 
-/// An unbounded channel implemented as a linked list.
+/// Unbounded channel implemented as a linked list.
 ///
 /// Each message sent into the channel is assigned a sequence number, i.e. an index. Indices are
 /// represented as numbers of type `usize` and wrap on overflow.
@@ -440,10 +440,10 @@ impl<T> Drop for Channel<T> {
     }
 }
 
-/// A receiver handle to a channel.
+/// Receiver handle to a channel.
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 
-/// A sender handle to a channel.
+/// Sender handle to a channel.
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {

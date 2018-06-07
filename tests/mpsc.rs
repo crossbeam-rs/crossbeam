@@ -21,7 +21,7 @@ use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TryS
 use std::time::Duration;
 
 pub struct Sender<T> {
-    inner: channel::Sender<T>,
+    pub inner: channel::Sender<T>,
     disconnected: channel::Receiver<()>,
     is_disconnected: Arc<AtomicBool>,
 }
@@ -48,7 +48,7 @@ impl<T> Clone for Sender<T> {
 }
 
 pub struct SyncSender<T> {
-    inner: channel::Sender<T>,
+    pub inner: channel::Sender<T>,
     disconnected: channel::Receiver<()>,
     is_disconnected: Arc<AtomicBool>,
 }
@@ -93,7 +93,7 @@ impl<T> Clone for SyncSender<T> {
 }
 
 pub struct Receiver<T> {
-    inner: channel::Receiver<T>,
+    pub inner: channel::Receiver<T>,
     _disconnected: channel::Sender<()>,
     is_disconnected: Arc<AtomicBool>,
 }
@@ -1556,7 +1556,7 @@ mod select_tests {
                 $(
                     recv(($rx).inner, msg) => {
                         let $name = match msg {
-                            None => Err(RecvError),
+                            None => Err(::std::sync::mpsc::RecvError),
                             Some(msg) => Ok(msg),
                         };
                         $code

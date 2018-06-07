@@ -1,4 +1,4 @@
-//! A bounded channel based on a preallocated array.
+//! Bounded channel based on a preallocated array.
 //!
 //! This flavor has a fixed, positive capacity.
 
@@ -17,7 +17,7 @@ use internal::select::{CaseId, Select, Token};
 use internal::sync_waker::SyncWaker;
 use internal::utils::Backoff;
 
-/// A slot in the channel.
+/// Slot in a channel.
 struct Slot<T> {
     /// The current stamp.
     ///
@@ -50,7 +50,7 @@ impl Default for ArrayToken {
     }
 }
 
-/// A bounded channel based on a preallocated array.
+/// Bounded channel based on a preallocated array.
 ///
 /// The implementation is based on Dmitry Vyukov's bounded MPMC queue:
 ///
@@ -498,10 +498,10 @@ impl<T> Drop for Channel<T> {
     }
 }
 
-/// A receiver handle to a channel.
+/// Receiver handle to a channel.
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 
-/// A sender handle to a channel.
+/// Sender handle to a channel.
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {

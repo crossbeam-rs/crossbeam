@@ -1,4 +1,4 @@
-//! A channel that delivers a message after a certain amount of time.
+//! Channel that delivers a message after a certain amount of time.
 //!
 //! Messages cannot be sent in this kind of channel; they appear implicitly.
 
@@ -16,7 +16,7 @@ use internal::utils;
 /// Result of a receive operation.
 pub type AfterToken = Option<Instant>;
 
-/// A channel that delivers a message after a certain amount of time.
+/// Channel that delivers a message after a certain amount of time.
 pub struct Channel {
     /// The instant at which the message will be delivered.
     deadline: Instant,

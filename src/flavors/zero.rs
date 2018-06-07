@@ -1,4 +1,4 @@
-//! A zero-capacity channel.
+//! Zero-capacity channel.
 //!
 //! This kind of channel also known as *rendezvous* channel.
 
@@ -19,10 +19,10 @@ use internal::waker::Waker;
 
 // TODO: anything that calls read/write in any flavor should have an abort guard
 
-/// A pointer to a packet.
+/// Pointer to a packet.
 pub type ZeroToken = usize;
 
-/// A slot for passing one message from a sender to a receiver.
+/// Slot for passing one message from a sender to a receiver.
 struct Packet<T> {
     /// Equals `true` if the packet is allocated on the stack.
     on_stack: bool,
@@ -83,7 +83,7 @@ struct Inner {
     is_closed: bool,
 }
 
-/// A zero-capacity channel.
+/// Zero-capacity channel.
 pub struct Channel<T> {
     /// Inner representation of the channel.
     inner: Mutex<Inner>,
@@ -391,10 +391,10 @@ impl<T> Channel<T> {
     }
 }
 
-/// A receiver handle to a channel.
+/// Receiver handle to a channel.
 pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 
-/// A sender handle to a channel.
+/// Sender handle to a channel.
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> Select for Receiver<'a, T> {

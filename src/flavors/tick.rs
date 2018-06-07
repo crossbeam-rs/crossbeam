@@ -1,4 +1,4 @@
-//! A channel that delivers messages periodically.
+//! Channel that delivers messages periodically.
 //!
 //! Messages cannot be sent in this kind of channel; they appear implicitly.
 
@@ -14,7 +14,7 @@ use internal::select::{CaseId, Select, Token};
 /// Result of a receive operation.
 pub type TickToken = Option<Instant>;
 
-/// A channel that delivers messages periodically.
+/// Channel that delivers messages periodically.
 pub struct Channel {
     /// The instant at which the next message will be delivered.
     // TODO: Use `Arc<AtomicCell<Instant>>` here once we implement `AtomicCell`.

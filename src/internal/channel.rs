@@ -1,3 +1,5 @@
+//! The channel interface.
+
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::isize;
@@ -10,27 +12,32 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use flavors;
-use internal::select::CaseId;
-use internal::select::Select;
-use internal::select::Token;
+use internal::select::{CaseId, Select, Token};
 
-// TODO: explain
-// loop { try; register; is_blocked; unregister; accept; write/read }
-
+/// A channel in the form of one of the different flavors.
 pub struct Channel<T> {
+    /// The number of senders associated with this channel.
     senders: AtomicUsize,
-    flavor: Flavor<T>,
+
+    /// This channel's flavor.
+    flavor: ChannelFlavor<T>,
 }
 
-enum Flavor<T> {
+/// Channel flavors.
+enum ChannelFlavor<T> {
+    /// Bounded channel based on a preallocated array.
     Array(flavors::array::Channel<T>),
+
+    /// Unbounded channel implemented as a linked list.
     List(flavors::list::Channel<T>),
+
+    /// Zero-capacity channel.
     Zero(flavors::zero::Channel<T>),
 }
 
 /// Creates a channel of unbounded capacity.
 ///
-/// This type of channel can hold any number of messages; i.e. it has infinite capacity.
+/// This type of channel can hold any number of messages (i.e. it has infinite capacity).
 ///
 /// # Examples
 ///
@@ -60,11 +67,11 @@ enum Flavor<T> {
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
-        flavor: Flavor::List(flavors::list::Channel::new()),
+        flavor: ChannelFlavor::List(flavors::list::Channel::new()),
     });
 
     let s = Sender::new(chan.clone());
-    let r = Receiver(Inner::Channel(chan));
+    let r = Receiver(ReceiverFlavor::Channel(chan));
     (s, r)
 }
 
@@ -72,7 +79,7 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 ///
 /// This type of channel has an internal buffer of length `cap` in which messages get queued.
 ///
-/// An rather special case is zero-capacity channel, also known as *rendezvous* channel. Such a
+/// A rather special case is zero-capacity channel, also known as *rendezvous* channel. Such a
 /// channel cannot hold any messages since its buffer is of length zero. Instead, send and receive
 /// operations must be executing at the same time in order to pair up and pass the message over.
 ///
@@ -89,8 +96,8 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// s.send(1);
 ///
 /// thread::spawn(move || {
-///     // This call blocks the current thread because the channel is full. It will be able to
-///     // complete only after the first message is received.
+///     // This call blocks the current thread because the channel is full.
+///     // It will be able to complete only after the first message is received.
 ///     s.send(2);
 /// });
 ///
@@ -107,8 +114,8 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// let (s, r) = channel::bounded(0);
 ///
 /// thread::spawn(move || {
-///     // This call blocks the current thread until a receive operation appears on the other side
-///     // of the channel.
+///     // This call blocks the current thread until a receive operation appears
+///     // on the other side of the channel.
 ///     s.send(1);
 /// });
 ///
@@ -120,15 +127,15 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
         senders: AtomicUsize::new(0),
         flavor: {
             if cap == 0 {
-                Flavor::Zero(flavors::zero::Channel::new())
+                ChannelFlavor::Zero(flavors::zero::Channel::new())
             } else {
-                Flavor::Array(flavors::array::Channel::with_capacity(cap))
+                ChannelFlavor::Array(flavors::array::Channel::with_capacity(cap))
             }
         },
     });
 
     let s = Sender::new(chan.clone());
-    let r = Receiver(Inner::Channel(chan));
+    let r = Receiver(ReceiverFlavor::Channel(chan));
     (s, r)
 }
 
@@ -178,7 +185,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// # }
 /// ```
 pub fn after(duration: Duration) -> Receiver<Instant> {
-    Receiver(Inner::After(flavors::after::Channel::new(duration)))
+    Receiver(ReceiverFlavor::After(flavors::after::Channel::new(duration)))
 }
 
 /// Creates a receiver that delivers messages periodically.
@@ -219,7 +226,7 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// assert!(eq(Instant::now(), start + ms(700)));
 /// ```
 pub fn tick(duration: Duration) -> Receiver<Instant> {
-    Receiver(Inner::Tick(flavors::tick::Channel::new(duration)))
+    Receiver(ReceiverFlavor::Tick(flavors::tick::Channel::new(duration)))
 }
 
 /// The sending side of a channel.
@@ -290,9 +297,9 @@ impl<T> Sender<T> {
     /// ```
     pub fn send(&self, msg: T) {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.send(msg),
-            Flavor::List(chan) => chan.send(msg),
-            Flavor::Zero(chan) => chan.send(msg),
+            ChannelFlavor::Array(chan) => chan.send(msg),
+            ChannelFlavor::List(chan) => chan.send(msg),
+            ChannelFlavor::Zero(chan) => chan.send(msg),
         }
     }
 
@@ -313,9 +320,9 @@ impl<T> Sender<T> {
     /// ```
     pub fn is_empty(&self) -> bool {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.is_empty(),
-            Flavor::List(chan) => chan.is_empty(),
-            Flavor::Zero(chan) => chan.is_empty(),
+            ChannelFlavor::Array(chan) => chan.is_empty(),
+            ChannelFlavor::List(chan) => chan.is_empty(),
+            ChannelFlavor::Zero(chan) => chan.is_empty(),
         }
     }
 
@@ -336,9 +343,9 @@ impl<T> Sender<T> {
     /// ```
     pub fn is_full(&self) -> bool {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.is_full(),
-            Flavor::List(chan) => chan.is_full(),
-            Flavor::Zero(chan) => chan.is_full(),
+            ChannelFlavor::Array(chan) => chan.is_full(),
+            ChannelFlavor::List(chan) => chan.is_full(),
+            ChannelFlavor::Zero(chan) => chan.is_full(),
         }
     }
 
@@ -358,9 +365,9 @@ impl<T> Sender<T> {
     /// ```
     pub fn len(&self) -> usize {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.len(),
-            Flavor::List(chan) => chan.len(),
-            Flavor::Zero(chan) => chan.len(),
+            ChannelFlavor::Array(chan) => chan.len(),
+            ChannelFlavor::List(chan) => chan.len(),
+            ChannelFlavor::Zero(chan) => chan.len(),
         }
     }
 
@@ -382,9 +389,9 @@ impl<T> Sender<T> {
     /// ```
     pub fn capacity(&self) -> Option<usize> {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.capacity(),
-            Flavor::List(chan) => chan.capacity(),
-            Flavor::Zero(chan) => chan.capacity(),
+            ChannelFlavor::Array(chan) => chan.capacity(),
+            ChannelFlavor::List(chan) => chan.capacity(),
+            ChannelFlavor::Zero(chan) => chan.capacity(),
         }
     }
 }
@@ -393,9 +400,9 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.0.senders.fetch_sub(1, Ordering::SeqCst) == 1 {
             match &self.0.flavor {
-                Flavor::Array(chan) => chan.close(),
-                Flavor::List(chan) => chan.close(),
-                Flavor::Zero(chan) => chan.close(),
+                ChannelFlavor::Array(chan) => chan.close(),
+                ChannelFlavor::List(chan) => chan.close(),
+                ChannelFlavor::Zero(chan) => chan.close(),
             };
         }
     }
@@ -459,9 +466,9 @@ impl<T> RefUnwindSafe for Sender<T> {}
 /// println!("Waiting...");
 /// println!("{}", r.recv().unwrap()); // Received after 2 seconds.
 /// ```
-pub struct Receiver<T>(Inner<T>);
+pub struct Receiver<T>(ReceiverFlavor<T>);
 
-pub enum Inner<T> {
+pub enum ReceiverFlavor<T> {
     Channel(Arc<Channel<T>>),
     After(flavors::after::Channel),
     Tick(flavors::tick::Channel),
@@ -474,9 +481,9 @@ impl<T> Receiver<T> {
     /// Returns a unique identifier for the channel.
     fn channel_id(&self) -> usize {
         match &self.0 {
-            Inner::Channel(chan) => &**chan as *const Channel<T> as usize,
-            Inner::After(chan) => chan.channel_id(),
-            Inner::Tick(chan) => chan.channel_id(),
+            ReceiverFlavor::Channel(chan) => &**chan as *const Channel<T> as usize,
+            ReceiverFlavor::After(chan) => chan.channel_id(),
+            ReceiverFlavor::Tick(chan) => chan.channel_id(),
         }
     }
 
@@ -509,15 +516,15 @@ impl<T> Receiver<T> {
     /// ```
     pub fn recv(&self) -> Option<T> {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.recv(),
-                Flavor::List(chan) => chan.recv(),
-                Flavor::Zero(chan) => chan.recv(),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.recv(),
+                ChannelFlavor::List(chan) => chan.recv(),
+                ChannelFlavor::Zero(chan) => chan.recv(),
             },
-            Inner::After(chan) => unsafe {
+            ReceiverFlavor::After(chan) => unsafe {
                 mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.recv())
             },
-            Inner::Tick(chan) => unsafe {
+            ReceiverFlavor::Tick(chan) => unsafe {
                 mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.recv())
             },
         }
@@ -568,13 +575,13 @@ impl<T> Receiver<T> {
     /// ```
     pub fn is_empty(&self) -> bool {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.is_empty(),
-                Flavor::List(chan) => chan.is_empty(),
-                Flavor::Zero(chan) => chan.is_empty(),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.is_empty(),
+                ChannelFlavor::List(chan) => chan.is_empty(),
+                ChannelFlavor::Zero(chan) => chan.is_empty(),
             },
-            Inner::After(chan) => chan.is_empty(),
-            Inner::Tick(chan) => chan.is_empty(),
+            ReceiverFlavor::After(chan) => chan.is_empty(),
+            ReceiverFlavor::Tick(chan) => chan.is_empty(),
         }
     }
 
@@ -595,13 +602,13 @@ impl<T> Receiver<T> {
     /// ```
     pub fn is_full(&self) -> bool {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.is_full(),
-                Flavor::List(chan) => chan.is_full(),
-                Flavor::Zero(chan) => chan.is_full(),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.is_full(),
+                ChannelFlavor::List(chan) => chan.is_full(),
+                ChannelFlavor::Zero(chan) => chan.is_full(),
             },
-            Inner::After(chan) => !chan.is_empty(),
-            Inner::Tick(chan) => !chan.is_empty(),
+            ReceiverFlavor::After(chan) => !chan.is_empty(),
+            ReceiverFlavor::Tick(chan) => !chan.is_empty(),
         }
     }
 
@@ -621,13 +628,13 @@ impl<T> Receiver<T> {
     /// ```
     pub fn len(&self) -> usize {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.len(),
-                Flavor::List(chan) => chan.len(),
-                Flavor::Zero(chan) => chan.len(),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.len(),
+                ChannelFlavor::List(chan) => chan.len(),
+                ChannelFlavor::Zero(chan) => chan.len(),
             },
-            Inner::After(chan) => chan.len(),
-            Inner::Tick(chan) => chan.len(),
+            ReceiverFlavor::After(chan) => chan.len(),
+            ReceiverFlavor::Tick(chan) => chan.len(),
         }
     }
 
@@ -649,13 +656,13 @@ impl<T> Receiver<T> {
     /// ```
     pub fn capacity(&self) -> Option<usize> {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.capacity(),
-                Flavor::List(chan) => chan.capacity(),
-                Flavor::Zero(chan) => chan.capacity(),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.capacity(),
+                ChannelFlavor::List(chan) => chan.capacity(),
+                ChannelFlavor::Zero(chan) => chan.capacity(),
             },
-            Inner::After(chan) => chan.capacity(),
-            Inner::Tick(chan) => chan.capacity(),
+            ReceiverFlavor::After(chan) => chan.capacity(),
+            ReceiverFlavor::Tick(chan) => chan.capacity(),
         }
     }
 }
@@ -663,9 +670,9 @@ impl<T> Receiver<T> {
 impl<T> Clone for Receiver<T> {
     fn clone(&self) -> Self {
         let inner = match &self.0 {
-            Inner::Channel(arc) => Inner::Channel(arc.clone()),
-            Inner::After(chan) => Inner::After(chan.clone()),
-            Inner::Tick(chan) => Inner::Tick(chan.clone()),
+            ReceiverFlavor::Channel(arc) => ReceiverFlavor::Channel(arc.clone()),
+            ReceiverFlavor::After(chan) => ReceiverFlavor::After(chan.clone()),
+            ReceiverFlavor::Tick(chan) => ReceiverFlavor::Tick(chan.clone()),
         };
         Receiver(inner)
     }
@@ -722,17 +729,17 @@ impl<T> RefUnwindSafe for Receiver<T> {}
 impl<T> Select for Sender<T> {
     fn try(&self, token: &mut Token) -> bool {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.sender().try(token),
-            Flavor::List(chan) => chan.sender().try(token),
-            Flavor::Zero(chan) => chan.sender().try(token),
+            ChannelFlavor::Array(chan) => chan.sender().try(token),
+            ChannelFlavor::List(chan) => chan.sender().try(token),
+            ChannelFlavor::Zero(chan) => chan.sender().try(token),
         }
     }
 
     fn retry(&self, token: &mut Token) -> bool {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.sender().retry(token),
-            Flavor::List(chan) => chan.sender().retry(token),
-            Flavor::Zero(chan) => chan.sender().retry(token),
+            ChannelFlavor::Array(chan) => chan.sender().retry(token),
+            ChannelFlavor::List(chan) => chan.sender().retry(token),
+            ChannelFlavor::Zero(chan) => chan.sender().retry(token),
         }
     }
 
@@ -742,118 +749,118 @@ impl<T> Select for Sender<T> {
 
     fn register(&self, token: &mut Token, case_id: CaseId) -> bool {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.sender().register(token, case_id),
-            Flavor::List(chan) => chan.sender().register(token, case_id),
-            Flavor::Zero(chan) => chan.sender().register(token, case_id),
+            ChannelFlavor::Array(chan) => chan.sender().register(token, case_id),
+            ChannelFlavor::List(chan) => chan.sender().register(token, case_id),
+            ChannelFlavor::Zero(chan) => chan.sender().register(token, case_id),
         }
     }
 
     fn unregister(&self, case_id: CaseId) {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.sender().unregister(case_id),
-            Flavor::List(chan) => chan.sender().unregister(case_id),
-            Flavor::Zero(chan) => chan.sender().unregister(case_id),
+            ChannelFlavor::Array(chan) => chan.sender().unregister(case_id),
+            ChannelFlavor::List(chan) => chan.sender().unregister(case_id),
+            ChannelFlavor::Zero(chan) => chan.sender().unregister(case_id),
         }
     }
 
     fn accept(&self, token: &mut Token) -> bool {
         match &self.0.flavor {
-            Flavor::Array(chan) => chan.sender().accept(token),
-            Flavor::List(chan) => chan.sender().accept(token),
-            Flavor::Zero(chan) => chan.sender().accept(token),
+            ChannelFlavor::Array(chan) => chan.sender().accept(token),
+            ChannelFlavor::List(chan) => chan.sender().accept(token),
+            ChannelFlavor::Zero(chan) => chan.sender().accept(token),
         }
     }
 }
 
 pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) {
     match &s.0.flavor {
-        Flavor::Array(chan) => chan.write(token, msg),
-        Flavor::List(chan) => chan.write(token, msg),
-        Flavor::Zero(chan) => chan.write(token, msg),
+        ChannelFlavor::Array(chan) => chan.write(token, msg),
+        ChannelFlavor::List(chan) => chan.write(token, msg),
+        ChannelFlavor::Zero(chan) => chan.write(token, msg),
     }
 }
 
 impl<T> Select for Receiver<T> {
     fn try(&self, token: &mut Token) -> bool {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.receiver().try(token),
-                Flavor::List(chan) => chan.receiver().try(token),
-                Flavor::Zero(chan) => chan.receiver().try(token),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.receiver().try(token),
+                ChannelFlavor::List(chan) => chan.receiver().try(token),
+                ChannelFlavor::Zero(chan) => chan.receiver().try(token),
             },
-            Inner::After(chan) => chan.try(token),
-            Inner::Tick(chan) => chan.try(token),
+            ReceiverFlavor::After(chan) => chan.try(token),
+            ReceiverFlavor::Tick(chan) => chan.try(token),
         }
     }
 
     fn retry(&self, token: &mut Token) -> bool {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.receiver().retry(token),
-                Flavor::List(chan) => chan.receiver().retry(token),
-                Flavor::Zero(chan) => chan.receiver().retry(token),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.receiver().retry(token),
+                ChannelFlavor::List(chan) => chan.receiver().retry(token),
+                ChannelFlavor::Zero(chan) => chan.receiver().retry(token),
             },
-            Inner::After(chan) => chan.retry(token),
-            Inner::Tick(chan) => chan.retry(token),
+            ReceiverFlavor::After(chan) => chan.retry(token),
+            ReceiverFlavor::Tick(chan) => chan.retry(token),
         }
     }
 
     fn deadline(&self) -> Option<Instant> {
         match &self.0 {
-            Inner::Channel(_) => None,
-            Inner::After(chan) => chan.deadline(),
-            Inner::Tick(chan) => chan.deadline(),
+            ReceiverFlavor::Channel(_) => None,
+            ReceiverFlavor::After(chan) => chan.deadline(),
+            ReceiverFlavor::Tick(chan) => chan.deadline(),
         }
     }
 
     fn register(&self, token: &mut Token, case_id: CaseId) -> bool {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.receiver().register(token, case_id),
-                Flavor::List(chan) => chan.receiver().register(token, case_id),
-                Flavor::Zero(chan) => chan.receiver().register(token, case_id),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.receiver().register(token, case_id),
+                ChannelFlavor::List(chan) => chan.receiver().register(token, case_id),
+                ChannelFlavor::Zero(chan) => chan.receiver().register(token, case_id),
             },
-            Inner::After(chan) => chan.register(token, case_id),
-            Inner::Tick(chan) => chan.register(token, case_id),
+            ReceiverFlavor::After(chan) => chan.register(token, case_id),
+            ReceiverFlavor::Tick(chan) => chan.register(token, case_id),
         }
     }
 
     fn unregister(&self, case_id: CaseId) {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.receiver().unregister(case_id),
-                Flavor::List(chan) => chan.receiver().unregister(case_id),
-                Flavor::Zero(chan) => chan.receiver().unregister(case_id),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.receiver().unregister(case_id),
+                ChannelFlavor::List(chan) => chan.receiver().unregister(case_id),
+                ChannelFlavor::Zero(chan) => chan.receiver().unregister(case_id),
             },
-            Inner::After(chan) => chan.unregister(case_id),
-            Inner::Tick(chan) => chan.unregister(case_id),
+            ReceiverFlavor::After(chan) => chan.unregister(case_id),
+            ReceiverFlavor::Tick(chan) => chan.unregister(case_id),
         }
     }
 
     fn accept(&self, token: &mut Token) -> bool {
         match &self.0 {
-            Inner::Channel(arc) => match &arc.flavor {
-                Flavor::Array(chan) => chan.receiver().accept(token),
-                Flavor::List(chan) => chan.receiver().accept(token),
-                Flavor::Zero(chan) => chan.receiver().accept(token),
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.receiver().accept(token),
+                ChannelFlavor::List(chan) => chan.receiver().accept(token),
+                ChannelFlavor::Zero(chan) => chan.receiver().accept(token),
             },
-            Inner::After(chan) => chan.accept(token),
-            Inner::Tick(chan) => chan.accept(token),
+            ReceiverFlavor::After(chan) => chan.accept(token),
+            ReceiverFlavor::Tick(chan) => chan.accept(token),
         }
     }
 }
 
 pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
     match &r.0 {
-        Inner::Channel(arc) => match &arc.flavor {
-            Flavor::Array(chan) => chan.read(token),
-            Flavor::List(chan) => chan.read(token),
-            Flavor::Zero(chan) => chan.read(token),
+        ReceiverFlavor::Channel(arc) => match &arc.flavor {
+            ChannelFlavor::Array(chan) => chan.read(token),
+            ChannelFlavor::List(chan) => chan.read(token),
+            ChannelFlavor::Zero(chan) => chan.read(token),
         },
-        Inner::After(chan) => {
+        ReceiverFlavor::After(chan) => {
             mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
         },
-        Inner::Tick(chan) => {
+        ReceiverFlavor::Tick(chan) => {
             mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
         },
     }
@@ -867,18 +874,18 @@ pub enum RecvNonblocking<T> {
 
 pub fn recv_nonblocking<T>(r: &Receiver<T>) -> RecvNonblocking<T> {
     match &r.0 {
-        Inner::Channel(arc) => match &arc.flavor {
-            Flavor::Array(chan) => chan.recv_nonblocking(),
-            Flavor::List(chan) => chan.recv_nonblocking(),
-            Flavor::Zero(chan) => chan.recv_nonblocking(),
+        ReceiverFlavor::Channel(arc) => match &arc.flavor {
+            ChannelFlavor::Array(chan) => chan.recv_nonblocking(),
+            ChannelFlavor::List(chan) => chan.recv_nonblocking(),
+            ChannelFlavor::Zero(chan) => chan.recv_nonblocking(),
         },
-        Inner::After(chan) => {
+        ReceiverFlavor::After(chan) => {
             let res = chan.recv_nonblocking();
             unsafe {
                 mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res)
             }
         },
-        Inner::Tick(chan) => {
+        ReceiverFlavor::Tick(chan) => {
             let res = chan.recv_nonblocking();
             unsafe {
                 mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res)

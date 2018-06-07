@@ -243,6 +243,9 @@ macro_rules! select {
     };
 }
 
+// TODO: explain
+// loop { try; register; is_blocked; unregister; accept; write/read }
+
 #[derive(Default)]
 pub struct Token {
     pub after: flavors::after::AfterToken,
