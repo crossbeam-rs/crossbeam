@@ -41,7 +41,7 @@ fn main() {
     let (s, r) = &channel::bounded(1); // Make room for one unmatched send.
 
     // Either send my name into the channel or receive someone else's, whatever happens first.
-    let seek = |name, s: &channel::Sender<&str>, r: &channel::Receiver<&str>| {
+    let seek = |name, s: &channel::Sender<_>, r: &channel::Receiver<_>| {
         select! {
             recv(r, peer) => println!("{} received a message from {}.", name, peer.unwrap()),
             send(s, name) => {}, // Wait for someone to receive my message.
