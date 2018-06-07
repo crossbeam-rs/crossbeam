@@ -15,7 +15,7 @@ use std::thread;
 use std::time::Duration;
 
 pub struct Sender<T> {
-    inner: channel::Sender<T>,
+    pub inner: channel::Sender<T>,
     disconnected: channel::Receiver<()>,
     is_disconnected: Arc<AtomicBool>,
 }
@@ -42,7 +42,7 @@ impl<T> Clone for Sender<T> {
 }
 
 pub struct SyncSender<T> {
-    inner: channel::Sender<T>,
+    pub inner: channel::Sender<T>,
     disconnected: channel::Receiver<()>,
     is_disconnected: Arc<AtomicBool>,
 }
@@ -87,7 +87,7 @@ impl<T> Clone for SyncSender<T> {
 }
 
 pub struct Receiver<T> {
-    inner: channel::Receiver<T>,
+    pub inner: channel::Receiver<T>,
     _disconnected: channel::Sender<()>,
     is_disconnected: Arc<AtomicBool>,
 }
@@ -233,6 +233,22 @@ pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
     (s, r)
 }
 
+macro_rules! mpsc_select {
+    ($($name:pat = $rx:ident.$meth:ident() => $code:expr),+) => {{
+        select! {
+            $(
+                $meth($rx.inner, msg) => {
+                    let $name = match msg {
+                        None => Err(::std::sync::mpsc::RecvError),
+                        Some(msg) => Ok(msg),
+                    };
+                    $code
+                }
+            )+
+        }
+    }};
+}
+
 fn main() {
     // Example #1:
     let (tx, rx) = channel();
@@ -243,4 +259,13 @@ fn main() {
     let (tx, rx) = sync_channel::<i32>(0);
     thread::spawn(move || tx.send(53).unwrap());
     rx.recv().unwrap();
+
+    // Example #3:
+    let (_tx1, rx1) = channel::<i32>();
+    let (tx2, rx2) = channel::<i32>();
+    tx2.send(0).unwrap();
+    mpsc_select! {
+        _ = rx1.recv() => panic!(),
+        m = rx2.recv() => assert_eq!(m, Ok(0))
+    }
 }
