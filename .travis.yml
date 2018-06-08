@@ -12,6 +12,9 @@ script:
   - cargo build --release
   - cargo test -- --test-threads=1
   - cargo test --release -- --test-threads=1
-  - cd benchmarks
-  - cargo build --bins
-  - cargo build --bins --release
+  - |
+    if [[ $TRAVIS_RUST_VERSION == nightly ]]; then
+      cd benchmarks
+      cargo build --bins
+      cargo build --bins --release
+    fi
