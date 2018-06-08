@@ -1,3 +1,5 @@
+//! Miscellaneous utilities.
+
 use std::cell::Cell;
 use std::num::Wrapping;
 use std::sync::atomic;
@@ -10,7 +12,7 @@ use libc;
 pub struct Backoff(u32);
 
 impl Backoff {
-    /// Returns a new `Backoff`.
+    /// Creates a new `Backoff`.
     #[inline]
     pub fn new() -> Self {
         Backoff(0)
@@ -41,6 +43,9 @@ impl Backoff {
     }
 }
 
+/// Once dropped, aborts with an error message.
+///
+/// This guard is used for protection from unrecoverable panics.
 pub struct AbortGuard(pub &'static str);
 
 impl Drop for AbortGuard {
@@ -56,7 +61,7 @@ impl Drop for AbortGuard {
     }
 }
 
-/// Randomly shuffles the slice.
+/// Shuffles a slice randomly.
 pub fn shuffle<T>(v: &mut [T]) {
     let len = v.len();
     if len <= 1 {
@@ -89,6 +94,7 @@ pub fn shuffle<T>(v: &mut [T]) {
     });
 }
 
+/// Blocks the current thread forever.
 pub fn sleep_forever() -> ! {
     loop {
         thread::sleep(Duration::from_secs(1000));

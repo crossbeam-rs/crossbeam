@@ -88,8 +88,8 @@ impl SyncWaker {
         let mut operations = self.operations.lock();
 
         for i in 0..operations.len() {
-            if operations[i].context.thread_id != thread_id {
-                if operations[i].context.try_select(operations[i].select, 0) {
+            if operations[i].context.thread_id() != thread_id {
+                if operations[i].context.try_select(operations[i].select, 0).is_ok() {
                     let operation = operations.remove(i).unwrap();
                     self.len.store(operations.len(), Ordering::SeqCst);
                     Self::maybe_shrink(&mut operations);
@@ -107,7 +107,7 @@ impl SyncWaker {
     pub fn close(&self) {
         // TODO: explain why not drain
         for operation in self.operations.lock().iter() {
-            if operation.context.try_select(Select::Closed, 0) {
+            if operation.context.try_select(Select::Closed, 0).is_ok() {
                 operation.context.unpark();
             }
         }
@@ -128,7 +128,7 @@ impl SyncWaker {
         let thread_id = context::current_thread_id();
 
         for i in 0..operations.len() {
-            if operations[i].context.thread_id != thread_id {
+            if operations[i].context.thread_id() != thread_id {
                 return true;
             }
         }

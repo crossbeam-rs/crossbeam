@@ -67,11 +67,13 @@ impl Waker {
             let thread_id = context::current_thread_id();
 
             for i in 0..self.operations.len() {
-                if self.operations[i].context.thread_id != thread_id {
-                    if self.operations[i].context.try_select(
+                if self.operations[i].context.thread_id() != thread_id {
+                    let res = self.operations[i].context.try_select(
                         self.operations[i].select,
                         self.operations[i].packet,
-                    ) {
+                    );
+
+                    if res.is_ok() {
                         let operation = self.operations.remove(i).unwrap();
                         Self::maybe_shrink(&mut self.operations);
 
@@ -90,7 +92,7 @@ impl Waker {
     pub fn close(&mut self) {
         // TODO: explain why not drain
         for operation in self.operations.iter() {
-            if operation.context.try_select(Select::Closed, 0) {
+            if operation.context.try_select(Select::Closed, 0).is_ok() {
                 operation.context.unpark();
             }
         }
@@ -104,7 +106,7 @@ impl Waker {
             let thread_id = context::current_thread_id();
 
             for i in 0..self.operations.len() {
-                if self.operations[i].context.thread_id != thread_id {
+                if self.operations[i].context.thread_id() != thread_id {
                     return true;
                 }
             }

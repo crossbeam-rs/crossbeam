@@ -71,8 +71,11 @@ where
 
             // If registration returns `false`, that means the operation has just become ready.
             if !select.register(&mut token, Select::hook(operation)) {
-                // Abort blocking and then again.
-                sel = context::current_try_abort();
+                // Try aborting selection.
+                sel = match context::current_try_select(Select::Aborted, 0) {
+                    Ok(()) => Select::Aborted,
+                    Err(s) => s,
+                };
                 break;
             }
 

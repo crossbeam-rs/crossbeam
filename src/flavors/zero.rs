@@ -140,7 +140,11 @@ impl<T> Channel<T> {
 
         // Yield to give receivers a chance to pair up with this operation.
         thread::yield_now();
-        let sel = context::current_try_abort();
+
+        let sel = match context::current_try_select(Select::Aborted, 0) {
+            Ok(()) => Select::Aborted,
+            Err(s) => s,
+        };
 
         match sel {
             Select::Waiting | Select::Closed => unreachable!(),
@@ -195,7 +199,11 @@ impl<T> Channel<T> {
 
         // Yield to give senders a chance to pair up with this operation.
         thread::yield_now();
-        let sel = context::current_try_abort();
+
+        let sel = match context::current_try_select(Select::Aborted, 0) {
+            Ok(()) => Select::Aborted,
+            Err(s) => s,
+        };
 
         match sel {
             Select::Waiting => unreachable!(),

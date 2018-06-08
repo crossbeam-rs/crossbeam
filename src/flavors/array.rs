@@ -329,7 +329,7 @@ impl<T> Channel<T> {
 
             // Has the channel become ready just now?
             if !self.is_full() {
-                context::current_try_abort();
+                let _ = context::current_try_select(Select::Aborted, 0);
             }
 
             // Block the current thread.
@@ -370,7 +370,7 @@ impl<T> Channel<T> {
 
             // Has the channel become ready just now?
             if !self.is_empty() || self.is_closed() {
-                context::current_try_abort();
+                let _ = context::current_try_select(Select::Aborted, 0);
             }
 
             // Block the current thread.

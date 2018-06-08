@@ -205,7 +205,7 @@ use flavors;
 ///
 /// Inputs: expression `body`.
 ///
-/// There can be at most one default case.
+/// There can be at most one `default` case.
 ///
 /// # Behavior
 ///
@@ -260,7 +260,7 @@ pub enum Select {
     Waiting,
     Aborted,
     Closed,
-    Selected(usize),
+    Selected(usize), // TODO: should this be a pointer?
 }
 
 impl Select {
