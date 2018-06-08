@@ -212,7 +212,7 @@ use flavors;
 /// TODO: model after https://golang.org/ref/spec#Select_statements
 ///
 /// First, all sender and receiver arguments (`s` and `r`) are evaluated. Then, the current thread
-/// is blocked until one of the cases becomes ready, which is then executed.
+/// is blocked until one of the operations becomes ready, which is then executed.
 ///
 /// If a `recv` operation gets executed, `msg` and `fired` are assigned, and `body` is finally
 /// evaluated.
@@ -256,59 +256,59 @@ pub struct Token {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CaseId {
+pub enum Select {
     Waiting,
     Aborted,
     Closed,
-    Case(usize), // TODO: rename to Selected
+    Selected(usize),
 }
 
-impl CaseId {
+impl Select {
     #[inline]
-    pub fn hook<T>(r: &mut T) -> CaseId {
-        CaseId::Case(r as *mut T as usize)
+    pub fn hook<T>(r: &mut T) -> Select {
+        Select::Selected(r as *mut T as usize)
     }
 }
 
-impl From<usize> for CaseId {
+impl From<usize> for Select {
     #[inline]
-    fn from(id: usize) -> CaseId {
+    fn from(id: usize) -> Select {
         match id {
-            0 => CaseId::Waiting,
-            1 => CaseId::Aborted,
-            2 => CaseId::Closed,
-            id => CaseId::Case(id),
+            0 => Select::Waiting,
+            1 => Select::Aborted,
+            2 => Select::Closed,
+            id => Select::Selected(id),
         }
     }
 }
 
-impl Into<usize> for CaseId {
+impl Into<usize> for Select {
     #[inline]
     fn into(self) -> usize {
         match self {
-            CaseId::Waiting => 0,
-            CaseId::Aborted => 1,
-            CaseId::Closed => 2,
-            CaseId::Case(id) => id,
+            Select::Waiting => 0,
+            Select::Aborted => 1,
+            Select::Closed => 2,
+            Select::Selected(id) => id,
         }
     }
 }
 
-pub trait Select {
+pub trait SelectHandle {
     fn try(&self, token: &mut Token) -> bool;
 
     fn retry(&self, token: &mut Token) -> bool;
 
     fn deadline(&self) -> Option<Instant>;
 
-    fn register(&self, token: &mut Token, case_id: CaseId) -> bool;
+    fn register(&self, token: &mut Token, select: Select) -> bool;
 
-    fn unregister(&self, case_id: CaseId);
+    fn unregister(&self, select: Select);
 
     fn accept(&self, token: &mut Token) -> bool;
 }
 
-impl<'a, T: Select> Select for &'a T {
+impl<'a, T: SelectHandle> SelectHandle for &'a T {
     fn try(&self, token: &mut Token) -> bool {
         (**self).try(token)
     }
@@ -321,12 +321,12 @@ impl<'a, T: Select> Select for &'a T {
         (**self).deadline()
     }
 
-    fn register(&self, token: &mut Token, case_id: CaseId) -> bool {
-        (**self).register(token, case_id)
+    fn register(&self, token: &mut Token, select: Select) -> bool {
+        (**self).register(token, select)
     }
 
-    fn unregister(&self, case_id: CaseId) {
-        (**self).unregister(case_id);
+    fn unregister(&self, select: Select) {
+        (**self).unregister(select);
     }
 
     fn accept(&self, token: &mut Token) -> bool {

@@ -2,29 +2,29 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use internal::context::{self, Context};
-use internal::select::CaseId;
+use internal::select::Select;
 
-/// A selection case, identified by a `Context` and a `CaseId`.
+/// A select operation, identified by a `Context` and a `Select`.
 ///
 /// Note that multiple threads could be operating on a single channel end, as well as a single
 /// thread on multiple different channel ends.
-pub struct Case {
-    /// A context associated with the thread owning this case.
+pub struct Operation {
+    /// A context associated with the thread owning this operation.
     pub context: Arc<Context>,
 
-    /// The case ID.
-    pub case_id: CaseId,
+    /// The operation ID.
+    pub select: Select,
 
     pub packet: usize,
 }
 
 /// A simple wait queue for zero-capacity channels.
 ///
-/// This data structure is used for registering selection cases before blocking and waking them
-/// up when the channel receives a message, sends one, or gets closed.
+/// This data structure is used for registering selection operations before blocking and waking
+/// them up when the channel receives a message, sends one, or gets closed.
 pub struct Waker {
-    /// The list of registered selection cases.
-    cases: VecDeque<Case>,
+    /// The list of registered selection operations.
+    operations: VecDeque<Operation>,
 }
 
 impl Waker {
@@ -32,51 +32,51 @@ impl Waker {
     #[inline]
     pub fn new() -> Self {
         Waker {
-            cases: VecDeque::new(),
+            operations: VecDeque::new(),
         }
     }
 
     #[inline]
-    pub fn register_with_packet(&mut self, case_id: CaseId, packet: usize) {
-        self.cases.push_back(Case {
+    pub fn register_with_packet(&mut self, select: Select, packet: usize) {
+        self.operations.push_back(Operation {
             context: context::current(),
-            case_id,
+            select,
             packet,
         });
     }
 
-    /// Unregisters the current thread with `case_id`.
+    /// Unregisters the current thread with `select`.
     #[inline]
-    pub fn unregister(&mut self, case_id: CaseId) -> Option<Case> {
-        if let Some((i, _)) = self.cases
+    pub fn unregister(&mut self, select: Select) -> Option<Operation> {
+        if let Some((i, _)) = self.operations
             .iter()
             .enumerate()
-            .find(|&(_, case)| case.case_id == case_id)
+            .find(|&(_, operation)| operation.select == select)
         {
-            let case = self.cases.remove(i);
-            Self::maybe_shrink(&mut self.cases);
-            case
+            let operation = self.operations.remove(i);
+            Self::maybe_shrink(&mut self.operations);
+            operation
         } else {
             None
         }
     }
 
     #[inline]
-    pub fn wake_one(&mut self) -> Option<Case> {
-        if !self.cases.is_empty() {
+    pub fn wake_one(&mut self) -> Option<Operation> {
+        if !self.operations.is_empty() {
             let thread_id = context::current_thread_id();
 
-            for i in 0..self.cases.len() {
-                if self.cases[i].context.thread_id != thread_id {
-                    if self.cases[i].context.try_select(
-                        self.cases[i].case_id,
-                        self.cases[i].packet,
+            for i in 0..self.operations.len() {
+                if self.operations[i].context.thread_id != thread_id {
+                    if self.operations[i].context.try_select(
+                        self.operations[i].select,
+                        self.operations[i].packet,
                     ) {
-                        let case = self.cases.remove(i).unwrap();
-                        Self::maybe_shrink(&mut self.cases);
+                        let operation = self.operations.remove(i).unwrap();
+                        Self::maybe_shrink(&mut self.operations);
 
-                        case.context.unpark();
-                        return Some(case);
+                        operation.context.unpark();
+                        return Some(operation);
                     }
                 }
             }
@@ -85,26 +85,26 @@ impl Waker {
         None
     }
 
-    /// TODO Aborts all registered selection cases.
+    /// TODO Aborts all registered selection operations.
     #[inline]
     pub fn close(&mut self) {
         // TODO: explain why not drain
-        for case in self.cases.iter() {
-            if case.context.try_select(CaseId::Closed, 0) {
-                case.context.unpark();
+        for operation in self.operations.iter() {
+            if operation.context.try_select(Select::Closed, 0) {
+                operation.context.unpark();
             }
         }
     }
 
-    /// Returns `true` if there exists a case which isn't owned by the current thread.
+    /// Returns `true` if there exists a operation which isn't owned by the current thread.
     #[inline]
     // TODO: rename contains_other_threads?
     pub fn can_notify(&self) -> bool {
-        if !self.cases.is_empty() {
+        if !self.operations.is_empty() {
             let thread_id = context::current_thread_id();
 
-            for i in 0..self.cases.len() {
-                if self.cases[i].context.thread_id != thread_id {
+            for i in 0..self.operations.len() {
+                if self.operations[i].context.thread_id != thread_id {
                     return true;
                 }
             }
@@ -114,16 +114,16 @@ impl Waker {
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.cases.len()
+        self.operations.len()
     }
 
     /// Shrinks the internal deque if it's capacity is much larger than length.
     #[inline]
-    fn maybe_shrink(cases: &mut VecDeque<Case>) {
-        if cases.capacity() > 32 && cases.len() < cases.capacity() / 4 {
-            let mut v = VecDeque::with_capacity(cases.capacity() / 2);
-            v.extend(cases.drain(..));
-            *cases = v;
+    fn maybe_shrink(operations: &mut VecDeque<Operation>) {
+        if operations.capacity() > 32 && operations.len() < operations.capacity() / 4 {
+            let mut v = VecDeque::with_capacity(operations.capacity() / 2);
+            v.extend(operations.drain(..));
+            *operations = v;
         }
     }
 }
@@ -131,6 +131,6 @@ impl Waker {
 impl Drop for Waker {
     #[inline]
     fn drop(&mut self) {
-        debug_assert!(self.cases.is_empty());
+        debug_assert!(self.operations.is_empty());
     }
 }

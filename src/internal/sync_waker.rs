@@ -5,29 +5,29 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use parking_lot::Mutex;
 
 use internal::context::{self, Context};
-use internal::select::CaseId;
+use internal::select::Select;
 
-/// A selection case, identified by a `Context` and a `CaseId`.
+/// A select operation, identified by a `Context` and a `Select`.
 ///
 /// Note that multiple threads could be operating on a single channel end, as well as a single
 /// thread on multiple different channel ends.
-pub struct Case {
-    /// A context associated with the thread owning this case.
+pub struct Operation {
+    /// A context associated with the thread owning this operation.
     pub context: Arc<Context>,
 
-    /// The case ID.
-    pub case_id: CaseId,
+    /// The operation ID.
+    pub select: Select,
 }
 
 /// A simple wait queue for list-based and array-based channels.
 ///
-/// This data structure is used for registering selection cases before blocking and waking them
-/// up when the channel receives a message, sends one, or gets closed.
+/// This data structure is used for registering selection operations before blocking and waking
+/// them up when the channel receives a message, sends one, or gets closed.
 pub struct SyncWaker {
-    /// The list of registered selection cases.
-    cases: Mutex<VecDeque<Case>>,
+    /// The list of registered selection operations.
+    operations: Mutex<VecDeque<Operation>>,
 
-    /// Number of cases in the list.
+    /// Number of operations in the list.
     len: AtomicUsize,
 }
 
@@ -36,36 +36,36 @@ impl SyncWaker {
     #[inline]
     pub fn new() -> Self {
         SyncWaker {
-            cases: Mutex::new(VecDeque::new()),
+            operations: Mutex::new(VecDeque::new()),
             len: AtomicUsize::new(0),
         }
     }
 
-    /// Registers the current thread with `case_id`.
+    /// Registers the current thread with `select`.
     #[inline]
-    pub fn register(&self, case_id: CaseId) {
-        let mut cases = self.cases.lock();
-        cases.push_back(Case {
+    pub fn register(&self, select: Select) {
+        let mut operations = self.operations.lock();
+        operations.push_back(Operation {
             context: context::current(),
-            case_id,
+            select,
         });
-        self.len.store(cases.len(), Ordering::SeqCst);
+        self.len.store(operations.len(), Ordering::SeqCst);
     }
 
-    /// Unregisters the current thread with `case_id`.
+    /// Unregisters the current thread with `select`.
     #[inline]
-    pub fn unregister(&self, case_id: CaseId) -> Option<Case> {
+    pub fn unregister(&self, select: Select) -> Option<Operation> {
         if self.len.load(Ordering::SeqCst) > 0 {
-            let mut cases = self.cases.lock();
+            let mut operations = self.operations.lock();
 
-            if let Some((i, _)) = cases.iter()
+            if let Some((i, _)) = operations.iter()
                 .enumerate()
-                .find(|&(_, case)| case.case_id == case_id)
+                .find(|&(_, operation)| operation.select == select)
             {
-                let case = cases.remove(i);
-                self.len.store(cases.len(), Ordering::SeqCst);
-                Self::maybe_shrink(&mut cases);
-                case
+                let operation = operations.remove(i);
+                self.len.store(operations.len(), Ordering::SeqCst);
+                Self::maybe_shrink(&mut operations);
+                operation
             } else {
                 None
             }
@@ -75,7 +75,7 @@ impl SyncWaker {
     }
 
     #[inline]
-    pub fn wake_one(&self) -> Option<Case> {
+    pub fn wake_one(&self) -> Option<Operation> {
         if self.len.load(Ordering::SeqCst) > 0 {
             self.wake_one_check()
         } else {
@@ -83,37 +83,37 @@ impl SyncWaker {
         }
     }
 
-    fn wake_one_check(&self) -> Option<Case> {
+    fn wake_one_check(&self) -> Option<Operation> {
         let thread_id = context::current_thread_id();
-        let mut cases = self.cases.lock();
+        let mut operations = self.operations.lock();
 
-        for i in 0..cases.len() {
-            if cases[i].context.thread_id != thread_id {
-                if cases[i].context.try_select(cases[i].case_id, 0) {
-                    let case = cases.remove(i).unwrap();
-                    self.len.store(cases.len(), Ordering::SeqCst);
-                    Self::maybe_shrink(&mut cases);
+        for i in 0..operations.len() {
+            if operations[i].context.thread_id != thread_id {
+                if operations[i].context.try_select(operations[i].select, 0) {
+                    let operation = operations.remove(i).unwrap();
+                    self.len.store(operations.len(), Ordering::SeqCst);
+                    Self::maybe_shrink(&mut operations);
 
-                    drop(cases);
-                    case.context.unpark();
-                    return Some(case);
+                    drop(operations);
+                    operation.context.unpark();
+                    return Some(operation);
                 }
             }
         }
         None
     }
 
-    /// TODO Aborts all registered selection cases.
+    /// TODO Aborts all registered selection operations.
     pub fn close(&self) {
         // TODO: explain why not drain
-        for case in self.cases.lock().iter() {
-            if case.context.try_select(CaseId::Closed, 0) {
-                case.context.unpark();
+        for operation in self.operations.lock().iter() {
+            if operation.context.try_select(Select::Closed, 0) {
+                operation.context.unpark();
             }
         }
     }
 
-    /// Returns `true` if there exists a case which isn't owned by the current thread.
+    /// Returns `true` if there exists a operation which isn't owned by the current thread.
     #[inline]
     pub fn can_notify(&self) -> bool {
         if self.len.load(Ordering::SeqCst) > 0 {
@@ -124,11 +124,11 @@ impl SyncWaker {
     }
 
     fn can_notify_check(&self) -> bool {
-        let cases = self.cases.lock();
+        let operations = self.operations.lock();
         let thread_id = context::current_thread_id();
 
-        for i in 0..cases.len() {
-            if cases[i].context.thread_id != thread_id {
+        for i in 0..operations.len() {
+            if operations[i].context.thread_id != thread_id {
                 return true;
             }
         }
@@ -137,23 +137,23 @@ impl SyncWaker {
 
     /// Shrinks the internal deque if it's capacity is much larger than length.
     #[inline]
-    fn maybe_shrink(cases: &mut VecDeque<Case>) {
-        if cases.capacity() > 32 && cases.len() < cases.capacity() / 4 {
-            Self::shrink(cases);
+    fn maybe_shrink(operations: &mut VecDeque<Operation>) {
+        if operations.capacity() > 32 && operations.len() < operations.capacity() / 4 {
+            Self::shrink(operations);
         }
     }
 
-    fn shrink(cases: &mut VecDeque<Case>) {
-        let mut v = VecDeque::with_capacity(cases.capacity() / 2);
-        v.extend(cases.drain(..));
-        *cases = v;
+    fn shrink(operations: &mut VecDeque<Operation>) {
+        let mut v = VecDeque::with_capacity(operations.capacity() / 2);
+        v.extend(operations.drain(..));
+        *operations = v;
     }
 }
 
 impl Drop for SyncWaker {
     #[inline]
     fn drop(&mut self) {
-        debug_assert!(self.cases.lock().is_empty());
+        debug_assert!(self.operations.lock().is_empty());
         debug_assert_eq!(self.len.load(Ordering::SeqCst), 0);
     }
 }

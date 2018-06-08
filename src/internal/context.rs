@@ -3,13 +3,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
-use internal::select::CaseId;
+use internal::select::Select;
 use internal::utils::Backoff;
 
 // TODO: explain all orderings here
 
 pub struct Context {
-    pub case_id: AtomicUsize,
+    pub select: AtomicUsize,
     pub thread: Thread,
     pub thread_id: ThreadId,
     /// A slot into which another thread may store a pointer to its `Request`.
@@ -17,13 +17,13 @@ pub struct Context {
 }
 
 impl Context {
-    // TODO: return Result<(), CaseId>?
+    // TODO: return Result<(), Select>?
     #[inline]
-    pub fn try_select(&self, case_id: CaseId, packet: usize) -> bool {
+    pub fn try_select(&self, select: Select, packet: usize) -> bool {
         if self
-            .case_id
-            .compare_and_swap(CaseId::Waiting.into(), case_id.into(), Ordering::Relaxed)
-            == CaseId::Waiting.into()
+            .select
+            .compare_and_swap(Select::Waiting.into(), select.into(), Ordering::Relaxed)
+            == Select::Waiting.into()
         {
             self.packet.store(packet, Ordering::Release);
             true
@@ -33,18 +33,18 @@ impl Context {
     }
 
     #[inline]
-    pub fn try_abort(&self) -> CaseId {
+    pub fn try_abort(&self) -> Select {
         match self
-            .case_id
+            .select
             .compare_exchange(
-                CaseId::Waiting.into(),
-                CaseId::Aborted.into(),
+                Select::Waiting.into(),
+                Select::Aborted.into(),
                 Ordering::Relaxed,
                 Ordering::Relaxed,
             )
         {
-            Ok(_) => CaseId::Aborted,
-            Err(id) => CaseId::from(id),
+            Ok(_) => Select::Aborted,
+            Err(id) => Select::from(id),
         }
     }
 
@@ -57,21 +57,21 @@ impl Context {
     pub fn reset(&self) {
         // Using relaxed orderings is safe because these store operations will be visibile to other
         // threads only through a waker wrapped within a mutex.
-        self.case_id.store(0, Ordering::Relaxed);
+        self.select.store(0, Ordering::Relaxed);
         self.packet.store(0, Ordering::Relaxed);
     }
 
     #[inline]
-    pub fn selected(&self) -> CaseId {
-        CaseId::from(self.case_id.load(Ordering::Acquire))
+    pub fn selected(&self) -> Select {
+        Select::from(self.select.load(Ordering::Acquire))
     }
 
     #[inline]
-    pub fn wait_until(&self, deadline: Option<Instant>) -> CaseId {
+    pub fn wait_until(&self, deadline: Option<Instant>) -> Select {
         let backoff = &mut Backoff::new();
         loop {
             let sel = self.selected();
-            if sel != CaseId::Waiting {
+            if sel != Select::Waiting {
                 return sel;
             }
 
@@ -82,7 +82,7 @@ impl Context {
 
         loop {
             let sel = self.selected();
-            if sel != CaseId::Waiting {
+            if sel != Select::Waiting {
                 return sel;
             }
 
@@ -115,7 +115,7 @@ impl Context {
 
 thread_local! {
     pub static CONTEXT: Arc<Context> = Arc::new(Context {
-        case_id: AtomicUsize::new(CaseId::Waiting.into()),
+        select: AtomicUsize::new(Select::Waiting.into()),
         thread: thread::current(),
         thread_id: thread::current().id(),
         packet: AtomicUsize::new(0),
@@ -127,14 +127,14 @@ pub fn current() -> Arc<Context> {
     CONTEXT.with(|c| c.clone())
 }
 
-// TODO: replace with try_select(CaseId::Aborted, 0)?
+// TODO: replace with try_select(Select::Aborted, 0)?
 #[inline]
-pub fn current_try_abort() -> CaseId {
+pub fn current_try_abort() -> Select {
     CONTEXT.with(|c| c.try_abort())
 }
 
 #[inline]
-pub fn current_selected() -> CaseId {
+pub fn current_selected() -> Select {
     CONTEXT.with(|c| c.selected())
 }
 
@@ -144,7 +144,7 @@ pub fn current_reset() {
 }
 
 #[inline]
-pub fn current_wait_until(deadline: Option<Instant>) -> CaseId {
+pub fn current_wait_until(deadline: Option<Instant>) -> Select {
     CONTEXT.with(|c| c.wait_until(deadline))
 }
 

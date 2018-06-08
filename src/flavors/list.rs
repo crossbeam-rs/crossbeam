@@ -12,7 +12,7 @@ use crossbeam_utils::cache_padded::CachePadded;
 
 use internal::channel::RecvNonblocking;
 use internal::context;
-use internal::select::{CaseId, Select, Token};
+use internal::select::{Select, SelectHandle, Token};
 use internal::sync_waker::SyncWaker;
 use internal::utils::Backoff;
 
@@ -304,7 +304,7 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let case_id = CaseId::hook(token);
+        let select = Select::hook(token);
 
         loop {
             // Try receiving a message several times.
@@ -322,7 +322,7 @@ impl<T> Channel<T> {
 
             // Prepare for blocking until a sender wakes us up.
             context::current_reset();
-            self.receivers.register(case_id);
+            self.receivers.register(select);
 
             // Has the channel become ready just now?
             if !self.is_empty() || self.is_closed() {
@@ -333,12 +333,12 @@ impl<T> Channel<T> {
             let sel = context::current_wait_until(None);
 
             match sel {
-                CaseId::Waiting => unreachable!(),
-                CaseId::Aborted | CaseId::Closed => {
-                    self.receivers.unregister(case_id).unwrap();
+                Select::Waiting => unreachable!(),
+                Select::Aborted | Select::Closed => {
+                    self.receivers.unregister(select).unwrap();
                     // If the channel was closed, we still have to check for remaining messages.
                 },
-                CaseId::Case(_) => {},
+                Select::Selected(_) => {},
             }
         }
     }
@@ -446,7 +446,7 @@ pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 /// Sender handle to a channel.
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a, T> Select for Receiver<'a, T> {
+impl<'a, T> SelectHandle for Receiver<'a, T> {
     fn try(&self, token: &mut Token) -> bool {
         self.0.start_recv(token, &mut Backoff::new())
     }
@@ -459,13 +459,13 @@ impl<'a, T> Select for Receiver<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
-        self.0.receivers.register(case_id);
+    fn register(&self, _token: &mut Token, select: Select) -> bool {
+        self.0.receivers.register(select);
         self.0.is_empty() && !self.0.is_closed()
     }
 
-    fn unregister(&self, case_id: CaseId) {
-        self.0.receivers.unregister(case_id);
+    fn unregister(&self, select: Select) {
+        self.0.receivers.unregister(select);
     }
 
     fn accept(&self, token: &mut Token) -> bool {
@@ -473,7 +473,7 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 }
 
-impl<'a, T> Select for Sender<'a, T> {
+impl<'a, T> SelectHandle for Sender<'a, T> {
     fn try(&self, _token: &mut Token) -> bool {
         true
     }
@@ -486,11 +486,11 @@ impl<'a, T> Select for Sender<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, _case_id: CaseId) -> bool {
+    fn register(&self, _token: &mut Token, _select: Select) -> bool {
         false
     }
 
-    fn unregister(&self, _case_id: CaseId) {}
+    fn unregister(&self, _select: Select) {}
 
     fn accept(&self, _token: &mut Token) -> bool {
         true

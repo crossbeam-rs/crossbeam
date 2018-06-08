@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 
 use internal::channel::RecvNonblocking;
 use internal::context;
-use internal::select::{CaseId, Select, Token};
+use internal::select::{Select, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
 
@@ -117,14 +117,14 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token, short_pause: bool) -> bool {
-        let case_id = CaseId::hook(token);
+        let select = Select::hook(token);
 
         {
             let mut inner = self.inner.lock();
 
             // If there's a waiting receiver, pair up with it.
-            if let Some(case) = inner.receivers.wake_one() {
-                token.zero = case.packet;
+            if let Some(operation) = inner.receivers.wake_one() {
+                token.zero = operation.packet;
                 return true;
             }
 
@@ -135,7 +135,7 @@ impl<T> Channel<T> {
             // Register this send operation so that another receiver can pair up with it.
             context::current_reset();
             let packet = Box::into_raw(Packet::<T>::empty_on_heap());
-            inner.senders.register_with_packet(case_id, packet as usize);
+            inner.senders.register_with_packet(select, packet as usize);
         }
 
         // Yield to give receivers a chance to pair up with this operation.
@@ -143,16 +143,16 @@ impl<T> Channel<T> {
         let sel = context::current_try_abort();
 
         match sel {
-            CaseId::Waiting | CaseId::Closed => unreachable!(),
-            CaseId::Aborted => {
+            Select::Waiting | Select::Closed => unreachable!(),
+            Select::Aborted => {
                 // Unregister and destroy the packet.
-                let case = self.inner.lock().senders.unregister(case_id).unwrap();
+                let operation = self.inner.lock().senders.unregister(select).unwrap();
                 unsafe {
-                    drop(Box::from_raw(case.packet as *mut Packet<T>));
+                    drop(Box::from_raw(operation.packet as *mut Packet<T>));
                 }
                 false
             },
-            CaseId::Case(_) => {
+            Select::Selected(_) => {
                 // Success! A receiver has paired up with this operation.
                 token.zero = context::current_wait_packet();
                 true
@@ -169,14 +169,14 @@ impl<T> Channel<T> {
 
     /// Attempts to pair up with a sender.
     fn start_recv(&self, token: &mut Token, short_pause: bool) -> bool {
-        let case_id = CaseId::hook(token);
+        let select = Select::hook(token);
 
         {
             let mut inner = self.inner.lock();
 
             // If there's a waiting sender, pair up with it.
-            if let Some(case) = inner.senders.wake_one() {
-                token.zero = case.packet;
+            if let Some(operation) = inner.senders.wake_one() {
+                token.zero = operation.packet;
                 return true;
             } else if inner.is_closed {
                 token.zero = 0;
@@ -190,7 +190,7 @@ impl<T> Channel<T> {
             // Register this receive operation so that another sender can pair up with it.
             context::current_reset();
             let packet = Box::into_raw(Packet::<T>::empty_on_heap());
-            inner.receivers.register_with_packet(case_id, packet as usize);
+            inner.receivers.register_with_packet(select, packet as usize);
         }
 
         // Yield to give senders a chance to pair up with this operation.
@@ -198,27 +198,27 @@ impl<T> Channel<T> {
         let sel = context::current_try_abort();
 
         match sel {
-            CaseId::Waiting => unreachable!(),
-            CaseId::Aborted => {
+            Select::Waiting => unreachable!(),
+            Select::Aborted => {
                 // Unregister and destroy the packet.
-                let case = self.inner.lock().receivers.unregister(case_id).unwrap();
+                let operation = self.inner.lock().receivers.unregister(select).unwrap();
                 unsafe {
-                    drop(Box::from_raw(case.packet as *mut Packet<T>));
+                    drop(Box::from_raw(operation.packet as *mut Packet<T>));
                 }
                 false
             },
-            CaseId::Closed => {
+            Select::Closed => {
                 // Unregister and destroy the packet.
-                let case = self.inner.lock().receivers.unregister(case_id).unwrap();
+                let operation = self.inner.lock().receivers.unregister(select).unwrap();
                 unsafe {
-                    drop(Box::from_raw(case.packet as *mut Packet<T>));
+                    drop(Box::from_raw(operation.packet as *mut Packet<T>));
                 }
 
                 // All senders have just been dropped.
                 token.zero = 0;
                 true
             },
-            CaseId::Case(_) => {
+            Select::Selected(_) => {
                 // Success! A sender has paired up with this operation.
                 token.zero = context::current_wait_packet();
                 true
@@ -255,15 +255,15 @@ impl<T> Channel<T> {
     /// Sends a message into the channel.
     pub fn send(&self, msg: T) {
         let token = &mut Token::default();
-        let case_id = CaseId::hook(token);
+        let select = Select::hook(token);
 
         let packet;
         {
             let mut inner = self.inner.lock();
 
             // If there's a waiting receiver, pair up with it.
-            if let Some(case) = inner.receivers.wake_one() {
-                token.zero = case.packet;
+            if let Some(operation) = inner.receivers.wake_one() {
+                token.zero = operation.packet;
                 drop(inner);
                 unsafe { self.write(token, msg); }
                 return;
@@ -273,7 +273,7 @@ impl<T> Channel<T> {
             context::current_reset();
             packet = Packet::message_on_stack(msg);
             inner.senders.register_with_packet(
-                case_id,
+                select,
                 &packet as *const Packet<T> as usize,
             );
         }
@@ -282,8 +282,8 @@ impl<T> Channel<T> {
         let sel = context::current_wait_until(None);
 
         match sel {
-            CaseId::Waiting | CaseId::Aborted | CaseId::Closed => unreachable!(),
-            CaseId::Case(_) => {
+            Select::Waiting | Select::Aborted | Select::Closed => unreachable!(),
+            Select::Selected(_) => {
                 // Wait until the message is read, then drop the packet.
                 packet.wait_ready();
             },
@@ -293,15 +293,15 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let case_id = CaseId::hook(token);
+        let select = Select::hook(token);
 
         let packet;
         {
             let mut inner = self.inner.lock();
 
             // If there's a waiting sender, pair up with it.
-            if let Some(case) = inner.senders.wake_one() {
-                token.zero = case.packet;
+            if let Some(operation) = inner.senders.wake_one() {
+                token.zero = operation.packet;
                 drop(inner);
                 unsafe { return self.read(token); }
             }
@@ -314,7 +314,7 @@ impl<T> Channel<T> {
             context::current_reset();
             packet = Packet::<T>::empty_on_stack();
             inner.receivers.register_with_packet(
-                case_id,
+                select,
                 &packet as *const Packet<T> as usize,
             );
         }
@@ -323,12 +323,12 @@ impl<T> Channel<T> {
         let sel = context::current_wait_until(None);
 
         match sel {
-            CaseId::Waiting | CaseId::Aborted => unreachable!(),
-            CaseId::Closed => {
-                self.inner.lock().receivers.unregister(case_id).unwrap();
+            Select::Waiting | Select::Aborted => unreachable!(),
+            Select::Closed => {
+                self.inner.lock().receivers.unregister(select).unwrap();
                 None
             },
-            CaseId::Case(_) => {
+            Select::Selected(_) => {
                 // Wait until the message is provided, then read it.
                 packet.wait_ready();
                 unsafe { Some(packet.msg.get().read()) }
@@ -342,8 +342,8 @@ impl<T> Channel<T> {
         let mut inner = self.inner.lock();
 
         // If there's a waiting sender, pair up with it.
-        if let Some(case) = inner.senders.wake_one() {
-            token.zero = case.packet;
+        if let Some(operation) = inner.senders.wake_one() {
+            token.zero = operation.packet;
             drop(inner);
 
             match unsafe { self.read(token) } {
@@ -397,7 +397,7 @@ pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 /// Sender handle to a channel.
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
-impl<'a, T> Select for Receiver<'a, T> {
+impl<'a, T> SelectHandle for Receiver<'a, T> {
     fn try(&self, token: &mut Token) -> bool {
         self.0.start_recv(token, false)
     }
@@ -410,18 +410,18 @@ impl<'a, T> Select for Receiver<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
+    fn register(&self, _token: &mut Token, select: Select) -> bool {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock();
-        inner.receivers.register_with_packet(case_id, packet as usize);
+        inner.receivers.register_with_packet(select, packet as usize);
         !inner.senders.can_notify() && !inner.is_closed
     }
 
-    fn unregister(&self, case_id: CaseId) {
-        if let Some(case) = self.0.inner.lock().receivers.unregister(case_id) {
+    fn unregister(&self, select: Select) {
+        if let Some(operation) = self.0.inner.lock().receivers.unregister(select) {
             unsafe {
-                drop(Box::from_raw(case.packet as *mut Packet<T>));
+                drop(Box::from_raw(operation.packet as *mut Packet<T>));
             }
         }
     }
@@ -432,7 +432,7 @@ impl<'a, T> Select for Receiver<'a, T> {
     }
 }
 
-impl<'a, T> Select for Sender<'a, T> {
+impl<'a, T> SelectHandle for Sender<'a, T> {
     fn try(&self, token: &mut Token) -> bool {
         self.0.start_send(token, false)
     }
@@ -445,18 +445,18 @@ impl<'a, T> Select for Sender<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, case_id: CaseId) -> bool {
+    fn register(&self, _token: &mut Token, select: Select) -> bool {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock();
-        inner.senders.register_with_packet(case_id, packet as usize);
+        inner.senders.register_with_packet(select, packet as usize);
         !inner.receivers.can_notify()
     }
 
-    fn unregister(&self, case_id: CaseId) {
-        if let Some(case) = self.0.inner.lock().senders.unregister(case_id) {
+    fn unregister(&self, select: Select) {
+        if let Some(operation) = self.0.inner.lock().senders.unregister(select) {
             unsafe {
-                drop(Box::from_raw(case.packet as *mut Packet<T>));
+                drop(Box::from_raw(operation.packet as *mut Packet<T>));
             }
         }
     }

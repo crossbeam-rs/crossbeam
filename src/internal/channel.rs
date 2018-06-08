@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use libc;
 
 use flavors;
-use internal::select::{CaseId, Select, Token};
+use internal::select::{Select, SelectHandle, Token};
 
 /// A channel in the form of one of the different flavors.
 pub struct Channel<T> {
@@ -733,7 +733,7 @@ impl<'a, T> IntoIterator for &'a Receiver<T> {
 impl<T> UnwindSafe for Receiver<T> {}
 impl<T> RefUnwindSafe for Receiver<T> {}
 
-impl<T> Select for Sender<T> {
+impl<T> SelectHandle for Sender<T> {
     fn try(&self, token: &mut Token) -> bool {
         match &self.0.flavor {
             ChannelFlavor::Array(chan) => chan.sender().try(token),
@@ -754,19 +754,19 @@ impl<T> Select for Sender<T> {
         None
     }
 
-    fn register(&self, token: &mut Token, case_id: CaseId) -> bool {
+    fn register(&self, token: &mut Token, select: Select) -> bool {
         match &self.0.flavor {
-            ChannelFlavor::Array(chan) => chan.sender().register(token, case_id),
-            ChannelFlavor::List(chan) => chan.sender().register(token, case_id),
-            ChannelFlavor::Zero(chan) => chan.sender().register(token, case_id),
+            ChannelFlavor::Array(chan) => chan.sender().register(token, select),
+            ChannelFlavor::List(chan) => chan.sender().register(token, select),
+            ChannelFlavor::Zero(chan) => chan.sender().register(token, select),
         }
     }
 
-    fn unregister(&self, case_id: CaseId) {
+    fn unregister(&self, select: Select) {
         match &self.0.flavor {
-            ChannelFlavor::Array(chan) => chan.sender().unregister(case_id),
-            ChannelFlavor::List(chan) => chan.sender().unregister(case_id),
-            ChannelFlavor::Zero(chan) => chan.sender().unregister(case_id),
+            ChannelFlavor::Array(chan) => chan.sender().unregister(select),
+            ChannelFlavor::List(chan) => chan.sender().unregister(select),
+            ChannelFlavor::Zero(chan) => chan.sender().unregister(select),
         }
     }
 
@@ -779,7 +779,7 @@ impl<T> Select for Sender<T> {
     }
 }
 
-impl<T> Select for Receiver<T> {
+impl<T> SelectHandle for Receiver<T> {
     fn try(&self, token: &mut Token) -> bool {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
@@ -812,27 +812,27 @@ impl<T> Select for Receiver<T> {
         }
     }
 
-    fn register(&self, token: &mut Token, case_id: CaseId) -> bool {
+    fn register(&self, token: &mut Token, select: Select) -> bool {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
-                ChannelFlavor::Array(chan) => chan.receiver().register(token, case_id),
-                ChannelFlavor::List(chan) => chan.receiver().register(token, case_id),
-                ChannelFlavor::Zero(chan) => chan.receiver().register(token, case_id),
+                ChannelFlavor::Array(chan) => chan.receiver().register(token, select),
+                ChannelFlavor::List(chan) => chan.receiver().register(token, select),
+                ChannelFlavor::Zero(chan) => chan.receiver().register(token, select),
             },
-            ReceiverFlavor::After(chan) => chan.register(token, case_id),
-            ReceiverFlavor::Tick(chan) => chan.register(token, case_id),
+            ReceiverFlavor::After(chan) => chan.register(token, select),
+            ReceiverFlavor::Tick(chan) => chan.register(token, select),
         }
     }
 
-    fn unregister(&self, case_id: CaseId) {
+    fn unregister(&self, select: Select) {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
-                ChannelFlavor::Array(chan) => chan.receiver().unregister(case_id),
-                ChannelFlavor::List(chan) => chan.receiver().unregister(case_id),
-                ChannelFlavor::Zero(chan) => chan.receiver().unregister(case_id),
+                ChannelFlavor::Array(chan) => chan.receiver().unregister(select),
+                ChannelFlavor::List(chan) => chan.receiver().unregister(select),
+                ChannelFlavor::Zero(chan) => chan.receiver().unregister(select),
             },
-            ReceiverFlavor::After(chan) => chan.unregister(case_id),
-            ReceiverFlavor::Tick(chan) => chan.unregister(case_id),
+            ReceiverFlavor::After(chan) => chan.unregister(select),
+            ReceiverFlavor::Tick(chan) => chan.unregister(select),
         }
     }
 

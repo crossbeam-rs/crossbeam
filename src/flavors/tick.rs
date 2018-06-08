@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use parking_lot::Mutex;
 
 use internal::channel::RecvNonblocking;
-use internal::select::{CaseId, Select, Token};
+use internal::select::{Select, SelectHandle, Token};
 
 /// Result of a receive operation.
 pub type TickToken = Option<Instant>;
@@ -119,7 +119,7 @@ impl Clone for Channel {
     }
 }
 
-impl Select for Channel {
+impl SelectHandle for Channel {
     #[inline]
     fn try(&self, token: &mut Token) -> bool {
         match self.recv_nonblocking() {
@@ -148,12 +148,12 @@ impl Select for Channel {
     }
 
     #[inline]
-    fn register(&self, _token: &mut Token, _case_id: CaseId) -> bool {
+    fn register(&self, _token: &mut Token, _select: Select) -> bool {
         true
     }
 
     #[inline]
-    fn unregister(&self, _case_id: CaseId) {}
+    fn unregister(&self, _select: Select) {}
 
     #[inline]
     fn accept(&self, token: &mut Token) -> bool {
