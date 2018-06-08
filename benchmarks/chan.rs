@@ -98,7 +98,6 @@ fn select_rx(cap: Option<usize>) {
         let rx1 = &chans[1].1;
         let rx2 = &chans[2].1;
         let rx3 = &chans[3].1;
-
         for _ in 0..MESSAGES {
             chan_select! {
                 rx0.recv() -> m => assert!(m.is_some()),
@@ -122,6 +121,7 @@ fn select_both(cap: Option<usize>) {
                 let tx1 = &chans[1].0;
                 let tx2 = &chans[2].0;
                 let tx3 = &chans[3].0;
+
                 for i in 0..MESSAGES / THREADS {
                     chan_select! {
                         tx0.send(i as i32) => {},
@@ -140,6 +140,7 @@ fn select_both(cap: Option<usize>) {
                 let rx1 = &chans[1].1;
                 let rx2 = &chans[2].1;
                 let rx3 = &chans[3].1;
+
                 for _ in 0..MESSAGES / THREADS {
                     chan_select! {
                         rx0.recv() -> m => assert!(m.is_some()),
