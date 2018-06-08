@@ -4,7 +4,6 @@ extern crate crossbeam;
 use bus::Bus;
 
 const MESSAGES: usize = 5_000_000;
-const THREADS: usize = 4;
 
 fn seq(cap: usize) {
     let mut tx = Bus::new(cap);

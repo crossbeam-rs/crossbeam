@@ -170,7 +170,6 @@ fn main() {
 
     run!("bounded0_mpmc", mpmc(Some(0)));
     run!("bounded0_mpsc", mpsc(Some(0)));
-    run!("bounded0_select_both", select_both(Some(0)));
     run!("bounded0_select_rx", select_rx(Some(0)));
     run!("bounded0_spsc", spsc(Some(0)));
 

@@ -150,6 +150,41 @@ mod mpsc {
     }
 }
 
+pub fn shuffle<T>(v: &mut [T]) {
+    use std::cell::Cell;
+    use std::num::Wrapping;
+
+    let len = v.len();
+    if len <= 1 {
+        return;
+    }
+
+    thread_local! {
+        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
+    }
+
+    RNG.with(|rng| {
+        for i in 1..len {
+            // This is the 32-bit variant of Xorshift.
+            // https://en.wikipedia.org/wiki/Xorshift
+            let mut x = rng.get();
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            rng.set(x);
+
+            let x = x.0;
+            let n = i + 1;
+
+            // This is a fast alternative to `let j = x % n`.
+            // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+            let j = ((x as u64 * n as u64) >> 32) as u32 as usize;
+
+            v.swap(i, j);
+        }
+    });
+}
+
 fn seq_async() {
     let (tx, rx) = mpsc::channel::<i32>();
 
@@ -246,7 +281,7 @@ fn mpsc_sync(cap: usize) {
 
 fn select_rx_async() {
     assert_eq!(THREADS, 4);
-    let chans = (0..THREADS).map(|_| mpsc::channel::<i32>()).collect::<Vec<_>>();
+    let mut chans = (0..THREADS).map(|_| mpsc::channel::<i32>()).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for &(ref tx, _) in &chans {
@@ -258,12 +293,13 @@ fn select_rx_async() {
             });
         }
 
-        let rx0 = &chans[0].1;
-        let rx1 = &chans[1].1;
-        let rx2 = &chans[2].1;
-        let rx3 = &chans[3].1;
-
         for _ in 0..MESSAGES {
+            shuffle(&mut chans);
+            let rx0 = &chans[0].1;
+            let rx1 = &chans[1].1;
+            let rx2 = &chans[2].1;
+            let rx3 = &chans[3].1;
+
             mpsc_select! {
                 m = rx0.recv() => assert!(m.is_ok()),
                 m = rx1.recv() => assert!(m.is_ok()),
@@ -276,7 +312,7 @@ fn select_rx_async() {
 
 fn select_rx_sync(cap: usize) {
     assert_eq!(THREADS, 4);
-    let chans = (0..THREADS).map(|_| mpsc::sync_channel::<i32>(cap)).collect::<Vec<_>>();
+    let mut chans = (0..THREADS).map(|_| mpsc::sync_channel::<i32>(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for &(ref tx, _) in &chans {
@@ -288,12 +324,13 @@ fn select_rx_sync(cap: usize) {
             });
         }
 
-        let rx0 = &chans[0].1;
-        let rx1 = &chans[1].1;
-        let rx2 = &chans[2].1;
-        let rx3 = &chans[3].1;
-
         for _ in 0..MESSAGES {
+            shuffle(&mut chans);
+            let rx0 = &chans[0].1;
+            let rx1 = &chans[1].1;
+            let rx2 = &chans[2].1;
+            let rx3 = &chans[3].1;
+
             mpsc_select! {
                 m = rx0.recv() => assert!(m.is_ok()),
                 m = rx1.recv() => assert!(m.is_ok()),
