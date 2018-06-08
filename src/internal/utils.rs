@@ -1,9 +1,10 @@
 use std::cell::Cell;
 use std::num::Wrapping;
-use std::process;
 use std::sync::atomic;
 use std::thread;
 use std::time::Duration;
+
+use libc;
 
 /// A counter that performs exponential backoff in spin loops.
 pub struct Backoff(u32);
@@ -51,7 +52,7 @@ impl Drop for AbortGuard {
             line!(),
             column!(),
         );
-        process::abort();
+        unsafe { libc::abort() }
     }
 }
 

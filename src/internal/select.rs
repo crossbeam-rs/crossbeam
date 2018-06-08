@@ -220,7 +220,7 @@ use flavors;
 /// If a `send` operation gets executed, `msg` is evaluated and sent into the channel, `fired` is
 /// assigned, and `body` is finally evaluated.
 ///
-/// **Note**: If evaluation of `msg` panics, the process will be aborted because it's very
+/// **Note**: If evaluation of `msg` panics, the program will be aborted because it's very
 /// difficult to sensibly recover from the panic.
 ///
 /// [`send`]: struct.Sender.html#method.send

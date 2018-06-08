@@ -280,10 +280,8 @@
 
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
+extern crate libc;
 extern crate parking_lot;
-
-// TODO: tokio benchmark
-// TODO: benchmarks with mpsc wrapper
 
 mod flavors;
 

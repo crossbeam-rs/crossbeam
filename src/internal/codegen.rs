@@ -1,6 +1,7 @@
 /// Code generator for the `select!` macro.
 
 use std::option;
+use std::ptr;
 use std::time::Instant;
 
 use internal::channel::{Receiver, Sender};
@@ -8,70 +9,97 @@ use internal::context;
 use internal::select::{CaseId, Select, Token};
 use internal::utils;
 
-#[inline(never)]
+// TODO: rename CaseId to OperationId and cases to operation
+
+/// Runs until one of the operations is fired, potentially blocking the current thread.
+///
+/// Receive operations will have to be followed up by `read`, and send operations by `write`.
 pub fn mainloop<'a, S>(
-    cases: &mut [(&'a S, usize, usize)],
+    cases: &mut [(&'a S, usize, *const u8)],
     has_default: bool,
-) -> (Token, usize, usize)
+) -> (Token, usize, *const u8)
 where
     S: Select + ?Sized + 'a,
 {
+    // Create a token, which serves as a temporary variable that gets initialized in this function
+    // and is later used by a call to `read` or `write` that completes the selected operation.
     let mut token = Token::default();
 
+    // Shuffle the cases for fairness.
     if cases.len() >= 2 {
         utils::shuffle(cases);
     }
 
     if cases.is_empty() {
         if has_default {
-            return (token, 0, 0);
+            // If there is only the default case, return.
+            return (token, 0, ptr::null());
         } else {
+            // If there are no cases at all, block forever.
             utils::sleep_forever();
         }
     }
 
     loop {
+        // Try firing the cases without blocking.
         for &(select, i, addr) in cases.iter() {
             if select.try(&mut token) {
                 return (token, i, addr);
             }
         }
 
+        // If there's a default case, select it.
         if has_default {
-            return (token, 0, 0);
+            return (token, 0, ptr::null());
         }
 
+        // Before blocking, try firing the cases one more time. Retries are permitted to take a
+        // little bit more time than the initial tries, but they still mustn't block.
         for &(select, i, addr) in cases.iter() {
             if select.retry(&mut token) {
                 return (token, i, addr);
             }
         }
 
+        // Prepare for blocking.
         context::current_reset();
+        let mut sel = CaseId::Waiting;
+        let mut registered_count = 0;
 
+        // Register all cases.
         for case in cases.iter_mut() {
             let &mut (select, _, _) = case;
+            registered_count += 1;
 
+            // If registration returns `false`, that means the operation has just become ready.
             if !select.register(&mut token, CaseId::hook(case)) {
-                context::current_try_abort();
+                // Abort blocking and then again.
+                sel = context::current_try_abort();
                 break;
             }
 
-            if context::current_selected() != CaseId::Waiting {
+            // If another thread has already selected one of the cases, stop registration.
+            sel = context::current_selected();
+            if sel != CaseId::Waiting {
                 break;
             }
         }
 
-        let mut deadline: Option<Instant> = None;
-        for &(select, _, _) in cases.iter() {
-            if let Some(x) = select.deadline() {
-                deadline = deadline.map(|y| x.min(y)).or(Some(x));
+        if sel == CaseId::Waiting {
+            // Check with each case how long we're allowed to block.
+            let mut deadline: Option<Instant> = None;
+            for &(select, _, _) in cases.iter() {
+                if let Some(x) = select.deadline() {
+                    deadline = deadline.map(|y| x.min(y)).or(Some(x));
+                }
             }
+
+            // Block the current thread.
+            sel = context::current_wait_until(deadline);
         }
 
-        let sel = context::current_wait_until(deadline);
-
-        for case in cases.iter_mut() {
+        // Unregister all registered cases.
+        for case in cases.iter_mut().take(registered_count) {
             let &mut (select, _, _) = case;
             select.unregister(CaseId::hook(case));
         }
@@ -80,25 +108,29 @@ where
             CaseId::Waiting => unreachable!(),
             CaseId::Aborted => {},
             CaseId::Closed | CaseId::Case(_) => {
+                // Find the selected case.
                 for case in cases.iter_mut() {
                     let &mut (select, i, addr) = case;
 
+                    // Is this the selected case?
                     if sel == CaseId::hook(case) {
+                        // Try firing this case.
                         if select.accept(&mut token) {
                             return (token, i, addr);
                         }
                     }
                 }
-            },
-        }
 
-        if cases.len() >= 2 {
-            utils::shuffle(cases);
+                // Before the next round, reshuffle the cases for fairness.
+                if cases.len() >= 2 {
+                    utils::shuffle(cases);
+                }
+            },
         }
     }
 }
 
-pub unsafe fn bind_address<'a, T: 'a, I>(_: &I, addr: usize) -> &'a T
+pub unsafe fn bind_address<'a, T: 'a, I>(_: &I, addr: *const u8) -> &'a T
 where
     I: Iterator<Item = &'a T>,
 {
@@ -338,10 +370,10 @@ macro_rules! __crossbeam_channel_codegen {
         ()
     ) => {{
         let mut c = $crate::internal::smallvec::SmallVec::<
-            [(&$crate::Receiver<_>, usize, usize); 4]
+            [(&$crate::Receiver<_>, usize, *const u8); 4]
         >::new();
         while let Some(r) = $var.next() {
-            let addr = r as *const $crate::Receiver<_> as usize;
+            let addr = r as *const $crate::Receiver<_> as *const u8;
             c.push((r, $i, addr));
         }
         c
@@ -351,10 +383,10 @@ macro_rules! __crossbeam_channel_codegen {
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
     ) => {{
         let mut c = $crate::internal::smallvec::SmallVec::<
-            [(&$crate::Sender<_>, usize, usize); 4]
+            [(&$crate::Sender<_>, usize, *const u8); 4]
         >::new();
         while let Some(s) = $var.next() {
-            let addr = s as *const $crate::Sender<_> as usize;
+            let addr = s as *const $crate::Sender<_> as *const u8;
             c.push((s, $i, addr));
         }
         c
@@ -364,7 +396,7 @@ macro_rules! __crossbeam_channel_codegen {
         $send:tt
     ) => {{
         let mut c = $crate::internal::smallvec::SmallVec::<
-            [(&$crate::internal::select::Select, usize, usize); 4]
+            [(&$crate::internal::select::Select, usize, *const u8); 4]
         >::new();
         __crossbeam_channel_codegen!(@push c $recv $send);
         c
@@ -376,7 +408,7 @@ macro_rules! __crossbeam_channel_codegen {
         $send:tt
     ) => {
         while let Some(r) = $var.next() {
-            let addr = r as *const $crate::Receiver<_> as usize;
+            let addr = r as *const $crate::Receiver<_> as *const u8;
             $cases.push((r, $i, addr));
         }
         __crossbeam_channel_codegen!(@push $cases ($($tail)*) $send);
@@ -387,7 +419,7 @@ macro_rules! __crossbeam_channel_codegen {
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
     ) => {
         while let Some(s) = $var.next() {
-            let addr = s as *const $crate::Sender<_> as usize;
+            let addr = s as *const $crate::Sender<_> as *const u8;
             $cases.push((s, $i, addr));
         }
         __crossbeam_channel_codegen!(@push $cases () ($($tail)*));
