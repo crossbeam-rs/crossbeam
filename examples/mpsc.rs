@@ -234,10 +234,12 @@ pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
 }
 
 macro_rules! mpsc_select {
-    ($($name:pat = $rx:ident.$meth:ident() => $code:expr),+) => {{
+    (
+        $($name:pat = $rx:ident.$meth:ident() => $code:expr),+
+    ) => ({
         select! {
             $(
-                $meth($rx.inner, msg) => {
+                $meth(($rx).inner, msg) => {
                     let $name = match msg {
                         None => Err(::std::sync::mpsc::RecvError),
                         Some(msg) => Ok(msg),
@@ -246,7 +248,7 @@ macro_rules! mpsc_select {
                 }
             )+
         }
-    }};
+    })
 }
 
 fn main() {
