@@ -12,7 +12,7 @@ use internal::utils;
 /// Runs until one of the operations is fired, potentially blocking the current thread.
 ///
 /// Receive operations will have to be followed up by `read`, and send operations by `write`.
-pub fn mainloop<'a, S>(
+pub fn main_loop<'a, S>(
     operations: &mut [(&'a S, usize, *const u8)],
     has_default: bool,
 ) -> (Token, usize, *const u8)
@@ -30,7 +30,7 @@ where
 
     if operations.is_empty() {
         if has_default {
-            // If there is only the default case, return.
+            // If there is only the `default` case, return.
             return (token, 0, ptr::null());
         } else {
             // If there are no operations at all, block forever.
@@ -40,22 +40,22 @@ where
 
     loop {
         // Try firing the operations without blocking.
-        for &(select, i, addr) in operations.iter() {
+        for &(select, i, ptr) in operations.iter() {
             if select.try(&mut token) {
-                return (token, i, addr);
+                return (token, i, ptr);
             }
         }
 
-        // If there's a default case, select it.
+        // If there's a `default` case, select it.
         if has_default {
             return (token, 0, ptr::null());
         }
 
         // Before blocking, try firing the operations one more time. Retries are permitted to take
         // a little bit more time than the initial tries, but they still mustn't block.
-        for &(select, i, addr) in operations.iter() {
+        for &(select, i, ptr) in operations.iter() {
             if select.retry(&mut token) {
-                return (token, i, addr);
+                return (token, i, ptr);
             }
         }
 
@@ -108,13 +108,13 @@ where
             Select::Closed | Select::Selected(_) => {
                 // Find the selected operation.
                 for operation in operations.iter_mut() {
-                    let &mut (select, i, addr) = operation;
+                    let &mut (select, i, ptr) = operation;
 
                     // Is this the selected operation?
                     if sel == Select::hook(operation) {
                         // Try firing this operation.
                         if select.accept(&mut token) {
-                            return (token, i, addr);
+                            return (token, i, ptr);
                         }
                     }
                 }
@@ -128,16 +128,21 @@ where
     }
 }
 
-pub unsafe fn bind_address<'a, T: 'a, I>(_: &I, addr: *const u8) -> &'a T
+/// Dereference the pointer and bind it to the lifetime in the iterator.
+///
+/// The returned reference will appear as if it was previously produced by the iterator.
+pub unsafe fn deref_from_iterator<'a, T: 'a, I>(ptr: *const u8, _: &I) -> &'a T
 where
     I: Iterator<Item = &'a T>,
 {
-    &*(addr as *const T)
+    &*(ptr as *const T)
 }
 
+/// Receiver argument types allowed in `recv` cases.
 pub trait RecvArgument<'a, T: 'a> {
     type Iter: Iterator<Item = &'a Receiver<T>>;
 
+    /// Converts the argument into an iterator over receivers.
     fn __as_recv_argument(&'a self) -> Self::Iter;
 }
 
@@ -165,7 +170,6 @@ impl<'a, T: 'a> RecvArgument<'a, T> for &'a &'a Receiver<T> {
     }
 }
 
-// TODO: Try supporting `IntoIterator<Item = &'a &'b Receiver<T>>` once we get specialization.
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
 
@@ -174,9 +178,11 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a
     }
 }
 
+/// Sender argument types allowed in `send` cases.
 pub trait SendArgument<'a, T: 'a> {
     type Iter: Iterator<Item = &'a Sender<T>>;
 
+    /// Converts the argument into an iterator over senders.
     fn __as_send_argument(&'a self) -> Self::Iter;
 }
 
@@ -204,7 +210,6 @@ impl<'a, T: 'a> SendArgument<'a, T> for &'a &'a Sender<T> {
     }
 }
 
-// TODO: Try supporting `IntoIterator<Item = &'a &'b Sender<T>>` once we get specialization.
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
 
@@ -213,58 +218,59 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, 
     }
 }
 
-/// TODO
+/// Generates code that performs selection over a set of cases.
+///
+/// The input to this macro is the output from the parser macro.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __crossbeam_channel_codegen {
+    // Declare the iterator variable for a `recv` case.
     (@declare
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         $recv:tt
         $send:tt
         $default:tt
-    ) => {
-        {
-            match {
-                #[allow(unused_imports)]
-                use $crate::internal::codegen::RecvArgument;
-                &mut (&&$rs).__as_recv_argument()
-            } {
-                $var => {
-                    __crossbeam_channel_codegen!(
-                        @declare
-                        ($($tail)*)
-                        $recv
-                        $send
-                        $default
-                    )
-                }
+    ) => {{
+        match {
+            #[allow(unused_imports)]
+            use $crate::internal::codegen::RecvArgument;
+            &mut (&&$rs).__as_recv_argument()
+        } {
+            $var => {
+                __crossbeam_channel_codegen!(
+                    @declare
+                    ($($tail)*)
+                    $recv
+                    $send
+                    $default
+                )
             }
         }
-    };
+    }};
+    // Declare the iterator variable for a `send` case.
     (@declare
         (($i:tt $var:ident) send($ss:expr, $m:pat, $s:pat) => $body:tt, $($tail:tt)*)
         $recv:tt
         $send:tt
         $default:tt
-    ) => {
-        {
-            match {
-                #[allow(unused_imports)]
-                use $crate::internal::codegen::SendArgument;
-                &mut (&&$ss).__as_send_argument()
-            } {
-                $var => {
-                    __crossbeam_channel_codegen!(
-                        @declare
-                        ($($tail)*)
-                        $recv
-                        $send
-                        $default
-                    )
-                }
+    ) => {{
+        match {
+            #[allow(unused_imports)]
+            use $crate::internal::codegen::SendArgument;
+            &mut (&&$ss).__as_send_argument()
+        } {
+            $var => {
+                __crossbeam_channel_codegen!(
+                    @declare
+                    ($($tail)*)
+                    $recv
+                    $send
+                    $default
+                )
             }
         }
-    };
+    }};
+    // All iterator variables have been declared.
     (@declare
         ()
         $recv:tt
@@ -272,10 +278,11 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {{
         let mut operations = __crossbeam_channel_codegen!(@container $recv $send);
-        __crossbeam_channel_codegen!(@fastpath $recv $send $default operations)
+        __crossbeam_channel_codegen!(@fast_path $recv $send $default operations)
     }};
 
-    (@fastpath
+    // Attempt to optimize the whole `select!` into a single call to `recv`.
+    (@fast_path
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
         ()
         ()
@@ -287,7 +294,7 @@ macro_rules! __crossbeam_channel_codegen {
             $body
         } else {
             __crossbeam_channel_codegen!(
-                @mainloop
+                @main_loop
                 (($i $var) recv($rs, $m, $r) => $body,)
                 ()
                 ()
@@ -295,7 +302,8 @@ macro_rules! __crossbeam_channel_codegen {
             )
         }
     }};
-    (@fastpath
+    // Attempt to optimize the whole `select!` into a single call to `recv_nonblocking`.
+    (@fast_path
         (($recv_i:tt $recv_var:ident) recv($rs:expr, $m:pat, $r:pat) => $recv_body:tt,)
         ()
         (($default_i:tt $default_var:ident) default() => $default_body:tt,)
@@ -324,7 +332,7 @@ macro_rules! __crossbeam_channel_codegen {
             }
         } else {
             __crossbeam_channel_codegen!(
-                @mainloop
+                @main_loop
                 (($recv_i $recv_var) recv($rs, $m, $r) => $recv_body,)
                 ()
                 (($default_i $default_var) default() => $default_body,)
@@ -332,18 +340,20 @@ macro_rules! __crossbeam_channel_codegen {
             )
         }
     }};
-    (@fastpath
+    // Move on to the main selection loop.
+    (@fast_path
         $recv:tt
         $send:tt
         $default:tt
         $operations:ident
     ) => {{
-        __crossbeam_channel_codegen!(@mainloop $recv $send $default $operations)
+        __crossbeam_channel_codegen!(@main_loop $recv $send $default $operations)
     }};
     // TODO: Optimize `select! { send(s, msg) => {} }`.
     // TODO: Optimize `select! { send(s, msg) => {} default => {} }`.
 
-    (@mainloop
+    // The main selection loop.
+    (@main_loop
         $recv:tt
         $send:tt
         $default:tt
@@ -351,18 +361,22 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {{
         // TODO: set up a guard that aborts if anything panics before actually finishing
 
+        // Check if there's a `default` case.
         let has_default = __crossbeam_channel_codegen!(@has_default $default);
 
+        // Run the main loop.
         #[allow(unused_mut)]
         #[allow(unused_variables)]
-        let (mut token, index, selected) = $crate::internal::codegen::mainloop(
+        let (mut token, index, selected) = $crate::internal::codegen::main_loop(
             &mut $operations,
             has_default,
         );
 
-        __crossbeam_channel_codegen!(@finish token index selected $recv $send $default)
+        // Pass the result of the main loop to the final step.
+        __crossbeam_channel_codegen!(@finalize token index selected $recv $send $default)
     }};
 
+    // Initialize the `operations` vector if there's only a single `recv` case.
     (@container
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
         ()
@@ -371,11 +385,12 @@ macro_rules! __crossbeam_channel_codegen {
             [(&$crate::Receiver<_>, usize, *const u8); 4]
         >::new();
         while let Some(r) = $var.next() {
-            let addr = r as *const $crate::Receiver<_> as *const u8;
-            c.push((r, $i, addr));
+            let ptr = r as *const $crate::Receiver<_> as *const u8;
+            c.push((r, $i, ptr));
         }
         c
     }};
+    // Initialize the `operations` vector if there's only a single `send` case.
     (@container
         ()
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
@@ -384,11 +399,12 @@ macro_rules! __crossbeam_channel_codegen {
             [(&$crate::Sender<_>, usize, *const u8); 4]
         >::new();
         while let Some(s) = $var.next() {
-            let addr = s as *const $crate::Sender<_> as *const u8;
-            c.push((s, $i, addr));
+            let ptr = s as *const $crate::Sender<_> as *const u8;
+            c.push((s, $i, ptr));
         }
         c
     }};
+    // Initialize the `operations` vector generically.
     (@container
         $recv:tt
         $send:tt
@@ -400,28 +416,31 @@ macro_rules! __crossbeam_channel_codegen {
         c
     }};
 
+    // Push a `recv` operation into the `operations` vector.
     (@push
         $operations:ident
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         $send:tt
     ) => {
         while let Some(r) = $var.next() {
-            let addr = r as *const $crate::Receiver<_> as *const u8;
-            $operations.push((r, $i, addr));
+            let ptr = r as *const $crate::Receiver<_> as *const u8;
+            $operations.push((r, $i, ptr));
         }
         __crossbeam_channel_codegen!(@push $operations ($($tail)*) $send);
     };
+    // Push a `send` operation into the `operations` vector.
     (@push
         $operations:ident
         ()
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
     ) => {
         while let Some(s) = $var.next() {
-            let addr = s as *const $crate::Sender<_> as *const u8;
-            $operations.push((s, $i, addr));
+            let ptr = s as *const $crate::Sender<_> as *const u8;
+            $operations.push((s, $i, ptr));
         }
         __crossbeam_channel_codegen!(@push $operations () ($($tail)*));
     };
+    // There are no more operations to push.
     (@push
         $operations:ident
         ()
@@ -429,18 +448,21 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
     };
 
+    // Evaluate to `false` if there is no `default` case.
     (@has_default
         ()
     ) => {
         false
     };
+    // Evaluate to `true` if there is a `default` case.
     (@has_default
         (($i:tt $var:ident) default() => $body:tt,)
     ) => {
         true
     };
 
-    (@finish
+    // Finalize a receive operation.
+    (@finalize
         $token:ident
         $index:ident
         $selected:ident
@@ -450,14 +472,14 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         if $index == $i {
             let ($m, $r) = unsafe {
-                let r = $crate::internal::codegen::bind_address(&$var, $selected);
+                let r = $crate::internal::codegen::deref_from_iterator($selected, &$var);
                 let msg = $crate::internal::channel::read(r, &mut $token);
                 (msg, r)
             };
             $body
         } else {
             __crossbeam_channel_codegen!(
-                @finish
+                @finalize
                 $token
                 $index
                 $selected
@@ -467,7 +489,8 @@ macro_rules! __crossbeam_channel_codegen {
             )
         }
     };
-    (@finish
+    // Finalize a send operation.
+    (@finalize
         $token:ident
         $index:ident
         $selected:ident
@@ -477,9 +500,11 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         if $index == $i {
             let $s = {
-                // We have to prefix variables with an underscore to get rid of warnings in
-                // case `$m` is of type `!`.
-                let _s = unsafe { $crate::internal::codegen::bind_address(&$var, $selected) };
+                // We have to prefix variables with an underscore to get rid of warnings when
+                // evaluation of `$m` doesn't finish.
+                let _s = unsafe {
+                    $crate::internal::codegen::deref_from_iterator($selected, &$var)
+                };
                 let _guard = $crate::internal::utils::AbortGuard(
                     "a send case triggered a panic while evaluating its message"
                 );
@@ -495,7 +520,7 @@ macro_rules! __crossbeam_channel_codegen {
             $body
         } else {
             __crossbeam_channel_codegen!(
-                @finish
+                @finalize
                 $token
                 $index
                 $selected
@@ -505,7 +530,8 @@ macro_rules! __crossbeam_channel_codegen {
             )
         }
     };
-    (@finish
+    // Execute the default case.
+    (@finalize
         $token:ident
         $index:ident
         $selected:ident
@@ -517,7 +543,7 @@ macro_rules! __crossbeam_channel_codegen {
             $body
         } else {
             __crossbeam_channel_codegen!(
-                @finish
+                @finalize
                 $token
                 $index
                 $selected
@@ -527,7 +553,8 @@ macro_rules! __crossbeam_channel_codegen {
             )
         }
     };
-    (@finish
+    // No more cases to finalize.
+    (@finalize
         $token:ident
         $index:ident
         $selected:ident

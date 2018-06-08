@@ -207,7 +207,7 @@ use flavors;
 ///
 /// There can be at most one default case.
 ///
-/// # Behaviora
+/// # Behavior
 ///
 /// TODO: model after https://golang.org/ref/spec#Select_statements
 ///
