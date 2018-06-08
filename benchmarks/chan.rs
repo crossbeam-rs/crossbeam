@@ -2,6 +2,10 @@
 extern crate chan;
 extern crate crossbeam;
 
+use shared::message;
+
+mod shared;
+
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
@@ -13,10 +17,10 @@ fn new<T>(cap: Option<usize>) -> (chan::Sender<T>, chan::Receiver<T>) {
 }
 
 fn seq(cap: Option<usize>) {
-    let (tx, rx) = new::<i32>(cap);
+    let (tx, rx) = new(cap);
 
     for i in 0..MESSAGES {
-        tx.send(i as i32);
+        tx.send(message(i));
     }
 
     for _ in 0..MESSAGES {
@@ -25,12 +29,12 @@ fn seq(cap: Option<usize>) {
 }
 
 fn spsc(cap: Option<usize>) {
-    let (tx, rx) = new::<i32>(cap);
+    let (tx, rx) = new(cap);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                tx.send(i as i32);
+                tx.send(message(i));
             }
         });
 
@@ -41,13 +45,13 @@ fn spsc(cap: Option<usize>) {
 }
 
 fn mpsc(cap: Option<usize>) {
-    let (tx, rx) = new::<i32>(cap);
+    let (tx, rx) = new(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32);
+                    tx.send(message(i));
                 }
             });
         }
@@ -59,13 +63,13 @@ fn mpsc(cap: Option<usize>) {
 }
 
 fn mpmc(cap: Option<usize>) {
-    let (tx, rx) = new::<i32>(cap);
+    let (tx, rx) = new(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32);
+                    tx.send(message(i));
                 }
             });
         }
@@ -82,14 +86,14 @@ fn mpmc(cap: Option<usize>) {
 
 fn select_rx(cap: Option<usize>) {
     assert_eq!(THREADS, 4);
-    let chans = (0..THREADS).map(|_| new::<i32>(cap)).collect::<Vec<_>>();
+    let chans = (0..THREADS).map(|_| new(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for (tx, _) in &chans {
             let tx = tx.clone();
             s.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(i as i32);
+                    tx.send(message(i));
                 }
             });
         }
@@ -111,7 +115,7 @@ fn select_rx(cap: Option<usize>) {
 
 fn select_both(cap: Option<usize>) {
     assert_eq!(THREADS, 4);
-    let chans = (0..THREADS).map(|_| new::<i32>(cap)).collect::<Vec<_>>();
+    let chans = (0..THREADS).map(|_| new(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -124,10 +128,10 @@ fn select_both(cap: Option<usize>) {
 
                 for i in 0..MESSAGES / THREADS {
                     chan_select! {
-                        tx0.send(i as i32) => {},
-                        tx1.send(i as i32) => {},
-                        tx2.send(i as i32) => {},
-                        tx3.send(i as i32) => {},
+                        tx0.send(message(i)) => {},
+                        tx1.send(message(i)) => {},
+                        tx2.send(message(i)) => {},
+                        tx3.send(message(i)) => {},
                     }
                 }
             });

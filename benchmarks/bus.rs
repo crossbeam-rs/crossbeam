@@ -2,6 +2,9 @@ extern crate bus;
 extern crate crossbeam;
 
 use bus::Bus;
+use shared::message;
+
+mod shared;
 
 const MESSAGES: usize = 5_000_000;
 
@@ -10,7 +13,7 @@ fn seq(cap: usize) {
     let mut rx = tx.add_rx();
 
     for i in 0..MESSAGES {
-        tx.broadcast(i as i32);
+        tx.broadcast(message(i));
     }
 
     for _ in 0..MESSAGES {
@@ -25,7 +28,7 @@ fn spsc(cap: usize) {
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                tx.broadcast(i as i32);
+                tx.broadcast(message(i));
             }
         });
 

@@ -6,8 +6,14 @@ import "time"
 const MESSAGES = 5 * 1000 * 1000
 const THREADS = 4
 
+type Message = int
+
+func message(msg int) Message {
+    return msg
+}
+
 func seq(cap int) {
-    var c = make(chan int, cap)
+    var c = make(chan Message, cap)
 
     for i := 0; i < MESSAGES; i++ {
         c <- i
@@ -19,7 +25,7 @@ func seq(cap int) {
 }
 
 func spsc(cap int) {
-    var c = make(chan int, cap)
+    var c = make(chan Message, cap)
     var done = make(chan bool)
 
     go func() {
@@ -37,7 +43,7 @@ func spsc(cap int) {
 }
 
 func mpsc(cap int) {
-    var c = make(chan int, cap)
+    var c = make(chan Message, cap)
     var done = make(chan bool)
 
     for t := 0; t < THREADS; t++ {
@@ -59,7 +65,7 @@ func mpsc(cap int) {
 }
 
 func mpmc(cap int) {
-    var c = make(chan int, cap)
+    var c = make(chan Message, cap)
     var done = make(chan bool)
 
     for t := 0; t < THREADS; t++ {
@@ -92,13 +98,13 @@ func select_rx(cap int) {
         panic("assumed there are 4 threads")
     }
 
-    var c0 = make(chan int, cap)
-    var c1 = make(chan int, cap)
-    var c2 = make(chan int, cap)
-    var c3 = make(chan int, cap)
+    var c0 = make(chan Message, cap)
+    var c1 = make(chan Message, cap)
+    var c2 = make(chan Message, cap)
+    var c3 = make(chan Message, cap)
     var done = make(chan bool)
 
-    var producer = func(c chan int) {
+    var producer = func(c chan Message) {
         for i := 0; i < MESSAGES / THREADS; i++ {
             c <- i
         }
@@ -128,13 +134,13 @@ func select_both(cap int) {
         panic("assumed there are 4 threads")
     }
 
-    var c0 = make(chan int, cap)
-    var c1 = make(chan int, cap)
-    var c2 = make(chan int, cap)
-    var c3 = make(chan int, cap)
+    var c0 = make(chan Message, cap)
+    var c1 = make(chan Message, cap)
+    var c2 = make(chan Message, cap)
+    var c3 = make(chan Message, cap)
     var done = make(chan bool)
 
-    var producer = func(c chan int) {
+    var producer = func(c chan Message) {
         for i := 0; i < MESSAGES / THREADS; i++ {
             c <- i
         }

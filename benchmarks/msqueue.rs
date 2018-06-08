@@ -1,17 +1,19 @@
 extern crate crossbeam;
 
+use crossbeam::sync::MsQueue;
+use shared::message;
 use std::thread;
 
-use crossbeam::sync::MsQueue;
+mod shared;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
 fn seq() {
-    let q = MsQueue::<i32>::new();
+    let q = MsQueue::new();
 
     for i in 0..MESSAGES {
-        q.push(i as i32);
+        q.push(message(i));
     }
 
     for _ in 0..MESSAGES {
@@ -20,12 +22,12 @@ fn seq() {
 }
 
 fn spsc() {
-    let q = MsQueue::<i32>::new();
+    let q = MsQueue::new();
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                q.push(i as i32);
+                q.push(message(i));
             }
         });
 
@@ -42,13 +44,13 @@ fn spsc() {
 }
 
 fn mpsc() {
-    let q = MsQueue::<i32>::new();
+    let q = MsQueue::new();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    q.push(i as i32);
+                    q.push(message(i));
                 }
             });
         }
@@ -66,13 +68,13 @@ fn mpsc() {
 }
 
 fn mpmc() {
-    let q = MsQueue::<i32>::new();
+    let q = MsQueue::new();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    q.push(i as i32);
+                    q.push(message(i));
                 }
             });
         }

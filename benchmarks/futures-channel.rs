@@ -6,14 +6,18 @@ use futures::executor::ThreadPool;
 use futures::prelude::*;
 use futures::{SinkExt, StreamExt, future, stream};
 
+use shared::message;
+
+mod shared;
+
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
 fn seq_unbounded() {
     ThreadPool::new().unwrap().run(future::lazy(|_| {
-        let (tx, rx) = mpsc::unbounded::<i32>();
+        let (tx, rx) = mpsc::unbounded();
         for i in 0..MESSAGES {
-            tx.unbounded_send(i as i32).unwrap();
+            tx.unbounded_send(message(i)).unwrap();
         }
         drop(tx);
 
@@ -22,10 +26,10 @@ fn seq_unbounded() {
 }
 
 fn seq_bounded(cap: usize) {
-    let (mut tx, rx) = mpsc::channel::<i32>(cap);
+    let (mut tx, rx) = mpsc::channel(cap);
     ThreadPool::new().unwrap().run(future::lazy(|_| {
         for i in 0..MESSAGES {
-            tx.try_send(i as i32).unwrap();
+            tx.try_send(message(i)).unwrap();
         }
         drop(tx);
 
@@ -35,10 +39,10 @@ fn seq_bounded(cap: usize) {
 
 fn spsc_unbounded() {
     ThreadPool::new().unwrap().run(future::lazy(|cx| {
-        let (tx, rx) = mpsc::unbounded::<i32>();
+        let (tx, rx) = mpsc::unbounded();
 
         cx.spawn(future::lazy(move |_| {
-            tx.send_all(stream::iter_ok((0..MESSAGES).map(|i| i as i32)))
+            tx.send_all(stream::iter_ok((0..MESSAGES).map(|i| message(i))))
                 .map_err(|_| panic!())
                 .and_then(|_| future::ok(()))
         }));
@@ -49,10 +53,10 @@ fn spsc_unbounded() {
 
 fn spsc_bounded(cap: usize) {
     ThreadPool::new().unwrap().run(future::lazy(|cx| {
-        let (tx, rx) = mpsc::channel::<i32>(cap);
+        let (tx, rx) = mpsc::channel(cap);
 
         cx.spawn(future::lazy(move |_| {
-            tx.send_all(stream::iter_ok((0..MESSAGES).map(|i| i as i32)))
+            tx.send_all(stream::iter_ok((0..MESSAGES).map(|i| message(i))))
                 .map_err(|_| panic!())
                 .and_then(|_| future::ok(()))
         }));
@@ -63,12 +67,12 @@ fn spsc_bounded(cap: usize) {
 
 fn mpsc_unbounded() {
     ThreadPool::new().unwrap().run(future::lazy(|cx| {
-        let (tx, rx) = mpsc::unbounded::<i32>();
+        let (tx, rx) = mpsc::unbounded();
 
         for _ in 0..THREADS {
             let tx = tx.clone();
             cx.spawn(future::lazy(move |_| {
-                tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| i as i32)))
+                tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| message(i))))
                     .map_err(|_| panic!())
                     .and_then(|_| future::ok(()))
             }));
@@ -81,12 +85,12 @@ fn mpsc_unbounded() {
 
 fn mpsc_bounded(cap: usize) {
     ThreadPool::new().unwrap().run(future::lazy(|cx| {
-        let (tx, rx) = mpsc::channel::<i32>(cap);
+        let (tx, rx) = mpsc::channel(cap);
 
         for _ in 0..THREADS {
             let tx = tx.clone();
             cx.spawn(future::lazy(move |_| {
-                tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| i as i32)))
+                tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| message(i))))
                     .map_err(|_| panic!())
                     .and_then(|_| future::ok(()))
             }));
@@ -100,14 +104,14 @@ fn mpsc_bounded(cap: usize) {
 fn select_rx_unbounded() {
     ThreadPool::new().unwrap().run(future::lazy(|cx| {
         let chans = (0..THREADS)
-            .map(|_| mpsc::unbounded::<i32>())
+            .map(|_| mpsc::unbounded())
             .collect::<Vec<_>>();
 
         for (tx, _) in &chans {
             let tx = tx.clone();
             cx.spawn(future::lazy(move |_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.unbounded_send(i as i32).unwrap();
+                    tx.unbounded_send(message(i)).unwrap();
                 }
                 future::ok(())
             }));
@@ -122,13 +126,13 @@ fn select_rx_unbounded() {
 fn select_rx_bounded(cap: usize) {
     ThreadPool::new().unwrap().run(future::lazy(|cx| {
         let chans = (0..THREADS)
-            .map(|_| mpsc::channel::<i32>(cap))
+            .map(|_| mpsc::channel(cap))
             .collect::<Vec<_>>();
 
         for (tx, _) in &chans {
             let tx = tx.clone();
             cx.spawn(future::lazy(move |_| {
-                tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| i as i32)))
+                tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| message(i))))
                     .map_err(|_| panic!())
                     .and_then(|_| future::ok(()))
             }));
