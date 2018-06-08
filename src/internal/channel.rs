@@ -6,10 +6,11 @@ use std::isize;
 use std::iter::FusedIterator;
 use std::mem;
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+
+use libc;
 
 use flavors;
 use internal::select::{CaseId, Select, Token};
@@ -262,9 +263,9 @@ impl<T> Sender<T> {
 
         // Cloning senders and calling `mem::forget` on the clones could potentially overflow the
         // counter. It's very difficult to recover sensibly from such degenerate scenarios so we
-        // just abort the process when the count becomes very large.
+        // just abort when the count becomes very large.
         if old_count > isize::MAX as usize {
-            process::abort();
+            unsafe { libc::abort() }
         }
 
         Sender(chan)
@@ -468,9 +469,15 @@ impl<T> RefUnwindSafe for Sender<T> {}
 /// ```
 pub struct Receiver<T>(ReceiverFlavor<T>);
 
+/// Receiver flavors.
 pub enum ReceiverFlavor<T> {
+    /// A normal channel (array, list, or zero flavor).
     Channel(Arc<Channel<T>>),
+
+    /// The after flavor.
     After(flavors::after::Channel),
+
+    /// The tick flavor.
     Tick(flavors::tick::Channel),
 }
 
@@ -772,14 +779,6 @@ impl<T> Select for Sender<T> {
     }
 }
 
-pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) {
-    match &s.0.flavor {
-        ChannelFlavor::Array(chan) => chan.write(token, msg),
-        ChannelFlavor::List(chan) => chan.write(token, msg),
-        ChannelFlavor::Zero(chan) => chan.write(token, msg),
-    }
-}
-
 impl<T> Select for Receiver<T> {
     fn try(&self, token: &mut Token) -> bool {
         match &self.0 {
@@ -850,6 +849,16 @@ impl<T> Select for Receiver<T> {
     }
 }
 
+/// Writes a message into the channel.
+pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) {
+    match &s.0.flavor {
+        ChannelFlavor::Array(chan) => chan.write(token, msg),
+        ChannelFlavor::List(chan) => chan.write(token, msg),
+        ChannelFlavor::Zero(chan) => chan.write(token, msg),
+    }
+}
+
+/// Writes a message from the channel.
 pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
     match &r.0 {
         ReceiverFlavor::Channel(arc) => match &arc.flavor {
@@ -866,12 +875,19 @@ pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
     }
 }
 
+/// The result of a non-blocking receive operation.
 pub enum RecvNonblocking<T> {
+    /// A message was received.
     Message(T),
+
+    /// The channel is empty.
     Empty,
+
+    /// The channel is empty and closed.
     Closed,
 }
 
+/// Attempts to receive a message without blocking.
 pub fn recv_nonblocking<T>(r: &Receiver<T>) -> RecvNonblocking<T> {
     match &r.0 {
         ReceiverFlavor::Channel(arc) => match &arc.flavor {
