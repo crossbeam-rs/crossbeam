@@ -29,17 +29,15 @@ fn spsc() {
             }
         });
 
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                loop {
-                    if q.try_pop().is_none() {
-                        thread::yield_now();
-                    } else {
-                        break;
-                    }
+        for _ in 0..MESSAGES {
+            loop {
+                if q.try_pop().is_none() {
+                    thread::yield_now();
+                } else {
+                    break;
                 }
             }
-        });
+        }
     });
 }
 
@@ -54,17 +52,16 @@ fn mpsc() {
                 }
             });
         }
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                loop {
-                    if q.try_pop().is_none() {
-                        thread::yield_now();
-                    } else {
-                        break;
-                    }
+
+        for _ in 0..MESSAGES {
+            loop {
+                if q.try_pop().is_none() {
+                    thread::yield_now();
+                } else {
+                    break;
                 }
             }
-        });
+        }
     });
 }
 
@@ -79,6 +76,7 @@ fn mpmc() {
                 }
             });
         }
+
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {

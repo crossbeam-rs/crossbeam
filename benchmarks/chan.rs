@@ -5,10 +5,15 @@ extern crate crossbeam;
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
-type TxRx = (chan::Sender<i32>, chan::Receiver<i32>);
+fn new<T>(cap: Option<usize>) -> (chan::Sender<T>, chan::Receiver<T>) {
+    match cap {
+        None => chan::async(),
+        Some(cap) => chan::sync(cap)
+    }
+}
 
-fn seq<F: Fn() -> TxRx>(make: F) {
-    let (tx, rx) = make();
+fn seq(cap: Option<usize>) {
+    let (tx, rx) = new::<i32>(cap);
 
     for i in 0..MESSAGES {
         tx.send(i as i32);
@@ -19,8 +24,8 @@ fn seq<F: Fn() -> TxRx>(make: F) {
     }
 }
 
-fn spsc<F: Fn() -> TxRx>(make: F) {
-    let (tx, rx) = make();
+fn spsc(cap: Option<usize>) {
+    let (tx, rx) = new::<i32>(cap);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
@@ -35,8 +40,8 @@ fn spsc<F: Fn() -> TxRx>(make: F) {
     });
 }
 
-fn mpsc<F: Fn() -> TxRx>(make: F) {
-    let (tx, rx) = make();
+fn mpsc(cap: Option<usize>) {
+    let (tx, rx) = new::<i32>(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -53,8 +58,8 @@ fn mpsc<F: Fn() -> TxRx>(make: F) {
     });
 }
 
-fn mpmc<F: Fn() -> TxRx>(make: F) {
-    let (tx, rx) = make();
+fn mpmc(cap: Option<usize>) {
+    let (tx, rx) = new::<i32>(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -75,8 +80,9 @@ fn mpmc<F: Fn() -> TxRx>(make: F) {
     });
 }
 
-fn select_rx<F: Fn() -> TxRx>(make: F) {
-    let chans = (0..THREADS).map(|_| make()).collect::<Vec<_>>();
+fn select_rx(cap: Option<usize>) {
+    assert_eq!(THREADS, 4);
+    let chans = (0..THREADS).map(|_| new::<i32>(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for (tx, _) in &chans {
@@ -88,26 +94,25 @@ fn select_rx<F: Fn() -> TxRx>(make: F) {
             });
         }
 
-        s.spawn(|| {
-            let rx0 = &chans[0].1;
-            let rx1 = &chans[1].1;
-            let rx2 = &chans[2].1;
-            let rx3 = &chans[3].1;
+        let rx0 = &chans[0].1;
+        let rx1 = &chans[1].1;
+        let rx2 = &chans[2].1;
+        let rx3 = &chans[3].1;
 
-            for _ in 0..MESSAGES {
-                chan_select! {
-                    rx0.recv() => {},
-                    rx1.recv() => {},
-                    rx2.recv() => {},
-                    rx3.recv() => {},
-                }
+        for _ in 0..MESSAGES {
+            chan_select! {
+                rx0.recv() -> m => assert!(m.is_some()),
+                rx1.recv() -> m => assert!(m.is_some()),
+                rx2.recv() -> m => assert!(m.is_some()),
+                rx3.recv() -> m => assert!(m.is_some()),
             }
-        });
+        }
     });
 }
 
-fn select_both<F: Fn() -> TxRx>(make: F) {
-    let chans = (0..THREADS).map(|_| make()).collect::<Vec<_>>();
+fn select_both(cap: Option<usize>) {
+    assert_eq!(THREADS, 4);
+    let chans = (0..THREADS).map(|_| new::<i32>(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -137,10 +142,10 @@ fn select_both<F: Fn() -> TxRx>(make: F) {
                 let rx3 = &chans[3].1;
                 for _ in 0..MESSAGES / THREADS {
                     chan_select! {
-                        rx0.recv() => {},
-                        rx1.recv() => {},
-                        rx2.recv() => {},
-                        rx3.recv() => {},
+                        rx0.recv() -> m => assert!(m.is_some()),
+                        rx1.recv() -> m => assert!(m.is_some()),
+                        rx2.recv() -> m => assert!(m.is_some()),
+                        rx3.recv() -> m => assert!(m.is_some()),
                     }
                 }
             });
@@ -163,29 +168,29 @@ fn main() {
         }
     }
 
-    run!("bounded0_mpmc", mpmc(|| chan::sync(0)));
-    run!("bounded0_mpsc", mpsc(|| chan::sync(0)));
-    // run!("bounded0_select_both", select_both(|| chan::sync(0)));
-    run!("bounded0_select_rx", select_rx(|| chan::sync(0)));
-    run!("bounded0_spsc", spsc(|| chan::sync(0)));
+    run!("bounded0_mpmc", mpmc(Some(0)));
+    run!("bounded0_mpsc", mpsc(Some(0)));
+    run!("bounded0_select_both", select_both(Some(0)));
+    run!("bounded0_select_rx", select_rx(Some(0)));
+    run!("bounded0_spsc", spsc(Some(0)));
 
-    run!("bounded1_mpmc", mpmc(|| chan::sync(1)));
-    run!("bounded1_mpsc", mpsc(|| chan::sync(1)));
-    run!("bounded1_select_both", select_both(|| chan::sync(1)));
-    run!("bounded1_select_rx", select_rx(|| chan::sync(1)));
-    run!("bounded1_spsc", spsc(|| chan::sync(1)));
+    run!("bounded1_mpmc", mpmc(Some(1)));
+    run!("bounded1_mpsc", mpsc(Some(1)));
+    run!("bounded1_select_both", select_both(Some(1)));
+    run!("bounded1_select_rx", select_rx(Some(1)));
+    run!("bounded1_spsc", spsc(Some(1)));
 
-    run!("bounded_mpmc", mpmc(|| chan::sync(MESSAGES)));
-    run!("bounded_mpsc", mpsc(|| chan::sync(MESSAGES)));
-    run!("bounded_select_both", select_both(|| chan::sync(MESSAGES)));
-    run!("bounded_select_rx", select_rx(|| chan::sync(MESSAGES)));
-    run!("bounded_seq", seq(|| chan::sync(MESSAGES)));
-    run!("bounded_spsc", spsc(|| chan::sync(MESSAGES)));
+    run!("bounded_mpmc", mpmc(Some(MESSAGES)));
+    run!("bounded_mpsc", mpsc(Some(MESSAGES)));
+    run!("bounded_select_both", select_both(Some(MESSAGES)));
+    run!("bounded_select_rx", select_rx(Some(MESSAGES)));
+    run!("bounded_seq", seq(Some(MESSAGES)));
+    run!("bounded_spsc", spsc(Some(MESSAGES)));
 
-    run!("unbounded_mpmc", mpmc(|| chan::async()));
-    run!("unbounded_mpsc", mpsc(|| chan::async()));
-    run!("unbounded_select_rx", select_rx(|| chan::async()));
-    run!("unbounded_seq", seq(|| chan::async()));
-    run!("unbounded_spsc", spsc(|| chan::async()));
-    run!("unbounded_select_both", select_both(|| chan::async()));
+    run!("unbounded_mpmc", mpmc(None));
+    run!("unbounded_mpsc", mpsc(None));
+    run!("unbounded_select_both", select_both(None));
+    run!("unbounded_select_rx", select_rx(None));
+    run!("unbounded_seq", seq(None));
+    run!("unbounded_spsc", spsc(None));
 }

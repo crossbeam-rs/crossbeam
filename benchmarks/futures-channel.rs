@@ -18,7 +18,6 @@ fn seq_unbounded() {
         drop(tx);
 
         rx.for_each(|_| future::ok(()))
-            .map_err(|_| panic!())
     })).unwrap();
 }
 

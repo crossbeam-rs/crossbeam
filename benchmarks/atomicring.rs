@@ -20,6 +20,7 @@ fn seq(cap: usize) {
             }
         }
     }
+
     for _ in 0..MESSAGES {
         q.try_pop().unwrap();
     }
@@ -40,17 +41,16 @@ fn spsc(cap: usize) {
                 }
             }
         });
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                loop {
-                    if q.try_pop().is_none() {
-                        thread::yield_now();
-                    } else {
-                        break;
-                    }
+
+        for _ in 0..MESSAGES {
+            loop {
+                if q.try_pop().is_none() {
+                    thread::yield_now();
+                } else {
+                    break;
                 }
             }
-        });
+        }
     });
 }
 
@@ -71,17 +71,16 @@ fn mpsc(cap: usize) {
                 }
             });
         }
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                loop {
-                    if q.try_pop().is_none() {
-                        thread::yield_now();
-                    } else {
-                        break;
-                    }
+
+        for _ in 0..MESSAGES {
+            loop {
+                if q.try_pop().is_none() {
+                    thread::yield_now();
+                } else {
+                    break;
                 }
             }
-        });
+        }
     });
 }
 

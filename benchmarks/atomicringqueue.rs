@@ -1,6 +1,8 @@
 extern crate atomicring;
 extern crate crossbeam;
 
+use std::thread;
+
 use atomicring::AtomicRingQueue;
 
 const MESSAGES: usize = 5_000_000;
@@ -13,9 +15,12 @@ fn seq(cap: usize) {
         loop {
             if q.try_push(i as i32).is_ok() {
                 break;
+            } else {
+                thread::yield_now();
             }
         }
     }
+
     for _ in 0..MESSAGES {
         q.pop();
     }
@@ -30,15 +35,16 @@ fn spsc(cap: usize) {
                 loop {
                     if q.try_push(i as i32).is_ok() {
                         break;
+                    } else {
+                        thread::yield_now();
                     }
                 }
             }
         });
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                q.pop();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            q.pop();
+        }
     });
 }
 
@@ -52,16 +58,17 @@ fn mpsc(cap: usize) {
                     loop {
                         if q.try_push(i as i32).is_ok() {
                             break;
+                        } else {
+                            thread::yield_now();
                         }
                     }
                 }
             });
         }
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                q.pop();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            q.pop();
+        }
     });
 }
 
@@ -75,11 +82,14 @@ fn mpmc(cap: usize) {
                     loop {
                         if q.try_push(i as i32).is_ok() {
                             break;
+                        } else {
+                            thread::yield_now();
                         }
                     }
                 }
             });
         }
+
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {

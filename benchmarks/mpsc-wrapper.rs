@@ -156,6 +156,7 @@ fn seq_async() {
     for i in 0..MESSAGES {
         tx.send(i as i32).unwrap();
     }
+
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
     }
@@ -167,6 +168,7 @@ fn seq_sync(cap: usize) {
     for i in 0..MESSAGES {
         tx.send(i as i32).unwrap();
     }
+
     for _ in 0..MESSAGES {
         rx.recv().unwrap();
     }
@@ -181,11 +183,10 @@ fn spsc_async() {
                 tx.send(i as i32).unwrap();
             }
         });
-        s.spawn(move || {
-            for _ in 0..MESSAGES {
-                rx.recv().unwrap();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            rx.recv().unwrap();
+        }
     });
 }
 
@@ -198,11 +199,10 @@ fn spsc_sync(cap: usize) {
                 tx.send(i as i32).unwrap();
             }
         });
-        s.spawn(move || {
-            for _ in 0..MESSAGES {
-                rx.recv().unwrap();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            rx.recv().unwrap();
+        }
     });
 }
 
@@ -218,11 +218,10 @@ fn mpsc_async() {
                 }
             });
         }
-        s.spawn(move || {
-            for _ in 0..MESSAGES {
-                rx.recv().unwrap();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            rx.recv().unwrap();
+        }
     });
 }
 
@@ -238,15 +237,15 @@ fn mpsc_sync(cap: usize) {
                 }
             });
         }
-        s.spawn(move || {
-            for _ in 0..MESSAGES {
-                rx.recv().unwrap();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            rx.recv().unwrap();
+        }
     });
 }
 
 fn select_rx_async() {
+    assert_eq!(THREADS, 4);
     let chans = (0..THREADS).map(|_| mpsc::channel::<i32>()).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
@@ -259,26 +258,24 @@ fn select_rx_async() {
             });
         }
 
-        s.spawn(move || {
-            assert!(chans.len() == 4);
-            let rx0 = &chans[0].1;
-            let rx1 = &chans[1].1;
-            let rx2 = &chans[2].1;
-            let rx3 = &chans[3].1;
+        let rx0 = &chans[0].1;
+        let rx1 = &chans[1].1;
+        let rx2 = &chans[2].1;
+        let rx3 = &chans[3].1;
 
-            for _ in 0..MESSAGES {
-                mpsc_select! {
-                    _ = rx0.recv() => {},
-                    _ = rx1.recv() => {},
-                    _ = rx2.recv() => {},
-                    _ = rx3.recv() => {}
-                }
+        for _ in 0..MESSAGES {
+            mpsc_select! {
+                m = rx0.recv() => assert!(m.is_ok()),
+                m = rx1.recv() => assert!(m.is_ok()),
+                m = rx2.recv() => assert!(m.is_ok()),
+                m = rx3.recv() => assert!(m.is_ok())
             }
-        });
+        }
     });
 }
 
 fn select_rx_sync(cap: usize) {
+    assert_eq!(THREADS, 4);
     let chans = (0..THREADS).map(|_| mpsc::sync_channel::<i32>(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
@@ -291,22 +288,19 @@ fn select_rx_sync(cap: usize) {
             });
         }
 
-        s.spawn(move || {
-            assert!(chans.len() == 4);
-            let rx0 = &chans[0].1;
-            let rx1 = &chans[1].1;
-            let rx2 = &chans[2].1;
-            let rx3 = &chans[3].1;
+        let rx0 = &chans[0].1;
+        let rx1 = &chans[1].1;
+        let rx2 = &chans[2].1;
+        let rx3 = &chans[3].1;
 
-            for _ in 0..MESSAGES {
-                mpsc_select! {
-                    _ = rx0.recv() => {},
-                    _ = rx1.recv() => {},
-                    _ = rx2.recv() => {},
-                    _ = rx3.recv() => {}
-                }
+        for _ in 0..MESSAGES {
+            mpsc_select! {
+                m = rx0.recv() => assert!(m.is_ok()),
+                m = rx1.recv() => assert!(m.is_ok()),
+                m = rx2.recv() => assert!(m.is_ok()),
+                m = rx3.recv() => assert!(m.is_ok())
             }
-        });
+        }
     });
 }
 

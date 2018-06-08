@@ -5,10 +5,15 @@ extern crate crossbeam_channel as channel;
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
-type TxRx = (channel::Sender<i32>, channel::Receiver<i32>);
+fn new<T>(cap: Option<usize>) -> (channel::Sender<T>, channel::Receiver<T>) {
+    match cap {
+        None => channel::unbounded(),
+        Some(cap) => channel::bounded(cap),
+    }
+}
 
-fn seq<F: Fn() -> TxRx>(make: F) {
-    let (tx, rx) = make();
+fn seq(cap: Option<usize>) {
+    let (tx, rx) = new::<i32>(cap);
 
     for i in 0..MESSAGES {
         tx.send(i as i32);
@@ -19,8 +24,8 @@ fn seq<F: Fn() -> TxRx>(make: F) {
     }
 }
 
-fn spsc<F: Fn() -> TxRx>(make: F) {
-    let (tx, rx) = make();
+fn spsc(cap: Option<usize>) {
+    let (tx, rx) = new::<i32>(cap);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
@@ -35,8 +40,8 @@ fn spsc<F: Fn() -> TxRx>(make: F) {
     });
 }
 
-fn mpsc<F: Fn() -> TxRx>(make: F) {
-    let (tx, rx) = make();
+fn mpsc(cap: Option<usize>) {
+    let (tx, rx) = new::<i32>(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -53,8 +58,8 @@ fn mpsc<F: Fn() -> TxRx>(make: F) {
     });
 }
 
-fn mpmc<F: Fn() -> TxRx>(make: F) {
-    let (tx, rx) = make();
+fn mpmc(cap: Option<usize>) {
+    let (tx, rx) = new::<i32>(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -64,6 +69,7 @@ fn mpmc<F: Fn() -> TxRx>(make: F) {
                 }
             });
         }
+
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
@@ -74,8 +80,8 @@ fn mpmc<F: Fn() -> TxRx>(make: F) {
     });
 }
 
-fn select_rx<F: Fn() -> TxRx>(make: F) {
-    let chans = (0..THREADS).map(|_| make()).collect::<Vec<_>>();
+fn select_rx(cap: Option<usize>) {
+    let chans = (0..THREADS).map(|_| new::<i32>(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for (tx, _) in &chans {
@@ -95,8 +101,8 @@ fn select_rx<F: Fn() -> TxRx>(make: F) {
     });
 }
 
-fn select_both<F: Fn() -> TxRx>(make: F) {
-    let chans = (0..THREADS).map(|_| make()).collect::<Vec<_>>();
+fn select_both(cap: Option<usize>) {
+    let chans = (0..THREADS).map(|_| new::<i32>(cap)).collect::<Vec<_>>();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
@@ -136,29 +142,29 @@ fn main() {
         }
     }
 
-    run!("bounded0_mpmc", mpmc(|| channel::bounded(0)));
-    run!("bounded0_mpsc", mpsc(|| channel::bounded(0)));
-    run!("bounded0_select_both", select_both(|| channel::bounded(0)));
-    run!("bounded0_select_rx", select_rx(|| channel::bounded(0)));
-    run!("bounded0_spsc", spsc(|| channel::bounded(0)));
+    run!("bounded0_mpmc", mpmc(Some(0)));
+    run!("bounded0_mpsc", mpsc(Some(0)));
+    run!("bounded0_select_both", select_both(Some(0)));
+    run!("bounded0_select_rx", select_rx(Some(0)));
+    run!("bounded0_spsc", spsc(Some(0)));
 
-    run!("bounded1_mpmc", mpmc(|| channel::bounded(1)));
-    run!("bounded1_mpsc", mpsc(|| channel::bounded(1)));
-    run!("bounded1_select_both", select_both(|| channel::bounded(1)));
-    run!("bounded1_select_rx", select_rx(|| channel::bounded(1)));
-    run!("bounded1_spsc", spsc(|| channel::bounded(1)));
+    run!("bounded1_mpmc", mpmc(Some(1)));
+    run!("bounded1_mpsc", mpsc(Some(1)));
+    run!("bounded1_select_both", select_both(Some(1)));
+    run!("bounded1_select_rx", select_rx(Some(1)));
+    run!("bounded1_spsc", spsc(Some(1)));
 
-    run!("bounded_mpmc", mpmc(|| channel::bounded(MESSAGES)));
-    run!("bounded_mpsc", mpsc(|| channel::bounded(MESSAGES)));
-    run!("bounded_select_both", select_both(|| channel::bounded(MESSAGES)));
-    run!("bounded_select_rx", select_rx(|| channel::bounded(MESSAGES)));
-    run!("bounded_seq", seq(|| channel::bounded(MESSAGES)));
-    run!("bounded_spsc", spsc(|| channel::bounded(MESSAGES)));
+    run!("bounded_mpmc", mpmc(Some(MESSAGES)));
+    run!("bounded_mpsc", mpsc(Some(MESSAGES)));
+    run!("bounded_select_both", select_both(Some(MESSAGES)));
+    run!("bounded_select_rx", select_rx(Some(MESSAGES)));
+    run!("bounded_seq", seq(Some(MESSAGES)));
+    run!("bounded_spsc", spsc(Some(MESSAGES)));
 
-    run!("unbounded_mpmc", mpmc(|| channel::unbounded()));
-    run!("unbounded_mpsc", mpsc(|| channel::unbounded()));
-    run!("unbounded_select_both", select_both(|| channel::unbounded()));
-    run!("unbounded_select_rx", select_rx(|| channel::unbounded()));
-    run!("unbounded_seq", seq(|| channel::unbounded()));
-    run!("unbounded_spsc", spsc(|| channel::unbounded()));
+    run!("unbounded_mpmc", mpmc(None));
+    run!("unbounded_mpsc", mpsc(None));
+    run!("unbounded_select_both", select_both(None));
+    run!("unbounded_select_rx", select_rx(None));
+    run!("unbounded_seq", seq(None));
+    run!("unbounded_spsc", spsc(None));
 }

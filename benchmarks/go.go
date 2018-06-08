@@ -12,6 +12,7 @@ func seq(cap int) {
     for i := 0; i < MESSAGES; i++ {
         c <- i
     }
+
     for i := 0; i < MESSAGES; i++ {
         <-c
     }
@@ -28,14 +29,10 @@ func spsc(cap int) {
         done <- true
     }()
 
-    go func() {
-        for i := 0; i < MESSAGES; i++ {
-            <-c
-        }
-        done <- true
-    }()
+    for i := 0; i < MESSAGES; i++ {
+        <-c
+    }
 
-    <-done
     <-done
 }
 
@@ -74,6 +71,7 @@ func mpmc(cap int) {
         }()
 
     }
+
     for t := 0; t < THREADS; t++ {
         go func() {
             for i := 0; i < MESSAGES / THREADS; i++ {
@@ -90,6 +88,10 @@ func mpmc(cap int) {
 }
 
 func select_rx(cap int) {
+    if THREADS != 4 {
+        panic("assumed there are 4 threads")
+    }
+
     var c0 = make(chan int, cap)
     var c1 = make(chan int, cap)
     var c2 = make(chan int, cap)
@@ -122,6 +124,10 @@ func select_rx(cap int) {
 }
 
 func select_both(cap int) {
+    if THREADS != 4 {
+        panic("assumed there are 4 threads")
+    }
+
     var c0 = make(chan int, cap)
     var c1 = make(chan int, cap)
     var c2 = make(chan int, cap)
