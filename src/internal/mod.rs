@@ -14,6 +14,5 @@ pub mod select;
 
 pub mod channel;
 pub mod context;
-pub mod sync_waker;
 pub mod utils;
 pub mod waker;

@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use libc;
 
 use flavors;
-use internal::select::{Select, SelectHandle, Token};
+use internal::select::{Operation, SelectHandle, Token};
 
 /// A channel in the form of one of the different flavors.
 pub struct Channel<T> {
@@ -754,19 +754,19 @@ impl<T> SelectHandle for Sender<T> {
         None
     }
 
-    fn register(&self, token: &mut Token, select: Select) -> bool {
+    fn register(&self, token: &mut Token, oper: Operation) -> bool {
         match &self.0.flavor {
-            ChannelFlavor::Array(chan) => chan.sender().register(token, select),
-            ChannelFlavor::List(chan) => chan.sender().register(token, select),
-            ChannelFlavor::Zero(chan) => chan.sender().register(token, select),
+            ChannelFlavor::Array(chan) => chan.sender().register(token, oper),
+            ChannelFlavor::List(chan) => chan.sender().register(token, oper),
+            ChannelFlavor::Zero(chan) => chan.sender().register(token, oper),
         }
     }
 
-    fn unregister(&self, select: Select) {
+    fn unregister(&self, oper: Operation) {
         match &self.0.flavor {
-            ChannelFlavor::Array(chan) => chan.sender().unregister(select),
-            ChannelFlavor::List(chan) => chan.sender().unregister(select),
-            ChannelFlavor::Zero(chan) => chan.sender().unregister(select),
+            ChannelFlavor::Array(chan) => chan.sender().unregister(oper),
+            ChannelFlavor::List(chan) => chan.sender().unregister(oper),
+            ChannelFlavor::Zero(chan) => chan.sender().unregister(oper),
         }
     }
 
@@ -812,27 +812,27 @@ impl<T> SelectHandle for Receiver<T> {
         }
     }
 
-    fn register(&self, token: &mut Token, select: Select) -> bool {
+    fn register(&self, token: &mut Token, oper: Operation) -> bool {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
-                ChannelFlavor::Array(chan) => chan.receiver().register(token, select),
-                ChannelFlavor::List(chan) => chan.receiver().register(token, select),
-                ChannelFlavor::Zero(chan) => chan.receiver().register(token, select),
+                ChannelFlavor::Array(chan) => chan.receiver().register(token, oper),
+                ChannelFlavor::List(chan) => chan.receiver().register(token, oper),
+                ChannelFlavor::Zero(chan) => chan.receiver().register(token, oper),
             },
-            ReceiverFlavor::After(chan) => chan.register(token, select),
-            ReceiverFlavor::Tick(chan) => chan.register(token, select),
+            ReceiverFlavor::After(chan) => chan.register(token, oper),
+            ReceiverFlavor::Tick(chan) => chan.register(token, oper),
         }
     }
 
-    fn unregister(&self, select: Select) {
+    fn unregister(&self, oper: Operation) {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
-                ChannelFlavor::Array(chan) => chan.receiver().unregister(select),
-                ChannelFlavor::List(chan) => chan.receiver().unregister(select),
-                ChannelFlavor::Zero(chan) => chan.receiver().unregister(select),
+                ChannelFlavor::Array(chan) => chan.receiver().unregister(oper),
+                ChannelFlavor::List(chan) => chan.receiver().unregister(oper),
+                ChannelFlavor::Zero(chan) => chan.receiver().unregister(oper),
             },
-            ReceiverFlavor::After(chan) => chan.unregister(select),
-            ReceiverFlavor::Tick(chan) => chan.unregister(select),
+            ReceiverFlavor::After(chan) => chan.unregister(oper),
+            ReceiverFlavor::Tick(chan) => chan.unregister(oper),
         }
     }
 

@@ -12,9 +12,9 @@ use crossbeam_utils::cache_padded::CachePadded;
 
 use internal::channel::RecvNonblocking;
 use internal::context;
-use internal::select::{Select, SelectHandle, Token};
-use internal::sync_waker::SyncWaker;
+use internal::select::{Operation, Select, SelectHandle, Token};
 use internal::utils::Backoff;
+use internal::waker::SyncWaker;
 
 // TODO: Allocate less memory in the beginning. Blocks should start small and grow exponentially.
 
@@ -304,8 +304,7 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let select = Select::hook(token);
-
+        let oper = Operation::hook(token);
         loop {
             // Try receiving a message several times.
             let backoff = &mut Backoff::new();
@@ -322,11 +321,11 @@ impl<T> Channel<T> {
 
             // Prepare for blocking until a sender wakes us up.
             context::current_reset();
-            self.receivers.register(select);
+            self.receivers.register(oper);
 
             // Has the channel become ready just now?
             if !self.is_empty() || self.is_closed() {
-                let _ = context::current_try_select(Select::Aborted, 0);
+                let _ = context::current_try_select(Select::Aborted);
             }
 
             // Block the current thread.
@@ -335,10 +334,10 @@ impl<T> Channel<T> {
             match sel {
                 Select::Waiting => unreachable!(),
                 Select::Aborted | Select::Closed => {
-                    self.receivers.unregister(select).unwrap();
+                    self.receivers.unregister(oper).unwrap();
                     // If the channel was closed, we still have to check for remaining messages.
                 },
-                Select::Selected(_) => {},
+                Select::Operation(_) => {},
             }
         }
     }
@@ -459,13 +458,13 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, select: Select) -> bool {
-        self.0.receivers.register(select);
+    fn register(&self, _token: &mut Token, oper: Operation) -> bool {
+        self.0.receivers.register(oper);
         self.0.is_empty() && !self.0.is_closed()
     }
 
-    fn unregister(&self, select: Select) {
-        self.0.receivers.unregister(select);
+    fn unregister(&self, oper: Operation) {
+        self.0.receivers.unregister(oper);
     }
 
     fn accept(&self, token: &mut Token) -> bool {
@@ -486,11 +485,11 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, _select: Select) -> bool {
+    fn register(&self, _token: &mut Token, _oper: Operation) -> bool {
         false
     }
 
-    fn unregister(&self, _select: Select) {}
+    fn unregister(&self, _oper: Operation) {}
 
     fn accept(&self, _token: &mut Token) -> bool {
         true

@@ -6,14 +6,14 @@ use std::time::Instant;
 
 use internal::channel::{Receiver, Sender};
 use internal::context;
-use internal::select::{Select, SelectHandle, Token};
+use internal::select::{Operation, Select, SelectHandle, Token};
 use internal::utils;
 
 /// Runs until one of the operations is fired, potentially blocking the current thread.
 ///
 /// Receive operations will have to be followed up by `read`, and send operations by `write`.
 pub fn main_loop<'a, S>(
-    operations: &mut [(&'a S, usize, *const u8)],
+    handles: &mut [(&'a S, usize, *const u8)],
     has_default: bool,
 ) -> (Token, usize, *const u8)
 where
@@ -24,11 +24,11 @@ where
     let mut token = Token::default();
 
     // Shuffle the operations for fairness.
-    if operations.len() >= 2 {
-        utils::shuffle(operations);
+    if handles.len() >= 2 {
+        utils::shuffle(handles);
     }
 
-    if operations.is_empty() {
+    if handles.is_empty() {
         if has_default {
             // If there is only the `default` case, return.
             return (token, 0, ptr::null());
@@ -40,8 +40,8 @@ where
 
     loop {
         // Try firing the operations without blocking.
-        for &(select, i, ptr) in operations.iter() {
-            if select.try(&mut token) {
+        for &(handle, i, ptr) in handles.iter() {
+            if handle.try(&mut token) {
                 return (token, i, ptr);
             }
         }
@@ -53,8 +53,8 @@ where
 
         // Before blocking, try firing the operations one more time. Retries are permitted to take
         // a little bit more time than the initial tries, but they still mustn't block.
-        for &(select, i, ptr) in operations.iter() {
-            if select.retry(&mut token) {
+        for &(handle, i, ptr) in handles.iter() {
+            if handle.retry(&mut token) {
                 return (token, i, ptr);
             }
         }
@@ -65,14 +65,13 @@ where
         let mut registered_count = 0;
 
         // Register all operations.
-        for operation in operations.iter_mut() {
-            let &mut (select, _, _) = operation;
+        for (handle, _, _) in handles.iter_mut() {
             registered_count += 1;
 
             // If registration returns `false`, that means the operation has just become ready.
-            if !select.register(&mut token, Select::hook(operation)) {
-                // Try aborting selection.
-                sel = match context::current_try_select(Select::Aborted, 0) {
+            if !handle.register(&mut token, Operation::hook(handle)) {
+                // Try aborting select.
+                sel = match context::current_try_select(Select::Aborted) {
                     Ok(()) => Select::Aborted,
                     Err(s) => s,
                 };
@@ -89,8 +88,8 @@ where
         if sel == Select::Waiting {
             // Check with each operation how long we're allowed to block.
             let mut deadline: Option<Instant> = None;
-            for &(select, _, _) in operations.iter() {
-                if let Some(x) = select.deadline() {
+            for &(handle, _, _) in handles.iter() {
+                if let Some(x) = handle.deadline() {
                     deadline = deadline.map(|y| x.min(y)).or(Some(x));
                 }
             }
@@ -100,31 +99,29 @@ where
         }
 
         // Unregister all registered operations.
-        for operation in operations.iter_mut().take(registered_count) {
-            let &mut (select, _, _) = operation;
-            select.unregister(Select::hook(operation));
+        for (handle, _, _) in handles.iter_mut().take(registered_count) {
+            handle.unregister(Operation::hook(handle));
         }
 
         match sel {
             Select::Waiting => unreachable!(),
             Select::Aborted => {},
-            Select::Closed | Select::Selected(_) => {
+            Select::Closed | Select::Operation(_) => {
                 // Find the selected operation.
-                for operation in operations.iter_mut() {
-                    let &mut (select, i, ptr) = operation;
+                for (handle, i, ptr) in handles.iter_mut() {
 
                     // Is this the selected operation?
-                    if sel == Select::hook(operation) {
+                    if sel == Select::Operation(Operation::hook(handle)) {
                         // Try firing this operation.
-                        if select.accept(&mut token) {
-                            return (token, i, ptr);
+                        if handle.accept(&mut token) {
+                            return (token, *i, *ptr);
                         }
                     }
                 }
 
                 // Before the next round, reshuffle the operations for fairness.
-                if operations.len() >= 2 {
-                    utils::shuffle(operations);
+                if handles.len() >= 2 {
+                    utils::shuffle(handles);
                 }
             },
         }
@@ -221,7 +218,7 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, 
     }
 }
 
-/// Generates code that performs selection over a set of cases.
+/// Generates code that performs select over a set of cases.
 ///
 /// The input to this macro is the output from the parser macro.
 #[macro_export]
@@ -280,8 +277,8 @@ macro_rules! __crossbeam_channel_codegen {
         $send:tt
         $default:tt
     ) => {{
-        let mut operations = __crossbeam_channel_codegen!(@container $recv $send);
-        __crossbeam_channel_codegen!(@fast_path $recv $send $default operations)
+        let mut handles = __crossbeam_channel_codegen!(@container $recv $send);
+        __crossbeam_channel_codegen!(@fast_path $recv $send $default handles)
     }};
 
     // Attempt to optimize the whole `select!` into a single call to `recv`.
@@ -289,11 +286,11 @@ macro_rules! __crossbeam_channel_codegen {
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
         ()
         ()
-        $operations:ident
+        $handles:ident
     ) => {{
-        if $operations.len() == 1 {
-            let $r = $operations[0].0;
-            let $m = $operations[0].0.recv();
+        if $handles.len() == 1 {
+            let $r = $handles[0].0;
+            let $m = $handles[0].0.recv();
             $body
         } else {
             __crossbeam_channel_codegen!(
@@ -301,7 +298,7 @@ macro_rules! __crossbeam_channel_codegen {
                 (($i $var) recv($rs, $m, $r) => $body,)
                 ()
                 ()
-                $operations
+                $handles
             )
         }
     }};
@@ -310,10 +307,10 @@ macro_rules! __crossbeam_channel_codegen {
         (($recv_i:tt $recv_var:ident) recv($rs:expr, $m:pat, $r:pat) => $recv_body:tt,)
         ()
         (($default_i:tt $default_var:ident) default() => $default_body:tt,)
-        $operations:ident
+        $handles:ident
     ) => {{
-        if $operations.len() == 1 {
-            let r = $operations[0].0;
+        if $handles.len() == 1 {
+            let r = $handles[0].0;
             let msg;
 
             match $crate::internal::channel::recv_nonblocking(r) {
@@ -339,28 +336,28 @@ macro_rules! __crossbeam_channel_codegen {
                 (($recv_i $recv_var) recv($rs, $m, $r) => $recv_body,)
                 ()
                 (($default_i $default_var) default() => $default_body,)
-                $operations
+                $handles
             )
         }
     }};
-    // Move on to the main selection loop.
+    // Move on to the main select loop.
     (@fast_path
         $recv:tt
         $send:tt
         $default:tt
-        $operations:ident
+        $handles:ident
     ) => {{
-        __crossbeam_channel_codegen!(@main_loop $recv $send $default $operations)
+        __crossbeam_channel_codegen!(@main_loop $recv $send $default $handles)
     }};
     // TODO: Optimize `select! { send(s, msg) => {} }`.
     // TODO: Optimize `select! { send(s, msg) => {} default => {} }`.
 
-    // The main selection loop.
+    // The main select loop.
     (@main_loop
         $recv:tt
         $send:tt
         $default:tt
-        $operations:ident
+        $handles:ident
     ) => {{
         // TODO: set up a guard that aborts if anything panics before actually finishing
 
@@ -371,7 +368,7 @@ macro_rules! __crossbeam_channel_codegen {
         #[allow(unused_mut)]
         #[allow(unused_variables)]
         let (mut token, index, selected) = $crate::internal::codegen::main_loop(
-            &mut $operations,
+            &mut $handles,
             has_default,
         );
 
@@ -379,7 +376,7 @@ macro_rules! __crossbeam_channel_codegen {
         __crossbeam_channel_codegen!(@finalize token index selected $recv $send $default)
     }};
 
-    // Initialize the `operations` vector if there's only a single `recv` case.
+    // Initialize the `handles` vector if there's only a single `recv` case.
     (@container
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
         ()
@@ -393,7 +390,7 @@ macro_rules! __crossbeam_channel_codegen {
         }
         c
     }};
-    // Initialize the `operations` vector if there's only a single `send` case.
+    // Initialize the `handles` vector if there's only a single `send` case.
     (@container
         ()
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
@@ -407,7 +404,7 @@ macro_rules! __crossbeam_channel_codegen {
         }
         c
     }};
-    // Initialize the `operations` vector generically.
+    // Initialize the `handles` vector generically.
     (@container
         $recv:tt
         $send:tt
@@ -419,33 +416,33 @@ macro_rules! __crossbeam_channel_codegen {
         c
     }};
 
-    // Push a `recv` operation into the `operations` vector.
+    // Push a `recv` operation into the `handles` vector.
     (@push
-        $operations:ident
+        $handles:ident
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         $send:tt
     ) => {
         while let Some(r) = $var.next() {
             let ptr = r as *const $crate::Receiver<_> as *const u8;
-            $operations.push((r, $i, ptr));
+            $handles.push((r, $i, ptr));
         }
-        __crossbeam_channel_codegen!(@push $operations ($($tail)*) $send);
+        __crossbeam_channel_codegen!(@push $handles ($($tail)*) $send);
     };
-    // Push a `send` operation into the `operations` vector.
+    // Push a `send` operation into the `handles` vector.
     (@push
-        $operations:ident
+        $handles:ident
         ()
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
     ) => {
         while let Some(s) = $var.next() {
             let ptr = s as *const $crate::Sender<_> as *const u8;
-            $operations.push((s, $i, ptr));
+            $handles.push((s, $i, ptr));
         }
-        __crossbeam_channel_codegen!(@push $operations () ($($tail)*));
+        __crossbeam_channel_codegen!(@push $handles () ($($tail)*));
     };
     // There are no more operations to push.
     (@push
-        $operations:ident
+        $handles:ident
         ()
         ()
     ) => {

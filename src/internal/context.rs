@@ -1,4 +1,4 @@
-//! Thread-local context used in selection.
+//! Thread-local context used in select.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -8,7 +8,7 @@ use std::time::Instant;
 use internal::select::Select;
 use internal::utils::Backoff;
 
-/// Thread-local context used in selection.
+/// Thread-local context used in select.
 ///
 /// This struct is typically wrapped in an `Arc` so that it can be shared among other threads, too.
 pub struct Context {
@@ -26,28 +26,27 @@ pub struct Context {
 }
 
 impl Context {
-    /// Try selecting an operation, optionally with a packet.
+    /// Try selecting an operation.
     ///
     /// On failure, the previously selected operation is returned.
     #[inline]
-    pub fn try_select(&self, select: Select, packet: usize) -> Result<(), Select> {
-        let res = self.select
+    pub fn try_select(&self, select: Select) -> Result<(), Select> {
+        self.select
             .compare_exchange(
                 Select::Waiting.into(),
                 select.into(),
                 Ordering::AcqRel,
                 Ordering::Acquire,
-            );
+            )
+            .map(|_| ())
+            .map_err(|e| e.into())
+    }
 
-        match res {
-            Ok(_) => {
-                // Store the packet if it's provided.
-                if packet != 0 {
-                    self.packet.store(packet, Ordering::Release);
-                }
-                Ok(())
-            }
-            Err(sel) => Err(sel.into())
+    /// TODO
+    #[inline]
+    pub fn store_packet(&self, packet: usize) {
+        if packet != 0 {
+            self.packet.store(packet, Ordering::Release);
         }
     }
 
@@ -65,7 +64,7 @@ impl Context {
 }
 
 thread_local! {
-    /// Thread-local selection context.
+    /// Thread-local select context.
     static CONTEXT: Arc<Context> = Arc::new(Context {
         select: AtomicUsize::new(Select::Waiting.into()),
         thread: thread::current(),
@@ -82,8 +81,8 @@ pub fn current() -> Arc<Context> {
 
 /// Returns the context associated with the current thread.
 #[inline]
-pub fn current_try_select(select: Select, packet: usize) -> Result<(), Select> {
-    CONTEXT.with(|cx| cx.try_select(select, packet))
+pub fn current_try_select(select: Select) -> Result<(), Select> {
+    CONTEXT.with(|cx| cx.try_select(select))
 }
 
 /// Returns the selected operation for the current thread.
@@ -94,7 +93,7 @@ pub fn current_selected() -> Select {
 
 /// Resets `select` and `packet`.
 ///
-/// This method is used for initialization before the start of selection.
+/// This method is used for initialization before the start of select.
 #[inline]
 pub fn current_reset() {
     CONTEXT.with(|cx| {
@@ -136,8 +135,8 @@ pub fn current_wait_until(deadline: Option<Instant>) -> Select {
                 if now < end {
                     thread::park_timeout(end - now);
                 } else {
-                    // The deadline has been reached. Try aborting selection.
-                    return match cx.try_select(Select::Aborted, 0) {
+                    // The deadline has been reached. Try aborting select.
+                    return match cx.try_select(Select::Aborted) {
                         Ok(()) => Select::Aborted,
                         Err(s) => s,
                     };

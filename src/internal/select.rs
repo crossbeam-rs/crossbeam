@@ -1,3 +1,5 @@
+//! Interface to the select mechanism.
+
 use std::time::Instant;
 
 use flavors;
@@ -106,13 +108,14 @@ use flavors;
 /// s2.send("bar");
 /// let receivers = vec![r1, r2];
 ///
-/// // Both receivers are ready so one of the two receive operations will be chosen at random.
+/// // Both receivers are ready so one of the two receive operations will be
+/// // chosen at random.
 /// select! {
-///     // The third argument to `recv` is optional and is assigned a reference to the receiver
-///     // the message was received from.
-///     recv(receivers, msg, fired) => {
+///     // The third argument to `recv` is optional and is assigned a
+///     // reference to the receiver the message was received from.
+///     recv(receivers, msg, from) => {
 ///         for (i, r) in receivers.iter().enumerate() {
-///             if r == fired {
+///             if r == from {
 ///                 println!("Received {:?} from the {}-th receiver.", msg, i);
 ///             }
 ///         }
@@ -121,111 +124,72 @@ use flavors;
 /// # }
 /// ```
 ///
-/// # Performance
-///
-/// Methods [`try_recv`], [`recv`], and [`send`] are typically faster than `select!` because
-/// they're not as general and have better optimized implementations.
-///
-/// If performance is of high concern, you might try calling one of those methods before falling
-/// back to `select!`, like in the following example:
-///
-/// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
-/// use std::time::Duration;
-/// use crossbeam_channel as channel;
-///
-/// fn recv_timeout<T>(r: &channel::Receiver<T>, timeout: Duration) -> Option<T> {
-///     // Optimistic fast path.
-///     if let Some(msg) = r.try_recv() {
-///         return Some(msg);
-///     }
-///
-///     // Falling back to slower `select!`.
-///     select! {
-///         recv(r, msg) => msg,
-///         recv(channel::after(timeout)) => None,
-///     }
-/// }
-/// # }
-/// ```
-///
 /// # Syntax
 ///
-/// TODO: maybe model after https://golang.org/ref/spec#Select_statements
-///
 /// An invocation of `select!` consists of a list of cases. Consecutive cases are delimited by a
-/// comma, but it's not required if the previous case has a block expression (the syntax is very
-/// similar to `match`).
+/// comma, but it's not required if the preceding case has a block expression (the syntax is very
+/// similar to `match` statements).
 ///
-/// There are three types of cases: `recv`, `send`, and `default`.
+/// The following invocation illustrates all the possible forms cases can take:
 ///
-/// ### `recv` case
+/// ```ignore
+/// select! {
+///     recv(r1) => body1,
+///     recv(r2, msg2) => body2,
+///     recv(r3, msg3, from3) => body3,
 ///
-/// The syntax of a `recv` case takes one of these forms:
+///     send(s4, msg4) => body4,
+///     send(s5, msg5, into5) => body5,
 ///
-/// 1. `recv(r) => body`
-/// 2. `recv(r, msg) => body`
-/// 3. `recv(r, msg, fired) => body`
+///     default => body6,
+/// }
+/// ```
 ///
-/// Inputs: expressions `r` and `body`.
+/// Input expressions: `r1`, `r2`, `r3`, `s4`, `s5`, `msg4`, `msg5`, `body1`, `body2`, `body3`,
+/// `body4`, `body5`, `body6`
 ///
-/// Outputs: patterns `msg` and `fired`.
+/// Output patterns: `msg2`, `msg3`, `msg4`, `msg5`, `from3`, `into5`
 ///
-/// Types:
+/// Types of expressions and patterns (generic over types `A`, `B`, `C`, `D`, `E`, and `F`):
 ///
-/// * `r`: one of `Receiver<T>`, `&Receiver<T>`, or `impl IntoIterator<Item = &Receiver<T>>`
-/// * `msg`: `Option<T>`
-/// * `fired`: `&Receiver<T>`
+/// * `r1`: one of `Receiver<A>`, `&Receiver<A>`, or `impl IntoIterator<Item = &Receiver<A>>`
+/// * `r2`: one of `Receiver<B>`, `&Receiver<B>`, or `impl IntoIterator<Item = &Receiver<B>>`
+/// * `r3`: one of `Receiver<C>`, `&Receiver<C>`, or `impl IntoIterator<Item = &Receiver<C>>`
+/// * `s4`: one of `Sender<D>`, `&Sender<D>`, or `impl IntoIterator<Item = &Sender<D>>`
+/// * `s5`: one of `Sender<E>`, `&Sender<E>`, or `impl IntoIterator<Item = &Sender<E>>`
+/// * `msg2`: `Option<B>`
+/// * `msg3`: `Option<C>`
+/// * `msg4`: `D`
+/// * `msg5`: `E`
+/// * `from3`: `&Receiver<C>`
+/// * `into5`: `&Sender<E>`
+/// * `body1`, `body2`, `body3`, `body4`, `body5`, `body6`: `F`
 ///
-/// ### `send` case
+/// Pattern `from3` is bound to the receiver in `r3` from which `msg3` was received.
 ///
-/// The syntax of a `send` case takes one of these forms:
-///
-/// 1. `send(s, msg) => body`
-/// 2. `send(s, msg, fired) => body`
-///
-/// Inputs: expressions `s`, `msg`, and `body`.
-///
-/// Outputs: pattern `fired`.
-///
-/// Types:
-///
-/// * `s`: one of `Sender<T>`, `&Sender<T>`, or `impl IntoIterator<Item = &Sender<T>>`
-/// * `msg`: `T`
-/// * `fired`: `&Sender<T>`
-///
-/// ### `default` case
-///
-/// The default case takes one of these two forms:
-///
-/// 1. `default => body`
-/// 2. `default() => body`
-///
-/// Inputs: expression `body`.
+/// Pattern `into5` is bound to the sender in `s5` into which `msg5` was sent.
 ///
 /// There can be at most one `default` case.
 ///
-/// # Behavior
+/// # Execution
 ///
-/// TODO: model after https://golang.org/ref/spec#Select_statements
+/// 1. All sender and receiver arguments (`r1`, `r2`, `r3`, `s4`, and `s5`) are evaluated.
+/// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
+///    operations are ready, a random one is chosen.
+/// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
+///    there is no `default` case, the current thread is blocked until an operation becomes ready.
+/// 4. If a `recv` operation gets executed, the message pattern (`msg2` or `msg3`) is
+///    bound to the received message, and the receiver pattern (`from3`) is bound to the receiver
+///    from which the message was received.
+/// 5. If a `send` operation gets executed, the message (`msg4` or `msg5`) is evaluated and sent
+///    into the channel. Then, the sender pattern (`into5`) is bound to the sender into which the
+///    message was sent.
+/// 6. Finally, the body (`body1`, `body2`, `body3`, `body4`, `body5`, or `body6`) of the executed
+///    case is evaluated. The whole `select!` invocation evaluates to that expression.
 ///
-/// First, all sender and receiver arguments (`s` and `r`) are evaluated. Then, the current thread
-/// is blocked until one of the operations becomes ready, which is then executed.
-///
-/// If a `recv` operation gets executed, `msg` and `fired` are assigned, and `body` is finally
-/// evaluated.
-///
-/// If a `send` operation gets executed, `msg` is evaluated and sent into the channel, `fired` is
-/// assigned, and `body` is finally evaluated.
-///
-/// **Note**: If evaluation of `msg` panics, the program will be aborted because it's very
-/// difficult to sensibly recover from the panic.
-///
-/// [`send`]: struct.Sender.html#method.send
-/// [`try_recv`]: struct.Receiver.html#method.try_recv
-/// [`recv`]: struct.Receiver.html#method.recv
+/// **Note**: If evaluation of `msg4` or `msg5` panics, the process will be aborted because it's
+/// impossible to recover from such panics. All the other expressions are allowed to panic,
+/// however.
 #[macro_export]
 macro_rules! select {
     ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
@@ -243,9 +207,9 @@ macro_rules! select {
     };
 }
 
-// TODO: explain
-// loop { try; register; is_blocked; unregister; accept; write/read }
-
+/// Temporary data that gets initialized during select and is consumed by `read` and `write`.
+///
+/// Each field contains data associated with a specific channel flavor.
 #[derive(Default)]
 pub struct Token {
     pub after: flavors::after::AfterToken,
@@ -255,29 +219,42 @@ pub struct Token {
     pub zero: flavors::zero::ZeroToken,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Select {
-    Waiting,
-    Aborted,
-    Closed,
-    Selected(usize), // TODO: should this be a pointer?
+/// TODO
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Operation(usize);
+
+impl Operation {
+    /// TODO
+    #[inline]
+    pub fn hook<T>(r: &mut T) -> Operation {
+        Operation(r as *mut T as usize)
+    }
 }
 
-impl Select {
-    #[inline]
-    pub fn hook<T>(r: &mut T) -> Select {
-        Select::Selected(r as *mut T as usize)
-    }
+/// TODO
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Select {
+    /// TODO
+    Waiting,
+
+    /// TODO
+    Aborted,
+
+    /// TODO
+    Closed,
+
+    /// TODO
+    Operation(Operation),
 }
 
 impl From<usize> for Select {
     #[inline]
-    fn from(id: usize) -> Select {
-        match id {
+    fn from(val: usize) -> Select {
+        match val {
             0 => Select::Waiting,
             1 => Select::Aborted,
             2 => Select::Closed,
-            id => Select::Selected(id),
+            oper => Select::Operation(Operation(oper)),
         }
     }
 }
@@ -289,11 +266,13 @@ impl Into<usize> for Select {
             Select::Waiting => 0,
             Select::Aborted => 1,
             Select::Closed => 2,
-            Select::Selected(id) => id,
+            Select::Operation(Operation(val)) => val,
         }
     }
 }
 
+/// TODO: explain
+/// loop { try; register; is_blocked; unregister; accept; write/read }
 pub trait SelectHandle {
     fn try(&self, token: &mut Token) -> bool;
 
@@ -301,9 +280,9 @@ pub trait SelectHandle {
 
     fn deadline(&self) -> Option<Instant>;
 
-    fn register(&self, token: &mut Token, select: Select) -> bool;
+    fn register(&self, token: &mut Token, oper: Operation) -> bool;
 
-    fn unregister(&self, select: Select);
+    fn unregister(&self, oper: Operation);
 
     fn accept(&self, token: &mut Token) -> bool;
 }
@@ -321,12 +300,12 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
         (**self).deadline()
     }
 
-    fn register(&self, token: &mut Token, select: Select) -> bool {
-        (**self).register(token, select)
+    fn register(&self, token: &mut Token, oper: Operation) -> bool {
+        (**self).register(token, oper)
     }
 
-    fn unregister(&self, select: Select) {
-        (**self).unregister(select);
+    fn unregister(&self, oper: Operation) {
+        (**self).unregister(oper);
     }
 
     fn accept(&self, token: &mut Token) -> bool {

@@ -234,7 +234,7 @@
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
 //!
-//! # Selection
+//! # Select
 //!
 //! The [`select!`] macro allows one to declare a set of channel operations and block until any one
 //! of them becomes ready. Finally, one of the operations is executed. If multiple operations
