@@ -1,96 +1,90 @@
 extern crate crossbeam;
 
-use crossbeam::sync::MsQueue;
+use crossbeam::sync::SegQueue;
+use shared::message;
 use std::thread;
-use testtype::TestType;
+
+mod shared;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
-pub mod testtype;
-
 fn seq() {
-    let q = MsQueue::<TestType>::new();
+    let q = SegQueue::new();
 
     for i in 0..MESSAGES {
-        q.push(TestType::new(i));
+        q.push(message(i));
     }
+
     for _ in 0..MESSAGES {
         q.try_pop().unwrap();
     }
 }
 
 fn spsc() {
-    let q = MsQueue::<TestType>::new();
+    let q = SegQueue::new();
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
-                q.push(TestType::new(i));
+                q.push(message(i));
             }
         });
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                loop {
-                    if q.try_pop().is_none() {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
-                    } else {
-                        break;
-                    }
+
+        for _ in 0..MESSAGES {
+            loop {
+                if q.try_pop().is_none() {
+                    thread::yield_now();
+                } else {
+                    break;
                 }
             }
-        });
+        }
     });
 }
 
 fn mpsc() {
-    let q = MsQueue::<TestType>::new();
+    let q = SegQueue::new();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    q.push(TestType::new(i));
+                    q.push(message(i));
                 }
             });
         }
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                loop {
-                    if q.try_pop().is_none() {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
-                    } else {
-                        break;
-                    }
+
+        for _ in 0..MESSAGES {
+            loop {
+                if q.try_pop().is_none() {
+                    thread::yield_now();
+                } else {
+                    break;
                 }
             }
-        });
+        }
     });
 }
 
 fn mpmc() {
-    let q = MsQueue::<TestType>::new();
+    let q = SegQueue::new();
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    q.push(TestType::new(i));
+                    q.push(message(i));
                 }
             });
         }
+
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
                     loop {
                         if q.try_pop().is_none() {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
+                            thread::yield_now();
                         } else {
                             break;
                         }
@@ -110,7 +104,7 @@ fn main() {
             println!(
                 "{:25} {:15} {:7.3} sec",
                 $name,
-                "Rust MsQueue",
+                "Rust segqueue",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
         }

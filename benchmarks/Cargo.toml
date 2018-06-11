@@ -3,37 +3,13 @@ name = "benchmark"
 version = "0.1.0"
 
 [dependencies]
+atomicring = "0.5.3"
+bus = "2.0.0"
 chan = "0.1.19"
 crossbeam = "0.3.0"
-atomicring = "0.5.3"
+crossbeam-channel = { path = ".." }
+futures = "0.2.1"
 mpmc = "0.1.5"
-crossbeam-channel = { path = "..", features = ["nightly"] }
-
-[features]
-yield = []
-medium_size=[]
-large_size=[]
-
-[[bin]]
-name = "crossbeam-channel"
-path = "crossbeam-channel.rs"
-
-[[bin]]
-name = "chan"
-path = "chan.rs"
-
-[[bin]]
-name = "mpsc"
-path = "mpsc.rs"
-
-[[bin]]
-name = "ms_queue"
-path = "ms_queue.rs"
-
-[[bin]]
-name = "seg_queue"
-path = "seg_queue.rs"
-
 
 [[bin]]
 name = "atomicring"
@@ -43,6 +19,37 @@ path = "atomicring.rs"
 name = "atomicringqueue"
 path = "atomicringqueue.rs"
 
+[[bin]]
+name = "bus"
+path = "bus.rs"
+
+[[bin]]
+name = "chan"
+path = "chan.rs"
+
+[[bin]]
+name = "crossbeam-channel"
+path = "crossbeam-channel.rs"
+
+[[bin]]
+name = "futures-channel"
+path = "futures-channel.rs"
+
+[[bin]]
+name = "mpsc"
+path = "mpsc.rs"
+
+[[bin]]
+name = "mpsc-wrapper"
+path = "mpsc-wrapper.rs"
+
+[[bin]]
+name = "msqueue"
+path = "msqueue.rs"
+
+[[bin]]
+name = "segqueue"
+path = "segqueue.rs"
 
 [[bin]]
 name = "mpmc"

@@ -2,88 +2,96 @@ extern crate atomicring;
 extern crate crossbeam;
 
 use atomicring::AtomicRingQueue;
-use testtype::TestType;
+use shared::message;
+use std::thread;
 
-pub mod testtype;
-
+mod shared;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
 fn seq(cap: usize) {
-    let q = AtomicRingQueue::<TestType>::with_capacity(cap);
+    let q = AtomicRingQueue::with_capacity(cap);
 
     for i in 0..MESSAGES {
         loop {
-            if q.try_push(TestType::new(i)).is_ok() {
+            if q.try_push(message(i)).is_ok() {
                 break;
+            } else {
+                thread::yield_now();
             }
         }
     }
+
     for _ in 0..MESSAGES {
         q.pop();
     }
 }
 
 fn spsc(cap: usize) {
-    let q = AtomicRingQueue::<TestType>::with_capacity(cap);
+    let q = AtomicRingQueue::with_capacity(cap);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
                 loop {
-                    if q.try_push(TestType::new(i)).is_ok() {
+                    if q.try_push(message(i)).is_ok() {
                         break;
+                    } else {
+                        thread::yield_now();
                     }
                 }
             }
         });
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                q.pop();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            q.pop();
+        }
     });
 }
 
 fn mpsc(cap: usize) {
-    let q = AtomicRingQueue::<TestType>::with_capacity(cap);
+    let q = AtomicRingQueue::with_capacity(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
-                        if q.try_push(TestType::new(i)).is_ok() {
+                        if q.try_push(message(i)).is_ok() {
                             break;
+                        } else {
+                            thread::yield_now();
                         }
                     }
                 }
             });
         }
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                q.pop();
-            }
-        });
+
+        for _ in 0..MESSAGES {
+            q.pop();
+        }
     });
 }
 
 fn mpmc(cap: usize) {
-    let q = AtomicRingQueue::<TestType>::with_capacity(cap);
+    let q = AtomicRingQueue::with_capacity(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
-                        if q.try_push(TestType::new(i)).is_ok() {
+                        if q.try_push(message(i)).is_ok() {
                             break;
+                        } else {
+                            thread::yield_now();
                         }
                     }
                 }
             });
         }
+
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {

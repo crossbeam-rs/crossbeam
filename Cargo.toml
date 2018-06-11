@@ -11,13 +11,12 @@ description = "Multi-producer multi-consumer channels for message passing"
 keywords = ["channel", "mpmc", "select", "golang", "message"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
-[features]
-nightly = []
-
 [dependencies]
 crossbeam-epoch = "0.4.0"
-crossbeam-utils = "0.3.0"
+crossbeam-utils = "0.4.0"
+libc = "0.2.42"
 parking_lot = "0.5"
+smallvec = "0.6.1"
 
 [dev-dependencies]
 crossbeam = "0.3.0"

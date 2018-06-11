@@ -1,342 +1,293 @@
 //! Multi-producer multi-consumer channels for message passing.
 //!
-//! Channels are concurrent FIFO queues used for passing messages between threads.
-//!
 //! Crossbeam's channels are an alternative to the [`std::sync::mpsc`] channels provided by the
-//! standard library. They are an improvement in pretty much all aspects: ergonomics, flexibility,
-//! features, performance.
+//! standard library. They are an improvement in terms of performance, ergonomics, and features.
+//!
+//! Here's a quick example:
+//!
+//! ```
+//! use crossbeam_channel as channel;
+//!
+//! // Create a channel of unbounded capacity.
+//! let (s, r) = channel::unbounded();
+//!
+//! // Send a message into the channel.
+//! s.send("Hello world!");
+//!
+//! // Receive the message from the channel.
+//! assert_eq!(r.recv(), Some("Hello world!"));
+//! ```
 //!
 //! # Types of channels
 //!
-//! A channel can be constructed by calling functions [`unbounded`] and [`bounded`]. The former
-//! creates a channel of unbounded capacity (i.e. it can contain an arbitrary number of messages),
-//! while the latter creates a channel of bounded capacity (i.e. there is a limit to how many
-//! messages it can hold at a time).
+//! A channel can be created by calling [`bounded`] or [`unbounded`]. The former creates a channel
+//! of bounded capacity (i.e. there is a limit to how many messages it can hold), while the latter
+//! creates a channel of unbounded capacity (i.e. it can contain an arbitrary number of messages).
 //!
-//! Both constructors returns a pair of two values: a sender and a receiver. Senders and receivers
-//! represent two opposite sides of a channel. Messages are sent using senders and received using
-//! receivers.
+//! Both functions return two handles: a sender and a receiver. Senders and receivers represent
+//! two opposite sides of a channel. Messages are sent into the channel using senders and received
+//! using receivers.
 //!
 //! Creating an unbounded channel:
 //!
 //! ```
-//! use crossbeam_channel::unbounded;
+//! use crossbeam_channel as channel;
 //!
 //! // Create an unbounded channel.
-//! let (tx, rx) = unbounded();
+//! let (s, r) = channel::unbounded();
 //!
-//! // Can send an arbitrarily large number of messages.
+//! // Can send any number of messages into the channel without blocking.
 //! for i in 0..1000 {
-//!     tx.try_send(i).unwrap();
+//!     s.send(i);
 //! }
 //! ```
 //!
 //! Creating a bounded channel:
 //!
 //! ```
-//! use crossbeam_channel::bounded;
+//! use crossbeam_channel as channel;
 //!
 //! // Create a channel that can hold at most 5 messages at a time.
-//! let (tx, rx) = bounded(5);
+//! let (s, r) = channel::bounded(5);
 //!
-//! // Can send only 5 messages.
+//! // Can only send 5 messages without blocking.
 //! for i in 0..5 {
-//!     tx.try_send(i).unwrap();
+//!     s.send(i);
 //! }
 //!
-//! // An attempt to send one more message will fail.
-//! assert!(tx.try_send(5).is_err());
+//! // Another call to `send` would block because the channel is full.
+//! // s.send(5);
 //! ```
 //!
-//! An interesting special case is a bounded, zero-capacity channel. This kind of channel cannot
-//! hold any messages at all! In order to send a message through the channel, another thread must
-//! be waiting at the other end of it at the same time:
+//! A rather special case is a bounded, zero-capacity channel. This kind of channel cannot hold any
+//! messages at all! In order to send a message through the channel, a sending thread and a
+//! receiving thread have to pair up at the same time:
 //!
 //! ```
-//! use crossbeam_channel::bounded;
-//!
 //! use std::thread;
+//! use crossbeam_channel as channel;
 //!
 //! // Create a zero-capacity channel.
-//! let (tx, rx) = bounded(0);
+//! let (s, r) = channel::bounded(0);
 //!
 //! // Spawn a thread that sends a message into the channel.
-//! thread::spawn(move || tx.send("Hi!").unwrap());
+//! // Sending blocks until a receive operation appears on the other side.
+//! thread::spawn(move || s.send("Hi!"));
 //!
 //! // Receive the message.
-//! assert_eq!(rx.recv(), Ok("Hi!"));
+//! // Receiving blocks until a send operation appears on the other side.
+//! assert_eq!(r.recv(), Some("Hi!"));
 //! ```
 //!
 //! # Sharing channels
 //!
 //! Senders and receivers can be either shared by reference or cloned and then sent to other
-//! threads. Feel free to use any of these two approaches as you like.
+//! threads. There can be multiple senders and multiple receivers associated with the same channel.
 //!
 //! Sharing by reference:
 //!
 //! ```
-//! extern crate crossbeam_channel;
-//! extern crate crossbeam_utils;
+//! # extern crate crossbeam_channel;
+//! extern crate crossbeam;
 //! # fn main() {
+//! use crossbeam_channel as channel;
 //!
-//! use crossbeam_channel::unbounded;
+//! let (s, r) = channel::unbounded();
 //!
-//! let (tx, rx) = unbounded();
-//!
-//! crossbeam_utils::scoped::scope(|s| {
+//! crossbeam::scope(|scope| {
 //!     // Spawn a thread that sends one message and then receives one.
-//!     s.spawn(|| {
-//!         tx.send(1).unwrap();
-//!         rx.recv().unwrap();
+//!     scope.spawn(|| {
+//!         s.send(1);
+//!         r.recv().unwrap();
 //!     });
 //!
 //!     // Spawn another thread that does the same thing.
-//!     // Both closures capture `tx` and `rx` by reference.
-//!     s.spawn(|| {
-//!         tx.send(2).unwrap();
-//!         rx.recv().unwrap();
+//!     scope.spawn(|| {
+//!         s.send(2);
+//!         r.recv().unwrap();
 //!     });
 //! });
 //!
 //! # }
 //! ```
 //!
-//! Sharing by sending:
+//! Sharing by cloning:
 //!
 //! ```
 //! use std::thread;
-//! use crossbeam_channel::unbounded;
+//! use crossbeam_channel as channel;
 //!
-//! let (tx, rx) = unbounded();
-//! let (tx2, rx2) = (tx.clone(), rx.clone());
+//! let (s1, r1) = channel::unbounded();
+//! let (s2, r2) = (s1.clone(), r1.clone());
 //!
 //! // Spawn a thread that sends one message and then receives one.
-//! // Here, `tx` and `rx` are moved into the closure (sent into the thread).
 //! thread::spawn(move || {
-//!     tx.send(1).unwrap();
-//!     rx.recv().unwrap();
+//!     s1.send(1);
+//!     r1.recv().unwrap();
 //! });
 //!
-//! // Spawn another thread that does the same thing.
-//! // Here, `tx2` and `rx2` are moved into the closure (sent into the thread).
+//! // Spawn another thread that receives a message and then sends one.
 //! thread::spawn(move || {
-//!     tx2.send(2).unwrap();
-//!     rx2.recv().unwrap();
+//!     r2.recv().unwrap();
+//!     s2.send(2);
 //! });
 //! ```
 //!
-//! # Disconnection
+//! # Closing channels
 //!
-//! As soon as all senders or all receivers associated with a channel are dropped, it becomes
-//! disconnected. Messages cannot be sent into a disconnected channel anymore, but the remaining
-//! messages can still be received.
-//!
-//! ```
-//! use crossbeam_channel::{unbounded, TrySendError};
-//!
-//! let (tx, rx) = unbounded();
-//!
-//! // The only receiver is dropped, disconnecting the channel.
-//! drop(rx);
-//!
-//! // Attempting to send a message will result in an error.
-//! assert_eq!(tx.try_send("hello"), Err(TrySendError::Disconnected("hello")));
-//! ```
+//! When all senders associated with a channel get dropped, the channel becomes closed. No more
+//! messages can be sent, but any remaining messages can still be received. Receive operations on a
+//! closed channel never block, even if the channel is empty.
 //!
 //! ```
-//! use crossbeam_channel::{unbounded, TryRecvError};
+//! use crossbeam_channel as channel;
 //!
-//! let (tx, rx) = unbounded();
-//! tx.try_send(1).unwrap();
-//! tx.try_send(2).unwrap();
-//! tx.try_send(3).unwrap();
+//! let (s, r) = channel::unbounded();
+//! s.send(1);
+//! s.send(2);
+//! s.send(3);
 //!
-//! // The only sender is dropped, disconnecting the channel.
-//! drop(tx);
+//! // The only sender is dropped, closing the channel.
+//! drop(s);
 //!
 //! // The remaining messages can be received.
-//! assert_eq!(rx.try_recv(), Ok(1));
-//! assert_eq!(rx.try_recv(), Ok(2));
-//! assert_eq!(rx.try_recv(), Ok(3));
+//! assert_eq!(r.recv(), Some(1));
+//! assert_eq!(r.recv(), Some(2));
+//! assert_eq!(r.recv(), Some(3));
 //!
-//! // However, attempting to receive another message will result in an error.
-//! assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+//! // There are no more messages in the channel.
+//! assert!(r.is_empty());
+//!
+//! // Note that calling `r.recv()` will not block.
+//! // Instead, `None` is returned immediately.
+//! assert_eq!(r.recv(), None);
 //! ```
 //!
 //! # Blocking and non-blocking operations
 //!
-//! Send and receive operations come in three variants:
+//! Sending a message into a full bounded channel will block until an empty slot in the channel
+//! becomes available. Sending into an unbounded channel never blocks because there is always
+//! enough space in it. Zero-capacity channels are always empty, and sending blocks until a receive
+//! operation appears on the other side of the channel.
 //!
-//! 1. Non-blocking: [`try_send`] and [`try_recv`].
-//! 2. Blocking: [`send`] and [`recv`].
-//! 3. Blocking with a timeout: [`send_timeout`] and [`recv_timeout`].
+//! Receiving from an empty channel blocks until a message is sent into the channel or the channel
+//! becomes closed. Zero-capacity channels are always empty, and receiving blocks until a send
+//! operation appears on the other side of the channel or it becomes closed.
 //!
-//! The non-blocking variant attempts to perform the operation, but doesn't block the current
-//! thread on failure (e.g. if receiving a message from an empty channel).
+//! There is also a non-blocking method [`try_recv`], which receives a message if it is immediately
+//! available, or returns `None` otherwise.
 //!
-//! The blocking variant will wait until the operation can be performed or the channel becomes
-//! disconnected.
+//! ```
+//! use crossbeam_channel as channel;
 //!
-//! Blocking with a timeout does the same thing, but blocks the current thread only for a limited
-//! amount time.
+//! let (s, r) = channel::bounded(1);
+//!
+//! // Send a message into the channel.
+//! s.send("foo");
+//!
+//! // This call would block because the channel is full.
+//! // s.send("bar");
+//!
+//! // Receive the message.
+//! assert_eq!(r.recv(), Some("foo"));
+//!
+//! // This call would block because the channel is empty.
+//! // r.recv();
+//!
+//! // Try receiving a message without blocking.
+//! assert_eq!(r.try_recv(), None);
+//!
+//! // Close the channel.
+//! drop(s);
+//!
+//! // This call doesn't block because the channel is now closed.
+//! assert_eq!(r.recv(), None);
+//! ```
+//!
+//! For greater control over blocking, consider using the [`select!`] macro.
 //!
 //! # Iteration
 //!
-//! Receivers can be turned into iterators. For example, calling [`iter`] creates an iterator that
-//! returns messages until the channel is disconnected. Note that iteration may block while waiting
-//! for the next message.
+//! A channel is a special kind of iterator, where items can be dynamically produced by senders and
+//! consumed by receivers. Indeed, [`Receiver`] implements the [`Iterator`] trait, and calling
+//! [`next`] is equivalent to calling [`recv`].
 //!
 //! ```
-//! use crossbeam_channel::unbounded;
+//! use std::thread;
+//! use crossbeam_channel as channel;
 //!
-//! let (tx, rx) = unbounded();
-//! tx.send(1).unwrap();
-//! tx.send(2).unwrap();
-//! tx.send(3).unwrap();
+//! let (s, r) = channel::unbounded();
 //!
-//! // Drop the sender in order to disconnect the channel.
-//! drop(tx);
+//! thread::spawn(move || {
+//!     s.send(1);
+//!     s.send(2);
+//!     s.send(3);
+//!     // `s` was moved into the closure so now it gets dropped,
+//!     // thus closing the channel.
+//! });
 //!
-//! // Receive all remaining messages.
-//! let v: Vec<_> = rx.iter().collect();
+//! // Collect all messages from the channel.
+//! //
+//! // Note that the call to `collect` blocks until the channel becomes
+//! // closed and empty, i.e. until `r.next()` returns `None`.
+//! let v: Vec<_> = r.collect();
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
 //!
-//! By calling [`try_iter`] it is also possible to create an iterator that returns messages until
-//! the channel is empty. This iterator will never block the current thread.
+//! # Select
 //!
-//! ```
-//! use crossbeam_channel::unbounded;
+//! The [`select!`] macro allows declaring a set of channel operations and blocking until any one
+//! of them becomes ready. Finally, one of the operations is executed. If multiple operations
+//! are ready at the same time, a random one is chosen. It is also possible to declare a `default`
+//! case that gets executed if none of the operations are initially ready.
 //!
-//! let (tx, rx) = unbounded();
-//! tx.send(1).unwrap();
-//! tx.send(2).unwrap();
-//! tx.send(3).unwrap();
-//! // No need to drop the sender.
-//!
-//! // Receive all messages currently in the channel.
-//! let v: Vec<_> = rx.try_iter().collect();
-//! assert_eq!(v, [1, 2, 3]);
-//! ```
-//!
-//! Finally, there is the [`into_iter`] method, which is equivalent to [`iter`], except it takes
-//! ownership of the receiver instead of borrowing it.
-//!
-//! # Selection
-//!
-//! Selection allows you to declare a set of operations on channels and perform exactly one of
-//! them, whichever becomes ready first, possibly blocking until that happens.
-//!
-//! For example, selection can be used to receive a message from one of the two channels, blocking
-//! until a message appears on either of them:
+//! An example of receiving a message from two channels, whichever becomes ready first:
 //!
 //! ```
 //! # #[macro_use]
 //! # extern crate crossbeam_channel;
 //! # fn main() {
-//!
 //! use std::thread;
-//! use crossbeam_channel::unbounded;
+//! use crossbeam_channel as channel;
 //!
-//! let (tx1, rx1) = unbounded();
-//! let (tx2, rx2) = unbounded();
+//! let (s1, r1) = channel::unbounded();
+//! let (s2, r2) = channel::unbounded();
 //!
-//! thread::spawn(move || tx1.send("foo").unwrap());
-//! thread::spawn(move || tx2.send("bar").unwrap());
+//! thread::spawn(move || s1.send("foo"));
+//! thread::spawn(move || s2.send("bar"));
 //!
-//! select_loop! {
-//!     recv(rx1, msg) => {
-//!         println!("Received a message from the first channel: {}", msg);
-//!     }
-//!     recv(rx2, msg) => {
-//!         println!("Received a message from the second channel: {}", msg);
-//!     }
+//! // Only one of these two receive operations will be executed.
+//! select! {
+//!     recv(r1, msg) => assert_eq!(msg, Some("foo")),
+//!     recv(r2, msg) => assert_eq!(msg, Some("bar")),
 //! }
-//!
 //! # }
 //! ```
 //!
-//! The syntax of [`select_loop!`] is very similar to the one used by `match`.
-//!
-//! Here is another, more complicated example of selection. Here we are selecting over two
-//! operations on the opposite ends of the same channel: a send and a receive operation.
-//!
-//! ```
-//! # #[macro_use]
-//! # extern crate crossbeam_channel;
-//! # fn main() {
-//!
-//! use crossbeam_channel::{bounded, Sender, Receiver, Select};
-//! use std::thread;
-//!
-//! // Either send my name into the channel or receive someone else's, whatever happens first.
-//! fn seek<'a>(name: &'a str, tx: Sender<&'a str>, rx: Receiver<&'a str>) {
-//!     select_loop! {
-//!         recv(rx, peer) => println!("{} received a message from {}.", name, peer),
-//!         send(tx, name) => {},
-//!     }
-//! }
-//!
-//! let (tx, rx) = bounded(1); // Make room for one unmatched send.
-//!
-//! // Pair up five people by exchanging messages over the channel.
-//! // Since there is an odd number of them, one person won't have its match.
-//! ["Anna", "Bob", "Cody", "Dave", "Eva"].iter()
-//!     .map(|name| {
-//!         let tx = tx.clone();
-//!         let rx = rx.clone();
-//!         thread::spawn(move || seek(name, tx, rx))
-//!     })
-//!     .collect::<Vec<_>>()
-//!     .into_iter()
-//!     .for_each(|t| t.join().unwrap());
-//!
-//! // Let's send a message to the remaining person who doesn't have a match.
-//! if let Ok(name) = rx.try_recv() {
-//!     println!("No one received {}’s message.", name);
-//! }
-//!
-//! # }
-//! ```
-//!
-//! For more details, take a look at the documentation of [`select_loop!`].
-//!
-//! If you need a more powerful interface that allows selecting over a dynamic set of channel
-//! operations, use [`Select`].
+//! For more details, take a look at the documentation for [`select!`].
 //!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
 //! [`bounded`]: fn.bounded.html
-//! [`try_send`]: struct.Sender.html#method.try_send
 //! [`send`]: struct.Sender.html#method.send
-//! [`send_timeout`]: struct.Sender.html#method.send_timeout
 //! [`try_recv`]: struct.Receiver.html#method.try_recv
 //! [`recv`]: struct.Receiver.html#method.recv
-//! [`recv_timeout`]: struct.Receiver.html#method.recv_timeout
-//! [`iter`]: struct.Receiver.html#method.iter
-//! [`try_iter`]: struct.Receiver.html#method.try_iter
-//! [`into_iter`]: struct.Receiver.html#method.into_iter
-//! [`select_loop!`]: macro.select_loop.html
-//! [`Select`]: struct.Select.html
-
-#![cfg_attr(feature = "nightly", feature(spin_loop_hint))]
+//! [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
+//! [`Iterator`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html
+//! [`select!`]: macro.select.html
+//! [`Sender`]: struct.Sender.html
+//! [`Receiver`]: struct.Receiver.html
 
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
+extern crate libc;
 extern crate parking_lot;
 
-mod channel;
-mod err;
-mod exchanger;
 mod flavors;
-mod monitor;
-mod select;
-mod utils;
 
-pub use channel::{bounded, unbounded};
-pub use channel::{Receiver, Sender};
-pub use channel::{IntoIter, Iter, TryIter};
-pub use err::{RecvError, RecvTimeoutError, TryRecvError};
-pub use err::{SendError, SendTimeoutError, TrySendError};
-pub use err::{SelectRecvError, SelectSendError};
-pub use select::Select;
+#[doc(hidden)]
+pub mod internal;
+
+pub use internal::channel::{Receiver, Sender};
+pub use internal::channel::{bounded, unbounded};
+pub use internal::channel::{after, tick};

@@ -1,128 +1,114 @@
 extern crate mpmc;
 extern crate crossbeam;
-pub mod testtype;
-use testtype::TestType;
 
-use mpmc::Queue;
+use shared::message;
 use std::thread;
+
+mod shared;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
 fn seq(cap: usize) {
-    let q = Queue::<TestType>::with_capacity(cap);
+    let q = mpmc::Queue::with_capacity(cap);
 
     for i in 0..MESSAGES {
         loop {
-            if q.push(TestType::new(i)).is_ok() {
+            if q.push(message(i)).is_ok() {
                 break;
             } else {
-                if cfg!(feature = "yield") {
-                    thread::yield_now();
-                }
+                thread::yield_now();
             }
         }
     }
+
     for _ in 0..MESSAGES {
         q.pop().unwrap();
     }
 }
 
 fn spsc(cap: usize) {
-    let q = Queue::<TestType>::with_capacity(cap);
+    let q = mpmc::Queue::with_capacity(cap);
 
     crossbeam::scope(|s| {
         s.spawn(|| {
             for i in 0..MESSAGES {
                 loop {
-                    if q.push(TestType::new(i)).is_ok() {
+                    if q.push(message(i)).is_ok() {
                         break;
                     } else {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
+                        thread::yield_now();
                     }
                 }
             }
         });
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                loop {
-                    if q.pop().is_none() {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
-                    } else {
-                        break;
-                    }
+
+        for _ in 0..MESSAGES {
+            loop {
+                if q.pop().is_none() {
+                    thread::yield_now();
+                } else {
+                    break;
                 }
             }
-        });
+        }
     });
 }
 
 fn mpsc(cap: usize) {
-    let q = Queue::<TestType>::with_capacity(cap);
+    let q = mpmc::Queue::with_capacity(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
-                        if q.push(TestType::new(i)).is_ok() {
+                        if q.push(message(i)).is_ok() {
                             break;
                         } else {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
+                            thread::yield_now();
                         }
                     }
                 }
             });
         }
-        s.spawn(|| {
-            for _ in 0..MESSAGES {
-                loop {
-                    if q.pop().is_none() {
-                        if cfg!(feature = "yield") {
-                            thread::yield_now();
-                        }
-                    } else {
-                        break;
-                    }
+
+        for _ in 0..MESSAGES {
+            loop {
+                if q.pop().is_none() {
+                    thread::yield_now();
+                } else {
+                    break;
                 }
             }
-        });
+        }
     });
 }
 
 fn mpmc(cap: usize) {
-    let q = Queue::<TestType>::with_capacity(cap);
+    let q = mpmc::Queue::with_capacity(cap);
 
     crossbeam::scope(|s| {
         for _ in 0..THREADS {
             s.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
-                        if q.push(TestType::new(i)).is_ok() {
+                        if q.push(message(i)).is_ok() {
                             break;
                         } else {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
+                            thread::yield_now();
                         }
                     }
                 }
             });
         }
+
         for _ in 0..THREADS {
             s.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
                     loop {
                         if q.pop().is_none() {
-                            if cfg!(feature = "yield") {
-                                thread::yield_now();
-                            }
+                            thread::yield_now();
                         } else {
                             break;
                         }
