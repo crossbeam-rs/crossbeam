@@ -27,6 +27,8 @@ Next, add this to your crate:
 extern crate crossbeam_channel;
 ```
 
+The minimum required Rust version is 1.26.
+
 ## License
 
 Licensed under the terms of MIT license and the Apache License (Version 2.0).
