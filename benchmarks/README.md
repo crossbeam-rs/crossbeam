@@ -32,6 +32,6 @@ Dependencies:
 
 ### Results
 
-Benchmarked on 2017-11-09:
+Benchmarked on 2018-06-11:
 
-![Benchmark results](https://i.imgur.com/W0cSEVd.png)
+![Benchmark results](https://i.imgur.com/tRI4HMO.png)
