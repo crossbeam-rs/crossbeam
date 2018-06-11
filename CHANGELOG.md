@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.1] - 2018-06-12
+# Changed
+- Fix compilation errors when using `select!` with `#[deny(unsafe_code)]`.
+
 ## [0.2.0] - 2018-06-11
 # Added
 - Implement `IntoIterator<Item = T>` for `Receiver<T>`.
@@ -61,7 +65,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - First implementation of the channels.
 - Add `select_loop!` macro by @TimNN.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.1.1...v0.1.2
