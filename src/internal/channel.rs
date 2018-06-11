@@ -149,6 +149,23 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// # Examples
 ///
 /// ```
+/// # #[macro_use]
+/// # extern crate crossbeam_channel;
+/// # fn main() {
+/// use std::time::Duration;
+/// use crossbeam_channel as channel;
+///
+/// let (s, r) = channel::unbounded::<i32>();
+///
+/// let timeout = Duration::from_millis(100);
+/// select! {
+///     recv(r, msg) => println!("got {:?}", msg),
+///     recv(channel::after(timeout)) => println!("timed out"),
+/// }
+/// # }
+/// ```
+///
+/// ```
 /// use std::thread;
 /// use std::time::{Duration, Instant};
 /// use crossbeam_channel as channel;
@@ -167,23 +184,6 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// // This message was sent 100 ms from the start and received 500 ms from the start.
 /// assert!(eq(r.recv().unwrap(), start + ms(100)));
 /// assert!(eq(Instant::now(), start + ms(500)));
-/// ```
-///
-/// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
-/// use std::time::Duration;
-/// use crossbeam_channel as channel;
-///
-/// let (s, r) = channel::unbounded::<i32>();
-///
-/// let timeout = Duration::from_millis(100);
-/// select! {
-///     recv(r, msg) => println!("got {:?}", msg),
-///     recv(channel::after(timeout)) => println!("timed out"),
-/// }
-/// # }
 /// ```
 pub fn after(duration: Duration) -> Receiver<Instant> {
     Receiver(ReceiverFlavor::After(flavors::after::Channel::new(duration)))
@@ -459,7 +459,7 @@ impl<T> RefUnwindSafe for Sender<T> {}
 ///
 /// thread::spawn(move || {
 ///     s.send("Hello world!");
-///     thread::sleep(Duration::from_secs(2)); // Block the current thread for two seconds.
+///     thread::sleep(Duration::from_secs(2));
 ///     s.send("Delayed for 2 seconds");
 /// });
 ///
@@ -471,7 +471,7 @@ pub struct Receiver<T>(ReceiverFlavor<T>);
 
 /// Receiver flavors.
 pub enum ReceiverFlavor<T> {
-    /// A normal channel (array, list, or zero flavor).
+    /// A regular channel (array, list, or zero flavor).
     Channel(Arc<Channel<T>>),
 
     /// The after flavor.
@@ -496,10 +496,10 @@ impl<T> Receiver<T> {
 
     /// Blocks the current thread until a message is received or the channel is closed.
     ///
-    /// Returns the message if it was received or `None` if the channel is closed.
+    /// Returns the message if it was received, or `None` if the channel is closed and empty.
     ///
     /// If called on a zero-capacity channel, this method blocks the current thread until a send
-    /// operation appears on the other side of the channel.
+    /// operation appears on the other side of the channel or it becomes closed.
     ///
     /// Note: `r.recv()` is equivalent to `select! { recv(r, msg) => msg }`.
     ///
@@ -515,7 +515,7 @@ impl<T> Receiver<T> {
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s.send(5);
-    ///     // `s` gets dropped, closing the channel.
+    ///     // `s` gets dropped, thus closing the channel.
     /// });
     ///
     /// assert_eq!(r.recv(), Some(5));
@@ -539,7 +539,7 @@ impl<T> Receiver<T> {
 
     /// Attempts to receive a message from the channel without blocking.
     ///
-    /// If there is no message ready to be received or the channel is closed, returns `None`.
+    /// If there is no message ready to be received, returns `None`.
     ///
     /// Note: `r.try_recv()` is equivalent to `select! { recv(r, msg) => msg, default => None }`.
     ///
@@ -858,7 +858,7 @@ pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) {
     }
 }
 
-/// Writes a message from the channel.
+/// Receives a message from the channel.
 pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
     match &r.0 {
         ReceiverFlavor::Channel(arc) => match &arc.flavor {

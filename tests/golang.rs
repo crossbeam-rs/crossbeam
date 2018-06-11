@@ -1,3 +1,5 @@
+//! Tests borrowed from Go and ported to Rust.
+
 extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel as channel;

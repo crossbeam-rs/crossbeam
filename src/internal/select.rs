@@ -6,7 +6,7 @@ use flavors;
 
 /// Waits on a set of channel operations.
 ///
-/// This macro allows one to declare a set of channel operations and block until any one of them
+/// This macro allows declaring a set of channel operations and blocking until any one of them
 /// becomes ready. Finally, one of the operations is executed. If multiple operations are ready at
 /// the same time, a random one is chosen. It is also possible to declare a `default` case that
 /// gets executed if none of the operations are initially ready.
@@ -52,10 +52,10 @@ use flavors;
 ///
 /// s1.send("foo");
 ///
-/// // Since both operations are ready, a random one will be executed.
+/// // Since both operations are initially ready, a random one will be executed.
 /// select! {
-///     send(s2, "bar") => assert_eq!(r2.recv(), Some("bar")),
 ///     recv(r1, msg) => assert_eq!(msg, Some("foo")),
+///     send(s2, "bar") => assert_eq!(r2.recv(), Some("bar")),
 /// }
 /// # }
 /// ```
@@ -108,8 +108,8 @@ use flavors;
 /// s2.send("bar");
 /// let receivers = vec![r1, r2];
 ///
-/// // Both receivers are ready so one of the two receive operations will be
-/// // chosen at random.
+/// // Both receivers are initially ready so one of the two receive operations
+/// // will be chosen randomly.
 /// select! {
 ///     // The third argument to `recv` is optional and is assigned a
 ///     // reference to the receiver the message was received from.
@@ -207,7 +207,8 @@ macro_rules! select {
     };
 }
 
-/// Temporary data that gets initialized during select and is consumed by `read` and `write`.
+/// Temporary data that gets initialized during select or a blocking operation, and is consumed by
+/// `read` or `write`.
 ///
 /// Each field contains data associated with a specific channel flavor.
 #[derive(Default)]
@@ -219,7 +220,7 @@ pub struct Token {
     pub zero: flavors::zero::ZeroToken,
 }
 
-/// Identifier unique to an operation by a specific thread on a specific channel.
+/// Identifier associated with an operation by a specific thread on a specific channel.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Operation(usize);
 
@@ -227,7 +228,8 @@ impl Operation {
     /// Creates an identifier from a mutable reference.
     ///
     /// This function essentially just turns the address of the reference into a number. The
-    /// reference should point to a variable that is specific to the thread and the operation.
+    /// reference should point to a variable that is specific to the thread and the operation,
+    /// and is alive for the entire duration of select or blocking operation.
     #[inline]
     pub fn hook<T>(r: &mut T) -> Operation {
         Operation(r as *mut T as usize)
@@ -240,7 +242,7 @@ pub enum Select {
     /// Still waiting for an operation.
     Waiting,
 
-    /// The select has been aborted.
+    /// The select or blocking operation has been aborted.
     Aborted,
 
     /// A channel was closed.
@@ -276,27 +278,27 @@ impl Into<usize> for Select {
 
 /// A receiver or a sender that can participate in select.
 ///
-/// This is a handle that assists select in performing the operation, registration, deciding on the
+/// This is a handle that assists select in executing the operation, registration, deciding on the
 /// appropriate deadline for blocking, etc.
 pub trait SelectHandle {
-    /// Attempts to perform the operation and returns `true` on success.
+    /// Attempts to execute the operation and returns `true` on success.
     fn try(&self, token: &mut Token) -> bool;
 
-    /// Attempts to perform the operation again and returns `true` on success.
+    /// Attempts to execute the operation again and returns `true` on success.
     ///
-    /// Retries are allowed to take a little bit more time than normal tries.
+    /// Retries are allowed to take a little bit more time than the initial try.
     fn retry(&self, token: &mut Token) -> bool;
 
     /// Returns a deadline for the operation, if there is one.
     fn deadline(&self) -> Option<Instant>;
 
-    /// Registers the operation in the waker.
+    /// Registers the operation.
     fn register(&self, token: &mut Token, oper: Operation) -> bool;
 
-    /// Registers the operation form the waker.
+    /// Unregisters the operation.
     fn unregister(&self, oper: Operation);
 
-    /// Attempts to perform the selected operation.
+    /// Attempts to execute the selected operation.
     fn accept(&self, token: &mut Token) -> bool;
 }
 

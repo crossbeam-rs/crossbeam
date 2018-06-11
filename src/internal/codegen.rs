@@ -86,7 +86,8 @@ where
         }
 
         if sel == Select::Waiting {
-            // Check with each operation how long we're allowed to block.
+            // Check with each operation for how long we're allowed to block, and compute the
+            // earliest deadline.
             let mut deadline: Option<Instant> = None;
             for &(handle, _, _) in handles.iter() {
                 if let Some(x) = handle.deadline() {
@@ -109,7 +110,6 @@ where
             Select::Closed | Select::Operation(_) => {
                 // Find the selected operation.
                 for (handle, i, ptr) in handles.iter_mut() {
-
                     // Is this the selected operation?
                     if sel == Select::Operation(Operation::hook(handle)) {
                         // Try firing this operation.
@@ -131,11 +131,11 @@ where
 /// Dereference the pointer and bind it to the lifetime in the iterator.
 ///
 /// The returned reference will appear as if it was previously produced by the iterator.
-pub unsafe fn deref_from_iterator<'a, T: 'a, I>(ptr: *const u8, _: &I) -> &'a T
+pub unsafe fn deref_from_iterator<'a, T: 'a, I>(ptr: *const T, _: &I) -> &'a T
 where
     I: Iterator<Item = &'a T>,
 {
-    &*(ptr as *const T)
+    &*ptr
 }
 
 /// Receiver argument types allowed in `recv` cases.
@@ -470,7 +470,10 @@ macro_rules! __crossbeam_channel_codegen {
     ) => {
         if $index == $i {
             let ($m, $r) = unsafe {
-                let r = $crate::internal::codegen::deref_from_iterator($selected, &$var);
+                let r = $crate::internal::codegen::deref_from_iterator(
+                    $selected as *const $crate::Receiver<_>,
+                    &$var,
+                );
                 let msg = $crate::internal::channel::read(r, &mut $token);
                 (msg, r)
             };
@@ -501,7 +504,10 @@ macro_rules! __crossbeam_channel_codegen {
                 // We have to prefix variables with an underscore to get rid of warnings when
                 // evaluation of `$m` doesn't finish.
                 let _s = unsafe {
-                    $crate::internal::codegen::deref_from_iterator($selected, &$var)
+                    $crate::internal::codegen::deref_from_iterator(
+                        $selected as *const $crate::Sender<_>,
+                        &$var,
+                    )
                 };
                 let _guard = $crate::internal::utils::AbortGuard(
                     "a send case triggered a panic while evaluating its message"

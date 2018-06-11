@@ -45,9 +45,6 @@
 //! Creating a bounded channel:
 //!
 //! ```
-//! # #[macro_use]
-//! # extern crate crossbeam_channel;
-//! # fn main() {
 //! use crossbeam_channel as channel;
 //!
 //! // Create a channel that can hold at most 5 messages at a time.
@@ -60,7 +57,6 @@
 //!
 //! // Another call to `send` would block because the channel is full.
 //! // s.send(5);
-//! # }
 //! ```
 //!
 //! A rather special case is a bounded, zero-capacity channel. This kind of channel cannot hold any
@@ -162,7 +158,8 @@
 //! // There are no more messages in the channel.
 //! assert!(r.is_empty());
 //!
-//! // Note that calling `r.recv()` will not block. Instead, `None` is returned immediately.
+//! // Note that calling `r.recv()` will not block.
+//! // Instead, `None` is returned immediately.
 //! assert_eq!(r.recv(), None);
 //! ```
 //!
@@ -175,10 +172,10 @@
 //!
 //! Receiving from an empty channel blocks until a message is sent into the channel or the channel
 //! becomes closed. Zero-capacity channels are always empty, and receiving blocks until a send
-//! operation appears on the other side of the channel.
+//! operation appears on the other side of the channel or it becomes closed.
 //!
-//! There is also a non-blocking method [`try_recv`], which receives a message if it is available,
-//! or returns `None` otherwise.
+//! There is also a non-blocking method [`try_recv`], which receives a message if it is immediately
+//! available, or returns `None` otherwise.
 //!
 //! ```
 //! use crossbeam_channel as channel;
@@ -225,18 +222,21 @@
 //!     s.send(1);
 //!     s.send(2);
 //!     s.send(3);
-//!     // `s` was moved into the closure so now it gets dropped, thus closing the channel.
+//!     // `s` was moved into the closure so now it gets dropped,
+//!     // thus closing the channel.
 //! });
 //!
-//! // Collect all messages from the channel. Note that the call to `collect` blocks until the
-//! // channel becomes closed and empty, i.e. until `r.next()` returns `None`.
+//! // Collect all messages from the channel.
+//! //
+//! // Note that the call to `collect` blocks until the channel becomes
+//! // closed and empty, i.e. until `r.next()` returns `None`.
 //! let v: Vec<_> = r.collect();
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
 //!
 //! # Select
 //!
-//! The [`select!`] macro allows one to declare a set of channel operations and block until any one
+//! The [`select!`] macro allows declaring a set of channel operations and blocking until any one
 //! of them becomes ready. Finally, one of the operations is executed. If multiple operations
 //! are ready at the same time, a random one is chosen. It is also possible to declare a `default`
 //! case that gets executed if none of the operations are initially ready.

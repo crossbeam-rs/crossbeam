@@ -21,7 +21,7 @@ use internal::waker::SyncWaker;
 /// The maximum number of messages a block can hold.
 const BLOCK_CAP: usize = 32;
 
-/// Slot in a block.
+/// A slot in a block.
 struct Slot<T> {
     /// The message.
     msg: ManuallyDrop<T>,
@@ -49,7 +49,7 @@ impl Default for ListToken {
     }
 }
 
-/// Block in a linked list.
+/// A block in a linked list.
 ///
 /// Each block in the list can hold up to `BLOCK_CAP` messages.
 struct Block<T> {
@@ -78,7 +78,7 @@ impl<T> Block<T> {
 
 /// Position in the channel (index and block).
 ///
-/// This struct describes the current position of the head and the tail in a linked list.
+/// This struct describes the current position of the head or the tail in a linked list.
 struct Position<T> {
     /// The index in the channel.
     index: AtomicUsize,
@@ -224,14 +224,16 @@ impl<T> Channel<T> {
 
                     // If the tail equals the head, that means the channel is empty.
                     if tail_index == head_index {
-                        // Check whether the channel is closed and return the appropriate error
-                        // variant.
+                        // If the channel is closed...
                         if self.is_closed() {
+                            // ...and still empty...
                             if self.tail.index.load(Ordering::SeqCst) == tail_index {
+                                // ...then receive `None`.
                                 token.list.slot = ptr::null();
                                 return true;
                             }
                         } else {
+                            // Otherwise, the receive operation is not ready.
                             return false;
                         }
                     }
@@ -248,9 +250,9 @@ impl<T> Channel<T> {
                     if offset + 1 == BLOCK_CAP {
                         // Wait until the next pointer becomes non-null.
                         loop {
-                            let next = head.next.load(Ordering::Acquire, &guard);
-                            if !next.is_null() {
-                                self.head.block.store(next, Ordering::Release);
+                            let next_ptr = head.next.load(Ordering::Acquire, &guard);
+                            if !next_ptr.is_null() {
+                                self.head.block.store(next_ptr, Ordering::Release);
                                 break;
                             }
                             backoff.step();

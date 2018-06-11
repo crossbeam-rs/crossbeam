@@ -21,12 +21,12 @@ pub struct Context {
     /// Thread id.
     thread_id: ThreadId,
 
-    /// Slot into which another thread may store a pointer to its `Packet`.
+    /// A slot into which another thread may store a pointer to its `Packet`.
     packet: AtomicUsize,
 }
 
 impl Context {
-    /// Try selecting an operation.
+    /// Attempts to select an operation.
     ///
     /// On failure, the previously selected operation is returned.
     #[inline]
@@ -72,7 +72,7 @@ impl Context {
 }
 
 thread_local! {
-    /// Thread-local select context.
+    /// The thread-local context.
     static CONTEXT: Arc<Context> = Arc::new(Context {
         select: AtomicUsize::new(Select::Waiting.into()),
         thread: thread::current(),
@@ -87,7 +87,7 @@ pub fn current() -> Arc<Context> {
     CONTEXT.with(|cx| cx.clone())
 }
 
-/// Returns the context associated with the current thread.
+/// Attempts to select an operation for the current thread.
 #[inline]
 pub fn current_try_select(select: Select) -> Result<(), Select> {
     CONTEXT.with(|cx| cx.try_select(select))

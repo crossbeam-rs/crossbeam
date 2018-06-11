@@ -17,7 +17,7 @@ use internal::select::{Operation, Select, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
 
-/// Slot in a channel.
+/// A slot in a channel.
 struct Slot<T> {
     /// The current stamp.
     ///
@@ -268,15 +268,17 @@ impl<T> Channel<T> {
                 // ...and if the tail lags one lap behind the head as well, that means the channel
                 // is empty.
                 if tail.wrapping_add(self.one_lap) == head {
-                    // Check whether the channel is closed and return the appropriate error
-                    // variant.
+                    // If the channel is closed...
                     if self.is_closed() {
+                        // ...and still empty...
                         if self.tail.load(Ordering::SeqCst) == tail {
+                            // ...then receive `None`.
                             token.array.slot = ptr::null();
                             token.array.stamp = 0;
                             return true;
                         }
                     } else {
+                        // Otherwise, the receive operation is not ready.
                         return false;
                     }
                 }
@@ -452,8 +454,8 @@ impl<T> Channel<T> {
 
         // Is the tail lagging one lap behind head?
         //
-        // If the head changes just before we load the tail, that means there was a moment when the
-        // channel was not empty, so we can just return `false`.
+        // Note: If the head changes just before we load the tail, that means there was a moment
+        // when the channel was not empty, so it is safe to just return `false`.
         tail.wrapping_add(self.one_lap) == head
     }
 
@@ -464,8 +466,8 @@ impl<T> Channel<T> {
 
         // Is the head lagging one lap behind tail?
         //
-        // If the tail changes just before we load the head, that means there was a moment when the
-        // channel was not full, so we can just return `false`.
+        // note: If the tail changes just before we load the head, that means there was a moment
+        // when the channel was not full, so it is safe to just return `false`.
         head.wrapping_add(self.one_lap) == tail
     }
 }

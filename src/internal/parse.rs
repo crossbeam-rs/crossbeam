@@ -13,7 +13,7 @@
 ///
 /// Each case is of the form `(index, variable) case(arguments) => block`, where:
 ///
-/// - `index` is a unique index for the case.
+/// - `index` is a unique index for the case (index 0 is reserved for the `default` case).
 /// - `variable` is a unique variable name associated with it.
 /// - `case` is one of `recv`, `send`, or `default`
 /// - `arguments` is a list of arguments, and in case of `send` and `recv` is in the expanded form

@@ -1,3 +1,5 @@
+//! Tests for iteration over receivers.
+
 extern crate crossbeam;
 extern crate crossbeam_channel as channel;
 

@@ -1,6 +1,6 @@
 //! Hidden public internals of the crate.
 //!
-//! The only reason why this module is public is because it must be accessible by the `select!`
+//! The only reason why this module is public is because it must be accessible from the `select!`
 //! macro.
 
 pub extern crate smallvec;

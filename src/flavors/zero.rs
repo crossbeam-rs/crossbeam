@@ -1,6 +1,6 @@
 //! Zero-capacity channel.
 //!
-//! This kind of channel also known as *rendezvous* channel.
+//! This kind of channel is also known as *rendezvous* channel.
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -17,10 +17,10 @@ use internal::select::{Operation, Select, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
 
-/// Pointer to a packet.
+/// A pointer to a packet.
 pub type ZeroToken = usize;
 
-/// Slot for passing one message from a sender to a receiver.
+/// A slot for passing one message from a sender to a receiver.
 struct Packet<T> {
     /// Equals `true` if the packet is allocated on the stack.
     on_stack: bool,
@@ -28,7 +28,7 @@ struct Packet<T> {
     /// Equals `true` once the packet is ready for reading or writing.
     ready: AtomicBool,
 
-    /// A message.
+    /// The message.
     msg: ManuallyDrop<UnsafeCell<T>>,
 }
 
@@ -51,7 +51,7 @@ impl<T> Packet<T> {
         })
     }
 
-    /// Creates an packet on the heap, containing a message.
+    /// Creates a packet on the heap, containing a message.
     fn message_on_stack(msg: T) -> Packet<T> {
         Packet {
             on_stack: true,
@@ -241,9 +241,9 @@ impl<T> Channel<T> {
         let packet = &*(token.zero as *const Packet<T>);
 
         if packet.on_stack {
-            // The message was there since the packet was constructed. After reading the message,
-            // we need to set `ready` to `true` in order to signal that the packet can be
-            // destroyed.
+            // The message has been in the packet from the beginning, so there is no need to wait
+            // for it. However, after reading the message, we need to set `ready` to `true` in
+            // order to signal that the packet can be destroyed.
             let msg = packet.msg.get().read();
             packet.ready.store(true, Ordering::Release);
             Some(msg)

@@ -11,7 +11,7 @@ use internal::select::{Operation, Select};
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {
-    /// A context associated with the thread owning this operation.
+    /// Context associated with the thread owning this operation.
     pub context: Arc<Context>,
 
     /// The operation.
@@ -21,12 +21,12 @@ pub struct Entry {
     pub packet: usize,
 }
 
-/// Queue of threads blocked on channel operations.
+/// A queue of threads blocked on channel operations.
 ///
-/// This data structure is used by threads to registering blocking operations and get woken up once
+/// This data structure is used by threads to register blocking operations and get woken up once
 /// an operation becomes ready.
 pub struct Waker {
-    /// List of registered threads blocked on channel operations.
+    /// The list of registered blocking operations.
     entries: VecDeque<Entry>,
 }
 
@@ -45,7 +45,7 @@ impl Waker {
         self.register_with_packet(oper, 0);
     }
 
-    /// Registers the current thread with an operation and packe.
+    /// Registers the current thread with an operation and a packet.
     #[inline]
     pub fn register_with_packet(&mut self, oper: Operation, packet: usize) {
         self.entries.push_back(Entry {
@@ -55,7 +55,7 @@ impl Waker {
         });
     }
 
-    /// Unregisters the current thread with an operation.
+    /// Unregisters an operation previously registered by the current thread.
     #[inline]
     pub fn unregister(&mut self, oper: Operation) -> Option<Entry> {
         if let Some((i, _)) = self.entries
@@ -88,7 +88,8 @@ impl Waker {
                         // Provide the packet, too.
                         self.entries[i].context.store_packet(self.entries[i].packet);
 
-                        // Remove the entry from the queue to improve performance.
+                        // Remove the entry from the queue to keep it clean and improve
+                        // performance.
                         let entry = self.entries.remove(i).unwrap();
                         Self::maybe_shrink(&mut self.entries);
 
@@ -111,8 +112,8 @@ impl Waker {
                 // Wake the thread up.
                 //
                 // Here we don't remove the entry from the queue. Registered threads might want to
-                // unregister from the waker themselves in order to recover the packet value and
-                // destroy the packet, if necessary.
+                // unregister from the waker by themselves in order to recover the packet value and
+                // destroy it, if necessary.
                 entry.context.unpark();
             }
         }
@@ -141,7 +142,7 @@ impl Waker {
         self.entries.len()
     }
 
-    /// Shrinks the internal queue if it's capacity is much larger than length.
+    /// Shrinks the internal queue if its capacity is much larger than length.
     #[inline]
     fn maybe_shrink(entries: &mut VecDeque<Entry>) {
         if entries.capacity() > 32 && entries.len() < entries.capacity() / 4 {
@@ -159,15 +160,14 @@ impl Drop for Waker {
     }
 }
 
-/// A simple wait queue for list-based and array-based channels.
+/// A waker that can be shared among threads without locking.
 ///
-/// This data structure is used for registering select operations before blocking and waking them
-/// up when the channel receives a message, sends one, or gets closed.
+/// This is a simple wrapper around `Waker` that internally uses a mutex for synchronization.
 pub struct SyncWaker {
-    /// The list of registered select operations.
+    /// The inner `Waker`.
     inner: Mutex<Waker>,
 
-    /// Number of operations in the list.
+    /// Number of operations in the waker.
     len: AtomicUsize,
 }
 
@@ -189,7 +189,7 @@ impl SyncWaker {
         self.len.store(inner.len(), Ordering::SeqCst);
     }
 
-    /// Unregisters the current thread with an operation.
+    /// Unregisters an operation previously registered by the current thread.
     #[inline]
     pub fn unregister(&self, oper: Operation) -> Option<Entry> {
         if self.len.load(Ordering::SeqCst) > 0 {

@@ -1,3 +1,5 @@
+//! Tests for comparison operators on channel senders and receivers.
+
 extern crate crossbeam;
 extern crate crossbeam_channel as channel;
 

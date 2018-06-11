@@ -1,6 +1,6 @@
 //! Channel that delivers a message after a certain amount of time.
 //!
-//! Messages cannot be sent in this kind of channel; they appear implicitly.
+//! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
 use std::mem;
 use std::ptr;
@@ -22,7 +22,7 @@ pub struct Channel {
     deadline: Instant,
 
     /// The pointer to a lazily initialized boolean flag, which becomes `true` when the message
-    /// gets consumed.
+    /// gets received.
     ///
     /// This `AtomicPtr` holds the raw value of an `Arc<AtomicBool>`.
     // TODO: Use `AtomicPtr<AtomicCell<bool>>` here once we implement `AtomicCell`.
@@ -47,7 +47,7 @@ impl Channel {
 
     /// Returns the flag associated with this channel.
     ///
-    /// The flag will be allocated on the heap and initialized with `false` on the first call of
+    /// The flag will be allocated on the heap and initialized with `false` on the first call to
     /// this method.
     #[inline]
     fn flag(&self) -> &AtomicBool {
@@ -76,7 +76,7 @@ impl Channel {
     #[inline]
     pub fn recv(&self) -> Option<Instant> {
         if self.flag().load(Ordering::SeqCst) {
-            // If the message was already consumed, another one will never come.
+            // If the message was already received, block forever.
             utils::sleep_forever();
         }
 
@@ -94,7 +94,7 @@ impl Channel {
             // Success! Return the message, which is the instant at which it was "sent".
             Some(self.deadline)
         } else {
-            // The message was already consumed, and another one will never come.
+            // The message was already received. Block forever.
             utils::sleep_forever();
         }
     }
@@ -102,14 +102,14 @@ impl Channel {
     /// Attempts to receive a message without blocking.
     #[inline]
     pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
-        // We use relaxed ordering because this is just an optional, optimistic check.
+        // We use relaxed ordering because this is just an optional optimistic check.
         if !self.ptr.load(Ordering::Relaxed).is_null() && self.flag().load(Ordering::SeqCst) {
-            // The message was already consumed.
+            // The message was already received.
             return RecvNonblocking::Empty;
         }
 
         if Instant::now() < self.deadline {
-            // The message was not delivered yet.
+            // The message was not "sent" yet.
             return RecvNonblocking::Empty;
         }
 
@@ -118,7 +118,7 @@ impl Channel {
             // Success! Return the message, which is the instant at which it was "sent".
             RecvNonblocking::Message(self.deadline)
         } else {
-            // The message was already consumed.
+            // The message was already received.
             RecvNonblocking::Empty
         }
     }
@@ -134,7 +134,7 @@ impl Channel {
     pub fn is_empty(&self) -> bool {
         let flag = self.flag();
 
-        // First, check if the message was already consumed to avoid the expensive
+        // First, check whether the message was already received to avoid the expensive
         // `Instant::now()` call.
         if flag.load(Ordering::SeqCst) {
             return true;
@@ -145,7 +145,7 @@ impl Channel {
             return true;
         }
 
-        // The deadline has been reached. The channel is empty only if the message was consumed.
+        // The deadline has been reached. The channel is empty only if the message was received.
         flag.load(Ordering::SeqCst)
     }
 

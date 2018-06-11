@@ -1,7 +1,7 @@
 //! Channels with send and receive operations implemented using strictly non-blocking `select!`.
 //!
 //! Such `select!` invocations will often try to optimize the macro invocations by converting them
-//! into special non-blocking function calls.
+//! into special non-blocking method calls like `try_recv()`.
 
 use std::ops::Deref;
 use std::thread;

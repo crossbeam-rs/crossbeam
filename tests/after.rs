@@ -1,3 +1,5 @@
+//! Tests for the after channel flavor.
+
 #[macro_use]
 pub extern crate crossbeam_channel as channel;
 

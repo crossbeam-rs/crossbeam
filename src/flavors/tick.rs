@@ -1,6 +1,6 @@
 //! Channel that delivers messages periodically.
 //!
-//! Messages cannot be sent in this kind of channel; they appear implicitly.
+//! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
 use std::sync::Arc;
 use std::thread;

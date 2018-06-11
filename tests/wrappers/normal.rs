@@ -1,6 +1,6 @@
 //! Native interface with the default behavior.
 //!
-//! This wrapper does not try to cause or prevent any optimizations.
+//! This wrapper does not try to provoke or prevent any optimizations.
 
 use std::ops::Deref;
 use std::time::{Duration, Instant};

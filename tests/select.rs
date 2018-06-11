@@ -1,3 +1,5 @@
+//! Tests for the `select!` macro.
+
 extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel as channel;

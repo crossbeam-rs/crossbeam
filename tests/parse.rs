@@ -1,3 +1,7 @@
+//! Tests for the `select!` macro parser.
+//!
+//! These tests make sure that all possible invocations of `select!` actually compile.
+
 extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel as channel;
