@@ -219,31 +219,34 @@ pub struct Token {
     pub zero: flavors::zero::ZeroToken,
 }
 
-/// TODO
+/// Identifier unique to an operation by a specific thread on a specific channel.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Operation(usize);
 
 impl Operation {
-    /// TODO
+    /// Creates an identifier from a mutable reference.
+    ///
+    /// This function essentially just turns the address of the reference into a number. The
+    /// reference should point to a variable that is specific to the thread and the operation.
     #[inline]
     pub fn hook<T>(r: &mut T) -> Operation {
         Operation(r as *mut T as usize)
     }
 }
 
-/// TODO
+/// Current state of a select or a blocking operation.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Select {
-    /// TODO
+    /// Still waiting for an operation.
     Waiting,
 
-    /// TODO
+    /// The select has been aborted.
     Aborted,
 
-    /// TODO
+    /// A channel was closed.
     Closed,
 
-    /// TODO
+    /// An operation became ready.
     Operation(Operation),
 }
 
@@ -271,19 +274,29 @@ impl Into<usize> for Select {
     }
 }
 
-/// TODO: explain
-/// loop { try; register; is_blocked; unregister; accept; write/read }
+/// A receiver or a sender that can participate in select.
+///
+/// This is a handle that assists select in performing the operation, registration, deciding on the
+/// appropriate deadline for blocking, etc.
 pub trait SelectHandle {
+    /// Attempts to perform the operation and returns `true` on success.
     fn try(&self, token: &mut Token) -> bool;
 
+    /// Attempts to perform the operation again and returns `true` on success.
+    ///
+    /// Retries are allowed to take a little bit more time than normal tries.
     fn retry(&self, token: &mut Token) -> bool;
 
+    /// Returns a deadline for the operation, if there is one.
     fn deadline(&self) -> Option<Instant>;
 
+    /// Registers the operation in the waker.
     fn register(&self, token: &mut Token, oper: Operation) -> bool;
 
+    /// Registers the operation form the waker.
     fn unregister(&self, oper: Operation);
 
+    /// Attempts to perform the selected operation.
     fn accept(&self, token: &mut Token) -> bool;
 }
 

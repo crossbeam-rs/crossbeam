@@ -42,7 +42,15 @@ impl Context {
             .map_err(|e| e.into())
     }
 
-    /// TODO
+    /// Returns the selected operation.
+    #[inline]
+    pub fn selected(&self) -> Select {
+        Select::from(self.select.load(Ordering::Acquire))
+    }
+
+    /// Stores a packet.
+    ///
+    /// This method must be called after `try_select` succeeds and there is a packet to provide.
     #[inline]
     pub fn store_packet(&self, packet: usize) {
         if packet != 0 {
@@ -88,7 +96,7 @@ pub fn current_try_select(select: Select) -> Result<(), Select> {
 /// Returns the selected operation for the current thread.
 #[inline]
 pub fn current_selected() -> Select {
-    CONTEXT.with(|cx| Select::from(cx.select.load(Ordering::Acquire)))
+    CONTEXT.with(|cx| cx.selected())
 }
 
 /// Resets `select` and `packet`.

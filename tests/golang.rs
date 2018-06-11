@@ -6,8 +6,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
-// TODO: write instructions for porting tests (e.g. runtime.Gosched is thread::yield_now())
-
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }

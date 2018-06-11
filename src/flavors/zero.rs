@@ -17,8 +17,6 @@ use internal::select::{Operation, Select, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
 
-// TODO: anything that calls read/write in any flavor should have an abort guard
-
 /// Pointer to a packet.
 pub type ZeroToken = usize;
 
@@ -420,7 +418,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
 
         let mut inner = self.0.inner.lock();
         inner.receivers.register_with_packet(oper, packet as usize);
-        !inner.senders.can_notify() && !inner.is_closed
+        !inner.senders.can_wake_one() && !inner.is_closed
     }
 
     fn unregister(&self, oper: Operation) {
@@ -455,7 +453,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
 
         let mut inner = self.0.inner.lock();
         inner.senders.register_with_packet(oper, packet as usize);
-        !inner.receivers.can_notify()
+        !inner.receivers.can_wake_one()
     }
 
     fn unregister(&self, oper: Operation) {

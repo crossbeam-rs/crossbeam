@@ -359,8 +359,6 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
         $handles:ident
     ) => {{
-        // TODO: set up a guard that aborts if anything panics before actually finishing
-
         // Check if there's a `default` case.
         let has_default = __crossbeam_channel_codegen!(@has_default $default);
 
