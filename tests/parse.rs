@@ -2,6 +2,8 @@
 //!
 //! These tests make sure that all possible invocations of `select!` actually compile.
 
+#![deny(unsafe_code)]
+
 extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel as channel;
