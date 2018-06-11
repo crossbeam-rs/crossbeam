@@ -1,5 +1,7 @@
 //! Tests for the `select!` macro.
 
+#![deny(unsafe_code)]
+
 extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel as channel;

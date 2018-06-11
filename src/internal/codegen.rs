@@ -469,6 +469,7 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
     ) => {
         if $index == $i {
+            #[allow(unsafe_code)]
             let ($m, $r) = unsafe {
                 let r = $crate::internal::codegen::deref_from_iterator(
                     $selected as *const $crate::Receiver<_>,
@@ -503,6 +504,7 @@ macro_rules! __crossbeam_channel_codegen {
             let $s = {
                 // We have to prefix variables with an underscore to get rid of warnings when
                 // evaluation of `$m` doesn't finish.
+                #[allow(unsafe_code)]
                 let _s = unsafe {
                     $crate::internal::codegen::deref_from_iterator(
                         $selected as *const $crate::Sender<_>,
@@ -517,6 +519,7 @@ macro_rules! __crossbeam_channel_codegen {
                 #[allow(unreachable_code)]
                 {
                     ::std::mem::forget(_guard);
+                    #[allow(unsafe_code)]
                     unsafe { $crate::internal::channel::write(_s, &mut $token, _msg); }
                     _s
                 }
