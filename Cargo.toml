@@ -21,4 +21,3 @@ smallvec = "0.6.1"
 
 [dev-dependencies]
 crossbeam = "0.3.0"
-rand = "0.4"
