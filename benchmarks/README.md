@@ -24,8 +24,8 @@ Runs benchmarks, stores results into `*.txt` files, and generates `plot.png`:
 
 Dependencies:
 
-- Rust compiler
-- Go compiler
+- Rust (nightly)
+- Go
 - Bash
 - Python 2
 - Matplotlib
