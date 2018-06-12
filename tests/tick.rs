@@ -259,6 +259,10 @@ mod normal {
     tests!(wrappers::normal);
 }
 
+mod cloned {
+    tests!(wrappers::cloned);
+}
+
 mod select {
     tests!(wrappers::select);
 }
