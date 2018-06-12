@@ -5,27 +5,31 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-# Changed
-- Update `crossbeam-epoch` to 0.5.0
+### Added
+- Add more tests.
 
-# Fixed
+### Changed
+- Update `crossbeam-epoch` to 0.5.0
+- Initialize the RNG seed to a random value.
+
+### Fixed
 - Ignore clippy warnings in `select!`.
 
 ## [0.2.1] - 2018-06-12
-# Changed
+### Changed
 - Fix compilation errors when using `select!` with `#[deny(unsafe_code)]`.
 
 ## [0.2.0] - 2018-06-11
-# Added
+### Added
 - Implement `IntoIterator<Item = T>` for `Receiver<T>`.
 - Add a new `select!` macro.
 - Add special channels `after` and `tick`.
 
-# Changed
+### Changed
 - Dropping receivers doesn't close the channel anymore.
 - Change the signature of `recv`, `send`, and `try_recv`.
 
-# Removed
+### Removed
 - Remove `Sender::is_closed` and `Receiver::is_closed`.
 - Remove `Sender::close` and `Receiver::close`.
 - Remove `Sender::send_timeout` and `Receiver::recv_timeout`.
@@ -37,7 +41,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Remove ordering operators for `Sender` and `Receiver`.
 
 ## [0.1.3] - 2018-05-23
-## Added
+### Added
 - Add `Sender::disconnect` and `Receiver::disconnect`.
 - Implement comparison operators for `Sender` and `Receiver`.
 - Allow arbitrary patterns in place of `msg` in `recv(r, msg)`.
@@ -45,7 +49,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Add benchmarks for `atomicring` and `mpmc`.
 - Add benchmarks for different message sizes.
 
-## Changed
+### Changed
 - Documentation improvements.
 - Update `crossbeam-epoch` to 0.4.0
 - Update `crossbeam-utils` to 0.3.0

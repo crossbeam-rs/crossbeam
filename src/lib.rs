@@ -281,6 +281,7 @@
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate libc;
+extern crate rand;
 extern crate parking_lot;
 
 mod flavors;

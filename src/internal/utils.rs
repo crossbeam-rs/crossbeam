@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use libc;
+use rand;
 
 /// A counter that performs exponential backoff in spin loops.
 pub struct Backoff(u32);
@@ -69,7 +70,10 @@ pub fn shuffle<T>(v: &mut [T]) {
     }
 
     thread_local! {
-        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
+        static RNG: Cell<Wrapping<u32>> = {
+            let init = rand::random::<u32>() | 1;
+            Cell::new(Wrapping(init))
+        }
     }
 
     RNG.with(|rng| {
