@@ -26,6 +26,8 @@ Next, add this to your crate:
 extern crate crossbeam_epoch as epoch;
 ```
 
+The minimum required Rust version is 1.25.
+
 ## License
 
 Licensed under the terms of MIT license and the Apache License (Version 2.0).
