@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 - Update `crossbeam-epoch` to `0.4.2`.
 - Update `crossbeam-utils` to `0.4.0`.
+- Require minimum Rust version 1.25.
 
 ## [0.3.1] - 2018-05-04
 
