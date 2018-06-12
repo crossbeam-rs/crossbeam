@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 # Changed
 - Update `crossbeam-epoch` to 0.5.0
 
+# Fixed
+- Ignore clippy warnings in `select!`.
+
 ## [0.2.1] - 2018-06-12
 # Changed
 - Fix compilation errors when using `select!` with `#[deny(unsafe_code)]`.

@@ -277,6 +277,7 @@ macro_rules! __crossbeam_channel_codegen {
         $send:tt
         $default:tt
     ) => {{
+        #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
         let mut handles = __crossbeam_channel_codegen!(@container $recv $send);
         __crossbeam_channel_codegen!(@fast_path $recv $send $default handles)
     }};
@@ -471,6 +472,7 @@ macro_rules! __crossbeam_channel_codegen {
         if $index == $i {
             #[allow(unsafe_code)]
             let ($m, $r) = unsafe {
+                #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
                 let r = $crate::internal::codegen::deref_from_iterator(
                     $selected as *const $crate::Receiver<_>,
                     &$var,
@@ -506,6 +508,7 @@ macro_rules! __crossbeam_channel_codegen {
                 // evaluation of `$m` doesn't finish.
                 #[allow(unsafe_code)]
                 let _s = unsafe {
+                    #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
                     $crate::internal::codegen::deref_from_iterator(
                         $selected as *const $crate::Sender<_>,
                         &$var,
