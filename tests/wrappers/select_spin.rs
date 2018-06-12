@@ -9,11 +9,21 @@ use std::time::{Duration, Instant};
 
 use channel;
 
-#[derive(Clone)]
 pub struct Sender<T>(pub channel::Sender<T>);
 
-#[derive(Clone)]
 pub struct Receiver<T>(pub channel::Receiver<T>);
+
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Sender<T> {
+        Sender(self.0.clone())
+    }
+}
+
+impl<T> Clone for Receiver<T> {
+    fn clone(&self) -> Receiver<T> {
+        Receiver(self.0.clone())
+    }
+}
 
 impl<T> Deref for Receiver<T> {
     type Target = channel::Receiver<T>;
