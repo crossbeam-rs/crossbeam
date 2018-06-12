@@ -7,10 +7,11 @@
 //!
 //! This channel is then tested against the original tests for MPSC channels.
 //!
-//! Two minor tweaks were needed to make the tests compile:
+//! Three minor tweaks were needed to make the tests compile:
 //!
 //! - Replace `box` syntax with `Box::new`.
 //! - Replace all uses of `Select` with `select!`.
+//! - Use type anotation in one test.
 
 #[macro_use]
 extern crate crossbeam_channel as channel;
