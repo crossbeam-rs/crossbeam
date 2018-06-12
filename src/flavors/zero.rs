@@ -51,7 +51,7 @@ impl<T> Packet<T> {
         })
     }
 
-    /// Creates a packet on the heap, containing a message.
+    /// Creates a packet on the stack, containing a message.
     fn message_on_stack(msg: T) -> Packet<T> {
         Packet {
             on_stack: true,
