@@ -348,7 +348,13 @@ macro_rules! __crossbeam_channel_codegen {
         $default:tt
         $handles:ident
     ) => {{
-        __crossbeam_channel_codegen!(@main_loop $recv $send $default $handles)
+        __crossbeam_channel_codegen!(
+            @main_loop
+            $recv
+            $send
+            $default
+            $handles
+        )
     }};
     // TODO: Optimize `select! { send(s, msg) => {} }`.
     // TODO: Optimize `select! { send(s, msg) => {} default => {} }`.
@@ -372,7 +378,16 @@ macro_rules! __crossbeam_channel_codegen {
         );
 
         // Pass the result of the main loop to the final step.
-        __crossbeam_channel_codegen!(@finalize token index selected $recv $send $default)
+        __crossbeam_channel_codegen!(
+            @finalize
+            token
+            index
+            selected
+            $handles
+            $recv
+            $send
+            $default
+        )
     }};
 
     // Initialize the `handles` vector if there's only a single `recv` case.
@@ -465,6 +480,7 @@ macro_rules! __crossbeam_channel_codegen {
         $token:ident
         $index:ident
         $selected:ident
+        $handles:ident
         (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
         $send:tt
         $default:tt
@@ -480,6 +496,7 @@ macro_rules! __crossbeam_channel_codegen {
                 let msg = $crate::internal::channel::read(r, &mut $token);
                 (msg, r)
             };
+            drop($handles);
             $body
         } else {
             __crossbeam_channel_codegen!(
@@ -487,6 +504,7 @@ macro_rules! __crossbeam_channel_codegen {
                 $token
                 $index
                 $selected
+                $handles
                 ($($tail)*)
                 $send
                 $default
@@ -498,6 +516,7 @@ macro_rules! __crossbeam_channel_codegen {
         $token:ident
         $index:ident
         $selected:ident
+        $handles:ident
         ()
         (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
         $default:tt
@@ -527,6 +546,7 @@ macro_rules! __crossbeam_channel_codegen {
                     _s
                 }
             };
+            drop($handles);
             $body
         } else {
             __crossbeam_channel_codegen!(
@@ -534,6 +554,7 @@ macro_rules! __crossbeam_channel_codegen {
                 $token
                 $index
                 $selected
+                $handles
                 ()
                 ($($tail)*)
                 $default
@@ -545,11 +566,13 @@ macro_rules! __crossbeam_channel_codegen {
         $token:ident
         $index:ident
         $selected:ident
+        $handles:ident
         ()
         ()
         (($i:tt $var:ident) default() => $body:tt,)
     ) => {
         if $index == $i {
+            drop($handles);
             $body
         } else {
             __crossbeam_channel_codegen!(
@@ -557,6 +580,7 @@ macro_rules! __crossbeam_channel_codegen {
                 $token
                 $index
                 $selected
+                $handles
                 ()
                 ()
                 ()
@@ -568,6 +592,7 @@ macro_rules! __crossbeam_channel_codegen {
         $token:ident
         $index:ident
         $selected:ident
+        $handles:ident
         ()
         ()
         ()

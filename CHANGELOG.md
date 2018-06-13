@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 - Ignore clippy warnings in `select!`.
+- Better interaction of `select!` with the NLL borrow checker.
 
 ## [0.2.1] - 2018-06-12
 ### Changed
