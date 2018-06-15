@@ -292,6 +292,8 @@ macro_rules! __crossbeam_channel_codegen {
         if $handles.len() == 1 {
             let $r = $handles[0].0;
             let $m = $handles[0].0.recv();
+
+            drop($handles);
             $body
         } else {
             __crossbeam_channel_codegen!(
@@ -319,15 +321,20 @@ macro_rules! __crossbeam_channel_codegen {
                     msg = Some(m);
                     let $m = msg;
                     let $r = r;
+
+                    drop($handles);
                     $recv_body
                 }
                 $crate::internal::channel::RecvNonblocking::Closed => {
                     msg = None;
                     let $m = msg;
                     let $r = r;
+
+                    drop($handles);
                     $recv_body
                 }
                 $crate::internal::channel::RecvNonblocking::Empty => {
+                    drop($handles);
                     $default_body
                 }
             }
@@ -496,6 +503,7 @@ macro_rules! __crossbeam_channel_codegen {
                 let msg = $crate::internal::channel::read(r, &mut $token);
                 (msg, r)
             };
+
             drop($handles);
             $body
         } else {
@@ -546,6 +554,7 @@ macro_rules! __crossbeam_channel_codegen {
                     _s
                 }
             };
+
             drop($handles);
             $body
         } else {
