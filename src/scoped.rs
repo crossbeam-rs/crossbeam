@@ -62,6 +62,7 @@
 /// `'static` lifetime. One way of giving it a proper lifetime is to use an [`Arc`][arc]:
 ///
 /// [arc]: http://doc.rust-lang.org/stable/std/sync/struct.Arc.html
+/// [spawn]: https://doc.rust-lang.org/stable/std/thread/fn.spawn.html
 ///
 /// ```
 /// use std::sync::Arc;
