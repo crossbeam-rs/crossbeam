@@ -22,4 +22,4 @@ crossbeam-utils = "0.2"
 crossbeam-deque = "0.3"
 
 [dev-dependencies]
-rand = "0.4"
+rand = "0.5"
