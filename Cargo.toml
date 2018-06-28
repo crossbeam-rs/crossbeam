@@ -23,4 +23,4 @@ scopeguard = {version = "0.3.0", default-features = false}
 
 [dev-dependencies]
 crossbeam = "0.3.2"
-rand = "0.4.2"
+rand = "0.5.3"
