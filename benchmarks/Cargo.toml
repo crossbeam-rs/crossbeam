@@ -9,7 +9,7 @@ chan = "0.1.19"
 crossbeam = "0.3.0"
 crossbeam-deque = "0.4.1"
 crossbeam-channel = { path = ".." }
-futures = "0.2.1"
+futures-preview = "0.2.2"
 mpmc = "0.1.5"
 
 [[bin]]
