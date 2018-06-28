@@ -449,8 +449,8 @@ macro_rules! tests {
                     }
 
                     {
-                        let mut c = c.iter()
-                            .map(|(s, r)| (Some(s.clone()), Some(r.clone())))
+                        let mut s = c.iter()
+                            .map(|(s, _)| Some(s.clone()))
                             .collect::<Vec<_>>();
 
                         scope.spawn(move || {
@@ -458,22 +458,23 @@ macro_rules! tests {
                             for _ in 0..4 * N {
                                 let i;
                                 select! {
-                                    send(c[3].0.iter().map(|x| &**x), 0) => i = 3,
-                                    send(c[2].0.iter().map(|x| &**x), 0) => i = 2,
-                                    send(c[0].0.iter().map(|x| &**x), 0) => i = 0,
-                                    send(c[1].0.iter().map(|x| &**x), 0) => i = 1,
+                                    send(s[3].iter().map(|x| &**x), 0) => i = 3,
+                                    send(s[2].iter().map(|x| &**x), 0) => i = 2,
+                                    send(s[0].iter().map(|x| &**x), 0) => i = 0,
+                                    send(s[1].iter().map(|x| &**x), 0) => i = 1,
                                 }
                                 n[i] += 1;
+                                assert!(n[i] <= N as i32);
                                 if n[i] == N as i32 {
-                                    c[i].0 = None;
+                                    s[i] = None;
                                 }
                             }
                         });
                     }
 
                     {
-                        let mut c = c.iter()
-                            .map(|(s, r)| (Some(s.clone()), Some(r.clone())))
+                        let mut r = c.iter()
+                            .map(|(_, r)| Some(r.clone()))
                             .collect::<Vec<_>>();
 
                         scope.spawn(move || {
@@ -481,14 +482,15 @@ macro_rules! tests {
                             for _ in 0..4 * N {
                                 let i;
                                 select! {
-                                    recv(c[0].1.iter().map(|x| &**x)) => i = 0,
-                                    recv(c[1].1.iter().map(|x| &**x)) => i = 1,
-                                    recv(c[2].1.iter().map(|x| &**x)) => i = 2,
-                                    recv(c[3].1.iter().map(|x| &**x)) => i = 3,
+                                    recv(r[0].iter().map(|x| &**x)) => i = 0,
+                                    recv(r[1].iter().map(|x| &**x)) => i = 1,
+                                    recv(r[2].iter().map(|x| &**x)) => i = 2,
+                                    recv(r[3].iter().map(|x| &**x)) => i = 3,
                                 }
                                 n[i] += 1;
+                                assert!(n[i] <= N as i32);
                                 if n[i] == N as i32 {
-                                    c[i].0 = None;
+                                    r[i] = None;
                                 }
                             }
                         });
