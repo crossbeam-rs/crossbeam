@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.1] - 2018-06-28
+### Fixed
+- Fix a documentation link.
+
 ## [0.4.0] - 2018-05-17
 ### Fixed
 - `CachePadded` supports types bigger than 64 bytes.
@@ -62,7 +66,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Old implementation of `CachePadded` from `crossbeam` version 0.3.0
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/crossbeam-rs/crossbeam-utils/compare/v0.3.0...v0.3.1
