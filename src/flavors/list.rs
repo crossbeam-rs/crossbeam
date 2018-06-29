@@ -24,7 +24,7 @@ const BLOCK_CAP: usize = 32;
 /// A slot in a block.
 struct Slot<T> {
     /// The message.
-    msg: ManuallyDrop<T>,
+    msg: UnsafeCell<ManuallyDrop<T>>,
 
     /// Equals `true` if the message is ready for reading.
     ready: AtomicBool,
@@ -182,7 +182,7 @@ impl<T> Channel<T> {
 
                     unsafe {
                         let slot = tail.slots.get_unchecked(offset).get();
-                        ptr::write(&mut (*slot).msg, ManuallyDrop::new(msg));
+                        (*slot).msg.get().write(ManuallyDrop::new(msg));
                         (*slot).ready.store(true, Ordering::Release);
                     }
                     break;
@@ -292,7 +292,7 @@ impl<T> Channel<T> {
         }
 
         // Read the message.
-        let m = ptr::read(&slot.msg);
+        let m = slot.msg.get().read();
         let msg = ManuallyDrop::into_inner(m);
         Some(msg)
     }
@@ -422,7 +422,7 @@ impl<T> Drop for Channel<T> {
                 let offset = head_index.wrapping_sub(head.start_index);
 
                 let slot = &mut *head.slots.get_unchecked(offset).get();
-                ManuallyDrop::drop(&mut (*slot).msg);
+                ManuallyDrop::drop(&mut (*slot).msg.get().read());
 
                 if offset + 1 == BLOCK_CAP {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
