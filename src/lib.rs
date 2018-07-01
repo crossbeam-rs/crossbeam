@@ -151,9 +151,9 @@ impl<T> Worker<T> {
     /// assert!(!w.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        match &self.flavor {
-            WorkerFlavor::Fifo(flavor) => flavor.is_empty(),
-            WorkerFlavor::Lifo(flavor) => flavor.is_empty(),
+        match self.flavor {
+            WorkerFlavor::Fifo(ref flavor) => flavor.is_empty(),
+            WorkerFlavor::Lifo(ref flavor) => flavor.is_empty(),
         }
     }
 
@@ -169,9 +169,9 @@ impl<T> Worker<T> {
     /// w.push(2);
     /// ```
     pub fn push(&self, value: T) {
-        match &self.flavor {
-            WorkerFlavor::Fifo(flavor) => flavor.push(value),
-            WorkerFlavor::Lifo(flavor) => flavor.push(value),
+        match self.flavor {
+            WorkerFlavor::Fifo(ref flavor) => flavor.push(value),
+            WorkerFlavor::Lifo(ref flavor) => flavor.push(value),
         }
     }
 
@@ -196,9 +196,9 @@ impl<T> Worker<T> {
     /// assert_eq!(w.pop(), None);
     /// ```
     pub fn pop(&self) -> Option<T> {
-        match &self.flavor {
-            WorkerFlavor::Fifo(flavor) => flavor.pop(),
-            WorkerFlavor::Lifo(flavor) => flavor.pop(),
+        match self.flavor {
+            WorkerFlavor::Fifo(ref flavor) => flavor.pop(),
+            WorkerFlavor::Lifo(ref flavor) => flavor.pop(),
         }
     }
 }
@@ -238,9 +238,9 @@ impl<T> Stealer<T> {
     /// assert!(!s.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        match &self.flavor {
-            StealerFlavor::Fifo(flavor) => flavor.is_empty(),
-            StealerFlavor::Lifo(flavor) => flavor.is_empty(),
+        match self.flavor {
+            StealerFlavor::Fifo(ref flavor) => flavor.is_empty(),
+            StealerFlavor::Lifo(ref flavor) => flavor.is_empty(),
         }
     }
 
@@ -260,20 +260,20 @@ impl<T> Stealer<T> {
     /// assert_eq!(s.steal(), None);
     /// ```
     pub fn steal(&self) -> Option<T> {
-        match &self.flavor {
-            StealerFlavor::Fifo(flavor) => flavor.steal(),
-            StealerFlavor::Lifo(flavor) => flavor.steal(),
+        match self.flavor {
+            StealerFlavor::Fifo(ref flavor) => flavor.steal(),
+            StealerFlavor::Lifo(ref flavor) => flavor.steal(),
         }
     }
 }
 
 impl<T> Clone for Stealer<T> {
     fn clone(&self) -> Stealer<T> {
-        match &self.flavor {
-            StealerFlavor::Fifo(flavor) => Stealer {
+        match self.flavor {
+            StealerFlavor::Fifo(ref flavor) => Stealer {
                 flavor: StealerFlavor::Fifo(flavor.clone()),
             },
-            StealerFlavor::Lifo(flavor) => Stealer {
+            StealerFlavor::Lifo(ref flavor) => Stealer {
                 flavor: StealerFlavor::Lifo(flavor.clone()),
             },
         }
