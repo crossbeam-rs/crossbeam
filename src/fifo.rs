@@ -137,6 +137,10 @@ impl<T> Copy for Buffer<T> {}
 ///    PPoPP 2013.][weak-mem]
 /// 3. [Norris and Demsky. CDSchecker: checking concurrent data structures written with C/C++
 ///    atomics. OOPSLA 2013.][checker]
+///
+/// [chase-lev]: https://dl.acm.org/citation.cfm?id=1073974
+/// [weak-mem]: https://dl.acm.org/citation.cfm?id=2442524
+/// [checker]: https://dl.acm.org/citation.cfm?id=2509514
 struct Inner<T> {
     /// The final value of the back index.
     ///
