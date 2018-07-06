@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.0] - 2018-07-06
+
+### Added
+- Add two deque constructors : `fifo()` and `lifo()`.
+
+### Changed
+- Update `rand` to `0.5.3`.
+- Rename `Deque` to `Worker`.
+- Return `Option<T>` from `Stealer::steal`.
+
+### Removed
+- Remove methods `Deque::len` and `Stealer::len`.
+- Remove method `Deque::stealer`.
+- Remove method `Deque::steal`.
+
 ## [0.4.1] - 2018-06-12
 ### Changed
 - Update `crossbeam-epoch` to `0.5.0`.
