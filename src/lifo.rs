@@ -1,10 +1,12 @@
 //! A LIFO deque.
 
+use std::cell::Cell;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{self, AtomicIsize, Ordering};
+use std::thread;
 
 use epoch::{self, Atomic, Owned};
 use utils::cache_padded::CachePadded;
@@ -18,14 +20,17 @@ const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
 
 /// Creates a LIFO deque.
 pub fn new<T>() -> (Worker<T>, Stealer<T>) {
+    let buffer = Buffer::alloc(MIN_CAP);
+
     let inner = Arc::new(CachePadded::new(Inner {
         front: AtomicIsize::new(0),
         back: AtomicIsize::new(0),
-        buffer: Atomic::new(Buffer::new(MIN_CAP)),
+        buffer: Atomic::new(buffer),
     }));
 
     let w = Worker {
         inner: inner.clone(),
+        cached_buffer: Cell::new(buffer),
         _marker: PhantomData,
     };
     let s = Stealer { inner };
@@ -33,6 +38,9 @@ pub fn new<T>() -> (Worker<T>, Stealer<T>) {
 }
 
 /// A buffer that holds elements in a deque.
+///
+/// This is just a pointer to the buffer and its length - dropping an instance of this struct will
+/// *not* deallocate the buffer.
 struct Buffer<T> {
     /// Pointer to the allocated memory.
     ptr: *mut T,
@@ -44,8 +52,8 @@ struct Buffer<T> {
 unsafe impl<T> Send for Buffer<T> {}
 
 impl<T> Buffer<T> {
-    /// Returns a new buffer with the specified capacity.
-    fn new(cap: usize) -> Self {
+    /// Allocates a new buffer with the specified capacity.
+    fn alloc(cap: usize) -> Self {
         debug_assert_eq!(cap, cap.next_power_of_two());
 
         let mut v = Vec::with_capacity(cap);
@@ -53,6 +61,11 @@ impl<T> Buffer<T> {
         mem::forget(v);
 
         Buffer { ptr, cap }
+    }
+
+    /// Deallocates the buffer.
+    unsafe fn dealloc(self) {
+        drop(Vec::from_raw_parts(self.ptr, 0, self.cap));
     }
 
     /// Returns a pointer to the element at the specified `index`.
@@ -72,13 +85,16 @@ impl<T> Buffer<T> {
     }
 }
 
-impl<T> Drop for Buffer<T> {
-    fn drop(&mut self) {
-        unsafe {
-            drop(Vec::from_raw_parts(self.ptr, 0, self.cap));
+impl<T> Clone for Buffer<T> {
+    fn clone(&self) -> Buffer<T> {
+        Buffer {
+            ptr: self.ptr,
+            cap: self.cap,
         }
     }
 }
+
+impl<T> Copy for Buffer<T> {}
 
 /// Internal data that is shared between the worker and stealers.
 ///
@@ -100,42 +116,6 @@ struct Inner<T> {
     buffer: Atomic<Buffer<T>>,
 }
 
-impl<T> Inner<T> {
-    /// Resizes the internal buffer to the new capacity of `new_cap`.
-    #[cold]
-    unsafe fn resize(&self, new_cap: usize) {
-        // Load the back index, front index, and buffer.
-        let b = self.back.load(Ordering::Relaxed);
-        let f = self.front.load(Ordering::Relaxed);
-        let buffer = self.buffer.load(Ordering::Relaxed, epoch::unprotected());
-
-        // Allocate a new buffer.
-        let new = Buffer::new(new_cap);
-
-        // Copy data from the old buffer to the new one.
-        let mut i = f;
-        while i != b {
-            ptr::copy_nonoverlapping(buffer.deref().at(i), new.at(i), 1);
-            i = i.wrapping_add(1);
-        }
-
-        let guard = &epoch::pin();
-
-        // Replace the old buffer with the new one.
-        let old = self.buffer
-            .swap(Owned::new(new).into_shared(guard), Ordering::Release, guard);
-
-        // Destroy the old buffer later.
-        guard.defer(move || old.into_owned());
-
-        // If the buffer is very large, then flush the thread-local garbage in order to deallocate
-        // it as soon as possible.
-        if mem::size_of::<T>() * new_cap >= FLUSH_THRESHOLD_BYTES {
-            guard.flush();
-        }
-    }
-}
-
 impl<T> Drop for Inner<T> {
     fn drop(&mut self) {
         // Load the back index, front index, and buffer.
@@ -153,7 +133,7 @@ impl<T> Drop for Inner<T> {
             }
 
             // Free the memory allocated by the buffer.
-            drop(buffer.into_owned());
+            buffer.into_owned().into_box().dealloc();
         }
     }
 }
@@ -163,6 +143,9 @@ pub struct Worker<T> {
     /// A reference to the inner representation of the deque.
     inner: Arc<CachePadded<Inner<T>>>,
 
+    /// A copy of `inner.buffer` for quick access.
+    cached_buffer: Cell<Buffer<T>>,
+
     /// Indicates that the worker cannot be shared among threads.
     _marker: PhantomData<*mut ()>, // !Send + !Sync
 }
@@ -170,6 +153,42 @@ pub struct Worker<T> {
 unsafe impl<T: Send> Send for Worker<T> {}
 
 impl<T> Worker<T> {
+    /// Resizes the internal buffer to the new capacity of `new_cap`.
+    #[cold]
+    unsafe fn resize(&self, new_cap: usize) {
+        // Load the back index, front index, and buffer.
+        let b = self.inner.back.load(Ordering::Relaxed);
+        let f = self.inner.front.load(Ordering::Relaxed);
+        let buffer = self.cached_buffer.get();
+
+        // Allocate a new buffer.
+        let new = Buffer::alloc(new_cap);
+        self.cached_buffer.set(new);
+
+        // Copy data from the old buffer to the new one.
+        let mut i = f;
+        while i != b {
+            ptr::copy_nonoverlapping(buffer.at(i), new.at(i), 1);
+            i = i.wrapping_add(1);
+        }
+
+        let guard = &epoch::pin();
+
+        // Replace the old buffer with the new one.
+        let old = self.inner
+            .buffer
+            .swap(Owned::new(new).into_shared(guard), Ordering::Release, guard);
+
+        // Destroy the old buffer later.
+        guard.defer(move || old.into_owned().into_box().dealloc());
+
+        // If the buffer is very large, then flush the thread-local garbage in order to deallocate
+        // it as soon as possible.
+        if mem::size_of::<T>() * new_cap >= FLUSH_THRESHOLD_BYTES {
+            guard.flush();
+        }
+    }
+
     /// Returns `true` if the deque is empty.
     pub fn is_empty(&self) -> bool {
         let b = self.inner.back.load(Ordering::Relaxed);
@@ -180,31 +199,28 @@ impl<T> Worker<T> {
     /// Pushes an element into the back of the deque.
     pub fn push(&self, value: T) {
         unsafe {
-            // Load the back index, front index, and buffer. The buffer doesn't have to be
-            // epoch-protected because the current thread (the worker) is the only one that grows
-            // and shrinks it.
+            // Load the back index, front index, and buffer.
             let b = self.inner.back.load(Ordering::Relaxed);
             let f = self.inner.front.load(Ordering::Acquire);
-            let mut buffer = self.inner.buffer.load(Ordering::Relaxed, epoch::unprotected());
+            let mut buffer = self.cached_buffer.get();
 
             // Calculate the length of the deque.
             let len = b.wrapping_sub(f);
 
-            let cap = buffer.deref().cap;
             // Is the deque full?
-            if len >= cap as isize {
+            if len >= buffer.cap as isize {
                 // Yes. Grow the underlying buffer.
-                self.inner.resize(2 * cap);
-                buffer = self.inner.buffer.load(Ordering::Relaxed, epoch::unprotected());
+                self.resize(2 * buffer.cap);
+                buffer = self.cached_buffer.get();
             // Is the new length less than one fourth the capacity?
-            } else if cap > MIN_CAP && len + 1 < cap as isize / 4 {
+            } else if buffer.cap > MIN_CAP && len + 1 < buffer.cap as isize / 4 {
                 // Yes. Shrink the underlying buffer.
-                self.inner.resize(cap / 2);
-                buffer = self.inner.buffer.load(Ordering::Relaxed, epoch::unprotected());
+                self.resize(buffer.cap / 2);
+                buffer = self.cached_buffer.get();
             }
 
             // Write `value` into the right slot and increment the back index.
-            buffer.deref().write(b, value);
+            buffer.write(b, value);
             atomic::fence(Ordering::Release);
             self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
         }
@@ -225,10 +241,6 @@ impl<T> Worker<T> {
         let b = b.wrapping_sub(1);
         self.inner.back.store(b, Ordering::Relaxed);
 
-        // Load the buffer. The buffer doesn't have to be epoch-protected because the current
-        // thread (the worker) is the only one that grows and shrinks it.
-        let buffer = unsafe { self.inner.buffer.load(Ordering::Relaxed, epoch::unprotected()) };
-
         atomic::fence(Ordering::SeqCst);
 
         // Load the front index.
@@ -243,7 +255,8 @@ impl<T> Worker<T> {
             None
         } else {
             // Read the value to be popped.
-            let mut value = unsafe { Some(buffer.deref().read(b)) };
+            let buffer = self.cached_buffer.get();
+            let mut value = unsafe { Some(buffer.read(b)) };
 
             // Are we popping the last element from the deque?
             if len == 0 {
@@ -262,9 +275,8 @@ impl<T> Worker<T> {
             } else {
                 // Shrink the buffer if `len` is less than one fourth of `MIN_CAP`.
                 unsafe {
-                    let cap = buffer.deref().cap;
-                    if cap > MIN_CAP && len < cap as isize / 4 {
-                        self.inner.resize(cap / 2);
+                    if buffer.cap > MIN_CAP && len < buffer.cap as isize / 4 {
+                        self.resize(buffer.cap / 2);
                     }
                 }
             }
@@ -332,12 +344,14 @@ impl<T> Stealer<T> {
 
             // We didn't steal this value, forget it.
             mem::forget(value);
+
+            drop(guard);
+            thread::yield_now();
         }
     }
 }
 
 impl<T> Clone for Stealer<T> {
-    /// Creates another stealer.
     fn clone(&self) -> Stealer<T> {
         Stealer {
             inner: self.inner.clone(),
