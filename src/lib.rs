@@ -1,724 +1,226 @@
 //! A concurrent work-stealing deque.
 //!
-//! The data structure can be thought of as a dynamically growable and shrinkable buffer that has
-//! two ends: bottom and top. A [`Deque`] can [`push`] elements into the bottom and [`pop`]
-//! elements from the bottom, but it can only [`steal`][Deque::steal] elements from the top.
+//! This data structure is most commonly used in schedulers. The typical setup involves a number of
+//! threads where each thread has its own deque containing tasks. A thread may push tasks into its
+//! deque as well as pop tasks from it. Once it runs out of tasks, it may steal some from other
+//! threads to help complete tasks more quickly. Therefore, work-stealing deques supports three
+//! essential operations: *push*, *pop*, and *steal*.
 //!
-//! A [`Deque`] doesn't implement `Sync` so it cannot be shared among multiple threads. However, it
-//! can create [`Stealer`]s, and those can be easily cloned, shared, and sent to other threads.
-//! [`Stealer`]s can only [`steal`][Stealer::steal] elements from the top.
+//! # Types of deques
 //!
-//! Here's a visualization of the data structure:
+//! There are two types of deques, differing only in which order tasks get pushed and popped. The
+//! two task ordering strategies are:
 //!
-//! ```text
-//!                    top
-//!                     _
-//!    Deque::steal -> | | <- Stealer::steal
-//!                    | |
-//!                    | |
-//!                    | |
-//! Deque::push/pop -> |_|
+//! * First-in first-out (FIFO)
+//! * Last-in first-out (LIFO)
 //!
-//!                  bottom
-//! ```
+//! A deque is a buffer with two ends, front and back. In a FIFO deque, tasks are pushed into the
+//! back, popped from the front, and stolen from the front. However, in a LIFO deque, tasks are
+//! popped from the back instead - that is the only difference.
 //!
-//! # Work-stealing schedulers
+//! # Workers and stealers
 //!
-//! Usually, the data structure is used in work-stealing schedulers as follows.
+//! There are two functions that construct a deque: [`fifo`] and [`lifo`]. These functions return a
+//! [`Worker`] and a [`Stealer`]. The thread which owns the deque is usually called *worker*, while
+//! all other threads are *stealers*.
 //!
-//! There is a number of threads. Each thread owns a [`Deque`] and creates a [`Stealer`] that is
-//! shared among all other threads. Alternatively, it creates multiple [`Stealer`]s - one for each
-//! of the other threads.
+//! [`Worker`] is able to push and pop tasks. It cannot be shared among multiple threads - only
+//! one thread owns it.
 //!
-//! Then, all threads are executing in a loop. In the loop, each one attempts to [`pop`] some work
-//! from its own [`Deque`]. But if it is empty, it attempts to [`steal`][Stealer::steal] work from
-//! some other thread instead. When executing work (or being idle), a thread may produce more work,
-//! which gets [`push`]ed into its [`Deque`].
-//!
-//! Of course, there are many variations of this strategy. For example, sometimes it may be
-//! beneficial for a thread to always [`steal`][Deque::steal] work from the top of its deque
-//! instead of calling [`pop`] and taking it from the bottom.
+//! [`Stealer`] can only steal tasks. It can be shared among multiple threads by reference or by
+//! cloning. Cloning a [`Stealer`] simply creates another one associated with the same deque.
 //!
 //! # Examples
 //!
 //! ```
-//! use crossbeam_deque::{Deque, Steal};
+//! use crossbeam_deque as deque;
 //! use std::thread;
 //!
-//! let d = Deque::new();
-//! let s = d.stealer();
+//! // Create a LIFO deque.
+//! let (w, s) = deque::lifo();
 //!
-//! d.push('a');
-//! d.push('b');
-//! d.push('c');
+//! // Push several elements into the back.
+//! w.push(1);
+//! w.push(2);
+//! w.push(3);
 //!
-//! assert_eq!(d.pop(), Some('c'));
-//! drop(d);
+//! // This is a LIFO deque, which means an element is popped from the back.
+//! // If it was a FIFO deque, `w.pop()` would return `Some(1)`.
+//! assert_eq!(w.pop(), Some(3));
 //!
+//! // Create a stealer thread.
 //! thread::spawn(move || {
-//!     assert_eq!(s.steal(), Steal::Data('a'));
-//!     assert_eq!(s.steal(), Steal::Data('b'));
+//!     assert_eq!(s.steal(), Some(1));
+//!     assert_eq!(s.steal(), Some(2));
 //! }).join().unwrap();
 //! ```
 //!
-//! # References
-//!
-//! The implementation is based on the following work:
-//!
-//! 1. [Chase and Lev. Dynamic circular work-stealing deque. SPAA 2005.][chase-lev]
-//! 2. [Le, Pop, Cohen, and Nardelli. Correct and efficient work-stealing for weak memory models.
-//!    PPoPP 2013.][weak-mem]
-//! 3. [Norris and Demsky. CDSchecker: checking concurrent data structures written with C/C++
-//!    atomics. OOPSLA 2013.][checker]
-//!
-//! [chase-lev]: https://dl.acm.org/citation.cfm?id=1073974
-//! [weak-mem]: https://dl.acm.org/citation.cfm?id=2442524
-//! [checker]: https://dl.acm.org/citation.cfm?id=2509514
-//!
-//! [`Deque`]: struct.Deque.html
+//! [`Worker`]: struct.Worker.html
 //! [`Stealer`]: struct.Stealer.html
-//! [`push`]: struct.Deque.html#method.push
-//! [`pop`]: struct.Deque.html#method.pop
-//! [Deque::steal]: struct.Deque.html#method.steal
-//! [Stealer::steal]: struct.Stealer.html#method.steal
+//! [`fifo`]: fn.fifo.html
+//! [`lifo`]: fn.lifo.html
 
 extern crate crossbeam_epoch as epoch;
 extern crate crossbeam_utils as utils;
 
-use std::cmp;
 use std::fmt;
-use std::marker::PhantomData;
-use std::mem;
-use std::ptr;
-use std::sync::Arc;
-use std::sync::atomic::{self, AtomicIsize};
-use std::sync::atomic::Ordering::{Acquire, Relaxed, Release, SeqCst};
 
-use epoch::{Atomic, Owned};
-use utils::cache_padded::CachePadded;
+mod fifo;
+mod lifo;
 
-/// Minimum buffer capacity for a deque.
-const DEFAULT_MIN_CAP: usize = 16;
-
-/// If a buffer of at least this size is retired, thread-local garbage is flushed so that it gets
-/// deallocated as soon as possible.
-const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
-
-/// Possible outcomes of a steal operation.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
-pub enum Steal<T> {
-    /// The deque was empty at the time of stealing.
-    Empty,
-
-    /// Some data has been successfully stolen.
-    Data(T),
-
-    /// Lost the race for stealing data to another concurrent operation. Try again.
-    Retry,
-}
-
-/// A buffer that holds elements in a deque.
-struct Buffer<T> {
-    /// Pointer to the allocated memory.
-    ptr: *mut T,
-
-    /// Capacity of the buffer. Always a power of two.
-    cap: usize,
-}
-
-unsafe impl<T> Send for Buffer<T> {}
-
-impl<T> Buffer<T> {
-    /// Returns a new buffer with the specified capacity.
-    fn new(cap: usize) -> Self {
-        debug_assert_eq!(cap, cap.next_power_of_two());
-
-        let mut v = Vec::with_capacity(cap);
-        let ptr = v.as_mut_ptr();
-        mem::forget(v);
-
-        Buffer { ptr, cap }
-    }
-
-    /// Returns a pointer to the element at the specified `index`.
-    unsafe fn at(&self, index: isize) -> *mut T {
-        // `self.cap` is always a power of two.
-        self.ptr.offset(index & (self.cap - 1) as isize)
-    }
-
-    /// Writes `value` into the specified `index`.
-    unsafe fn write(&self, index: isize, value: T) {
-        ptr::write(self.at(index), value)
-    }
-
-    /// Reads a value from the specified `index`.
-    unsafe fn read(&self, index: isize) -> T {
-        ptr::read(self.at(index))
-    }
-}
-
-impl<T> Drop for Buffer<T> {
-    fn drop(&mut self) {
-        unsafe {
-            drop(Vec::from_raw_parts(self.ptr, 0, self.cap));
-        }
-    }
-}
-
-/// Internal data that is shared between the deque and its stealers.
-struct Inner<T> {
-    /// The bottom index.
-    bottom: AtomicIsize,
-
-    /// The top index.
-    top: AtomicIsize,
-
-    /// The underlying buffer.
-    buffer: Atomic<Buffer<T>>,
-
-    /// Minimum capacity of the buffer. Always a power of two.
-    min_cap: usize,
-}
-
-impl<T> Inner<T> {
-    /// Returns a new `Inner` with default minimum capacity.
-    fn new() -> Self {
-        Self::with_min_capacity(DEFAULT_MIN_CAP)
-    }
-
-    /// Returns a new `Inner` with minimum capacity of `min_cap` rounded to the next power of two.
-    fn with_min_capacity(min_cap: usize) -> Self {
-        let power = min_cap.next_power_of_two();
-        assert!(power >= min_cap, "capacity too large: {}", min_cap);
-        Inner {
-            bottom: AtomicIsize::new(0),
-            top: AtomicIsize::new(0),
-            buffer: Atomic::new(Buffer::new(power)),
-            min_cap: power,
-        }
-    }
-
-    /// Resizes the internal buffer to the new capacity of `new_cap`.
-    #[cold]
-    unsafe fn resize(&self, new_cap: usize) {
-        // Load the bottom, top, and buffer.
-        let b = self.bottom.load(Relaxed);
-        let t = self.top.load(Relaxed);
-
-        let buffer = self.buffer.load(Relaxed, epoch::unprotected());
-
-        // Allocate a new buffer.
-        let new = Buffer::new(new_cap);
-
-        // Copy data from the old buffer to the new one.
-        let mut i = t;
-        while i != b {
-            ptr::copy_nonoverlapping(buffer.deref().at(i), new.at(i), 1);
-            i = i.wrapping_add(1);
-        }
-
-        let guard = &epoch::pin();
-
-        // Replace the old buffer with the new one.
-        let old = self.buffer
-            .swap(Owned::new(new).into_shared(guard), Release, guard);
-
-        // Destroy the old buffer later.
-        guard.defer(move || old.into_owned());
-
-        // If the buffer is very large, then flush the thread-local garbage in order to
-        // deallocate it as soon as possible.
-        if mem::size_of::<T>() * new_cap >= FLUSH_THRESHOLD_BYTES {
-            guard.flush();
-        }
-    }
-}
-
-impl<T> Drop for Inner<T> {
-    fn drop(&mut self) {
-        // Load the bottom, top, and buffer.
-        let b = self.bottom.load(Relaxed);
-        let t = self.top.load(Relaxed);
-
-        unsafe {
-            let buffer = self.buffer.load(Relaxed, epoch::unprotected());
-
-            // Go through the buffer from top to bottom and drop all elements in the deque.
-            let mut i = t;
-            while i != b {
-                ptr::drop_in_place(buffer.deref().at(i));
-                i = i.wrapping_add(1);
-            }
-
-            // Free the memory allocated by the buffer.
-            drop(buffer.into_owned());
-        }
-    }
-}
-
-/// A concurrent work-stealing deque.
+/// Creates a work-stealing deque with the first-in first-out strategy.
 ///
-/// A deque has two ends: bottom and top. Elements can be [`push`]ed into the bottom and [`pop`]ped
-/// from the bottom. The top end is special in that elements can only be stolen from it using the
-/// [`steal`][Deque::steal] method.
-///
-/// # Stealers
-///
-/// While [`Deque`] doesn't implement `Sync`, it can create [`Stealer`]s using the method
-/// [`stealer`][stealer], and those can be easily shared among multiple threads. [`Stealer`]s can
-/// only [`steal`][Stealer::steal] elements from the top end of the deque.
-///
-/// # Capacity
-///
-/// The data structure is dynamically grows as elements are inserted and removed from it. If the
-/// internal buffer gets full, a new one twice the size of the original is allocated. Similarly,
-/// if it is less than a quarter full, a new buffer half the size of the original is allocated.
-///
-/// In order to prevent frequent resizing (reallocations may be costly), it is possible to specify
-/// a large minimum capacity for the deque by calling [`Deque::with_min_capacity`]. This
-/// constructor will make sure that the internal buffer never shrinks below that size.
+/// Elements are pushed into the back, popped from the front, and stolen from the front. In other
+/// words, the worker side behaves as a FIFO queue.
 ///
 /// # Examples
 ///
 /// ```
-/// use crossbeam_deque::{Deque, Steal};
+/// use crossbeam_deque as deque;
 ///
-/// let d = Deque::with_min_capacity(1000);
-/// let s = d.stealer();
+/// let (w, s) = deque::fifo::<i32>();
+/// w.push(1);
+/// w.push(2);
+/// w.push(3);
 ///
-/// d.push('a');
-/// d.push('b');
-/// d.push('c');
-///
-/// assert_eq!(d.pop(), Some('c'));
-/// assert_eq!(d.steal(), Steal::Data('a'));
-/// assert_eq!(s.steal(), Steal::Data('b'));
+/// assert_eq!(s.steal(), Some(1));
+/// assert_eq!(w.pop(), Some(2));
+/// assert_eq!(w.pop(), Some(3));
 /// ```
-///
-/// [`Deque`]: struct.Deque.html
-/// [`Stealer`]: struct.Stealer.html
-/// [`push`]: struct.Deque.html#method.push
-/// [`pop`]: struct.Deque.html#method.pop
-/// [stealer]: struct.Deque.html#method.stealer
-/// [`Deque::with_min_capacity`]: struct.Deque.html#method.with_min_capacity
-/// [Deque::steal]: struct.Deque.html#method.steal
-/// [Stealer::steal]: struct.Stealer.html#method.steal
-pub struct Deque<T> {
-    inner: Arc<CachePadded<Inner<T>>>,
-    _marker: PhantomData<*mut ()>, // !Send + !Sync
+pub fn fifo<T>() -> (Worker<T>, Stealer<T>) {
+    let (w, s) = fifo::new();
+    let w = Worker { flavor: WorkerFlavor::Fifo(w) };
+    let s = Stealer { flavor: StealerFlavor::Fifo(s) };
+    (w, s)
 }
 
-unsafe impl<T: Send> Send for Deque<T> {}
+/// Creates a work-stealing deque with the last-in first-out strategy.
+///
+/// Elements are pushed into the back, popped from the back, and stolen from the front. In other
+/// words, the worker side behaves as a LIFO stack.
+///
+/// # Examples
+///
+/// ```
+/// use crossbeam_deque as deque;
+///
+/// let (w, s) = deque::lifo::<i32>();
+/// w.push(1);
+/// w.push(2);
+/// w.push(3);
+///
+/// assert_eq!(s.steal(), Some(1));
+/// assert_eq!(w.pop(), Some(3));
+/// assert_eq!(w.pop(), Some(2));
+/// ```
+pub fn lifo<T>() -> (Worker<T>, Stealer<T>) {
+    let (w, s) = lifo::new();
+    let w = Worker { flavor: WorkerFlavor::Lifo(w) };
+    let s = Stealer { flavor: StealerFlavor::Lifo(s) };
+    (w, s)
+}
 
-impl<T> Deque<T> {
-    /// Returns a new deque.
-    ///
-    /// The internal buffer is destructed as soon as the deque and all its stealers get dropped.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::Deque;
-    ///
-    /// let d = Deque::<i32>::new();
-    /// ```
-    pub fn new() -> Deque<T> {
-        Deque {
-            inner: Arc::new(CachePadded::new(Inner::new())),
-            _marker: PhantomData,
-        }
-    }
+enum WorkerFlavor<T> {
+    Fifo(fifo::Worker<T>),
+    Lifo(lifo::Worker<T>),
+}
 
-    /// Returns a new deque with the specified minimum capacity.
-    ///
-    /// If the capacity is not a power of two, it will be rounded up to the next one.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::Deque;
-    ///
-    /// // The minimum capacity will be rounded up to 1024.
-    /// let d = Deque::<i32>::with_min_capacity(1000);
-    /// assert_eq!(d.min_capacity(), 1024);
-    /// assert_eq!(d.capacity(), 1024);
-    /// ```
-    pub fn with_min_capacity(min_cap: usize) -> Deque<T> {
-        Deque {
-            inner: Arc::new(CachePadded::new(Inner::with_min_capacity(min_cap))),
-            _marker: PhantomData,
-        }
-    }
+/// The worker side of a deque.
+///
+/// Workers push elements into the back and pop elements depending on the strategy:
+///
+/// * In FIFO deques, elements are popped from the front.
+/// * In LIFO deques, elements are popped from the back.
+///
+/// A deque has only one worker. Workers are not intended to be shared among multiple threads.
+pub struct Worker<T> {
+    flavor: WorkerFlavor<T>,
+}
 
+unsafe impl<T: Send> Send for Worker<T> {}
+
+impl<T> Worker<T> {
     /// Returns `true` if the deque is empty.
     ///
-    /// # Examples
-    ///
     /// ```
-    /// use crossbeam_deque::Deque;
+    /// use crossbeam_deque as deque;
     ///
-    /// let d = Deque::new();
-    /// assert!(d.is_empty());
-    /// d.push("foo");
-    /// assert!(!d.is_empty());
+    /// let (w, _) = deque::lifo();
+    /// assert!(w.is_empty());
+    /// w.push(1);
+    /// assert!(!w.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns the number of elements in the deque.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::Deque;
-    ///
-    /// let d = Deque::new();
-    /// d.push('a');
-    /// d.push('b');
-    /// d.push('c');
-    /// assert_eq!(d.len(), 3);
-    /// ```
-    pub fn len(&self) -> usize {
-        let b = self.inner.bottom.load(Relaxed);
-        let t = self.inner.top.load(Relaxed);
-        b.wrapping_sub(t) as usize
-    }
-
-    /// Returns the minimum capacity of the deque.
-    ///
-    /// The minimum capacity can be specified in [`Deque::with_min_capacity`].
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::Deque;
-    ///
-    /// // Gets rounded to the next power of two.
-    /// let d = Deque::<i32>::with_min_capacity(50);
-    /// assert_eq!(d.min_capacity(), 64);
-    /// assert_eq!(d.capacity(), 64);
-    /// ```
-    ///
-    /// [`Deque::with_min_capacity`]: struct.Deque.html#method.with_min_capacity
-    pub fn min_capacity(&self) -> usize {
-        self.inner.min_cap
-    }
-
-    /// Returns the number of elements the deque can hold without reallocating.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::Deque;
-    ///
-    /// let d = Deque::with_min_capacity(50);
-    /// assert_eq!(d.capacity(), 64);
-    ///
-    /// for i in 0..200 {
-    ///     d.push(i);
-    /// }
-    /// assert_eq!(d.capacity(), 256);
-    /// ```
-    pub fn capacity(&self) -> usize {
-        unsafe {
-            let buf = self.inner.buffer.load(Relaxed, epoch::unprotected());
-            buf.deref().cap
+        match self.flavor {
+            WorkerFlavor::Fifo(ref flavor) => flavor.is_empty(),
+            WorkerFlavor::Lifo(ref flavor) => flavor.is_empty(),
         }
     }
 
-    /// Shrinks the capacity of the deque as much as possible.
-    ///
-    /// The capacity will drop down as close as possible to the length but there may still be some
-    /// free space left.
+    /// Pushes an element into the back of the deque.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::Deque;
+    /// use crossbeam_deque as deque;
     ///
-    /// // Insert a lot of elements. This makes the buffer grow.
-    /// let d = Deque::new();
-    /// for i in 0..200 {
-    ///     d.push(i);
-    /// }
-    ///
-    /// // Remove all elements.
-    /// let s = d.stealer();
-    /// for i in 0..200 {
-    ///     s.steal();
-    /// }
-    ///
-    /// // Stealers cannot shrink the buffer, so the capacity is still very large.
-    /// assert!(d.capacity() >= 200);
-    ///
-    /// // Shrink the buffer. The capacity drops down, but some free space may still be left.
-    /// d.shrink_to_fit();
-    /// assert!(d.capacity() < 50);
-    /// ```
-    pub fn shrink_to_fit(&self) {
-        let b = self.inner.bottom.load(Relaxed);
-        let t = self.inner.top.load(Acquire);
-        let cap = self.capacity();
-        let len = b.wrapping_sub(t);
-
-        // Shrink the capacity as much as possible without overshooting `min_cap` or `len`.
-        let mut new_cap = cap;
-        while self.inner.min_cap <= new_cap / 2 && len <= new_cap as isize / 2 {
-            new_cap /= 2;
-        }
-
-        if new_cap != cap {
-            unsafe {
-                self.inner.resize(new_cap);
-            }
-        }
-    }
-
-    /// Pushes an element into the bottom of the deque.
-    ///
-    /// If the internal buffer is full, a new one twice the capacity of the current one will be
-    /// allocated.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::Deque;
-    ///
-    /// let d = Deque::new();
-    /// d.push(1);
-    /// d.push(2);
+    /// let (w, _) = deque::lifo();
+    /// w.push(1);
+    /// w.push(2);
     /// ```
     pub fn push(&self, value: T) {
-        unsafe {
-            // Load the bottom, top, and buffer. The buffer doesn't have to be epoch-protected
-            // because the current thread (the worker) is the only one that grows and shrinks it.
-            let b = self.inner.bottom.load(Relaxed);
-            let t = self.inner.top.load(Acquire);
-
-            let mut buffer = self.inner.buffer.load(Relaxed, epoch::unprotected());
-
-            // Calculate the length of the deque.
-            let len = b.wrapping_sub(t);
-
-            let cap = buffer.deref().cap;
-            // Is the deque full?
-            if len >= cap as isize {
-                // Yes. Grow the underlying buffer.
-                self.inner.resize(2 * cap);
-                buffer = self.inner.buffer.load(Relaxed, epoch::unprotected());
-            // Is the new length less than one fourth the capacity?
-            } else if cap > self.inner.min_cap && len + 1 < cap as isize / 4 {
-                // Yes. Shrink the underlying buffer.
-                self.inner.resize(cap / 2);
-                buffer = self.inner.buffer.load(Relaxed, epoch::unprotected());
-            }
-
-            // Write `value` into the right slot and increment `b`.
-            buffer.deref().write(b, value);
-            atomic::fence(Release);
-            self.inner.bottom.store(b.wrapping_add(1), Relaxed);
+        match self.flavor {
+            WorkerFlavor::Fifo(ref flavor) => flavor.push(value),
+            WorkerFlavor::Lifo(ref flavor) => flavor.push(value),
         }
     }
 
-    /// Pops an element from the bottom of the deque.
+    /// Pops an element from the deque.
     ///
-    /// If the internal buffer is less than a quarter full, a new buffer half the capacity of the
-    /// current one will be allocated.
+    /// Which end of the deque is used depends on the strategy:
+    ///
+    /// * If this is a FIFO deque, an element is popped from the front.
+    /// * If this is a LIFO deque, an element is popped from the back.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::Deque;
+    /// use crossbeam_deque as deque;
     ///
-    /// let d = Deque::new();
-    /// d.push(1);
-    /// d.push(2);
+    /// let (w, _) = deque::fifo();
+    /// w.push(1);
+    /// w.push(2);
     ///
-    /// assert_eq!(d.pop(), Some(2));
-    /// assert_eq!(d.pop(), Some(1));
-    /// assert_eq!(d.pop(), None);
+    /// assert_eq!(w.pop(), Some(1));
+    /// assert_eq!(w.pop(), Some(2));
+    /// assert_eq!(w.pop(), None);
     /// ```
     pub fn pop(&self) -> Option<T> {
-        // Load the bottom.
-        let b = self.inner.bottom.load(Relaxed);
-
-        // If the deque is empty, return early without incurring the cost of a SeqCst fence.
-        let t = self.inner.top.load(Relaxed);
-        if b.wrapping_sub(t) <= 0 {
-            return None;
-        }
-
-        // Decrement the bottom.
-        let b = b.wrapping_sub(1);
-        self.inner.bottom.store(b, Relaxed);
-
-        // Load the buffer. The buffer doesn't have to be epoch-protected because the current
-        // thread (the worker) is the only one that grows and shrinks it.
-        let buf = unsafe { self.inner.buffer.load(Relaxed, epoch::unprotected()) };
-
-        atomic::fence(SeqCst);
-
-        // Load the top.
-        let t = self.inner.top.load(Relaxed);
-
-        // Compute the length after the bottom was decremented.
-        let len = b.wrapping_sub(t);
-
-        if len < 0 {
-            // The deque is empty. Restore the bottom back to the original value.
-            self.inner.bottom.store(b.wrapping_add(1), Relaxed);
-            None
-        } else {
-            // Read the value to be popped.
-            let mut value = unsafe { Some(buf.deref().read(b)) };
-
-            // Are we popping the last element from the deque?
-            if len == 0 {
-                // Try incrementing the top.
-                if self.inner
-                    .top
-                    .compare_exchange(t, t.wrapping_add(1), SeqCst, Relaxed)
-                    .is_err()
-                {
-                    // Failed. We didn't pop anything.
-                    mem::forget(value.take());
-                }
-
-                // Restore the bottom back to the original value.
-                self.inner.bottom.store(b.wrapping_add(1), Relaxed);
-            } else {
-                // Shrink the buffer if `len` is less than one fourth of `self.inner.min_cap`.
-                unsafe {
-                    let cap = buf.deref().cap;
-                    if cap > self.inner.min_cap && len < cap as isize / 4 {
-                        self.inner.resize(cap / 2);
-                    }
-                }
-            }
-
-            value
-        }
-    }
-
-    /// Steals an element from the top of the deque.
-    ///
-    /// Unlike most methods in concurrent data structures, if another operation gets in the way
-    /// while attempting to steal data, this method will return immediately with [`Steal::Retry`]
-    /// instead of retrying.
-    ///
-    /// If the internal buffer is less than a quarter full, a new buffer half the capacity of the
-    /// current one will be allocated.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::{Deque, Steal};
-    ///
-    /// let d = Deque::new();
-    /// d.push(1);
-    /// d.push(2);
-    ///
-    /// // Attempt to steal an element.
-    /// //
-    /// // No other threads are working with the deque, so this time we know for sure that we
-    /// // won't get `Steal::Retry` as the result.
-    /// assert_eq!(d.steal(), Steal::Data(1));
-    ///
-    /// // Attempt to steal an element, but keep retrying if we get `Retry`.
-    /// let stolen = loop {
-    ///     match d.steal() {
-    ///         Steal::Empty => break None,
-    ///         Steal::Data(data) => break Some(data),
-    ///         Steal::Retry => {}
-    ///     }
-    /// };
-    /// assert_eq!(stolen, Some(2));
-    /// ```
-    ///
-    /// [`Steal::Retry`]: enum.Steal.html#variant.Retry
-    pub fn steal(&self) -> Steal<T> {
-        let b = self.inner.bottom.load(Relaxed);
-        let buf = unsafe { self.inner.buffer.load(Relaxed, epoch::unprotected()) };
-        let t = self.inner.top.load(Relaxed);
-        let len = b.wrapping_sub(t);
-
-        // Is the deque empty?
-        if len <= 0 {
-            return Steal::Empty;
-        }
-
-        // Try incrementing the top to steal the value.
-        if self.inner
-            .top
-            .compare_exchange(t, t.wrapping_add(1), SeqCst, Relaxed)
-            .is_ok()
-        {
-            let data = unsafe { buf.deref().read(t) };
-
-            // Shrink the buffer if `len - 1` is less than one fourth of `self.inner.min_cap`.
-            unsafe {
-                let cap = buf.deref().cap;
-                if cap > self.inner.min_cap && len <= cap as isize / 4 {
-                    self.inner.resize(cap / 2);
-                }
-            }
-
-            return Steal::Data(data);
-        }
-
-        Steal::Retry
-    }
-
-    /// Creates a stealer that can be shared with other threads.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::{Deque, Steal};
-    /// use std::thread;
-    ///
-    /// let d = Deque::new();
-    /// d.push(1);
-    /// d.push(2);
-    ///
-    /// let s = d.stealer();
-    ///
-    /// thread::spawn(move || {
-    ///     assert_eq!(s.steal(), Steal::Data(1));
-    /// }).join().unwrap();
-    /// ```
-    pub fn stealer(&self) -> Stealer<T> {
-        Stealer {
-            inner: self.inner.clone(),
-            _marker: PhantomData,
+        match self.flavor {
+            WorkerFlavor::Fifo(ref flavor) => flavor.pop(),
+            WorkerFlavor::Lifo(ref flavor) => flavor.pop(),
         }
     }
 }
 
-impl<T> fmt::Debug for Deque<T> {
+impl<T> fmt::Debug for Worker<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Deque {{ ... }}")
+        write!(f, "Worker {{ ... }}")
     }
 }
 
-impl<T> Default for Deque<T> {
-    fn default() -> Deque<T> {
-        Deque::new()
-    }
+enum StealerFlavor<T> {
+    Fifo(fifo::Stealer<T>),
+    Lifo(lifo::Stealer<T>),
 }
 
-/// A stealer that steals elements from the top of a deque.
+/// The stealer side of a deque.
 ///
-/// The only operation a stealer can do that manipulates the deque is [`steal`].
+/// Stealers can only steal elements from the front of the deque.
 ///
-/// Stealers can be cloned in order to create more of them. They also implement `Send` and `Sync`
-/// so they can be easily shared among multiple threads.
-///
-/// [`steal`]: struct.Stealer.html#method.steal
+/// Stealers are cloneable so that they can be easily shared among multiple threads.
 pub struct Stealer<T> {
-    inner: Arc<CachePadded<Inner<T>>>,
-    _marker: PhantomData<*mut ()>, // !Send + !Sync
+    flavor: StealerFlavor<T>,
 }
 
 unsafe impl<T: Send> Send for Stealer<T> {}
@@ -727,121 +229,53 @@ unsafe impl<T: Send> Sync for Stealer<T> {}
 impl<T> Stealer<T> {
     /// Returns `true` if the deque is empty.
     ///
-    /// # Examples
-    ///
     /// ```
-    /// use crossbeam_deque::Deque;
+    /// use crossbeam_deque as deque;
     ///
-    /// let d = Deque::new();
-    /// d.push("foo");
-    ///
-    /// let s = d.stealer();
-    /// assert!(!d.is_empty());
-    /// s.steal();
-    /// assert!(d.is_empty());
+    /// let (w, s) = deque::lifo();
+    /// assert!(s.is_empty());
+    /// w.push(1);
+    /// assert!(!s.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        match self.flavor {
+            StealerFlavor::Fifo(ref flavor) => flavor.is_empty(),
+            StealerFlavor::Lifo(ref flavor) => flavor.is_empty(),
+        }
     }
 
-    /// Returns the number of elements in the deque.
+    /// Steals an element from the front of the deque.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::Deque;
+    /// use crossbeam_deque as deque;
     ///
-    /// let d = Deque::new();
-    /// let s = d.stealer();
-    /// d.push('a');
-    /// d.push('b');
-    /// d.push('c');
-    /// assert_eq!(s.len(), 3);
+    /// let (w, s) = deque::lifo();
+    /// w.push(1);
+    /// w.push(2);
+    ///
+    /// assert_eq!(s.steal(), Some(1));
+    /// assert_eq!(s.steal(), Some(2));
+    /// assert_eq!(s.steal(), None);
     /// ```
-    pub fn len(&self) -> usize {
-        let t = self.inner.top.load(Relaxed);
-        atomic::fence(SeqCst);
-        let b = self.inner.bottom.load(Relaxed);
-        cmp::max(b.wrapping_sub(t), 0) as usize
-    }
-
-    /// Steals an element from the top of the deque.
-    ///
-    /// Unlike most methods in concurrent data structures, if another operation gets in the way
-    /// while attempting to steal data, this method will return immediately with [`Steal::Retry`]
-    /// instead of retrying.
-    ///
-    /// This method will not attempt to resize the internal buffer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::{Deque, Steal};
-    ///
-    /// let d = Deque::new();
-    /// let s = d.stealer();
-    /// d.push(1);
-    /// d.push(2);
-    ///
-    /// // Attempt to steal an element, but keep retrying if we get `Retry`.
-    /// let stolen = loop {
-    ///     match s.steal() {
-    ///         Steal::Empty => break None,
-    ///         Steal::Data(data) => break Some(data),
-    ///         Steal::Retry => {}
-    ///     }
-    /// };
-    /// assert_eq!(stolen, Some(1));
-    /// ```
-    ///
-    /// [`Steal::Retry`]: enum.Steal.html#variant.Retry
-    pub fn steal(&self) -> Steal<T> {
-        // Load the top.
-        let t = self.inner.top.load(Acquire);
-
-        // A SeqCst fence is needed here.
-        // If the current thread is already pinned (reentrantly), we must manually issue the fence.
-        // Otherwise, the following pinning will issue the fence anyway, so we don't have to.
-        if epoch::is_pinned() {
-            atomic::fence(SeqCst);
+    pub fn steal(&self) -> Option<T> {
+        match self.flavor {
+            StealerFlavor::Fifo(ref flavor) => flavor.steal(),
+            StealerFlavor::Lifo(ref flavor) => flavor.steal(),
         }
-
-        let guard = &epoch::pin();
-
-        // Load the bottom.
-        let b = self.inner.bottom.load(Acquire);
-
-        // Is the deque empty?
-        if b.wrapping_sub(t) <= 0 {
-            return Steal::Empty;
-        }
-
-        // Load the buffer and read the value at the top.
-        let buf = self.inner.buffer.load(Acquire, guard);
-        let value = unsafe { buf.deref().read(t) };
-
-        // Try incrementing the top to steal the value.
-        if self.inner
-            .top
-            .compare_exchange(t, t.wrapping_add(1), SeqCst, Relaxed)
-            .is_ok()
-        {
-            return Steal::Data(value);
-        }
-
-        // We didn't steal this value, forget it.
-        mem::forget(value);
-
-        Steal::Retry
     }
 }
 
 impl<T> Clone for Stealer<T> {
-    /// Creates another stealer.
     fn clone(&self) -> Stealer<T> {
-        Stealer {
-            inner: self.inner.clone(),
-            _marker: PhantomData,
+        match self.flavor {
+            StealerFlavor::Fifo(ref flavor) => Stealer {
+                flavor: StealerFlavor::Fifo(flavor.clone()),
+            },
+            StealerFlavor::Lifo(ref flavor) => Stealer {
+                flavor: StealerFlavor::Lifo(flavor.clone()),
+            },
         }
     }
 }
@@ -849,288 +283,5 @@ impl<T> Clone for Stealer<T> {
 impl<T> fmt::Debug for Stealer<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Stealer {{ ... }}")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    extern crate rand;
-
-    use std::sync::{Arc, Mutex};
-    use std::sync::atomic::{AtomicBool, AtomicUsize};
-    use std::sync::atomic::Ordering::SeqCst;
-    use std::thread;
-
-    use epoch;
-    use self::rand::Rng;
-
-    use super::{Deque, Steal};
-
-    #[test]
-    fn smoke() {
-        let d = Deque::new();
-        let s = d.stealer();
-        assert_eq!(d.pop(), None);
-        assert_eq!(s.steal(), Steal::Empty);
-        assert_eq!(d.len(), 0);
-        assert_eq!(s.len(), 0);
-
-        d.push(1);
-        assert_eq!(d.len(), 1);
-        assert_eq!(s.len(), 1);
-        assert_eq!(d.pop(), Some(1));
-        assert_eq!(d.pop(), None);
-        assert_eq!(s.steal(), Steal::Empty);
-        assert_eq!(d.len(), 0);
-        assert_eq!(s.len(), 0);
-
-        d.push(2);
-        assert_eq!(s.steal(), Steal::Data(2));
-        assert_eq!(s.steal(), Steal::Empty);
-        assert_eq!(d.pop(), None);
-
-        d.push(3);
-        d.push(4);
-        d.push(5);
-        assert_eq!(d.steal(), Steal::Data(3));
-        assert_eq!(s.steal(), Steal::Data(4));
-        assert_eq!(d.steal(), Steal::Data(5));
-        assert_eq!(d.steal(), Steal::Empty);
-    }
-
-    #[test]
-    fn steal_push() {
-        const STEPS: usize = 50_000;
-
-        let d = Deque::new();
-        let s = d.stealer();
-        let t = thread::spawn(move || for i in 0..STEPS {
-            loop {
-                if let Steal::Data(v) = s.steal() {
-                    assert_eq!(i, v);
-                    break;
-                }
-            }
-        });
-
-        for i in 0..STEPS {
-            d.push(i);
-        }
-        t.join().unwrap();
-    }
-
-    #[test]
-    fn stampede() {
-        const COUNT: usize = 50_000;
-
-        let d = Deque::new();
-
-        for i in 0..COUNT {
-            d.push(Box::new(i + 1));
-        }
-        let remaining = Arc::new(AtomicUsize::new(COUNT));
-
-        let threads = (0..8)
-            .map(|_| {
-                let s = d.stealer();
-                let remaining = remaining.clone();
-
-                thread::spawn(move || {
-                    let mut last = 0;
-                    while remaining.load(SeqCst) > 0 {
-                        if let Steal::Data(x) = s.steal() {
-                            assert!(last < *x);
-                            last = *x;
-                            remaining.fetch_sub(1, SeqCst);
-                        }
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let mut last = COUNT + 1;
-        while remaining.load(SeqCst) > 0 {
-            if let Some(x) = d.pop() {
-                assert!(last > *x);
-                last = *x;
-                remaining.fetch_sub(1, SeqCst);
-            }
-        }
-
-        for t in threads {
-            t.join().unwrap();
-        }
-    }
-
-    fn run_stress() {
-        const COUNT: usize = 50_000;
-
-        let d = Deque::new();
-        let done = Arc::new(AtomicBool::new(false));
-        let hits = Arc::new(AtomicUsize::new(0));
-
-        let threads = (0..8)
-            .map(|_| {
-                let s = d.stealer();
-                let done = done.clone();
-                let hits = hits.clone();
-
-                thread::spawn(move || while !done.load(SeqCst) {
-                    if let Steal::Data(_) = s.steal() {
-                        hits.fetch_add(1, SeqCst);
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let mut rng = rand::thread_rng();
-        let mut expected = 0;
-        while expected < COUNT {
-            if rng.gen_range(0, 3) == 0 {
-                if d.pop().is_some() {
-                    hits.fetch_add(1, SeqCst);
-                }
-            } else {
-                d.push(expected);
-                expected += 1;
-            }
-        }
-
-        while hits.load(SeqCst) < COUNT {
-            if d.pop().is_some() {
-                hits.fetch_add(1, SeqCst);
-            }
-        }
-        done.store(true, SeqCst);
-
-        for t in threads {
-            t.join().unwrap();
-        }
-    }
-
-    #[test]
-    fn stress() {
-        run_stress();
-    }
-
-    #[test]
-    fn stress_pinned() {
-        let _guard = epoch::pin();
-        run_stress();
-    }
-
-    #[test]
-    fn no_starvation() {
-        const COUNT: usize = 50_000;
-
-        let d = Deque::new();
-        let done = Arc::new(AtomicBool::new(false));
-
-        let (threads, hits): (Vec<_>, Vec<_>) = (0..8)
-            .map(|_| {
-                let s = d.stealer();
-                let done = done.clone();
-                let hits = Arc::new(AtomicUsize::new(0));
-
-                let t = {
-                    let hits = hits.clone();
-                    thread::spawn(move || while !done.load(SeqCst) {
-                        if let Steal::Data(_) = s.steal() {
-                            hits.fetch_add(1, SeqCst);
-                        }
-                    })
-                };
-
-                (t, hits)
-            })
-            .unzip();
-
-        let mut rng = rand::thread_rng();
-        let mut my_hits = 0;
-        loop {
-            for i in 0..rng.gen_range(0, COUNT) {
-                if rng.gen_range(0, 3) == 0 && my_hits == 0 {
-                    if d.pop().is_some() {
-                        my_hits += 1;
-                    }
-                } else {
-                    d.push(i);
-                }
-            }
-
-            if my_hits > 0 && hits.iter().all(|h| h.load(SeqCst) > 0) {
-                break;
-            }
-        }
-        done.store(true, SeqCst);
-
-        for t in threads {
-            t.join().unwrap();
-        }
-    }
-
-    #[test]
-    fn destructors() {
-        const COUNT: usize = 50_000;
-
-        struct Elem(usize, Arc<Mutex<Vec<usize>>>);
-
-        impl Drop for Elem {
-            fn drop(&mut self) {
-                self.1.lock().unwrap().push(self.0);
-            }
-        }
-
-        let d = Deque::new();
-
-        let dropped = Arc::new(Mutex::new(Vec::new()));
-        let remaining = Arc::new(AtomicUsize::new(COUNT));
-        for i in 0..COUNT {
-            d.push(Elem(i, dropped.clone()));
-        }
-
-        let threads = (0..8)
-            .map(|_| {
-                let s = d.stealer();
-                let remaining = remaining.clone();
-
-                thread::spawn(move || for _ in 0..1000 {
-                    if let Steal::Data(_) = s.steal() {
-                        remaining.fetch_sub(1, SeqCst);
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-
-        for _ in 0..1000 {
-            if d.pop().is_some() {
-                remaining.fetch_sub(1, SeqCst);
-            }
-        }
-
-        for t in threads {
-            t.join().unwrap();
-        }
-
-        let rem = remaining.load(SeqCst);
-        assert!(rem > 0);
-        assert_eq!(d.len(), rem);
-
-        {
-            let mut v = dropped.lock().unwrap();
-            assert_eq!(v.len(), COUNT - rem);
-            v.clear();
-        }
-
-        drop(d);
-
-        {
-            let mut v = dropped.lock().unwrap();
-            assert_eq!(v.len(), rem);
-            v.sort();
-            for pair in v.windows(2) {
-                assert_eq!(pair[0] + 1, pair[1]);
-            }
-        }
     }
 }
