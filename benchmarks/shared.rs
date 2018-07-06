@@ -35,7 +35,7 @@ pub fn shuffle<T>(v: &mut [T]) {
 
             // This is a fast alternative to `let j = x % n`.
             // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
-            let j = ((x as u64 * n as u64) >> 32) as u32 as usize;
+            let j = ((x as u64).wrapping_mul(n as u64) >> 32) as u32 as usize;
 
             v.swap(i, j);
         }
