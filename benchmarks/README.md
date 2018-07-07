@@ -32,6 +32,8 @@ Dependencies:
 
 ### Results
 
+Machine: Intel(R) Core(TM) i7-5600U (2 physical cores, 4 logical cores)
+
 Benchmarked on 2018-06-11:
 
 ![Benchmark results](https://i.imgur.com/tRI4HMO.png)
