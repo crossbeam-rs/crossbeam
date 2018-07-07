@@ -1,6 +1,6 @@
 [package]
 name = "crossbeam-deque"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["The Crossbeam Project Developers"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
