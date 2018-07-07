@@ -110,6 +110,12 @@ impl<T> Buffer<T> {
         }
     }
 
+    /// Reads a value from the specified `index`.
+    unsafe fn read_unchecked(&self, index: isize) -> T {
+        let slot = self.at(index);
+        ptr::read((*slot).value.get())
+    }
+
     /// Returns `true` if the slot at `index` contains a value.
     unsafe fn is_ready(&self, index: isize, ord: Ordering) -> bool {
         let slot = self.at(index);
@@ -267,9 +273,11 @@ impl<T> Worker<T> {
 
     /// Pops an element from the front of the deque.
     pub fn pop(&self) -> Option<T> {
+        // Load the back index.
+        let b = self.back.get();
+
         loop {
-            // Load the back index and front index.
-            let b = self.back.get();
+            // Load the front index.
             let f = self.inner.front.load(Ordering::Relaxed);
 
             // Calculate the length of the deque.
@@ -289,9 +297,9 @@ impl<T> Worker<T> {
                 unsafe {
                     // Read the value to be popped.
                     let buffer = self.cached_buffer.get();
-                    let data = buffer.read(f, Ordering::Relaxed).unwrap();
+                    let data = buffer.read_unchecked(f);
 
-                    // Shrink the buffer if `len - 1` is less than one fourth of `MIN_CAP`.
+                    // Shrink the buffer if `len - 1` is less than one fourth of the capacity.
                     if buffer.cap > MIN_CAP && len <= buffer.cap as isize / 4 {
                         self.resize(buffer.cap / 2);
                     }
@@ -305,7 +313,6 @@ impl<T> Worker<T> {
 
 impl<T> Drop for Worker<T> {
     fn drop(&mut self) {
-        // TODO
         self.inner.final_back.store(self.back.get(), Ordering::Relaxed);
     }
 }
@@ -374,6 +381,7 @@ impl<T> Stealer<T> {
             // We didn't steal this value, forget it.
             mem::forget(value);
 
+            // Yield before retrying.
             drop(guard);
             thread::yield_now();
         }

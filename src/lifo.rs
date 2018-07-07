@@ -202,15 +202,15 @@ impl<T> Worker<T> {
 
     /// Pushes an element into the back of the deque.
     pub fn push(&self, value: T) {
+        // Load the back index, front index, and buffer.
+        let b = self.inner.back.load(Ordering::Relaxed);
+        let f = self.inner.front.load(Ordering::Acquire);
+        let mut buffer = self.cached_buffer.get();
+
+        // Calculate the length of the deque.
+        let len = b.wrapping_sub(f);
+
         unsafe {
-            // Load the back index, front index, and buffer.
-            let b = self.inner.back.load(Ordering::Relaxed);
-            let f = self.inner.front.load(Ordering::Acquire);
-            let mut buffer = self.cached_buffer.get();
-
-            // Calculate the length of the deque.
-            let len = b.wrapping_sub(f);
-
             // Is the deque full?
             if len >= buffer.cap as isize {
                 // Yes. Grow the underlying buffer.
@@ -225,9 +225,10 @@ impl<T> Worker<T> {
 
             // Write `value` into the right slot and increment the back index.
             buffer.write(b, value);
-            atomic::fence(Ordering::Release);
-            self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
         }
+
+        atomic::fence(Ordering::Release);
+        self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
     }
 
     /// Pops an element from the back of the deque.
@@ -277,7 +278,7 @@ impl<T> Worker<T> {
                 // Restore the back index to the original value.
                 self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
             } else {
-                // Shrink the buffer if `len` is less than one fourth of `MIN_CAP`.
+                // Shrink the buffer if `len` is less than one fourth of the capacity.
                 unsafe {
                     if buffer.cap > MIN_CAP && len < buffer.cap as isize / 4 {
                         self.resize(buffer.cap / 2);
