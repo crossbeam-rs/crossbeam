@@ -111,7 +111,55 @@ macro_rules! tests {
 
         // https://github.com/golang/go/blob/master/test/chan/fifo.go
         mod fifo {
-            // TODO
+            use super::*;
+
+            const N: i32 = 10;
+
+            // AsynchFifo from the go example.
+            #[test]
+            fn async() {
+                let (tx, rx) = channel::bounded(N as usize);
+                for i in 0..N {
+                    tx.send(i);
+                }
+                for i in 0..N {
+                    if rx.recv() != Some(i) {
+                        panic!("bad receive");
+                    }
+                }
+            }
+
+            fn chain(ch: channel::Receiver<i32>, val: i32, in_c: channel::Receiver<i32>, out: channel::Sender<i32>) {
+                in_c.recv();
+                if ch.recv() != Some(val) {
+                    panic!(val);
+                }
+                out.send(1);
+            }
+
+            // SynchFifo from the go example.
+            #[test]
+            fn sync() {
+                let (ch_s, ch_r) = channel::bounded(0);
+                let (in_s, mut in_r) = channel::bounded(0);
+                let start = in_s.clone();
+
+                crossbeam::scope(|scope| {
+                    for i in 0..N {
+                        let (out_s, out_r) = channel::bounded(0);
+                        let ch_r = ch_r.clone();
+                        scope.spawn(move || {
+                            chain(ch_r, i, in_r, out_s);
+                        });
+                        in_r = out_r;
+                    }
+                    start.send(0);
+                    for i in 0..N {
+                        ch_s.send(i);
+                    }
+                    in_r.recv();
+                });
+            }
         }
 
         // https://github.com/golang/go/blob/master/test/chan/nonblock.go
