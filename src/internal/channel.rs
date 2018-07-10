@@ -6,11 +6,10 @@ use std::isize;
 use std::iter::FusedIterator;
 use std::mem;
 use std::panic::{RefUnwindSafe, UnwindSafe};
+use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-
-use libc;
 
 use flavors;
 use internal::select::{Operation, SelectHandle, Token};
@@ -265,7 +264,7 @@ impl<T> Sender<T> {
         // counter. It's very difficult to recover sensibly from such degenerate scenarios so we
         // just abort when the count becomes very large.
         if old_count > isize::MAX as usize {
-            unsafe { libc::abort() }
+            process::abort();
         }
 
         Sender(chan)

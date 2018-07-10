@@ -2,11 +2,11 @@
 
 use std::cell::Cell;
 use std::num::Wrapping;
+use std::process;
 use std::sync::atomic;
 use std::thread;
 use std::time::Duration;
 
-use libc;
 use rand;
 
 /// A counter that performs exponential backoff in spin loops.
@@ -58,7 +58,7 @@ impl Drop for AbortGuard {
             line!(),
             column!(),
         );
-        unsafe { libc::abort() }
+        process::abort();
     }
 }
 
