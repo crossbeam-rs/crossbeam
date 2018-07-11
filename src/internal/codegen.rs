@@ -46,8 +46,16 @@ where
             }
         }
 
-        // If there's a `default` case, select it.
         if has_default {
+            // If there's a `default` case, try firing operations one more time. This step is
+            // important for linearizability of select.
+            for &(handle, i, ptr) in handles.iter() {
+                if handle.try(&mut token) {
+                    return (token, i, ptr);
+                }
+            }
+
+            // Select the `default` case.
             return (token, 0, ptr::null());
         }
 

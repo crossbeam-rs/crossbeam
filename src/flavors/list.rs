@@ -170,8 +170,13 @@ impl<T> Channel<T> {
                 if self
                     .tail
                     .index
-                    .compare_and_swap(tail_index, new_index, Ordering::SeqCst)
-                    == tail_index
+                    .compare_exchange_weak(
+                        tail_index,
+                        new_index,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                    )
+                    .is_ok()
                 {
                     // If this was the last slot in the block, allocate a new block.
                     if offset + 1 == BLOCK_CAP {
@@ -243,8 +248,13 @@ impl<T> Channel<T> {
                 if self
                     .head
                     .index
-                    .compare_and_swap(head_index, new_index, Ordering::SeqCst)
-                    == head_index
+                    .compare_exchange_weak(
+                        head_index,
+                        new_index,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                    )
+                    .is_ok()
                 {
                     // If this was the last slot in the block, schedule its destruction.
                     if offset + 1 == BLOCK_CAP {

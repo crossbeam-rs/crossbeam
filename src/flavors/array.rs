@@ -175,7 +175,7 @@ impl<T> Channel<T> {
 
             // Inspect the corresponding slot.
             let slot = unsafe { &*self.buffer.add(index) };
-            let stamp = slot.stamp.load(Ordering::SeqCst);
+            let stamp = slot.stamp.load(Ordering::Acquire);
 
             // If the tail and the stamp match, we may attempt to push.
             if tail == stamp {
@@ -237,7 +237,7 @@ impl<T> Channel<T> {
 
             // Inspect the corresponding slot.
             let slot = unsafe { &*self.buffer.add(index) };
-            let stamp = slot.stamp.load(Ordering::SeqCst);
+            let stamp = slot.stamp.load(Ordering::Acquire);
 
             // If the the head and the stamp match, we may attempt to pop.
             if head == stamp {

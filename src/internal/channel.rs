@@ -215,15 +215,15 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// assert!(eq(r.recv().unwrap(), start + ms(200)));
 /// assert!(eq(Instant::now(), start + ms(200)));
 ///
-/// thread::sleep(ms(800));
+/// thread::sleep(ms(500));
 ///
-/// // This message was sent 400 ms from the start and received 1000 ms from the start.
+/// // This message was sent 400 ms from the start and received 700 ms from the start.
 /// assert!(eq(r.recv().unwrap(), start + ms(400)));
-/// assert!(eq(Instant::now(), start + ms(1000)));
+/// assert!(eq(Instant::now(), start + ms(700)));
 ///
-/// // This message was sent 1200 ms from the start and received 1200 ms from the start.
-/// assert!(eq(r.recv().unwrap(), start + ms(1200)));
-/// assert!(eq(Instant::now(), start + ms(1200)));
+/// // This message was sent 900 ms from the start and received 900 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(900)));
+/// assert!(eq(Instant::now(), start + ms(900)));
 /// ```
 pub fn tick(duration: Duration) -> Receiver<Instant> {
     Receiver(ReceiverFlavor::Tick(flavors::tick::Channel::new(duration)))
