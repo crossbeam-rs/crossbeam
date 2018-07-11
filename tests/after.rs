@@ -24,18 +24,18 @@ macro_rules! tests {
         #[test]
         fn fire() {
             let start = Instant::now();
-            let r = channel::after(ms(50));
+            let r = channel::after(ms(100));
 
             assert_eq!(r.try_recv(), None);
-            thread::sleep(ms(100));
+            thread::sleep(ms(200));
 
             let fired = r.try_recv().unwrap();
             assert!(start < fired);
-            assert!(fired - start >= ms(50));
+            assert!(fired - start >= ms(100));
 
             let now = Instant::now();
             assert!(fired < now);
-            assert!(now - fired >= ms(50));
+            assert!(now - fired >= ms(100));
 
             assert_eq!(r.try_recv(), None);
 
@@ -46,7 +46,7 @@ macro_rules! tests {
 
             select! {
                 recv(r) => panic!(),
-                recv(channel::after(ms(200))) => {}
+                recv(channel::after(ms(400))) => {}
             }
         }
 
@@ -62,13 +62,13 @@ macro_rules! tests {
 
         #[test]
         fn len_empty_full() {
-            let r = channel::after(ms(50));
+            let r = channel::after(ms(100));
 
             assert_eq!(r.len(), 0);
             assert_eq!(r.is_empty(), true);
             assert_eq!(r.is_full(), false);
 
-            thread::sleep(ms(100));
+            thread::sleep(ms(200));
 
             assert_eq!(r.len(), 1);
             assert_eq!(r.is_empty(), false);
@@ -84,11 +84,11 @@ macro_rules! tests {
         #[test]
         fn recv() {
             let start = Instant::now();
-            let r = channel::after(ms(50));
+            let r = channel::after(ms(100));
 
             let fired = r.recv().unwrap();
             assert!(start < fired);
-            assert!(fired - start >= ms(50));
+            assert!(fired - start >= ms(100));
 
             let now = Instant::now();
             assert!(fired < now);
@@ -99,8 +99,8 @@ macro_rules! tests {
 
         #[test]
         fn recv_two() {
-            let r1 = channel::after(ms(50));
-            let r2 = channel::after(ms(50));
+            let r1 = channel::after(ms(100));
+            let r2 = channel::after(ms(100));
 
             crossbeam::scope(|scope| {
                 scope.spawn(|| {
@@ -121,13 +121,13 @@ macro_rules! tests {
         #[test]
         fn recv_race() {
             select! {
-                recv(channel::after(ms(50))) => {}
-                recv(channel::after(ms(100))) => panic!(),
+                recv(channel::after(ms(100))) => {}
+                recv(channel::after(ms(200))) => panic!(),
             }
 
             select! {
-                recv(channel::after(ms(100))) => panic!(),
-                recv(channel::after(ms(50))) => {}
+                recv(channel::after(ms(200))) => panic!(),
+                recv(channel::after(ms(100))) => {}
             }
         }
 
