@@ -13,7 +13,7 @@
 /// handle.pin().flush();
 /// ```
 
-use alloc::arc::Arc;
+use alloc::sync::Arc;
 use core::fmt;
 
 use internal::{Global, Local};
