@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.1] - 2018-07-20
+## Changed
+- Fix compatibility with the latest Rust nightly.
+
 ## [0.5.0] - 2018-06-12
 ## Changed
 - Update `crossbeam-utils` to `0.4`.
@@ -66,7 +70,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - First version of the new epoch-based GC.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.4.1...v0.4.2
