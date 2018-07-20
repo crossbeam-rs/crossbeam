@@ -4,7 +4,6 @@
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
-use std::mem::{self, ManuallyDrop};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Instant;
@@ -29,7 +28,7 @@ struct Packet<T> {
     ready: AtomicBool,
 
     /// The message.
-    msg: ManuallyDrop<UnsafeCell<T>>,
+    msg: UnsafeCell<Option<T>>,
 }
 
 impl<T> Packet<T> {
@@ -38,7 +37,7 @@ impl<T> Packet<T> {
         Packet {
             on_stack: true,
             ready: AtomicBool::new(false),
-            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
+            msg: UnsafeCell::new(None),
         }
     }
 
@@ -47,7 +46,7 @@ impl<T> Packet<T> {
         Box::new(Packet {
             on_stack: false,
             ready: AtomicBool::new(false),
-            msg: unsafe { ManuallyDrop::new(UnsafeCell::new(mem::uninitialized())) },
+            msg: UnsafeCell::new(None),
         })
     }
 
@@ -56,7 +55,7 @@ impl<T> Packet<T> {
         Packet {
             on_stack: true,
             ready: AtomicBool::new(false),
-            msg: ManuallyDrop::new(UnsafeCell::new(msg)),
+            msg: UnsafeCell::new(Some(msg)),
         }
     }
 
@@ -165,7 +164,7 @@ impl<T> Channel<T> {
     /// Writes a message into the packet.
     pub unsafe fn write(&self, token: &mut Token, msg: T) {
         let packet = &*(token.zero as *const Packet<T>);
-        packet.msg.get().write(msg);
+        packet.msg.get().write(Some(msg));
         packet.ready.store(true, Ordering::Release);
     }
 
@@ -244,14 +243,14 @@ impl<T> Channel<T> {
             // The message has been in the packet from the beginning, so there is no need to wait
             // for it. However, after reading the message, we need to set `ready` to `true` in
             // order to signal that the packet can be destroyed.
-            let msg = packet.msg.get().read();
+            let msg = packet.msg.get().replace(None).unwrap();
             packet.ready.store(true, Ordering::Release);
             Some(msg)
         } else {
             // Wait until the message becomes available, then read it and destroy the
             // heap-allocated packet.
             packet.wait_ready();
-            let msg = packet.msg.get().read();
+            let msg = packet.msg.get().replace(None).unwrap();
             drop(Box::from_raw(packet as *const Packet<T> as *mut Packet<T>));
             Some(msg)
         }
@@ -334,7 +333,7 @@ impl<T> Channel<T> {
             Select::Operation(_) => {
                 // Wait until the message is provided, then read it.
                 packet.wait_ready();
-                unsafe { Some(packet.msg.get().read()) }
+                unsafe { Some(packet.msg.get().replace(None).unwrap()) }
             },
         }
     }
