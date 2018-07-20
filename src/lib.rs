@@ -70,12 +70,7 @@ extern crate std;
 #[cfg(feature = "nightly")]
 extern crate alloc;
 #[cfg(not(feature = "nightly"))]
-mod alloc {
-    // Tweak the module layout to match the one in liballoc
-    extern crate std;
-    pub use self::std::boxed;
-    pub use self::std::sync as arc;
-}
+extern crate std as alloc;
 
 extern crate arrayvec;
 extern crate crossbeam_utils;
