@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.3] - 2018-07-21
+### Added
+- Add Mac OS X tests.
+
+### Changed
+- Lower some memory orderings.
+
+### Fixed
+- Eliminate calls to `mem::unitialized`, which caused bugs with ZST.
+
 ## [0.2.2] - 2018-07-10
 ### Added
 - Add more tests.
@@ -78,7 +88,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - First implementation of the channels.
 - Add `select_loop!` macro by @TimNN.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.1.3...v0.2.0
