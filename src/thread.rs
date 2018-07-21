@@ -5,7 +5,7 @@
 /// A basic scoped thread:
 ///
 /// ```
-/// crossbeam_utils::scoped::scope(|scope| {
+/// crossbeam_utils::thread::scope(|scope| {
 ///     scope.spawn(|| {
 ///         println!("Hello from a scoped thread!");
 ///     });
@@ -96,7 +96,7 @@
 /// ```
 /// let array = [1, 2, 3];
 ///
-/// crossbeam_utils::scoped::scope(|scope| {
+/// crossbeam_utils::thread::scope(|scope| {
 ///     for i in &array {
 ///         scope.spawn(move || {
 ///             println!("element: {}", i);
@@ -129,16 +129,16 @@ impl<T, F: FnOnce() -> T> FnBox<T> for F {
 }
 
 /// Like `std::thread::spawn`, but without the closure bounds.
-pub unsafe fn spawn_unsafe<'a, F>(f: F) -> thread::JoinHandle<()>
+pub unsafe fn spawn_unchecked<'a, F>(f: F) -> thread::JoinHandle<()>
 where
     F: FnOnce() + Send + 'a,
 {
     let builder = thread::Builder::new();
-    builder_spawn_unsafe(builder, f).unwrap()
+    builder_spawn_unchecked(builder, f).unwrap()
 }
 
 /// Like `std::thread::Builder::spawn`, but without the closure bounds.
-pub unsafe fn builder_spawn_unsafe<'a, F>(
+pub unsafe fn builder_spawn_unchecked<'a, F>(
     builder: thread::Builder,
     f: F,
 ) -> io::Result<thread::JoinHandle<()>>
@@ -211,7 +211,7 @@ pub struct ScopedJoinHandle<'a, T: 'a> {
 /// Creating and using a scope:
 ///
 /// ```
-/// crossbeam_utils::scoped::scope(|scope| {
+/// crossbeam_utils::thread::scope(|scope| {
 ///     scope.defer(|| println!("Exiting scope"));
 ///     scope.spawn(|| println!("Running child thread in scope"))
 /// });
@@ -220,7 +220,7 @@ pub struct ScopedJoinHandle<'a, T: 'a> {
 ///
 /// # Panics
 ///
-/// `scoped::scope()` panics if a spawned thread panics but it is not joined inside the scope.
+/// `thread::scope()` panics if a spawned thread panics but it is not joined inside the scope.
 pub fn scope<'a, F, R>(f: F) -> R
 where
     F: FnOnce(&Scope<'a>) -> R,
@@ -335,7 +335,7 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
         let result = Box::into_raw(Box::<ManuallyDrop<T>>::new(unsafe { mem::uninitialized() })) as usize;
 
         let join_handle = try!(unsafe {
-            builder_spawn_unsafe(self.builder, move || {
+            builder_spawn_unchecked(self.builder, move || {
                 let mut result = Box::from_raw(result as *mut ManuallyDrop<T>);
                 *result = ManuallyDrop::new(f());
                 mem::forget(result);

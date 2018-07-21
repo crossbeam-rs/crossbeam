@@ -4,7 +4,11 @@
 #[cfg(feature = "use_std")]
 extern crate core;
 
-pub mod cache_padded;
+mod cache_padded;
+mod consume;
+
 #[cfg(feature = "use_std")]
-pub mod scoped;
-pub mod consume;
+pub mod thread;
+
+pub use cache_padded::CachePadded;
+pub use consume::AtomicConsume;
