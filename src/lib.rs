@@ -27,10 +27,10 @@
 
 #![warn(missing_docs)]
 
-extern crate crossbeam_epoch;
-extern crate crossbeam_utils;
 extern crate crossbeam_channel;
 extern crate crossbeam_deque;
+extern crate crossbeam_epoch;
+extern crate crossbeam_utils;
 
 /// Epoch-based memory reclamation.
 ///
