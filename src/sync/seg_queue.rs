@@ -174,7 +174,7 @@ impl<T> Default for SegQueue<T> {
 mod test {
     const CONC_COUNT: i64 = 1000000;
 
-    use scope;
+    use utils::scoped::scope;
     use super::*;
 
     #[test]

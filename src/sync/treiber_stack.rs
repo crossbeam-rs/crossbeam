@@ -46,7 +46,8 @@ impl<T> TreiberStack<T> {
     /// **Deprecated method**, use try_pop
     ///
     /// Returns `None` if the stack is observed to be empty.
-    #[cfg_attr(any(feature="beta", feature="nightly"), deprecated(note="The pop method has been renamed to try_pop for consistency with other collections."))]
+    #[cfg_attr(any(feature = "beta", feature = "nightly"),
+               deprecated(note = "The pop method has been renamed to try_pop for consistency with other collections."))]
     pub fn pop(&self) -> Option<T> {
         self.try_pop()
     }

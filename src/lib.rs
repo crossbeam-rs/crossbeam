@@ -25,11 +25,32 @@
 //!   with a `Mutex`. Ultimately the goal is to include stacks, queues, deques,
 //!   bags, sets and maps. These subcrates are reexported in the `sync` module.
 
-//#![deny(missing_docs)]
+#![warn(missing_docs)]
 
-pub extern crate crossbeam_epoch as epoch;
-pub extern crate crossbeam_utils as utils;
+extern crate crossbeam_epoch;
+extern crate crossbeam_utils;
+extern crate crossbeam_channel;
+extern crate crossbeam_deque;
+
+/// Epoch-based memory reclamation.
+///
+/// See [the `crossbeam-epoch` crate](https://github.com/crossbeam-rs/crossbeam-epoch) for more
+/// information.
+pub mod epoch {
+    pub use crossbeam_epoch::*;
+}
+
+/// Utilities for concurrent programming.
+///
+/// See [the `crossbeam-utils` crate](https://github.com/crossbeam-rs/crossbeam-utils) for more
+/// information.
+pub mod utils {
+    pub use crossbeam_utils::*;
+}
 
 pub mod sync;
-pub use utils::cache_padded::CachePadded;
-pub use utils::scoped::{scope, Scope, ScopedJoinHandle, ScopedThreadBuilder};
+
+// FIXME(jeehoonkang): this is necessary for re-exporting the `select!` macro, but it also
+// introduces a lot of symbols in the global namespace.  We need to find a more precise way to
+// re-export `select!`.
+pub use crossbeam_channel::*;

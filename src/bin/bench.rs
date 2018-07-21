@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
-use crossbeam::scope;
+use crossbeam::utils::scoped::scope;
 use crossbeam::sync::MsQueue;
 use crossbeam::sync::SegQueue;
 
