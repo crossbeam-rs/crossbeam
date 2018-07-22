@@ -40,7 +40,7 @@ mod treiber_stack;
 
 /// Additional utilities for atomics.
 pub mod atomic {
-    pub use crossbeam_utils::consume::AtomicConsume;
+    pub use crossbeam_utils::AtomicConsume;
     pub use arc_cell::ArcCell;
     // This module will grow in the future.
 }
@@ -50,12 +50,12 @@ pub mod atomic {
 /// See [the `crossbeam-utils` crate](https://github.com/crossbeam-rs/crossbeam-utils) for more
 /// information.
 pub mod thread {
-    pub use crossbeam_utils::scoped::*;
+    pub use crossbeam_utils::thread::*;
 }
 
 // Export `scope` and `CachePadded` in the crate root in order not to break established patterns.
 pub use thread::scope;
-pub use crossbeam_utils::cache_padded::CachePadded;
+pub use crossbeam_utils::CachePadded;
 
 
 /// Epoch-based memory reclamation.

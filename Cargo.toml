@@ -18,7 +18,7 @@ use_std = ["crossbeam-epoch/use_std", "crossbeam-utils/use_std"]
 
 [dependencies]
 crossbeam-epoch = "0.5"
-crossbeam-utils = "0.4"
+crossbeam-utils = "0.5"
 crossbeam-channel = "0.2"
 crossbeam-deque = "0.5"
 
