@@ -360,16 +360,12 @@ impl<T> Channel<T> {
     }
 
     /// Closes the channel and wakes up all blocked receivers.
-    pub fn close(&self) -> bool {
+    pub fn close(&self) {
         let mut inner = self.inner.lock();
 
-        if inner.is_closed {
-            false
-        } else {
-            inner.is_closed = true;
-            inner.receivers.close();
-            true
-        }
+        assert!(!inner.is_closed);
+        inner.is_closed = true;
+        inner.receivers.close();
     }
 
     /// Returns the current number of messages inside the channel.

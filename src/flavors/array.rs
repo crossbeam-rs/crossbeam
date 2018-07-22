@@ -433,13 +433,9 @@ impl<T> Channel<T> {
     }
 
     /// Closes the channel and wakes up all blocked receivers.
-    pub fn close(&self) -> bool {
-        if !self.is_closed.swap(true, Ordering::SeqCst) {
-            self.receivers.close();
-            true
-        } else {
-            false
-        }
+    pub fn close(&self) {
+        assert!(!self.is_closed.swap(true, Ordering::SeqCst));
+        self.receivers.close();
     }
 
     /// Returns `true` if the channel is closed.
