@@ -173,16 +173,16 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// let ms = |ms| Duration::from_millis(ms);
 ///
 /// // Returns `true` if `a` and `b` are very close `Instant`s.
-/// let eq = |a, b| a + ms(100) > b && b + ms(100) > a;
+/// let eq = |a, b| a + ms(50) > b && b + ms(50) > a;
 ///
 /// let start = Instant::now();
-/// let r = channel::after(ms(200));
+/// let r = channel::after(ms(100));
 ///
-/// thread::sleep(ms(1000));
+/// thread::sleep(ms(500));
 ///
-/// // This message was sent 200 ms from the start and received 1000 ms from the start.
-/// assert!(eq(r.recv().unwrap(), start + ms(200)));
-/// assert!(eq(Instant::now(), start + ms(1000)));
+/// // This message was sent 100 ms from the start and received 500 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(100)));
+/// assert!(eq(Instant::now(), start + ms(500)));
 /// ```
 pub fn after(duration: Duration) -> Receiver<Instant> {
     Receiver(ReceiverFlavor::After(flavors::after::Channel::new(duration)))
@@ -206,24 +206,24 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// let ms = |ms| Duration::from_millis(ms);
 ///
 /// // Returns `true` if `a` and `b` are very close `Instant`s.
-/// let eq = |a, b| a + ms(100) > b && b + ms(100) > a;
+/// let eq = |a, b| a + ms(50) > b && b + ms(50) > a;
 ///
 /// let start = Instant::now();
-/// let r = channel::tick(ms(200));
+/// let r = channel::tick(ms(100));
 ///
-/// // This message was sent 200 ms from the start and received 200 ms from the start.
-/// assert!(eq(r.recv().unwrap(), start + ms(200)));
-/// assert!(eq(Instant::now(), start + ms(200)));
+/// // This message was sent 100 ms from the start and received 100 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(100)));
+/// assert!(eq(Instant::now(), start + ms(100)));
 ///
 /// thread::sleep(ms(500));
 ///
-/// // This message was sent 400 ms from the start and received 700 ms from the start.
-/// assert!(eq(r.recv().unwrap(), start + ms(400)));
-/// assert!(eq(Instant::now(), start + ms(700)));
+/// // This message was sent 200 ms from the start and received 600 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(200)));
+/// assert!(eq(Instant::now(), start + ms(600)));
 ///
-/// // This message was sent 900 ms from the start and received 900 ms from the start.
-/// assert!(eq(r.recv().unwrap(), start + ms(900)));
-/// assert!(eq(Instant::now(), start + ms(900)));
+/// // This message was sent 700 ms from the start and received 700 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(700)));
+/// assert!(eq(Instant::now(), start + ms(700)));
 /// ```
 pub fn tick(duration: Duration) -> Receiver<Instant> {
     Receiver(ReceiverFlavor::Tick(flavors::tick::Channel::new(duration)))
