@@ -13,7 +13,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-utils = "0.4"
+crossbeam-utils = "0.5"
 ```
 
 Next, add this to your crate:
