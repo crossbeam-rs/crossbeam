@@ -32,6 +32,32 @@ extern crate crossbeam_deque;
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 
+mod arc_cell;
+mod ms_queue;
+mod seg_queue;
+mod treiber_stack;
+
+
+/// Additional utilities for atomics.
+pub mod atomic {
+    pub use crossbeam_utils::consume::AtomicConsume;
+    pub use arc_cell::ArcCell;
+    // This module will grow in the future.
+}
+
+/// Scoped thread.
+///
+/// See [the `crossbeam-utils` crate](https://github.com/crossbeam-rs/crossbeam-utils) for more
+/// information.
+pub mod thread {
+    pub use crossbeam_utils::scoped::*;
+}
+
+// Export `scope` and `CachePadded` in the crate root in order not to break established patterns.
+pub use thread::scope;
+pub use crossbeam_utils::cache_padded::CachePadded;
+
+
 /// Epoch-based memory reclamation.
 ///
 /// See [the `crossbeam-epoch` crate](https://github.com/crossbeam-rs/crossbeam-epoch) for more
@@ -40,17 +66,60 @@ pub mod epoch {
     pub use crossbeam_epoch::*;
 }
 
-/// Utilities for concurrent programming.
+
+/// Multi-producer multi-consumer channels for message passing.
 ///
-/// See [the `crossbeam-utils` crate](https://github.com/crossbeam-rs/crossbeam-utils) for more
+/// See [the `crossbeam-channel` crate](https://github.com/crossbeam-rs/crossbeam-channel) for more
 /// information.
-pub mod utils {
-    pub use crossbeam_utils::*;
+///
+/// # Example
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate crossbeam;
+/// # fn main() {
+/// use std::thread;
+/// use crossbeam::channel as channel;
+///
+/// let (s1, r1) = channel::unbounded();
+/// let (s2, r2) = channel::unbounded();
+///
+/// thread::spawn(move || s1.send("foo"));
+/// thread::spawn(move || s2.send("bar"));
+///
+/// // Only one of these two receive operations will be executed.
+/// select! {
+///     recv(r1, msg) => assert_eq!(msg, Some("foo")),
+///     recv(r2, msg) => assert_eq!(msg, Some("bar")),
+/// }
+/// # }
+/// ```
+pub mod channel {
+    pub use crossbeam_channel::*;
 }
 
-pub mod sync;
-
-// FIXME(jeehoonkang): this is necessary for re-exporting the `select!` macro, but it also
-// introduces a lot of symbols in the global namespace.  We need to find a more precise way to
-// re-export `select!`.
+// FIXME(jeehoonkang): The entirety of `crossbeam_channel::*` is re-exported as public in the crate
+// root because it seems it's the only way to re-export its `select!` macro.  We need to find a more
+// precise way to re-export only the `select!` macro.
+#[doc(hidden)]
 pub use crossbeam_channel::*;
+
+
+/// A concurrent work-stealing deque.
+///
+/// See [the `crossbeam-deque` crate](https://github.com/crossbeam-rs/crossbeam-deque) for more
+/// information.
+pub mod deque {
+    pub use crossbeam_deque::*;
+}
+
+/// Concurrent queues.
+pub mod queue {
+    pub use ms_queue::MsQueue;
+    pub use seg_queue::SegQueue;
+}
+
+/// Concurrent stacks.
+pub mod stack {
+    pub use treiber_stack::TreiberStack;
+}

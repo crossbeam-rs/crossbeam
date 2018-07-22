@@ -4,7 +4,7 @@ use std::{mem, ptr};
 use std::thread::{self, Thread};
 
 use epoch::{self, Atomic, Owned, Shared};
-use utils::cache_padded::CachePadded;
+use CachePadded;
 
 /// A Michael-Scott lock-free queue, with support for blocking `pop`s.
 ///
@@ -349,7 +349,7 @@ impl<T> Default for MsQueue<T> {
 mod test {
     const CONC_COUNT: i64 = 1000000;
 
-    use utils::scoped::scope;
+    use scope;
     use super::*;
 
     #[test]

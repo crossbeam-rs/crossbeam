@@ -1,7 +1,7 @@
 extern crate crossbeam;
 
-use crossbeam::sync::MsQueue;
-use crossbeam::utils::scoped::scope;
+use crossbeam::scope;
+use crossbeam::queue::MsQueue;
 
 use std::sync::Arc;
 
