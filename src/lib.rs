@@ -42,7 +42,6 @@ mod treiber_stack;
 pub mod atomic {
     pub use crossbeam_utils::AtomicConsume;
     pub use arc_cell::ArcCell;
-    // This module will grow in the future.
 }
 
 /// Scoped thread.
