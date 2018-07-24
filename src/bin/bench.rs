@@ -6,8 +6,7 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use crossbeam::scope;
-use crossbeam::sync::MsQueue;
-use crossbeam::sync::SegQueue;
+use crossbeam::queue::{MsQueue, SegQueue};
 
 use extra_impls::mpsc_queue::Queue as MpscQueue;
 

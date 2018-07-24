@@ -43,15 +43,6 @@ impl<T> TreiberStack<T> {
     }
 
     /// Attempt to pop the top element of the stack.
-    /// **Deprecated method**, use try_pop
-    ///
-    /// Returns `None` if the stack is observed to be empty.
-    #[cfg_attr(any(feature="beta", feature="nightly"), deprecated(note="The pop method has been renamed to try_pop for consistency with other collections."))]
-    pub fn pop(&self) -> Option<T> {
-        self.try_pop()
-    }
-
-    /// Attempt to pop the top element of the stack.
     ///
     /// Returns `None` if the stack is observed to be empty.
     pub fn try_pop(&self) -> Option<T> {
