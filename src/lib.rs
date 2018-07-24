@@ -1,29 +1,33 @@
-//! Support for concurrent programming: memory management, synchronization,
-//! non-blocking data structures.
+//! Crossbeam supports concurrent programming, especially focusing on memory
+//! management, synchronization, and non-blocking data structures.
 //!
-//! Crossbeam consists of several subcrates.
+//! Crossbeam consists of several submodules:
 //!
-//! - `crossbeam-epoch` for **Memory management**. Because non-blocking data
-//!   structures avoid global synchronization, it is not easy to tell when
-//!   internal data can be safely freed. The crate provides generic, easy to
-//!   use, and high-performance APIs for managing memory in these cases. We plan
-//!   to support other memory management schemes, e.g. hazard pointers (HP) and
-//!   quiescent state-based reclamation (QSBR). The crate is reexported as the
-//!   `epoch` module.
+//!  - `atomic` for **enhancing `std::sync` API**. `AtomicConsume` provides
+//!    C/C++11-style "consume" atomic operations (re-exported from
+//!    [`crossbeam-utils`]). `ArcCell` provides atomic storage and retrieval of
+//!    `Arc`.
 //!
-//! - `crossbeam-utils` for **Utilities**. The "scoped" thread API makes it
-//!   possible to spawn threads that share stack data with their parents. The
-//!   `CachePadded` struct inserts padding to align data with the size of a
-//!   cacheline. This crate also seeks to expand the standard library's few
-//!   synchronization primitives (locks, barriers, etc) to include
-//!   advanced/niche primitives, as well as userspace alternatives. This crate
-//!   is reexported as the `utils` module. `CachePadded` and scoped thread API
-//!   are also reexported at the top-level.
+//!  - `utils` and `thread` for **utilities**, re-exported from [`crossbeam-utils`].
+//!    The "scoped" thread API in `thread` makes it possible to spawn threads that
+//!    share stack data with their parents. The `utils::CachePadded` struct inserts
+//!    padding to align data with the size of a cacheline. This crate also seeks to
+//!    expand the standard library's few synchronization primitives (locks,
+//!    barriers, etc) to include advanced/niche primitives, as well as userspace
+//!    alternatives.
 //!
-//! - **Non-blocking data structures**. Several crates provide high performance
-//!   and highly-concurrent data structures, which are much superior to wrapping
-//!   with a `Mutex`. Ultimately the goal is to include stacks, queues, deques,
-//!   bags, sets and maps. These subcrates are reexported in the `sync` module.
+//!  - `epoch` for **memory management**, re-exported from [`crossbeam-epoch`].
+//!    Because non-blocking data structures avoid global synchronization, it is not
+//!    easy to tell when internal data can be safely freed. The crate provides
+//!    generic, easy to use, and high-performance APIs for managing memory in these
+//!    cases. We plan to support other memory management schemes, e.g. hazard
+//!    pointers (HP) and quiescent state-based reclamation (QSBR).
+//!
+//!  - **Concurrent data structures** which are non-blocking and much superior to
+//!    wrapping sequential ones with a `Mutex`. Crossbeam currently provides
+//!    channels (re-exported from [`crossbeam-channel`]), deques
+//!    (re-exported from [`crossbeam-deque`]), queues, and stacks. Ultimately the
+//!    goal is to also include bags, sets and maps.
 
 #![warn(missing_docs)]
 

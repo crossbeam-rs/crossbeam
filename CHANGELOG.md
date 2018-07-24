@@ -1,3 +1,19 @@
+# Version 0.4
+
+- Switch to the new implementation of epoch-based reclamation in
+  [`crossbeam-epoch`](https://github.com/crossbeam-rs/crossbeam-epoch), fixing numerous bugs in the
+  old implementation.  Its API is changed in a backward-incompatible way.
+- Switch to the new implementation of `CachePadded` and scoped thread in
+  [`crossbeam-utils`](https://github.com/crossbeam-rs/crossbeam-utils).  The scoped thread API is
+  changed in a backward-incompatible way.  
+- Switch to the new implementation of Chase-Lev deque in
+  [`crossbeam-deque`](https://github.com/crossbeam-rs/crossbeam-deque).  Its API is changed in a
+  backward-incompatible way.
+- Export channel implemented in
+  [`crossbeam-channel`](https://github.com/crossbeam-rs/crossbeam-channel).
+- Remove `AtomicOption`.
+- Implement `Default` and `From` traits.
+
 # Version 0.3
 
 - Introduced `ScopedThreadBuilder` with the ability to name threads and set stack size
