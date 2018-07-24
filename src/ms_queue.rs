@@ -4,7 +4,7 @@ use std::{mem, ptr};
 use std::thread::{self, Thread};
 
 use epoch::{self, Atomic, Owned, Shared};
-use CachePadded;
+use utils::CachePadded;
 
 /// A Michael-Scott lock-free queue, with support for blocking `pop`s.
 ///

@@ -44,17 +44,18 @@ pub mod atomic {
     pub use arc_cell::ArcCell;
 }
 
-/// Scoped thread.
+/// Utilities for concurrent programming.
 ///
 /// See [the `crossbeam-utils` crate](https://github.com/crossbeam-rs/crossbeam-utils) for more
 /// information.
-pub mod thread {
-    pub use crossbeam_utils::thread::*;
+pub mod utils {
+    pub use crossbeam_utils::CachePadded;
 }
 
-// Export `scope` and `CachePadded` in the crate root in order not to break established patterns.
-pub use thread::scope;
-pub use crossbeam_utils::CachePadded;
+// Export `crossbeam_utils::thread` and `crossbeam_utils::thread::scope` in the crate root, in order
+// not to break established patterns.
+pub use crossbeam_utils::thread;
+pub use crossbeam_utils::thread::scope;
 
 
 /// Epoch-based memory reclamation.
