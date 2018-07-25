@@ -1,3 +1,7 @@
+# Version 0.4.1
+
+- Fix a double-free bug in `MsQueue` and `SegQueue`.
+
 # Version 0.4
 
 - Switch to the new implementation of epoch-based reclamation in
