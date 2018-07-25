@@ -106,13 +106,13 @@
 /// ```
 ///
 /// Much more straightforward.
-// FIXME(jeehoonkang): maybe we should create a new crate for scoped threads.
 
 use std::cell::RefCell;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
 use std::ops::DerefMut;
+use std::panic::{self, AssertUnwindSafe};
 use std::rc::Rc;
 use std::thread;
 use std::io;
@@ -152,7 +152,7 @@ where
 
 pub struct Scope<'a> {
     /// The list of the deferred functions and thread join jobs.
-    dtors: RefCell<Option<DtorChain<'a, ()>>>,
+    dtors: RefCell<Option<DtorChain<'a, thread::Result<()>>>>,
     // !Send + !Sync
     _marker: PhantomData<*const ()>,
 }
@@ -202,9 +202,16 @@ pub struct ScopedJoinHandle<'a, T: 'a> {
     _marker: PhantomData<&'a T>,
 }
 
-/// Create a new `scope`, for deferred destructors.
+/// Create a new `Scope` for [*scoped thread spawning*](struct.Scope.html#method.spawn).
 ///
-/// Scopes, in particular, support [*scoped thread spawning*](struct.Scope.html#method.spawn).
+/// In addition, you can [register ad-hoc functions](struct.Scope.html#method.defer) that are
+/// deferred to be run. No matter what happens, before the `Scope` is dropped, it is guaranteed that
+/// all the unjoined spawned scoped threads are joined and the deferred functions are run.
+///
+/// `thread::scope()` returns `Ok(())` if all the unjoined spawned threads and the deferred
+/// functions did not panic. It returns `Err(e)` if one of them panics with `e`. If many of them
+/// panics, it is still guaranteed that all the threads are joined and all the functions are run,
+/// and `thread::scope()` returns `Err(e)` with `e` from a panicking thread or function.
 ///
 /// # Examples
 ///
@@ -214,14 +221,10 @@ pub struct ScopedJoinHandle<'a, T: 'a> {
 /// crossbeam_utils::thread::scope(|scope| {
 ///     scope.defer(|| println!("Exiting scope"));
 ///     scope.spawn(|| println!("Running child thread in scope"))
-/// });
-/// // Prints messages in the reverse order written
+/// }).unwrap();
+/// // Prints messages
 /// ```
-///
-/// # Panics
-///
-/// `thread::scope()` panics if a spawned thread panics but it is not joined inside the scope.
-pub fn scope<'a, F, R>(f: F) -> R
+pub fn scope<'a, F, R>(f: F) -> thread::Result<R>
 where
     F: FnOnce(&Scope<'a>) -> R,
 {
@@ -230,8 +233,8 @@ where
         _marker: PhantomData,
     };
     let ret = f(&scope);
-    scope.drop_all();
-    ret
+    scope.drop_all()?;
+    Ok(ret)
 }
 
 impl<'a> fmt::Debug for Scope<'a> {
@@ -247,25 +250,21 @@ impl<'a, T> fmt::Debug for ScopedJoinHandle<'a, T> {
 }
 
 impl<'a> Scope<'a> {
-    // This method is carefully written in a transactional style, so
-    // that it can be called directly and, if any dtor panics, can be
-    // resumed in the unwinding this causes. By initially running the
-    // method outside of any destructor, we avoid any leakage problems
-    // due to @rust-lang/rust#14875.
-    fn drop_all(&mut self) {
+    // This method is carefully written in a transactional style, so that it can be called directly
+    // and, if any dtor panics, can be resumed in the unwinding this causes. By initially running
+    // the method outside of any destructor, we avoid any leakage problems due to
+    // @rust-lang/rust#14875.
+    fn drop_all(&mut self) -> thread::Result<()> {
+        let mut ret = Ok(());
         while let Some(dtor) = DtorChain::pop(&mut self.dtors.borrow_mut()) {
-            dtor.call_box();
+            ret = ret.and(dtor.call_box());
         }
+        ret
     }
 
-    /// Schedule code to be executed when exiting the scope.
-    ///
-    /// This is akin to having a destructor on the stack, except that it is
-    /// *guaranteed* to be run. It is guaranteed that the function is called
-    /// after all the spawned threads are joined.
-    pub fn defer<F>(&self, f: F)
+    fn defer_inner<F>(&self, f: F)
     where
-        F: FnOnce() + 'a,
+        F: (FnOnce() -> thread::Result<()>) + 'a,
     {
         let mut dtors = self.dtors.borrow_mut();
         *dtors = Some(DtorChain {
@@ -274,11 +273,22 @@ impl<'a> Scope<'a> {
         });
     }
 
+    /// Schedule code to be executed when exiting the scope.
+    ///
+    /// This is akin to having a destructor on the stack, except that it is *guaranteed* to be
+    /// run. It is guaranteed that the function is called after all the spawned threads are joined.
+    pub fn defer<F>(&self, f: F)
+    where
+        F: FnOnce() + 'a,
+    {
+        self.defer_inner(move || panic::catch_unwind(AssertUnwindSafe(f)));
+    }
+
     /// Create a scoped thread.
     ///
     /// `spawn` is similar to the [`spawn`][spawn] function in Rust's standard library. The
-    /// difference is that this thread is scoped, meaning that it's guaranteed to terminate
-    /// before the current stack frame goes away, allowing you to reference the parent stack frame
+    /// difference is that this thread is scoped, meaning that it's guaranteed to terminate before
+    /// the current stack frame goes away, allowing you to reference the parent stack frame
     /// directly. This is ensured by having the parent thread join on the child thread before the
     /// scope exits.
     ///
@@ -329,9 +339,9 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
     {
-        // The `Box` constructed below is written only by the spawned thread,
-        // and read by the current thread only after the spawned thread is
-        // joined (`JoinState::join()`). Thus there are no data races.
+        // The `Box` constructed below is written only by the spawned thread, and read by the
+        // current thread only after the spawned thread is joined (`JoinState::join()`). Thus there
+        // are no data races.
         let result = Box::into_raw(Box::<ManuallyDrop<T>>::new(unsafe { mem::uninitialized() })) as usize;
 
         let join_handle = try!(unsafe {
@@ -347,10 +357,12 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
         let deferred_handle = Rc::new(RefCell::new(Some(join_state)));
         let my_handle = deferred_handle.clone();
 
-        self.scope.defer(move || {
+        self.scope.defer_inner(move || {
             let state = mem::replace(deferred_handle.borrow_mut().deref_mut(), None);
             if let Some(state) = state {
-                state.join().unwrap();
+                state.join().map(|_| ())
+            } else {
+                Ok(())
             }
         });
 
@@ -363,13 +375,25 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
 }
 
 impl<'a, T: Send + 'a> ScopedJoinHandle<'a, T> {
-    /// Join the scoped thread, returning the result it produced.
+    /// Waits for the associated thread to finish.
+    ///
+    /// If the child thread panics, [`Err`] is returned with the parameter given to [`panic`].
+    ///
+    /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
+    /// [`panic`]: https://doc.rust-lang.org/std/macro.panic.html
+    ///
+    /// # Panics
+    ///
+    /// This function may panic on some platforms if a thread attempts to join itself or otherwise
+    /// may create a deadlock with joining threads.
     pub fn join(self) -> thread::Result<T> {
         let state = mem::replace(self.inner.borrow_mut().deref_mut(), None);
         state.unwrap().join()
     }
 
-    /// Get the underlying thread handle.
+    /// Gets the underlying [`std::thread::Thread`] handle.
+    ///
+    /// [`std::thread::Thread`]: https://doc.rust-lang.org/std/thread/struct.Thread.html
     pub fn thread(&self) -> &thread::Thread {
         &self.thread
     }
@@ -377,6 +401,7 @@ impl<'a, T: Send + 'a> ScopedJoinHandle<'a, T> {
 
 impl<'a> Drop for Scope<'a> {
     fn drop(&mut self) {
-        self.drop_all()
+        // Actually, there should be no deferred functions left to be run.
+        self.drop_all().unwrap();
     }
 }
