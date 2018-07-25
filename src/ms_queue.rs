@@ -1,6 +1,7 @@
-use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use std::mem::{self, ManuallyDrop};
+use std::ptr;
 use std::sync::atomic::AtomicBool;
-use std::{mem, ptr};
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use std::thread::{self, Thread};
 
 use epoch::{self, Atomic, Owned, Shared};
@@ -28,7 +29,7 @@ struct Node<T> {
 #[derive(Debug)]
 enum Payload<T> {
     /// A node with actual data that can be popped.
-    Data(T),
+    Data(ManuallyDrop<T>),
     /// A node representing a blocked request for data.
     Blocked(*mut Signal<T>),
 }
@@ -122,7 +123,7 @@ impl<T> MsQueue<T> {
             fn into_node(self) -> Owned<Node<T>> {
                 match self {
                     Cache::Data(t) => Owned::new(Node {
-                        payload: Payload::Data(t),
+                        payload: Payload::Data(ManuallyDrop::new(t)),
                         next: Atomic::null(),
                     }),
                     Cache::Node(n) => n,
@@ -134,7 +135,7 @@ impl<T> MsQueue<T> {
                 match self {
                     Cache::Data(t) => t,
                     Cache::Node(node) => match (*node.into_box()).payload {
-                        Payload::Data(t) => t,
+                        Payload::Data(t) => ManuallyDrop::into_inner(t),
                         _ => unreachable!(),
                     },
                 }
@@ -195,9 +196,9 @@ impl<T> MsQueue<T> {
         }
     }
 
-    #[inline(always)]
     // Attempt to pop a data node. `Ok(None)` if queue is empty or in blocking
     // mode; `Err(())` if lost race to pop.
+    #[inline(always)]
     fn pop_internal(&self, guard: &epoch::Guard) -> Result<Option<T>, ()> {
         let head_shared = self.head.load(Acquire, guard);
         let head = unsafe { head_shared.as_ref() }.unwrap();
@@ -210,7 +211,7 @@ impl<T> MsQueue<T> {
                         .is_ok()
                     {
                         guard.defer(move || head_shared.into_owned());
-                        Ok(Some(ptr::read(t)))
+                        Ok(Some(ManuallyDrop::into_inner(ptr::read(t))))
                     } else {
                         Err(())
                     }

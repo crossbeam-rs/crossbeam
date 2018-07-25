@@ -1,9 +1,10 @@
+use std::cell::UnsafeCell;
+use std::cmp;
+use std::fmt;
+use std::mem::{self, ManuallyDrop};
+use std::ptr;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::fmt;
-use std::{mem, ptr};
-use std::cmp;
-use std::cell::UnsafeCell;
 
 use epoch::{self, Atomic, Owned};
 
@@ -21,7 +22,7 @@ pub struct SegQueue<T> {
 
 struct Segment<T> {
     low: AtomicUsize,
-    data: [UnsafeCell<(T, AtomicBool)>; SEG_SIZE],
+    data: ManuallyDrop<[UnsafeCell<(T, AtomicBool)>; SEG_SIZE]>,
     high: AtomicUsize,
     next: Atomic<Segment<T>>,
 }
@@ -37,7 +38,7 @@ unsafe impl<T: Send> Sync for Segment<T> {}
 impl<T> Segment<T> {
     fn new() -> Segment<T> {
         let rqueue = Segment {
-            data: unsafe { mem::uninitialized() },
+            data: unsafe { ManuallyDrop::new(mem::uninitialized()) },
             low: AtomicUsize::new(0),
             high: AtomicUsize::new(0),
             next: Atomic::null(),
