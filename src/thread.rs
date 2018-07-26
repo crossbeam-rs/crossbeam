@@ -128,26 +128,32 @@ impl<T, F: FnOnce() -> T> FnBox<T> for F {
     }
 }
 
-/// Like `std::thread::spawn`, but without the closure bounds.
-pub unsafe fn spawn_unchecked<'a, F>(f: F) -> thread::JoinHandle<()>
+/// Like `std::thread::spawn`, but without lifetime bounds on the closure.
+pub unsafe fn spawn_unchecked<'a, F, T>(f: F) -> thread::JoinHandle<T>
 where
-    F: FnOnce() + Send + 'a,
+    F: FnOnce() -> T,
+    F: Send + 'a,
+    T: Send + 'static,
 {
     let builder = thread::Builder::new();
     builder_spawn_unchecked(builder, f).unwrap()
 }
 
-/// Like `std::thread::Builder::spawn`, but without the closure bounds.
-pub unsafe fn builder_spawn_unchecked<'a, F>(
+/// Like `std::thread::Builder::spawn`, but without lifetime bounds on the closure.
+pub unsafe fn builder_spawn_unchecked<'a, F, T>(
     builder: thread::Builder,
     f: F,
-) -> io::Result<thread::JoinHandle<()>>
+) -> io::Result<thread::JoinHandle<T>>
 where
-    F: FnOnce() + Send + 'a,
+    F: FnOnce() -> T,
+    F: Send + 'a,
+    T: Send + 'static,
 {
-    let closure: Box<FnBox<()> + 'a> = Box::new(f);
-    let closure: Box<FnBox<()> + Send> = mem::transmute(closure);
-    builder.spawn(move || closure.call_box())
+    let closure: Box<FnBox<T> + 'a> = Box::new(f);
+    let closure: Box<FnBox<T> + Send> = mem::transmute(closure);
+    builder.spawn(move || {
+        closure.call_box()
+    })
 }
 
 pub struct Scope<'a> {
@@ -293,10 +299,10 @@ impl<'a> Scope<'a> {
     /// scope exits.
     ///
     /// [spawn]: http://doc.rust-lang.org/std/thread/fn.spawn.html
-    pub fn spawn<'s, F, T>(&'s self, f: F) -> ScopedJoinHandle<'a, T>
+    pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<'a, T>
     where
-        'a: 's,
-        F: FnOnce() -> T + Send + 'a,
+        F: FnOnce() -> T,
+        F: Send + 'a,
         T: Send + 'a,
     {
         self.builder().spawn(f).unwrap()
@@ -336,7 +342,8 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
     /// Spawns a new thread, and returns a join handle for it.
     pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'a, T>>
     where
-        F: FnOnce() -> T + Send + 'a,
+        F: FnOnce() -> T,
+        F: Send + 'a,
         T: Send + 'a,
     {
         // The `Box` constructed below is written only by the spawned thread, and read by the
