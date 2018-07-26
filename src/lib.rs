@@ -5,10 +5,9 @@
 extern crate core;
 
 mod cache_padded;
-mod consume;
 
+pub mod atomic;
 #[cfg(feature = "use_std")]
 pub mod thread;
 
 pub use cache_padded::CachePadded;
-pub use consume::AtomicConsume;
