@@ -9,7 +9,7 @@
 ///     scope.spawn(|| {
 ///         println!("Hello from a scoped thread!");
 ///     });
-/// });
+/// }).unwrap();
 /// ```
 ///
 /// When writing concurrent Rust programs, you'll sometimes see a pattern like this, using
@@ -102,7 +102,7 @@
 ///             println!("element: {}", i);
 ///         });
 ///     }
-/// });
+/// }).unwrap();
 /// ```
 ///
 /// Much more straightforward.
@@ -183,7 +183,7 @@ struct JoinState<T> {
     _marker: PhantomData<T>,
 }
 
-impl<T: Send> JoinState<T> {
+impl<T> JoinState<T> {
     fn new(join_handle: thread::JoinHandle<()>, result: usize) -> JoinState<T> {
         JoinState {
             join_handle: join_handle,
@@ -208,6 +208,9 @@ pub struct ScopedJoinHandle<'a, T: 'a> {
     _marker: PhantomData<&'a T>,
 }
 
+unsafe impl<'a, T> Send for ScopedJoinHandle<'a, T> {}
+unsafe impl<'a, T> Sync for ScopedJoinHandle<'a, T> {}
+
 /// Create a new `Scope` for [*scoped thread spawning*](struct.Scope.html#method.spawn).
 ///
 /// In addition, you can [register ad-hoc functions](struct.Scope.html#method.defer) that are
@@ -226,7 +229,7 @@ pub struct ScopedJoinHandle<'a, T: 'a> {
 /// ```
 /// crossbeam_utils::thread::scope(|scope| {
 ///     scope.defer(|| println!("Exiting scope"));
-///     scope.spawn(|| println!("Running child thread in scope"))
+///     scope.spawn(|| println!("Running child thread in scope"));
 /// }).unwrap();
 /// // Prints messages
 /// ```
@@ -299,7 +302,7 @@ impl<'a> Scope<'a> {
     /// scope exits.
     ///
     /// [spawn]: http://doc.rust-lang.org/std/thread/fn.spawn.html
-    pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<'a, T>
+    pub fn spawn<'s, F, T>(&'s self, f: F) -> ScopedJoinHandle<'s, T>
     where
         F: FnOnce() -> T,
         F: Send + 'a,
@@ -340,7 +343,7 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
     }
 
     /// Spawns a new thread, and returns a join handle for it.
-    pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'a, T>>
+    pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'s, T>>
     where
         F: FnOnce() -> T,
         F: Send + 'a,
@@ -381,7 +384,7 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
     }
 }
 
-impl<'a, T: Send + 'a> ScopedJoinHandle<'a, T> {
+impl<'a, T> ScopedJoinHandle<'a, T> {
     /// Waits for the associated thread to finish.
     ///
     /// If the child thread panics, [`Err`] is returned with the parameter given to [`panic`].
