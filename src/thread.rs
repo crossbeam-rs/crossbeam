@@ -156,20 +156,20 @@ where
     })
 }
 
-pub struct Scope<'a> {
+pub struct Scope<'env> {
     /// The list of the deferred functions and thread join jobs.
-    dtors: RefCell<Option<DtorChain<'a, thread::Result<()>>>>,
+    dtors: RefCell<Option<DtorChain<'env, thread::Result<()>>>>,
     // !Send + !Sync
     _marker: PhantomData<*const ()>,
 }
 
-struct DtorChain<'a, T> {
-    dtor: Box<FnBox<T> + 'a>,
-    next: Option<Box<DtorChain<'a, T>>>,
+struct DtorChain<'env, T> {
+    dtor: Box<FnBox<T> + 'env>,
+    next: Option<Box<DtorChain<'env, T>>>,
 }
 
-impl<'a, T> DtorChain<'a, T> {
-    pub fn pop(chain: &mut Option<DtorChain<'a, T>>) -> Option<Box<FnBox<T> + 'a>> {
+impl<'env, T> DtorChain<'env, T> {
+    pub fn pop(chain: &mut Option<DtorChain<'env, T>>) -> Option<Box<FnBox<T> + 'env>> {
         chain.take().map(|mut node| {
             *chain = node.next.take().map(|b| *b);
             node.dtor
@@ -201,15 +201,15 @@ impl<T> JoinState<T> {
 }
 
 /// A handle to a scoped thread
-pub struct ScopedJoinHandle<'a, T: 'a> {
+pub struct ScopedJoinHandle<'scope, T: 'scope> {
     // !Send + !Sync
     inner: Rc<RefCell<Option<JoinState<T>>>>,
     thread: thread::Thread,
-    _marker: PhantomData<&'a T>,
+    _marker: PhantomData<&'scope T>,
 }
 
-unsafe impl<'a, T> Send for ScopedJoinHandle<'a, T> {}
-unsafe impl<'a, T> Sync for ScopedJoinHandle<'a, T> {}
+unsafe impl<'scope, T> Send for ScopedJoinHandle<'scope, T> {}
+unsafe impl<'scope, T> Sync for ScopedJoinHandle<'scope, T> {}
 
 /// Create a new `Scope` for [*scoped thread spawning*](struct.Scope.html#method.spawn).
 ///
@@ -233,9 +233,9 @@ unsafe impl<'a, T> Sync for ScopedJoinHandle<'a, T> {}
 /// }).unwrap();
 /// // Prints messages
 /// ```
-pub fn scope<'a, F, R>(f: F) -> thread::Result<R>
+pub fn scope<'env, F, R>(f: F) -> thread::Result<R>
 where
-    F: FnOnce(&Scope<'a>) -> R,
+    F: FnOnce(&Scope<'env>) -> R,
 {
     let mut scope = Scope {
         dtors: RefCell::new(None),
@@ -246,19 +246,19 @@ where
     Ok(ret)
 }
 
-impl<'a> fmt::Debug for Scope<'a> {
+impl<'env> fmt::Debug for Scope<'env> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Scope {{ ... }}")
     }
 }
 
-impl<'a, T> fmt::Debug for ScopedJoinHandle<'a, T> {
+impl<'scope, T> fmt::Debug for ScopedJoinHandle<'scope, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ScopedJoinHandle {{ ... }}")
     }
 }
 
-impl<'a> Scope<'a> {
+impl<'env> Scope<'env> {
     // This method is carefully written in a transactional style, so that it can be called directly
     // and, if any dtor panics, can be resumed in the unwinding this causes. By initially running
     // the method outside of any destructor, we avoid any leakage problems due to
@@ -273,7 +273,7 @@ impl<'a> Scope<'a> {
 
     fn defer_inner<F>(&self, f: F)
     where
-        F: (FnOnce() -> thread::Result<()>) + 'a,
+        F: (FnOnce() -> thread::Result<()>) + 'env,
     {
         let mut dtors = self.dtors.borrow_mut();
         *dtors = Some(DtorChain {
@@ -288,7 +288,7 @@ impl<'a> Scope<'a> {
     /// run. It is guaranteed that the function is called after all the spawned threads are joined.
     pub fn defer<F>(&self, f: F)
     where
-        F: FnOnce() + 'a,
+        F: FnOnce() + 'env,
     {
         self.defer_inner(move || panic::catch_unwind(AssertUnwindSafe(f)));
     }
@@ -302,18 +302,18 @@ impl<'a> Scope<'a> {
     /// scope exits.
     ///
     /// [spawn]: http://doc.rust-lang.org/std/thread/fn.spawn.html
-    pub fn spawn<'s, F, T>(&'s self, f: F) -> ScopedJoinHandle<'s, T>
+    pub fn spawn<'scope, F, T>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
     where
         F: FnOnce() -> T,
-        F: Send + 'a,
-        T: Send + 'a,
+        F: Send + 'env,
+        T: Send + 'env,
     {
         self.builder().spawn(f).unwrap()
     }
 
     /// Generates the base configuration for spawning a scoped thread, from which configuration
     /// methods can be chained.
-    pub fn builder<'s>(&'s self) -> ScopedThreadBuilder<'s, 'a> {
+    pub fn builder<'scope>(&'scope self) -> ScopedThreadBuilder<'scope, 'env> {
         ScopedThreadBuilder {
             scope: self,
             builder: thread::Builder::new(),
@@ -323,31 +323,31 @@ impl<'a> Scope<'a> {
 
 /// Scoped thread configuration. Provides detailed control over the properties and behavior of new
 /// scoped threads.
-pub struct ScopedThreadBuilder<'s, 'a: 's> {
-    scope: &'s Scope<'a>,
+pub struct ScopedThreadBuilder<'scope, 'env: 'scope> {
+    scope: &'scope Scope<'env>,
     builder: thread::Builder,
 }
 
-impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
+impl<'scope, 'env: 'scope> ScopedThreadBuilder<'scope, 'env> {
     /// Names the thread-to-be. Currently the name is used for identification only in panic
     /// messages.
-    pub fn name(mut self, name: String) -> ScopedThreadBuilder<'s, 'a> {
+    pub fn name(mut self, name: String) -> ScopedThreadBuilder<'scope, 'env> {
         self.builder = self.builder.name(name);
         self
     }
 
     /// Sets the size of the stack for the new thread.
-    pub fn stack_size(mut self, size: usize) -> ScopedThreadBuilder<'s, 'a> {
+    pub fn stack_size(mut self, size: usize) -> ScopedThreadBuilder<'scope, 'env> {
         self.builder = self.builder.stack_size(size);
         self
     }
 
     /// Spawns a new thread, and returns a join handle for it.
-    pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'s, T>>
+    pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'scope, T>>
     where
         F: FnOnce() -> T,
-        F: Send + 'a,
-        T: Send + 'a,
+        F: Send + 'env,
+        T: Send + 'env,
     {
         // The `Box` constructed below is written only by the spawned thread, and read by the
         // current thread only after the spawned thread is joined (`JoinState::join()`). Thus there
@@ -384,7 +384,7 @@ impl<'s, 'a: 's> ScopedThreadBuilder<'s, 'a> {
     }
 }
 
-impl<'a, T> ScopedJoinHandle<'a, T> {
+impl<'scope, T> ScopedJoinHandle<'scope, T> {
     /// Waits for the associated thread to finish.
     ///
     /// If the child thread panics, [`Err`] is returned with the parameter given to [`panic`].
@@ -409,7 +409,7 @@ impl<'a, T> ScopedJoinHandle<'a, T> {
     }
 }
 
-impl<'a> Drop for Scope<'a> {
+impl<'env> Drop for Scope<'env> {
     fn drop(&mut self) {
         // Actually, there should be no deferred functions left to be run.
         self.drop_all().unwrap();

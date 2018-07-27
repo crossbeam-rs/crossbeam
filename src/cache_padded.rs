@@ -165,7 +165,7 @@ mod test {
         }
 
         let a = CachePadded::new(Foo(&count));
-        a.clone();
+        let _ = a.clone();
 
         assert_eq!(count.get(), 1);
     }
