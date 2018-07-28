@@ -313,17 +313,20 @@ impl<T> MsQueue<T> {
             // reachable, non-sentinel nodes have the same payload mode, in this
             // case, blocked.
             match self.push_internal(&guard, tail_shared, node) {
-                Ok(()) => {
-                    while !signal.ready.load(Acquire) {
-                        thread::park();
-                    }
-                    return signal.data.unwrap();
-                }
+                Ok(()) => break,
                 Err(n) => {
                     node = n;
+                    continue;
                 }
             }
         }
+
+        drop(guard);
+
+        while !signal.ready.load(Acquire) {
+            thread::park();
+        }
+        signal.data.unwrap()
     }
 }
 
