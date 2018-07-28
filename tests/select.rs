@@ -795,6 +795,49 @@ fn channel_through_channel() {
 }
 
 #[test]
+fn linearizable() {
+    const COUNT: usize = 100_000;
+
+    for step in 0..2 {
+        let (start_s, start_r) = channel::bounded::<()>(0);
+        let (end_s, end_r) = channel::bounded::<()>(0);
+
+        let ((s1, r1), (s2, r2)) = if step == 0 {
+            (channel::bounded::<i32>(1), channel::bounded::<i32>(1))
+        } else {
+            (channel::unbounded::<i32>(), channel::unbounded::<i32>())
+        };
+
+        crossbeam::scope(|scope| {
+            scope.spawn(|| {
+                for _ in 0..COUNT {
+                    start_s.send(());
+
+                    s1.send(1);
+                    select! {
+                        recv(r1) => {}
+                        recv(r2) => {}
+                        default => unreachable!()
+                    }
+
+                    end_s.send(());
+                    r2.try_recv();
+                }
+            });
+
+            for _ in 0..COUNT {
+                start_r.recv();
+
+                s2.send(1);
+                r1.try_recv();
+
+                end_r.recv();
+            }
+        });
+    }
+}
+
+#[test]
 fn fairness1() {
     const COUNT: usize = 10_000;
 

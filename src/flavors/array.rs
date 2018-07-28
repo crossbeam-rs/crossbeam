@@ -525,6 +525,10 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
     fn accept(&self, token: &mut Token) -> bool {
         self.0.start_recv(token, &mut Backoff::new())
     }
+
+    fn state(&self) -> usize {
+        self.0.tail.load(Ordering::SeqCst)
+    }
 }
 
 impl<'a, T> SelectHandle for Sender<'a, T> {
@@ -551,5 +555,9 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
 
     fn accept(&self, token: &mut Token) -> bool {
         self.0.start_send(token, &mut Backoff::new())
+    }
+
+    fn state(&self) -> usize {
+        self.0.head.load(Ordering::SeqCst)
     }
 }

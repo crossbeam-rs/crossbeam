@@ -428,6 +428,10 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         token.zero = context::current_wait_packet();
         true
     }
+
+    fn state(&self) -> usize {
+        self.0.inner.lock().senders.register_count()
+    }
 }
 
 impl<'a, T> SelectHandle for Sender<'a, T> {
@@ -462,5 +466,9 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
     fn accept(&self, token: &mut Token) -> bool {
         token.zero = context::current_wait_packet();
         true
+    }
+
+    fn state(&self) -> usize {
+        self.0.inner.lock().receivers.register_count()
     }
 }

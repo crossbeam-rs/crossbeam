@@ -776,6 +776,14 @@ impl<T> SelectHandle for Sender<T> {
             ChannelFlavor::Zero(chan) => chan.sender().accept(token),
         }
     }
+
+    fn state(&self) -> usize {
+        match &self.0.flavor {
+            ChannelFlavor::Array(chan) => chan.sender().state(),
+            ChannelFlavor::List(chan) => chan.sender().state(),
+            ChannelFlavor::Zero(chan) => chan.sender().state(),
+        }
+    }
 }
 
 impl<T> SelectHandle for Receiver<T> {
@@ -844,6 +852,18 @@ impl<T> SelectHandle for Receiver<T> {
             },
             ReceiverFlavor::After(chan) => chan.accept(token),
             ReceiverFlavor::Tick(chan) => chan.accept(token),
+        }
+    }
+
+    fn state(&self) -> usize {
+        match &self.0 {
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.receiver().state(),
+                ChannelFlavor::List(chan) => chan.receiver().state(),
+                ChannelFlavor::Zero(chan) => chan.receiver().state(),
+            },
+            ReceiverFlavor::After(chan) => chan.state(),
+            ReceiverFlavor::Tick(chan) => chan.state(),
         }
     }
 }

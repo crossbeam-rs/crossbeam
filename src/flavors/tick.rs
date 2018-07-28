@@ -2,6 +2,7 @@
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
+use std::num::Wrapping;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,11 +15,16 @@ use internal::select::{Operation, SelectHandle, Token};
 /// Result of a receive operation.
 pub type TickToken = Option<Instant>;
 
+struct Inner {
+    deadline: Instant,
+    index: Wrapping<usize>,
+}
+
 /// Channel that delivers messages periodically.
 pub struct Channel {
     /// The instant at which the next message will be delivered.
-    // TODO: Use `Arc<AtomicCell<Instant>>` here once we implement `AtomicCell`.
-    deadline: Arc<Mutex<Instant>>,
+    // TODO: Use `Arc<AtomicCell<Inner>>` here once we implement `AtomicCell`.
+    inner: Arc<Mutex<Inner>>,
 
     /// The time interval in which messages get delivered.
     duration: Duration,
@@ -29,7 +35,10 @@ impl Channel {
     #[inline]
     pub fn new(dur: Duration) -> Self {
         Channel {
-            deadline: Arc::new(Mutex::new(Instant::now() + dur)),
+            inner: Arc::new(Mutex::new(Inner {
+                deadline: Instant::now() + dur,
+                index: Wrapping(0),
+            })),
             duration: dur,
         }
     }
@@ -37,7 +46,7 @@ impl Channel {
     /// Returns a unique identifier for the channel.
     #[inline]
     pub fn channel_id(&self) -> usize {
-        self.deadline.as_ref() as *const Mutex<Instant> as usize
+        self.inner.as_ref() as *const Mutex<Inner> as usize
     }
 
     /// Receives a message from the channel.
@@ -46,17 +55,18 @@ impl Channel {
         loop {
             // Compute the time to sleep until the next message.
             let offset = {
-                let mut deadline = self.deadline.lock();
+                let mut inner = self.inner.lock();
                 let now = Instant::now();
 
                 // If the deadline has been reached, we can receive the next message.
-                if now >= *deadline {
-                    let msg = Some(*deadline);
-                    *deadline = now + self.duration;
+                if now >= inner.deadline {
+                    let msg = Some(inner.deadline);
+                    inner.deadline = now + self.duration;
+                    inner.index += Wrapping(1);
                     return msg;
                 }
 
-                *deadline - now
+                inner.deadline - now
             };
 
             thread::sleep(offset);
@@ -66,13 +76,14 @@ impl Channel {
     /// Attempts to receive a message without blocking.
     #[inline]
     pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
-        let mut deadline = self.deadline.lock();
+        let mut inner = self.inner.lock();
         let now = Instant::now();
 
         // If the deadline has been reached, we can receive the next message.
-        if now >= *deadline {
-            let msg = RecvNonblocking::Message(*deadline);
-            *deadline = now + self.duration;
+        if now >= inner.deadline {
+            let msg = RecvNonblocking::Message(inner.deadline);
+            inner.deadline = now + self.duration;
+            inner.index += Wrapping(1);
             msg
         } else {
             RecvNonblocking::Empty
@@ -88,8 +99,8 @@ impl Channel {
     /// Returns `true` if the channel is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        let deadline = *self.deadline.lock();
-        Instant::now() < deadline
+        let inner = self.inner.lock();
+        Instant::now() < inner.deadline
     }
 
     /// Returns the number of messages in the channel.
@@ -113,7 +124,7 @@ impl Clone for Channel {
     #[inline]
     fn clone(&self) -> Channel {
         Channel {
-            deadline: self.deadline.clone(),
+            inner: self.inner.clone(),
             duration: self.duration,
         }
     }
@@ -144,7 +155,7 @@ impl SelectHandle for Channel {
 
     #[inline]
     fn deadline(&self) -> Option<Instant> {
-        Some(*self.deadline.lock())
+        Some(self.inner.lock().deadline)
     }
 
     #[inline]
@@ -158,5 +169,16 @@ impl SelectHandle for Channel {
     #[inline]
     fn accept(&self, token: &mut Token) -> bool {
         self.try(token)
+    }
+
+    #[inline]
+    fn state(&self) -> usize {
+        let inner = self.inner.lock();
+        let index = if Instant::now() < inner.deadline {
+            inner.index
+        } else {
+            inner.index + Wrapping(1)
+        };
+        index.0
     }
 }

@@ -9,15 +9,17 @@ use internal::context;
 use internal::select::{Operation, Select, SelectHandle, Token};
 use internal::utils;
 
+use internal::smallvec::SmallVec;
+
 /// Runs until one of the operations is fired, potentially blocking the current thread.
 ///
 /// Receive operations will have to be followed up by `read`, and send operations by `write`.
-pub fn main_loop<'a, S>(
-    handles: &mut [(&'a S, usize, *const u8)],
+pub fn main_loop<S>(
+    handles: &mut [(&S, usize, *const u8)],
     has_default: bool,
 ) -> (Token, usize, *const u8)
 where
-    S: SelectHandle + ?Sized + 'a,
+    S: SelectHandle + ?Sized,
 {
     // Create a token, which serves as a temporary variable that gets initialized in this function
     // and is later used by a call to `read` or `write` that completes the selected operation.
@@ -38,6 +40,32 @@ where
         }
     }
 
+    if has_default && handles.len() > 1 {
+        'start: loop {
+            // Snapshot the channel state of all operations.
+            let mut states = SmallVec::<[usize; 4]>::new();
+            for &(handle, _, _) in handles.iter() {
+                states.push(handle.state());
+            }
+
+            for &(handle, i, ptr) in handles.iter() {
+                if handle.try(&mut token) {
+                    return (token, i, ptr);
+                }
+            }
+
+            // If any of the states has just changed, jump to the beginning of the main loop.
+            for (&(handle, _, _), &state) in handles.iter().zip(states.iter()) {
+                if handle.state() != state {
+                    continue 'start;
+                }
+            }
+
+            // Select the `default` case.
+            return (token, 0, ptr::null());
+        }
+    }
+
     loop {
         // Try firing the operations without blocking.
         for &(handle, i, ptr) in handles.iter() {
@@ -47,14 +75,6 @@ where
         }
 
         if has_default {
-            // If there's a `default` case, try firing operations one more time. This step is
-            // important for linearizability of select.
-            for &(handle, i, ptr) in handles.iter() {
-                if handle.try(&mut token) {
-                    return (token, i, ptr);
-                }
-            }
-
             // Select the `default` case.
             return (token, 0, ptr::null());
         }

@@ -1,6 +1,7 @@
 //! Waking mechanism for threads blocked on channel operations.
 
 use std::collections::VecDeque;
+use std::num::Wrapping;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -28,6 +29,8 @@ pub struct Entry {
 pub struct Waker {
     /// The list of registered blocking operations.
     entries: VecDeque<Entry>,
+
+    register_count: Wrapping<usize>,
 }
 
 impl Waker {
@@ -36,6 +39,7 @@ impl Waker {
     pub fn new() -> Self {
         Waker {
             entries: VecDeque::new(),
+            register_count: Wrapping(0),
         }
     }
 
@@ -53,6 +57,7 @@ impl Waker {
             oper,
             packet,
         });
+        self.register_count += Wrapping(1);
     }
 
     /// Unregisters an operation previously registered by the current thread.
@@ -140,6 +145,11 @@ impl Waker {
     #[inline]
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    #[inline]
+    pub fn register_count(&self) -> usize {
+        self.register_count.0
     }
 
     /// Shrinks the internal queue if its capacity is much larger than length.

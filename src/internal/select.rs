@@ -300,6 +300,11 @@ pub trait SelectHandle {
 
     /// Attempts to execute the selected operation.
     fn accept(&self, token: &mut Token) -> bool;
+
+    /// Returns the current channel state associated with this handle.
+    ///
+    /// This is typically represented by the current message index.
+    fn state(&self) -> usize;
 }
 
 impl<'a, T: SelectHandle> SelectHandle for &'a T {
@@ -325,5 +330,9 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
 
     fn accept(&self, token: &mut Token) -> bool {
         (**self).accept(token)
+    }
+
+    fn state(&self) -> usize {
+        (**self).state()
     }
 }
