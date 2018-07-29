@@ -110,12 +110,13 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem::{self, ManuallyDrop};
+use std::mem;
 use std::ops::DerefMut;
 use std::panic::{self, AssertUnwindSafe};
 use std::rc::Rc;
 use std::thread;
 use std::io;
+use std::sync::{Arc, Mutex};
 
 #[doc(hidden)]
 trait FnBox<T> {
@@ -179,23 +180,21 @@ impl<'env, T> DtorChain<'env, T> {
 
 struct JoinState<T> {
     join_handle: thread::JoinHandle<()>,
-    result: usize,
-    _marker: PhantomData<T>,
+    result: ScopedThreadResult<T>
 }
 
 impl<T> JoinState<T> {
-    fn new(join_handle: thread::JoinHandle<()>, result: usize) -> JoinState<T> {
+    fn new(join_handle: thread::JoinHandle<()>, result: ScopedThreadResult<T>) -> JoinState<T> {
         JoinState {
-            join_handle: join_handle,
-            result: result,
-            _marker: PhantomData,
+            join_handle,
+            result
         }
     }
 
     fn join(self) -> thread::Result<T> {
         let result = self.result;
         self.join_handle.join().map(|_| {
-            unsafe { ManuallyDrop::into_inner(*Box::from_raw(result as *mut ManuallyDrop<T>))}
+            result.lock().unwrap().take().unwrap()
         })
     }
 }
@@ -349,18 +348,15 @@ impl<'scope, 'env: 'scope> ScopedThreadBuilder<'scope, 'env> {
         F: Send + 'env,
         T: Send + 'env,
     {
-        // The `Box` constructed below is written only by the spawned thread, and read by the
-        // current thread only after the spawned thread is joined (`JoinState::join()`). Thus there
-        // are no data races.
-        let result = Box::into_raw(Box::<ManuallyDrop<T>>::new(unsafe { mem::uninitialized() })) as usize;
+        let result = Arc::new(Mutex::new(None));
 
-        let join_handle = try!(unsafe {
+        let join_handle = unsafe {
+            let mut thread_result = Arc::clone(&result);
             builder_spawn_unchecked(self.builder, move || {
-                let mut result = Box::from_raw(result as *mut ManuallyDrop<T>);
-                *result = ManuallyDrop::new(f());
-                mem::forget(result);
+                *thread_result.lock().unwrap() = Some(f());
             })
-        });
+        }?;
+
         let thread = join_handle.thread().clone();
 
         let join_state = JoinState::<T>::new(join_handle, result);
@@ -368,7 +364,7 @@ impl<'scope, 'env: 'scope> ScopedThreadBuilder<'scope, 'env> {
         let my_handle = deferred_handle.clone();
 
         self.scope.defer_inner(move || {
-            let state = mem::replace(deferred_handle.borrow_mut().deref_mut(), None);
+            let state = deferred_handle.borrow_mut().deref_mut().take();
             if let Some(state) = state {
                 state.join().map(|_| ())
             } else {
@@ -397,7 +393,7 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
     /// This function may panic on some platforms if a thread attempts to join itself or otherwise
     /// may create a deadlock with joining threads.
     pub fn join(self) -> thread::Result<T> {
-        let state = mem::replace(self.inner.borrow_mut().deref_mut(), None);
+        let state = self.inner.borrow_mut().deref_mut().take();
         state.unwrap().join()
     }
 
@@ -415,3 +411,5 @@ impl<'env> Drop for Scope<'env> {
         self.drop_all().unwrap();
     }
 }
+
+type ScopedThreadResult<T> = Arc<Mutex<Option<T>>>;
