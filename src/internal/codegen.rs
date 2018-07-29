@@ -7,9 +7,8 @@ use std::time::Instant;
 use internal::channel::{Receiver, Sender};
 use internal::context;
 use internal::select::{Operation, Select, SelectHandle, Token};
-use internal::utils;
-
 use internal::smallvec::SmallVec;
+use internal::utils;
 
 /// Runs until one of the operations is fired, potentially blocking the current thread.
 ///
@@ -41,28 +40,37 @@ where
     }
 
     if has_default && handles.len() > 1 {
-        'start: loop {
-            // Snapshot the channel state of all operations.
-            let mut states = SmallVec::<[usize; 4]>::new();
-            for &(handle, _, _) in handles.iter() {
-                states.push(handle.state());
-            }
+        let mut states = SmallVec::<[usize; 4]>::with_capacity(handles.len());
 
+        // Snapshot the channel states of all operations.
+        for &(handle, _, _) in handles.iter() {
+            states.push(handle.state());
+        }
+
+        loop {
+            // Try firing the operations.
             for &(handle, i, ptr) in handles.iter() {
                 if handle.try(&mut token) {
                     return (token, i, ptr);
                 }
             }
 
-            // If any of the states has just changed, jump to the beginning of the main loop.
-            for (&(handle, _, _), &state) in handles.iter().zip(states.iter()) {
-                if handle.state() != state {
-                    continue 'start;
+            let mut changed = false;
+
+            // Update the channel states and check whether any have been changed.
+            for (&(handle, _, _), state) in handles.iter().zip(states.iter_mut()) {
+                let current = handle.state();
+
+                if *state != current {
+                    *state = current;
+                    changed = true;
                 }
             }
 
-            // Select the `default` case.
-            return (token, 0, ptr::null());
+            // If none of the states have changed, select the `default` case.
+            if !changed {
+                return (token, 0, ptr::null());
+            }
         }
     }
 

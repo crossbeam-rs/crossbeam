@@ -237,22 +237,11 @@ impl SelectHandle for Channel {
 
     #[inline]
     fn state(&self) -> usize {
-        let flag = self.flag();
-
-        // First, check whether the message was already received to avoid the expensive
-        // `Instant::now()` call.
-        if flag.load(Ordering::SeqCst) {
-            return 2;
-        }
-
-        // If the deadline hasn't been reached yet, the channel is empty.
-        if Instant::now() < self.deadline {
-            return 0;
-        }
-
-        // The deadline has been reached. The channel is empty only if the message was received.
-        if flag.load(Ordering::SeqCst) {
-            2
+        // Return 1 if the deadline has been reached and 0 otherwise.
+        if self.flag().load(Ordering::SeqCst) {
+            1
+        } else if Instant::now() < self.deadline {
+            0
         } else {
             1
         }

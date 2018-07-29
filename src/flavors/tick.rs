@@ -15,14 +15,18 @@ use internal::select::{Operation, SelectHandle, Token};
 /// Result of a receive operation.
 pub type TickToken = Option<Instant>;
 
+/// Channel state.
 struct Inner {
+    /// The instant at which the next message will be delivered.
     deadline: Instant,
+
+    /// The index of the next message to be received.
     index: Wrapping<usize>,
 }
 
 /// Channel that delivers messages periodically.
 pub struct Channel {
-    /// The instant at which the next message will be delivered.
+    /// The state of the channel.
     // TODO: Use `Arc<AtomicCell<Inner>>` here once we implement `AtomicCell`.
     inner: Arc<Mutex<Inner>>,
 
@@ -173,6 +177,7 @@ impl SelectHandle for Channel {
 
     #[inline]
     fn state(&self) -> usize {
+        // Return the index of the next message to be delivered to the channel.
         let inner = self.inner.lock();
         let index = if Instant::now() < inner.deadline {
             inner.index

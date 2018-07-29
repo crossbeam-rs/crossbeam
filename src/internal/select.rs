@@ -301,9 +301,13 @@ pub trait SelectHandle {
     /// Attempts to execute the selected operation.
     fn accept(&self, token: &mut Token) -> bool;
 
-    /// Returns the current channel state associated with this handle.
+    /// Returns the current state of the opposite side of the channel.
     ///
-    /// This is typically represented by the current message index.
+    /// This is typically represented by the current message index at the opposite side of the
+    /// channel.
+    ///
+    /// For example, by calling `state()`, the receiving side can check how much activity the
+    /// sending side has had and viceversa.
     fn state(&self) -> usize;
 }
 

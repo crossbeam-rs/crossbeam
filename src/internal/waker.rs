@@ -30,6 +30,7 @@ pub struct Waker {
     /// The list of registered blocking operations.
     entries: VecDeque<Entry>,
 
+    /// The number of calls to `register` and `register_with_packet`.
     register_count: Wrapping<usize>,
 }
 
