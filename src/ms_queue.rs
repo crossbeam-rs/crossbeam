@@ -316,7 +316,6 @@ impl<T> MsQueue<T> {
                 Ok(()) => break,
                 Err(n) => {
                     node = n;
-                    continue;
                 }
             }
         }
