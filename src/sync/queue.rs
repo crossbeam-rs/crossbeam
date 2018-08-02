@@ -9,7 +9,7 @@ use core::mem::{self, ManuallyDrop};
 use core::ptr;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use crossbeam_utils::cache_padded::CachePadded;
+use crossbeam_utils::CachePadded;
 
 use {unprotected, Atomic, Guard, Owned, Shared};
 
@@ -194,7 +194,7 @@ impl<T> Drop for Queue<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crossbeam_utils::scoped;
+    use crossbeam_utils::thread;
     use pin;
 
     struct Queue<T> {
@@ -309,7 +309,7 @@ mod test {
         let q: Queue<i64> = Queue::new();
         assert!(q.is_empty());
 
-        scoped::scope(|scope| {
+        thread::scope(|scope| {
             scope.spawn(|| {
                 let mut next = 0;
 
@@ -346,7 +346,7 @@ mod test {
         let q: Queue<i64> = Queue::new();
         assert!(q.is_empty());
         let qr = &q;
-        scoped::scope(|scope| {
+        thread::scope(|scope| {
             for i in 0..3 {
                 scope.spawn(move || recv(i, qr));
             }
@@ -367,7 +367,7 @@ mod test {
         let q: Queue<LR> = Queue::new();
         assert!(q.is_empty());
 
-        scoped::scope(|scope| for _t in 0..2 {
+        thread::scope(|scope| for _t in 0..2 {
             scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
                 q.push(LR::Left(i))
             });
@@ -400,7 +400,7 @@ mod test {
     fn push_pop_many_spsc() {
         let q: Queue<i64> = Queue::new();
 
-        scoped::scope(|scope| {
+        thread::scope(|scope| {
             scope.spawn(|| {
                 let mut next = 0;
                 while next < CONC_COUNT {

@@ -6,7 +6,7 @@ extern crate test;
 
 use epoch::Owned;
 use test::Bencher;
-use utils::scoped::scope;
+use utils::thread::scope;
 
 #[bench]
 fn single_alloc_defer_free(b: &mut Bencher) {

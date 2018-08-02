@@ -5,7 +5,7 @@ extern crate crossbeam_utils as utils;
 extern crate test;
 
 use test::Bencher;
-use utils::scoped::scope;
+use utils::thread::scope;
 
 #[bench]
 fn single_pin(b: &mut Bencher) {

@@ -290,7 +290,7 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
 #[cfg(test)]
 mod tests {
     use {Collector, Owned};
-    use crossbeam_utils::scoped;
+    use crossbeam_utils::thread;
     use std::sync::Barrier;
     use super::*;
 
@@ -396,7 +396,7 @@ mod tests {
         let l: List<Entry> = List::new();
         let b = Barrier::new(THREADS);
 
-        scoped::scope(|s| for _ in 0..THREADS {
+        thread::scope(|s| for _ in 0..THREADS {
             s.spawn(|| {
                 b.wait();
 
@@ -435,7 +435,7 @@ mod tests {
         let l: List<Entry> = List::new();
         let b = Barrier::new(THREADS);
 
-        scoped::scope(|s| for _ in 0..THREADS {
+        thread::scope(|s| for _ in 0..THREADS {
             s.spawn(|| {
                 b.wait();
 

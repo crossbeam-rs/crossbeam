@@ -7,7 +7,7 @@ extern crate test;
 use std::sync::Barrier;
 
 use test::Bencher;
-use utils::scoped::scope;
+use utils::thread::scope;
 
 #[bench]
 fn single_flush(b: &mut Bencher) {

@@ -43,7 +43,7 @@ use core::sync::atomic;
 use core::sync::atomic::Ordering;
 use alloc::boxed::Box;
 
-use crossbeam_utils::cache_padded::CachePadded;
+use crossbeam_utils::CachePadded;
 use arrayvec::ArrayVec;
 
 use atomic::Owned;

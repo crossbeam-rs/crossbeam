@@ -10,7 +10,7 @@ use core::sync::atomic::Ordering;
 use alloc::boxed::Box;
 
 use guard::Guard;
-use crossbeam_utils::consume::AtomicConsume;
+use crossbeam_utils::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
 /// appropriate ordering for the failure case.

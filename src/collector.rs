@@ -116,7 +116,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
     use std::sync::atomic::Ordering;
 
-    use crossbeam_utils::scoped;
+    use crossbeam_utils::thread;
 
     use {Collector, Owned};
 
@@ -182,7 +182,7 @@ mod tests {
     fn pin_holds_advance() {
         let collector = Collector::new();
 
-        scoped::scope(|scope| {
+        thread::scope(|scope| {
             for _ in 0..NUM_THREADS {
                 scope.spawn(|| {
                     let handle = collector.register();
@@ -413,7 +413,7 @@ mod tests {
 
         let collector = Collector::new();
 
-        scoped::scope(|scope| {
+        thread::scope(|scope| {
             for _ in 0..THREADS {
                 scope.spawn(|| {
                     let handle = collector.register();
