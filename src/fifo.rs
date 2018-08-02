@@ -9,7 +9,7 @@ use std::sync::atomic::{self, AtomicIsize, Ordering};
 use std::thread;
 
 use epoch::{self, Atomic, Owned};
-use utils::cache_padded::CachePadded;
+use utils::CachePadded;
 
 /// Minimum buffer capacity for a deque.
 const MIN_CAP: usize = 16;
