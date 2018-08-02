@@ -9,7 +9,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
-use crossbeam_utils::cache_padded::CachePadded;
+use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
 use internal::context;
