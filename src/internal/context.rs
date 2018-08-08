@@ -105,7 +105,7 @@ pub fn current_selected() -> Select {
 #[inline]
 pub fn current_reset() {
     CONTEXT.with(|cx| {
-        cx.select.store(0, Ordering::Release);
+        cx.select.store(Select::Waiting.into(), Ordering::Release);
         cx.packet.store(0, Ordering::Release);
     })
 }
@@ -174,5 +174,6 @@ pub fn current_wait_packet() -> usize {
 /// Returns the id of the current thread.
 #[inline]
 pub fn current_thread_id() -> ThreadId {
-    CONTEXT.with(|cx| cx.thread_id)
+    CONTEXT.try_with(|cx| cx.thread_id)
+        .unwrap_or_else(|_| thread::current().id())
 }

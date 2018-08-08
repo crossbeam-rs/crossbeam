@@ -76,7 +76,7 @@ pub fn shuffle<T>(v: &mut [T]) {
         }
     }
 
-    RNG.with(|rng| {
+    let _ = RNG.try_with(|rng| {
         for i in 1..len {
             // This is the 32-bit variant of Xorshift.
             // https://en.wikipedia.org/wiki/Xorshift
