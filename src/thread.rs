@@ -13,7 +13,7 @@
 /// ```
 ///
 /// When writing concurrent Rust programs, you'll sometimes see a pattern like this, using
-/// [`std::thread::spawn`][spawn]:
+/// [`std::thread::spawn`]:
 ///
 /// ```ignore
 /// let array = [1, 2, 3];
@@ -58,11 +58,11 @@
 /// error: aborting due to previous error
 /// ```
 ///
-/// Because [`std::thread::spawn`][spawn] doesn't know about this scope, it requires a
-/// `'static` lifetime. One way of giving it a proper lifetime is to use an [`Arc`][arc]:
+/// Because [`std::thread::spawn`] doesn't know about this scope, it requires a `'static` lifetime.
+/// One way of giving it a proper lifetime is to use an [`Arc`]:
 ///
-/// [arc]: http://doc.rust-lang.org/stable/std/sync/struct.Arc.html
-/// [spawn]: https://doc.rust-lang.org/stable/std/thread/fn.spawn.html
+/// [`Arc`]: https://doc.rust-lang.org/stable/std/sync/struct.Arc.html
+/// [`std::thread::spawn`]: https://doc.rust-lang.org/stable/std/thread/fn.spawn.html
 ///
 /// ```
 /// use std::sync::Arc;
@@ -129,7 +129,9 @@ impl<T, F: FnOnce() -> T> FnBox<T> for F {
     }
 }
 
-/// Like `std::thread::spawn`, but without lifetime bounds on the closure.
+/// Like [`std::thread::spawn`], but without lifetime bounds on the closure.
+///
+/// [`std::thread::spawn`]: https://doc.rust-lang.org/stable/std/thread/fn.spawn.html
 pub unsafe fn spawn_unchecked<'a, F, T>(f: F) -> thread::JoinHandle<T>
 where
     F: FnOnce() -> T,
@@ -140,7 +142,10 @@ where
     builder_spawn_unchecked(builder, f).unwrap()
 }
 
-/// Like `std::thread::Builder::spawn`, but without lifetime bounds on the closure.
+/// Like [`std::thread::Builder::spawn`], but without lifetime bounds on the closure.
+///
+/// [`std::thread::Builder::spawn`]:
+///     https://doc.rust-lang.org/nightly/std/thread/struct.Builder.html#method.spawn
 pub unsafe fn builder_spawn_unchecked<'a, F, T>(
     builder: thread::Builder,
     f: F,
@@ -273,13 +278,12 @@ impl<'env> Scope<'env> {
 
     /// Create a scoped thread.
     ///
-    /// `spawn` is similar to the [`spawn`][spawn] function in Rust's standard library. The
-    /// difference is that this thread is scoped, meaning that it's guaranteed to terminate before
-    /// the current stack frame goes away, allowing you to reference the parent stack frame
-    /// directly. This is ensured by having the parent thread join on the child thread before the
-    /// scope exits.
+    /// `spawn` is similar to the [`spawn`] function in Rust's standard library. The difference is
+    /// that this thread is scoped, meaning that it's guaranteed to terminate before the current
+    /// stack frame goes away, allowing you to reference the parent stack frame directly. This is
+    /// ensured by having the parent thread join on the child thread before the scope exits.
     ///
-    /// [spawn]: http://doc.rust-lang.org/std/thread/fn.spawn.html
+    /// [`spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
     pub fn spawn<'scope, F, T>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
     where
         F: FnOnce() -> T,
