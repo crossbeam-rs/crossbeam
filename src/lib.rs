@@ -33,7 +33,7 @@
 //! # Examples
 //!
 //! ```
-//! use crossbeam_deque::{self as deque, Steal};
+//! use crossbeam_deque::{self as deque, Pop, Steal};
 //! use std::thread;
 //!
 //! // Create a LIFO deque.
@@ -46,7 +46,7 @@
 //!
 //! // This is a LIFO deque, which means an element is popped from the back.
 //! // If it was a FIFO deque, `w.pop()` would return `Some(1)`.
-//! assert_eq!(w.pop(), Some(3));
+//! assert_eq!(w.pop(), Pop::Data(3));
 //!
 //! // Create a stealer thread.
 //! thread::spawn(move || {
@@ -93,7 +93,7 @@ const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
 /// # Examples
 ///
 /// ```
-/// use crossbeam_deque::{self as deque, Steal};
+/// use crossbeam_deque::{self as deque, Pop, Steal};
 ///
 /// let (w, s) = deque::fifo::<i32>();
 /// w.push(1);
@@ -101,8 +101,8 @@ const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
 /// w.push(3);
 ///
 /// assert_eq!(s.steal(), Steal::Data(1));
-/// assert_eq!(w.pop(), Some(2));
-/// assert_eq!(w.pop(), Some(3));
+/// assert_eq!(w.pop(), Pop::Data(2));
+/// assert_eq!(w.pop(), Pop::Data(3));
 /// ```
 pub fn fifo<T>() -> (Worker<T>, Stealer<T>) {
     let buffer = Buffer::alloc(MIN_CAP);
@@ -134,7 +134,7 @@ pub fn fifo<T>() -> (Worker<T>, Stealer<T>) {
 /// # Examples
 ///
 /// ```
-/// use crossbeam_deque::{self as deque, Steal};
+/// use crossbeam_deque::{self as deque, Pop, Steal};
 ///
 /// let (w, s) = deque::lifo::<i32>();
 /// w.push(1);
@@ -142,8 +142,8 @@ pub fn fifo<T>() -> (Worker<T>, Stealer<T>) {
 /// w.push(3);
 ///
 /// assert_eq!(s.steal(), Steal::Data(1));
-/// assert_eq!(w.pop(), Some(3));
-/// assert_eq!(w.pop(), Some(2));
+/// assert_eq!(w.pop(), Pop::Data(3));
+/// assert_eq!(w.pop(), Pop::Data(2));
 /// ```
 pub fn lifo<T>() -> (Worker<T>, Stealer<T>) {
     let buffer = Buffer::alloc(MIN_CAP);
@@ -225,6 +225,20 @@ impl<T> Clone for Buffer<T> {
 }
 
 impl<T> Copy for Buffer<T> {}
+
+/// Possible outcomes of a pop operation.
+#[must_use]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+pub enum Pop<T> {
+    /// The deque was empty at the time of popping.
+    Empty,
+
+    /// Some data has been successfully popped.
+    Data(T),
+
+    /// Lost the race for popping data to another concurrent operation. Try again.
+    Retry,
+}
 
 /// Possible outcomes of a steal operation.
 #[must_use]
@@ -451,17 +465,17 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque as deque;
+    /// use crossbeam_deque::{self as deque, Pop};
     ///
     /// let (w, _) = deque::fifo();
     /// w.push(1);
     /// w.push(2);
     ///
-    /// assert_eq!(w.pop(), Some(1));
-    /// assert_eq!(w.pop(), Some(2));
-    /// assert_eq!(w.pop(), None);
+    /// assert_eq!(w.pop(), Pop::Data(1));
+    /// assert_eq!(w.pop(), Pop::Data(2));
+    /// assert_eq!(w.pop(), Pop::Empty);
     /// ```
-    pub fn pop(&self) -> Option<T> {
+    pub fn pop(&self) -> Pop<T> {
         match self.flavor {
             Flavor::Fifo => self.pop_fifo(),
             Flavor::Lifo => self.pop_lifo(),
@@ -469,48 +483,46 @@ impl<T> Worker<T> {
     }
 
     /// Pops an element from the front (used in FIFO deques).
-    fn pop_fifo(&self) -> Option<T> {
+    fn pop_fifo(&self) -> Pop<T> {
         debug_assert_eq!(self.flavor, Flavor::Fifo);
 
-        // Load the back index.
+        // Load the back and front index.
         let b = self.inner.back.load(Ordering::Relaxed);
+        let f = self.inner.front.load(Ordering::Relaxed);
 
-        loop {
-            // Load the front index.
-            let f = self.inner.front.load(Ordering::Relaxed);
+        // Calculate the length of the deque.
+        let len = b.wrapping_sub(f);
 
-            // Calculate the length of the deque.
-            let len = b.wrapping_sub(f);
+        // Is the deque empty?
+        if len <= 0 {
+            return Pop::Empty;
+        }
 
-            // Is the deque empty?
-            if len <= 0 {
-                return None;
-            }
+        // Try incrementing the front index to pop the value.
+        if self.inner
+            .front
+            .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
+            unsafe {
+                // Read the popped value.
+                let buffer = self.cached_buffer.get();
+                let data = buffer.read(f);
 
-            // Try incrementing the front index to pop the value.
-            if self.inner
-                .front
-                .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
-                .is_ok()
-            {
-                unsafe {
-                    // Read the popped value.
-                    let buffer = self.cached_buffer.get();
-                    let data = buffer.read(f);
-
-                    // Shrink the buffer if `len - 1` is less than one fourth of the capacity.
-                    if buffer.cap > MIN_CAP && len <= buffer.cap as isize / 4 {
-                        self.resize(buffer.cap / 2);
-                    }
-
-                    return Some(data);
+                // Shrink the buffer if `len - 1` is less than one fourth of the capacity.
+                if buffer.cap > MIN_CAP && len <= buffer.cap as isize / 4 {
+                    self.resize(buffer.cap / 2);
                 }
+
+                return Pop::Data(data);
             }
         }
+
+        Pop::Retry
     }
 
     /// Pops an element from the back (used in LIFO deques).
-    fn pop_lifo(&self) -> Option<T> {
+    fn pop_lifo(&self) -> Pop<T> {
         debug_assert_eq!(self.flavor, Flavor::Lifo);
 
         // Load the back index.
@@ -519,7 +531,7 @@ impl<T> Worker<T> {
         // If the deque is empty, return early without incurring the cost of a SeqCst fence.
         let f = self.inner.front.load(Ordering::Relaxed);
         if b.wrapping_sub(f) <= 0 {
-            return None;
+            return Pop::Empty;
         }
 
         // Decrement the back index.
@@ -537,7 +549,7 @@ impl<T> Worker<T> {
         if len < 0 {
             // The deque is empty. Restore the back index to the original value.
             self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
-            None
+            Pop::Empty
         } else {
             // Read the value to be popped.
             let buffer = self.cached_buffer.get();
@@ -566,7 +578,10 @@ impl<T> Worker<T> {
                 }
             }
 
-            value
+            match value {
+                None => Pop::Empty,
+                Some(data) => Pop::Data(data),
+            }
         }
     }
 }

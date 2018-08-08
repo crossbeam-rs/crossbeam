@@ -7,24 +7,24 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 
-use deque::Steal;
+use deque::{Pop, Steal};
 use rand::Rng;
 
 #[test]
 fn smoke() {
     let (w, s) = deque::fifo::<i32>();
-    assert_eq!(w.pop(), None);
+    assert_eq!(w.pop(), Pop::Empty);
     assert_eq!(s.steal(), Steal::Empty);
 
     w.push(1);
-    assert_eq!(w.pop(), Some(1));
-    assert_eq!(w.pop(), None);
+    assert_eq!(w.pop(), Pop::Data(1));
+    assert_eq!(w.pop(), Pop::Empty);
     assert_eq!(s.steal(), Steal::Empty);
 
     w.push(2);
     assert_eq!(s.steal(), Steal::Data(2));
     assert_eq!(s.steal(), Steal::Empty);
-    assert_eq!(w.pop(), None);
+    assert_eq!(w.pop(), Pop::Empty);
 
     w.push(3);
     w.push(4);
@@ -38,12 +38,11 @@ fn smoke() {
     w.push(7);
     w.push(8);
     w.push(9);
-    assert_eq!(w.pop(), Some(6));
+    assert_eq!(w.pop(), Pop::Data(6));
     assert_eq!(s.steal(), Steal::Data(7));
-    assert_eq!(w.pop(), Some(8));
-    assert_eq!(w.pop(), Some(9));
-    assert_eq!(w.pop(), None);
-
+    assert_eq!(w.pop(), Pop::Data(8));
+    assert_eq!(w.pop(), Pop::Data(9));
+    assert_eq!(w.pop(), Pop::Empty);
 }
 
 #[test]
@@ -100,10 +99,17 @@ fn stampede() {
 
     let mut last = 0;
     while remaining.load(SeqCst) > 0 {
-        if let Some(x) = w.pop() {
-            assert!(last < *x);
-            last = *x;
-            remaining.fetch_sub(1, SeqCst);
+        loop {
+            match w.pop() {
+                Pop::Data(x) => {
+                    assert!(last < *x);
+                    last = *x;
+                    remaining.fetch_sub(1, SeqCst);
+                    break;
+                }
+                Pop::Empty => break,
+                Pop::Retry => {}
+            }
         }
     }
 
@@ -127,7 +133,7 @@ fn run_stress() {
             let hits = hits.clone();
 
             thread::spawn(move || {
-                let (w2, _) = deque::lifo();
+                let (w2, _) = deque::fifo();
 
                 while !done.load(SeqCst) {
                     if let Steal::Data(_) = s.steal() {
@@ -137,8 +143,14 @@ fn run_stress() {
                     if let Steal::Data(_) = s.steal_many(&w2) {
                         hits.fetch_add(1, SeqCst);
 
-                        while w2.pop().is_some() {
-                            hits.fetch_add(1, SeqCst);
+                        loop {
+                            match w2.pop() {
+                                Pop::Data(_) => {
+                                    hits.fetch_add(1, SeqCst);
+                                }
+                                Pop::Empty => break,
+                                Pop::Retry => {}
+                            }
                         }
                     }
                 }
@@ -150,8 +162,14 @@ fn run_stress() {
     let mut expected = 0;
     while expected < COUNT {
         if rng.gen_range(0, 3) == 0 {
-            if w.pop().is_some() {
-                hits.fetch_add(1, SeqCst);
+            loop {
+                match w.pop() {
+                    Pop::Data(_) => {
+                        hits.fetch_add(1, SeqCst);
+                    }
+                    Pop::Empty => break,
+                    Pop::Retry => {}
+                }
             }
         } else {
             w.push(expected);
@@ -160,8 +178,14 @@ fn run_stress() {
     }
 
     while hits.load(SeqCst) < COUNT {
-        if w.pop().is_some() {
-            hits.fetch_add(1, SeqCst);
+        loop {
+            match w.pop() {
+                Pop::Data(_) => {
+                    hits.fetch_add(1, SeqCst);
+                }
+                Pop::Empty => break,
+                Pop::Retry => {}
+            }
         }
     }
     done.store(true, SeqCst);
@@ -199,7 +223,7 @@ fn no_starvation() {
             let t = {
                 let hits = hits.clone();
                 thread::spawn(move || {
-                    let (w2, _) = deque::lifo();
+                    let (w2, _) = deque::fifo();
 
                     while !done.load(SeqCst) {
                         if let Steal::Data(_) = s.steal() {
@@ -209,8 +233,14 @@ fn no_starvation() {
                         if let Steal::Data(_) = s.steal_many(&w2) {
                             hits.fetch_add(1, SeqCst);
 
-                            while w2.pop().is_some() {
-                                hits.fetch_add(1, SeqCst);
+                            loop {
+                                match w2.pop() {
+                                    Pop::Data(_) => {
+                                        hits.fetch_add(1, SeqCst);
+                                    }
+                                    Pop::Empty => break,
+                                    Pop::Retry => {}
+                                }
                             }
                         }
                     }
@@ -226,8 +256,12 @@ fn no_starvation() {
     loop {
         for i in 0..rng.gen_range(0, COUNT) {
             if rng.gen_range(0, 3) == 0 && my_hits == 0 {
-                if w.pop().is_some() {
-                    my_hits += 1;
+                loop {
+                    match w.pop() {
+                        Pop::Data(_) => my_hits += 1,
+                        Pop::Empty => break,
+                        Pop::Retry => {}
+                    }
                 }
             } else {
                 w.push(i);
@@ -286,9 +320,15 @@ fn destructors() {
                         cnt += 1;
                         remaining.fetch_sub(1, SeqCst);
 
-                        while w2.pop().is_some() {
-                            cnt += 1;
-                            remaining.fetch_sub(1, SeqCst);
+                        loop {
+                            match w2.pop() {
+                                Pop::Data(_) => {
+                                    cnt += 1;
+                                    remaining.fetch_sub(1, SeqCst);
+                                }
+                                Pop::Empty => break,
+                                Pop::Retry => {}
+                            }
                         }
                     }
                 }
@@ -297,8 +337,15 @@ fn destructors() {
         .collect::<Vec<_>>();
 
     for _ in 0..STEPS {
-        if w.pop().is_some() {
-            remaining.fetch_sub(1, SeqCst);
+        loop {
+            match w.pop() {
+                Pop::Data(_) => {
+                    remaining.fetch_sub(1, SeqCst);
+                    break;
+                }
+                Pop::Empty => break,
+                Pop::Retry => {}
+            }
         }
     }
 
