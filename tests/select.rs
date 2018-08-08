@@ -7,7 +7,6 @@ extern crate crossbeam;
 extern crate crossbeam_channel as channel;
 
 use std::any::Any;
-use std::panic;
 use std::thread;
 use std::time::Duration;
 
@@ -533,31 +532,27 @@ fn conditional_recv() {
 }
 
 #[test]
+#[should_panic(expected = "send panicked")]
 fn panic_send() {
     fn get() -> channel::Sender<i32> {
-        panic!()
+        panic!("send panicked")
     }
 
-    let res = panic::catch_unwind(|| {
-        select! {
-            send(get(), panic!()) => {}
-        }
-    });
-    assert!(res.is_err());
+    select! {
+        send(get(), panic!()) => {}
+    }
 }
 
 #[test]
+#[should_panic(expected = "recv panicked")]
 fn panic_recv() {
     fn get() -> channel::Receiver<i32> {
-        panic!()
+        panic!("recv panicked")
     }
 
-    let res = panic::catch_unwind(|| {
-        select! {
-            recv(get()) => {}
-        }
-    });
-    assert!(res.is_err());
+    select! {
+        recv(get()) => {}
+    }
 }
 
 #[test]
