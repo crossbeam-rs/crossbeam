@@ -236,7 +236,7 @@ pub enum Pop<T> {
     /// Some data has been successfully popped.
     Data(T),
 
-    /// Lost the race for popping data to another concurrent operation. Try again.
+    /// Lost the race for popping data to another concurrent steal operation. Try again.
     Retry,
 }
 
@@ -250,7 +250,7 @@ pub enum Steal<T> {
     /// Some data has been successfully stolen.
     Data(T),
 
-    /// Lost the race for stealing data to another concurrent operation. Try again.
+    /// Lost the race for stealing data to another concurrent steal or pop operation. Try again.
     Retry,
 }
 
