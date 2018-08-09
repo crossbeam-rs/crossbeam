@@ -452,7 +452,10 @@ impl<T> Worker<T> {
         atomic::fence(Ordering::Release);
 
         // Increment the back index.
-        self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
+        //
+        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
+        // races because it doesn't understand fences.
+        self.inner.back.store(b.wrapping_add(1), Ordering::Release);
     }
 
     /// Pops an element from the deque.
@@ -759,8 +762,13 @@ impl<T> Stealer<T> {
                     return Steal::Retry;
                 }
 
+                atomic::fence(Ordering::Release);
+
                 // Success! Update the back index in the destination deque.
-                dest.inner.back.store(dest_b.wrapping_add(additional), Ordering::Relaxed);
+                //
+                // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
+                // data races because it doesn't understand fences.
+                dest.inner.back.store(dest_b.wrapping_add(additional), Ordering::Release);
 
                 // Return the first stolen value.
                 Steal::Data(value)
@@ -819,8 +827,13 @@ impl<T> Stealer<T> {
                     f = f.wrapping_add(1);
                     dest_b = dest_b.wrapping_add(1);
 
+                    atomic::fence(Ordering::Release);
+
                     // Update the destination back index.
-                    dest.inner.back.store(dest_b, Ordering::Relaxed);
+                    //
+                    // This ordering could be `Relaxed`, but then thread sanitizer would falsely
+                    // report data races because it doesn't understand fences.
+                    dest.inner.back.store(dest_b, Ordering::Release);
                 }
 
                 // Return the first stolen value.
