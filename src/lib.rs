@@ -489,6 +489,7 @@ impl<T> Worker<T> {
         }
 
         match self.flavor {
+            // Pop from the front of the deque.
             Flavor::Fifo => {
                 // Try incrementing the front index to pop the value.
                 if self.inner
@@ -512,6 +513,8 @@ impl<T> Worker<T> {
 
                 Pop::Retry
             }
+
+            // Pop from the back of the deque.
             Flavor::Lifo => {
                 // Decrement the back index.
                 let b = b.wrapping_sub(1);
@@ -730,6 +733,7 @@ impl<T> Stealer<T> {
         let value = unsafe { buffer.deref().read(f) };
 
         match self.flavor {
+            // Steal a batch of elements from the front at once.
             Flavor::Fifo => {
                 // Copy the additional elements from the source to the destination buffer.
                 for i in 0..additional {
@@ -761,6 +765,8 @@ impl<T> Stealer<T> {
                 // Return the first stolen value.
                 Steal::Data(value)
             }
+
+            // Steal a batch of elements from the front one by one.
             Flavor::Lifo => {
                 // Try incrementing the front index to steal the value.
                 if self.inner
