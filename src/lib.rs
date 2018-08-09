@@ -476,16 +476,6 @@ impl<T> Worker<T> {
     /// assert_eq!(w.pop(), Pop::Empty);
     /// ```
     pub fn pop(&self) -> Pop<T> {
-        match self.flavor {
-            Flavor::Fifo => self.pop_fifo(),
-            Flavor::Lifo => self.pop_lifo(),
-        }
-    }
-
-    /// Pops an element from the front (used in FIFO deques).
-    fn pop_fifo(&self) -> Pop<T> {
-        debug_assert_eq!(self.flavor, Flavor::Fifo);
-
         // Load the back and front index.
         let b = self.inner.back.load(Ordering::Relaxed);
         let f = self.inner.front.load(Ordering::Relaxed);
@@ -498,89 +488,85 @@ impl<T> Worker<T> {
             return Pop::Empty;
         }
 
-        // Try incrementing the front index to pop the value.
-        if self.inner
-            .front
-            .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
-            .is_ok()
-        {
-            unsafe {
-                // Read the popped value.
-                let buffer = self.cached_buffer.get();
-                let data = buffer.read(f);
-
-                // Shrink the buffer if `len - 1` is less than one fourth of the capacity.
-                if buffer.cap > MIN_CAP && len <= buffer.cap as isize / 4 {
-                    self.resize(buffer.cap / 2);
-                }
-
-                return Pop::Data(data);
-            }
-        }
-
-        Pop::Retry
-    }
-
-    /// Pops an element from the back (used in LIFO deques).
-    fn pop_lifo(&self) -> Pop<T> {
-        debug_assert_eq!(self.flavor, Flavor::Lifo);
-
-        // Load the back index.
-        let b = self.inner.back.load(Ordering::Relaxed);
-
-        // If the deque is empty, return early without incurring the cost of a SeqCst fence.
-        let f = self.inner.front.load(Ordering::Relaxed);
-        if b.wrapping_sub(f) <= 0 {
-            return Pop::Empty;
-        }
-
-        // Decrement the back index.
-        let b = b.wrapping_sub(1);
-        self.inner.back.store(b, Ordering::Relaxed);
-
-        atomic::fence(Ordering::SeqCst);
-
-        // Load the front index.
-        let f = self.inner.front.load(Ordering::Relaxed);
-
-        // Compute the length after the back index was decremented.
-        let len = b.wrapping_sub(f);
-
-        if len < 0 {
-            // The deque is empty. Restore the back index to the original value.
-            self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
-            Pop::Empty
-        } else {
-            // Read the value to be popped.
-            let buffer = self.cached_buffer.get();
-            let mut value = unsafe { Some(buffer.read(b)) };
-
-            // Are we popping the last element from the deque?
-            if len == 0 {
-                // Try incrementing the front index.
+        match self.flavor {
+            Flavor::Fifo => {
+                // Try incrementing the front index to pop the value.
                 if self.inner
                     .front
                     .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
-                    .is_err()
+                    .is_ok()
                 {
-                    // Failed. We didn't pop anything.
-                    mem::forget(value.take());
-                }
-
-                // Restore the back index to the original value.
-                self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
-            } else {
-                // Shrink the buffer if `len` is less than one fourth of the capacity.
-                if buffer.cap > MIN_CAP && len < buffer.cap as isize / 4 {
                     unsafe {
-                        self.resize(buffer.cap / 2);
+                        // Read the popped value.
+                        let buffer = self.cached_buffer.get();
+                        let data = buffer.read(f);
+
+                        // Shrink the buffer if `len - 1` is less than one fourth of the capacity.
+                        if buffer.cap > MIN_CAP && len <= buffer.cap as isize / 4 {
+                            self.resize(buffer.cap / 2);
+                        }
+
+                        return Pop::Data(data);
                     }
                 }
-            }
 
-            match value {
-                None => Pop::Empty,
-                Some(data) => Pop::Data(data),
+                Pop::Retry
+            }
+            Flavor::Lifo => {
+                // Decrement the back index.
+                let b = b.wrapping_sub(1);
+                self.inner.back.store(b, Ordering::Relaxed);
+
+                atomic::fence(Ordering::SeqCst);
+
+                // Load the front index.
+                let f = self.inner.front.load(Ordering::Relaxed);
+
+                // Compute the length after the back index was decremented.
+                let len = b.wrapping_sub(f);
+
+                if len < 0 {
+                    // The deque is empty. Restore the back index to the original value.
+                    self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
+                    Pop::Empty
+                } else {
+                    // Read the value to be popped.
+                    let buffer = self.cached_buffer.get();
+                    let mut value = unsafe { Some(buffer.read(b)) };
+
+                    // Are we popping the last element from the deque?
+                    if len == 0 {
+                        // Try incrementing the front index.
+                        if self.inner
+                            .front
+                            .compare_exchange(
+                                f,
+                                f.wrapping_add(1),
+                                Ordering::SeqCst,
+                                Ordering::Relaxed,
+                            )
+                            .is_err()
+                        {
+                            // Failed. We didn't pop anything.
+                            mem::forget(value.take());
+                        }
+
+                        // Restore the back index to the original value.
+                        self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
+                    } else {
+                        // Shrink the buffer if `len` is less than one fourth of the capacity.
+                        if buffer.cap > MIN_CAP && len < buffer.cap as isize / 4 {
+                            unsafe {
+                                self.resize(buffer.cap / 2);
+                            }
+                        }
+                    }
+
+                    match value {
+                        None => Pop::Empty,
+                        Some(data) => Pop::Data(data),
+                    }
+                }
             }
         }
     }
@@ -707,87 +693,6 @@ impl<T> Stealer<T> {
     /// assert_eq!(s2.steal(), Steal::Data(2));
     /// ```
     pub fn steal_many(&self, dest: &Worker<T>) -> Steal<T> {
-        match self.flavor {
-            Flavor::Fifo => self.steal_many_fifo(dest),
-            Flavor::Lifo => self.steal_many_lifo(dest),
-        }
-    }
-
-    /// Steals many elements (the FIFO variant).
-    fn steal_many_fifo(&self, dest: &Worker<T>) -> Steal<T> {
-        debug_assert_eq!(self.flavor, Flavor::Fifo);
-
-        // Load the front index.
-        let f = self.inner.front.load(Ordering::Acquire);
-
-        // A SeqCst fence is needed here.
-        //
-        // If the current thread is already pinned (reentrantly), we must manually issue the
-        // fence. Otherwise, the following pinning will issue the fence anyway, so we don't
-        // have to.
-        if epoch::is_pinned() {
-            atomic::fence(Ordering::SeqCst);
-        }
-
-        let guard = &epoch::pin();
-
-        // Load the back index.
-        let b = self.inner.back.load(Ordering::Acquire);
-
-        // Is the deque empty?
-        let len = b.wrapping_sub(f);
-        if len <= 0 {
-            return Steal::Empty;
-        }
-
-        // Reserve capacity for the stolen additional elements.
-        let additional = cmp::min((len as usize - 1) / 2, MAX_BATCH);
-        dest.reserve(additional);
-        let additional = additional as isize;
-
-        // Get the destination buffer and back index.
-        let dest_buffer = dest.cached_buffer.get();
-        let dest_b = dest.inner.back.load(Ordering::Relaxed);
-
-        // Load the source buffer and read the value at the front.
-        let buffer = self.inner.buffer.load(Ordering::Acquire, guard);
-        let value = unsafe { buffer.deref().read(f) };
-
-        // Copy the additional elements from the source to the destination buffer.
-        for i in 0..additional {
-            unsafe {
-                let value = buffer.deref().read(f.wrapping_add(i + 1));
-                dest_buffer.write(dest_b.wrapping_add(i), value);
-            }
-        }
-
-        // Try incrementing the front index to steal the batch.
-        if self.inner
-            .front
-            .compare_exchange(
-                f,
-                f.wrapping_add(additional + 1),
-                Ordering::SeqCst,
-                Ordering::Relaxed,
-            )
-            .is_err()
-        {
-            // We didn't steal this value, forget it.
-            mem::forget(value);
-            return Steal::Retry;
-        }
-
-        // Success! Update the back index in the destination deque.
-        dest.inner.back.store(dest_b.wrapping_add(additional), Ordering::Relaxed);
-
-        // Return the first stolen value.
-        Steal::Data(value)
-    }
-
-    /// Steals many elements (the LIFO variant).
-    fn steal_many_lifo(&self, dest: &Worker<T>) -> Steal<T> {
-        debug_assert_eq!(self.flavor, Flavor::Lifo);
-
         // Load the front index.
         let mut f = self.inner.front.load(Ordering::Acquire);
 
@@ -824,63 +729,98 @@ impl<T> Stealer<T> {
         let buffer = self.inner.buffer.load(Ordering::Acquire, guard);
         let value = unsafe { buffer.deref().read(f) };
 
-        // Try incrementing the front index to steal the value.
-        if self.inner
-            .front
-            .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
-            .is_err()
-        {
-            // We didn't steal this value, forget it.
-            mem::forget(value);
-            return Steal::Retry;
+        match self.flavor {
+            Flavor::Fifo => {
+                // Copy the additional elements from the source to the destination buffer.
+                for i in 0..additional {
+                    unsafe {
+                        let value = buffer.deref().read(f.wrapping_add(i + 1));
+                        dest_buffer.write(dest_b.wrapping_add(i), value);
+                    }
+                }
+
+                // Try incrementing the front index to steal the batch.
+                if self.inner
+                    .front
+                    .compare_exchange(
+                        f,
+                        f.wrapping_add(additional + 1),
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                    )
+                    .is_err()
+                {
+                    // We didn't steal this value, forget it.
+                    mem::forget(value);
+                    return Steal::Retry;
+                }
+
+                // Success! Update the back index in the destination deque.
+                dest.inner.back.store(dest_b.wrapping_add(additional), Ordering::Relaxed);
+
+                // Return the first stolen value.
+                Steal::Data(value)
+            }
+            Flavor::Lifo => {
+                // Try incrementing the front index to steal the value.
+                if self.inner
+                    .front
+                    .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
+                    .is_err()
+                {
+                    // We didn't steal this value, forget it.
+                    mem::forget(value);
+                    return Steal::Retry;
+                }
+
+                // Move the front index one step forward.
+                f = f.wrapping_add(1);
+
+                // Repeat the same procedure for the additional steals.
+                for _ in 0..additional {
+                    // We've already got the current front index. Now execute the fence to
+                    // synchronize with other threads.
+                    atomic::fence(Ordering::SeqCst);
+
+                    // Load the back index.
+                    let b = self.inner.back.load(Ordering::Acquire);
+
+                    // Is the deque empty?
+                    if b.wrapping_sub(f) <= 0 {
+                        break;
+                    }
+
+                    // Read the value at the front.
+                    let value = unsafe { buffer.deref().read(f) };
+
+                    // Try incrementing the front index to steal the value.
+                    if self.inner
+                        .front
+                        .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
+                        .is_err()
+                    {
+                        // We didn't steal this value, forget it and break from the loop.
+                        mem::forget(value);
+                        break;
+                    }
+
+                    // Write the stolen value into the destination buffer.
+                    unsafe {
+                        dest_buffer.write(dest_b, value);
+                    }
+
+                    // Move the source front index and the destination back index one step forward.
+                    f = f.wrapping_add(1);
+                    dest_b = dest_b.wrapping_add(1);
+
+                    // Update the destination back index.
+                    dest.inner.back.store(dest_b, Ordering::Relaxed);
+                }
+
+                // Return the first stolen value.
+                Steal::Data(value)
+            }
         }
-
-        // Move the front index one step forward.
-        f = f.wrapping_add(1);
-
-        // Repeat the same procedure for the additional steals.
-        for _ in 0..additional {
-            // We've already got the current front index. Now execute the fence to synchronize with
-            // other threads.
-            atomic::fence(Ordering::SeqCst);
-
-            // Load the back index.
-            let b = self.inner.back.load(Ordering::Acquire);
-
-            // Is the deque empty?
-            if b.wrapping_sub(f) <= 0 {
-                break;
-            }
-
-            // Read the value at the front.
-            let value = unsafe { buffer.deref().read(f) };
-
-            // Try incrementing the front index to steal the value.
-            if self.inner
-                .front
-                .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
-                .is_err()
-            {
-                // We didn't steal this value, forget it and break from the loop.
-                mem::forget(value);
-                break;
-            }
-
-            // Write the stolen value into the destination buffer.
-            unsafe {
-                dest_buffer.write(dest_b, value);
-            }
-
-            // Move the source front index and the destination back index one step forward.
-            f = f.wrapping_add(1);
-            dest_b = dest_b.wrapping_add(1);
-
-            // Update the destination back index.
-            dest.inner.back.store(dest_b, Ordering::Relaxed);
-        }
-
-        // Return the first stolen value.
-        Steal::Data(value)
     }
 }
 
