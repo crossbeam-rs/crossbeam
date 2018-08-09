@@ -3,7 +3,7 @@ use core::fmt;
 use core::mem;
 use core::ptr;
 use core::slice;
-use core::sync::atomic::{self, AtomicBool, Ordering};
+use core::sync::atomic::{self, AtomicBool, AtomicUsize, Ordering};
 
 /// A thread-safe mutable memory location.
 ///
@@ -252,7 +252,7 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const atomic::AtomicUsize) };
                     a.fetch_add(val as usize, Ordering::SeqCst) as $t
                 } else {
-                    let _lock = lock(self.value.get() as usize);
+                    let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
                     *value = value.wrapping_add(val);
@@ -280,7 +280,7 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const atomic::AtomicUsize) };
                     a.fetch_sub(val as usize, Ordering::SeqCst) as $t
                 } else {
-                    let _lock = lock(self.value.get() as usize);
+                    let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
                     *value = value.wrapping_sub(val);
@@ -306,7 +306,7 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const atomic::AtomicUsize) };
                     a.fetch_and(val as usize, Ordering::SeqCst) as $t
                 } else {
-                    let _lock = lock(self.value.get() as usize);
+                    let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
                     *value = *value & val;
@@ -332,7 +332,7 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const atomic::AtomicUsize) };
                     a.fetch_or(val as usize, Ordering::SeqCst) as $t
                 } else {
-                    let _lock = lock(self.value.get() as usize);
+                    let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
                     *value = *value | val;
@@ -358,7 +358,7 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const atomic::AtomicUsize) };
                     a.fetch_xor(val as usize, Ordering::SeqCst) as $t
                 } else {
-                    let _lock = lock(self.value.get() as usize);
+                    let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
                     *value = *value ^ val;
@@ -585,19 +585,97 @@ fn can_transmute<A, B>() -> bool {
     mem::size_of::<A>() == mem::size_of::<B>() && mem::align_of::<A>() >= mem::align_of::<B>()
 }
 
-/// Automatically releases a lock when dropped.
-struct LockGuard {
-    lock: &'static AtomicBool,
+/// A simple stamped lock.
+struct Lock {
+    /// The current state of the lock.
+    ///
+    /// All bits except the least significant one hold the current stamp. When locked, the state
+    /// equals 1 and doesn't contain a valid stamp.
+    state: AtomicUsize,
 }
 
-impl Drop for LockGuard {
+impl Lock {
+    /// If not locked, returns the current stamp.
+    ///
+    /// This method should be called before optimistic reads.
     #[inline]
-    fn drop(&mut self) {
-        self.lock.store(false, Ordering::Release);
+    fn optimistic_read(&self) -> Option<usize> {
+        let state = self.state.load(Ordering::Acquire);
+        if state == 1 {
+            None
+        } else {
+            Some(state)
+        }
+    }
+
+    /// Returns `true` if the current stamp is equal to `stamp`.
+    ///
+    /// This method should be called after optimistic reads to check whether they are valid. The
+    /// argument `stamp` should correspond to the one returned by method `optimistic_read`.
+    #[inline]
+    fn validate_read(&self, stamp: usize) -> bool {
+        atomic::fence(Ordering::Acquire);
+        self.state.load(Ordering::Relaxed) == stamp
+    }
+
+    /// Grabs the lock for writing.
+    #[inline]
+    fn write(&'static self) -> WriteGuard {
+        let mut step = 0usize;
+
+        loop {
+            let previous = self.state.swap(1, Ordering::Acquire);
+
+            if previous != 1 {
+                atomic::fence(Ordering::Release);
+
+                return WriteGuard {
+                    lock: self,
+                    state: previous,
+                };
+            }
+
+            if step < 10 {
+                atomic::spin_loop_hint();
+            } else {
+                #[cfg(not(feature = "use_std"))]
+                atomic::spin_loop_hint();
+
+                #[cfg(feature = "use_std")]
+                ::std::thread::yield_now();
+            }
+
+            step = step.wrapping_add(1);
+        }
     }
 }
 
-/// Acquires the lock for atomic data stored at the given address.
+/// A RAII guard that releases the lock and increments the stamp when dropped.
+struct WriteGuard {
+    /// The parent lock.
+    lock: &'static Lock,
+
+    /// The stamp before locking.
+    state: usize,
+}
+
+impl WriteGuard {
+    /// Releases the lock without incrementing the stamp.
+    #[inline]
+    fn abort(self) {
+        self.lock.state.store(self.state, Ordering::Release);
+    }
+}
+
+impl Drop for WriteGuard {
+    #[inline]
+    fn drop(&mut self) {
+        // Release the lock and increment the stamp.
+        self.lock.state.store(self.state.wrapping_add(2), Ordering::Release);
+    }
+}
+
+/// Returns a reference to the global lock associated with the `AtomicCell` at address `addr`.
 ///
 /// This function is used to protect atomic data which doesn't fit into any of the primitive atomic
 /// types in `std::sync::atomic`. Operations on such atomics must therefore use a global lock.
@@ -606,53 +684,22 @@ impl Drop for LockGuard {
 /// picked based on the given address. Having many locks reduces contention and improves
 /// scalability.
 #[inline]
-fn lock(addr: usize) -> LockGuard {
+#[must_use]
+fn lock(addr: usize) -> &'static Lock {
     // The number of locks is prime.
-    const LEN: usize = 499;
+    const LEN: usize = 97;
 
-    const A: AtomicBool = AtomicBool::new(false);
-    static LOCKS: [AtomicBool; LEN] = [
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
-        A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A, A,
+    const L: Lock = Lock { state: AtomicUsize::new(0) };
+    static LOCKS: [Lock; LEN] = [
+        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
+        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
+        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
+        L, L, L, L, L, L, L,
     ];
 
     // If the modulus is a constant number, the compiler will use crazy math to transform this into
     // a sequence of cheap arithmetic operations rather than using the slow modulo instruction.
-    let lock = &LOCKS[addr % LEN];
-
-    let mut step = 0usize;
-
-    while lock.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
-        if step < 5 {
-            // Just try again.
-        } else if step < 10 {
-            atomic::spin_loop_hint();
-        } else {
-            #[cfg(not(feature = "use_std"))]
-            atomic::spin_loop_hint();
-
-            #[cfg(feature = "use_std")]
-            ::std::thread::yield_now();
-        }
-        step = step.wrapping_add(1);
-    }
-
-    LockGuard { lock }
+    &LOCKS[addr % LEN]
 }
 
 /// An atomic `()`.
@@ -737,8 +784,29 @@ where
             mem::transmute_copy(&a.load(Ordering::SeqCst))
         },
         {
-            let _lock = lock(src as usize);
-            ptr::read(src)
+            let lock = lock(src as usize);
+
+            // Try doing an optimistic read first.
+            if let Some(stamp) = lock.optimistic_read() {
+                // We need a volatile read here because other threads might concurrently modify the
+                // value. In theory, data races are *always* UB, even if we use volatile reads and
+                // discard the data when a data race is detected. The proper solution would be to
+                // do atomic reads and atomic writes, but we can't atomically read and write all
+                // kinds of data since `AtomicU8` is not available on stable Rust yet.
+                let val = ptr::read_volatile(src);
+
+                if lock.validate_read(stamp) {
+                    return val;
+                }
+                mem::forget(val);
+            }
+
+            // Grab a regular write lock so that writers don't starve this load.
+            let guard = lock.write();
+            let val = ptr::read(src);
+            // The value hasn't been changed. Drop the guard without incrementing the stamp.
+            guard.abort();
+            val
         }
     }
 }
@@ -757,7 +825,7 @@ unsafe fn atomic_store<T>(dst: *mut T, val: T) {
             res
         },
         {
-            let _lock = lock(dst as usize);
+            let _guard = lock(dst as usize).write();
             ptr::write(dst, val)
         }
     }
@@ -777,7 +845,7 @@ unsafe fn atomic_swap<T>(dst: *mut T, val: T) -> T {
             res
         },
         {
-            let _lock = lock(dst as usize);
+            let _guard = lock(dst as usize).write();
             ptr::replace(dst, val)
         }
     }
@@ -810,11 +878,15 @@ where
             }
         },
         {
-            let _lock = lock(dst as usize);
+            let guard = lock(dst as usize).write();
+
             if byte_eq(&*dst, &current) {
                 Ok(ptr::replace(dst, new))
             } else {
-                Err(ptr::read(dst))
+                let val = ptr::read(dst);
+                // The value hasn't been changed. Drop the guard without incrementing the stamp.
+                guard.abort();
+                Err(val)
             }
         }
     }
