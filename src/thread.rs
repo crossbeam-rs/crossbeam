@@ -164,7 +164,7 @@ pub struct Scope<'env> {
     /// The list of the thread join jobs.
     joins: RefCell<Vec<Box<FnBox<thread::Result<()>> + 'env>>>,
     /// Thread panics invoked so far.
-    panics: RefCell<Vec<Box<Any + Send + 'static>>>,
+    panics: Vec<Box<Any + Send + 'static>>,
     // !Send + !Sync
     _marker: PhantomData<*const ()>,
 }
@@ -226,7 +226,7 @@ where
 {
     let mut scope = Scope {
         joins: RefCell::new(Vec::new()),
-        panics: RefCell::new(Vec::new()),
+        panics: Vec::new(),
         _marker: PhantomData,
     };
 
@@ -235,7 +235,7 @@ where
 
     // Joins all the threads.
     scope.join_all();
-    let panic = scope.panics.borrow_mut().pop();
+    let panic = scope.panics.pop();
 
     // If any of the threads panicked, returns the panic's payload.
     if let Some(payload) = panic {
@@ -271,7 +271,7 @@ impl<'env> Scope<'env> {
         for join in joins.drain(..) {
             let result = join.call_box();
             if let Err(payload) = result {
-                self.panics.borrow_mut().push(payload);
+                self.panics.push(payload);
             }
         }
     }
