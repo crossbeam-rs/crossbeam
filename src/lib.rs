@@ -37,6 +37,7 @@ extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 
 mod arc_cell;
+mod atomic_option;
 mod ms_queue;
 mod seg_queue;
 mod treiber_stack;
@@ -44,8 +45,13 @@ mod treiber_stack;
 
 /// Additional utilities for atomics.
 pub mod atomic {
-    pub use crossbeam_utils::AtomicConsume;
+    /// AtomicOption and related traits
+    pub mod atomic_option {
+        pub use atomic_option::*;
+    }
     pub use arc_cell::ArcCell;
+    pub use atomic_option::AtomicOption;
+    pub use crossbeam_utils::AtomicConsume;
 }
 
 /// Utilities for concurrent programming.
