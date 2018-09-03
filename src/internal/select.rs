@@ -301,13 +301,13 @@ where
     }
 }
 
-pub struct Select<'a> {
+pub struct Select<'a, R> {
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
-    callbacks: SmallVec<[Option<SmallBox<FnMut(&mut Token) + 'a>>; 4]>,
+    callbacks: SmallVec<[Option<SmallBox<FnMut(&mut Token) -> R + 'a>>; 4]>,
 }
 
-impl<'a> Select<'a> {
-    pub fn new() -> Select<'a> {
+impl<'a, R> Select<'a, R> {
+    pub fn new() -> Select<'a, R> {
         let mut callbacks = SmallVec::new();
         callbacks.push(None);
 
@@ -318,16 +318,17 @@ impl<'a> Select<'a> {
     }
 
     #[inline]
-    pub fn recv<T, C>(&mut self, r: &'a Receiver<T>, cb: C) -> &mut Select<'a>
+    pub fn recv<T, C>(&mut self, r: &'a Receiver<T>, cb: C) -> &mut Select<'a, R>
     where
-        C: FnOnce(Option<T>) + 'a,
+        C: FnOnce(Option<T>) -> R + 'a,
     {
         let i = self.callbacks.len();
 
         let mut cb = Some(cb);
         let cb = move |token: &mut Token| unsafe {
-            if let Some(cb) = cb.take() {
-                cb(channel::read(r, token));
+            match cb.take() {
+                None => unreachable!(),
+                Some(cb) => cb(channel::read(r, token)),
             }
         };
         self.callbacks.push(Some(SmallBox::new(cb)));
@@ -339,10 +340,10 @@ impl<'a> Select<'a> {
     }
 
     #[inline]
-    pub fn send<T, M, C>(&mut self, s: &'a Sender<T>, msg: M, cb: C) -> &mut Select<'a>
+    pub fn send<T, M, C>(&mut self, s: &'a Sender<T>, msg: M, cb: C) -> &mut Select<'a, R>
     where
         M: FnOnce() -> T + 'a,
-        C: FnOnce() + 'a,
+        C: FnOnce() -> R + 'a,
     {
         let i = self.callbacks.len();
 
@@ -355,12 +356,13 @@ impl<'a> Select<'a> {
             ::std::mem::forget(_guard);
             unsafe { channel::write(s, token, msg); }
 
-            cb();
+            cb()
         };
         let mut cb = Some(cb);
         let cb = move |token: &mut Token| {
-            if let Some(cb) = cb.take() {
-                cb(token);
+            match cb.take() {
+                None => unreachable!(),
+                Some(cb) => cb(token),
             }
         };
         self.callbacks.push(Some(SmallBox::new(cb)));
@@ -372,14 +374,15 @@ impl<'a> Select<'a> {
     }
 
     #[inline]
-    pub fn default<C>(&mut self, cb: C) -> &mut Select<'a>
+    pub fn default<C>(&mut self, cb: C) -> &mut Select<'a, R>
     where
-        C: FnOnce() + 'a,
+        C: FnOnce() -> R + 'a,
     {
         let mut cb = Some(cb);
         let cb = move |_token: &mut Token| {
-            if let Some(cb) = cb.take() {
-                cb();
+            match cb.take() {
+                None => unreachable!(),
+                Some(cb) => cb(),
             }
         };
         self.callbacks[0] = Some(SmallBox::new(cb));
@@ -387,11 +390,11 @@ impl<'a> Select<'a> {
         self
     }
 
-    pub fn wait(&mut self) {
+    pub fn wait(&mut self) -> R {
         // TODO: panic if called multiple times?
         let (mut token, index, _) = main_loop(&mut self.handles, self.callbacks[0].is_some());
         let mut cb = self.callbacks[index].take().unwrap();
-        (&mut *cb)(&mut token);
+        (&mut *cb)(&mut token)
     }
 }
 
