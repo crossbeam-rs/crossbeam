@@ -303,17 +303,19 @@ where
 
 pub struct Select<'a, R> {
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
-    callbacks: SmallVec<[Option<SmallBox<FnMut(&mut Token) -> R + 'a>>; 4]>,
+    callbacks: SmallVec<[SmallBox<FnMut(&mut Token) -> R + 'a>; 4]>,
+    has_default: bool,
 }
 
 impl<'a, R> Select<'a, R> {
     pub fn new() -> Select<'a, R> {
         let mut callbacks = SmallVec::new();
-        callbacks.push(None);
+        callbacks.push(SmallBox::new(|_: &mut Token| unreachable!()));
 
         Select {
             handles: SmallVec::new(),
             callbacks,
+            has_default: false,
         }
     }
 
@@ -331,7 +333,7 @@ impl<'a, R> Select<'a, R> {
                 Some(cb) => cb(channel::read(r, token)),
             }
         };
-        self.callbacks.push(Some(SmallBox::new(cb)));
+        self.callbacks.push(SmallBox::new(cb));
 
         let ptr = r as *const Receiver<_> as *const u8;
         self.handles.push((r, i, ptr));
@@ -365,7 +367,7 @@ impl<'a, R> Select<'a, R> {
                 Some(cb) => cb(token),
             }
         };
-        self.callbacks.push(Some(SmallBox::new(cb)));
+        self.callbacks.push(SmallBox::new(cb));
 
         let ptr = s as *const Sender<_> as *const u8;
         self.handles.push((s, i, ptr));
@@ -385,16 +387,15 @@ impl<'a, R> Select<'a, R> {
                 Some(cb) => cb(),
             }
         };
-        self.callbacks[0] = Some(SmallBox::new(cb));
+        self.callbacks[0] = SmallBox::new(cb);
 
         self
     }
 
     pub fn wait(&mut self) -> R {
         // TODO: panic if called multiple times?
-        let (mut token, index, _) = main_loop(&mut self.handles, self.callbacks[0].is_some());
-        let mut cb = self.callbacks[index].take().unwrap();
-        (&mut *cb)(&mut token)
+        let (mut token, index, _) = main_loop(&mut self.handles, self.has_default);
+        (&mut *self.callbacks[index])(&mut token)
     }
 }
 
