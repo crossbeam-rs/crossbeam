@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 
 use internal::channel::RecvNonblocking;
 use internal::context;
-use internal::select::{Operation, Select, SelectHandle, Token};
+use internal::select::{Operation, Selected, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
 
@@ -138,14 +138,14 @@ impl<T> Channel<T> {
         // Yield to give receivers a chance to pair up with this operation.
         thread::yield_now();
 
-        let sel = match context::current_try_select(Select::Aborted) {
-            Ok(()) => Select::Aborted,
+        let sel = match context::current_try_select(Selected::Aborted) {
+            Ok(()) => Selected::Aborted,
             Err(s) => s,
         };
 
         match sel {
-            Select::Waiting | Select::Closed => unreachable!(),
-            Select::Aborted => {
+            Selected::Waiting | Selected::Closed => unreachable!(),
+            Selected::Aborted => {
                 // Unregister and destroy the packet.
                 let operation = self.inner.lock().senders.unregister(oper).unwrap();
                 unsafe {
@@ -153,7 +153,7 @@ impl<T> Channel<T> {
                 }
                 false
             },
-            Select::Operation(_) => {
+            Selected::Operation(_) => {
                 // Success! A receiver has paired up with this operation.
                 token.zero = context::current_wait_packet();
                 true
@@ -196,14 +196,14 @@ impl<T> Channel<T> {
         // Yield to give senders a chance to pair up with this operation.
         thread::yield_now();
 
-        let sel = match context::current_try_select(Select::Aborted) {
-            Ok(()) => Select::Aborted,
+        let sel = match context::current_try_select(Selected::Aborted) {
+            Ok(()) => Selected::Aborted,
             Err(s) => s,
         };
 
         match sel {
-            Select::Waiting => unreachable!(),
-            Select::Aborted => {
+            Selected::Waiting => unreachable!(),
+            Selected::Aborted => {
                 // Unregister and destroy the packet.
                 let operation = self.inner.lock().receivers.unregister(oper).unwrap();
                 unsafe {
@@ -211,7 +211,7 @@ impl<T> Channel<T> {
                 }
                 false
             },
-            Select::Closed => {
+            Selected::Closed => {
                 // Unregister and destroy the packet.
                 let operation = self.inner.lock().receivers.unregister(oper).unwrap();
                 unsafe {
@@ -222,7 +222,7 @@ impl<T> Channel<T> {
                 token.zero = 0;
                 true
             },
-            Select::Operation(_) => {
+            Selected::Operation(_) => {
                 // Success! A sender has paired up with this operation.
                 token.zero = context::current_wait_packet();
                 true
@@ -285,8 +285,8 @@ impl<T> Channel<T> {
         let sel = context::current_wait_until(None);
 
         match sel {
-            Select::Waiting | Select::Aborted | Select::Closed => unreachable!(),
-            Select::Operation(_) => {
+            Selected::Waiting | Selected::Aborted | Selected::Closed => unreachable!(),
+            Selected::Operation(_) => {
                 // Wait until the message is read, then drop the packet.
                 packet.wait_ready();
             },
@@ -325,12 +325,12 @@ impl<T> Channel<T> {
         let sel = context::current_wait_until(None);
 
         match sel {
-            Select::Waiting | Select::Aborted => unreachable!(),
-            Select::Closed => {
+            Selected::Waiting | Selected::Aborted => unreachable!(),
+            Selected::Closed => {
                 self.inner.lock().receivers.unregister(oper).unwrap();
                 None
             },
-            Select::Operation(_) => {
+            Selected::Operation(_) => {
                 // Wait until the message is provided, then read it.
                 packet.wait_ready();
                 unsafe { Some(packet.msg.get().replace(None).unwrap()) }

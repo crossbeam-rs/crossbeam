@@ -282,6 +282,7 @@ extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate rand;
 extern crate parking_lot;
+extern crate smallbox;
 
 mod flavors;
 
@@ -291,3 +292,4 @@ pub mod internal;
 pub use internal::channel::{Receiver, Sender};
 pub use internal::channel::{bounded, unbounded};
 pub use internal::channel::{after, tick};
+pub use internal::select::Select;

@@ -4,7 +4,9 @@ use std::option;
 use std::ptr;
 use std::time::Instant;
 
-use internal::channel::{Receiver, Sender};
+use smallbox::SmallBox;
+
+use internal::channel::{self, Receiver, Sender};
 use internal::context;
 use internal::smallvec::SmallVec;
 use internal::utils;
@@ -42,7 +44,7 @@ impl Operation {
 
 /// Current state of a select or a blocking operation.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Select {
+pub enum Selected {
     /// Still waiting for an operation.
     Waiting,
 
@@ -56,26 +58,26 @@ pub enum Select {
     Operation(Operation),
 }
 
-impl From<usize> for Select {
+impl From<usize> for Selected {
     #[inline]
-    fn from(val: usize) -> Select {
+    fn from(val: usize) -> Selected {
         match val {
-            0 => Select::Waiting,
-            1 => Select::Aborted,
-            2 => Select::Closed,
-            oper => Select::Operation(Operation(oper)),
+            0 => Selected::Waiting,
+            1 => Selected::Aborted,
+            2 => Selected::Closed,
+            oper => Selected::Operation(Operation(oper)),
         }
     }
 }
 
-impl Into<usize> for Select {
+impl Into<usize> for Selected {
     #[inline]
     fn into(self) -> usize {
         match self {
-            Select::Waiting => 0,
-            Select::Aborted => 1,
-            Select::Closed => 2,
-            Select::Operation(Operation(val)) => val,
+            Selected::Waiting => 0,
+            Selected::Aborted => 1,
+            Selected::Closed => 2,
+            Selected::Operation(Operation(val)) => val,
         }
     }
 }
@@ -218,7 +220,7 @@ where
         }
 
         if has_default {
-            // Select the `default` case.
+            // Selected the `default` case.
             return (token, 0, ptr::null());
         }
 
@@ -232,7 +234,7 @@ where
 
         // Prepare for blocking.
         context::current_reset();
-        let mut sel = Select::Waiting;
+        let mut sel = Selected::Waiting;
         let mut registered_count = 0;
 
         // Register all operations.
@@ -242,8 +244,8 @@ where
             // If registration returns `false`, that means the operation has just become ready.
             if !handle.register(&mut token, Operation::hook(handle)) {
                 // Try aborting select.
-                sel = match context::current_try_select(Select::Aborted) {
-                    Ok(()) => Select::Aborted,
+                sel = match context::current_try_select(Selected::Aborted) {
+                    Ok(()) => Selected::Aborted,
                     Err(s) => s,
                 };
                 break;
@@ -251,12 +253,12 @@ where
 
             // If another thread has already selected one of the operations, stop registration.
             sel = context::current_selected();
-            if sel != Select::Waiting {
+            if sel != Selected::Waiting {
                 break;
             }
         }
 
-        if sel == Select::Waiting {
+        if sel == Selected::Waiting {
             // Check with each operation for how long we're allowed to block, and compute the
             // earliest deadline.
             let mut deadline: Option<Instant> = None;
@@ -276,13 +278,13 @@ where
         }
 
         match sel {
-            Select::Waiting => unreachable!(),
-            Select::Aborted => {},
-            Select::Closed | Select::Operation(_) => {
+            Selected::Waiting => unreachable!(),
+            Selected::Aborted => {},
+            Selected::Closed | Selected::Operation(_) => {
                 // Find the selected operation.
                 for (handle, i, ptr) in handles.iter_mut() {
                     // Is this the selected operation?
-                    if sel == Select::Operation(Operation::hook(handle)) {
+                    if sel == Selected::Operation(Operation::hook(handle)) {
                         // Try firing this operation.
                         if handle.accept(&mut token) {
                             return (token, *i, *ptr);
@@ -296,6 +298,100 @@ where
                 }
             },
         }
+    }
+}
+
+pub struct Select<'a> {
+    handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
+    callbacks: SmallVec<[Option<SmallBox<FnMut(&mut Token) + 'a>>; 4]>,
+}
+
+impl<'a> Select<'a> {
+    pub fn new() -> Select<'a> {
+        let mut callbacks = SmallVec::new();
+        callbacks.push(None);
+
+        Select {
+            handles: SmallVec::new(),
+            callbacks,
+        }
+    }
+
+    #[inline]
+    pub fn recv<T, C>(&mut self, r: &'a Receiver<T>, cb: C) -> &mut Select<'a>
+    where
+        C: FnOnce(Option<T>) + 'a,
+    {
+        let i = self.callbacks.len();
+
+        let mut cb = Some(cb);
+        let cb = move |token: &mut Token| unsafe {
+            if let Some(cb) = cb.take() {
+                cb(channel::read(r, token));
+            }
+        };
+        self.callbacks.push(Some(SmallBox::new(cb)));
+
+        let ptr = r as *const Receiver<_> as *const u8;
+        self.handles.push((r, i, ptr));
+
+        self
+    }
+
+    #[inline]
+    pub fn send<T, M, C>(&mut self, s: &'a Sender<T>, msg: M, cb: C) -> &mut Select<'a>
+    where
+        M: FnOnce() -> T + 'a,
+        C: FnOnce() + 'a,
+    {
+        let i = self.callbacks.len();
+
+        let cb = move |token: &mut Token| {
+            let _guard = utils::AbortGuard(
+                "a send case triggered a panic while evaluating its message"
+            );
+            let msg = msg();
+
+            ::std::mem::forget(_guard);
+            unsafe { channel::write(s, token, msg); }
+
+            cb();
+        };
+        let mut cb = Some(cb);
+        let cb = move |token: &mut Token| {
+            if let Some(cb) = cb.take() {
+                cb(token);
+            }
+        };
+        self.callbacks.push(Some(SmallBox::new(cb)));
+
+        let ptr = s as *const Sender<_> as *const u8;
+        self.handles.push((s, i, ptr));
+
+        self
+    }
+
+    #[inline]
+    pub fn default<C>(&mut self, cb: C) -> &mut Select<'a>
+    where
+        C: FnOnce() + 'a,
+    {
+        let mut cb = Some(cb);
+        let cb = move |_token: &mut Token| {
+            if let Some(cb) = cb.take() {
+                cb();
+            }
+        };
+        self.callbacks[0] = Some(SmallBox::new(cb));
+
+        self
+    }
+
+    pub fn wait(&mut self) {
+        // TODO: panic if called multiple times?
+        let (mut token, index, _) = main_loop(&mut self.handles, self.callbacks[0].is_some());
+        let mut cb = self.callbacks[index].take().unwrap();
+        (&mut *cb)(&mut token);
     }
 }
 
