@@ -282,7 +282,6 @@ extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate rand;
 extern crate parking_lot;
-extern crate smallbox;
 
 mod flavors;
 

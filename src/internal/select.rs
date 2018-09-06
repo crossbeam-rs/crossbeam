@@ -4,8 +4,6 @@ use std::option;
 use std::ptr;
 use std::time::Instant;
 
-use smallbox::SmallBox;
-
 use internal::channel::{self, Receiver, Sender};
 use internal::context;
 use internal::smallvec::SmallVec;
@@ -301,38 +299,58 @@ where
     }
 }
 
-pub struct Select<'a, R> {
-    handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
-    callbacks: SmallVec<[SmallBox<FnMut(&mut Token) -> R + 'a>; 4]>,
-    has_default: bool,
-}
-
+/// Turns a `FnOnce` callback into a boxed `FnMut` callback.
 #[inline]
 fn callback<'a, R>(
     cb: impl FnOnce(&mut Token) -> R + 'a,
-) -> SmallBox<FnMut(&mut Token) -> R + 'a> {
+) -> Box<FnMut(&mut Token) -> R + 'a> {
     let mut option_cb = Some(cb);
 
-    SmallBox::new(move |token: &mut Token| {
+    Box::new(move |token: &mut Token| {
         let cb = option_cb.take().unwrap();
         cb(token)
     })
 }
 
-impl<'a, R> Select<'a, R> {
-    pub fn new() -> Select<'a, R> {
-        let mut callbacks = SmallVec::new();
-        callbacks.push(SmallBox::new(|_: &mut Token| unreachable!()));
+/// Waits on a set of channel operations.
+///
+/// This struct with builder-like interface allows declaring a set of channel operations and
+/// blocking until any one of them becomes ready. Finally, one of the operations is executed. If
+/// multiple operations are ready at the same time, a random one is chosen. It is also possible to
+/// declare a default case that gets executed if none of the operations are initially ready.
+///
+/// TODO: example
+/// TODO: when to use this and when to use select!? Also mention in the docs for select!.
+pub struct Select<'a, R> {
+    /// A list of senders and receivers participating in selection.
+    handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
 
+    /// A list of callbacks, one per handle.
+    callbacks: SmallVec<[Box<FnMut(&mut Token) -> R + 'a>; 4]>,
+
+    /// Callback for the default case.
+    default: Option<Box<FnMut(&mut Token) -> R + 'a>>,
+}
+
+impl<'a, R> Select<'a, R> {
+    /// Creates a new `Select`.
+    ///
+    /// TODO: example
+    pub fn new() -> Select<'a, R> {
         Select {
             handles: SmallVec::new(),
-            callbacks,
-            has_default: false,
+            callbacks: SmallVec::new(),
+            default: None,
         }
     }
 
+    /// Adds a receive case.
+    ///
+    /// The callback will get invoked if the receive operation completes.
+    ///
+    /// TODO: example
     #[inline]
-    pub fn recv<T, C>(&mut self, r: &'a Receiver<T>, cb: C) -> &mut Select<'a, R>
+    pub fn recv<T, C>(mut self, r: &'a Receiver<T>, cb: C) -> Select<'a, R>
     where
         C: FnOnce(Option<T>) -> R + 'a,
     {
@@ -348,8 +366,17 @@ impl<'a, R> Select<'a, R> {
         self
     }
 
+    /// Adds a send case.
+    ///
+    /// If the send operation succeeds, the message will be generated and sent into the channel.
+    /// Finally, the callback gets invoked once the operation is completed.
+    ///
+    /// **Note**: If function `msg` panics, the process will be aborted because it's impossible to
+    /// recover from such panics. However, function `cb` is allowed to panic.
+    ///
+    /// TODO: example
     #[inline]
-    pub fn send<T, M, C>(&mut self, s: &'a Sender<T>, msg: M, cb: C) -> &mut Select<'a, R>
+    pub fn send<T, M, C>(mut self, s: &'a Sender<T>, msg: M, cb: C) -> Select<'a, R>
     where
         M: FnOnce() -> T + 'a,
         C: FnOnce() -> R + 'a,
@@ -373,20 +400,36 @@ impl<'a, R> Select<'a, R> {
         self
     }
 
+    /// Adds a default case.
+    ///
+    /// This case gets executed if none of the channel operations are ready.
+    ///
+    /// If called more than once, this method keeps only the last callback for the default case.
+    ///
+    /// TODO: example
     #[inline]
-    pub fn default<C>(&mut self, cb: C) -> &mut Select<'a, R>
+    pub fn default<C>(mut self, cb: C) -> Select<'a, R>
     where
         C: FnOnce() -> R + 'a,
     {
-        self.callbacks[0] = callback(move |_| cb());
-        self.has_default = true;
+        self.default = Some(callback(move |_| cb()));
         self
     }
 
-    pub fn wait(&mut self) -> R {
-        // TODO: panic if called multiple times?
-        let (mut token, index, _) = main_loop(&mut self.handles, self.has_default);
-        (&mut *self.callbacks[index])(&mut token)
+    /// Starts selection and waits until it completes.
+    ///
+    /// The result of the executed callback function will be returned.
+    ///
+    /// TODO: example
+    pub fn wait(mut self) -> R {
+        let (mut token, index, _) = main_loop(&mut self.handles, self.default.is_some());
+
+        let cb = if index == 0 {
+            self.default.as_mut().unwrap()
+        } else {
+            &mut self.callbacks[index - 1]
+        };
+        cb(&mut token)
     }
 }
 
