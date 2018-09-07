@@ -10,6 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use internal::channel::RecvNonblocking;
+use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Token};
 use internal::utils;
 
@@ -223,7 +224,7 @@ impl SelectHandle for Channel {
     }
 
     #[inline]
-    fn register(&self, _token: &mut Token, _oper: Operation) -> bool {
+    fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Arc<Context>) -> bool {
         true
     }
 
@@ -231,7 +232,7 @@ impl SelectHandle for Channel {
     fn unregister(&self, _oper: Operation) {}
 
     #[inline]
-    fn accept(&self, token: &mut Token) -> bool {
+    fn accept(&self, token: &mut Token, _cx: &Arc<Context>) -> bool {
         self.try(token)
     }
 

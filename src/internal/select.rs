@@ -2,10 +2,11 @@
 
 use std::option;
 use std::ptr;
+use std::sync::Arc;
 use std::time::Instant;
 
 use internal::channel::{Receiver, Sender};
-use internal::context;
+use internal::context::{self, Context};
 use internal::smallvec::SmallVec;
 use internal::utils;
 
@@ -97,13 +98,13 @@ pub trait SelectHandle {
     fn deadline(&self) -> Option<Instant>;
 
     /// Registers the operation.
-    fn register(&self, token: &mut Token, oper: Operation) -> bool;
+    fn register(&self, token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool;
 
     /// Unregisters the operation.
     fn unregister(&self, oper: Operation);
 
     /// Attempts to execute the selected operation.
-    fn accept(&self, token: &mut Token) -> bool;
+    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool;
 
     /// Returns the current state of the opposite side of the channel.
     ///
@@ -128,16 +129,16 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
         (**self).deadline()
     }
 
-    fn register(&self, token: &mut Token, oper: Operation) -> bool {
-        (**self).register(token, oper)
+    fn register(&self, token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
+        (**self).register(token, oper, cx)
     }
 
     fn unregister(&self, oper: Operation) {
         (**self).unregister(oper);
     }
 
-    fn accept(&self, token: &mut Token) -> bool {
-        (**self).accept(token)
+    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool {
+        (**self).accept(token, cx)
     }
 
     fn state(&self) -> usize {
@@ -231,70 +232,79 @@ where
         }
 
         // Prepare for blocking.
-        context::current_reset();
-        let mut sel = Select::Waiting;
-        let mut registered_count = 0;
+        let res = context::with_current(|cx| {
+            cx.reset();
+            let mut sel = Select::Waiting;
+            let mut registered_count = 0;
 
-        // Register all operations.
-        for (handle, _, _) in handles.iter_mut() {
-            registered_count += 1;
+            // Register all operations.
+            for (handle, _, _) in handles.iter_mut() {
+                registered_count += 1;
 
-            // If registration returns `false`, that means the operation has just become ready.
-            if !handle.register(&mut token, Operation::hook(handle)) {
-                // Try aborting select.
-                sel = match context::current_try_select(Select::Aborted) {
-                    Ok(()) => Select::Aborted,
-                    Err(s) => s,
-                };
-                break;
-            }
+                // If registration returns `false`, that means the operation has just become ready.
+                if !handle.register(&mut token, Operation::hook(handle), cx) {
+                    // Try aborting select.
+                    sel = match cx.try_select(Select::Aborted) {
+                        Ok(()) => Select::Aborted,
+                        Err(s) => s,
+                    };
+                    break;
+                }
 
-            // If another thread has already selected one of the operations, stop registration.
-            sel = context::current_selected();
-            if sel != Select::Waiting {
-                break;
-            }
-        }
-
-        if sel == Select::Waiting {
-            // Check with each operation for how long we're allowed to block, and compute the
-            // earliest deadline.
-            let mut deadline: Option<Instant> = None;
-            for &(handle, _, _) in handles.iter() {
-                if let Some(x) = handle.deadline() {
-                    deadline = deadline.map(|y| x.min(y)).or(Some(x));
+                // If another thread has already selected one of the operations, stop registration.
+                sel = cx.selected();
+                if sel != Select::Waiting {
+                    break;
                 }
             }
 
-            // Block the current thread.
-            sel = context::current_wait_until(deadline);
-        }
-
-        // Unregister all registered operations.
-        for (handle, _, _) in handles.iter_mut().take(registered_count) {
-            handle.unregister(Operation::hook(handle));
-        }
-
-        match sel {
-            Select::Waiting => unreachable!(),
-            Select::Aborted => {},
-            Select::Closed | Select::Operation(_) => {
-                // Find the selected operation.
-                for (handle, i, ptr) in handles.iter_mut() {
-                    // Is this the selected operation?
-                    if sel == Select::Operation(Operation::hook(handle)) {
-                        // Try firing this operation.
-                        if handle.accept(&mut token) {
-                            return (token, *i, *ptr);
-                        }
+            if sel == Select::Waiting {
+                // Check with each operation for how long we're allowed to block, and compute the
+                // earliest deadline.
+                let mut deadline: Option<Instant> = None;
+                for &(handle, _, _) in handles.iter() {
+                    if let Some(x) = handle.deadline() {
+                        deadline = deadline.map(|y| x.min(y)).or(Some(x));
                     }
                 }
 
-                // Before the next round, reshuffle the operations for fairness.
-                if handles.len() >= 2 {
-                    utils::shuffle(handles);
-                }
-            },
+                // Block the current thread.
+                sel = cx.wait_until(deadline);
+            }
+
+            // Unregister all registered operations.
+            for (handle, _, _) in handles.iter_mut().take(registered_count) {
+                handle.unregister(Operation::hook(handle));
+            }
+
+            match sel {
+                Select::Waiting => unreachable!(),
+                Select::Aborted => {},
+                Select::Closed | Select::Operation(_) => {
+                    // Find the selected operation.
+                    for (handle, i, ptr) in handles.iter_mut() {
+                        // Is this the selected operation?
+                        if sel == Select::Operation(Operation::hook(handle)) {
+                            // Try firing this operation.
+                            if handle.accept(&mut token, cx) {
+                                return Some((*i, *ptr));
+                            }
+                        }
+                    }
+
+                    // Before the next round, reshuffle the operations for fairness.
+                    if handles.len() >= 2 {
+                        utils::shuffle(handles);
+                    }
+                },
+            }
+
+            None
+        });
+
+        // Return if an operation was fired.
+        if let Some((i, ptr)) = res {
+            return (token, i, ptr);
         }
     }
 }

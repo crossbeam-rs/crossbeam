@@ -26,6 +26,25 @@ pub struct Context {
 }
 
 impl Context {
+    /// Creates a new `Arc<Context>`.
+    pub fn new() -> Arc<Context> {
+        Arc::new(Context {
+            select: AtomicUsize::new(Select::Waiting.into()),
+            thread: thread::current(),
+            thread_id: thread::current().id(),
+            packet: AtomicUsize::new(0),
+        })
+    }
+
+    /// Resets `select` and `packet`.
+    ///
+    /// This method is used for initialization before the start of select.
+    #[inline]
+    pub fn reset(&self) {
+        self.select.store(Select::Waiting.into(), Ordering::Release);
+        self.packet.store(0, Ordering::Release);
+    }
+
     /// Attempts to select an operation.
     ///
     /// On failure, the previously selected operation is returned.
@@ -58,6 +77,63 @@ impl Context {
         }
     }
 
+    /// Waits until a packet is provided and returns it.
+    #[inline]
+    pub fn wait_packet(&self) -> usize {
+        let backoff = &mut Backoff::new();
+        loop {
+            let packet = self.packet.load(Ordering::Acquire);
+            if packet != 0 {
+                return packet;
+            }
+            backoff.step();
+        }
+    }
+
+    /// Waits until an operation is selected and returns it.
+    ///
+    /// If the deadline is reached, `Select::Aborted` will be selected.
+    #[inline]
+    pub fn wait_until(&self, deadline: Option<Instant>) -> Select {
+        // Spin for a short time, waiting until an operation is selected.
+        let backoff = &mut Backoff::new();
+        loop {
+            let sel = Select::from(self.select.load(Ordering::Acquire));
+            if sel != Select::Waiting {
+                return sel;
+            }
+
+            if !backoff.step() {
+                break;
+            }
+        }
+
+        loop {
+            // Check whether an operation has been selected.
+            let sel = Select::from(self.select.load(Ordering::Acquire));
+            if sel != Select::Waiting {
+                return sel;
+            }
+
+            // If there's a deadline, park the current thread until the deadline is reached.
+            if let Some(end) = deadline {
+                let now = Instant::now();
+
+                if now < end {
+                    thread::park_timeout(end - now);
+                } else {
+                    // The deadline has been reached. Try aborting select.
+                    return match self.try_select(Select::Aborted) {
+                        Ok(()) => Select::Aborted,
+                        Err(s) => s,
+                    };
+                }
+            } else {
+                thread::park();
+            }
+        }
+    }
+
     /// Unparks the thread this context belongs to.
     #[inline]
     pub fn unpark(&self) {
@@ -73,102 +149,18 @@ impl Context {
 
 thread_local! {
     /// The thread-local context.
-    static CONTEXT: Arc<Context> = Arc::new(Context {
-        select: AtomicUsize::new(Select::Waiting.into()),
-        thread: thread::current(),
-        thread_id: thread::current().id(),
-        packet: AtomicUsize::new(0),
-    });
+    static CONTEXT: Arc<Context> = Context::new();
 }
 
-/// Returns the context associated with the current thread.
-#[inline]
-pub fn current() -> Arc<Context> {
-    CONTEXT.with(|cx| cx.clone())
-}
-
-/// Attempts to select an operation for the current thread.
-#[inline]
-pub fn current_try_select(select: Select) -> Result<(), Select> {
-    CONTEXT.with(|cx| cx.try_select(select))
-}
-
-/// Returns the selected operation for the current thread.
-#[inline]
-pub fn current_selected() -> Select {
-    CONTEXT.with(|cx| cx.selected())
-}
-
-/// Resets `select` and `packet`.
+/// Acquires a reference to the context associated with the current thread.
 ///
-/// This method is used for initialization before the start of select.
+/// During TLS teardown this reference might change.
 #[inline]
-pub fn current_reset() {
-    CONTEXT.with(|cx| {
-        cx.select.store(Select::Waiting.into(), Ordering::Release);
-        cx.packet.store(0, Ordering::Release);
-    })
-}
-
-/// Waits until an operation is selected for the current thread and returns it.
-///
-/// If the deadline is reached, `Select::Aborted` will be selected.
-#[inline]
-pub fn current_wait_until(deadline: Option<Instant>) -> Select {
-    CONTEXT.with(|cx| {
-        // Spin for a short time, waiting until an operation is selected.
-        let backoff = &mut Backoff::new();
-        loop {
-            let sel = Select::from(cx.select.load(Ordering::Acquire));
-            if sel != Select::Waiting {
-                return sel;
-            }
-
-            if !backoff.step() {
-                break;
-            }
-        }
-
-        loop {
-            // Check whether an operation has been selected.
-            let sel = Select::from(cx.select.load(Ordering::Acquire));
-            if sel != Select::Waiting {
-                return sel;
-            }
-
-            // If there's a deadline, park the current thread until the deadline is reached.
-            if let Some(end) = deadline {
-                let now = Instant::now();
-
-                if now < end {
-                    thread::park_timeout(end - now);
-                } else {
-                    // The deadline has been reached. Try aborting select.
-                    return match cx.try_select(Select::Aborted) {
-                        Ok(()) => Select::Aborted,
-                        Err(s) => s,
-                    };
-                }
-            } else {
-                thread::park();
-            }
-        }
-    })
-}
-
-/// Waits until a packet is provided to the current thread and returns it.
-#[inline]
-pub fn current_wait_packet() -> usize {
-    CONTEXT.with(|cx| {
-        let backoff = &mut Backoff::new();
-        loop {
-            let packet = cx.packet.load(Ordering::Acquire);
-            if packet != 0 {
-                return packet;
-            }
-            backoff.step();
-        }
-    })
+pub fn with_current<F, R>(mut f: F) -> R
+where
+    F: FnMut(&Arc<Context>) -> R,
+{
+    CONTEXT.try_with(|cx| f(cx)).unwrap_or_else(|_| f(&Context::new()))
 }
 
 /// Returns the id of the current thread.

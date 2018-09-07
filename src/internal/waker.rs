@@ -46,15 +46,15 @@ impl Waker {
 
     /// Registers the current thread with an operation.
     #[inline]
-    pub fn register(&mut self, oper: Operation) {
-        self.register_with_packet(oper, 0);
+    pub fn register(&mut self, oper: Operation, cx: &Arc<Context>) {
+        self.register_with_packet(oper, 0, cx);
     }
 
     /// Registers the current thread with an operation and a packet.
     #[inline]
-    pub fn register_with_packet(&mut self, oper: Operation, packet: usize) {
+    pub fn register_with_packet(&mut self, oper: Operation, packet: usize, cx: &Arc<Context>) {
         self.entries.push_back(Entry {
-            context: context::current(),
+            context: cx.clone(),
             oper,
             packet,
         });
@@ -194,9 +194,9 @@ impl SyncWaker {
 
     /// Registers the current thread with an operation.
     #[inline]
-    pub fn register(&self, oper: Operation) {
+    pub fn register(&self, oper: Operation, cx: &Arc<Context>) {
         let mut inner = self.inner.lock();
-        inner.register(oper);
+        inner.register(oper, cx);
         self.len.store(inner.len(), Ordering::SeqCst);
     }
 

@@ -12,7 +12,7 @@ keywords = ["channel", "mpmc", "select", "golang", "message"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
 [dependencies]
-crossbeam-epoch = "0.5.0"
+crossbeam-epoch = "0.6.0"
 crossbeam-utils = "0.5.0"
 parking_lot = "0.6.3"
 rand = "0.5.3"
