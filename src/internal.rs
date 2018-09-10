@@ -47,7 +47,7 @@ use crossbeam_utils::CachePadded;
 use arrayvec::ArrayVec;
 
 use atomic::Owned;
-use collector::{Handle, Collector};
+use collector::{LocalHandle, Collector};
 use epoch::{AtomicEpoch, Epoch};
 use guard::{unprotected, Guard};
 use deferred::Deferred;
@@ -276,7 +276,7 @@ impl Local {
     const PINNINGS_BETWEEN_COLLECT: usize = 128;
 
     /// Registers a new `Local` in the provided `Global`.
-    pub fn register(collector: &Collector) -> Handle {
+    pub fn register(collector: &Collector) -> LocalHandle {
         unsafe {
             // Since we dereference no pointers in this block, it is safe to use `unprotected`.
 
@@ -290,7 +290,7 @@ impl Local {
                 pin_count: Cell::new(Wrapping(0)),
             }).into_shared(&unprotected());
             collector.global.locals.insert(local, &unprotected());
-            Handle { local: local.as_raw() }
+            LocalHandle { local: local.as_raw() }
         }
     }
 

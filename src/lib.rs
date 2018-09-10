@@ -95,5 +95,5 @@ mod sync;
 pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared, Pointer};
 pub use self::guard::{unprotected, Guard};
 #[cfg(feature = "use_std")]
-pub use self::default::{default_collector, default_handle, is_pinned, pin};
-pub use self::collector::{Collector, Handle};
+pub use self::default::{default_collector, is_pinned, pin};
+pub use self::collector::{Collector, LocalHandle};

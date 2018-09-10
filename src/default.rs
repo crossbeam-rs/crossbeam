@@ -4,7 +4,7 @@
 //! is registered in the default collector.  If initialized, the thread's participant will get
 //! destructed on thread exit, which in turn unregisters the thread.
 
-use collector::{Collector, Handle};
+use collector::{Collector, LocalHandle};
 use guard::Guard;
 
 lazy_static! {
@@ -14,7 +14,7 @@ lazy_static! {
 
 thread_local! {
     /// The per-thread participant for the default garbage collector.
-    static HANDLE: Handle = COLLECTOR.register();
+    static HANDLE: LocalHandle = COLLECTOR.register();
 }
 
 /// Pins the current thread.
@@ -31,12 +31,6 @@ pub fn is_pinned() -> bool {
     // FIXME(jeehoonkang): thread-local storage may be destructed at the time `pin()` is called. For
     // that case, we should use `HANDLE.try_with()` instead.
     HANDLE.with(|handle| handle.is_pinned())
-}
-
-/// Returns the default handle associated with the current thread.
-#[inline]
-pub fn default_handle() -> Handle {
-    HANDLE.with(|handle| handle.clone())
 }
 
 /// Returns the default handle associated with the current thread.

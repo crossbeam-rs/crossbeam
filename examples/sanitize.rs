@@ -7,10 +7,10 @@ use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
 use std::time::{Duration, Instant};
 use std::thread;
 
-use epoch::{Atomic, Collector, Handle, Owned, Shared};
+use epoch::{Atomic, Collector, LocalHandle, Owned, Shared};
 use rand::Rng;
 
-fn worker(a: Arc<Atomic<AtomicUsize>>, handle: Handle) -> usize {
+fn worker(a: Arc<Atomic<AtomicUsize>>, handle: LocalHandle) -> usize {
     let mut rng = rand::thread_rng();
     let mut sum = 0;
 
