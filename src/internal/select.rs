@@ -1,5 +1,7 @@
 //! Interface to the select mechanism.
 
+use std::marker::PhantomData;
+use std::mem;
 use std::option;
 use std::ptr;
 use std::time::Instant;
@@ -299,19 +301,6 @@ where
     }
 }
 
-/// Turns a `FnOnce` callback into a boxed `FnMut` callback.
-#[inline]
-fn callback<'a, R>(
-    cb: impl FnOnce(&mut Token) -> R + 'a,
-) -> Box<FnMut(&mut Token) -> R + 'a> {
-    let mut option_cb = Some(cb);
-
-    Box::new(move |token: &mut Token| {
-        let cb = option_cb.take().unwrap();
-        cb(token)
-    })
-}
-
 /// Waits on a set of channel operations.
 ///
 /// This struct with builder-like interface allows declaring a set of channel operations and
@@ -326,10 +315,10 @@ pub struct Select<'a, R> {
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
 
     /// A list of callbacks, one per handle.
-    callbacks: SmallVec<[Box<FnMut(&mut Token) -> R + 'a>; 4]>,
+    callbacks: SmallVec<[Callback<'a, R>; 4]>,
 
     /// Callback for the default case.
-    default: Option<Box<FnMut(&mut Token) -> R + 'a>>,
+    default: Option<Callback<'a, R>>,
 }
 
 impl<'a, R> Select<'a, R> {
@@ -358,7 +347,7 @@ impl<'a, R> Select<'a, R> {
         let ptr = r as *const Receiver<_> as *const u8;
         self.handles.push((r, i, ptr));
 
-        self.callbacks.push(callback(move |token| {
+        self.callbacks.push(Callback::new(move |token| {
             let msg = unsafe { channel::read(r, token) };
             cb(msg)
         }));
@@ -385,7 +374,7 @@ impl<'a, R> Select<'a, R> {
         let ptr = s as *const Sender<_> as *const u8;
         self.handles.push((s, i, ptr));
 
-        self.callbacks.push(callback(move |token| {
+        self.callbacks.push(Callback::new(move |token| {
             let _guard = utils::AbortGuard(
                 "a send case triggered a panic while evaluating its message"
             );
@@ -412,7 +401,7 @@ impl<'a, R> Select<'a, R> {
     where
         C: FnOnce() -> R + 'a,
     {
-        self.default = Some(callback(move |_| cb()));
+        self.default = Some(Callback::new(move |_| cb()));
         self
     }
 
@@ -429,7 +418,96 @@ impl<'a, R> Select<'a, R> {
         } else {
             &mut self.callbacks[index - 1]
         };
-        cb(&mut token)
+        cb.call(&mut token)
+    }
+}
+
+/// Some space to keep a `FnOnce()` object on the stack.
+type Space = [usize; 2];
+
+/// A `FnOnce(&mut Token) -> R + 'a` that is stored inline if small, or otherwise boxed on the heap.
+pub struct Callback<'a, R> {
+    call: unsafe fn(*mut u8, token: Option<&mut Token>) -> Option<R>,
+    space: Space,
+    _marker: PhantomData<(*mut (), &'a ())>, // !Send + !Sync
+}
+
+impl<'a, R> Callback<'a, R> {
+    /// Constructs a new `Callback<'a, R>` from a `FnOnce(&mut Token) -> R + 'a`.
+    pub fn new<F>(f: F) -> Self
+    where
+        F: FnOnce(&mut Token) -> R + 'a,
+    {
+        let size = mem::size_of::<F>();
+        let align = mem::align_of::<F>();
+
+        unsafe {
+            if size <= mem::size_of::<Space>() && align <= mem::align_of::<Space>() {
+                let mut space: Space = mem::uninitialized();
+                ptr::write(&mut space as *mut Space as *mut F, f);
+
+                unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
+                where
+                    F: FnOnce(&mut Token) -> R + 'a,
+                {
+                    let f: F = ptr::read(raw as *mut F);
+                    token.map(f)
+                }
+
+                Callback {
+                    call: call::<F, R>,
+                    space,
+                    _marker: PhantomData,
+                }
+            } else {
+                let b: Box<F> = Box::new(f);
+                let mut space: Space = mem::uninitialized();
+                ptr::write(&mut space as *mut Space as *mut Box<F>, b);
+
+                unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
+                where
+                    F: FnOnce(&mut Token) -> R + 'a,
+                {
+                    let b: Box<F> = ptr::read(raw as *mut Box<F>);
+                    token.map(*b)
+                }
+
+                Callback {
+                    call: call::<F, R>,
+                    space,
+                    _marker: PhantomData,
+                }
+            }
+        }
+    }
+
+    /// Invokes the callback.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called more than once.
+    #[inline]
+    pub fn call(&mut self, token: &mut Token) -> R {
+        self.call_option(Some(token)).unwrap()
+    }
+
+    #[inline]
+    fn call_option(&mut self, token: Option<&mut Token>) -> Option<R> {
+        unsafe fn dummy<R>(_raw: *mut u8, _token: Option<&mut Token>) -> Option<R> {
+            None
+        }
+
+        let call = mem::replace(&mut self.call, dummy::<R>);
+        let res = unsafe {
+            call(&mut self.space as *mut Space as *mut u8, token)
+        };
+        res
+    }
+}
+
+impl<'a, R> Drop for Callback<'a, R> {
+    fn drop(&mut self) {
+        self.call_option(None);
     }
 }
 
