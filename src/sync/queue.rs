@@ -114,7 +114,7 @@ impl<T> Queue<T> {
                 self.head
                     .compare_and_set(head, next, Release, guard)
                     .map(|_| {
-                        guard.defer(move || drop(head.into_owned()));
+                        guard.defer_destroy(head);
                         Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
                     })
                     .map_err(|_| ())
@@ -139,7 +139,7 @@ impl<T> Queue<T> {
                 self.head
                     .compare_and_set(head, next, Release, guard)
                     .map(|_| {
-                        guard.defer(move || drop(head.into_owned()));
+                        guard.defer_destroy(head);
                         Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
                     })
                     .map_err(|_| ())

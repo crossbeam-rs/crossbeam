@@ -28,7 +28,7 @@ fn worker(a: Arc<Atomic<AtomicUsize>>, handle: LocalHandle) -> usize {
             let val = if rng.gen() {
                 let p = a.swap(Owned::new(AtomicUsize::new(sum)), AcqRel, guard);
                 unsafe {
-                    guard.defer(move || p.into_owned());
+                    guard.defer_destroy(p);
                     guard.flush();
                     p.deref().load(Relaxed)
                 }

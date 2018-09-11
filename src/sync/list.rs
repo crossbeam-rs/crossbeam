@@ -257,7 +257,7 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                         // can only be called if `T: 'static`.
                         unsafe {
                             let p = self.curr;
-                            self.guard.defer(move || C::finalize(p.deref()));
+                            self.guard.defer_unchecked(move || C::finalize(p.deref()));
                         }
 
                         // Move over the removed by only advancing `curr`, not `pred`.
