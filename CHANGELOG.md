@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.5] - 2018-09-11
+### Changed
+- Use `LocalKey::try_with` instead of `LocalKey::with`.
+
+### Removed
+- Remove helper macros `__crossbeam_channel*`.
+
 ## [0.2.4] - 2018-08-02
 ### Changed
 - Make `select!` linearizable with other channel operations.
@@ -97,7 +104,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - First implementation of the channels.
 - Add `select_loop!` macro by @TimNN.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.1...v0.2.2
