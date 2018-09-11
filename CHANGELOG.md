@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.0] - 2018-09-11
+### Changed
+- `defer` now requires `F: Send + 'static`.
+- Bump the minimum Rust version to 1.26.
+- Pinning while TLS is tearing down does not fail anymore.
+- Rename `Handle` to `LocalHandle`.
+
+### Added
+- `defer_unchecked` and `defer_destroy`.
+
+### Removed
+- Remove `Clone` impl for `LocalHandle`.
+
 ## [0.5.2] - 2018-08-02
 ### Changed
 - Update `crossbeam-utils` to `0.5`.
@@ -74,7 +87,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - First version of the new epoch-based GC.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/crossbeam-rs/crossbeam-epoch/compare/v0.4.3...v0.5.0
