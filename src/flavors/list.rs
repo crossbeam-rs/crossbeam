@@ -4,6 +4,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
 use std::ptr;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
@@ -11,7 +12,7 @@ use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
-use internal::context;
+use internal::context::{self, Context};
 use internal::select::{Operation, Selected, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
@@ -269,7 +270,7 @@ impl<T> Channel<T> {
                         }
 
                         unsafe {
-                            guard.defer(move || head_ptr.into_owned());
+                            guard.defer_destroy(head_ptr);
                         }
                     }
 
@@ -332,25 +333,27 @@ impl<T> Channel<T> {
             }
 
             // Prepare for blocking until a sender wakes us up.
-            context::current_reset();
-            self.receivers.register(oper);
+            context::with_current(|cx| {
+                cx.reset();
+                self.receivers.register(oper, cx);
 
-            // Has the channel become ready just now?
-            if !self.is_empty() || self.is_closed() {
-                let _ = context::current_try_select(Selected::Aborted);
-            }
+                // Has the channel become ready just now?
+                if !self.is_empty() || self.is_closed() {
+                    let _ = cx.try_select(Selected::Aborted);
+                }
 
-            // Block the current thread.
-            let sel = context::current_wait_until(None);
+                // Block the current thread.
+                let sel = cx.wait_until(None);
 
-            match sel {
-                Selected::Waiting => unreachable!(),
-                Selected::Aborted | Selected::Closed => {
-                    self.receivers.unregister(oper).unwrap();
-                    // If the channel was closed, we still have to check for remaining messages.
-                },
-                Selected::Operation(_) => {},
-            }
+                match sel {
+                    Selected::Waiting => unreachable!(),
+                    Selected::Aborted | Selected::Closed => {
+                        self.receivers.unregister(oper).unwrap();
+                        // If the channel was closed, we still have to check for remaining messages.
+                    },
+                    Selected::Operation(_) => {},
+                }
+            })
         }
     }
 
@@ -466,8 +469,8 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, oper: Operation) -> bool {
-        self.0.receivers.register(oper);
+    fn register(&self, _token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
+        self.0.receivers.register(oper, cx);
         self.0.is_empty() && !self.0.is_closed()
     }
 
@@ -475,7 +478,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         self.0.receivers.unregister(oper);
     }
 
-    fn accept(&self, token: &mut Token) -> bool {
+    fn accept(&self, token: &mut Token, _cx: &Arc<Context>) -> bool {
         self.0.start_recv(token, &mut Backoff::new())
     }
 
@@ -497,13 +500,13 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, _oper: Operation) -> bool {
+    fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Arc<Context>) -> bool {
         false
     }
 
     fn unregister(&self, _oper: Operation) {}
 
-    fn accept(&self, _token: &mut Token) -> bool {
+    fn accept(&self, _token: &mut Token, _cx: &Arc<Context>) -> bool {
         true
     }
 

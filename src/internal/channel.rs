@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use flavors;
+use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Token};
 
 /// A channel in the form of one of the different flavors.
@@ -753,11 +754,11 @@ impl<T> SelectHandle for Sender<T> {
         None
     }
 
-    fn register(&self, token: &mut Token, oper: Operation) -> bool {
+    fn register(&self, token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
         match &self.0.flavor {
-            ChannelFlavor::Array(chan) => chan.sender().register(token, oper),
-            ChannelFlavor::List(chan) => chan.sender().register(token, oper),
-            ChannelFlavor::Zero(chan) => chan.sender().register(token, oper),
+            ChannelFlavor::Array(chan) => chan.sender().register(token, oper, cx),
+            ChannelFlavor::List(chan) => chan.sender().register(token, oper, cx),
+            ChannelFlavor::Zero(chan) => chan.sender().register(token, oper, cx),
         }
     }
 
@@ -769,11 +770,11 @@ impl<T> SelectHandle for Sender<T> {
         }
     }
 
-    fn accept(&self, token: &mut Token) -> bool {
+    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool {
         match &self.0.flavor {
-            ChannelFlavor::Array(chan) => chan.sender().accept(token),
-            ChannelFlavor::List(chan) => chan.sender().accept(token),
-            ChannelFlavor::Zero(chan) => chan.sender().accept(token),
+            ChannelFlavor::Array(chan) => chan.sender().accept(token, cx),
+            ChannelFlavor::List(chan) => chan.sender().accept(token, cx),
+            ChannelFlavor::Zero(chan) => chan.sender().accept(token, cx),
         }
     }
 
@@ -819,15 +820,15 @@ impl<T> SelectHandle for Receiver<T> {
         }
     }
 
-    fn register(&self, token: &mut Token, oper: Operation) -> bool {
+    fn register(&self, token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
-                ChannelFlavor::Array(chan) => chan.receiver().register(token, oper),
-                ChannelFlavor::List(chan) => chan.receiver().register(token, oper),
-                ChannelFlavor::Zero(chan) => chan.receiver().register(token, oper),
+                ChannelFlavor::Array(chan) => chan.receiver().register(token, oper, cx),
+                ChannelFlavor::List(chan) => chan.receiver().register(token, oper, cx),
+                ChannelFlavor::Zero(chan) => chan.receiver().register(token, oper, cx),
             },
-            ReceiverFlavor::After(chan) => chan.register(token, oper),
-            ReceiverFlavor::Tick(chan) => chan.register(token, oper),
+            ReceiverFlavor::After(chan) => chan.register(token, oper, cx),
+            ReceiverFlavor::Tick(chan) => chan.register(token, oper, cx),
         }
     }
 
@@ -843,15 +844,15 @@ impl<T> SelectHandle for Receiver<T> {
         }
     }
 
-    fn accept(&self, token: &mut Token) -> bool {
+    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
-                ChannelFlavor::Array(chan) => chan.receiver().accept(token),
-                ChannelFlavor::List(chan) => chan.receiver().accept(token),
-                ChannelFlavor::Zero(chan) => chan.receiver().accept(token),
+                ChannelFlavor::Array(chan) => chan.receiver().accept(token, cx),
+                ChannelFlavor::List(chan) => chan.receiver().accept(token, cx),
+                ChannelFlavor::Zero(chan) => chan.receiver().accept(token, cx),
             },
-            ReceiverFlavor::After(chan) => chan.accept(token),
-            ReceiverFlavor::Tick(chan) => chan.accept(token),
+            ReceiverFlavor::After(chan) => chan.accept(token, cx),
+            ReceiverFlavor::Tick(chan) => chan.accept(token, cx),
         }
     }
 
