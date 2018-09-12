@@ -1,4 +1,0 @@
-bounded_select_both       Rust crossbeam-channel   0.485 sec
-bounded_select_rx         Rust crossbeam-channel   0.468 sec
-unbounded_select_both     Rust crossbeam-channel   0.403 sec
-unbounded_select_rx       Rust crossbeam-channel   0.440 sec

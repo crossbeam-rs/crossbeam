@@ -318,8 +318,87 @@ where
 /// multiple operations are ready at the same time, a random one is chosen. It is also possible to
 /// declare a default case that gets executed if none of the operations are initially ready.
 ///
-/// TODO: example
 /// TODO: when to use this and when to use select!? Also mention in the docs for select!.
+///
+/// # Receiving
+///
+/// Receiving a message from two channels, whichever becomes ready first:
+///
+/// ```
+/// use std::thread;
+/// use crossbeam_channel as channel;
+///
+/// let (s1, r1) = channel::unbounded();
+/// let (s2, r2) = channel::unbounded();
+///
+/// thread::spawn(move || s1.send("foo"));
+/// thread::spawn(move || s2.send("bar"));
+///
+/// // Only one of these two receive operations will be executed.
+/// channel::Select::new()
+///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
+///     .recv(&r2, |msg| assert_eq!(msg, Some("bar")))
+///     .wait();
+/// ```
+///
+/// # Sending
+///
+/// Waiting on a send and a receive operation:
+///
+/// ```
+/// use std::thread;
+/// use crossbeam_channel as channel;
+///
+/// let (s1, r1) = channel::unbounded();
+/// let (s2, r2) = channel::unbounded();
+///
+/// s1.send("foo");
+///
+/// // Since both operations are initially ready, a random one will be executed.
+/// channel::Select::new()
+///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
+///     .send(&s2, || "bar", || assert_eq!(r2.recv(), Some("bar")))
+///     .wait();
+/// ```
+///
+/// # Default case
+///
+/// A special kind of case is `default`, which gets executed if none of the operations can be
+/// executed, i.e. they would block:
+///
+/// ```
+/// use std::thread;
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel as channel;
+///
+/// let (s, r) = channel::unbounded();
+///
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     s.send("foo");
+/// });
+///
+/// // Don't block on the receive operation.
+/// channel::Select::new()
+///     .recv(&r, |_| panic!())
+///     .default(|| println!("The message is not yet available."))
+///     .wait();
+/// ```
+///
+/// # Execution
+///
+/// 1. A `Select` is constructed, cases are added, and `.wait()` is called.
+/// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
+///    operations are ready, a random one is chosen.
+/// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
+///    there is no `default` case, the current thread is blocked until an operation becomes ready.
+/// 4. If a `recv` operation gets executed, its callback is invoked.
+/// 5. If a `send` operation gets executed, the message is lazily evaluated and sent into the
+///    channel. Finally, the callback is invoked.
+///
+/// **Note**: If evaluation of the message panics, the process will be aborted because it's
+/// impossible to recover from such panics. All the other callbacks are allowed to panic, however.
+#[must_use]
 pub struct Select<'a, R> {
     /// A list of senders and receivers participating in selection.
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
@@ -333,8 +412,6 @@ pub struct Select<'a, R> {
 
 impl<'a, R> Select<'a, R> {
     /// Creates a new `Select`.
-    ///
-    /// TODO: example
     pub fn new() -> Select<'a, R> {
         Select {
             handles: SmallVec::new(),
@@ -346,8 +423,6 @@ impl<'a, R> Select<'a, R> {
     /// Adds a receive case.
     ///
     /// The callback will get invoked if the receive operation completes.
-    ///
-    /// TODO: example
     #[inline]
     pub fn recv<T, C>(mut self, r: &'a Receiver<T>, cb: C) -> Select<'a, R>
     where
@@ -372,8 +447,6 @@ impl<'a, R> Select<'a, R> {
     ///
     /// **Note**: If function `msg` panics, the process will be aborted because it's impossible to
     /// recover from such panics. However, function `cb` is allowed to panic.
-    ///
-    /// TODO: example
     #[inline]
     pub fn send<T, M, C>(mut self, s: &'a Sender<T>, msg: M, cb: C) -> Select<'a, R>
     where
@@ -404,8 +477,6 @@ impl<'a, R> Select<'a, R> {
     /// This case gets executed if none of the channel operations are ready.
     ///
     /// If called more than once, this method keeps only the last callback for the default case.
-    ///
-    /// TODO: example
     #[inline]
     pub fn default<C>(mut self, cb: C) -> Select<'a, R>
     where
@@ -418,8 +489,6 @@ impl<'a, R> Select<'a, R> {
     /// Starts selection and waits until it completes.
     ///
     /// The result of the executed callback function will be returned.
-    ///
-    /// TODO: example
     pub fn wait(mut self) -> R {
         let (mut token, index, _) = main_loop(&mut self.handles, self.default.is_some());
 

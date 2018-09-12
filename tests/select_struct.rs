@@ -9,6 +9,10 @@ use std::time::Duration;
 
 use channel::Select;
 
+// TODO: verify borrowing in Select<'a, R>
+// TODO: verify destructors for closures when wait() is not called
+// TODO: verify destructors for closures even when wait() is called
+
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
