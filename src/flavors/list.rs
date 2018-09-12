@@ -147,19 +147,19 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
-    fn link_next_block<'g>(&self, tail_ptr: Shared<Block<T>>, tail: &Block<T>, index: usize, guard: &'g Guard) {
+    fn link_next_block<'g>(&self, tail_ptr: Shared<Block<T>>, tail: &'g Block<T>, index: usize, guard: &'g Guard) {
         let new = Owned::new(Block::new(index));
 
         // try to move the tail pointer forward
-        tail.next.compare_and_set(Shared::null(), new, Ordering::Release, guard)
+        let _ = tail.next.compare_and_set(Shared::null(), new, Ordering::Release, guard)
         .map(|shared| {
-            self.tail.block.compare_and_set(tail_ptr, shared, Ordering::Release, guard).unwrap_or_default();
+            let _ = self.tail.block.compare_and_set(tail_ptr, shared, Ordering::Release, guard);
         })
         .map_err(|e| {
-            self.tail.block.compare_and_set(tail_ptr, e.current, Ordering::Release, guard).unwrap_or_default();
+            let _ = self.tail.block.compare_and_set(tail_ptr, e.current, Ordering::Release, guard);
             // Actually, drop of e.new will be called automatically...
             drop(e.new);
-        }).unwrap_or_default();
+        });
     }
 
     /// Writes a message into the channel.
