@@ -5,14 +5,11 @@ extern crate crossbeam_channel as channel;
 
 use std::any::Any;
 use std::cell::Cell;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
 use channel::Select;
-
-// TODO: verify borrowing in Select<'a, R>
-// TODO: verify destructors for closures when wait() is not called
-// TODO: verify destructors for closures even when wait() is called
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -418,358 +415,223 @@ fn duplicate_cases() {
     }
 }
 
-// #[test]
-// fn multiple_receivers() {
-//     let (_, r1) = channel::unbounded::<i32>();
-//     let (_, r2) = channel::bounded::<i32>(5);
-//     select! {
-//         recv([&r1, &r2].iter().map(|x| *x), msg) => assert!(msg.is_none()),
-//     }
-//     select! {
-//         recv([r1, r2].iter(), msg) => assert!(msg.is_none()),
-//     }
-//
-//     let (_, r1) = channel::unbounded::<i32>();
-//     let (_, r2) = channel::bounded::<i32>(5);
-//     select! {
-//         recv(&[r1, r2], msg) => assert!(msg.is_none()),
-//     }
-// }
-//
-// #[test]
-// fn multiple_senders() {
-//     let (s1, _) = channel::unbounded::<i32>();
-//     let (s2, _) = channel::bounded::<i32>(5);
-//     select! {
-//         send([&s1, &s2].iter().map(|x| *x), 0) => {}
-//     }
-//     select! {
-//         send([s1, s2].iter(), 0) => {}
-//     }
-//
-//     let (s1, _) = channel::unbounded::<i32>();
-//     let (s2, _) = channel::bounded::<i32>(5);
-//     select! {
-//         send(&[s1, s2], 0) => {},
-//     }
-// }
-//
-// #[test]
-// fn recv_handle() {
-//     let (s1, r1) = channel::unbounded::<i32>();
-//     let (s2, r2) = channel::unbounded::<i32>();
-//     let rs = [r1, r2];
-//
-//     s2.send(0);
-//     select! {
-//         recv(rs, _, r) => assert_eq!(r, &s2),
-//         default => panic!(),
-//     }
-//
-//     s1.send(0);
-//     select! {
-//         recv(rs, _, r) => assert_eq!(r, &s1),
-//         default => panic!(),
-//     }
-// }
-//
-// #[test]
-// fn send_handle() {
-//     let (s1, r1) = channel::bounded::<i32>(0);
-//     let (s2, r2) = channel::bounded::<i32>(0);
-//     let ss = [s1, s2];
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             thread::sleep(ms(500));
-//             select! {
-//                 send(ss, 0, s) => assert_eq!(s, &r2),
-//                 default => panic!(),
-//             }
-//         });
-//         r2.recv();
-//     });
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             thread::sleep(ms(500));
-//             select! {
-//                 send(ss, 0, s) => assert_eq!(s, &r1),
-//                 default => panic!(),
-//             }
-//         });
-//         r1.recv();
-//     });
-// }
-//
-// #[test]
-// fn nesting() {
-//     let (s, r) = channel::unbounded::<i32>();
-//
-//     select! {
-//         send(s, 0) => {
-//             select! {
-//                 recv(r, v) => {
-//                     assert_eq!(v, Some(0));
-//                     select! {
-//                         send(s, 1) => {
-//                             select! {
-//                                 recv(r, v) => {
-//                                     assert_eq!(v, Some(1));
-//                                 }
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-// #[test]
-// fn conditional_send() {
-//     let (s, _) = channel::unbounded();
-//
-//     select! {
-//         send(if 1 + 1 == 3 { Some(&s) } else { None }, ()) => panic!(),
-//         recv(channel::after(ms(1000))) => {}
-//     }
-//
-//     select! {
-//         send(if 1 + 1 == 2 { Some(&s) } else { None }, ()) => {},
-//         recv(channel::after(ms(1000))) => panic!(),
-//     }
-// }
-//
-// #[test]
-// fn conditional_recv() {
-//     let (s, r) = channel::unbounded();
-//     s.send(());
-//
-//     select! {
-//         recv(if 1 + 1 == 3 { Some(&r) } else { None }) => panic!(),
-//         recv(channel::after(ms(1000))) => {}
-//     }
-//
-//     select! {
-//         recv(if 1 + 1 == 2 { Some(&r) } else { None }) => {},
-//         recv(channel::after(ms(1000))) => panic!(),
-//     }
-// }
-//
-// #[test]
-// #[should_panic(expected = "send panicked")]
-// fn panic_send() {
-//     fn get() -> channel::Sender<i32> {
-//         panic!("send panicked")
-//     }
-//
-//     select! {
-//         send(get(), panic!()) => {}
-//     }
-// }
-//
-// #[test]
-// #[should_panic(expected = "recv panicked")]
-// fn panic_recv() {
-//     fn get() -> channel::Receiver<i32> {
-//         panic!("recv panicked")
-//     }
-//
-//     select! {
-//         recv(get()) => {}
-//     }
-// }
-//
-// #[test]
-// fn stress_recv() {
-//     const COUNT: usize = 10_000;
-//
-//     let (s1, r1) = channel::unbounded();
-//     let (s2, r2) = channel::bounded(5);
-//     let (s3, r3) = channel::bounded(100);
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             for i in 0..COUNT {
-//                 s1.send(i);
-//                 r3.recv().unwrap();
-//
-//                 s2.send(i);
-//                 r3.recv().unwrap();
-//             }
-//         });
-//
-//         for i in 0..COUNT {
-//             for _ in 0..2 {
-//                 select! {
-//                     recv(r1, v) => assert_eq!(v, Some(i)),
-//                     recv(r2, v) => assert_eq!(v, Some(i)),
-//                 }
-//
-//                 s3.send(());
-//             }
-//         }
-//     });
-// }
-//
-// #[test]
-// fn stress_send() {
-//     const COUNT: usize = 10_000;
-//
-//     let (s1, r1) = channel::bounded(0);
-//     let (s2, r2) = channel::bounded(0);
-//     let (s3, r3) = channel::bounded(100);
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             for i in 0..COUNT {
-//                 assert_eq!(r1.recv().unwrap(), i);
-//                 assert_eq!(r2.recv().unwrap(), i);
-//                 r3.recv().unwrap();
-//             }
-//         });
-//
-//         for i in 0..COUNT {
-//             for _ in 0..2 {
-//                 select! {
-//                     send(s1, i) => {},
-//                     send(s2, i) => {},
-//                 }
-//             }
-//             s3.send(());
-//         }
-//     });
-// }
-//
-// #[test]
-// fn stress_mixed() {
-//     const COUNT: usize = 10_000;
-//
-//     let (s1, r1) = channel::bounded(0);
-//     let (s2, r2) = channel::bounded(0);
-//     let (s3, r3) = channel::bounded(100);
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             for i in 0..COUNT {
-//                 s1.send(i);
-//                 assert_eq!(r2.recv().unwrap(), i);
-//                 r3.recv().unwrap();
-//             }
-//         });
-//
-//         for i in 0..COUNT {
-//             for _ in 0..2 {
-//                 select! {
-//                     recv(r1, v) => assert_eq!(v, Some(i)),
-//                     send(s2, i) => {},
-//                 }
-//             }
-//             s3.send(());
-//         }
-//     });
-// }
-//
-// #[test]
-// fn stress_timeout_two_threads() {
-//     const COUNT: usize = 20;
-//
-//     let (s, r) = channel::bounded(2);
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             for i in 0..COUNT {
-//                 if i % 2 == 0 {
-//                     thread::sleep(ms(500));
-//                 }
-//
-//                 loop {
-//                     select! {
-//                         send(s, i) => break,
-//                         recv(channel::after(ms(100))) => {}
-//                     }
-//                 }
-//             }
-//         });
-//
-//         scope.spawn(|| {
-//             for i in 0..COUNT {
-//                 if i % 2 == 0 {
-//                     thread::sleep(ms(500));
-//                 }
-//
-//                 loop {
-//                     select! {
-//                         recv(r, v) => {
-//                             assert_eq!(v, Some(i));
-//                             break;
-//                         }
-//                         recv(channel::after(ms(100))) => {}
-//                     }
-//                 }
-//             }
-//         });
-//     });
-// }
-//
-// #[test]
-// fn send_recv_same_channel() {
-//     let (s, r) = channel::bounded::<i32>(0);
-//     select! {
-//         send(s, 0) => panic!(),
-//         recv(r) => panic!(),
-//         recv(channel::after(ms(500))) => {}
-//     }
-//
-//     let (s, r) = channel::unbounded::<i32>();
-//     select! {
-//         send(s, 0) => {},
-//         recv(r) => panic!(),
-//         recv(channel::after(ms(500))) => panic!(),
-//     }
-// }
-//
-// #[test]
-// fn matching() {
-//     const THREADS: usize = 44;
-//
-//     let (s, r) = &channel::bounded::<usize>(0);
-//
-//     crossbeam::scope(|scope| {
-//         for i in 0..THREADS {
-//             scope.spawn(move || {
-//                 select! {
-//                     recv(r, v) => assert_ne!(v.unwrap(), i),
-//                     send(s, i) => {},
-//                 }
-//             });
-//         }
-//     });
-//
-//     assert_eq!(r.try_recv(), None);
-// }
-//
-// #[test]
-// fn matching_with_leftover() {
-//     const THREADS: usize = 55;
-//
-//     let (s, r) = &channel::bounded::<usize>(0);
-//
-//     crossbeam::scope(|scope| {
-//         for i in 0..THREADS {
-//             scope.spawn(move || {
-//                 select! {
-//                     recv(r, v) => assert_ne!(v.unwrap(), i),
-//                     send(s, i) => {},
-//                 }
-//             });
-//         }
-//         s.send(!0);
-//     });
-//
-//     assert_eq!(r.try_recv(), None);
-// }
+#[test]
+fn nesting() {
+    let (s, r) = channel::unbounded::<i32>();
+
+    Select::new()
+        .send(&s, || 0, || {
+            Select::new()
+                .recv(&r, |v| {
+                    assert_eq!(v, Some(0));
+                    Select::new()
+                        .send(&s, || 1, || {
+                            Select::new()
+                                .recv(&r, |v| assert_eq!(v, Some(1)))
+                                .wait();
+                        })
+                        .wait();
+                })
+                .wait();
+        })
+        .wait();
+}
+
+#[test]
+fn stress_recv() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = channel::unbounded();
+    let (s2, r2) = channel::bounded(5);
+    let (s3, r3) = channel::bounded(100);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            for i in 0..COUNT {
+                s1.send(i);
+                r3.recv().unwrap();
+
+                s2.send(i);
+                r3.recv().unwrap();
+            }
+        });
+
+        for i in 0..COUNT {
+            for _ in 0..2 {
+                Select::new()
+                    .recv(&r1, |v| assert_eq!(v, Some(i)))
+                    .recv(&r2, |v| assert_eq!(v, Some(i)))
+                    .wait();
+
+                s3.send(());
+            }
+        }
+    });
+}
+
+#[test]
+fn stress_send() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = channel::bounded(0);
+    let (s2, r2) = channel::bounded(0);
+    let (s3, r3) = channel::bounded(100);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            for i in 0..COUNT {
+                assert_eq!(r1.recv().unwrap(), i);
+                assert_eq!(r2.recv().unwrap(), i);
+                r3.recv().unwrap();
+            }
+        });
+
+        for i in 0..COUNT {
+            for _ in 0..2 {
+                Select::new()
+                    .send(&s1, || i, || ())
+                    .send(&s2, || i, || ())
+                    .wait();
+            }
+            s3.send(());
+        }
+    });
+}
+
+#[test]
+fn stress_mixed() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = channel::bounded(0);
+    let (s2, r2) = channel::bounded(0);
+    let (s3, r3) = channel::bounded(100);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            for i in 0..COUNT {
+                s1.send(i);
+                assert_eq!(r2.recv().unwrap(), i);
+                r3.recv().unwrap();
+            }
+        });
+
+        for i in 0..COUNT {
+            for _ in 0..2 {
+                Select::new()
+                    .recv(&r1, |v| assert_eq!(v, Some(i)))
+                    .send(&s2, || i, || ())
+                    .wait();
+            }
+            s3.send(());
+        }
+    });
+}
+
+#[test]
+fn stress_timeout_two_threads() {
+    const COUNT: usize = 20;
+
+    let (s, r) = channel::bounded(2);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            for i in 0..COUNT {
+                if i % 2 == 0 {
+                    thread::sleep(ms(500));
+                }
+
+                let mut done = false;
+                while !done {
+                    let after = channel::after(ms(100));
+                    Select::new()
+                        .send(&s, || i, || done = true)
+                        .recv(&after, |_| ())
+                        .wait();
+                }
+            }
+        });
+
+        scope.spawn(|| {
+            for i in 0..COUNT {
+                if i % 2 == 0 {
+                    thread::sleep(ms(500));
+                }
+
+                let mut done = false;
+                while !done {
+                    let after = channel::after(ms(100));
+                    Select::new()
+                        .recv(&r, |v| {
+                            assert_eq!(v, Some(i));
+                            done = true;
+                        })
+                        .recv(&after, |_| ())
+                        .wait();
+                }
+            }
+        });
+    });
+}
+
+#[test]
+fn send_recv_same_channel() {
+    let (s, r) = channel::bounded::<i32>(0);
+    let after = channel::after(ms(500));
+    Select::new()
+        .send(&s, || 0, || panic!())
+        .recv(&r, |_| panic!())
+        .recv(&after, |_| ())
+        .wait();
+
+    let (s, r) = channel::unbounded::<i32>();
+    let after = channel::after(ms(500));
+    Select::new()
+        .send(&s, || 0, || ())
+        .recv(&r, |_| panic!())
+        .recv(&after, |_| panic!())
+        .wait();
+}
+
+#[test]
+fn matching() {
+    const THREADS: usize = 44;
+
+    let (s, r) = &channel::bounded::<usize>(0);
+
+    crossbeam::scope(|scope| {
+        for i in 0..THREADS {
+            scope.spawn(move || {
+                Select::new()
+                    .recv(&r, |v| assert_ne!(v.unwrap(), i))
+                    .send(&s, || i, || ())
+                    .wait();
+            });
+        }
+    });
+
+    assert_eq!(r.try_recv(), None);
+}
+
+#[test]
+fn matching_with_leftover() {
+    const THREADS: usize = 55;
+
+    let (s, r) = &channel::bounded::<usize>(0);
+
+    crossbeam::scope(|scope| {
+        for i in 0..THREADS {
+            scope.spawn(move || {
+                Select::new()
+                    .recv(&r, |v| assert_ne!(v.unwrap(), i))
+                    .send(&s, || i, || ())
+                    .wait();
+            });
+        }
+        s.send(!0);
+    });
+
+    assert_eq!(r.try_recv(), None);
+}
 
 #[test]
 fn channel_through_channel() {
@@ -816,105 +678,184 @@ fn channel_through_channel() {
     }
 }
 
-// #[test]
-// fn linearizable() {
-//     const COUNT: usize = 100_000;
-//
-//     for step in 0..2 {
-//         let (start_s, start_r) = channel::bounded::<()>(0);
-//         let (end_s, end_r) = channel::bounded::<()>(0);
-//
-//         let ((s1, r1), (s2, r2)) = if step == 0 {
-//             (channel::bounded::<i32>(1), channel::bounded::<i32>(1))
-//         } else {
-//             (channel::unbounded::<i32>(), channel::unbounded::<i32>())
-//         };
-//
-//         crossbeam::scope(|scope| {
-//             scope.spawn(|| {
-//                 for _ in 0..COUNT {
-//                     start_s.send(());
-//
-//                     s1.send(1);
-//                     select! {
-//                         recv(r1) => {}
-//                         recv(r2) => {}
-//                         default => unreachable!()
-//                     }
-//
-//                     end_s.send(());
-//                     r2.try_recv();
-//                 }
-//             });
-//
-//             for _ in 0..COUNT {
-//                 start_r.recv();
-//
-//                 s2.send(1);
-//                 r1.try_recv();
-//
-//                 end_r.recv();
-//             }
-//         });
-//     }
-// }
-//
-// #[test]
-// fn fairness1() {
-//     const COUNT: usize = 10_000;
-//
-//     let (s1, r1) = channel::bounded::<()>(COUNT);
-//     let (s2, r2) = channel::unbounded::<()>();
-//
-//     for _ in 0..COUNT {
-//         s1.send(());
-//         s2.send(());
-//     }
-//
-//     let mut hits = [0usize; 4];
-//     while hits[0] + hits[1] < 2 * COUNT {
-//         select! {
-//             recv(r1) => hits[0] += 1,
-//             recv(r2) => hits[1] += 1,
-//             recv(channel::after(ms(0))) => hits[2] += 1,
-//             recv(channel::tick(ms(0))) => hits[3] += 1,
-//         }
-//     }
-//
-//     assert!(r1.is_empty());
-//     assert!(r2.is_empty());
-//
-//     let sum: usize = hits.iter().sum();
-//     assert!(hits.iter().all(|x| *x >= sum / hits.len() / 2));
-// }
-//
-// #[test]
-// fn fairness2() {
-//     const COUNT: usize = 10_000;
-//
-//     let (s1, r1) = channel::unbounded::<()>();
-//     let (s2, r2) = channel::bounded::<()>(1);
-//     let (s3, r3) = channel::bounded::<()>(0);
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             for _ in 0..COUNT {
-//                 select! {
-//                     send(if s1.is_empty() { Some(&s1) } else { None }, ()) => {}
-//                     send(if s2.is_empty() { Some(&s2) } else { None }, ()) => {}
-//                     send(s3, ()) => {}
-//                 }
-//             }
-//         });
-//
-//         let mut hits = [0usize; 3];
-//         for _ in 0..COUNT {
-//             select! {
-//                 recv(r1) => hits[0] += 1,
-//                 recv(r2) => hits[1] += 1,
-//                 recv(r3) => hits[2] += 1,
-//             }
-//         }
-//         assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 10));
-//     });
-// }
+#[test]
+fn linearizable() {
+    const COUNT: usize = 100_000;
+
+    for step in 0..2 {
+        let (start_s, start_r) = channel::bounded::<()>(0);
+        let (end_s, end_r) = channel::bounded::<()>(0);
+
+        let ((s1, r1), (s2, r2)) = if step == 0 {
+            (channel::bounded::<i32>(1), channel::bounded::<i32>(1))
+        } else {
+            (channel::unbounded::<i32>(), channel::unbounded::<i32>())
+        };
+
+        crossbeam::scope(|scope| {
+            scope.spawn(|| {
+                for _ in 0..COUNT {
+                    start_s.send(());
+
+                    s1.send(1);
+                    Select::new()
+                        .recv(&r1, |_| ())
+                        .recv(&r2, |_| ())
+                        .default(|| unreachable!())
+                        .wait();
+
+                    end_s.send(());
+                    r2.try_recv();
+                }
+            });
+
+            for _ in 0..COUNT {
+                start_r.recv();
+
+                s2.send(1);
+                r1.try_recv();
+
+                end_r.recv();
+            }
+        });
+    }
+}
+
+#[test]
+fn fairness1() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = channel::bounded::<()>(COUNT);
+    let (s2, r2) = channel::unbounded::<()>();
+
+    for _ in 0..COUNT {
+        s1.send(());
+        s2.send(());
+    }
+
+    let hits = vec![Cell::new(0usize); 4];
+    while hits[0].get() + hits[1].get() < 2 * COUNT {
+        let after = channel::after(ms(0));
+        let tick = channel::tick(ms(0));
+        Select::new()
+            .recv(&r1, |_| hits[0].set(hits[0].get() + 1))
+            .recv(&r2, |_| hits[1].set(hits[1].get() + 1))
+            .recv(&after, |_| hits[2].set(hits[2].get() + 1))
+            .recv(&tick, |_| hits[3].set(hits[3].get() + 1))
+            .wait();
+    }
+
+    assert!(r1.is_empty());
+    assert!(r2.is_empty());
+
+    let sum: usize = hits.iter().map(|h| h.get()).sum();
+    assert!(hits.iter().all(|x| x.get() >= sum / hits.len() / 2));
+}
+
+#[test]
+fn fairness2() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = channel::unbounded::<()>();
+    let (s2, r2) = channel::bounded::<()>(1);
+    let (s3, r3) = channel::bounded::<()>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            for _ in 0..COUNT {
+                let mut sel = Select::new();
+                if s1.is_empty() {
+                    sel = sel.send(&s1, || (), || ());
+                }
+                if s2.is_empty() {
+                    sel = sel.send(&s2, || (), || ());
+                }
+                sel = sel.send(&s3, || (), || ());
+                sel.wait();
+            }
+        });
+
+        let hits = vec![Cell::new(0usize); 3];
+        for _ in 0..COUNT {
+            Select::new()
+                .recv(&r1, |_| hits[0].set(hits[0].get() + 1))
+                .recv(&r2, |_| hits[1].set(hits[1].get() + 1))
+                .recv(&r3, |_| hits[2].set(hits[2].get() + 1))
+                .wait();
+        }
+        assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 10));
+    });
+}
+
+#[test]
+fn drop_callbacks() {
+    static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+    struct Foo;
+    impl Drop for Foo {
+        fn drop(&mut self) {
+            DROPS.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let (s, r) = channel::unbounded::<()>();
+
+    DROPS.store(0, Ordering::SeqCst);
+    let foo1 = Foo;
+    let foo2 = Foo;
+    let foo3 = Foo;
+    let foo4 = Foo;
+    let sel = Select::new()
+        .recv(&r, |_| drop(foo1))
+        .send(&s, || drop(foo2), || drop(foo3))
+        .default(|| drop(foo4));
+    assert_eq!(DROPS.load(Ordering::SeqCst), 0);
+    sel.wait();
+    assert_eq!(DROPS.load(Ordering::SeqCst), 4);
+
+    DROPS.store(0, Ordering::SeqCst);
+    let foo1 = Foo;
+    let foo2 = Foo;
+    let foo3 = Foo;
+    let mut sel = Select::new();
+    sel = sel.default(|| drop(foo1));
+    assert_eq!(DROPS.load(Ordering::SeqCst), 0);
+    sel = sel.default(|| drop(foo2));
+    assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+    sel = sel.default(|| drop(foo3));
+    assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+    sel.wait();
+    assert_eq!(DROPS.load(Ordering::SeqCst), 3);
+
+    DROPS.store(0, Ordering::SeqCst);
+    let foo1 = Foo;
+    let foo2 = Foo;
+    let foo3 = Foo;
+    let foo4 = Foo;
+    Select::new()
+        .recv(&r, |_| drop(foo1))
+        .send(&s, || drop(foo2), || drop(foo3))
+        .default(|| {
+            assert_eq!(DROPS.load(Ordering::SeqCst), 3);
+            drop(foo4);
+        })
+        .wait();
+    assert_eq!(DROPS.load(Ordering::SeqCst), 4);
+
+    s.send(());
+
+    DROPS.store(0, Ordering::SeqCst);
+    let foo1 = Foo;
+    let foo2 = Foo;
+    let foo3 = Foo;
+    let foo4 = Foo;
+    Select::new()
+        .recv(&r, |_| {
+            assert_eq!(DROPS.load(Ordering::SeqCst), 3);
+            drop(foo1);
+        })
+        .send(&s, || drop(foo2), || drop(foo3))
+        .default(|| drop(foo4))
+        .wait();
+    assert_eq!(DROPS.load(Ordering::SeqCst), 4);
+}

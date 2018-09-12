@@ -491,12 +491,17 @@ impl<'a, R> Select<'a, R> {
     /// The result of the executed callback function will be returned.
     pub fn wait(mut self) -> R {
         let (mut token, index, _) = main_loop(&mut self.handles, self.default.is_some());
+        let cb;
 
-        let cb = if index == 0 {
-            self.default.as_mut().unwrap()
+        if index == 0 {
+            self.callbacks.clear();
+            cb = self.default.take().unwrap();
         } else {
-            &mut self.callbacks[index - 1]
-        };
+            cb = self.callbacks.remove(index - 1);
+            self.callbacks.clear();
+            self.default.take();
+        }
+
         cb.call(&mut token)
     }
 }
@@ -566,27 +571,20 @@ impl<'a, R> Callback<'a, R> {
     ///
     /// Panics if called more than once.
     #[inline]
-    pub fn call(&mut self, token: &mut Token) -> R {
-        self.call_option(Some(token)).unwrap()
-    }
-
-    #[inline]
-    fn call_option(&mut self, token: Option<&mut Token>) -> Option<R> {
-        unsafe fn dummy<R>(_raw: *mut u8, _token: Option<&mut Token>) -> Option<R> {
-            None
-        }
-
-        let call = mem::replace(&mut self.call, dummy::<R>);
+    pub fn call(mut self, token: &mut Token) -> R {
         let res = unsafe {
-            call(&mut self.space as *mut Space as *mut u8, token)
+            (self.call)(&mut self.space as *mut Space as *mut u8, Some(token))
         };
-        res
+        mem::forget(self);
+        res.unwrap()
     }
 }
 
 impl<'a, R> Drop for Callback<'a, R> {
     fn drop(&mut self) {
-        self.call_option(None);
+        unsafe {
+            (self.call)(&mut self.space as *mut Space as *mut u8, None);
+        }
     }
 }
 
