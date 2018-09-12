@@ -266,6 +266,9 @@
 //!
 //! For more details, take a look at the documentation for [`select!`].
 //!
+//! If you need to dynamically add cases rather than define them statically inside the macro, use
+//! [`Select`] instead.
+//!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
 //! [`bounded`]: fn.bounded.html
@@ -275,6 +278,7 @@
 //! [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
 //! [`Iterator`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html
 //! [`select!`]: macro.select.html
+//! [`Select`]: struct.Select.html
 //! [`Sender`]: struct.Sender.html
 //! [`Receiver`]: struct.Receiver.html
 

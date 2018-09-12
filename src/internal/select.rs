@@ -318,7 +318,10 @@ where
 /// multiple operations are ready at the same time, a random one is chosen. It is also possible to
 /// declare a default case that gets executed if none of the operations are initially ready.
 ///
-/// TODO: when to use this and when to use select!? Also mention in the docs for select!.
+/// Note that this method of selecting over channel operations is typically somewhat slower than
+/// the [`select!`] macro.
+///
+/// [`select!`]: macro.select.html
 ///
 /// # Receiving
 ///
@@ -699,6 +702,11 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, 
 /// becomes ready. Finally, one of the operations is executed. If multiple operations are ready at
 /// the same time, a random one is chosen. It is also possible to declare a `default` case that
 /// gets executed if none of the operations are initially ready.
+///
+/// If you need to dynamically add cases rather than define them statically inside the macro, use
+/// [`Select`] instead.
+///
+/// [`Select`]: struct.Select.html
 ///
 /// # Receiving
 ///
