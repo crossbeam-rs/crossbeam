@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
-use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
+use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
@@ -147,6 +147,21 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
+    fn link_next_block<'g>(&self, tail_ptr: Shared<Block<T>>, tail: &'g Block<T>, index: usize, guard: &'g Guard) {
+        let new = Owned::new(Block::new(index));
+
+        // try to move the tail pointer forward
+        tail.next.compare_and_set(Shared::null(), new, Ordering::Release, guard)
+        .map(|shared| {
+            self.tail.block.compare_and_set(tail_ptr, shared, Ordering::Release, guard);
+        })
+        .map_err(|e| {
+            self.tail.block.compare_and_set(tail_ptr, e.current, Ordering::Release, guard);
+            // Actually, drop of e.new will be called automatically...
+            drop(e.new);
+        });
+    }
+
     /// Writes a message into the channel.
     pub fn write(&self, _token: &mut Token, msg: T) {
         let guard = epoch::pin();
@@ -181,9 +196,7 @@ impl<T> Channel<T> {
                 {
                     // If this was the last slot in the block, allocate a new block.
                     if offset + 1 == BLOCK_CAP {
-                        let new = Owned::new(Block::new(new_index)).into_shared(&guard);
-                        tail.next.store(new, Ordering::Release);
-                        self.tail.block.store(new, Ordering::Release);
+                        self.link_next_block(tail_ptr, tail, new_index, &guard);
                     }
 
                     unsafe {
@@ -192,10 +205,13 @@ impl<T> Channel<T> {
                         (*slot).ready.store(true, Ordering::Release);
                     }
                     break;
+                } else {
+                    backoff.step();
                 }
+            } else {
+                // we can help the writer("offset + 1 == BLOCK_CAP") to add next block instead of spinning.
+                self.link_next_block(tail_ptr, tail, tail_index, &guard);
             }
-
-            backoff.step();
         }
 
         self.receivers.wake_one();
