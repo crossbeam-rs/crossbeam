@@ -147,7 +147,7 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
-    fn link_next_block<'g>(&self, tail_ptr: Shared<Block<T>>, tail: &'g Block<T>, index: usize, guard: &'g Guard) {
+    fn link_next_block<'g>(&self, tail_ptr: Shared<Block<T>>, tail: &Block<T>, index: usize, guard: &'g Guard) {
         let new = Owned::new(Block::new(index));
 
         // try to move the tail pointer forward
