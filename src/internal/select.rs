@@ -493,6 +493,7 @@ impl<'a, R> Select<'a, R> {
         let (mut token, index, _) = main_loop(&mut self.handles, self.default.is_some());
         let cb;
 
+        // Initialize `cb` with the right callback and drop all other callbacks.
         if index == 0 {
             self.callbacks.clear();
             cb = self.default.take().unwrap();
@@ -502,6 +503,7 @@ impl<'a, R> Select<'a, R> {
             self.default.take();
         }
 
+        // Invoke the callback.
         cb.call(&mut token)
     }
 }
@@ -511,9 +513,22 @@ type Space = [usize; 2];
 
 /// A `FnOnce(&mut Token) -> R + 'a` that is stored inline if small, or otherwise boxed on the heap.
 pub struct Callback<'a, R> {
+    /// A wrapper function around the callback.
+    ///
+    /// The first argument is a pointer to `space`.
+    ///
+    /// The second argument may contain a reference to `Token`. If the argument is `Some`, the
+    /// reference is passed to the callback. If the argument is `None`, the callback is read and
+    /// dropped without invocation.
+    ///
+    /// This function may be called only once.
     call: unsafe fn(*mut u8, token: Option<&mut Token>) -> Option<R>,
+
+    /// Some space where a function can be stored, if it fits.
     space: Space,
-    _marker: PhantomData<(*mut (), &'a ())>, // !Send + !Sync
+
+    /// Indicates that a `Callback` is `!Send + !Sync` and borrows `'a`.
+    _marker: PhantomData<(*mut (), &'a ())>,
 }
 
 impl<'a, R> Callback<'a, R> {
@@ -526,58 +541,62 @@ impl<'a, R> Callback<'a, R> {
         let align = mem::align_of::<F>();
 
         unsafe {
-            if size <= mem::size_of::<Space>() && align <= mem::align_of::<Space>() {
-                let mut space: Space = mem::uninitialized();
-                ptr::write(&mut space as *mut Space as *mut F, f);
+            let mut space: Space = mem::uninitialized();
 
+            let call = if size <= mem::size_of::<Space>() && align <= mem::align_of::<Space>() {
                 unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
                 where
                     F: FnOnce(&mut Token) -> R + 'a,
                 {
+                    // Read the function from the stack.
                     let f: F = ptr::read(raw as *mut F);
                     token.map(f)
                 }
 
-                Callback {
-                    call: call::<F, R>,
-                    space,
-                    _marker: PhantomData,
-                }
+                // Write the function into the space.
+                ptr::write(&mut space as *mut Space as *mut F, f);
+                call::<F, R>
             } else {
-                let b: Box<F> = Box::new(f);
-                let mut space: Space = mem::uninitialized();
-                ptr::write(&mut space as *mut Space as *mut Box<F>, b);
-
                 unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
                 where
                     F: FnOnce(&mut Token) -> R + 'a,
                 {
+                    // Read the pointer to the function from the stack.
                     let b: Box<F> = ptr::read(raw as *mut Box<F>);
                     token.map(*b)
                 }
 
-                Callback {
-                    call: call::<F, R>,
-                    space,
-                    _marker: PhantomData,
-                }
+                // The function doesn't fit, so box it and write the pointer into the space.
+                let b: Box<F> = Box::new(f);
+                ptr::write(&mut space as *mut Space as *mut Box<F>, b);
+                call::<F, R>
+            };
+
+            Callback {
+                call,
+                space,
+                _marker: PhantomData,
             }
         }
     }
 
     /// Invokes the callback.
     #[inline]
-    pub fn call(mut self, token: &mut Token) -> R {
-        let res = unsafe {
-            (self.call)(&mut self.space as *mut Space as *mut u8, Some(token))
-        };
+    pub fn call(self, token: &mut Token) -> R {
+        // Disassemble `self` and forget it so that the destructor doesn't invoke `call`.
+        let Callback { call, mut space, .. } = self;
         mem::forget(self);
-        res.unwrap()
+
+        // Invoke the callback.
+        unsafe {
+            (call)(&mut space as *mut Space as *mut u8, Some(token)).unwrap()
+        }
     }
 }
 
 impl<'a, R> Drop for Callback<'a, R> {
     fn drop(&mut self) {
+        // Call the function with `None` in order to drop the callback.
         unsafe {
             (self.call)(&mut self.space as *mut Space as *mut u8, None);
         }
