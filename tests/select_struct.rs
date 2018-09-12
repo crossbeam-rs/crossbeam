@@ -4,6 +4,7 @@ extern crate crossbeam;
 extern crate crossbeam_channel as channel;
 
 use std::any::Any;
+use std::cell::Cell;
 use std::thread;
 use std::time::Duration;
 
@@ -320,103 +321,103 @@ fn loop_try() {
     }
 }
 
-// #[test]
-// fn cloning1() {
-//     crossbeam::scope(|scope| {
-//         let (s1, r1) = channel::unbounded::<i32>();
-//         let (_s2, r2) = channel::unbounded::<i32>();
-//         let (s3, r3) = channel::unbounded::<()>();
-//
-//         scope.spawn(move || {
-//             r3.recv().unwrap();
-//             drop(s1.clone());
-//             assert_eq!(r3.try_recv(), None);
-//             s1.send(1);
-//             r3.recv().unwrap();
-//         });
-//
-//         s3.send(());
-//
-//         select! {
-//             recv(r1) => {},
-//             recv(r2) => {},
-//         }
-//
-//         s3.send(());
-//     });
-// }
-//
-// #[test]
-// fn cloning2() {
-//     let (s1, r1) = channel::unbounded::<()>();
-//     let (s2, r2) = channel::unbounded::<()>();
-//     let (_s3, _r3) = channel::unbounded::<()>();
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(move || {
-//             select! {
-//                 recv(r1) => panic!(),
-//                 recv(r2) => {},
-//             }
-//         });
-//
-//         thread::sleep(ms(500));
-//         drop(s1.clone());
-//         s2.send(());
-//     })
-// }
-//
-// #[test]
-// fn preflight1() {
-//     let (s, r) = channel::unbounded();
-//     s.send(());
-//
-//     select! {
-//         recv(r) => {}
-//     }
-// }
-//
-// #[test]
-// fn preflight2() {
-//     let (s, r) = channel::unbounded();
-//     drop(s.clone());
-//     s.send(());
-//     drop(s);
-//
-//     select! {
-//         recv(r, v) => assert!(v.is_some()),
-//     }
-//     assert_eq!(r.try_recv(), None);
-// }
-//
-// #[test]
-// fn preflight3() {
-//     let (s, r) = channel::unbounded();
-//     drop(s.clone());
-//     s.send(());
-//     drop(s);
-//     r.recv().unwrap();
-//
-//     select! {
-//         recv(r, v) => assert!(v.is_none())
-//     }
-// }
-//
-// #[test]
-// fn duplicate_cases() {
-//     let (s, r) = channel::unbounded::<i32>();
-//     let mut hit = [false; 4];
-//
-//     while hit.iter().any(|hit| !hit) {
-//         select! {
-//             recv(r) => hit[0] = true,
-//             recv(Some(&r)) => hit[1] = true,
-//             send(s, 0) => hit[2] = true,
-//             send(Some(&s), 0) => hit[3] = true,
-//         }
-//     }
-// }
-//
+#[test]
+fn cloning1() {
+    crossbeam::scope(|scope| {
+        let (s1, r1) = channel::unbounded::<i32>();
+        let (_s2, r2) = channel::unbounded::<i32>();
+        let (s3, r3) = channel::unbounded::<()>();
+
+        scope.spawn(move || {
+            r3.recv().unwrap();
+            drop(s1.clone());
+            assert_eq!(r3.try_recv(), None);
+            s1.send(1);
+            r3.recv().unwrap();
+        });
+
+        s3.send(());
+
+        Select::new()
+            .recv(&r1, |_| ())
+            .recv(&r2, |_| ())
+            .wait();
+
+        s3.send(());
+    });
+}
+
+#[test]
+fn cloning2() {
+    let (s1, r1) = channel::unbounded::<()>();
+    let (s2, r2) = channel::unbounded::<()>();
+    let (_s3, _r3) = channel::unbounded::<()>();
+
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            Select::new()
+                .recv(&r1, |_| panic!())
+                .recv(&r2, |_| ())
+                .wait();
+        });
+
+        thread::sleep(ms(500));
+        drop(s1.clone());
+        s2.send(());
+    })
+}
+
+#[test]
+fn preflight1() {
+    let (s, r) = channel::unbounded();
+    s.send(());
+
+    Select::new()
+        .recv(&r, |_| ())
+        .wait();
+}
+
+#[test]
+fn preflight2() {
+    let (s, r) = channel::unbounded();
+    drop(s.clone());
+    s.send(());
+    drop(s);
+
+    Select::new()
+        .recv(&r, |v| assert!(v.is_some()))
+        .wait();
+    assert_eq!(r.try_recv(), None);
+}
+
+#[test]
+fn preflight3() {
+    let (s, r) = channel::unbounded();
+    drop(s.clone());
+    s.send(());
+    drop(s);
+    r.recv().unwrap();
+
+    Select::new()
+        .recv(&r, |v| assert!(v.is_none()))
+        .wait();
+}
+
+#[test]
+fn duplicate_cases() {
+    let (s, r) = channel::unbounded::<i32>();
+    let hit = vec![Cell::new(false); 4];
+
+    while hit.iter().map(|h| h.get()).any(|hit| !hit) {
+        Select::new()
+            .recv(&r, |_| hit[0].set(true))
+            .recv(&r, |_| hit[1].set(true))
+            .send(&s, || 0, || hit[2].set(true))
+            .send(&s, || 0, || hit[3].set(true))
+            .wait();
+    }
+}
+
 // #[test]
 // fn multiple_receivers() {
 //     let (_, r1) = channel::unbounded::<i32>();
@@ -769,51 +770,52 @@ fn loop_try() {
 //
 //     assert_eq!(r.try_recv(), None);
 // }
-//
-// #[test]
-// fn channel_through_channel() {
-//     const COUNT: usize = 1000;
-//
-//     type T = Box<Any + Send>;
-//
-//     for cap in 0..3 {
-//         let (s, r) = channel::bounded::<T>(cap);
-//
-//         crossbeam::scope(|scope| {
-//             scope.spawn(move || {
-//                 let mut s = s;
-//
-//                 for _ in 0..COUNT {
-//                     let (new_s, new_r) = channel::bounded(cap);
-//                     let mut new_r: T = Box::new(Some(new_r));
-//
-//                     select! {
-//                         send(s, new_r) => {}
-//                     }
-//
-//                     s = new_s;
-//                 }
-//             });
-//
-//             scope.spawn(move || {
-//                 let mut r = r;
-//
-//                 for _ in 0..COUNT {
-//                     r = select! {
-//                         recv(r, mut msg) => {
-//                             msg.unwrap()
-//                                 .downcast_mut::<Option<channel::Receiver<T>>>()
-//                                 .unwrap()
-//                                 .take()
-//                                 .unwrap()
-//                         }
-//                     }
-//                 }
-//             });
-//         });
-//     }
-// }
-//
+
+#[test]
+fn channel_through_channel() {
+    const COUNT: usize = 1000;
+
+    type T = Box<Any + Send>;
+
+    for cap in 0..3 {
+        let (s, r) = channel::bounded::<T>(cap);
+
+        crossbeam::scope(|scope| {
+            scope.spawn(move || {
+                let mut s = s;
+
+                for _ in 0..COUNT {
+                    let (new_s, new_r) = channel::bounded(cap);
+                    let mut new_r: T = Box::new(Some(new_r));
+
+                    Select::new()
+                        .send(&s, || new_r, || ())
+                        .wait();
+
+                    s = new_s;
+                }
+            });
+
+            scope.spawn(move || {
+                let mut r = r;
+
+                for _ in 0..COUNT {
+                    let new = Select::new()
+                        .recv(&r, |msg| {
+                            msg.unwrap()
+                                .downcast_mut::<Option<channel::Receiver<T>>>()
+                                .unwrap()
+                                .take()
+                                .unwrap()
+                        })
+                        .wait();
+                    r = new;
+                }
+            });
+        });
+    }
+}
+
 // #[test]
 // fn linearizable() {
 //     const COUNT: usize = 100_000;
