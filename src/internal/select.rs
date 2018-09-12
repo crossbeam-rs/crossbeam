@@ -566,10 +566,6 @@ impl<'a, R> Callback<'a, R> {
     }
 
     /// Invokes the callback.
-    ///
-    /// # Panics
-    ///
-    /// Panics if called more than once.
     #[inline]
     pub fn call(mut self, token: &mut Token) -> R {
         let res = unsafe {
