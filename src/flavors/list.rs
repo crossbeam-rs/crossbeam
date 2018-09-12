@@ -153,10 +153,10 @@ impl<T> Channel<T> {
         // try to move the tail pointer forward
         tail.next.compare_and_set(Shared::null(), new, Ordering::Release, guard)
         .map(|shared| {
-            self.tail.block.compare_and_set(tail_ptr, shared, Ordering::Release, guard);
+            self.tail.block.compare_and_set(tail_ptr, shared, Ordering::Release, guard).unwrap_or_default();
         })
         .map_err(|e| {
-            self.tail.block.compare_and_set(tail_ptr, e.current, Ordering::Release, guard);
+            self.tail.block.compare_and_set(tail_ptr, e.current, Ordering::Release, guard).unwrap_or_default();
             // Actually, drop of e.new will be called automatically...
             drop(e.new);
         }).unwrap_or_default();
