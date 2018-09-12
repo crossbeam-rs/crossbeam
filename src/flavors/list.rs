@@ -159,7 +159,7 @@ impl<T> Channel<T> {
             self.tail.block.compare_and_set(tail_ptr, e.current, Ordering::Release, guard);
             // Actually, drop of e.new will be called automatically...
             drop(e.new);
-        });
+        }).unwrap_or_default();
     }
 
     /// Writes a message into the channel.
