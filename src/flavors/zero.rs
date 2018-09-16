@@ -61,7 +61,7 @@ impl<T> Packet<T> {
 
     /// Waits until the packet becomes ready for reading or writing.
     fn wait_ready(&self) {
-        let backoff = &mut Backoff::new();
+        let mut backoff = Backoff::new();
         while !self.ready.load(Ordering::Acquire) {
             backoff.snooze();
         }

@@ -119,7 +119,7 @@ impl Context {
     /// Waits until a packet is provided and returns it.
     #[inline]
     pub fn wait_packet(&self) -> usize {
-        let backoff = &mut Backoff::new();
+        let mut backoff = Backoff::new();
         loop {
             let packet = self.inner.packet.load(Ordering::Acquire);
             if packet != 0 {
@@ -135,7 +135,7 @@ impl Context {
     #[inline]
     pub fn wait_until(&self, deadline: Option<Instant>) -> Selected {
         // Spin for a short time, waiting until an operation is selected.
-        let backoff = &mut Backoff::new();
+        let mut backoff = Backoff::new();
         loop {
             let sel = Selected::from(self.inner.select.load(Ordering::Acquire));
             if sel != Selected::Waiting {

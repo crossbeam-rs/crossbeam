@@ -316,7 +316,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         loop {
             // Try sending a message several times.
-            let backoff = &mut Backoff::new();
+            let mut backoff = Backoff::new();
             loop {
                 if self.start_send(token) {
                     unsafe { self.write(token, msg); }
@@ -356,7 +356,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         loop {
             // Try receiving a message several times.
-            let backoff = &mut Backoff::new();
+            let mut backoff = Backoff::new();
             loop {
                 if self.start_recv(token) {
                     unsafe {
