@@ -133,6 +133,9 @@
 //! });
 //! ```
 //!
+//! Note that cloning only creates a new reference to the same sending or receiving side. Cloning
+//! does not create a new channel.
+//!
 //! # Closing channels
 //!
 //! When all senders associated with a channel get dropped, the channel becomes closed. No more
