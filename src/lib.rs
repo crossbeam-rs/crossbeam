@@ -276,9 +276,84 @@
 //! If you need to dynamically add cases rather than define them statically inside the macro, use
 //! [`Select`] instead.
 //!
+//! # Frequently asked questions
+//!
+//! ### How to try receiving a message, but also check whether the channel is empty or closed?
+//!
+//! Use the [`select!`] macro:
+//!
+//! ```rust
+//! # #[macro_use]
+//! # extern crate crossbeam_channel;
+//! # fn main() {
+//! use crossbeam_channel as channel;
+//!
+//! let (s, r) = channel::unbounded();
+//! s.send("hello");
+//!
+//! select! {
+//!     recv(r, msg) => match msg {
+//!         Some(msg) => println!("received {:?}", msg),
+//!         None => println!("the channel is closed"),
+//!     }
+//!     default => println!("the channel is empty"),
+//! }
+//! # }
+//! ```
+//!
+//! ### How to try sending a message without blocking when the channel is full?
+//!
+//! Use the [`select!`] macro:
+//!
+//! ```rust
+//! # #[macro_use]
+//! # extern crate crossbeam_channel;
+//! # fn main() {
+//! use crossbeam_channel as channel;
+//!
+//! let (s, r) = channel::bounded(1);
+//! s.send("first");
+//!
+//! select! {
+//!     send(s, "second") => println!("message sent"),
+//!     default => println!("the channel is full"),
+//! }
+//! # }
+//! ```
+//!
+//! ### How to try sending/receiving a message with a timeout?
+//!
+//! Function [`after`] creates a special kind of channel that delivers a message after the
+//! specified timeout. Use [`select!`] to wait until a message is sent/received or the timeout
+//! is fired:
+//!
+//!
+//! ```rust
+//! # #[macro_use]
+//! # extern crate crossbeam_channel;
+//! # fn main() {
+//! use std::time::Duration;
+//! use crossbeam_channel as channel;
+//!
+//! let (s, r) = channel::bounded(1);
+//! s.send("hello");
+//!
+//! let timeout = Duration::from_millis(100);
+//!
+//! select! {
+//!     recv(r, msg) => match msg {
+//!         Some(msg) => println!("received {:?}", msg),
+//!         None => println!("the channel is closed"),
+//!     }
+//!     recv(channel::after(timeout)) => println!("timed out; the channel is still empty"),
+//! }
+//! # }
+//! ```
+//!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
 //! [`bounded`]: fn.bounded.html
+//! [`after`]: fn.bounded.html
 //! [`send`]: struct.Sender.html#method.send
 //! [`try_recv`]: struct.Receiver.html#method.try_recv
 //! [`recv`]: struct.Receiver.html#method.recv

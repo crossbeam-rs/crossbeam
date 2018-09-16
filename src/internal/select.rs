@@ -619,13 +619,13 @@ pub trait RecvArgument<'a, T: 'a> {
     type Iter: Iterator<Item = &'a Receiver<T>>;
 
     /// Converts the argument into an iterator over receivers.
-    fn __as_recv_argument(&'a self) -> Self::Iter;
+    fn _as_recv_argument(&'a self) -> Self::Iter;
 }
 
 impl<'a, T: 'a> RecvArgument<'a, T> for Receiver<T> {
     type Iter = option::IntoIter<&'a Receiver<T>>;
 
-    fn __as_recv_argument(&'a self) -> Self::Iter {
+    fn _as_recv_argument(&'a self) -> Self::Iter {
         Some(self).into_iter()
     }
 }
@@ -633,7 +633,7 @@ impl<'a, T: 'a> RecvArgument<'a, T> for Receiver<T> {
 impl<'a, T: 'a> RecvArgument<'a, T> for &'a Receiver<T> {
     type Iter = option::IntoIter<&'a Receiver<T>>;
 
-    fn __as_recv_argument(&'a self) -> Self::Iter {
+    fn _as_recv_argument(&'a self) -> Self::Iter {
         Some(*self).into_iter()
     }
 }
@@ -641,7 +641,7 @@ impl<'a, T: 'a> RecvArgument<'a, T> for &'a Receiver<T> {
 impl<'a, T: 'a> RecvArgument<'a, T> for &'a &'a Receiver<T> {
     type Iter = option::IntoIter<&'a Receiver<T>>;
 
-    fn __as_recv_argument(&'a self) -> Self::Iter {
+    fn _as_recv_argument(&'a self) -> Self::Iter {
         Some(**self).into_iter()
     }
 }
@@ -649,7 +649,7 @@ impl<'a, T: 'a> RecvArgument<'a, T> for &'a &'a Receiver<T> {
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
 
-    fn __as_recv_argument(&'a self) -> Self::Iter {
+    fn _as_recv_argument(&'a self) -> Self::Iter {
         self.clone().into_iter()
     }
 }
@@ -659,13 +659,13 @@ pub trait SendArgument<'a, T: 'a> {
     type Iter: Iterator<Item = &'a Sender<T>>;
 
     /// Converts the argument into an iterator over senders.
-    fn __as_send_argument(&'a self) -> Self::Iter;
+    fn _as_send_argument(&'a self) -> Self::Iter;
 }
 
 impl<'a, T: 'a> SendArgument<'a, T> for Sender<T> {
     type Iter = option::IntoIter<&'a Sender<T>>;
 
-    fn __as_send_argument(&'a self) -> Self::Iter {
+    fn _as_send_argument(&'a self) -> Self::Iter {
         Some(self).into_iter()
     }
 }
@@ -673,7 +673,7 @@ impl<'a, T: 'a> SendArgument<'a, T> for Sender<T> {
 impl<'a, T: 'a> SendArgument<'a, T> for &'a Sender<T> {
     type Iter = option::IntoIter<&'a Sender<T>>;
 
-    fn __as_send_argument(&'a self) -> Self::Iter {
+    fn _as_send_argument(&'a self) -> Self::Iter {
         Some(*self).into_iter()
     }
 }
@@ -681,7 +681,7 @@ impl<'a, T: 'a> SendArgument<'a, T> for &'a Sender<T> {
 impl<'a, T: 'a> SendArgument<'a, T> for &'a &'a Sender<T> {
     type Iter = option::IntoIter<&'a Sender<T>>;
 
-    fn __as_send_argument(&'a self) -> Self::Iter {
+    fn _as_send_argument(&'a self) -> Self::Iter {
         Some(**self).into_iter()
     }
 }
@@ -689,7 +689,7 @@ impl<'a, T: 'a> SendArgument<'a, T> for &'a &'a Sender<T> {
 impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, T> for I {
     type Iter = <I as IntoIterator>::IntoIter;
 
-    fn __as_send_argument(&'a self) -> Self::Iter {
+    fn _as_send_argument(&'a self) -> Self::Iter {
         self.clone().into_iter()
     }
 }
@@ -1513,7 +1513,7 @@ macro_rules! select {
         match {
             #[allow(unused_imports)]
             use $crate::internal::select::RecvArgument;
-            &mut (&&$rs).__as_recv_argument()
+            &mut (&&$rs)._as_recv_argument()
         } {
             $var => {
                 select!(
@@ -1536,7 +1536,7 @@ macro_rules! select {
         match {
             #[allow(unused_imports)]
             use $crate::internal::select::SendArgument;
-            &mut (&&$ss).__as_send_argument()
+            &mut (&&$ss)._as_send_argument()
         } {
             $var => {
                 select!(
