@@ -1,58 +1,97 @@
 //! Thread-local context used in select.
 
+use std::cell::Cell;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
-use internal::select::Select;
+use internal::select::Selected;
 use internal::utils::Backoff;
 
 /// Thread-local context used in select.
-///
-/// This struct is typically wrapped in an `Arc` so that it can be shared among other threads, too.
+#[derive(Clone)]
 pub struct Context {
+    inner: Arc<Inner>,
+}
+
+/// Inner representation of `Context`
+struct Inner {
     /// Selected operation.
     select: AtomicUsize,
+
+    /// A slot into which another thread may store a pointer to its `Packet`.
+    packet: AtomicUsize,
 
     /// Thread handle.
     thread: Thread,
 
     /// Thread id.
     thread_id: ThreadId,
-
-    /// A slot into which another thread may store a pointer to its `Packet`.
-    packet: AtomicUsize,
 }
 
 impl Context {
-    /// Creates a new `Arc<Context>`.
-    pub fn new() -> Arc<Context> {
-        Arc::new(Context {
-            select: AtomicUsize::new(Select::Waiting.into()),
-            thread: thread::current(),
-            thread_id: thread::current().id(),
-            packet: AtomicUsize::new(0),
+    /// Creates a new context for the duration of the closure.
+    #[inline]
+    pub fn with<F, R>(f: F) -> R
+    where
+        F: FnOnce(&Context) -> R,
+    {
+        thread_local! {
+            /// Cached thread-local context.
+            static CONTEXT: Cell<Option<Context>> = Cell::new(Some(Context::new()));
+        }
+
+        let mut f = Some(f);
+        let mut f = move |cx: &Context| -> R {
+            let f = f.take().unwrap();
+            f(cx)
+        };
+
+        CONTEXT.try_with(|cell| {
+            match cell.take() {
+                None => f(&Context::new()),
+                Some(cx) => {
+                    cx.reset();
+                    let res = f(&cx);
+                    cell.set(Some(cx));
+                    res
+                }
+            }
+        }).unwrap_or_else(|_| {
+            f(&Context::new())
         })
     }
 
+    /// Creates a new `Context`.
+    #[cold]
+    fn new() -> Context {
+        Context {
+            inner: Arc::new(Inner {
+                select: AtomicUsize::new(Selected::Waiting.into()),
+                packet: AtomicUsize::new(0),
+                thread: thread::current(),
+                thread_id: thread::current().id(),
+            }),
+        }
+    }
+
     /// Resets `select` and `packet`.
-    ///
-    /// This method is used for initialization before the start of select.
     #[inline]
-    pub fn reset(&self) {
-        self.select.store(Select::Waiting.into(), Ordering::Release);
-        self.packet.store(0, Ordering::Release);
+    fn reset(&self) {
+        self.inner.select.store(Selected::Waiting.into(), Ordering::Release);
+        self.inner.packet.store(0, Ordering::Release);
     }
 
     /// Attempts to select an operation.
     ///
     /// On failure, the previously selected operation is returned.
     #[inline]
-    pub fn try_select(&self, select: Select) -> Result<(), Select> {
-        self.select
+    pub fn try_select(&self, select: Selected) -> Result<(), Selected> {
+        self.inner
+            .select
             .compare_exchange(
-                Select::Waiting.into(),
+                Selected::Waiting.into(),
                 select.into(),
                 Ordering::AcqRel,
                 Ordering::Acquire,
@@ -63,8 +102,8 @@ impl Context {
 
     /// Returns the selected operation.
     #[inline]
-    pub fn selected(&self) -> Select {
-        Select::from(self.select.load(Ordering::Acquire))
+    pub fn selected(&self) -> Selected {
+        Selected::from(self.inner.select.load(Ordering::Acquire))
     }
 
     /// Stores a packet.
@@ -73,7 +112,7 @@ impl Context {
     #[inline]
     pub fn store_packet(&self, packet: usize) {
         if packet != 0 {
-            self.packet.store(packet, Ordering::Release);
+            self.inner.packet.store(packet, Ordering::Release);
         }
     }
 
@@ -82,7 +121,7 @@ impl Context {
     pub fn wait_packet(&self) -> usize {
         let backoff = &mut Backoff::new();
         loop {
-            let packet = self.packet.load(Ordering::Acquire);
+            let packet = self.inner.packet.load(Ordering::Acquire);
             if packet != 0 {
                 return packet;
             }
@@ -92,14 +131,14 @@ impl Context {
 
     /// Waits until an operation is selected and returns it.
     ///
-    /// If the deadline is reached, `Select::Aborted` will be selected.
+    /// If the deadline is reached, `Selected::Aborted` will be selected.
     #[inline]
-    pub fn wait_until(&self, deadline: Option<Instant>) -> Select {
+    pub fn wait_until(&self, deadline: Option<Instant>) -> Selected {
         // Spin for a short time, waiting until an operation is selected.
         let backoff = &mut Backoff::new();
         loop {
-            let sel = Select::from(self.select.load(Ordering::Acquire));
-            if sel != Select::Waiting {
+            let sel = Selected::from(self.inner.select.load(Ordering::Acquire));
+            if sel != Selected::Waiting {
                 return sel;
             }
 
@@ -110,8 +149,8 @@ impl Context {
 
         loop {
             // Check whether an operation has been selected.
-            let sel = Select::from(self.select.load(Ordering::Acquire));
-            if sel != Select::Waiting {
+            let sel = Selected::from(self.inner.select.load(Ordering::Acquire));
+            if sel != Selected::Waiting {
                 return sel;
             }
 
@@ -123,8 +162,8 @@ impl Context {
                     thread::park_timeout(end - now);
                 } else {
                     // The deadline has been reached. Try aborting select.
-                    return match self.try_select(Select::Aborted) {
-                        Ok(()) => Select::Aborted,
+                    return match self.try_select(Selected::Aborted) {
+                        Ok(()) => Selected::Aborted,
                         Err(s) => s,
                     };
                 }
@@ -137,35 +176,12 @@ impl Context {
     /// Unparks the thread this context belongs to.
     #[inline]
     pub fn unpark(&self) {
-        self.thread.unpark();
+        self.inner.thread.unpark();
     }
 
     /// Returns the id of the thread this context belongs to.
     #[inline]
     pub fn thread_id(&self) -> ThreadId {
-        self.thread_id
+        self.inner.thread_id
     }
-}
-
-thread_local! {
-    /// The thread-local context.
-    static CONTEXT: Arc<Context> = Context::new();
-}
-
-/// Acquires a reference to the context associated with the current thread.
-///
-/// During TLS teardown this reference might change.
-#[inline]
-pub fn with_current<F, R>(mut f: F) -> R
-where
-    F: FnMut(&Arc<Context>) -> R,
-{
-    CONTEXT.try_with(|cx| f(cx)).unwrap_or_else(|_| f(&Context::new()))
-}
-
-/// Returns the id of the current thread.
-#[inline]
-pub fn current_thread_id() -> ThreadId {
-    CONTEXT.try_with(|cx| cx.thread_id)
-        .unwrap_or_else(|_| thread::current().id())
 }

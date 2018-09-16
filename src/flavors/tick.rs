@@ -164,7 +164,7 @@ impl SelectHandle for Channel {
     }
 
     #[inline]
-    fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Arc<Context>) -> bool {
+    fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Context) -> bool {
         true
     }
 
@@ -172,7 +172,7 @@ impl SelectHandle for Channel {
     fn unregister(&self, _oper: Operation) {}
 
     #[inline]
-    fn accept(&self, token: &mut Token, _cx: &Arc<Context>) -> bool {
+    fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
         self.try(token)
     }
 

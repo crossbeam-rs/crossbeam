@@ -2,18 +2,18 @@
 
 use std::collections::VecDeque;
 use std::num::Wrapping;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread::{self, ThreadId};
 
 use parking_lot::Mutex;
 
-use internal::context::{self, Context};
-use internal::select::{Operation, Select};
+use internal::context::Context;
+use internal::select::{Operation, Selected};
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {
     /// Context associated with the thread owning this operation.
-    pub context: Arc<Context>,
+    pub context: Context,
 
     /// The operation.
     pub oper: Operation,
@@ -46,13 +46,13 @@ impl Waker {
 
     /// Registers the current thread with an operation.
     #[inline]
-    pub fn register(&mut self, oper: Operation, cx: &Arc<Context>) {
+    pub fn register(&mut self, oper: Operation, cx: &Context) {
         self.register_with_packet(oper, 0, cx);
     }
 
     /// Registers the current thread with an operation and a packet.
     #[inline]
-    pub fn register_with_packet(&mut self, oper: Operation, packet: usize, cx: &Arc<Context>) {
+    pub fn register_with_packet(&mut self, oper: Operation, packet: usize, cx: &Context) {
         self.entries.push_back(Entry {
             context: cx.clone(),
             oper,
@@ -81,26 +81,25 @@ impl Waker {
     #[inline]
     pub fn wake_one(&mut self) -> Option<Entry> {
         if !self.entries.is_empty() {
-            let thread_id = context::current_thread_id();
+            let thread_id = current_thread_id();
 
             for i in 0..self.entries.len() {
                 // Does the entry belong to a different thread?
                 if self.entries[i].context.thread_id() != thread_id {
                     // Try selecting this operation.
-                    let sel = Select::Operation(self.entries[i].oper);
+                    let sel = Selected::Operation(self.entries[i].oper);
                     let res = self.entries[i].context.try_select(sel);
 
                     if res.is_ok() {
-                        // Provide the packet, too.
+                        // Provide the packet.
                         self.entries[i].context.store_packet(self.entries[i].packet);
+                        // Wake the thread up.
+                        self.entries[i].context.unpark();
 
                         // Remove the entry from the queue to keep it clean and improve
                         // performance.
                         let entry = self.entries.remove(i).unwrap();
                         Self::maybe_shrink(&mut self.entries);
-
-                        // Wake the thread up.
-                        entry.context.unpark();
                         return Some(entry);
                     }
                 }
@@ -114,12 +113,12 @@ impl Waker {
     #[inline]
     pub fn close(&mut self) {
         for entry in self.entries.iter() {
-            if entry.context.try_select(Select::Closed).is_ok() {
+            if entry.context.try_select(Selected::Closed).is_ok() {
                 // Wake the thread up.
                 //
-                // Here we don't remove the entry from the queue. Registered threads might want to
-                // unregister from the waker by themselves in order to recover the packet value and
-                // destroy it, if necessary.
+                // Here we don't remove the entry from the queue. Registered threads must
+                // unregister from the waker by themselves. They might also want to recover the
+                // packet value and destroy it, if necessary.
                 entry.context.unpark();
             }
         }
@@ -128,18 +127,16 @@ impl Waker {
     /// Returns `true` if there is an entry which can be woken up by the current thread.
     #[inline]
     pub fn can_wake_one(&self) -> bool {
-        if !self.entries.is_empty() {
-            let thread_id = context::current_thread_id();
+        if self.entries.is_empty() {
+            false
+        } else {
+            let thread_id = current_thread_id();
 
-            for i in 0..self.entries.len() {
-                if self.entries[i].context.thread_id() != thread_id
-                    && self.entries[i].context.selected() == Select::Waiting
-                {
-                    return true;
-                }
-            }
+            self.entries.iter().any(|entry| {
+                entry.context.thread_id() != thread_id
+                    && entry.context.selected() == Selected::Waiting
+            })
         }
-        false
     }
 
     /// Returns the number of entries in the queue.
@@ -194,7 +191,7 @@ impl SyncWaker {
 
     /// Registers the current thread with an operation.
     #[inline]
-    pub fn register(&self, oper: Operation, cx: &Arc<Context>) {
+    pub fn register(&self, oper: Operation, cx: &Context) {
         let mut inner = self.inner.lock();
         inner.register(oper, cx);
         self.len.store(inner.len(), Ordering::SeqCst);
@@ -238,4 +235,17 @@ impl Drop for SyncWaker {
         debug_assert_eq!(self.inner.lock().len(), 0);
         debug_assert_eq!(self.len.load(Ordering::SeqCst), 0);
     }
+}
+
+/// Returns the id of the current thread.
+#[inline]
+fn current_thread_id() -> ThreadId {
+    thread_local! {
+        /// Cached thread-local id.
+        static THREAD_ID: ThreadId = thread::current().id();
+    }
+
+    THREAD_ID
+        .try_with(|id| *id)
+        .unwrap_or_else(|_| thread::current().id())
 }

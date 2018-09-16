@@ -754,7 +754,7 @@ impl<T> SelectHandle for Sender<T> {
         None
     }
 
-    fn register(&self, token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
+    fn register(&self, token: &mut Token, oper: Operation, cx: &Context) -> bool {
         match &self.0.flavor {
             ChannelFlavor::Array(chan) => chan.sender().register(token, oper, cx),
             ChannelFlavor::List(chan) => chan.sender().register(token, oper, cx),
@@ -770,7 +770,7 @@ impl<T> SelectHandle for Sender<T> {
         }
     }
 
-    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool {
+    fn accept(&self, token: &mut Token, cx: &Context) -> bool {
         match &self.0.flavor {
             ChannelFlavor::Array(chan) => chan.sender().accept(token, cx),
             ChannelFlavor::List(chan) => chan.sender().accept(token, cx),
@@ -820,7 +820,7 @@ impl<T> SelectHandle for Receiver<T> {
         }
     }
 
-    fn register(&self, token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
+    fn register(&self, token: &mut Token, oper: Operation, cx: &Context) -> bool {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.receiver().register(token, oper, cx),
@@ -844,7 +844,7 @@ impl<T> SelectHandle for Receiver<T> {
         }
     }
 
-    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool {
+    fn accept(&self, token: &mut Token, cx: &Context) -> bool {
         match &self.0 {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.receiver().accept(token, cx),
