@@ -201,6 +201,8 @@ impl<T> Channel<T> {
                     token.array.stamp = stamp.wrapping_add(self.one_lap);
                     return true;
                 }
+
+                backoff.spin();
             // But if the slot lags one lap behind the tail...
             } else if stamp.wrapping_add(self.one_lap) == tail {
                 let head = self.head.load(Ordering::SeqCst);
@@ -210,9 +212,11 @@ impl<T> Channel<T> {
                     // ...then the channel is full.
                     return false;
                 }
-            }
 
-            backoff.spin();
+                backoff.spin();
+            } else {
+                backoff.snooze();
+            }
         }
     }
 
@@ -265,6 +269,8 @@ impl<T> Channel<T> {
                     token.array.stamp = stamp.wrapping_add(self.one_lap);
                     return true;
                 }
+
+                backoff.spin();
             // But if the slot lags one lap behind the head...
             } else if stamp.wrapping_add(self.one_lap) == head {
                 let tail = self.tail.load(Ordering::SeqCst);
@@ -286,9 +292,11 @@ impl<T> Channel<T> {
                         return false;
                     }
                 }
-            }
 
-            backoff.spin();
+                backoff.spin();
+            } else {
+                backoff.snooze();
+            }
         }
     }
 
