@@ -238,6 +238,23 @@ impl<T> Channel<T> {
             // Advance the current index one slot forward.
             let new_index = head_index.wrapping_add(1);
 
+            // A closure that installs a block following `head` in case it hasn't been yet.
+            let install_next_block = || {
+                let current = head.next.compare_and_set(
+                    Shared::null(),
+                    Owned::new(Block::new(head.start_index.wrapping_add(BLOCK_CAP))),
+                    Ordering::AcqRel,
+                    &guard,
+                ).unwrap_or_else(|err| err.current);
+
+                let _ = self.head.block.compare_and_set(
+                    head_ptr,
+                    current,
+                    Ordering::Release,
+                    &guard,
+                );
+            };
+
             // If `head_index` is pointing into `head`...
             if offset < BLOCK_CAP {
                 let slot = unsafe { &*head.slots.get_unchecked(offset).get() };
@@ -275,18 +292,10 @@ impl<T> Channel<T> {
                     )
                     .is_ok()
                 {
-                    // If this was the last slot in the block, schedule its destruction.
+                    // If this was the last slot in the block, install a new block and destroy the
+                    // old one.
                     if offset + 1 == BLOCK_CAP {
-                        // Wait until the next pointer becomes non-null.
-                        loop {
-                            let next_ptr = head.next.load(Ordering::Acquire, &guard);
-                            if !next_ptr.is_null() {
-                                self.head.block.store(next_ptr, Ordering::Release);
-                                break;
-                            }
-                            backoff.snooze();
-                        }
-
+                        install_next_block();
                         unsafe {
                             guard.defer_destroy(head_ptr);
                         }
@@ -295,9 +304,12 @@ impl<T> Channel<T> {
                     token.list.slot = slot as *const Slot<T> as *const u8;
                     break;
                 }
-            }
 
-            backoff.spin();
+                backoff.spin();
+            } else if offset == BLOCK_CAP {
+                // Help install the next block.
+                install_next_block();
+            }
         }
 
         token.list.guard = Some(guard);
