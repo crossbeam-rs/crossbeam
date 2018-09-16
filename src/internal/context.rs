@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
-use internal::select::Select;
+use internal::select::Selected;
 use internal::utils::Backoff;
 
 /// Thread-local context used in select.
@@ -29,7 +29,7 @@ impl Context {
     /// Creates a new `Arc<Context>`.
     pub fn new() -> Arc<Context> {
         Arc::new(Context {
-            select: AtomicUsize::new(Select::Waiting.into()),
+            select: AtomicUsize::new(Selected::Waiting.into()),
             thread: thread::current(),
             thread_id: thread::current().id(),
             packet: AtomicUsize::new(0),
@@ -41,7 +41,7 @@ impl Context {
     /// This method is used for initialization before the start of select.
     #[inline]
     pub fn reset(&self) {
-        self.select.store(Select::Waiting.into(), Ordering::Release);
+        self.select.store(Selected::Waiting.into(), Ordering::Release);
         self.packet.store(0, Ordering::Release);
     }
 
@@ -49,10 +49,10 @@ impl Context {
     ///
     /// On failure, the previously selected operation is returned.
     #[inline]
-    pub fn try_select(&self, select: Select) -> Result<(), Select> {
+    pub fn try_select(&self, select: Selected) -> Result<(), Selected> {
         self.select
             .compare_exchange(
-                Select::Waiting.into(),
+                Selected::Waiting.into(),
                 select.into(),
                 Ordering::AcqRel,
                 Ordering::Acquire,
@@ -63,8 +63,8 @@ impl Context {
 
     /// Returns the selected operation.
     #[inline]
-    pub fn selected(&self) -> Select {
-        Select::from(self.select.load(Ordering::Acquire))
+    pub fn selected(&self) -> Selected {
+        Selected::from(self.select.load(Ordering::Acquire))
     }
 
     /// Stores a packet.
@@ -92,14 +92,14 @@ impl Context {
 
     /// Waits until an operation is selected and returns it.
     ///
-    /// If the deadline is reached, `Select::Aborted` will be selected.
+    /// If the deadline is reached, `Selected::Aborted` will be selected.
     #[inline]
-    pub fn wait_until(&self, deadline: Option<Instant>) -> Select {
+    pub fn wait_until(&self, deadline: Option<Instant>) -> Selected {
         // Spin for a short time, waiting until an operation is selected.
         let backoff = &mut Backoff::new();
         loop {
-            let sel = Select::from(self.select.load(Ordering::Acquire));
-            if sel != Select::Waiting {
+            let sel = Selected::from(self.select.load(Ordering::Acquire));
+            if sel != Selected::Waiting {
                 return sel;
             }
 
@@ -110,8 +110,8 @@ impl Context {
 
         loop {
             // Check whether an operation has been selected.
-            let sel = Select::from(self.select.load(Ordering::Acquire));
-            if sel != Select::Waiting {
+            let sel = Selected::from(self.select.load(Ordering::Acquire));
+            if sel != Selected::Waiting {
                 return sel;
             }
 
@@ -123,8 +123,8 @@ impl Context {
                     thread::park_timeout(end - now);
                 } else {
                     // The deadline has been reached. Try aborting select.
-                    return match self.try_select(Select::Aborted) {
-                        Ok(()) => Select::Aborted,
+                    return match self.try_select(Selected::Aborted) {
+                        Ok(()) => Selected::Aborted,
                         Err(s) => s,
                     };
                 }

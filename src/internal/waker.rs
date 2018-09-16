@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use parking_lot::Mutex;
 
 use internal::context::{self, Context};
-use internal::select::{Operation, Select};
+use internal::select::{Operation, Selected};
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {
@@ -87,7 +87,7 @@ impl Waker {
                 // Does the entry belong to a different thread?
                 if self.entries[i].context.thread_id() != thread_id {
                     // Try selecting this operation.
-                    let sel = Select::Operation(self.entries[i].oper);
+                    let sel = Selected::Operation(self.entries[i].oper);
                     let res = self.entries[i].context.try_select(sel);
 
                     if res.is_ok() {
@@ -114,7 +114,7 @@ impl Waker {
     #[inline]
     pub fn close(&mut self) {
         for entry in self.entries.iter() {
-            if entry.context.try_select(Select::Closed).is_ok() {
+            if entry.context.try_select(Selected::Closed).is_ok() {
                 // Wake the thread up.
                 //
                 // Here we don't remove the entry from the queue. Registered threads might want to
@@ -133,7 +133,7 @@ impl Waker {
 
             for i in 0..self.entries.len() {
                 if self.entries[i].context.thread_id() != thread_id
-                    && self.entries[i].context.selected() == Select::Waiting
+                    && self.entries[i].context.selected() == Selected::Waiting
                 {
                     return true;
                 }

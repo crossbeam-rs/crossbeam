@@ -13,7 +13,7 @@ use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
 use internal::context::{self, Context};
-use internal::select::{Operation, Select, SelectHandle, Token};
+use internal::select::{Operation, Selected, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
 
@@ -355,19 +355,19 @@ impl<T> Channel<T> {
 
                 // Has the channel become ready just now?
                 if !self.is_empty() || self.is_closed() {
-                    let _ = cx.try_select(Select::Aborted);
+                    let _ = cx.try_select(Selected::Aborted);
                 }
 
                 // Block the current thread.
                 let sel = cx.wait_until(None);
 
                 match sel {
-                    Select::Waiting => unreachable!(),
-                    Select::Aborted | Select::Closed => {
+                    Selected::Waiting => unreachable!(),
+                    Selected::Aborted | Selected::Closed => {
                         self.receivers.unregister(oper).unwrap();
                         // If the channel was closed, we still have to check for remaining messages.
                     },
-                    Select::Operation(_) => {},
+                    Selected::Operation(_) => {},
                 }
             })
         }

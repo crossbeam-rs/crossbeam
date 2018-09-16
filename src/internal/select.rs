@@ -1,11 +1,13 @@
 //! Interface to the select mechanism.
 
+use std::marker::PhantomData;
+use std::mem;
 use std::option;
 use std::ptr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use internal::channel::{Receiver, Sender};
+use internal::channel::{self, Receiver, Sender};
 use internal::context::{self, Context};
 use internal::smallvec::SmallVec;
 use internal::utils;
@@ -43,7 +45,7 @@ impl Operation {
 
 /// Current state of a select or a blocking operation.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Select {
+pub enum Selected {
     /// Still waiting for an operation.
     Waiting,
 
@@ -57,26 +59,26 @@ pub enum Select {
     Operation(Operation),
 }
 
-impl From<usize> for Select {
+impl From<usize> for Selected {
     #[inline]
-    fn from(val: usize) -> Select {
+    fn from(val: usize) -> Selected {
         match val {
-            0 => Select::Waiting,
-            1 => Select::Aborted,
-            2 => Select::Closed,
-            oper => Select::Operation(Operation(oper)),
+            0 => Selected::Waiting,
+            1 => Selected::Aborted,
+            2 => Selected::Closed,
+            oper => Selected::Operation(Operation(oper)),
         }
     }
 }
 
-impl Into<usize> for Select {
+impl Into<usize> for Selected {
     #[inline]
     fn into(self) -> usize {
         match self {
-            Select::Waiting => 0,
-            Select::Aborted => 1,
-            Select::Closed => 2,
-            Select::Operation(Operation(val)) => val,
+            Selected::Waiting => 0,
+            Selected::Aborted => 1,
+            Selected::Closed => 2,
+            Selected::Operation(Operation(val)) => val,
         }
     }
 }
@@ -219,7 +221,7 @@ where
         }
 
         if has_default {
-            // Select the `default` case.
+            // Selected the `default` case.
             return (token, 0, ptr::null());
         }
 
@@ -234,7 +236,7 @@ where
         // Prepare for blocking.
         let res = context::with_current(|cx| {
             cx.reset();
-            let mut sel = Select::Waiting;
+            let mut sel = Selected::Waiting;
             let mut registered_count = 0;
 
             // Register all operations.
@@ -244,8 +246,8 @@ where
                 // If registration returns `false`, that means the operation has just become ready.
                 if !handle.register(&mut token, Operation::hook(handle), cx) {
                     // Try aborting select.
-                    sel = match cx.try_select(Select::Aborted) {
-                        Ok(()) => Select::Aborted,
+                    sel = match cx.try_select(Selected::Aborted) {
+                        Ok(()) => Selected::Aborted,
                         Err(s) => s,
                     };
                     break;
@@ -253,12 +255,12 @@ where
 
                 // If another thread has already selected one of the operations, stop registration.
                 sel = cx.selected();
-                if sel != Select::Waiting {
+                if sel != Selected::Waiting {
                     break;
                 }
             }
 
-            if sel == Select::Waiting {
+            if sel == Selected::Waiting {
                 // Check with each operation for how long we're allowed to block, and compute the
                 // earliest deadline.
                 let mut deadline: Option<Instant> = None;
@@ -278,13 +280,13 @@ where
             }
 
             match sel {
-                Select::Waiting => unreachable!(),
-                Select::Aborted => {},
-                Select::Closed | Select::Operation(_) => {
+                Selected::Waiting => unreachable!(),
+                Selected::Aborted => {},
+                Selected::Closed | Selected::Operation(_) => {
                     // Find the selected operation.
                     for (handle, i, ptr) in handles.iter_mut() {
                         // Is this the selected operation?
-                        if sel == Select::Operation(Operation::hook(handle)) {
+                        if sel == Selected::Operation(Operation::hook(handle)) {
                             // Try firing this operation.
                             if handle.accept(&mut token, cx) {
                                 return Some((*i, *ptr));
@@ -305,6 +307,301 @@ where
         // Return if an operation was fired.
         if let Some((i, ptr)) = res {
             return (token, i, ptr);
+        }
+    }
+}
+
+/// Waits on a set of channel operations.
+///
+/// This struct with builder-like interface allows declaring a set of channel operations and
+/// blocking until any one of them becomes ready. Finally, one of the operations is executed. If
+/// multiple operations are ready at the same time, a random one is chosen. It is also possible to
+/// declare a default case that gets executed if none of the operations are initially ready.
+///
+/// Note that this method of selecting over channel operations is typically somewhat slower than
+/// the [`select!`] macro.
+///
+/// [`select!`]: macro.select.html
+///
+/// # Receiving
+///
+/// Receiving a message from two channels, whichever becomes ready first:
+///
+/// ```
+/// use std::thread;
+/// use crossbeam_channel as channel;
+///
+/// let (s1, r1) = channel::unbounded();
+/// let (s2, r2) = channel::unbounded();
+///
+/// thread::spawn(move || s1.send("foo"));
+/// thread::spawn(move || s2.send("bar"));
+///
+/// // Only one of these two receive operations will be executed.
+/// channel::Select::new()
+///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
+///     .recv(&r2, |msg| assert_eq!(msg, Some("bar")))
+///     .wait();
+/// ```
+///
+/// # Sending
+///
+/// Waiting on a send and a receive operation:
+///
+/// ```
+/// use std::thread;
+/// use crossbeam_channel as channel;
+///
+/// let (s1, r1) = channel::unbounded();
+/// let (s2, r2) = channel::unbounded();
+///
+/// s1.send("foo");
+///
+/// // Since both operations are initially ready, a random one will be executed.
+/// channel::Select::new()
+///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
+///     .send(&s2, || "bar", || assert_eq!(r2.recv(), Some("bar")))
+///     .wait();
+/// ```
+///
+/// # Default case
+///
+/// A special kind of case is `default`, which gets executed if none of the operations can be
+/// executed, i.e. they would block:
+///
+/// ```
+/// use std::thread;
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel as channel;
+///
+/// let (s, r) = channel::unbounded();
+///
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     s.send("foo");
+/// });
+///
+/// // Don't block on the receive operation.
+/// channel::Select::new()
+///     .recv(&r, |_| panic!())
+///     .default(|| println!("The message is not yet available."))
+///     .wait();
+/// ```
+///
+/// # Execution
+///
+/// 1. A `Select` is constructed, cases are added, and `.wait()` is called.
+/// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
+///    operations are ready, a random one is chosen.
+/// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
+///    there is no `default` case, the current thread is blocked until an operation becomes ready.
+/// 4. If a `recv` operation gets executed, its callback is invoked.
+/// 5. If a `send` operation gets executed, the message is lazily evaluated and sent into the
+///    channel. Finally, the callback is invoked.
+///
+/// **Note**: If evaluation of the message panics, the process will be aborted because it's
+/// impossible to recover from such panics. All the other callbacks are allowed to panic, however.
+#[must_use]
+pub struct Select<'a, R> {
+    /// A list of senders and receivers participating in selection.
+    handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
+
+    /// A list of callbacks, one per handle.
+    callbacks: SmallVec<[Callback<'a, R>; 4]>,
+
+    /// Callback for the default case.
+    default: Option<Callback<'a, R>>,
+}
+
+impl<'a, R> Select<'a, R> {
+    /// Creates a new `Select`.
+    pub fn new() -> Select<'a, R> {
+        Select {
+            handles: SmallVec::new(),
+            callbacks: SmallVec::new(),
+            default: None,
+        }
+    }
+
+    /// Adds a receive case.
+    ///
+    /// The callback will get invoked if the receive operation completes.
+    #[inline]
+    pub fn recv<T, C>(mut self, r: &'a Receiver<T>, cb: C) -> Select<'a, R>
+    where
+        C: FnOnce(Option<T>) -> R + 'a,
+    {
+        let i = self.handles.len() + 1;
+        let ptr = r as *const Receiver<_> as *const u8;
+        self.handles.push((r, i, ptr));
+
+        self.callbacks.push(Callback::new(move |token| {
+            let msg = unsafe { channel::read(r, token) };
+            cb(msg)
+        }));
+
+        self
+    }
+
+    /// Adds a send case.
+    ///
+    /// If the send operation succeeds, the message will be generated and sent into the channel.
+    /// Finally, the callback gets invoked once the operation is completed.
+    ///
+    /// **Note**: If function `msg` panics, the process will be aborted because it's impossible to
+    /// recover from such panics. However, function `cb` is allowed to panic.
+    #[inline]
+    pub fn send<T, M, C>(mut self, s: &'a Sender<T>, msg: M, cb: C) -> Select<'a, R>
+    where
+        M: FnOnce() -> T + 'a,
+        C: FnOnce() -> R + 'a,
+    {
+        let i = self.handles.len() + 1;
+        let ptr = s as *const Sender<_> as *const u8;
+        self.handles.push((s, i, ptr));
+
+        self.callbacks.push(Callback::new(move |token| {
+            let _guard = utils::AbortGuard(
+                "a send case triggered a panic while evaluating its message"
+            );
+            let msg = msg();
+
+            ::std::mem::forget(_guard);
+            unsafe { channel::write(s, token, msg); }
+
+            cb()
+        }));
+
+        self
+    }
+
+    /// Adds a default case.
+    ///
+    /// This case gets executed if none of the channel operations are ready.
+    ///
+    /// If called more than once, this method keeps only the last callback for the default case.
+    #[inline]
+    pub fn default<C>(mut self, cb: C) -> Select<'a, R>
+    where
+        C: FnOnce() -> R + 'a,
+    {
+        self.default = Some(Callback::new(move |_| cb()));
+        self
+    }
+
+    /// Starts selection and waits until it completes.
+    ///
+    /// The result of the executed callback function will be returned.
+    pub fn wait(mut self) -> R {
+        let (mut token, index, _) = main_loop(&mut self.handles, self.default.is_some());
+        let cb;
+
+        // Initialize `cb` with the right callback and drop all other callbacks.
+        if index == 0 {
+            self.callbacks.clear();
+            cb = self.default.take().unwrap();
+        } else {
+            cb = self.callbacks.remove(index - 1);
+            self.callbacks.clear();
+            self.default.take();
+        }
+
+        // Invoke the callback.
+        cb.call(&mut token)
+    }
+}
+
+/// Some space to keep a `FnOnce()` object on the stack.
+type Space = [usize; 2];
+
+/// A `FnOnce(&mut Token) -> R + 'a` that is stored inline if small, or otherwise boxed on the heap.
+pub struct Callback<'a, R> {
+    /// A wrapper function around the callback.
+    ///
+    /// The first argument is a pointer to `space`.
+    ///
+    /// The second argument may contain a reference to `Token`. If the argument is `Some`, the
+    /// reference is passed to the callback. If the argument is `None`, the callback is read and
+    /// dropped without invocation.
+    ///
+    /// This function may be called only once.
+    call: unsafe fn(*mut u8, token: Option<&mut Token>) -> Option<R>,
+
+    /// Some space where a function can be stored, if it fits.
+    space: Space,
+
+    /// Indicates that a `Callback` is `!Send + !Sync` and borrows `'a`.
+    _marker: PhantomData<(*mut (), &'a ())>,
+}
+
+impl<'a, R> Callback<'a, R> {
+    /// Constructs a new `Callback<'a, R>` from a `FnOnce(&mut Token) -> R + 'a`.
+    pub fn new<F>(f: F) -> Self
+    where
+        F: FnOnce(&mut Token) -> R + 'a,
+    {
+        let size = mem::size_of::<F>();
+        let align = mem::align_of::<F>();
+
+        unsafe {
+            let mut space: Space = mem::uninitialized();
+
+            let call = if size <= mem::size_of::<Space>() && align <= mem::align_of::<Space>() {
+                unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
+                where
+                    F: FnOnce(&mut Token) -> R + 'a,
+                {
+                    // Read the function from the stack.
+                    let f: F = ptr::read(raw as *mut F);
+                    token.map(f)
+                }
+
+                // Write the function into the space.
+                ptr::write(&mut space as *mut Space as *mut F, f);
+                call::<F, R>
+            } else {
+                unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
+                where
+                    F: FnOnce(&mut Token) -> R + 'a,
+                {
+                    // Read the pointer to the function from the stack.
+                    let b: Box<F> = ptr::read(raw as *mut Box<F>);
+                    token.map(*b)
+                }
+
+                // The function doesn't fit, so box it and write the pointer into the space.
+                let b: Box<F> = Box::new(f);
+                ptr::write(&mut space as *mut Space as *mut Box<F>, b);
+                call::<F, R>
+            };
+
+            Callback {
+                call,
+                space,
+                _marker: PhantomData,
+            }
+        }
+    }
+
+    /// Invokes the callback.
+    #[inline]
+    pub fn call(self, token: &mut Token) -> R {
+        // Disassemble `self` and forget it so that the destructor doesn't invoke `call`.
+        let Callback { call, mut space, .. } = self;
+        mem::forget(self);
+
+        // Invoke the callback.
+        unsafe {
+            (call)(&mut space as *mut Space as *mut u8, Some(token)).unwrap()
+        }
+    }
+}
+
+impl<'a, R> Drop for Callback<'a, R> {
+    fn drop(&mut self) {
+        // Call the function with `None` in order to drop the callback.
+        unsafe {
+            (self.call)(&mut self.space as *mut Space as *mut u8, None);
         }
     }
 }
@@ -405,6 +702,11 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, 
 /// becomes ready. Finally, one of the operations is executed. If multiple operations are ready at
 /// the same time, a random one is chosen. It is also possible to declare a `default` case that
 /// gets executed if none of the operations are initially ready.
+///
+/// If you need to dynamically add cases rather than define them statically inside the macro, use
+/// [`Select`] instead.
+///
+/// [`Select`]: struct.Select.html
 ///
 /// # Receiving
 ///
