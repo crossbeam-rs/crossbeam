@@ -4,7 +4,6 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
 use std::ptr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
@@ -12,7 +11,7 @@ use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
-use internal::context::{self, Context};
+use internal::context::Context;
 use internal::select::{Operation, Selected, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
@@ -147,21 +146,6 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
-    fn link_next_block<'g>(&self, tail_ptr: Shared<Block<T>>, tail: &'g Block<T>, index: usize, guard: &'g Guard) {
-        let new = Owned::new(Block::new(index));
-
-        // try to move the tail pointer forward
-        let _ = tail.next.compare_and_set(Shared::null(), new, Ordering::Release, guard)
-        .map(|shared| {
-            let _ = self.tail.block.compare_and_set(tail_ptr, shared, Ordering::Release, guard);
-        })
-        .map_err(|e| {
-            let _ = self.tail.block.compare_and_set(tail_ptr, e.current, Ordering::Release, guard);
-            // Actually, drop of e.new will be called automatically...
-            drop(e.new);
-        });
-    }
-
     /// Writes a message into the channel.
     pub fn write(&self, _token: &mut Token, msg: T) {
         let guard = epoch::pin();
@@ -180,6 +164,23 @@ impl<T> Channel<T> {
             // Advance the current index one slot forward.
             let new_index = tail_index.wrapping_add(1);
 
+            // A closure that installs a block following `tail` in case it hasn't been yet.
+            let install_next_block = || {
+                let current = tail.next.compare_and_set(
+                    Shared::null(),
+                    Owned::new(Block::new(tail.start_index.wrapping_add(BLOCK_CAP))),
+                    Ordering::AcqRel,
+                    &guard,
+                ).unwrap_or_else(|err| err.current);
+
+                let _ = self.tail.block.compare_and_set(
+                    tail_ptr,
+                    current,
+                    Ordering::Release,
+                    &guard,
+                );
+            };
+
             // If `tail_index` is pointing into `tail`...
             if offset < BLOCK_CAP {
                 // Try moving the tail index forward.
@@ -194,9 +195,9 @@ impl<T> Channel<T> {
                     )
                     .is_ok()
                 {
-                    // If this was the last slot in the block, allocate a new block.
+                    // If this was the last slot in the block, install a new block.
                     if offset + 1 == BLOCK_CAP {
-                        self.link_next_block(tail_ptr, tail, new_index, &guard);
+                        install_next_block();
                     }
 
                     unsafe {
@@ -205,12 +206,12 @@ impl<T> Channel<T> {
                         (*slot).ready.store(true, Ordering::Release);
                     }
                     break;
-                } else {
-                    backoff.step();
                 }
-            } else {
-                // we can help the writer("offset + 1 == BLOCK_CAP") to add next block instead of spinning.
-                self.link_next_block(tail_ptr, tail, tail_index, &guard);
+
+                backoff.step();
+            } else if offset == BLOCK_CAP {
+                // Help install the next block.
+                install_next_block();
             }
         }
 
@@ -333,7 +334,6 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let oper = Operation::hook(token);
         loop {
             // Try receiving a message several times.
             let backoff = &mut Backoff::new();
@@ -349,8 +349,8 @@ impl<T> Channel<T> {
             }
 
             // Prepare for blocking until a sender wakes us up.
-            context::with_current(|cx| {
-                cx.reset();
+            Context::with(|cx| {
+                let oper = Operation::hook(token);
                 self.receivers.register(oper, cx);
 
                 // Has the channel become ready just now?
@@ -485,7 +485,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
+    fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
         self.0.receivers.register(oper, cx);
         self.0.is_empty() && !self.0.is_closed()
     }
@@ -494,7 +494,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         self.0.receivers.unregister(oper);
     }
 
-    fn accept(&self, token: &mut Token, _cx: &Arc<Context>) -> bool {
+    fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
         self.0.start_recv(token, &mut Backoff::new())
     }
 
@@ -516,13 +516,13 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Arc<Context>) -> bool {
+    fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Context) -> bool {
         false
     }
 
     fn unregister(&self, _oper: Operation) {}
 
-    fn accept(&self, _token: &mut Token, _cx: &Arc<Context>) -> bool {
+    fn accept(&self, _token: &mut Token, _cx: &Context) -> bool {
         true
     }
 

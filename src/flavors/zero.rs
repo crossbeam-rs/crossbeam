@@ -4,7 +4,6 @@
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Instant;
@@ -12,7 +11,7 @@ use std::time::Instant;
 use parking_lot::Mutex;
 
 use internal::channel::RecvNonblocking;
-use internal::context::{self, Context};
+use internal::context::Context;
 use internal::select::{Operation, Selected, SelectHandle, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
@@ -115,8 +114,6 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token, short_pause: bool) -> bool {
-        let oper = Operation::hook(token);
-
         let mut inner = self.inner.lock();
 
         // If there's a waiting receiver, pair up with it.
@@ -129,12 +126,12 @@ impl<T> Channel<T> {
             return false;
         }
 
-        // Register this send operation so that another receiver can pair up with it.
-        let packet = Box::into_raw(Packet::<T>::empty_on_heap());
-        let mut inner = Some(inner);
-        context::with_current(move |cx| {
-            cx.reset();
-            inner.take().unwrap().senders.register_with_packet(oper, packet as usize, cx);
+        Context::with(|cx| {
+            // Register this send operation so that another receiver can pair up with it.
+            let oper = Operation::hook(token);
+            let packet = Box::into_raw(Packet::<T>::empty_on_heap());
+            inner.senders.register_with_packet(oper, packet as usize, cx);
+            drop(inner);
 
             // Yield to give receivers a chance to pair up with this operation.
             thread::yield_now();
@@ -172,8 +169,6 @@ impl<T> Channel<T> {
 
     /// Attempts to pair up with a sender.
     fn start_recv(&self, token: &mut Token, short_pause: bool) -> bool {
-        let oper = Operation::hook(token);
-
         let mut inner = self.inner.lock();
 
         // If there's a waiting sender, pair up with it.
@@ -189,12 +184,12 @@ impl<T> Channel<T> {
             return false;
         }
 
-        // Register this receive operation so that another sender can pair up with it.
-        let packet = Box::into_raw(Packet::<T>::empty_on_heap());
-        let mut inner = Some(inner);
-        context::with_current(move |cx| {
-            cx.reset();
-            inner.take().unwrap().receivers.register_with_packet(oper, packet as usize, cx);
+        Context::with(|cx| {
+            // Register this receive operation so that another sender can pair up with it.
+            let oper = Operation::hook(token);
+            let packet = Box::into_raw(Packet::<T>::empty_on_heap());
+            inner.receivers.register_with_packet(oper, packet as usize, cx);
+            drop(inner);
 
             // Yield to give senders a chance to pair up with this operation.
             thread::yield_now();
@@ -263,9 +258,6 @@ impl<T> Channel<T> {
     /// Sends a message into the channel.
     pub fn send(&self, msg: T) {
         let token = &mut Token::default();
-        let oper = Operation::hook(token);
-        let packet;
-
         let mut inner = self.inner.lock();
 
         // If there's a waiting receiver, pair up with it.
@@ -276,16 +268,12 @@ impl<T> Channel<T> {
             return;
         }
 
-        // Prepare for blocking until a receiver wakes us up.
-        packet = Packet::message_on_stack(msg);
-        let mut inner = Some(inner);
-        context::with_current(move |cx| {
-            cx.reset();
-            inner.take().unwrap().senders.register_with_packet(
-                oper,
-                &packet as *const Packet<T> as usize,
-                cx,
-            );
+        Context::with(|cx| {
+            // Prepare for blocking until a receiver wakes us up.
+            let oper = Operation::hook(token);
+            let packet = Packet::<T>::message_on_stack(msg);
+            inner.senders.register_with_packet(oper, &packet as *const Packet<T> as usize, cx);
+            drop(inner);
 
             // Block the current thread.
             let sel = cx.wait_until(None);
@@ -303,9 +291,6 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub fn recv(&self) -> Option<T> {
         let token = &mut Token::default();
-        let oper = Operation::hook(token);
-        let packet;
-
         let mut inner = self.inner.lock();
 
         // If there's a waiting sender, pair up with it.
@@ -319,16 +304,12 @@ impl<T> Channel<T> {
             return None;
         }
 
-        // Prepare for blocking until a sender wakes us up.
-        packet = Packet::<T>::empty_on_stack();
-        let mut inner = Some(inner);
-        context::with_current(move |cx| {
-            cx.reset();
-            inner.take().unwrap().receivers.register_with_packet(
-                oper,
-                &packet as *const Packet<T> as usize,
-                cx,
-            );
+        Context::with(|cx| {
+            // Prepare for blocking until a sender wakes us up.
+            let oper = Operation::hook(token);
+            let packet = Packet::<T>::empty_on_stack();
+            inner.receivers.register_with_packet(oper, &packet as *const Packet<T> as usize, cx);
+            drop(inner);
 
             // Block the current thread.
             let sel = cx.wait_until(None);
@@ -418,7 +399,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
+    fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock();
@@ -434,7 +415,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         }
     }
 
-    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool {
+    fn accept(&self, token: &mut Token, cx: &Context) -> bool {
         token.zero = cx.wait_packet();
         true
     }
@@ -457,7 +438,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
+    fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock();
@@ -473,7 +454,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         }
     }
 
-    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool {
+    fn accept(&self, token: &mut Token, cx: &Context) -> bool {
         token.zero = cx.wait_packet();
         true
     }

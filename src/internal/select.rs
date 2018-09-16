@@ -4,11 +4,10 @@ use std::marker::PhantomData;
 use std::mem;
 use std::option;
 use std::ptr;
-use std::sync::Arc;
 use std::time::Instant;
 
 use internal::channel::{self, Receiver, Sender};
-use internal::context::{self, Context};
+use internal::context::Context;
 use internal::smallvec::SmallVec;
 use internal::utils;
 
@@ -100,13 +99,13 @@ pub trait SelectHandle {
     fn deadline(&self) -> Option<Instant>;
 
     /// Registers the operation.
-    fn register(&self, token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool;
+    fn register(&self, token: &mut Token, oper: Operation, cx: &Context) -> bool;
 
     /// Unregisters the operation.
     fn unregister(&self, oper: Operation);
 
     /// Attempts to execute the selected operation.
-    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool;
+    fn accept(&self, token: &mut Token, cx: &Context) -> bool;
 
     /// Returns the current state of the opposite side of the channel.
     ///
@@ -131,7 +130,7 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
         (**self).deadline()
     }
 
-    fn register(&self, token: &mut Token, oper: Operation, cx: &Arc<Context>) -> bool {
+    fn register(&self, token: &mut Token, oper: Operation, cx: &Context) -> bool {
         (**self).register(token, oper, cx)
     }
 
@@ -139,7 +138,7 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
         (**self).unregister(oper);
     }
 
-    fn accept(&self, token: &mut Token, cx: &Arc<Context>) -> bool {
+    fn accept(&self, token: &mut Token, cx: &Context) -> bool {
         (**self).accept(token, cx)
     }
 
@@ -234,8 +233,7 @@ where
         }
 
         // Prepare for blocking.
-        let res = context::with_current(|cx| {
-            cx.reset();
+        let res = Context::with(|cx| {
             let mut sel = Selected::Waiting;
             let mut registered_count = 0;
 
@@ -244,7 +242,7 @@ where
                 registered_count += 1;
 
                 // If registration returns `false`, that means the operation has just become ready.
-                if !handle.register(&mut token, Operation::hook(handle), cx) {
+                if !handle.register(&mut token, Operation::hook::<&S>(handle), cx) {
                     // Try aborting select.
                     sel = match cx.try_select(Selected::Aborted) {
                         Ok(()) => Selected::Aborted,
@@ -276,7 +274,7 @@ where
 
             // Unregister all registered operations.
             for (handle, _, _) in handles.iter_mut().take(registered_count) {
-                handle.unregister(Operation::hook(handle));
+                handle.unregister(Operation::hook::<&S>(handle));
             }
 
             match sel {
@@ -286,7 +284,7 @@ where
                     // Find the selected operation.
                     for (handle, i, ptr) in handles.iter_mut() {
                         // Is this the selected operation?
-                        if sel == Selected::Operation(Operation::hook(handle)) {
+                        if sel == Selected::Operation(Operation::hook::<&S>(handle)) {
                             // Try firing this operation.
                             if handle.accept(&mut token, cx) {
                                 return Some((*i, *ptr));
