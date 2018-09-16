@@ -19,28 +19,33 @@ impl Backoff {
         Backoff(0)
     }
 
-    /// Increments the counter and backs off.
+    /// Backs off in a spin loop.
     ///
-    /// Returns `true` if the counter has reached a large threshold. In that case it is advisable
-    /// to break the loop, do something else, and try again later.
-    ///
-    /// This method may yield the current processor or the current thread.
+    /// This method may yield the current processor. Use it in lock-free retry loops.
     #[inline]
-    pub fn step(&mut self) -> bool {
+    pub fn spin(&mut self) {
+        for _ in 0..1 << self.0.min(6) {
+            atomic::spin_loop_hint();
+        }
+        self.0 = self.0.wrapping_add(1);
+    }
+
+    /// Backs off in a wait loop.
+    ///
+    /// This method may yield the current processor or the current thread. Use it when waiting on a
+    /// resource.
+    #[inline]
+    pub fn snooze(&mut self) -> bool {
         if self.0 <= 6 {
             for _ in 0..1 << self.0 {
                 atomic::spin_loop_hint();
             }
-            self.0 += 1;
-            true
-        } else if self.0 <= 10 {
-            thread::yield_now();
-            self.0 += 1;
-            true
         } else {
             thread::yield_now();
-            false
         }
+
+        self.0 = self.0.wrapping_add(1);
+        self.0 <= 10
     }
 }
 

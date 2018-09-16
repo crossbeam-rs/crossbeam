@@ -208,7 +208,7 @@ impl<T> Channel<T> {
                     break;
                 }
 
-                backoff.step();
+                backoff.spin();
             } else if offset == BLOCK_CAP {
                 // Help install the next block.
                 install_next_block();
@@ -219,8 +219,9 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to reserve a slot for receiving a message.
-    fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn start_recv(&self, token: &mut Token) -> bool {
         let guard = epoch::pin();
+        let mut backoff = Backoff::new();
 
         loop {
             // Loading the head block doesn't have to be a `SeqCst` operation. If we get a stale
@@ -283,7 +284,7 @@ impl<T> Channel<T> {
                                 self.head.block.store(next_ptr, Ordering::Release);
                                 break;
                             }
-                            backoff.step();
+                            backoff.snooze();
                         }
 
                         unsafe {
@@ -296,7 +297,7 @@ impl<T> Channel<T> {
                 }
             }
 
-            backoff.step();
+            backoff.spin();
         }
 
         token.list.guard = Some(guard);
@@ -316,7 +317,7 @@ impl<T> Channel<T> {
         // Wait until the message becomes ready.
         let backoff = &mut Backoff::new();
         while !slot.ready.load(Ordering::Acquire) {
-            backoff.step();
+            backoff.snooze();
         }
 
         // Read the message.
@@ -338,12 +339,12 @@ impl<T> Channel<T> {
             // Try receiving a message several times.
             let backoff = &mut Backoff::new();
             loop {
-                if self.start_recv(token, backoff) {
+                if self.start_recv(token) {
                     unsafe {
                         return self.read(token);
                     }
                 }
-                if !backoff.step() {
+                if !backoff.snooze() {
                     break;
                 }
             }
@@ -376,9 +377,8 @@ impl<T> Channel<T> {
     /// Attempts to receive a message without blocking.
     pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
         let token = &mut Token::default();
-        let backoff = &mut Backoff::new();
 
-        if self.start_recv(token, backoff) {
+        if self.start_recv(token) {
             match unsafe { self.read(token) } {
                 None => RecvNonblocking::Closed,
                 Some(msg) => RecvNonblocking::Message(msg),
@@ -474,11 +474,11 @@ pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> SelectHandle for Receiver<'a, T> {
     fn try(&self, token: &mut Token) -> bool {
-        self.0.start_recv(token, &mut Backoff::new())
+        self.0.start_recv(token)
     }
 
     fn retry(&self, token: &mut Token) -> bool {
-        self.0.start_recv(token, &mut Backoff::new())
+        self.0.start_recv(token)
     }
 
     fn deadline(&self) -> Option<Instant> {
@@ -495,7 +495,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
     }
 
     fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
-        self.0.start_recv(token, &mut Backoff::new())
+        self.0.start_recv(token)
     }
 
     fn state(&self) -> usize {

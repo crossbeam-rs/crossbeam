@@ -63,7 +63,7 @@ impl<T> Packet<T> {
     fn wait_ready(&self) {
         let backoff = &mut Backoff::new();
         while !self.ready.load(Ordering::Acquire) {
-            backoff.step();
+            backoff.snooze();
         }
     }
 }

@@ -166,7 +166,9 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to reserve a slot for sending a message.
-    fn start_send(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn start_send(&self, token: &mut Token) -> bool {
+        let mut backoff = Backoff::new();
+
         loop {
             // Load the tail and deconstruct it.
             let tail = self.tail.load(Ordering::SeqCst);
@@ -210,7 +212,7 @@ impl<T> Channel<T> {
                 }
             }
 
-            backoff.step();
+            backoff.spin();
         }
     }
 
@@ -228,7 +230,9 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to reserve a slot for receiving a message.
-    fn start_recv(&self, token: &mut Token, backoff: &mut Backoff) -> bool {
+    fn start_recv(&self, token: &mut Token) -> bool {
+        let mut backoff = Backoff::new();
+
         loop {
             // Load the head and deconstruct it.
             let head = self.head.load(Ordering::SeqCst);
@@ -284,7 +288,7 @@ impl<T> Channel<T> {
                 }
             }
 
-            backoff.step();
+            backoff.spin();
         }
     }
 
@@ -314,11 +318,11 @@ impl<T> Channel<T> {
             // Try sending a message several times.
             let backoff = &mut Backoff::new();
             loop {
-                if self.start_send(token, backoff) {
+                if self.start_send(token) {
                     unsafe { self.write(token, msg); }
                     return;
                 }
-                if !backoff.step() {
+                if !backoff.snooze() {
                     break;
                 }
             }
@@ -354,12 +358,12 @@ impl<T> Channel<T> {
             // Try receiving a message several times.
             let backoff = &mut Backoff::new();
             loop {
-                if self.start_recv(token, backoff) {
+                if self.start_recv(token) {
                     unsafe {
                         return self.read(token);
                     }
                 }
-                if !backoff.step() {
+                if !backoff.snooze() {
                     break;
                 }
             }
@@ -392,9 +396,8 @@ impl<T> Channel<T> {
     /// Attempts to receive a message without blocking.
     pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
         let token = &mut Token::default();
-        let backoff = &mut Backoff::new();
 
-        if self.start_recv(token, backoff) {
+        if self.start_recv(token) {
             match unsafe { self.read(token) } {
                 None => RecvNonblocking::Closed,
                 Some(msg) => RecvNonblocking::Message(msg),
@@ -504,11 +507,11 @@ pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> SelectHandle for Receiver<'a, T> {
     fn try(&self, token: &mut Token) -> bool {
-        self.0.start_recv(token, &mut Backoff::new())
+        self.0.start_recv(token)
     }
 
     fn retry(&self, token: &mut Token) -> bool {
-        self.0.start_recv(token, &mut Backoff::new())
+        self.0.start_recv(token)
     }
 
     fn deadline(&self) -> Option<Instant> {
@@ -525,7 +528,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
     }
 
     fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
-        self.0.start_recv(token, &mut Backoff::new())
+        self.0.start_recv(token)
     }
 
     fn state(&self) -> usize {
@@ -535,11 +538,11 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
 
 impl<'a, T> SelectHandle for Sender<'a, T> {
     fn try(&self, token: &mut Token) -> bool {
-        self.0.start_send(token, &mut Backoff::new())
+        self.0.start_send(token)
     }
 
     fn retry(&self, token: &mut Token) -> bool {
-        self.0.start_send(token, &mut Backoff::new())
+        self.0.start_send(token)
     }
 
     fn deadline(&self) -> Option<Instant> {
@@ -556,7 +559,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
     }
 
     fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
-        self.0.start_send(token, &mut Backoff::new())
+        self.0.start_send(token)
     }
 
     fn state(&self) -> usize {

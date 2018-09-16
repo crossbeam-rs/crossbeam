@@ -125,7 +125,7 @@ impl Context {
             if packet != 0 {
                 return packet;
             }
-            backoff.step();
+            backoff.snooze();
         }
     }
 
@@ -142,7 +142,7 @@ impl Context {
                 return sel;
             }
 
-            if !backoff.step() {
+            if !backoff.snooze() {
                 break;
             }
         }
