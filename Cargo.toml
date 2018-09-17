@@ -1,6 +1,6 @@
 [package]
 name = "crossbeam-channel"
-version = "0.2.5"
+version = "0.2.6"
 authors = ["The Crossbeam Project Developers"]
 license = "MIT/Apache-2.0"
 readme = "README.md"

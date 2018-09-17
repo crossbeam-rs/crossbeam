@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.6] - 2018-09-17
+### Added
+- `Select` struct that can add cases dynamically.
+- More documentation (in particular, the FAQ section).
+
+### Changed
+- Optimize contended sends/receives in unbounded channels.
+
 ## [0.2.5] - 2018-09-11
 ### Changed
 - Use `LocalKey::try_with` instead of `LocalKey::with`.
@@ -104,7 +112,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - First implementation of the channels.
 - Add `select_loop!` macro by @TimNN.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.2...v0.2.3
