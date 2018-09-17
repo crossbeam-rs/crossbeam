@@ -38,6 +38,6 @@ Rust: `rustc 1.30.0-nightly (90d36fb59 2018-09-13)`
 
 Go: `go version go1.10.3 linux/amd64`
 
-Benchmarked on 2018-09-17:
+Commit: `6cde88a` (2018-09-17)
 
 ![Benchmark results](https://i.imgur.com/Kw2dQcy.png)
