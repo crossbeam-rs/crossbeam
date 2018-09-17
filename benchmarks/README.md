@@ -34,6 +34,10 @@ Dependencies:
 
 Machine: Intel(R) Core(TM) i7-5600U (2 physical cores, 4 logical cores)
 
-Benchmarked on 2018-06-11:
+Rust: `rustc 1.30.0-nightly (90d36fb59 2018-09-13)`
 
-![Benchmark results](https://i.imgur.com/tRI4HMO.png)
+Go: `go version go1.10.3 linux/amd64`
+
+Benchmarked on 2018-09-17:
+
+![Benchmark results](https://i.imgur.com/Kw2dQcy.png)
