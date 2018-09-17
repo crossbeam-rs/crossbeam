@@ -32,6 +32,9 @@ impl Backoff {
 
     /// Backs off in a wait loop.
     ///
+    /// Returns `true` if snoozing has reached a threshold where we should consider parking the
+    /// thread instead.
+    ///
     /// This method may yield the current processor or the current thread. Use it when waiting on a
     /// resource.
     #[inline]
