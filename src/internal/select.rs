@@ -1571,7 +1571,6 @@ macro_rules! select {
         if $handles.len() == 1 {
             let $r = $handles[0].0;
             let $m = $handles[0].0.recv();
-
             drop($handles);
             $body
         } else {
@@ -1592,23 +1591,21 @@ macro_rules! select {
         $handles:ident
     ) => {{
         if $handles.len() == 1 {
-            let r = $handles[0].0;
+            let res = $crate::internal::channel::recv_nonblocking($handles[0].0);
             let msg;
 
-            match $crate::internal::channel::recv_nonblocking(r) {
+            match res {
                 $crate::internal::channel::RecvNonblocking::Message(m) => {
                     msg = Some(m);
                     let $m = msg;
-                    let $r = r;
-
+                    let $r = $handles[0].0;
                     drop($handles);
                     $recv_body
                 }
                 $crate::internal::channel::RecvNonblocking::Closed => {
                     msg = None;
                     let $m = msg;
-                    let $r = r;
-
+                    let $r = $handles[0].0;
                     drop($handles);
                     $recv_body
                 }
