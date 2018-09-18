@@ -694,6 +694,15 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, 
     }
 }
 
+/// A necessary workaround to make `select!` work on both Rust 2015 and Rust 2018.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! crossbeam_channel_unreachable {
+    ($($args:tt)*) => {
+        unreachable! { $($args)* }
+    };
+}
+
 /// Waits on a set of channel operations.
 ///
 /// This macro allows declaring a set of channel operations and blocking until any one of them
@@ -885,7 +894,7 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, 
 /// **Note**: If evaluation of `msg4` or `msg5` panics, the process will be aborted because it's
 /// impossible to recover from such panics. All the other expressions are allowed to panic,
 /// however.
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! select {
     // The macro consists of two stages:
     // 1. Parsing
@@ -1882,7 +1891,7 @@ macro_rules! select {
         ()
         ()
     ) => {
-        unreachable!("internal error in crossbeam-channel")
+        crossbeam_channel_unreachable!("internal error in crossbeam-channel")
     };
 
     // Catches a bug within this macro (should not happen).
