@@ -7,8 +7,8 @@ use std::iter::FusedIterator;
 use std::mem;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::process;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use flavors;
@@ -186,7 +186,9 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// assert!(eq(Instant::now(), start + ms(500)));
 /// ```
 pub fn after(duration: Duration) -> Receiver<Instant> {
-    Receiver(ReceiverFlavor::After(flavors::after::Channel::new(duration)))
+    Receiver(ReceiverFlavor::After(flavors::after::Channel::new(
+        duration,
+    )))
 }
 
 /// Creates a receiver that delivers messages periodically.
@@ -888,10 +890,27 @@ pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
         },
         ReceiverFlavor::After(chan) => {
             mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
-        },
+        }
         ReceiverFlavor::Tick(chan) => {
             mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
-        },
+        }
+    }
+}
+
+/// The result of a non-blocking send operation
+pub enum SendNonblocking {
+    /// The channel is full
+    Full,
+
+    /// A message was sent
+    Sent,
+}
+
+pub fn send_nonblocking<T>(s: &Sender<T>, msg: T) -> SendNonblocking {
+    match &s.0.flavor {
+        ChannelFlavor::Array(chan) => chan.send_nonblocking(msg),
+        ChannelFlavor::List(chan) => chan.send_nonblocking(msg),
+        ChannelFlavor::Zero(chan) => chan.send_nonblocking(msg),
     }
 }
 
@@ -917,15 +936,11 @@ pub fn recv_nonblocking<T>(r: &Receiver<T>) -> RecvNonblocking<T> {
         },
         ReceiverFlavor::After(chan) => {
             let res = chan.recv_nonblocking();
-            unsafe {
-                mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res)
-            }
-        },
+            unsafe { mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res) }
+        }
         ReceiverFlavor::Tick(chan) => {
             let res = chan.recv_nonblocking();
-            unsafe {
-                mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res)
-            }
-        },
+            unsafe { mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res) }
+        }
     }
 }

@@ -279,7 +279,7 @@ where
 
             match sel {
                 Selected::Waiting => unreachable!(),
-                Selected::Aborted => {},
+                Selected::Aborted => {}
                 Selected::Closed | Selected::Operation(_) => {
                     // Find the selected operation.
                     for (handle, i, ptr) in handles.iter_mut() {
@@ -296,7 +296,7 @@ where
                     if handles.len() >= 2 {
                         utils::shuffle(handles);
                     }
-                },
+                }
             }
 
             None
@@ -459,13 +459,14 @@ impl<'a, R> Select<'a, R> {
         self.handles.push((s, i, ptr));
 
         self.callbacks.push(Callback::new(move |token| {
-            let _guard = utils::AbortGuard(
-                "a send case triggered a panic while evaluating its message"
-            );
+            let _guard =
+                utils::AbortGuard("a send case triggered a panic while evaluating its message");
             let msg = msg();
 
             ::std::mem::forget(_guard);
-            unsafe { channel::write(s, token, msg); }
+            unsafe {
+                channel::write(s, token, msg);
+            }
 
             cb()
         }));
@@ -585,13 +586,13 @@ impl<'a, R> Callback<'a, R> {
     #[inline]
     pub fn call(self, token: &mut Token) -> R {
         // Disassemble `self` and forget it so that the destructor doesn't invoke `call`.
-        let Callback { call, mut space, .. } = self;
+        let Callback {
+            call, mut space, ..
+        } = self;
         mem::forget(self);
 
         // Invoke the callback.
-        unsafe {
-            (call)(&mut space as *mut Space as *mut u8, Some(token)).unwrap()
-        }
+        unsafe { (call)(&mut space as *mut Space as *mut u8, Some(token)).unwrap() }
     }
 }
 
@@ -1633,6 +1634,84 @@ macro_rules! select {
             )
         }
     }};
+    // Attempt to optimize the whole `select!` into a single call to `send`.
+    (@codegen_fast_path
+        ()
+        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
+        ()
+        $handles:ident
+    ) => {{
+        if $handles.len() == 1 {
+            let $s = {
+                let guard = $crate::internal::utils::AbortGuard(
+                    "a send case triggered a panic while evaluating its message"
+                );
+
+                #[allow(unreachable_code)]
+                {
+                    ::std::mem::forget(guard);
+                    let s = $handles[0].0;
+                    s.send($m);
+                    s
+                }
+            };
+
+            drop($handles);
+            $body
+        } else {
+            select!(
+                @codegen_main_loop
+                ()
+                (($i $var) send($ss, $m, $s) => $body,)
+                ()
+                $handles
+            )
+        }
+    }};
+
+    // Attempt to optimize the whole `select!` into a single call to `send_nonblocking`.
+    (@codegen_fast_path
+        ()
+        (($send_i:tt $send_var:ident) send($ss:expr, $m:expr, $s:pat) => $send_body:tt,)
+        (($default_i:tt $default_var:ident) default() => $default_body:tt,)
+        $handles:ident
+    ) => {{
+        if $handles.len() == 1 {
+            let res = {
+                let guard = $crate::internal::utils::AbortGuard(
+                    "a send case triggered a panic while evaluating its message"
+                );
+                let msg = $m;
+
+                #[allow(unreachable_code)]
+                {
+                    ::std::mem::forget(guard);
+                    $crate::internal::channel::send_nonblocking($handles[0].0, msg)
+                }
+            };
+
+            match res {
+                $crate::internal::channel::SendNonblocking::Full => {
+                    drop($handles);
+                    $default_body
+                }
+                $crate::internal::channel::SendNonblocking::Sent => {
+                    let $s = $handles[0].0;
+                    drop($handles);
+                    $send_body
+                }
+            }
+        } else {
+            select!(
+                @codegen_main_loop
+                ()
+                (($send_i $send_var) send($ss, $m, $s) => $send_body,)
+                (($default_i $default_var) default() => $default_body,)
+                $handles
+            )
+        }
+    }};
+
     // Move on to the main select loop.
     (@codegen_fast_path
         $recv:tt
@@ -1648,8 +1727,6 @@ macro_rules! select {
             $handles
         )
     }};
-    // TODO: Optimize `select! { send(s, msg) => {} }`.
-    // TODO: Optimize `select! { send(s, msg) => {} default => {} }`.
 
     // The main select loop.
     (@codegen_main_loop
