@@ -1634,7 +1634,7 @@ macro_rules! select {
             )
         }
     }};
-    
+
     // Attempt to optimize the whole `select!` into a single call to `send`.
     (@codegen_fast_path
         ()
@@ -1647,11 +1647,12 @@ macro_rules! select {
                 let _guard = $crate::internal::utils::AbortGuard(
                     "a send case triggered a panic while evaluating its message"
                 );
+                let _msg = $m;
 
                 #[allow(unreachable_code)]
                 {
-                    $handles[0].0.send($m);
                     ::std::mem::forget(_guard);
+                    $handles[0].0.send(_msg);
                     $handles[0].0
                 }
             };
@@ -1688,12 +1689,13 @@ macro_rules! select {
                         let _guard = $crate::internal::utils::AbortGuard(
                             "a send case triggered a panic while evaluating its message"
                         );
+                        let _msg = $m;
 
                         #[allow(unreachable_code)]
                         {
-                            #[allow(unsafe_code)]
-                            unsafe { $crate::internal::channel::write($handles[0].0, &mut token, $m); }
                             ::std::mem::forget(_guard);
+                            #[allow(unsafe_code)]
+                            unsafe { $crate::internal::channel::write($handles[0].0, &mut token, _msg); }
                             $handles[0].0
                         }
                     };
@@ -1906,12 +1908,13 @@ macro_rules! select {
                 let _guard = $crate::internal::utils::AbortGuard(
                     "a send case triggered a panic while evaluating its message"
                 );
+                let _msg = $m;
 
                 #[allow(unreachable_code)]
                 {
-                    #[allow(unsafe_code)]
-                    unsafe { $crate::internal::channel::write(_s, &mut $token, $m); }
                     ::std::mem::forget(_guard);
+                    #[allow(unsafe_code)]
+                    unsafe { $crate::internal::channel::write(_s, &mut $token, _msg); }
                     _s
                 }
             };
