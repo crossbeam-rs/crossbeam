@@ -12,7 +12,6 @@ use std::time::Instant;
 use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
-use internal::channel::SendNonblocking;
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
@@ -354,14 +353,6 @@ impl<T> Channel<T> {
                 }
             })
         }
-    }
-
-    /// Attempts to send a message without blocking.
-    pub fn send_nonblocking(&self, token: &mut Token) -> SendNonblocking {
-        if self.start_send(token) {
-            return SendNonblocking::Sent;
-        }
-        SendNonblocking::Full
     }
 
     /// Receives a message from the channel.

@@ -1634,6 +1634,7 @@ macro_rules! select {
             )
         }
     }};
+    
     // Attempt to optimize the whole `select!` into a single call to `send`.
     (@codegen_fast_path
         ()
@@ -1649,8 +1650,8 @@ macro_rules! select {
 
                 #[allow(unreachable_code)]
                 {
-                    ::std::mem::forget(_guard);
                     $handles[0].0.send($m);
+                    ::std::mem::forget(_guard);
                     $handles[0].0
                 }
             };
@@ -1690,9 +1691,9 @@ macro_rules! select {
 
                         #[allow(unreachable_code)]
                         {
-                            ::std::mem::forget(_guard);
                             #[allow(unsafe_code)]
                             unsafe { $crate::internal::channel::write($handles[0].0, &mut token, $m); }
+                            ::std::mem::forget(_guard);
                             $handles[0].0
                         }
                     };
@@ -1908,9 +1909,9 @@ macro_rules! select {
 
                 #[allow(unreachable_code)]
                 {
-                    ::std::mem::forget(_guard);
                     #[allow(unsafe_code)]
                     unsafe { $crate::internal::channel::write(_s, &mut $token, $m); }
+                    ::std::mem::forget(_guard);
                     _s
                 }
             };

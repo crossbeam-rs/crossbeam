@@ -907,10 +907,15 @@ pub enum SendNonblocking {
 }
 
 pub fn send_nonblocking<T>(s: &Sender<T>, token: &mut Token) -> SendNonblocking {
-    match &s.0.flavor {
-        ChannelFlavor::Array(chan) => chan.send_nonblocking(token),
-        ChannelFlavor::List(_) => SendNonblocking::Sent,
-        ChannelFlavor::Zero(chan) => chan.send_nonblocking(token),
+    let sent = match &s.0.flavor {
+        ChannelFlavor::Array(chan) => chan.sender().try(token),
+        ChannelFlavor::List(chan) => chan.sender().try(token),
+        ChannelFlavor::Zero(chan) => chan.sender().try(token),
+    };
+    if sent {
+        SendNonblocking::Sent
+    } else {
+        SendNonblocking::Full
     }
 }
 
