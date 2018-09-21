@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 
 use internal::channel::RecvNonblocking;
 use internal::context::Context;
-use internal::select::{Operation, Selected, SelectHandle, Token};
+use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
 use internal::waker::Waker;
 
@@ -130,7 +130,9 @@ impl<T> Channel<T> {
             // Register this send operation so that another receiver can pair up with it.
             let oper = Operation::hook(token);
             let packet = Box::into_raw(Packet::<T>::empty_on_heap());
-            inner.senders.register_with_packet(oper, packet as usize, cx);
+            inner
+                .senders
+                .register_with_packet(oper, packet as usize, cx);
             drop(inner);
 
             // Yield to give receivers a chance to pair up with this operation.
@@ -150,12 +152,12 @@ impl<T> Channel<T> {
                         drop(Box::from_raw(operation.packet as *mut Packet<T>));
                     }
                     false
-                },
+                }
                 Selected::Operation(_) => {
                     // Success! A receiver has paired up with this operation.
                     token.zero = cx.wait_packet();
                     true
-                },
+                }
             }
         })
     }
@@ -188,7 +190,9 @@ impl<T> Channel<T> {
             // Register this receive operation so that another sender can pair up with it.
             let oper = Operation::hook(token);
             let packet = Box::into_raw(Packet::<T>::empty_on_heap());
-            inner.receivers.register_with_packet(oper, packet as usize, cx);
+            inner
+                .receivers
+                .register_with_packet(oper, packet as usize, cx);
             drop(inner);
 
             // Yield to give senders a chance to pair up with this operation.
@@ -208,7 +212,7 @@ impl<T> Channel<T> {
                         drop(Box::from_raw(operation.packet as *mut Packet<T>));
                     }
                     false
-                },
+                }
                 Selected::Closed => {
                     // Unregister and destroy the packet.
                     let operation = self.inner.lock().receivers.unregister(oper).unwrap();
@@ -219,12 +223,12 @@ impl<T> Channel<T> {
                     // All senders have just been dropped.
                     token.zero = 0;
                     true
-                },
+                }
                 Selected::Operation(_) => {
                     // Success! A sender has paired up with this operation.
                     token.zero = cx.wait_packet();
                     true
-                },
+                }
             }
         })
     }
@@ -264,7 +268,9 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.receivers.wake_one() {
             token.zero = operation.packet;
             drop(inner);
-            unsafe { self.write(token, msg); }
+            unsafe {
+                self.write(token, msg);
+            }
             return;
         }
 
@@ -272,7 +278,9 @@ impl<T> Channel<T> {
             // Prepare for blocking until a receiver wakes us up.
             let oper = Operation::hook(token);
             let packet = Packet::<T>::message_on_stack(msg);
-            inner.senders.register_with_packet(oper, &packet as *const Packet<T> as usize, cx);
+            inner
+                .senders
+                .register_with_packet(oper, &packet as *const Packet<T> as usize, cx);
             drop(inner);
 
             // Block the current thread.
@@ -283,7 +291,7 @@ impl<T> Channel<T> {
                 Selected::Operation(_) => {
                     // Wait until the message is read, then drop the packet.
                     packet.wait_ready();
-                },
+                }
             }
         })
     }
@@ -297,7 +305,9 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.senders.wake_one() {
             token.zero = operation.packet;
             drop(inner);
-            unsafe { return self.read(token); }
+            unsafe {
+                return self.read(token);
+            }
         }
 
         if inner.is_closed {
@@ -308,7 +318,9 @@ impl<T> Channel<T> {
             // Prepare for blocking until a sender wakes us up.
             let oper = Operation::hook(token);
             let packet = Packet::<T>::empty_on_stack();
-            inner.receivers.register_with_packet(oper, &packet as *const Packet<T> as usize, cx);
+            inner
+                .receivers
+                .register_with_packet(oper, &packet as *const Packet<T> as usize, cx);
             drop(inner);
 
             // Block the current thread.
@@ -319,12 +331,12 @@ impl<T> Channel<T> {
                 Selected::Closed => {
                     self.inner.lock().receivers.unregister(oper).unwrap();
                     None
-                },
+                }
                 Selected::Operation(_) => {
                     // Wait until the message is provided, then read it.
                     packet.wait_ready();
                     unsafe { Some(packet.msg.get().replace(None).unwrap()) }
-                },
+                }
             }
         })
     }
@@ -403,7 +415,9 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock();
-        inner.receivers.register_with_packet(oper, packet as usize, cx);
+        inner
+            .receivers
+            .register_with_packet(oper, packet as usize, cx);
         !inner.senders.can_wake_one() && !inner.is_closed
     }
 
@@ -442,7 +456,9 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock();
-        inner.senders.register_with_packet(oper, packet as usize, cx);
+        inner
+            .senders
+            .register_with_packet(oper, packet as usize, cx);
         !inner.receivers.can_wake_one()
     }
 

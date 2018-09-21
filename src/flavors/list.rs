@@ -12,7 +12,7 @@ use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
 use internal::context::Context;
-use internal::select::{Operation, Selected, SelectHandle, Token};
+use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
 
@@ -166,19 +166,19 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `tail` in case it hasn't been yet.
             let install_next_block = || {
-                let current = tail.next.compare_and_set(
-                    Shared::null(),
-                    Owned::new(Block::new(tail.start_index.wrapping_add(BLOCK_CAP))),
-                    Ordering::AcqRel,
-                    &guard,
-                ).unwrap_or_else(|err| err.current);
+                let current = tail
+                    .next
+                    .compare_and_set(
+                        Shared::null(),
+                        Owned::new(Block::new(tail.start_index.wrapping_add(BLOCK_CAP))),
+                        Ordering::AcqRel,
+                        &guard,
+                    ).unwrap_or_else(|err| err.current);
 
-                let _ = self.tail.block.compare_and_set(
-                    tail_ptr,
-                    current,
-                    Ordering::Release,
-                    &guard,
-                );
+                let _ =
+                    self.tail
+                        .block
+                        .compare_and_set(tail_ptr, current, Ordering::Release, &guard);
             };
 
             // If `tail_index` is pointing into `tail`...
@@ -192,8 +192,7 @@ impl<T> Channel<T> {
                         new_index,
                         Ordering::SeqCst,
                         Ordering::Relaxed,
-                    )
-                    .is_ok()
+                    ).is_ok()
                 {
                     // If this was the last slot in the block, install a new block.
                     if offset + 1 == BLOCK_CAP {
@@ -240,19 +239,19 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `head` in case it hasn't been yet.
             let install_next_block = || {
-                let current = head.next.compare_and_set(
-                    Shared::null(),
-                    Owned::new(Block::new(head.start_index.wrapping_add(BLOCK_CAP))),
-                    Ordering::AcqRel,
-                    &guard,
-                ).unwrap_or_else(|err| err.current);
+                let current = head
+                    .next
+                    .compare_and_set(
+                        Shared::null(),
+                        Owned::new(Block::new(head.start_index.wrapping_add(BLOCK_CAP))),
+                        Ordering::AcqRel,
+                        &guard,
+                    ).unwrap_or_else(|err| err.current);
 
-                let _ = self.head.block.compare_and_set(
-                    head_ptr,
-                    current,
-                    Ordering::Release,
-                    &guard,
-                );
+                let _ =
+                    self.head
+                        .block
+                        .compare_and_set(head_ptr, current, Ordering::Release, &guard);
             };
 
             // If `head_index` is pointing into `head`...
@@ -289,8 +288,7 @@ impl<T> Channel<T> {
                         new_index,
                         Ordering::SeqCst,
                         Ordering::Relaxed,
-                    )
-                    .is_ok()
+                    ).is_ok()
                 {
                     // If this was the last slot in the block, install a new block and destroy the
                     // old one.
@@ -379,8 +377,8 @@ impl<T> Channel<T> {
                     Selected::Aborted | Selected::Closed => {
                         self.receivers.unregister(oper).unwrap();
                         // If the channel was closed, we still have to check for remaining messages.
-                    },
-                    Selected::Operation(_) => {},
+                    }
+                    Selected::Operation(_) => {}
                 }
             })
         }
@@ -450,7 +448,10 @@ impl<T> Drop for Channel<T> {
         let mut head_index = self.head.index.load(Ordering::Relaxed);
 
         unsafe {
-            let mut head_ptr = self.head.block.load(Ordering::Relaxed, epoch::unprotected());
+            let mut head_ptr = self
+                .head
+                .block
+                .load(Ordering::Relaxed, epoch::unprotected());
 
             // Manually drop all messages between `head_index` and `tail_index` and destroy the
             // heap-allocated nodes along the way.

@@ -13,7 +13,7 @@ use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
 use internal::context::Context;
-use internal::select::{Operation, Selected, SelectHandle, Token};
+use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
 
@@ -192,7 +192,8 @@ impl<T> Channel<T> {
                 };
 
                 // Try moving the tail.
-                if self.tail
+                if self
+                    .tail
                     .compare_exchange_weak(tail, new_tail, Ordering::SeqCst, Ordering::Relaxed)
                     .is_ok()
                 {
@@ -256,7 +257,8 @@ impl<T> Channel<T> {
                 };
 
                 // Try moving the head.
-                if self.head
+                if self
+                    .head
                     .compare_exchange_weak(head, new, Ordering::SeqCst, Ordering::Relaxed)
                     .is_ok()
                 {
@@ -319,7 +321,9 @@ impl<T> Channel<T> {
             let mut backoff = Backoff::new();
             loop {
                 if self.start_send(token) {
-                    unsafe { self.write(token, msg); }
+                    unsafe {
+                        self.write(token, msg);
+                    }
                     return;
                 }
                 if !backoff.snooze() {
@@ -344,7 +348,7 @@ impl<T> Channel<T> {
                     Selected::Waiting | Selected::Closed => unreachable!(),
                     Selected::Aborted => {
                         self.senders.unregister(oper).unwrap();
-                    },
+                    }
                     Selected::Operation(_) => {}
                 }
             })
@@ -386,7 +390,7 @@ impl<T> Channel<T> {
                     Selected::Aborted | Selected::Closed => {
                         self.receivers.unregister(oper).unwrap();
                         // If the channel was closed, we still have to check for remaining messages.
-                    },
+                    }
                     Selected::Operation(_) => {}
                 }
             })
