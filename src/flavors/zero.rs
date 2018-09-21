@@ -298,21 +298,16 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to send a message without blocking.
-    pub fn send_nonblocking(&self, msg: T) -> SendNonblocking {
-        let token = &mut Token::default();
+    pub fn send_nonblocking(&self, token: &mut Token) -> SendNonblocking {
         let mut inner = self.inner.lock();
 
         // If there's a waiting receiver, pair up with it.
         if let Some(operation) = inner.receivers.wake_one() {
             token.zero = operation.packet;
             drop(inner);
-            unsafe {
-                self.write(token, msg);
-            }
             return SendNonblocking::Sent;
-        } else {
-            SendNonblocking::Full
         }
+        SendNonblocking::Full
     }
 
     /// Receives a message from the channel.

@@ -11,7 +11,6 @@ use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
-use internal::channel::SendNonblocking;
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
@@ -341,12 +340,6 @@ impl<T> Channel<T> {
     pub fn send(&self, msg: T) {
         let token = &mut Token::default();
         self.write(token, msg);
-    }
-
-    /// Sends a message into the channel without blocking
-    pub fn send_nonblocking(&self, msg: T) -> SendNonblocking {
-        self.send(msg);
-        SendNonblocking::Sent
     }
 
     /// Receives a message from the channel.

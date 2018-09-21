@@ -906,11 +906,11 @@ pub enum SendNonblocking {
     Sent,
 }
 
-pub fn send_nonblocking<T>(s: &Sender<T>, msg: T) -> SendNonblocking {
+pub fn send_nonblocking<T>(s: &Sender<T>, token: &mut Token) -> SendNonblocking {
     match &s.0.flavor {
-        ChannelFlavor::Array(chan) => chan.send_nonblocking(msg),
-        ChannelFlavor::List(chan) => chan.send_nonblocking(msg),
-        ChannelFlavor::Zero(chan) => chan.send_nonblocking(msg),
+        ChannelFlavor::Array(chan) => chan.send_nonblocking(token),
+        ChannelFlavor::List(_) => SendNonblocking::Sent,
+        ChannelFlavor::Zero(chan) => chan.send_nonblocking(token),
     }
 }
 

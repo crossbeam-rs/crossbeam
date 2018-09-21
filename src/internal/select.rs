@@ -1643,19 +1643,17 @@ macro_rules! select {
     ) => {{
         if $handles.len() == 1 {
             let $s = {
-                let guard = $crate::internal::utils::AbortGuard(
+                let _guard = $crate::internal::utils::AbortGuard(
                     "a send case triggered a panic while evaluating its message"
                 );
 
                 #[allow(unreachable_code)]
                 {
-                    ::std::mem::forget(guard);
-                    let s = $handles[0].0;
-                    s.send($m);
-                    s
+                    ::std::mem::forget(_guard);
+                    $handles[0].0.send($m);
+                    $handles[0].0
                 }
             };
-
             drop($handles);
             $body
         } else {
@@ -1668,7 +1666,6 @@ macro_rules! select {
             )
         }
     }};
-
     // Attempt to optimize the whole `select!` into a single call to `send_nonblocking`.
     (@codegen_fast_path
         ()
@@ -1677,18 +1674,8 @@ macro_rules! select {
         $handles:ident
     ) => {{
         if $handles.len() == 1 {
-            let res = {
-                let guard = $crate::internal::utils::AbortGuard(
-                    "a send case triggered a panic while evaluating its message"
-                );
-                let msg = $m;
-
-                #[allow(unreachable_code)]
-                {
-                    ::std::mem::forget(guard);
-                    $crate::internal::channel::send_nonblocking($handles[0].0, msg)
-                }
-            };
+            let mut token = $crate::internal::select::Token::default();
+            let res = $crate::internal::channel::send_nonblocking($handles[0].0, &mut token);
 
             match res {
                 $crate::internal::channel::SendNonblocking::Full => {
@@ -1696,7 +1683,19 @@ macro_rules! select {
                     $default_body
                 }
                 $crate::internal::channel::SendNonblocking::Sent => {
-                    let $s = $handles[0].0;
+                    let $s = {
+                        let _guard = $crate::internal::utils::AbortGuard(
+                            "a send case triggered a panic while evaluating its message"
+                        );
+
+                        #[allow(unreachable_code)]
+                        {
+                            ::std::mem::forget(_guard);
+                            #[allow(unsafe_code)]
+                            unsafe { $crate::internal::channel::write($handles[0].0, &mut token, $m); }
+                            $handles[0].0
+                        }
+                    };
                     drop($handles);
                     $send_body
                 }
@@ -1906,17 +1905,15 @@ macro_rules! select {
                 let _guard = $crate::internal::utils::AbortGuard(
                     "a send case triggered a panic while evaluating its message"
                 );
-                let _msg = $m;
 
                 #[allow(unreachable_code)]
                 {
                     ::std::mem::forget(_guard);
                     #[allow(unsafe_code)]
-                    unsafe { $crate::internal::channel::write(_s, &mut $token, _msg); }
+                    unsafe { $crate::internal::channel::write(_s, &mut $token, $m); }
                     _s
                 }
             };
-
             drop($handles);
             $body
         } else {
