@@ -543,7 +543,7 @@ impl<'a, R> Callback<'a, R> {
         let align = mem::align_of::<F>();
 
         unsafe {
-            let mut space: Space = mem::uninitialized();
+            let mut space: Space = Space::default();
 
             let call = if size <= mem::size_of::<Space>() && align <= mem::align_of::<Space>() {
                 unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
