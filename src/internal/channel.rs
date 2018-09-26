@@ -84,6 +84,10 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// channel cannot hold any messages since its buffer is of length zero. Instead, send and receive
 /// operations must be executing at the same time in order to pair up and pass the message over.
 ///
+/// # Panics
+///
+/// Panics if the capacity is larger than `usize::max_value() / 4`.
+///
 /// # Examples
 ///
 /// ```
