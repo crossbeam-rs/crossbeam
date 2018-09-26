@@ -15,8 +15,6 @@ use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
 
-// TODO: Allocate less memory in the beginning. Blocks should start small and grow exponentially.
-
 /// The maximum number of messages a block can hold.
 const BLOCK_CAP: usize = 32;
 
@@ -226,7 +224,7 @@ impl<T> Channel<T> {
 
                     unsafe {
                         let slot = tail.slots.get_unchecked(offset);
-                        (*slot).msg.get().write(Some(msg));
+                        *slot.msg.get() = Some(msg);
                         (*slot).ready.store(true, Ordering::Release);
                     }
                     break;
@@ -369,7 +367,7 @@ impl<T> Channel<T> {
         }
 
         // Read the message.
-        slot.msg.get().read()
+        (*slot.msg.get()).take()
     }
 
     /// Sends a message into the channel.
@@ -497,8 +495,7 @@ impl<T> Drop for Channel<T> {
                 let offset = head_index.wrapping_sub(head.start_index);
 
                 let slot = head.slots.get_unchecked(offset);
-                drop((*slot).msg.get().read());
-                // (*slot).msg.get().drop_in_place();
+                drop((*slot.msg.get()).take());
 
                 if offset + 1 == head_slot_count {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
