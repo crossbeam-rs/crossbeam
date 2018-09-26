@@ -2,7 +2,6 @@
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
-use std::mem::{self, ManuallyDrop};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
@@ -24,10 +23,19 @@ const BLOCK_CAP: usize = 32;
 /// A slot in a block.
 struct Slot<T> {
     /// The message.
-    msg: UnsafeCell<ManuallyDrop<T>>,
+    msg: UnsafeCell<Option<T>>,
 
     /// Equals `true` if the message is ready for reading.
     ready: AtomicBool,
+}
+
+impl<T> Slot<T> {
+    fn empty() -> Slot<T> {
+        Slot {
+            msg: UnsafeCell::new(None),
+            ready: AtomicBool::new(false),
+        }
+    }
 }
 
 /// The token type for the list flavor.
@@ -63,7 +71,7 @@ struct Block<T> {
     next: Atomic<Block<T>>,
 
     /// Slots for messages.
-    slots: Box<[UnsafeCell<Slot<T>>]>,
+    slots: Box<[Slot<T>]>,
 }
 
 impl<T> Block<T> {
@@ -72,7 +80,7 @@ impl<T> Block<T> {
         Block {
             start_index,
             slots: (0..slot_count)
-                .map(|_| unsafe { mem::zeroed() })
+                .map(|_| Slot::empty())
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             next: Atomic::null(),
@@ -217,8 +225,8 @@ impl<T> Channel<T> {
                     }
 
                     unsafe {
-                        let slot = tail.slots.get_unchecked(offset).get();
-                        (*slot).msg.get().write(ManuallyDrop::new(msg));
+                        let slot = tail.slots.get_unchecked(offset);
+                        (*slot).msg.get().write(Some(msg));
                         (*slot).ready.store(true, Ordering::Release);
                     }
                     break;
@@ -286,7 +294,7 @@ impl<T> Channel<T> {
 
             // If `head_index` is pointing into `head`...
             if offset < head_slot_count {
-                let slot = unsafe { &*head.slots.get_unchecked(offset).get() };
+                let slot = unsafe { &*head.slots.get_unchecked(offset) };
 
                 // If this slot does not contain a message...
                 if !slot.ready.load(Ordering::Relaxed) {
@@ -361,9 +369,7 @@ impl<T> Channel<T> {
         }
 
         // Read the message.
-        let m = slot.msg.get().read();
-        let msg = ManuallyDrop::into_inner(m);
-        Some(msg)
+        slot.msg.get().read()
     }
 
     /// Sends a message into the channel.
@@ -490,8 +496,9 @@ impl<T> Drop for Channel<T> {
                 let head_slot_count = head.slots.len();
                 let offset = head_index.wrapping_sub(head.start_index);
 
-                let slot = &mut *head.slots.get_unchecked(offset).get();
-                ManuallyDrop::drop(&mut (*slot).msg.get().read());
+                let slot = head.slots.get_unchecked(offset);
+                drop((*slot).msg.get().read());
+                // (*slot).msg.get().drop_in_place();
 
                 if offset + 1 == head_slot_count {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
