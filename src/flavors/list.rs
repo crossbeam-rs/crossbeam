@@ -177,14 +177,7 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `tail` in case it hasn't been yet.
             let install_next_block = || {
-                let new_slot_count = {
-                    let double_slot_count = tail_slot_count << 1;
-                    if double_slot_count < BLOCK_CAP {
-                        double_slot_count
-                    } else {
-                        BLOCK_CAP
-                    }
-                };
+                let new_slot_count = (tail_slot_count * 2).min(BLOCK_CAP);
 
                 let current = tail
                     .next
@@ -231,7 +224,7 @@ impl<T> Channel<T> {
                 }
 
                 backoff.spin();
-            } else {
+            } else if offset == tail_slot_count {
                 // Help install the next block.
                 install_next_block();
             }
@@ -263,14 +256,7 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `head` in case it hasn't been yet.
             let install_next_block = || {
-                let new_slot_count = {
-                    let double_slot_count = head_slot_count << 1;
-                    if double_slot_count < BLOCK_CAP {
-                        double_slot_count
-                    } else {
-                        BLOCK_CAP
-                    }
-                };
+                let new_slot_count = (head_slot_count * 2).min(BLOCK_CAP);
 
                 let current = head
                     .next
@@ -340,7 +326,7 @@ impl<T> Channel<T> {
                 }
 
                 backoff.spin();
-            } else {
+            } else if offset == head_slot_count {
                 // Help install the next block.
                 install_next_block();
             }
