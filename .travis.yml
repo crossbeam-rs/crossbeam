@@ -1,36 +1,20 @@
 language: rust
-# necessary for `travis-cargo coveralls --no-sudo`
-addons:
-  apt:
-    packages:
-      - libcurl4-openssl-dev
-      - libelf-dev
-      - libdw-dev
 
-# run builds for all the trains (and more)
 rust:
-  - nightly
-  - beta
   - stable
+  - beta
+  - nightly
+  - 1.26.0
 
-# load travis-cargo
-before_script:
-  - |
-      pip install 'travis-cargo<0.2' --user &&
-      export PATH=$HOME/.local/bin:$PATH
-
-# the main build
 script:
+  - cargo build
+  - cargo build --release
+  - cargo build --no-default-features
+  - cargo build --release --no-default-features
+  - cargo test
+  - cargo test --release
   - |
-      travis-cargo build &&
-      travis-cargo test &&
-      travis-cargo test -- --release &&
-      travis-cargo run -- --bin bench --release &&
-      travis-cargo --only stable doc
-env:
-  global:
-    # override the default `--features unstable` used for the nightly branch (optional)
-    - TRAVIS_CARGO_NIGHTLY_FEATURE=nightly
-notifications:
-  email:
-    on_success: never
+    if [ $TRAVIS_RUST_VERSION == nightly ]; then
+      cargo test --features nightly
+      cargo test --features nightly --release
+    fi

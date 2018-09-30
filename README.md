@@ -38,17 +38,28 @@ Crossbeam consists of several submodules:
 
 # Usage
 
-To use Crossbeam, add this to your `Cargo.toml`:
+Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 crossbeam = "0.4"
 ```
 
-For examples of what Crossbeam is capable of, see the [documentation][docs].
+Next, add this to your crate:
 
-[docs]: https://docs.rs/crossbeam/
+```rust
+extern crate crossbeam;
+```
+
+The minimum required Rust version is 1.26.
+
 [`crossbeam-epoch`]: https://github.com/crossbeam-rs/crossbeam-epoch
 [`crossbeam-utils`]: https://github.com/crossbeam-rs/crossbeam-utils
 [`crossbeam-channel`]: https://github.com/crossbeam-rs/crossbeam-channel
 [`crossbeam-deque`]: https://github.com/crossbeam-rs/crossbeam-deque
+
+## License
+
+Licensed under the terms of MIT license and the Apache License (Version 2.0).
+
+See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) for details.
