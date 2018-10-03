@@ -17,8 +17,8 @@ use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
 
-/// The maximum number of messages a block can hold.
-const BLOCK_CAP: usize = 32;
+/// The maximum number of slots a block can hold.
+const MAX_BLOCK_CAP: usize = 32;
 
 /// The token type for the list flavor.
 pub struct ListToken {
@@ -50,55 +50,61 @@ struct Slot<T> {
 
 /// A block in a linked list.
 ///
-/// Each block in the list can hold up to `msg_count` messages. `msg_count` will double for
-/// each consecutive block - starting at 1 and growing no larger than `BLOCK_CAP`.
+/// Each block in the list can hold up to `cap` slots. `cap` will double for each consecutive block
+/// - starting at 1 and growing no larger than `BLOCK_CAP`.
 #[repr(C)]
 struct Block<T> {
     /// The start index of this block.
     ///
-    /// Slots in this block have indices in `start_index .. start_index + msg_count`.
+    /// Slots in this block have indices in `start_index .. start_index + cap`.
     start_index: usize,
 
-    /// The number of messages this block can hold.
-    msg_count: usize,
+    /// The number of slots this block can hold.
+    cap: usize,
 
     /// The next block in the linked list.
     next: Atomic<Block<T>>,
 
     /// Slots for messages.
-    msgs: [UnsafeCell<Slot<T>>; 0],
+    slots: [Slot<T>; 0],
 }
 
 impl<T> Block<T> {
     /// Creates an empty block that starts at `start_index`.
-    unsafe fn new(start_index: usize, msg_count: usize) -> *mut Self {
-        let ptr = Self::alloc(msg_count);
+    fn new<'a>(start_index: usize, cap: usize) -> Shared<'a, Block<T>> {
+        let block = unsafe {
+            let ptr = Self::alloc(cap);
 
-        ptr::write(&mut (*ptr).start_index, start_index);
-        ptr::write(&mut (*ptr).msg_count, msg_count);
-        ptr::write(&mut (*ptr).next, Atomic::null());
-        ptr::write_bytes((*ptr).msgs.as_mut_ptr(), 0, msg_count);
+            // Write the `start_index` and `cap`. Initialize `next` to null and zero out `slots`.
+            ptr::write(&mut (*ptr).start_index, start_index);
+            ptr::write(&mut (*ptr).cap, cap);
+            ptr::write(&mut (*ptr).next, Atomic::null());
+            ptr::write_bytes((*ptr).slots.as_mut_ptr(), 0, cap);
 
-        ptr
+            ptr
+        };
+
+        Shared::from(block as *const _)
     }
 
-    /// Allocate memory for a block with space to hold `msg_count` messages.
-    unsafe fn alloc(msg_count: usize) -> *mut Self {
-        let layout = Self::create_layout(msg_count);
+    /// Allocate memory for a block with space to hold `cap` slots.
+    unsafe fn alloc(cap: usize) -> *mut Self {
+        let layout = Self::create_layout(cap);
         // TODO(kleimkuhler): Use `GlobalAlloc::alloc` once `Global` becomes stable
         alloc::alloc(layout) as *mut Self
     }
 
-    /// Deallocate memory that a block with `msg_count` messages holds.
-    unsafe fn dealloc(ptr: *mut Self) {
-        let layout = Self::create_layout((*ptr).msg_count);
+    /// Deallocate memory that a block with `cap` slots holds.
+    unsafe fn dealloc(ptr: Shared<Block<T>>) {
+        let ptr = ptr.as_raw() as *mut Block<T>;
+        let layout = Self::create_layout((*ptr).cap);
         // TODO(kleimkuhler): Use `GlobalAlloc::dealloc` once `Global` becomes stable
         alloc::dealloc(ptr as *mut u8, layout)
     }
 
-    /// Layout a block of memory for a block that can hold `msg_count` messages.
-    unsafe fn create_layout(msg_count: usize) -> alloc::Layout {
-        let size = mem::size_of::<Block<T>>() + msg_count * mem::size_of::<Slot<T>>();
+    /// Layout a block of memory for a block that can hold `cap` slots.
+    unsafe fn create_layout(cap: usize) -> alloc::Layout {
+        let size = mem::size_of::<Block<T>>() + cap * mem::size_of::<Slot<T>>();
         let align = mem::align_of::<Block<T>>();
         alloc::Layout::from_size_align_unchecked(size, align)
     }
@@ -157,10 +163,7 @@ impl<T> Channel<T> {
         };
 
         // Allocate an empty block for the first batch of messages.
-        let block = {
-            let b = unsafe { Block::<T>::new(0, 1) };
-            Shared::<Block<T>>::from(b as *const _)
-        };
+        let block = Block::new(0, 1);
         channel.head.block.store(block, Ordering::Relaxed);
         channel.tail.block.store(block, Ordering::Relaxed);
 
@@ -197,25 +200,17 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `tail` in case it hasn't been yet.
             let install_next_block = || {
-                let new_slot_count = (tail.msg_count * 2).min(BLOCK_CAP);
+                let new_slot_count = (tail.cap * 2).min(MAX_BLOCK_CAP);
 
                 let current = tail
                     .next
                     .compare_and_set(
                         Shared::null(),
-                        {
-                            let b = unsafe {
-                                Block::<T>::new(
-                                    tail.start_index.wrapping_add(tail.msg_count),
-                                    new_slot_count,
-                                )
-                            };
-                            Shared::<Block<T>>::from(b as *const _)
-                        },
+                        Block::new(tail.start_index.wrapping_add(tail.cap), new_slot_count),
                         Ordering::AcqRel,
                         &guard,
                     ).unwrap_or_else(|err| {
-                        unsafe { Block::dealloc(err.new.as_raw() as *mut Block<T>) };
+                        unsafe { Block::dealloc(err.new) };
                         err.current
                     });
 
@@ -226,7 +221,7 @@ impl<T> Channel<T> {
             };
 
             // If `tail_index` is pointing into `tail`...
-            if offset < tail.msg_count {
+            if offset < tail.cap {
                 // Try moving the tail index forward.
                 if self
                     .tail
@@ -239,12 +234,12 @@ impl<T> Channel<T> {
                     ).is_ok()
                 {
                     // If this was the last slot in the block, install a new block.
-                    if offset + 1 == tail.msg_count {
+                    if offset + 1 == tail.cap {
                         install_next_block();
                     }
 
                     unsafe {
-                        let slot = tail.msgs.get_unchecked(offset).get();
+                        let slot = tail.slots.get_unchecked(offset);
                         (*slot).msg.get().write(ManuallyDrop::new(msg));
                         (*slot).ready.store(true, Ordering::Release);
                     }
@@ -252,7 +247,7 @@ impl<T> Channel<T> {
                 }
 
                 backoff.spin();
-            } else if offset == tail.msg_count {
+            } else if offset == tail.cap {
                 // Help install the next block.
                 install_next_block();
             }
@@ -283,25 +278,17 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `head` in case it hasn't been yet.
             let install_next_block = || {
-                let new_slot_count = (head.msg_count * 2).min(BLOCK_CAP);
+                let new_slot_count = (head.cap * 2).min(MAX_BLOCK_CAP);
 
                 let current = head
                     .next
                     .compare_and_set(
                         Shared::null(),
-                        {
-                            let b = unsafe {
-                                Block::<T>::new(
-                                    head.start_index.wrapping_add(head.msg_count),
-                                    new_slot_count,
-                                )
-                            };
-                            Shared::<Block<T>>::from(b as *const _)
-                        },
+                        Block::new(head.start_index.wrapping_add(head.cap), new_slot_count),
                         Ordering::AcqRel,
                         &guard,
                     ).unwrap_or_else(|err| {
-                        unsafe { Block::dealloc(err.new.as_raw() as *mut Block<T>) };
+                        unsafe { Block::dealloc(err.new) };
                         err.current
                     });
 
@@ -312,8 +299,8 @@ impl<T> Channel<T> {
             };
 
             // If `head_index` is pointing into `head`...
-            if offset < head.msg_count {
-                let slot = unsafe { &*head.msgs.get_unchecked(offset).get() };
+            if offset < head.cap {
+                let slot = unsafe { &*head.slots.get_unchecked(offset) };
 
                 // If this slot does not contain a message...
                 if !slot.ready.load(Ordering::Relaxed) {
@@ -349,12 +336,10 @@ impl<T> Channel<T> {
                 {
                     // If this was the last slot in the block, install a new block and destroy the
                     // old one.
-                    if offset + 1 == head.msg_count {
+                    if offset + 1 == head.cap {
                         install_next_block();
                         unsafe {
-                            guard.defer_unchecked(move || {
-                                Block::dealloc(head_ptr.as_raw() as *mut Block<T>)
-                            });
+                            guard.defer_unchecked(move || Block::dealloc(head_ptr));
                         }
                     }
 
@@ -363,7 +348,7 @@ impl<T> Channel<T> {
                 }
 
                 backoff.spin();
-            } else if offset == head.msg_count {
+            } else if offset == head.cap {
                 // Help install the next block.
                 install_next_block();
             }
@@ -518,12 +503,12 @@ impl<T> Drop for Channel<T> {
                 let head = head_ptr.deref();
                 let offset = head_index.wrapping_sub(head.start_index);
 
-                let slot = head.msgs.get_unchecked(offset).get();
+                let slot = head.slots.get_unchecked(offset);
                 ManuallyDrop::drop(&mut (*slot).msg.get().read());
 
-                if offset + 1 == head.msg_count {
+                if offset + 1 == head.cap {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
-                    Block::dealloc(head_ptr.as_raw() as *mut Block<T>);
+                    Block::dealloc(head_ptr);
                     head_ptr = next;
                 }
 
@@ -532,7 +517,7 @@ impl<T> Drop for Channel<T> {
 
             // If there is one last remaining block in the end, destroy it.
             if !head_ptr.is_null() {
-                Block::dealloc(head_ptr.as_raw() as *mut Block<T>);
+                Block::dealloc(head_ptr);
             }
         }
     }
