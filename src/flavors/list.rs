@@ -8,7 +8,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
-use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
+use crossbeam_epoch::{self as epoch, Atomic, Guard, Shared};
 use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
@@ -70,6 +70,7 @@ struct Block<T> {
 }
 
 impl<T> Block<T> {
+    /// Creates an empty block that starts at `start_index`.
     unsafe fn new(start_index: usize, msg_count: usize) -> *mut Self {
         let ptr = Self::alloc(msg_count);
 
@@ -81,19 +82,21 @@ impl<T> Block<T> {
         ptr
     }
 
-    #[inline]
+    /// Allocate memory for a block with space to hold `msg_count` messages.
     unsafe fn alloc(msg_count: usize) -> *mut Self {
         let layout = Self::create_layout(msg_count);
+        // TODO(kleimkuhler): Use `GlobalAlloc::alloc` once `Global` becomes stable
         alloc::alloc(layout) as *mut Self
     }
 
-    #[inline]
+    /// Deallocate memory that a block with `msg_count` messages holds.
     unsafe fn dealloc(ptr: *mut Self) {
         let layout = Self::create_layout((*ptr).msg_count);
+        // TODO(kleimkuhler): Use `GlobalAlloc::dealloc` once `Global` becomes stable
         alloc::dealloc(ptr as *mut u8, layout)
     }
 
-    #[inline]
+    /// Layout a block of memory for a block that can hold `msg_count` messages.
     unsafe fn create_layout(msg_count: usize) -> alloc::Layout {
         let size = mem::size_of::<Block<T>>() + msg_count * mem::size_of::<Slot<T>>();
         let align = mem::align_of::<Block<T>>();
@@ -200,15 +203,21 @@ impl<T> Channel<T> {
                     .next
                     .compare_and_set(
                         Shared::null(),
-                        unsafe {
-                            Owned::from_raw(Block::new(
-                                tail.start_index.wrapping_add(tail.msg_count),
-                                new_slot_count,
-                            ))
+                        {
+                            let b = unsafe {
+                                Block::<T>::new(
+                                    tail.start_index.wrapping_add(tail.msg_count),
+                                    new_slot_count,
+                                )
+                            };
+                            Shared::<Block<T>>::from(b as *const _)
                         },
                         Ordering::AcqRel,
                         &guard,
-                    ).unwrap_or_else(|err| err.current);
+                    ).unwrap_or_else(|err| {
+                        unsafe { Block::dealloc(err.new.as_raw() as *mut Block<T>) };
+                        err.current
+                    });
 
                 let _ =
                     self.tail
@@ -280,15 +289,21 @@ impl<T> Channel<T> {
                     .next
                     .compare_and_set(
                         Shared::null(),
-                        unsafe {
-                            Owned::from_raw(Block::new(
-                                head.start_index.wrapping_add(head.msg_count),
-                                new_slot_count,
-                            ))
+                        {
+                            let b = unsafe {
+                                Block::<T>::new(
+                                    head.start_index.wrapping_add(head.msg_count),
+                                    new_slot_count,
+                                )
+                            };
+                            Shared::<Block<T>>::from(b as *const _)
                         },
                         Ordering::AcqRel,
                         &guard,
-                    ).unwrap_or_else(|err| err.current);
+                    ).unwrap_or_else(|err| {
+                        unsafe { Block::dealloc(err.new.as_raw() as *mut Block<T>) };
+                        err.current
+                    });
 
                 let _ =
                     self.head
@@ -337,7 +352,9 @@ impl<T> Channel<T> {
                     if offset + 1 == head.msg_count {
                         install_next_block();
                         unsafe {
-                            guard.defer_destroy(head_ptr);
+                            guard.defer_unchecked(move || {
+                                Block::dealloc(head_ptr.as_raw() as *mut Block<T>)
+                            });
                         }
                     }
 
@@ -506,7 +523,7 @@ impl<T> Drop for Channel<T> {
 
                 if offset + 1 == head.msg_count {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
-                    Block::dealloc(Box::into_raw(head_ptr.into_owned().into_box()));
+                    Block::dealloc(head_ptr.as_raw() as *mut Block<T>);
                     head_ptr = next;
                 }
 
@@ -515,7 +532,7 @@ impl<T> Drop for Channel<T> {
 
             // If there is one last remaining block in the end, destroy it.
             if !head_ptr.is_null() {
-                Block::dealloc(Box::into_raw(head_ptr.into_owned().into_box()));
+                Block::dealloc(head_ptr.as_raw() as *mut Block<T>);
             }
         }
     }
