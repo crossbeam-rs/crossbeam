@@ -1,12 +1,14 @@
 //! Unbounded channel implemented as a linked list.
 
+use std::alloc;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
+use std::mem::{self, ManuallyDrop};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
-use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
+use crossbeam_epoch::{self as epoch, Atomic, Guard, Shared};
 use crossbeam_utils::CachePadded;
 
 use internal::channel::RecvNonblocking;
@@ -15,26 +17,8 @@ use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
 
-/// The maximum number of messages a block can hold.
-const BLOCK_CAP: usize = 32;
-
-/// A slot in a block.
-struct Slot<T> {
-    /// The message.
-    msg: UnsafeCell<Option<T>>,
-
-    /// Equals `true` if the message is ready for reading.
-    ready: AtomicBool,
-}
-
-impl<T> Slot<T> {
-    fn empty() -> Slot<T> {
-        Slot {
-            msg: UnsafeCell::new(None),
-            ready: AtomicBool::new(false),
-        }
-    }
-}
+/// The maximum number of slots a block can hold.
+const MAX_BLOCK_CAP: usize = 32;
 
 /// The token type for the list flavor.
 pub struct ListToken {
@@ -55,34 +39,74 @@ impl Default for ListToken {
     }
 }
 
+/// A slot in a block.
+struct Slot<T> {
+    /// The message.
+    msg: UnsafeCell<ManuallyDrop<T>>,
+
+    /// Equals `true` if the message is ready for reading.
+    ready: AtomicBool,
+}
+
 /// A block in a linked list.
 ///
-/// Each block in the list can hold up to `slots.len()` messages. `slots.len()` will double for
-/// each consecutive block - starting at 1 and growing no larger than `BLOCK_CAP`.
+/// Each block in the list can hold up to `cap` slots. `cap` will double for each consecutive block
+/// - starting at 1 and growing no larger than `BLOCK_CAP`.
+#[repr(C)]
 struct Block<T> {
     /// The start index of this block.
     ///
-    /// Slots in this block have indices in `start_index .. start_index + slots.len()`.
+    /// Slots in this block have indices in `start_index .. start_index + cap`.
     start_index: usize,
+
+    /// The number of slots this block can hold.
+    cap: usize,
 
     /// The next block in the linked list.
     next: Atomic<Block<T>>,
 
     /// Slots for messages.
-    slots: Box<[Slot<T>]>,
+    slots: [Slot<T>; 0],
 }
 
 impl<T> Block<T> {
     /// Creates an empty block that starts at `start_index`.
-    fn new(start_index: usize, slot_count: usize) -> Block<T> {
-        Block {
-            start_index,
-            slots: (0..slot_count)
-                .map(|_| Slot::empty())
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            next: Atomic::null(),
-        }
+    fn new<'a>(start_index: usize, cap: usize) -> Shared<'a, Block<T>> {
+        let block = unsafe {
+            let ptr = Self::alloc(cap);
+
+            // Write the `start_index` and `cap`. Initialize `next` to null and zero out `slots`.
+            ptr::write(&mut (*ptr).start_index, start_index);
+            ptr::write(&mut (*ptr).cap, cap);
+            ptr::write(&mut (*ptr).next, Atomic::null());
+            ptr::write_bytes((*ptr).slots.as_mut_ptr(), 0, cap);
+
+            ptr
+        };
+
+        Shared::from(block as *const _)
+    }
+
+    /// Allocate memory for a block with space to hold `cap` slots.
+    unsafe fn alloc(cap: usize) -> *mut Self {
+        let layout = Self::create_layout(cap);
+        // TODO(kleimkuhler): Use `GlobalAlloc::alloc` once `Global` becomes stable
+        alloc::alloc(layout) as *mut Self
+    }
+
+    /// Deallocate memory that a block holds.
+    unsafe fn dealloc(ptr: Shared<Block<T>>) {
+        let ptr = ptr.as_raw() as *mut Block<T>;
+        let layout = Self::create_layout((*ptr).cap);
+        // TODO(kleimkuhler): Use `GlobalAlloc::dealloc` once `Global` becomes stable
+        alloc::dealloc(ptr as *mut u8, layout)
+    }
+
+    /// Layout a block of memory for a block that can hold `cap` slots.
+    unsafe fn create_layout(cap: usize) -> alloc::Layout {
+        let size = mem::size_of::<Block<T>>() + cap * mem::size_of::<Slot<T>>();
+        let align = mem::align_of::<Block<T>>();
+        alloc::Layout::from_size_align_unchecked(size, align)
     }
 }
 
@@ -139,7 +163,7 @@ impl<T> Channel<T> {
         };
 
         // Allocate an empty block for the first batch of messages.
-        let block = unsafe { Owned::new(Block::new(0, 1)).into_shared(epoch::unprotected()) };
+        let block = Block::new(0, 1);
         channel.head.block.store(block, Ordering::Relaxed);
         channel.tail.block.store(block, Ordering::Relaxed);
 
@@ -166,7 +190,6 @@ impl<T> Channel<T> {
             // stale values, the following CAS will fail or won't even be attempted.
             let tail_ptr = self.tail.block.load(Ordering::Acquire, &guard);
             let tail = unsafe { tail_ptr.deref() };
-            let tail_slot_count = tail.slots.len();
             let tail_index = self.tail.index.load(Ordering::Relaxed);
 
             // Calculate the index of the corresponding slot in the block.
@@ -177,19 +200,19 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `tail` in case it hasn't been yet.
             let install_next_block = || {
-                let new_slot_count = (tail_slot_count * 2).min(BLOCK_CAP);
+                let new_slot_count = (tail.cap * 2).min(MAX_BLOCK_CAP);
 
                 let current = tail
                     .next
                     .compare_and_set(
                         Shared::null(),
-                        Owned::new(Block::new(
-                            tail.start_index.wrapping_add(tail_slot_count),
-                            new_slot_count,
-                        )),
+                        Block::new(tail.start_index.wrapping_add(tail.cap), new_slot_count),
                         Ordering::AcqRel,
                         &guard,
-                    ).unwrap_or_else(|err| err.current);
+                    ).unwrap_or_else(|err| {
+                        unsafe { Block::dealloc(err.new) };
+                        err.current
+                    });
 
                 let _ =
                     self.tail
@@ -198,7 +221,7 @@ impl<T> Channel<T> {
             };
 
             // If `tail_index` is pointing into `tail`...
-            if offset < tail_slot_count {
+            if offset < tail.cap {
                 // Try moving the tail index forward.
                 if self
                     .tail
@@ -211,20 +234,20 @@ impl<T> Channel<T> {
                     ).is_ok()
                 {
                     // If this was the last slot in the block, install a new block.
-                    if offset + 1 == tail_slot_count {
+                    if offset + 1 == tail.cap {
                         install_next_block();
                     }
 
                     unsafe {
                         let slot = tail.slots.get_unchecked(offset);
-                        *slot.msg.get() = Some(msg);
+                        (*slot).msg.get().write(ManuallyDrop::new(msg));
                         (*slot).ready.store(true, Ordering::Release);
                     }
                     break;
                 }
 
                 backoff.spin();
-            } else if offset == tail_slot_count {
+            } else if offset == tail.cap {
                 // Help install the next block.
                 install_next_block();
             }
@@ -245,7 +268,6 @@ impl<T> Channel<T> {
             // channel is empty.
             let head_ptr = self.head.block.load(Ordering::Acquire, &guard);
             let head = unsafe { head_ptr.deref() };
-            let head_slot_count = head.slots.len();
             let head_index = self.head.index.load(Ordering::SeqCst);
 
             // Calculate the index of the corresponding slot in the block.
@@ -256,19 +278,19 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `head` in case it hasn't been yet.
             let install_next_block = || {
-                let new_slot_count = (head_slot_count * 2).min(BLOCK_CAP);
+                let new_slot_count = (head.cap * 2).min(MAX_BLOCK_CAP);
 
                 let current = head
                     .next
                     .compare_and_set(
                         Shared::null(),
-                        Owned::new(Block::new(
-                            head.start_index.wrapping_add(head_slot_count),
-                            new_slot_count,
-                        )),
+                        Block::new(head.start_index.wrapping_add(head.cap), new_slot_count),
                         Ordering::AcqRel,
                         &guard,
-                    ).unwrap_or_else(|err| err.current);
+                    ).unwrap_or_else(|err| {
+                        unsafe { Block::dealloc(err.new) };
+                        err.current
+                    });
 
                 let _ =
                     self.head
@@ -277,7 +299,7 @@ impl<T> Channel<T> {
             };
 
             // If `head_index` is pointing into `head`...
-            if offset < head_slot_count {
+            if offset < head.cap {
                 let slot = unsafe { &*head.slots.get_unchecked(offset) };
 
                 // If this slot does not contain a message...
@@ -314,10 +336,10 @@ impl<T> Channel<T> {
                 {
                     // If this was the last slot in the block, install a new block and destroy the
                     // old one.
-                    if offset + 1 == head_slot_count {
+                    if offset + 1 == head.cap {
                         install_next_block();
                         unsafe {
-                            guard.defer_destroy(head_ptr);
+                            guard.defer_unchecked(move || Block::dealloc(head_ptr));
                         }
                     }
 
@@ -326,7 +348,7 @@ impl<T> Channel<T> {
                 }
 
                 backoff.spin();
-            } else if offset == head_slot_count {
+            } else if offset == head.cap {
                 // Help install the next block.
                 install_next_block();
             }
@@ -353,7 +375,9 @@ impl<T> Channel<T> {
         }
 
         // Read the message.
-        (*slot.msg.get()).take()
+        let m = slot.msg.get().read();
+        let msg = ManuallyDrop::into_inner(m);
+        Some(msg)
     }
 
     /// Sends a message into the channel.
@@ -477,15 +501,14 @@ impl<T> Drop for Channel<T> {
             // heap-allocated nodes along the way.
             while head_index != tail_index {
                 let head = head_ptr.deref();
-                let head_slot_count = head.slots.len();
                 let offset = head_index.wrapping_sub(head.start_index);
 
                 let slot = head.slots.get_unchecked(offset);
-                drop((*slot.msg.get()).take());
+                ManuallyDrop::drop(&mut *(*slot).msg.get());
 
-                if offset + 1 == head_slot_count {
+                if offset + 1 == head.cap {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
-                    drop(head_ptr.into_owned());
+                    Block::dealloc(head_ptr);
                     head_ptr = next;
                 }
 
@@ -494,7 +517,7 @@ impl<T> Drop for Channel<T> {
 
             // If there is one last remaining block in the end, destroy it.
             if !head_ptr.is_null() {
-                drop(head_ptr.into_owned());
+                Block::dealloc(head_ptr);
             }
         }
     }
