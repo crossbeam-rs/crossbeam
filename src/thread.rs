@@ -1,111 +1,84 @@
-//! Scoped thread.
+//! Threads that can borrow variables from the stack.
 //!
-//! # Examples
-//!
-//! A basic scoped thread:
+//! Create a scope when spawned threads need to access variables on the stack:
 //!
 //! ```
-//! crossbeam_utils::thread::scope(|scope| {
-//!     scope.spawn(|| {
-//!         println!("Hello from a scoped thread!");
-//!     });
-//! }).unwrap();
-//! ```
+//! use crossbeam_utils::thread;
 //!
-//! When writing concurrent Rust programs, you'll sometimes see a pattern like this, using
-//! [`std::thread::spawn`]:
+//! let people = vec![
+//!     "Alice".to_string(),
+//!     "Bob".to_string(),
+//!     "Carol".to_string(),
+//! ];
 //!
-//! ```ignore
-//! let array = [1, 2, 3];
-//! let mut guards = vec![];
-//!
-//! for i in &array {
-//!     let guard = std::thread::spawn(move || {
-//!         println!("element: {}", i);
-//!     });
-//!
-//!     guards.push(guard);
-//! }
-//!
-//! for guard in guards {
-//!     guard.join().unwrap();
-//! }
-//! ```
-//!
-//! The basic pattern is:
-//!
-//! 1. Iterate over some collection.
-//! 2. Spin up a thread to operate on each part of the collection.
-//! 3. Join all the threads.
-//!
-//! However, this code actually gives an error:
-//!
-//! ```text
-//! error: `array` does not live long enough
-//! for i in &array {
-//!           ^~~~~
-//! in expansion of for loop expansion
-//! note: expansion site
-//! note: reference must be valid for the static lifetime...
-//! note: ...but borrowed value is only valid for the block suffix following statement 0 at ...
-//!     let array = [1, 2, 3];
-//!     let mut guards = vec![];
-//!
-//!     for i in &array {
-//!         let guard = std::thread::spawn(move || {
-//!             println!("element: {}", i);
-//! ...
-//! error: aborting due to previous error
-//! ```
-//!
-//! Because [`std::thread::spawn`] doesn't know about this scope, it requires a `'static` lifetime.
-//! One way of giving it a proper lifetime is to use an [`Arc`]:
-//!
-//! [`Arc`]: https://doc.rust-lang.org/stable/std/sync/struct.Arc.html
-//! [`std::thread::spawn`]: https://doc.rust-lang.org/stable/std/thread/fn.spawn.html
-//!
-//! ```
-//! use std::sync::Arc;
-//!
-//! let array = Arc::new([1, 2, 3]);
-//! let mut guards = vec![];
-//!
-//! for i in 0..array.len() {
-//!     let a = array.clone();
-//!
-//!     let guard = std::thread::spawn(move || {
-//!         println!("element: {}", a[i]);
-//!     });
-//!
-//!     guards.push(guard);
-//! }
-//!
-//! for guard in guards {
-//!     guard.join().unwrap();
-//! }
-//! ```
-//!
-//! But this introduces unnecessary allocation, as `Arc<T>` puts its data on the heap, and we
-//! also end up dealing with reference counts. We know that we're joining the threads before
-//! our function returns, so just taking a reference _should_ be safe. Rust can't know that,
-//! though.
-//!
-//! Enter scoped threads. Here's our original example, using `spawn` from crossbeam rather
-//! than from `std::thread`:
-//!
-//! ```
-//! let array = [1, 2, 3];
-//!
-//! crossbeam_utils::thread::scope(|scope| {
-//!     for i in &array {
+//! thread::scope(|scope| {
+//!     for person in &people {
 //!         scope.spawn(move || {
-//!             println!("element: {}", i);
+//!             println!("Hello, {}!", person);
 //!         });
 //!     }
 //! }).unwrap();
 //! ```
 //!
-//! Much more straightforward.
+//! # Why scoped threads?
+//!
+//! Suppose we wanted to re-write the previous example using plain threads:
+//!
+//! ```ignore
+//! use std::thread;
+//!
+//! let people = vec![
+//!     "Alice".to_string(),
+//!     "Bob".to_string(),
+//!     "Carol".to_string(),
+//! ];
+//!
+//! let mut threads = Vec::new();
+//!
+//! for person in &people {
+//!     threads.push(thread::spawn(move || {
+//!         println!("Hello, {}!", person);
+//!     }));
+//! }
+//!
+//! for thread in threads {
+//!     thread.join().unwrap();
+//! }
+//! ```
+//!
+//! This doesn't work because the borrow checker complains about `people` not living long enough:
+//!
+//! ```text
+//! error[E0597]: `people` does not live long enough
+//!   --> src/main.rs:12:20
+//!    |
+//! 12 |     for person in &people {
+//!    |                    ^^^^^^ borrowed value does not live long enough
+//! ...
+//! 21 | }
+//!    | - borrowed value only lives until here
+//!    |
+//!    = note: borrowed value must be valid for the static lifetime...
+//! ```
+//!
+//! The problem here is that spawned threads are not allowed to borrow variables on stack because
+//! the compiler cannot prove they will be joined before `people` is destroyed.
+//!
+//! Scoped threads are a mechanism to guarantee to the compiler that spawned threads will be joined
+//! before the scope ends.
+//!
+//! # How scoped threads work
+//!
+//! If a variable is borrowed by a thread, the thread must complete before the variable is
+//! destroyed. Threads spawned using [`std::thread::spawn`] can only borrow variables with the
+//! `'static` lifetime because the borrow checker cannot be sure when the thread will complete.
+//!
+//! A scope creates a clear boundary between variables outside the scope and threads inside the
+//! scope. Whenever a scope spawns a thread, it promises to join the thread before the scope ends.
+//! This way we guarantee to the borrow checker that scoped threads only live within the scope and
+//! can safely access variables outside it.
+//!
+//! [`std::thread::spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
 
 use std::any::Any;
 use std::cell::RefCell;
