@@ -94,7 +94,7 @@ impl<T> Block<T> {
         alloc::alloc(layout) as *mut Self
     }
 
-    /// Deallocate memory that a block with `cap` slots holds.
+    /// Deallocate memory that a block holds.
     unsafe fn dealloc(ptr: Shared<Block<T>>) {
         let ptr = ptr.as_raw() as *mut Block<T>;
         let layout = Self::create_layout((*ptr).cap);
@@ -504,7 +504,7 @@ impl<T> Drop for Channel<T> {
                 let offset = head_index.wrapping_sub(head.start_index);
 
                 let slot = head.slots.get_unchecked(offset);
-                ManuallyDrop::drop(&mut (*slot).msg.get().read());
+                ManuallyDrop::drop(&mut *(*slot).msg.get());
 
                 if offset + 1 == head.cap {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
