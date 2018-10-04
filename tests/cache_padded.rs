@@ -59,7 +59,7 @@ fn large() {
 fn debug() {
     assert_eq!(
         format!("{:?}", CachePadded::new(17u64)),
-        "CachePadded { 17 }"
+        "CachePadded { value: 17 }"
     );
 }
 
