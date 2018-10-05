@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use flavors;
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Token};
@@ -19,6 +20,9 @@ use internal::select::{Operation, SelectHandle, Token};
 pub struct Channel<T> {
     /// The number of senders associated with this channel.
     senders: AtomicUsize,
+
+    /// The number of receivers associated with this channel.
+    receivers: AtomicUsize,
 
     /// This channel's flavor.
     flavor: ChannelFlavor<T>,
@@ -68,11 +72,12 @@ enum ChannelFlavor<T> {
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
+        receivers: AtomicUsize::new(0),
         flavor: ChannelFlavor::List(flavors::list::Channel::new()),
     });
 
     let s = Sender::new(chan.clone());
-    let r = Receiver(ReceiverFlavor::Channel(chan));
+    let r = Receiver::new(chan);
     (s, r)
 }
 
@@ -86,7 +91,7 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 ///
 /// # Panics
 ///
-/// Panics if the capacity is larger than `usize::max_value() / 4`.
+/// Panics if the capacity is greater than `usize::max_value() / 4`.
 ///
 /// # Examples
 ///
@@ -130,6 +135,7 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
         senders: AtomicUsize::new(0),
+        receivers: AtomicUsize::new(0),
         flavor: {
             if cap == 0 {
                 ChannelFlavor::Zero(flavors::zero::Channel::new())
@@ -140,7 +146,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     });
 
     let s = Sender::new(chan.clone());
-    let r = Receiver(ReceiverFlavor::Channel(chan));
+    let r = Receiver::new(chan);
     (s, r)
 }
 
@@ -190,9 +196,9 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// assert!(eq(Instant::now(), start + ms(500)));
 /// ```
 pub fn after(duration: Duration) -> Receiver<Instant> {
-    Receiver(ReceiverFlavor::After(flavors::after::Channel::new(
-        duration,
-    )))
+    Receiver {
+        flavor: ReceiverFlavor::After(flavors::after::Channel::new(duration)),
+    }
 }
 
 /// Creates a receiver that delivers messages periodically.
@@ -233,7 +239,9 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// assert!(eq(Instant::now(), start + ms(700)));
 /// ```
 pub fn tick(duration: Duration) -> Receiver<Instant> {
-    Receiver(ReceiverFlavor::Tick(flavors::tick::Channel::new(duration)))
+    Receiver {
+        flavor: ReceiverFlavor::Tick(flavors::tick::Channel::new(duration)),
+    }
 }
 
 /// The sending side of a channel.
@@ -257,7 +265,9 @@ pub fn tick(duration: Duration) -> Receiver<Instant> {
 ///
 /// assert_eq!(msg1 + msg2, 3);
 /// ```
-pub struct Sender<T>(Arc<Channel<T>>);
+pub struct Sender<T> {
+    inner: Arc<Channel<T>>,
+}
 
 unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Sync for Sender<T> {}
@@ -274,12 +284,39 @@ impl<T> Sender<T> {
             process::abort();
         }
 
-        Sender(chan)
+        Sender { inner: chan }
     }
 
     /// Returns a unique identifier for the channel.
     fn channel_id(&self) -> usize {
-        &*self.0 as *const Channel<T> as usize
+        &*self.inner as *const Channel<T> as usize
+    }
+
+    /// Attempts to send a message into the channel without blocking.
+    ///
+    /// This method will either send a message into the channel immediately, or return an error if
+    /// the channel is full or disconnected. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will send a message the message only if
+    /// there happens to be a receive operation on the other side of the channel at the same time.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::{bounded, TrySendError};
+    ///
+    /// let (tx, rx) = bounded(1);
+    /// assert_eq!(tx.try_send(1), Ok(()));
+    /// assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
+    /// drop(rx);
+    /// assert_eq!(tx.try_send(2), Err(TrySendError::Disconnected(2)));
+    /// ```
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        match &self.inner.flavor {
+            ChannelFlavor::Array(chan) => chan.try_send(msg),
+            ChannelFlavor::List(chan) => chan.try_send(msg),
+            ChannelFlavor::Zero(chan) => chan.try_send(msg),
+        }
     }
 
     /// Sends a message into the channel, blocking the current thread if the channel is full.
@@ -302,11 +339,47 @@ impl<T> Sender<T> {
     ///
     /// assert_eq!(r.recv(), Some(1));
     /// ```
-    pub fn send(&self, msg: T) {
-        match &self.0.flavor {
+    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.send(msg),
             ChannelFlavor::List(chan) => chan.send(msg),
             ChannelFlavor::Zero(chan) => chan.send(msg),
+        }
+    }
+
+    /// Sends a message into the channel, blocking if the channel is full for a limited time.
+    ///
+    /// If the channel is full (its capacity is fully utilized), this call will block until the
+    /// send operation can proceed. If the channel is (or becomes) disconnected, or if it waits for
+    /// longer than `timeout`, this call will wake up and return an error.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
+    ///
+    /// let (tx, rx) = unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     tx.send(5).unwrap();
+    ///     drop(tx);
+    /// });
+    ///
+    /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
+    /// ```
+    pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
+        // TODO: custom timeout impl
+        select! {
+            send(self, msg) => Ok(()),
+            recv(after(timeout)) => Err(SendTimeoutError::Timeout(msg)),
         }
     }
 
@@ -326,7 +399,7 @@ impl<T> Sender<T> {
     /// assert!(!s.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.is_empty(),
             ChannelFlavor::List(chan) => chan.is_empty(),
             ChannelFlavor::Zero(chan) => chan.is_empty(),
@@ -349,7 +422,7 @@ impl<T> Sender<T> {
     /// assert!(s.is_full());
     /// ```
     pub fn is_full(&self) -> bool {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.is_full(),
             ChannelFlavor::List(chan) => chan.is_full(),
             ChannelFlavor::Zero(chan) => chan.is_full(),
@@ -371,7 +444,7 @@ impl<T> Sender<T> {
     /// assert_eq!(s.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.len(),
             ChannelFlavor::List(chan) => chan.len(),
             ChannelFlavor::Zero(chan) => chan.len(),
@@ -395,7 +468,7 @@ impl<T> Sender<T> {
     /// assert_eq!(s.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.capacity(),
             ChannelFlavor::List(chan) => chan.capacity(),
             ChannelFlavor::Zero(chan) => chan.capacity(),
@@ -405,8 +478,8 @@ impl<T> Sender<T> {
 
 impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
-        if self.0.senders.fetch_sub(1, Ordering::SeqCst) == 1 {
-            match &self.0.flavor {
+        if self.inner.senders.fetch_sub(1, Ordering::SeqCst) == 1 {
+            match &self.inner.flavor {
                 ChannelFlavor::Array(chan) => chan.close(),
                 ChannelFlavor::List(chan) => chan.close(),
                 ChannelFlavor::Zero(chan) => chan.close(),
@@ -417,7 +490,7 @@ impl<T> Drop for Sender<T> {
 
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
-        Sender::new(self.0.clone())
+        Sender::new(self.inner.clone())
     }
 }
 
@@ -473,7 +546,9 @@ impl<T> RefUnwindSafe for Sender<T> {}
 /// println!("Waiting...");
 /// println!("{}", r.recv().unwrap()); // Received after 2 seconds.
 /// ```
-pub struct Receiver<T>(ReceiverFlavor<T>);
+pub struct Receiver<T> {
+    flavor: ReceiverFlavor<T>
+}
 
 /// Receiver flavors.
 pub enum ReceiverFlavor<T> {
@@ -491,12 +566,76 @@ unsafe impl<T: Send> Send for Receiver<T> {}
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
 impl<T> Receiver<T> {
+    /// Creates a receiver handle for the channel and increments the receiver count.
+    fn new(chan: Arc<Channel<T>>) -> Self {
+        let old_count = chan.receivers.fetch_add(1, Ordering::SeqCst);
+
+        // Cloning receivers and calling `mem::forget` on the clones could potentially overflow the
+        // counter. It's very difficult to recover sensibly from such degenerate scenarios so we
+        // just abort when the count becomes very large.
+        if old_count > isize::MAX as usize {
+            process::abort();
+        }
+
+        Receiver {
+            flavor: ReceiverFlavor::Channel(chan),
+        }
+    }
+
     /// Returns a unique identifier for the channel.
     fn channel_id(&self) -> usize {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(chan) => &**chan as *const Channel<T> as usize,
             ReceiverFlavor::After(chan) => chan.channel_id(),
             ReceiverFlavor::Tick(chan) => chan.channel_id(),
+        }
+    }
+
+    /// Attempts to receive a message from the channel without blocking.
+    ///
+    /// If there is no message ready to be received, returns `None`.
+    ///
+    /// Note: `r.try_recv()` is equivalent to `select! { recv(r, msg) => msg, default => None }`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel as channel;
+    ///
+    /// let (s, r) = channel::unbounded();
+    /// assert_eq!(r.try_recv(), None);
+    ///
+    /// s.send(5);
+    /// drop(s);
+    ///
+    /// assert_eq!(r.try_recv(), Some(5));
+    /// assert_eq!(r.try_recv(), None);
+    /// ```
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        match &self.flavor {
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.try_recv(),
+                ChannelFlavor::List(chan) => chan.try_recv(),
+                ChannelFlavor::Zero(chan) => chan.try_recv(),
+            },
+            ReceiverFlavor::After(chan) => {
+                let msg = chan.try_recv();
+                unsafe {
+                    mem::transmute_copy::<
+                        Result<Instant, TryRecvError>,
+                        Result<T, TryRecvError>
+                    >(&msg)
+                }
+            }
+            ReceiverFlavor::Tick(chan) => {
+                let msg = chan.try_recv();
+                unsafe {
+                    mem::transmute_copy::<
+                        Result<Instant, TryRecvError>,
+                        Result<T, TryRecvError>
+                    >(&msg)
+                }
+            }
         }
     }
 
@@ -527,47 +666,61 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.recv(), Some(5));
     /// assert_eq!(r.recv(), None);
     /// ```
-    pub fn recv(&self) -> Option<T> {
-        match &self.0 {
+    pub fn recv(&self) -> Result<T, RecvError> {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.recv(),
                 ChannelFlavor::List(chan) => chan.recv(),
                 ChannelFlavor::Zero(chan) => chan.recv(),
             },
-            ReceiverFlavor::After(chan) => unsafe {
-                mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.recv())
+            ReceiverFlavor::After(chan) => {
+                let msg = chan.recv();
+                unsafe {
+                    mem::transmute_copy::<Result<Instant, RecvError>, Result<T, RecvError>>(&msg)
+                }
             },
-            ReceiverFlavor::Tick(chan) => unsafe {
-                mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.recv())
+            ReceiverFlavor::Tick(chan) => {
+                let msg = chan.recv();
+                unsafe {
+                    mem::transmute_copy::<Result<Instant, RecvError>, Result<T, RecvError>>(&msg)
+                }
             },
         }
     }
 
-    /// Attempts to receive a message from the channel without blocking.
+    /// Waits for a message to be received from the channel but only for a limited time.
     ///
-    /// If there is no message ready to be received, returns `None`.
+    /// This method will always block in order to wait for a message to become available. If the
+    /// channel is (or becomes) empty and disconnected, or if it waits for longer than `timeout`,
+    /// it will wake up and return an error.
     ///
-    /// Note: `r.try_recv()` is equivalent to `select! { recv(r, msg) => msg, default => None }`.
+    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
+    /// on the other side of the channel.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
     ///
-    /// let (s, r) = channel::unbounded();
-    /// assert_eq!(r.try_recv(), None);
+    /// let (tx, rx) = unbounded();
     ///
-    /// s.send(5);
-    /// drop(s);
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     tx.send(5).unwrap();
+    ///     drop(tx);
+    /// });
     ///
-    /// assert_eq!(r.try_recv(), Some(5));
-    /// assert_eq!(r.try_recv(), None);
+    /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
+    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
     /// ```
-    pub fn try_recv(&self) -> Option<T> {
-        match recv_nonblocking(self) {
-            RecvNonblocking::Message(msg) => Some(msg),
-            RecvNonblocking::Empty => None,
-            RecvNonblocking::Closed => None,
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
+        // TODO: custom timeout impl
+        select! {
+            recv(self, msg) => msg.map_err(|_| RecvTimeoutError::Disconnected),
+            recv(after(timeout)) => Err(RecvTimeoutError::Timeout),
         }
     }
 
@@ -587,7 +740,7 @@ impl<T> Receiver<T> {
     /// assert!(!r.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.is_empty(),
                 ChannelFlavor::List(chan) => chan.is_empty(),
@@ -614,7 +767,7 @@ impl<T> Receiver<T> {
     /// assert!(r.is_full());
     /// ```
     pub fn is_full(&self) -> bool {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.is_full(),
                 ChannelFlavor::List(chan) => chan.is_full(),
@@ -640,7 +793,7 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.len(),
                 ChannelFlavor::List(chan) => chan.len(),
@@ -668,7 +821,7 @@ impl<T> Receiver<T> {
     /// assert_eq!(r.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.capacity(),
                 ChannelFlavor::List(chan) => chan.capacity(),
@@ -680,14 +833,31 @@ impl<T> Receiver<T> {
     }
 }
 
+impl<T> Drop for Receiver<T> {
+    fn drop(&mut self) {
+        if let ReceiverFlavor::Channel(chan) = &self.flavor {
+            if chan.receivers.fetch_sub(1, Ordering::SeqCst) == 1 {
+                match &chan.flavor {
+                    ChannelFlavor::Array(chan) => chan.close(),
+                    ChannelFlavor::List(chan) => chan.close(),
+                    ChannelFlavor::Zero(chan) => chan.close(),
+                }
+            }
+        }
+    }
+}
+
 impl<T> Clone for Receiver<T> {
     fn clone(&self) -> Self {
-        let inner = match &self.0 {
-            ReceiverFlavor::Channel(arc) => ReceiverFlavor::Channel(arc.clone()),
-            ReceiverFlavor::After(chan) => ReceiverFlavor::After(chan.clone()),
-            ReceiverFlavor::Tick(chan) => ReceiverFlavor::Tick(chan.clone()),
-        };
-        Receiver(inner)
+        match &self.flavor {
+            ReceiverFlavor::Channel(arc) => Receiver::new(arc.clone()),
+            ReceiverFlavor::After(chan) => Receiver {
+                flavor: ReceiverFlavor::After(chan.clone()),
+            },
+            ReceiverFlavor::Tick(chan) => Receiver {
+                flavor: ReceiverFlavor::Tick(chan.clone()),
+            },
+        }
     }
 }
 
@@ -721,7 +891,7 @@ impl<T> Iterator for Receiver<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.recv()
+        self.recv().ok()
     }
 }
 
@@ -741,7 +911,7 @@ impl<T> RefUnwindSafe for Receiver<T> {}
 
 impl<T> SelectHandle for Sender<T> {
     fn try(&self, token: &mut Token) -> bool {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.sender().try(token),
             ChannelFlavor::List(chan) => chan.sender().try(token),
             ChannelFlavor::Zero(chan) => chan.sender().try(token),
@@ -749,7 +919,7 @@ impl<T> SelectHandle for Sender<T> {
     }
 
     fn retry(&self, token: &mut Token) -> bool {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.sender().retry(token),
             ChannelFlavor::List(chan) => chan.sender().retry(token),
             ChannelFlavor::Zero(chan) => chan.sender().retry(token),
@@ -761,7 +931,7 @@ impl<T> SelectHandle for Sender<T> {
     }
 
     fn register(&self, token: &mut Token, oper: Operation, cx: &Context) -> bool {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.sender().register(token, oper, cx),
             ChannelFlavor::List(chan) => chan.sender().register(token, oper, cx),
             ChannelFlavor::Zero(chan) => chan.sender().register(token, oper, cx),
@@ -769,7 +939,7 @@ impl<T> SelectHandle for Sender<T> {
     }
 
     fn unregister(&self, oper: Operation) {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.sender().unregister(oper),
             ChannelFlavor::List(chan) => chan.sender().unregister(oper),
             ChannelFlavor::Zero(chan) => chan.sender().unregister(oper),
@@ -777,7 +947,7 @@ impl<T> SelectHandle for Sender<T> {
     }
 
     fn accept(&self, token: &mut Token, cx: &Context) -> bool {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.sender().accept(token, cx),
             ChannelFlavor::List(chan) => chan.sender().accept(token, cx),
             ChannelFlavor::Zero(chan) => chan.sender().accept(token, cx),
@@ -785,7 +955,7 @@ impl<T> SelectHandle for Sender<T> {
     }
 
     fn state(&self) -> usize {
-        match &self.0.flavor {
+        match &self.inner.flavor {
             ChannelFlavor::Array(chan) => chan.sender().state(),
             ChannelFlavor::List(chan) => chan.sender().state(),
             ChannelFlavor::Zero(chan) => chan.sender().state(),
@@ -795,7 +965,7 @@ impl<T> SelectHandle for Sender<T> {
 
 impl<T> SelectHandle for Receiver<T> {
     fn try(&self, token: &mut Token) -> bool {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.receiver().try(token),
                 ChannelFlavor::List(chan) => chan.receiver().try(token),
@@ -807,7 +977,7 @@ impl<T> SelectHandle for Receiver<T> {
     }
 
     fn retry(&self, token: &mut Token) -> bool {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.receiver().retry(token),
                 ChannelFlavor::List(chan) => chan.receiver().retry(token),
@@ -819,7 +989,7 @@ impl<T> SelectHandle for Receiver<T> {
     }
 
     fn deadline(&self) -> Option<Instant> {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(_) => None,
             ReceiverFlavor::After(chan) => chan.deadline(),
             ReceiverFlavor::Tick(chan) => chan.deadline(),
@@ -827,7 +997,7 @@ impl<T> SelectHandle for Receiver<T> {
     }
 
     fn register(&self, token: &mut Token, oper: Operation, cx: &Context) -> bool {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.receiver().register(token, oper, cx),
                 ChannelFlavor::List(chan) => chan.receiver().register(token, oper, cx),
@@ -839,7 +1009,7 @@ impl<T> SelectHandle for Receiver<T> {
     }
 
     fn unregister(&self, oper: Operation) {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.receiver().unregister(oper),
                 ChannelFlavor::List(chan) => chan.receiver().unregister(oper),
@@ -851,7 +1021,7 @@ impl<T> SelectHandle for Receiver<T> {
     }
 
     fn accept(&self, token: &mut Token, cx: &Context) -> bool {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.receiver().accept(token, cx),
                 ChannelFlavor::List(chan) => chan.receiver().accept(token, cx),
@@ -863,7 +1033,7 @@ impl<T> SelectHandle for Receiver<T> {
     }
 
     fn state(&self) -> usize {
-        match &self.0 {
+        match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
                 ChannelFlavor::Array(chan) => chan.receiver().state(),
                 ChannelFlavor::List(chan) => chan.receiver().state(),
@@ -876,8 +1046,8 @@ impl<T> SelectHandle for Receiver<T> {
 }
 
 /// Writes a message into the channel.
-pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) {
-    match &s.0.flavor {
+pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Result<(), T> {
+    match &s.inner.flavor {
         ChannelFlavor::Array(chan) => chan.write(token, msg),
         ChannelFlavor::List(chan) => chan.write(token, msg),
         ChannelFlavor::Zero(chan) => chan.write(token, msg),
@@ -885,71 +1055,18 @@ pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) {
 }
 
 /// Receives a message from the channel.
-pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Option<T> {
-    match &r.0 {
+pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()> {
+    match &r.flavor {
         ReceiverFlavor::Channel(arc) => match &arc.flavor {
             ChannelFlavor::Array(chan) => chan.read(token),
             ChannelFlavor::List(chan) => chan.read(token),
             ChannelFlavor::Zero(chan) => chan.read(token),
         },
         ReceiverFlavor::After(chan) => {
-            mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
+            mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
         }
         ReceiverFlavor::Tick(chan) => {
-            mem::transmute_copy::<Option<Instant>, Option<T>>(&chan.read(token))
-        }
-    }
-}
-
-/// The result of a non-blocking send operation
-pub enum SendNonblocking {
-    /// The channel is full
-    Full,
-
-    /// A message was sent
-    Sent,
-}
-
-pub fn send_nonblocking<T>(s: &Sender<T>, token: &mut Token) -> SendNonblocking {
-    let sent = match &s.0.flavor {
-        ChannelFlavor::Array(chan) => chan.sender().try(token),
-        ChannelFlavor::List(chan) => chan.sender().try(token),
-        ChannelFlavor::Zero(chan) => chan.sender().try(token),
-    };
-    if sent {
-        SendNonblocking::Sent
-    } else {
-        SendNonblocking::Full
-    }
-}
-
-/// The result of a non-blocking receive operation.
-pub enum RecvNonblocking<T> {
-    /// A message was received.
-    Message(T),
-
-    /// The channel is empty.
-    Empty,
-
-    /// The channel is empty and closed.
-    Closed,
-}
-
-/// Attempts to receive a message without blocking.
-pub fn recv_nonblocking<T>(r: &Receiver<T>) -> RecvNonblocking<T> {
-    match &r.0 {
-        ReceiverFlavor::Channel(arc) => match &arc.flavor {
-            ChannelFlavor::Array(chan) => chan.recv_nonblocking(),
-            ChannelFlavor::List(chan) => chan.recv_nonblocking(),
-            ChannelFlavor::Zero(chan) => chan.recv_nonblocking(),
-        },
-        ReceiverFlavor::After(chan) => {
-            let res = chan.recv_nonblocking();
-            unsafe { mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res) }
-        }
-        ReceiverFlavor::Tick(chan) => {
-            let res = chan.recv_nonblocking();
-            unsafe { mem::transmute_copy::<RecvNonblocking<Instant>, RecvNonblocking<T>>(&res) }
+            mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
         }
     }
 }

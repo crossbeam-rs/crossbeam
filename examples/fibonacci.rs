@@ -30,7 +30,7 @@ fn main() {
         for _ in 0..10 {
             println!("{}", fib_r.recv().unwrap());
         }
-        quit_s.send(());
+        quit_s.send(()).unwrap();
     });
 
     fibonacci(fib_s, quit_r);

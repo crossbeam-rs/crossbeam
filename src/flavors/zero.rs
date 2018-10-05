@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use parking_lot::Mutex;
 
-use internal::channel::RecvNonblocking;
+use err::{RecvError, SendError, TryRecvError, TrySendError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
@@ -144,7 +144,18 @@ impl<T> Channel<T> {
             };
 
             match sel {
-                Selected::Waiting | Selected::Closed => unreachable!(),
+                Selected::Waiting => unreachable!(),
+                Selected::Closed => {
+                    // Unregister and destroy the packet.
+                    let operation = self.inner.lock().senders.unregister(oper).unwrap();
+                    unsafe {
+                        drop(Box::from_raw(operation.packet as *mut Packet<T>));
+                    }
+
+                    // All receivers have just been dropped.
+                    token.zero = 0;
+                    true
+                }
                 Selected::Aborted => {
                     // Unregister and destroy the packet.
                     let operation = self.inner.lock().senders.unregister(oper).unwrap();
@@ -163,10 +174,16 @@ impl<T> Channel<T> {
     }
 
     /// Writes a message into the packet.
-    pub unsafe fn write(&self, token: &mut Token, msg: T) {
+    pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
+        // If there is no packet, the channel is closed.
+        if token.zero == 0 {
+            return Err(msg);
+        }
+
         let packet = &*(token.zero as *const Packet<T>);
         packet.msg.get().write(Some(msg));
         packet.ready.store(true, Ordering::Release);
+        Ok(())
     }
 
     /// Attempts to pair up with a sender.
@@ -234,10 +251,10 @@ impl<T> Channel<T> {
     }
 
     /// Reads a message from the packet.
-    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+    pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         // If there is no packet, the channel is closed.
         if token.zero == 0 {
-            return None;
+            return Err(());
         }
 
         let packet = &*(token.zero as *const Packet<T>);
@@ -248,19 +265,19 @@ impl<T> Channel<T> {
             // order to signal that the packet can be destroyed.
             let msg = packet.msg.get().replace(None).unwrap();
             packet.ready.store(true, Ordering::Release);
-            Some(msg)
+            Ok(msg)
         } else {
             // Wait until the message becomes available, then read it and destroy the
             // heap-allocated packet.
             packet.wait_ready();
             let msg = packet.msg.get().replace(None).unwrap();
             drop(Box::from_raw(packet as *const Packet<T> as *mut Packet<T>));
-            Some(msg)
+            Ok(msg)
         }
     }
 
-    /// Sends a message into the channel.
-    pub fn send(&self, msg: T) {
+    /// Attempts to send a message into the channel.
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let token = &mut Token::default();
         let mut inner = self.inner.lock();
 
@@ -269,9 +286,33 @@ impl<T> Channel<T> {
             token.zero = operation.packet;
             drop(inner);
             unsafe {
-                self.write(token, msg);
+                self.write(token, msg).ok().unwrap();
             }
-            return;
+            Ok(())
+        } else if inner.is_closed {
+            Err(TrySendError::Disconnected(msg))
+        } else {
+            Err(TrySendError::Full(msg))
+        }
+    }
+
+    /// Sends a message into the channel.
+    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
+        let token = &mut Token::default();
+        let mut inner = self.inner.lock();
+
+        // If there's a waiting receiver, pair up with it.
+        if let Some(operation) = inner.receivers.wake_one() {
+            token.zero = operation.packet;
+            drop(inner);
+            unsafe {
+                self.write(token, msg).ok().unwrap();
+            }
+            return Ok(());
+        }
+
+        if inner.is_closed {
+            return Err(SendError(msg));
         }
 
         Context::with(|cx| {
@@ -287,17 +328,23 @@ impl<T> Channel<T> {
             let sel = cx.wait_until(None);
 
             match sel {
-                Selected::Waiting | Selected::Aborted | Selected::Closed => unreachable!(),
+                Selected::Waiting | Selected::Aborted => unreachable!(),
+                Selected::Closed => {
+                    self.inner.lock().senders.unregister(oper).unwrap();
+                    let msg = unsafe { packet.msg.get().replace(None).unwrap() };
+                    Err(SendError(msg))
+                }
                 Selected::Operation(_) => {
                     // Wait until the message is read, then drop the packet.
                     packet.wait_ready();
+                    Ok(())
                 }
             }
         })
     }
 
-    /// Receives a message from the channel.
-    pub fn recv(&self) -> Option<T> {
+    /// Attempts to receive a message without blocking.
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let token = &mut Token::default();
         let mut inner = self.inner.lock();
 
@@ -306,12 +353,31 @@ impl<T> Channel<T> {
             token.zero = operation.packet;
             drop(inner);
             unsafe {
-                return self.read(token);
+                self.read(token).map_err(|_| TryRecvError::Disconnected)
+            }
+        } else if inner.is_closed {
+            Err(TryRecvError::Disconnected)
+        } else {
+            Err(TryRecvError::Empty)
+        }
+    }
+
+    /// Receives a message from the channel.
+    pub fn recv(&self) -> Result<T, RecvError> {
+        let token = &mut Token::default();
+        let mut inner = self.inner.lock();
+
+        // If there's a waiting sender, pair up with it.
+        if let Some(operation) = inner.senders.wake_one() {
+            token.zero = operation.packet;
+            drop(inner);
+            unsafe {
+                return self.read(token).map_err(|_| RecvError);
             }
         }
 
         if inner.is_closed {
-            return None;
+            return Err(RecvError);
         }
 
         Context::with(|cx| {
@@ -330,45 +396,26 @@ impl<T> Channel<T> {
                 Selected::Waiting | Selected::Aborted => unreachable!(),
                 Selected::Closed => {
                     self.inner.lock().receivers.unregister(oper).unwrap();
-                    None
+                    Err(RecvError)
                 }
                 Selected::Operation(_) => {
                     // Wait until the message is provided, then read it.
                     packet.wait_ready();
-                    unsafe { Some(packet.msg.get().replace(None).unwrap()) }
+                    unsafe { Ok(packet.msg.get().replace(None).unwrap()) }
                 }
             }
         })
-    }
-
-    /// Attempts to receive a message without blocking.
-    pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
-        let token = &mut Token::default();
-        let mut inner = self.inner.lock();
-
-        // If there's a waiting sender, pair up with it.
-        if let Some(operation) = inner.senders.wake_one() {
-            token.zero = operation.packet;
-            drop(inner);
-
-            match unsafe { self.read(token) } {
-                None => RecvNonblocking::Closed,
-                Some(msg) => RecvNonblocking::Message(msg),
-            }
-        } else if inner.is_closed {
-            RecvNonblocking::Closed
-        } else {
-            RecvNonblocking::Empty
-        }
     }
 
     /// Closes the channel and wakes up all blocked receivers.
     pub fn close(&self) {
         let mut inner = self.inner.lock();
 
-        assert!(!inner.is_closed);
-        inner.is_closed = true;
-        inner.receivers.close();
+        if !inner.is_closed {
+            inner.is_closed = true;
+            inner.senders.close();
+            inner.receivers.close();
+        }
     }
 
     /// Returns the current number of messages inside the channel.

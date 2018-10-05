@@ -7,6 +7,8 @@ extern crate rand;
 
 mod wrappers;
 
+// TODO: add a try_recv and recv_timeout test
+
 macro_rules! tests {
     ($channel:path) => {
         use std::sync::atomic::AtomicUsize;
@@ -14,6 +16,7 @@ macro_rules! tests {
         use std::thread;
         use std::time::{Duration, Instant};
 
+        use super::channel::TryRecvError;
         use $channel as channel;
         use crossbeam;
 
@@ -26,7 +29,7 @@ macro_rules! tests {
             let start = Instant::now();
             let r = channel::after(ms(50));
 
-            assert_eq!(r.try_recv(), None);
+            assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
             thread::sleep(ms(100));
 
             let fired = r.try_recv().unwrap();
@@ -37,7 +40,7 @@ macro_rules! tests {
             assert!(fired < now);
             assert!(now - fired >= ms(50));
 
-            assert_eq!(r.try_recv(), None);
+            assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 
             select! {
                 recv(r) => panic!(),
@@ -94,7 +97,7 @@ macro_rules! tests {
             assert!(fired < now);
             assert!(now - fired < fired - start);
 
-            assert_eq!(r.try_recv(), None);
+            assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
         }
 
         #[test]
@@ -223,7 +226,7 @@ macro_rules! tests {
                     for _ in 0..THREADS {
                         scope.spawn(|| {
                             let r = r.clone();
-                            r.try_recv();
+                            let _ = r.try_recv();
 
                             for _ in 0..COUNT {
                                 drop(r.clone());

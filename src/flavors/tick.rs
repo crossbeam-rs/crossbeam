@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
-use internal::channel::RecvNonblocking;
+use err::{RecvError, TryRecvError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Token};
 
@@ -54,9 +54,26 @@ impl Channel {
         self.inner.as_ref() as *const Mutex<Inner> as usize
     }
 
+    /// Attempts to receive a message without blocking.
+    #[inline]
+    pub fn try_recv(&self) -> Result<Instant, TryRecvError> {
+        let mut inner = self.inner.lock();
+        let now = Instant::now();
+
+        // If the deadline has been reached, we can receive the next message.
+        if now >= inner.deadline {
+            let msg = inner.deadline;
+            inner.deadline = now + self.duration;
+            inner.index += Wrapping(1);
+            Ok(msg)
+        } else {
+            Err(TryRecvError::Empty)
+        }
+    }
+
     /// Receives a message from the channel.
     #[inline]
-    pub fn recv(&self) -> Option<Instant> {
+    pub fn recv(&self) -> Result<Instant, RecvError> {
         loop {
             // Compute the time to sleep until the next message.
             let offset = {
@@ -65,10 +82,10 @@ impl Channel {
 
                 // If the deadline has been reached, we can receive the next message.
                 if now >= inner.deadline {
-                    let msg = Some(inner.deadline);
+                    let msg = inner.deadline;
                     inner.deadline = now + self.duration;
                     inner.index += Wrapping(1);
-                    return msg;
+                    return Ok(msg);
                 }
 
                 inner.deadline - now
@@ -78,27 +95,10 @@ impl Channel {
         }
     }
 
-    /// Attempts to receive a message without blocking.
-    #[inline]
-    pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
-        let mut inner = self.inner.lock();
-        let now = Instant::now();
-
-        // If the deadline has been reached, we can receive the next message.
-        if now >= inner.deadline {
-            let msg = RecvNonblocking::Message(inner.deadline);
-            inner.deadline = now + self.duration;
-            inner.index += Wrapping(1);
-            msg
-        } else {
-            RecvNonblocking::Empty
-        }
-    }
-
     /// Reads a message from the channel.
     #[inline]
-    pub unsafe fn read(&self, token: &mut Token) -> Option<Instant> {
-        token.tick
+    pub unsafe fn read(&self, token: &mut Token) -> Result<Instant, ()> {
+        token.tick.ok_or(())
     }
 
     /// Returns `true` if the channel is empty.
@@ -138,16 +138,16 @@ impl Clone for Channel {
 impl SelectHandle for Channel {
     #[inline]
     fn try(&self, token: &mut Token) -> bool {
-        match self.recv_nonblocking() {
-            RecvNonblocking::Message(msg) => {
+        match self.try_recv() {
+            Ok(msg) => {
                 token.tick = Some(msg);
                 true
             }
-            RecvNonblocking::Closed => {
+            Err(TryRecvError::Disconnected) => {
                 token.tick = None;
                 true
             }
-            RecvNonblocking::Empty => {
+            Err(TryRecvError::Empty) => {
                 false
             }
         }

@@ -369,6 +369,7 @@ extern crate crossbeam_utils;
 extern crate rand;
 extern crate parking_lot;
 
+mod err;
 mod flavors;
 
 #[doc(hidden)]
@@ -377,4 +378,7 @@ pub mod internal;
 pub use internal::channel::{Receiver, Sender};
 pub use internal::channel::{bounded, unbounded};
 pub use internal::channel::{after, tick};
-pub use internal::select::Select;
+pub use internal::select::{Select, SelectedCase};
+pub use err::{RecvError, RecvTimeoutError, TryRecvError};
+pub use err::{SendError, SendTimeoutError, TrySendError};
+pub use err::{SelectRecvError, SelectSendError};

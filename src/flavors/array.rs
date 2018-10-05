@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use crossbeam_utils::CachePadded;
 
-use internal::channel::RecvNonblocking;
+use err::{RecvError, SendError, TryRecvError, TrySendError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
@@ -98,11 +98,11 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    /// Creates a bounded channel with capacity of `cap`.
+    /// Creates a bounded channel of capacity `cap`.
     ///
     /// # Panics
     ///
-    /// Panics if the capacity is not in the range `1 .. usize::max_value() / 4 + 1`.
+    /// Panics if the capacity is not in range `1 .. usize::max_value() / 4 + 1`.
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
@@ -167,6 +167,13 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token) -> bool {
+        // If the channel is closed, return early.
+        if self.is_closed() {
+            token.array.slot = ptr::null();
+            token.array.stamp = 0;
+            return true;
+        }
+
         let mut backoff = Backoff::new();
 
         loop {
@@ -218,8 +225,12 @@ impl<T> Channel<T> {
     }
 
     /// Writes a message into the channel.
-    pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        debug_assert!(!token.array.slot.is_null());
+    pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
+        // If there is no slot, the channel is closed.
+        if token.array.slot.is_null() {
+            return Err(msg);
+        }
+
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
         // Write the message into the slot and update the stamp.
@@ -228,6 +239,7 @@ impl<T> Channel<T> {
 
         // Wake a sleeping receiver.
         self.receivers.wake_one();
+        Ok(())
     }
 
     /// Attempts to reserve a slot for receiving a message.
@@ -278,7 +290,7 @@ impl<T> Channel<T> {
                     if self.is_closed() {
                         // ...and still empty...
                         if self.tail.load(Ordering::SeqCst) == tail {
-                            // ...then receive `None`.
+                            // ...then receive an error.
                             token.array.slot = ptr::null();
                             token.array.stamp = 0;
                             return true;
@@ -295,10 +307,10 @@ impl<T> Channel<T> {
     }
 
     /// Reads a message from the channel.
-    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+    pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.array.slot.is_null() {
             // The channel is closed.
-            return None;
+            return Err(());
         }
 
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
@@ -309,12 +321,23 @@ impl<T> Channel<T> {
 
         // Wake a sleeping sender.
         self.senders.wake_one();
+        Ok(msg)
+    }
 
-        Some(msg)
+    /// Attempts to send a message into the channel.
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        let token = &mut Token::default();
+        if self.start_send(token) {
+            unsafe {
+                return self.write(token, msg).map_err(|m| TrySendError::Disconnected(m));
+            }
+        } else {
+            Err(TrySendError::Full(msg))
+        }
     }
 
     /// Sends a message into the channel.
-    pub fn send(&self, msg: T) {
+    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let token = &mut Token::default();
         loop {
             // Try sending a message several times.
@@ -322,9 +345,8 @@ impl<T> Channel<T> {
             loop {
                 if self.start_send(token) {
                     unsafe {
-                        self.write(token, msg);
+                        return self.write(token, msg).map_err(|m| SendError(m));
                     }
-                    return;
                 }
                 if !backoff.snooze() {
                     break;
@@ -345,8 +367,8 @@ impl<T> Channel<T> {
                 let sel = cx.wait_until(None);
 
                 match sel {
-                    Selected::Waiting | Selected::Closed => unreachable!(),
-                    Selected::Aborted => {
+                    Selected::Waiting => unreachable!(),
+                    Selected::Aborted | Selected::Closed => {
                         self.senders.unregister(oper).unwrap();
                     }
                     Selected::Operation(_) => {}
@@ -355,8 +377,21 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Attempts to receive a message without blocking.
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        let token = &mut Token::default();
+
+        if self.start_recv(token) {
+            unsafe {
+                self.read(token).map_err(|_| TryRecvError::Disconnected)
+            }
+        } else {
+            Err(TryRecvError::Empty)
+        }
+    }
+
     /// Receives a message from the channel.
-    pub fn recv(&self) -> Option<T> {
+    pub fn recv(&self) -> Result<T, RecvError> {
         let token = &mut Token::default();
         loop {
             // Try receiving a message several times.
@@ -364,7 +399,7 @@ impl<T> Channel<T> {
             loop {
                 if self.start_recv(token) {
                     unsafe {
-                        return self.read(token);
+                        return self.read(token).map_err(|_| RecvError);
                     }
                 }
                 if !backoff.snooze() {
@@ -394,20 +429,6 @@ impl<T> Channel<T> {
                     Selected::Operation(_) => {}
                 }
             })
-        }
-    }
-
-    /// Attempts to receive a message without blocking.
-    pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
-        let token = &mut Token::default();
-
-        if self.start_recv(token) {
-            match unsafe { self.read(token) } {
-                None => RecvNonblocking::Closed,
-                Some(msg) => RecvNonblocking::Message(msg),
-            }
-        } else {
-            RecvNonblocking::Empty
         }
     }
 
@@ -443,8 +464,10 @@ impl<T> Channel<T> {
 
     /// Closes the channel and wakes up all blocked receivers.
     pub fn close(&self) {
-        assert!(!self.is_closed.swap(true, Ordering::SeqCst));
-        self.receivers.close();
+        if !self.is_closed.swap(true, Ordering::SeqCst) {
+            self.senders.close();
+            self.receivers.close();
+        }
     }
 
     /// Returns `true` if the channel is closed.
@@ -471,7 +494,7 @@ impl<T> Channel<T> {
 
         // Is the head lagging one lap behind tail?
         //
-        // note: If the tail changes just before we load the head, that means there was a moment
+        // Note: If the tail changes just before we load the head, that means there was a moment
         // when the channel was not full, so it is safe to just return `false`.
         head.wrapping_add(self.one_lap) == tail
     }

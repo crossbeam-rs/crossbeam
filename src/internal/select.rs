@@ -6,6 +6,7 @@ use std::option;
 use std::ptr;
 use std::time::Instant;
 
+use err::{RecvError, SendError};
 use internal::channel::{self, Receiver, Sender};
 use internal::context::Context;
 use internal::smallvec::SmallVec;
@@ -153,7 +154,7 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
 pub fn main_loop<S>(
     handles: &mut [(&S, usize, *const u8)],
     has_default: bool,
-) -> (Token, usize, *const u8)
+) -> (Token, usize, *const u8) // TODO: return Option<_> (for default case)
 where
     S: SelectHandle + ?Sized,
 {
@@ -309,298 +310,384 @@ where
     }
 }
 
-/// Waits on a set of channel operations.
-///
-/// This struct with builder-like interface allows declaring a set of channel operations and
-/// blocking until any one of them becomes ready. Finally, one of the operations is executed. If
-/// multiple operations are ready at the same time, a random one is chosen. It is also possible to
-/// declare a default case that gets executed if none of the operations are initially ready.
-///
-/// Note that this method of selecting over channel operations is typically somewhat slower than
-/// the [`select!`] macro.
-///
-/// [`select!`]: macro.select.html
-///
-/// # Receiving
-///
-/// Receiving a message from two channels, whichever becomes ready first:
-///
-/// ```
-/// use std::thread;
-/// use crossbeam_channel as channel;
-///
-/// let (s1, r1) = channel::unbounded();
-/// let (s2, r2) = channel::unbounded();
-///
-/// thread::spawn(move || s1.send("foo"));
-/// thread::spawn(move || s2.send("bar"));
-///
-/// // Only one of these two receive operations will be executed.
-/// channel::Select::new()
-///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
-///     .recv(&r2, |msg| assert_eq!(msg, Some("bar")))
-///     .wait();
-/// ```
-///
-/// # Sending
-///
-/// Waiting on a send and a receive operation:
-///
-/// ```
-/// use std::thread;
-/// use crossbeam_channel as channel;
-///
-/// let (s1, r1) = channel::unbounded();
-/// let (s2, r2) = channel::unbounded();
-///
-/// s1.send("foo");
-///
-/// // Since both operations are initially ready, a random one will be executed.
-/// channel::Select::new()
-///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
-///     .send(&s2, || "bar", || assert_eq!(r2.recv(), Some("bar")))
-///     .wait();
-/// ```
-///
-/// # Default case
-///
-/// A special kind of case is `default`, which gets executed if none of the operations can be
-/// executed, i.e. they would block:
-///
-/// ```
-/// use std::thread;
-/// use std::time::{Duration, Instant};
-/// use crossbeam_channel as channel;
-///
-/// let (s, r) = channel::unbounded();
-///
-/// thread::spawn(move || {
-///     thread::sleep(Duration::from_secs(1));
-///     s.send("foo");
-/// });
-///
-/// // Don't block on the receive operation.
-/// channel::Select::new()
-///     .recv(&r, |_| panic!())
-///     .default(|| println!("The message is not yet available."))
-///     .wait();
-/// ```
-///
-/// # Execution
-///
-/// 1. A `Select` is constructed, cases are added, and `.wait()` is called.
-/// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
-///    operations are ready, a random one is chosen.
-/// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
-///    there is no `default` case, the current thread is blocked until an operation becomes ready.
-/// 4. If a `recv` operation gets executed, its callback is invoked.
-/// 5. If a `send` operation gets executed, the message is lazily evaluated and sent into the
-///    channel. Finally, the callback is invoked.
-///
-/// **Note**: If evaluation of the message panics, the process will be aborted because it's
-/// impossible to recover from such panics. All the other callbacks are allowed to panic, however.
-#[must_use]
-pub struct Select<'a, R> {
+// /// Waits on a set of channel operations.
+// ///
+// /// This struct with builder-like interface allows declaring a set of channel operations and
+// /// blocking until any one of them becomes ready. Finally, one of the operations is executed. If
+// /// multiple operations are ready at the same time, a random one is chosen. It is also possible to
+// /// declare a default case that gets executed if none of the operations are initially ready.
+// ///
+// /// Note that this method of selecting over channel operations is typically somewhat slower than
+// /// the [`select!`] macro.
+// ///
+// /// [`select!`]: macro.select.html
+// ///
+// /// # Receiving
+// ///
+// /// Receiving a message from two channels, whichever becomes ready first:
+// ///
+// /// ```
+// /// use std::thread;
+// /// use crossbeam_channel as channel;
+// ///
+// /// let (s1, r1) = channel::unbounded();
+// /// let (s2, r2) = channel::unbounded();
+// ///
+// /// thread::spawn(move || s1.send("foo"));
+// /// thread::spawn(move || s2.send("bar"));
+// ///
+// /// // Only one of these two receive operations will be executed.
+// /// channel::Select::new()
+// ///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
+// ///     .recv(&r2, |msg| assert_eq!(msg, Some("bar")))
+// ///     .wait();
+// /// ```
+// ///
+// /// # Sending
+// ///
+// /// Waiting on a send and a receive operation:
+// ///
+// /// ```
+// /// use std::thread;
+// /// use crossbeam_channel as channel;
+// ///
+// /// let (s1, r1) = channel::unbounded();
+// /// let (s2, r2) = channel::unbounded();
+// ///
+// /// s1.send("foo");
+// ///
+// /// // Since both operations are initially ready, a random one will be executed.
+// /// channel::Select::new()
+// ///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
+// ///     .send(&s2, || "bar", || assert_eq!(r2.recv(), Some("bar")))
+// ///     .wait();
+// /// ```
+// ///
+// /// # Default case
+// ///
+// /// A special kind of case is `default`, which gets executed if none of the operations can be
+// /// executed, i.e. they would block:
+// ///
+// /// ```
+// /// use std::thread;
+// /// use std::time::{Duration, Instant};
+// /// use crossbeam_channel as channel;
+// ///
+// /// let (s, r) = channel::unbounded();
+// ///
+// /// thread::spawn(move || {
+// ///     thread::sleep(Duration::from_secs(1));
+// ///     s.send("foo");
+// /// });
+// ///
+// /// // Don't block on the receive operation.
+// /// channel::Select::new()
+// ///     .recv(&r, |_| panic!())
+// ///     .default(|| println!("The message is not yet available."))
+// ///     .wait();
+// /// ```
+// ///
+// /// # Execution
+// ///
+// /// 1. A `Select` is constructed, cases are added, and `.wait()` is called.
+// /// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
+// ///    operations are ready, a random one is chosen.
+// /// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
+// ///    there is no `default` case, the current thread is blocked until an operation becomes ready.
+// /// 4. If a `recv` operation gets executed, its callback is invoked.
+// /// 5. If a `send` operation gets executed, the message is lazily evaluated and sent into the
+// ///    channel. Finally, the callback is invoked.
+// ///
+// /// **Note**: If evaluation of the message panics, the process will be aborted because it's
+// /// impossible to recover from such panics. All the other callbacks are allowed to panic, however.
+// #[must_use]
+// pub struct Select<'a, R> {
+//     /// A list of senders and receivers participating in selection.
+//     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
+//
+//     /// A list of callbacks, one per handle.
+//     callbacks: SmallVec<[Callback<'a, R>; 4]>,
+//
+//     /// Callback for the default case.
+//     default: Option<Callback<'a, R>>,
+// }
+//
+// impl<'a, R> Select<'a, R> {
+//     /// Creates a new `Select`.
+//     pub fn new() -> Select<'a, R> {
+//         Select {
+//             handles: SmallVec::new(),
+//             callbacks: SmallVec::new(),
+//             default: None,
+//         }
+//     }
+//
+//     /// Adds a receive case.
+//     ///
+//     /// The callback will get invoked if the receive operation completes.
+//     #[inline]
+//     pub fn recv<T, C>(mut self, r: &'a Receiver<T>, cb: C) -> Select<'a, R>
+//     where
+//         C: FnOnce(Option<T>) -> R + 'a,
+//     {
+//         let i = self.handles.len() + 1;
+//         let ptr = r as *const Receiver<_> as *const u8;
+//         self.handles.push((r, i, ptr));
+//
+//         self.callbacks.push(Callback::new(move |token| {
+//             let msg = unsafe { channel::read(r, token) };
+//             cb(msg)
+//         }));
+//
+//         self
+//     }
+//
+//     /// Adds a send case.
+//     ///
+//     /// If the send operation succeeds, the message will be generated and sent into the channel.
+//     /// Finally, the callback gets invoked once the operation is completed.
+//     ///
+//     /// **Note**: If function `msg` panics, the process will be aborted because it's impossible to
+//     /// recover from such panics. However, function `cb` is allowed to panic.
+//     #[inline]
+//     pub fn send<T, M, C>(mut self, s: &'a Sender<T>, msg: M, cb: C) -> Select<'a, R>
+//     where
+//         M: FnOnce() -> T + 'a,
+//         C: FnOnce() -> R + 'a,
+//     {
+//         let i = self.handles.len() + 1;
+//         let ptr = s as *const Sender<_> as *const u8;
+//         self.handles.push((s, i, ptr));
+//
+//         self.callbacks.push(Callback::new(move |token| {
+//             let _guard =
+//                 utils::AbortGuard("a send case triggered a panic while evaluating its message");
+//             let msg = msg();
+//
+//             ::std::mem::forget(_guard);
+//             unsafe {
+//                 channel::write(s, token, msg);
+//             }
+//
+//             cb()
+//         }));
+//
+//         self
+//     }
+//
+//     /// Adds a default case.
+//     ///
+//     /// This case gets executed if none of the channel operations are ready.
+//     ///
+//     /// If called more than once, this method keeps only the last callback for the default case.
+//     #[inline]
+//     pub fn default<C>(mut self, cb: C) -> Select<'a, R>
+//     where
+//         C: FnOnce() -> R + 'a,
+//     {
+//         self.default = Some(Callback::new(move |_| cb()));
+//         self
+//     }
+//
+//     /// Starts selection and waits until it completes.
+//     ///
+//     /// The result of the executed callback function will be returned.
+//     pub fn wait(mut self) -> R {
+//         let (mut token, index, _) = main_loop(&mut self.handles, self.default.is_some());
+//         let cb;
+//
+//         // Initialize `cb` with the right callback and drop all other callbacks.
+//         if index == 0 {
+//             self.callbacks.clear();
+//             cb = self.default.take().unwrap();
+//         } else {
+//             cb = self.callbacks.remove(index - 1);
+//             self.callbacks.clear();
+//             self.default.take();
+//         }
+//
+//         // Invoke the callback.
+//         cb.call(&mut token)
+//     }
+// }
+//
+// /// Some space to keep a `FnOnce()` object on the stack.
+// type Space = [usize; 2];
+//
+// /// A `FnOnce(&mut Token) -> R + 'a` that is stored inline if small, or otherwise boxed on the heap.
+// pub struct Callback<'a, R> {
+//     /// A wrapper function around the callback.
+//     ///
+//     /// The first argument is a pointer to `space`.
+//     ///
+//     /// The second argument may contain a reference to `Token`. If the argument is `Some`, the
+//     /// reference is passed to the callback. If the argument is `None`, the callback is read and
+//     /// dropped without invocation.
+//     ///
+//     /// This function may be called only once.
+//     call: unsafe fn(*mut u8, token: Option<&mut Token>) -> Option<R>,
+//
+//     /// Some space where a function can be stored, if it fits.
+//     space: Space,
+//
+//     /// Indicates that a `Callback` is `!Send + !Sync` and borrows `'a`.
+//     _marker: PhantomData<(*mut (), &'a ())>,
+// }
+//
+// impl<'a, R> Callback<'a, R> {
+//     /// Constructs a new `Callback<'a, R>` from a `FnOnce(&mut Token) -> R + 'a`.
+//     pub fn new<F>(f: F) -> Self
+//     where
+//         F: FnOnce(&mut Token) -> R + 'a,
+//     {
+//         let size = mem::size_of::<F>();
+//         let align = mem::align_of::<F>();
+//
+//         unsafe {
+//             let mut space: Space = Space::default();
+//
+//             let call = if size <= mem::size_of::<Space>() && align <= mem::align_of::<Space>() {
+//                 unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
+//                 where
+//                     F: FnOnce(&mut Token) -> R + 'a,
+//                 {
+//                     // Read the function from the stack.
+//                     let f: F = ptr::read(raw as *mut F);
+//                     token.map(f)
+//                 }
+//
+//                 // Write the function into the space.
+//                 ptr::write(&mut space as *mut Space as *mut F, f);
+//                 call::<F, R>
+//             } else {
+//                 unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
+//                 where
+//                     F: FnOnce(&mut Token) -> R + 'a,
+//                 {
+//                     // Read the pointer to the function from the stack.
+//                     let b: Box<F> = ptr::read(raw as *mut Box<F>);
+//                     token.map(*b)
+//                 }
+//
+//                 // The function doesn't fit, so box it and write the pointer into the space.
+//                 let b: Box<F> = Box::new(f);
+//                 ptr::write(&mut space as *mut Space as *mut Box<F>, b);
+//                 call::<F, R>
+//             };
+//
+//             Callback {
+//                 call,
+//                 space,
+//                 _marker: PhantomData,
+//             }
+//         }
+//     }
+//
+//     /// Invokes the callback.
+//     #[inline]
+//     pub fn call(self, token: &mut Token) -> R {
+//         // Disassemble `self` and forget it so that the destructor doesn't invoke `call`.
+//         let Callback {
+//             call, mut space, ..
+//         } = self;
+//         mem::forget(self);
+//
+//         // Invoke the callback.
+//         unsafe { (call)(&mut space as *mut Space as *mut u8, Some(token)).unwrap() }
+//     }
+// }
+//
+// impl<'a, R> Drop for Callback<'a, R> {
+//     fn drop(&mut self) {
+//         // Call the function with `None` in order to drop the callback.
+//         unsafe {
+//             (self.call)(&mut self.space as *mut Space as *mut u8, None);
+//         }
+//     }
+// }
+
+pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
-
-    /// A list of callbacks, one per handle.
-    callbacks: SmallVec<[Callback<'a, R>; 4]>,
-
-    /// Callback for the default case.
-    default: Option<Callback<'a, R>>,
 }
 
-impl<'a, R> Select<'a, R> {
-    /// Creates a new `Select`.
-    pub fn new() -> Select<'a, R> {
+impl<'a> Select<'a> {
+    pub fn new() -> Select<'a> {
         Select {
             handles: SmallVec::new(),
-            callbacks: SmallVec::new(),
-            default: None,
         }
     }
 
-    /// Adds a receive case.
-    ///
-    /// The callback will get invoked if the receive operation completes.
-    #[inline]
-    pub fn recv<T, C>(mut self, r: &'a Receiver<T>, cb: C) -> Select<'a, R>
-    where
-        C: FnOnce(Option<T>) -> R + 'a,
-    {
+    pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
         let i = self.handles.len() + 1;
         let ptr = r as *const Receiver<_> as *const u8;
         self.handles.push((r, i, ptr));
-
-        self.callbacks.push(Callback::new(move |token| {
-            let msg = unsafe { channel::read(r, token) };
-            cb(msg)
-        }));
-
-        self
+        i - 1
     }
 
-    /// Adds a send case.
-    ///
-    /// If the send operation succeeds, the message will be generated and sent into the channel.
-    /// Finally, the callback gets invoked once the operation is completed.
-    ///
-    /// **Note**: If function `msg` panics, the process will be aborted because it's impossible to
-    /// recover from such panics. However, function `cb` is allowed to panic.
-    #[inline]
-    pub fn send<T, M, C>(mut self, s: &'a Sender<T>, msg: M, cb: C) -> Select<'a, R>
-    where
-        M: FnOnce() -> T + 'a,
-        C: FnOnce() -> R + 'a,
-    {
+    pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
         let i = self.handles.len() + 1;
         let ptr = s as *const Sender<_> as *const u8;
         self.handles.push((s, i, ptr));
-
-        self.callbacks.push(Callback::new(move |token| {
-            let _guard =
-                utils::AbortGuard("a send case triggered a panic while evaluating its message");
-            let msg = msg();
-
-            ::std::mem::forget(_guard);
-            unsafe {
-                channel::write(s, token, msg);
-            }
-
-            cb()
-        }));
-
-        self
+        i - 1
     }
 
-    /// Adds a default case.
-    ///
-    /// This case gets executed if none of the channel operations are ready.
-    ///
-    /// If called more than once, this method keeps only the last callback for the default case.
-    #[inline]
-    pub fn default<C>(mut self, cb: C) -> Select<'a, R>
-    where
-        C: FnOnce() -> R + 'a,
-    {
-        self.default = Some(Callback::new(move |_| cb()));
-        self
-    }
+    pub fn try_select(&mut self) -> Option<SelectedCase<'_>> {
+        let (token, index, ptr) = main_loop(&mut self.handles, true);
 
-    /// Starts selection and waits until it completes.
-    ///
-    /// The result of the executed callback function will be returned.
-    pub fn wait(mut self) -> R {
-        let (mut token, index, _) = main_loop(&mut self.handles, self.default.is_some());
-        let cb;
-
-        // Initialize `cb` with the right callback and drop all other callbacks.
         if index == 0 {
-            self.callbacks.clear();
-            cb = self.default.take().unwrap();
+            None
         } else {
-            cb = self.callbacks.remove(index - 1);
-            self.callbacks.clear();
-            self.default.take();
-        }
-
-        // Invoke the callback.
-        cb.call(&mut token)
-    }
-}
-
-/// Some space to keep a `FnOnce()` object on the stack.
-type Space = [usize; 2];
-
-/// A `FnOnce(&mut Token) -> R + 'a` that is stored inline if small, or otherwise boxed on the heap.
-pub struct Callback<'a, R> {
-    /// A wrapper function around the callback.
-    ///
-    /// The first argument is a pointer to `space`.
-    ///
-    /// The second argument may contain a reference to `Token`. If the argument is `Some`, the
-    /// reference is passed to the callback. If the argument is `None`, the callback is read and
-    /// dropped without invocation.
-    ///
-    /// This function may be called only once.
-    call: unsafe fn(*mut u8, token: Option<&mut Token>) -> Option<R>,
-
-    /// Some space where a function can be stored, if it fits.
-    space: Space,
-
-    /// Indicates that a `Callback` is `!Send + !Sync` and borrows `'a`.
-    _marker: PhantomData<(*mut (), &'a ())>,
-}
-
-impl<'a, R> Callback<'a, R> {
-    /// Constructs a new `Callback<'a, R>` from a `FnOnce(&mut Token) -> R + 'a`.
-    pub fn new<F>(f: F) -> Self
-    where
-        F: FnOnce(&mut Token) -> R + 'a,
-    {
-        let size = mem::size_of::<F>();
-        let align = mem::align_of::<F>();
-
-        unsafe {
-            let mut space: Space = Space::default();
-
-            let call = if size <= mem::size_of::<Space>() && align <= mem::align_of::<Space>() {
-                unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
-                where
-                    F: FnOnce(&mut Token) -> R + 'a,
-                {
-                    // Read the function from the stack.
-                    let f: F = ptr::read(raw as *mut F);
-                    token.map(f)
-                }
-
-                // Write the function into the space.
-                ptr::write(&mut space as *mut Space as *mut F, f);
-                call::<F, R>
-            } else {
-                unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
-                where
-                    F: FnOnce(&mut Token) -> R + 'a,
-                {
-                    // Read the pointer to the function from the stack.
-                    let b: Box<F> = ptr::read(raw as *mut Box<F>);
-                    token.map(*b)
-                }
-
-                // The function doesn't fit, so box it and write the pointer into the space.
-                let b: Box<F> = Box::new(f);
-                ptr::write(&mut space as *mut Space as *mut Box<F>, b);
-                call::<F, R>
-            };
-
-            Callback {
-                call,
-                space,
+            Some(SelectedCase {
+                token,
+                index,
+                ptr,
                 _marker: PhantomData,
-            }
+            })
         }
     }
 
-    /// Invokes the callback.
-    #[inline]
-    pub fn call(self, token: &mut Token) -> R {
-        // Disassemble `self` and forget it so that the destructor doesn't invoke `call`.
-        let Callback {
-            call, mut space, ..
-        } = self;
-        mem::forget(self);
-
-        // Invoke the callback.
-        unsafe { (call)(&mut space as *mut Space as *mut u8, Some(token)).unwrap() }
+    pub fn select(&mut self) -> SelectedCase<'_> {
+        let (token, index, ptr) = main_loop(&mut self.handles, false);
+        SelectedCase {
+            token,
+            index,
+            ptr,
+            _marker: PhantomData,
+        }
     }
 }
 
-impl<'a, R> Drop for Callback<'a, R> {
-    fn drop(&mut self) {
-        // Call the function with `None` in order to drop the callback.
+#[must_use]
+pub struct SelectedCase<'a> {
+    token: Token,
+    index: usize,
+    ptr: *const u8,
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a> SelectedCase<'a> {
+    pub fn index(&self) -> usize {
+        self.index - 1
+    }
+
+    pub fn recv<T>(mut self, r: &'a Receiver<T>) -> Result<T, RecvError> {
+        assert!(
+            r as *const Receiver<T> as *const u8 == self.ptr,
+            "passed a receiver that wasn't selected",
+        );
         unsafe {
-            (self.call)(&mut self.space as *mut Space as *mut u8, None);
+            channel::read(r, &mut self.token).map_err(|_| RecvError)
+        }
+    }
+
+    pub fn send<T>(&mut self, s: &'a Sender<T>, msg: T) -> Result<(), SendError<T>> {
+        assert!(
+            s as *const Sender<T> as *const u8 == self.ptr,
+            "passed a sender that wasn't selected",
+        );
+        unsafe {
+            channel::write(s, &mut self.token, msg).map_err(|m| SendError(m))
         }
     }
 }
@@ -615,8 +702,10 @@ where
     &*ptr
 }
 
+// TODO: only support Receiver<T> and Option<&Receiver<T>> (and same for sender)
+
 /// Receiver argument types allowed in `recv` cases.
-pub trait RecvArgument<'a, T: 'a> {
+pub trait RecvArgument<'a, T: 'a>: Clone {
     type Iter: Iterator<Item = &'a Receiver<T>>;
 
     /// Converts the argument into an iterator over receivers.
@@ -656,7 +745,7 @@ impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a
 }
 
 /// Sender argument types allowed in `send` cases.
-pub trait SendArgument<'a, T: 'a> {
+pub trait SendArgument<'a, T: 'a>: Clone {
     type Iter: Iterator<Item = &'a Sender<T>>;
 
     /// Converts the argument into an iterator over senders.
@@ -735,8 +824,8 @@ macro_rules! crossbeam_channel_unreachable {
 ///
 /// // Only one of these two receive operations will be executed.
 /// select! {
-///     recv(r1, msg) => assert_eq!(msg, Some("foo")),
-///     recv(r2, msg) => assert_eq!(msg, Some("bar")),
+///     recv(r1, msg) => assert_eq!(msg, Ok("foo")),
+///     recv(r2, msg) => assert_eq!(msg, Ok("bar")),
 /// }
 /// # }
 /// ```
@@ -759,8 +848,8 @@ macro_rules! crossbeam_channel_unreachable {
 ///
 /// // Since both operations are initially ready, a random one will be executed.
 /// select! {
-///     recv(r1, msg) => assert_eq!(msg, Some("foo")),
-///     send(s2, "bar") => assert_eq!(r2.recv(), Some("bar")),
+///     recv(r1, msg) => assert_eq!(msg, Ok("foo")),
+///     send(s2, "bar") => assert_eq!(r2.recv(), Ok("bar")),
 /// }
 /// # }
 /// ```
@@ -1571,148 +1660,148 @@ macro_rules! select {
         select!(@codegen_fast_path $recv $send $default handles)
     }};
 
-    // Attempt to optimize the whole `select!` into a single call to `recv`.
-    (@codegen_fast_path
-        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
-        ()
-        ()
-        $handles:ident
-    ) => {{
-        if $handles.len() == 1 {
-            let $r = $handles[0].0;
-            let $m = $handles[0].0.recv();
-            drop($handles);
-            $body
-        } else {
-            select!(
-                @codegen_main_loop
-                (($i $var) recv($rs, $m, $r) => $body,)
-                ()
-                ()
-                $handles
-            )
-        }
-    }};
-    // Attempt to optimize the whole `select!` into a single call to `recv_nonblocking`.
-    (@codegen_fast_path
-        (($recv_i:tt $recv_var:ident) recv($rs:expr, $m:pat, $r:pat) => $recv_body:tt,)
-        ()
-        (($default_i:tt $default_var:ident) default() => $default_body:tt,)
-        $handles:ident
-    ) => {{
-        if $handles.len() == 1 {
-            let res = $crate::internal::channel::recv_nonblocking($handles[0].0);
-            let msg;
-
-            match res {
-                $crate::internal::channel::RecvNonblocking::Message(m) => {
-                    msg = Some(m);
-                    let $m = msg;
-                    let $r = $handles[0].0;
-                    drop($handles);
-                    $recv_body
-                }
-                $crate::internal::channel::RecvNonblocking::Closed => {
-                    msg = None;
-                    let $m = msg;
-                    let $r = $handles[0].0;
-                    drop($handles);
-                    $recv_body
-                }
-                $crate::internal::channel::RecvNonblocking::Empty => {
-                    drop($handles);
-                    $default_body
-                }
-            }
-        } else {
-            select!(
-                @codegen_main_loop
-                (($recv_i $recv_var) recv($rs, $m, $r) => $recv_body,)
-                ()
-                (($default_i $default_var) default() => $default_body,)
-                $handles
-            )
-        }
-    }};
-
-    // Attempt to optimize the whole `select!` into a single call to `send`.
-    (@codegen_fast_path
-        ()
-        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
-        ()
-        $handles:ident
-    ) => {{
-        if $handles.len() == 1 {
-            let $s = {
-                let _guard = $crate::internal::utils::AbortGuard(
-                    "a send case triggered a panic while evaluating its message"
-                );
-                let _msg = $m;
-
-                #[allow(unreachable_code)]
-                {
-                    ::std::mem::forget(_guard);
-                    $handles[0].0.send(_msg);
-                    $handles[0].0
-                }
-            };
-            drop($handles);
-            $body
-        } else {
-            select!(
-                @codegen_main_loop
-                ()
-                (($i $var) send($ss, $m, $s) => $body,)
-                ()
-                $handles
-            )
-        }
-    }};
-    // Attempt to optimize the whole `select!` into a single call to `send_nonblocking`.
-    (@codegen_fast_path
-        ()
-        (($send_i:tt $send_var:ident) send($ss:expr, $m:expr, $s:pat) => $send_body:tt,)
-        (($default_i:tt $default_var:ident) default() => $default_body:tt,)
-        $handles:ident
-    ) => {{
-        if $handles.len() == 1 {
-            let mut token = $crate::internal::select::Token::default();
-            let res = $crate::internal::channel::send_nonblocking($handles[0].0, &mut token);
-
-            match res {
-                $crate::internal::channel::SendNonblocking::Full => {
-                    drop($handles);
-                    $default_body
-                }
-                $crate::internal::channel::SendNonblocking::Sent => {
-                    let $s = {
-                        let _guard = $crate::internal::utils::AbortGuard(
-                            "a send case triggered a panic while evaluating its message"
-                        );
-                        let _msg = $m;
-
-                        #[allow(unreachable_code)]
-                        {
-                            ::std::mem::forget(_guard);
-                            #[allow(unsafe_code)]
-                            unsafe { $crate::internal::channel::write($handles[0].0, &mut token, _msg); }
-                            $handles[0].0
-                        }
-                    };
-                    drop($handles);
-                    $send_body
-                }
-            }
-        } else {
-            select!(
-                @codegen_main_loop
-                ()
-                (($send_i $send_var) send($ss, $m, $s) => $send_body,)
-                (($default_i $default_var) default() => $default_body,)
-                $handles
-            )
-        }
-    }};
+    // // Attempt to optimize the whole `select!` into a single call to `recv`.
+    // (@codegen_fast_path
+    //     (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
+    //     ()
+    //     ()
+    //     $handles:ident
+    // ) => {{
+    //     if $handles.len() == 1 {
+    //         let $r = $handles[0].0;
+    //         let $m = $handles[0].0.recv();
+    //         drop($handles);
+    //         $body
+    //     } else {
+    //         select!(
+    //             @codegen_main_loop
+    //             (($i $var) recv($rs, $m, $r) => $body,)
+    //             ()
+    //             ()
+    //             $handles
+    //         )
+    //     }
+    // }};
+    // // Attempt to optimize the whole `select!` into a single call to `try_recv`.
+    // (@codegen_fast_path
+    //     (($recv_i:tt $recv_var:ident) recv($rs:expr, $m:pat, $r:pat) => $recv_body:tt,)
+    //     ()
+    //     (($default_i:tt $default_var:ident) default() => $default_body:tt,)
+    //     $handles:ident
+    // ) => {{
+    //     if $handles.len() == 1 {
+    //         let res = $crate::internal::channel::try_recv($handles[0].0);
+    //         let msg;
+    //
+    //         match res {
+    //             Ok(m) => {
+    //                 msg = Some(m);
+    //                 let $m = msg;
+    //                 let $r = $handles[0].0;
+    //                 drop($handles);
+    //                 $recv_body
+    //             }
+    //             Err($crate::TryRecvError::Disconnected) => {
+    //                 msg = None;
+    //                 let $m = msg;
+    //                 let $r = $handles[0].0;
+    //                 drop($handles);
+    //                 $recv_body
+    //             }
+    //             Err($crate::TryRecvError::Empty) => {
+    //                 drop($handles);
+    //                 $default_body
+    //             }
+    //         }
+    //     } else {
+    //         select!(
+    //             @codegen_main_loop
+    //             (($recv_i $recv_var) recv($rs, $m, $r) => $recv_body,)
+    //             ()
+    //             (($default_i $default_var) default() => $default_body,)
+    //             $handles
+    //         )
+    //     }
+    // }};
+    //
+    // // Attempt to optimize the whole `select!` into a single call to `send`.
+    // (@codegen_fast_path
+    //     ()
+    //     (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
+    //     ()
+    //     $handles:ident
+    // ) => {{
+    //     if $handles.len() == 1 {
+    //         let $s = {
+    //             let _guard = $crate::internal::utils::AbortGuard(
+    //                 "a send case triggered a panic while evaluating its message"
+    //             );
+    //             let _msg = $m;
+    //
+    //             #[allow(unreachable_code)]
+    //             {
+    //                 ::std::mem::forget(_guard);
+    //                 $handles[0].0.send(_msg);
+    //                 $handles[0].0
+    //             }
+    //         };
+    //         drop($handles);
+    //         $body
+    //     } else {
+    //         select!(
+    //             @codegen_main_loop
+    //             ()
+    //             (($i $var) send($ss, $m, $s) => $body,)
+    //             ()
+    //             $handles
+    //         )
+    //     }
+    // }};
+    // // Attempt to optimize the whole `select!` into a single call to `try_send`.
+    // (@codegen_fast_path
+    //     ()
+    //     (($send_i:tt $send_var:ident) send($ss:expr, $m:expr, $s:pat) => $send_body:tt,)
+    //     (($default_i:tt $default_var:ident) default() => $default_body:tt,)
+    //     $handles:ident
+    // ) => {{
+    //     if $handles.len() == 1 {
+    //         let mut token = $crate::internal::select::Token::default();
+    //         let res = $crate::internal::channel::try_send($handles[0].0, &mut token);
+    //
+    //         match res {
+    //             $crate::internal::channel::SendNonblocking::Full => {
+    //                 drop($handles);
+    //                 $default_body
+    //             }
+    //             $crate::internal::channel::SendNonblocking::Sent => {
+    //                 let $s = {
+    //                     let _guard = $crate::internal::utils::AbortGuard(
+    //                         "a send case triggered a panic while evaluating its message"
+    //                     );
+    //                     let _msg = $m;
+    //
+    //                     #[allow(unreachable_code)]
+    //                     {
+    //                         ::std::mem::forget(_guard);
+    //                         #[allow(unsafe_code)]
+    //                         unsafe { $crate::internal::channel::write($handles[0].0, &mut token, _msg); }
+    //                         $handles[0].0
+    //                     }
+    //                 };
+    //                 drop($handles);
+    //                 $send_body
+    //             }
+    //         }
+    //     } else {
+    //         select!(
+    //             @codegen_main_loop
+    //             ()
+    //             (($send_i $send_var) send($ss, $m, $s) => $send_body,)
+    //             (($default_i $default_var) default() => $default_body,)
+    //             $handles
+    //         )
+    //     }
+    // }};
 
     // Move on to the main select loop.
     (@codegen_fast_path
@@ -1864,7 +1953,8 @@ macro_rules! select {
                     $selected as *const $crate::Receiver<_>,
                     &$var,
                 );
-                let msg = $crate::internal::channel::read(r, &mut $token);
+                let msg = $crate::internal::channel::read(r, &mut $token)
+                    .map_err(|_| $crate::RecvError);
                 (msg, r)
             };
 

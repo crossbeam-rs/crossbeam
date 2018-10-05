@@ -10,13 +10,11 @@ use std::time::Instant;
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 use crossbeam_utils::CachePadded;
 
-use internal::channel::RecvNonblocking;
+use err::{RecvError, SendError, TryRecvError, TrySendError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
 use internal::waker::SyncWaker;
-
-// TODO: Allocate less memory in the beginning. Blocks should start small and grow exponentially.
 
 /// The maximum number of messages a block can hold.
 const BLOCK_CAP: usize = 32;
@@ -146,8 +144,14 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
-    /// Writes a message into the channel.
-    pub fn write(&self, _token: &mut Token, msg: T) {
+    /// Attempts to reserve a slot for sending a message.
+    fn start_send(&self, token: &mut Token) -> bool {
+        // If the channel is closed, return early.
+        if self.is_closed() {
+            token.list.slot = ptr::null();
+            return true;
+        }
+
         let guard = epoch::pin();
         let mut backoff = Backoff::new();
 
@@ -201,8 +205,7 @@ impl<T> Channel<T> {
 
                     unsafe {
                         let slot = tail.slots.get_unchecked(offset).get();
-                        (*slot).msg.get().write(ManuallyDrop::new(msg));
-                        (*slot).ready.store(true, Ordering::Release);
+                        token.list.slot = slot as *const Slot<T> as *const u8;
                     }
                     break;
                 }
@@ -214,7 +217,27 @@ impl<T> Channel<T> {
             }
         }
 
+        token.list.guard = Some(guard);
+        true
+    }
+
+    /// Writes a message into the channel.
+    pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
+        // If there is no slot, the channel is closed.
+        if token.list.slot.is_null() {
+            return Err(msg);
+        }
+
+        let slot = &*(token.list.slot as *const Slot<T>);
+        let _guard: Guard = token.list.guard.take().unwrap();
+
+        // Write the message into the slot.
+        (*slot).msg.get().write(ManuallyDrop::new(msg));
+        (*slot).ready.store(true, Ordering::Release);
+
+        // Wake a sleeping receiver.
         self.receivers.wake_one();
+        Ok(())
     }
 
     /// Attempts to reserve a slot for receiving a message.
@@ -268,7 +291,7 @@ impl<T> Channel<T> {
                         if self.is_closed() {
                             // ...and still empty...
                             if self.tail.index.load(Ordering::SeqCst) == tail_index {
-                                // ...then receive `None`.
+                                // ...then receive an error.
                                 token.list.slot = ptr::null();
                                 return true;
                             }
@@ -315,10 +338,10 @@ impl<T> Channel<T> {
     }
 
     /// Reads a message from the channel.
-    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+    pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.list.slot.is_null() {
             // The channel is closed.
-            return None;
+            return Err(());
         }
 
         let slot = &*(token.list.slot as *const Slot<T>);
@@ -333,17 +356,38 @@ impl<T> Channel<T> {
         // Read the message.
         let m = slot.msg.get().read();
         let msg = ManuallyDrop::into_inner(m);
-        Some(msg)
+        Ok(msg)
+    }
+
+    /// Attempts to send a message into the channel.
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        self.send(msg).map_err(|SendError(m)| TrySendError::Disconnected(m))
     }
 
     /// Sends a message into the channel.
-    pub fn send(&self, msg: T) {
+    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let token = &mut Token::default();
-        self.write(token, msg);
+        assert!(self.start_send(token));
+        unsafe {
+            self.write(token, msg).map_err(|m| SendError(m))
+        }
+    }
+
+    /// Attempts to receive a message without blocking.
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        let token = &mut Token::default();
+
+        if self.start_recv(token) {
+            unsafe {
+                self.read(token).map_err(|_| TryRecvError::Disconnected)
+            }
+        } else {
+            Err(TryRecvError::Empty)
+        }
     }
 
     /// Receives a message from the channel.
-    pub fn recv(&self) -> Option<T> {
+    pub fn recv(&self) -> Result<T, RecvError> {
         let token = &mut Token::default();
         loop {
             // Try receiving a message several times.
@@ -351,7 +395,7 @@ impl<T> Channel<T> {
             loop {
                 if self.start_recv(token) {
                     unsafe {
-                        return self.read(token);
+                        return self.read(token).map_err(|_| RecvError);
                     }
                 }
                 if !backoff.snooze() {
@@ -384,20 +428,6 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to receive a message without blocking.
-    pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
-        let token = &mut Token::default();
-
-        if self.start_recv(token) {
-            match unsafe { self.read(token) } {
-                None => RecvNonblocking::Closed,
-                Some(msg) => RecvNonblocking::Message(msg),
-            }
-        } else {
-            RecvNonblocking::Empty
-        }
-    }
-
     /// Returns the current number of messages inside the channel.
     pub fn len(&self) -> usize {
         loop {
@@ -419,8 +449,9 @@ impl<T> Channel<T> {
 
     /// Closes the channel and wakes up all blocked receivers.
     pub fn close(&self) {
-        assert!(!self.is_closed.swap(true, Ordering::SeqCst));
-        self.receivers.close();
+        if !self.is_closed.swap(true, Ordering::SeqCst) {
+            self.receivers.close();
+        }
     }
 
     /// Returns `true` if the channel is closed.
@@ -517,12 +548,12 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
 }
 
 impl<'a, T> SelectHandle for Sender<'a, T> {
-    fn try(&self, _token: &mut Token) -> bool {
-        true
+    fn try(&self, token: &mut Token) -> bool {
+        self.0.start_send(token)
     }
 
-    fn retry(&self, _token: &mut Token) -> bool {
-        true
+    fn retry(&self, token: &mut Token) -> bool {
+        self.0.start_send(token)
     }
 
     fn deadline(&self) -> Option<Instant> {
@@ -535,8 +566,8 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
 
     fn unregister(&self, _oper: Operation) {}
 
-    fn accept(&self, _token: &mut Token, _cx: &Context) -> bool {
-        true
+    fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
+        self.0.start_send(token)
     }
 
     fn state(&self) -> usize {

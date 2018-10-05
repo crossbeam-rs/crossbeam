@@ -54,7 +54,7 @@ fn main() {
         }
     });
 
-    if let Some(name) = r.try_recv() {
+    if let Ok(name) = r.try_recv() {
         println!("No one received {}’s message.", name);
     }
 }

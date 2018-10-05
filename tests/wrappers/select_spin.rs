@@ -7,7 +7,7 @@ use std::ops::Deref;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use channel;
+use channel::{self, RecvError, SendError, TryRecvError};
 
 pub struct Sender<T>(pub channel::Sender<T>);
 
@@ -42,7 +42,7 @@ impl<T> Deref for Sender<T> {
 }
 
 impl<T> Sender<T> {
-    pub fn send(&self, msg: T) {
+    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         if self.0.capacity() == Some(0) {
             // Zero-capacity channel are an exception - they need truly blocking operations.
             select! {
@@ -56,18 +56,19 @@ impl<T> Sender<T> {
                 }
             }
         }
+        Ok(())
     }
 }
 
 impl<T> Receiver<T> {
-    pub fn try_recv(&self) -> Option<T> {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         select! {
-            recv(self.0, msg) => msg,
-            default => None,
+            recv(self.0, msg) => msg.map_err(|_| TryRecvError::Disconnected),
+            default => Err(TryRecvError::Empty),
         }
     }
 
-    pub fn recv(&self) -> Option<T> {
+    pub fn recv(&self) -> Result<T, RecvError> {
         if self.0.capacity() == Some(0) {
             // Zero-capacity channel are an exception - they need truly blocking operations.
             select! {

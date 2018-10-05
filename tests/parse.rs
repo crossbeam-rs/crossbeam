@@ -79,7 +79,7 @@ fn blocks() {
     };
 
     select! {
-        recv(r, msg) => if msg.is_some() {
+        recv(r, msg) => if msg.is_ok() {
             unreachable!()
         }
         default => ()
@@ -137,7 +137,7 @@ fn default() {
 fn same_variable_name() {
     let (_, r) = channel::unbounded::<i32>();
     select! {
-        recv(r, r) => assert!(r.is_none()),
+        recv(r, r) => assert!(r.is_err()),
     }
 
     let (s, _) = channel::unbounded::<i32>();

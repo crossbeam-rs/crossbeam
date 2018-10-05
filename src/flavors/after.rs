@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use internal::channel::RecvNonblocking;
+use err::{RecvError, TryRecvError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Token};
 use internal::utils;
@@ -73,9 +73,33 @@ impl Channel {
         }
     }
 
+    /// Attempts to receive a message without blocking.
+    #[inline]
+    pub fn try_recv(&self) -> Result<Instant, TryRecvError> {
+        // We use relaxed ordering because this is just an optional optimistic check.
+        if !self.ptr.load(Ordering::Relaxed).is_null() && self.flag().load(Ordering::SeqCst) {
+            // The message was already received.
+            return Err(TryRecvError::Empty);
+        }
+
+        if Instant::now() < self.deadline {
+            // The message was not "sent" yet.
+            return Err(TryRecvError::Empty);
+        }
+
+        // Try consuming the message if it is still available.
+        if !self.flag().swap(true, Ordering::SeqCst) {
+            // Success! Return the message, which is the instant at which it was "sent".
+            Ok(self.deadline)
+        } else {
+            // The message was already received.
+            Err(TryRecvError::Empty)
+        }
+    }
+
     /// Receives a message from the channel.
     #[inline]
-    pub fn recv(&self) -> Option<Instant> {
+    pub fn recv(&self) -> Result<Instant, RecvError> {
         if self.flag().load(Ordering::SeqCst) {
             // If the message was already received, block forever.
             utils::sleep_forever();
@@ -93,41 +117,17 @@ impl Channel {
         // Try consuming the message if it is still available.
         if !self.flag().swap(true, Ordering::SeqCst) {
             // Success! Return the message, which is the instant at which it was "sent".
-            Some(self.deadline)
+            Ok(self.deadline)
         } else {
             // The message was already received. Block forever.
             utils::sleep_forever();
         }
     }
 
-    /// Attempts to receive a message without blocking.
-    #[inline]
-    pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
-        // We use relaxed ordering because this is just an optional optimistic check.
-        if !self.ptr.load(Ordering::Relaxed).is_null() && self.flag().load(Ordering::SeqCst) {
-            // The message was already received.
-            return RecvNonblocking::Empty;
-        }
-
-        if Instant::now() < self.deadline {
-            // The message was not "sent" yet.
-            return RecvNonblocking::Empty;
-        }
-
-        // Try consuming the message if it is still available.
-        if !self.flag().swap(true, Ordering::SeqCst) {
-            // Success! Return the message, which is the instant at which it was "sent".
-            RecvNonblocking::Message(self.deadline)
-        } else {
-            // The message was already received.
-            RecvNonblocking::Empty
-        }
-    }
-
     /// Reads a message from the channel.
     #[inline]
-    pub unsafe fn read(&self, token: &mut Token) -> Option<Instant> {
-        token.after
+    pub unsafe fn read(&self, token: &mut Token) -> Result<Instant, ()> {
+        token.after.ok_or(())
     }
 
     /// Returns `true` if the channel is empty.
@@ -198,16 +198,16 @@ impl Clone for Channel {
 impl SelectHandle for Channel {
     #[inline]
     fn try(&self, token: &mut Token) -> bool {
-        match self.recv_nonblocking() {
-            RecvNonblocking::Message(msg) => {
+        match self.try_recv() {
+            Ok(msg) => {
                 token.after = Some(msg);
                 true
             }
-            RecvNonblocking::Closed => {
+            Err(TryRecvError::Disconnected) => {
                 token.after = None;
                 true
             }
-            RecvNonblocking::Empty => {
+            Err(TryRecvError::Empty) => {
                 false
             }
         }

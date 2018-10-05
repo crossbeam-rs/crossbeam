@@ -14,6 +14,7 @@ macro_rules! tests {
         use std::thread;
         use std::time::Duration;
 
+        use super::channel::{RecvError, RecvTimeoutError, TryRecvError};
         use $channel as channel;
         use crossbeam;
         use rand::{thread_rng, Rng};
@@ -25,20 +26,14 @@ macro_rules! tests {
         #[test]
         fn smoke() {
             let (s, r) = channel::unbounded();
-            s.send(7);
-            assert_eq!(r.try_recv(), Some(7));
+            s.try_send(7).unwrap();
+            assert_eq!(r.try_recv(), Ok(7));
 
-            s.send(8);
-            assert_eq!(r.recv(), Some(8));
+            s.send(8).unwrap();
+            assert_eq!(r.recv(), Ok(8));
 
-            assert_eq!(r.try_recv(), None);
-            select! {
-                recv(r) => panic!(),
-                recv(channel::after(ms(1000))) => {}
-            }
-
-            assert_eq!(s.capacity(), None);
-            assert_eq!(r.capacity(), None);
+            assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
+            assert_eq!(r.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
         }
 
         #[test]
@@ -59,7 +54,7 @@ macro_rules! tests {
             assert_eq!(r.is_empty(), true);
             assert_eq!(r.is_full(), false);
 
-            s.send(());
+            s.send(()).unwrap();
 
             assert_eq!(s.len(), 1);
             assert_eq!(s.is_empty(), false);
@@ -84,18 +79,18 @@ macro_rules! tests {
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
-                    assert_eq!(r.recv(), Some(7));
+                    assert_eq!(r.recv(), Ok(7));
                     thread::sleep(ms(1000));
-                    assert_eq!(r.recv(), Some(8));
+                    assert_eq!(r.recv(), Ok(8));
                     thread::sleep(ms(1000));
-                    assert_eq!(r.recv(), Some(9));
-                    assert_eq!(r.recv(), None);
+                    assert_eq!(r.recv(), Ok(9));
+                    assert_eq!(r.recv(), Err(RecvError));
                 });
                 scope.spawn(move || {
                     thread::sleep(ms(1500));
-                    s.send(7);
-                    s.send(8);
-                    s.send(9);
+                    s.send(7).unwrap();
+                    s.send(8).unwrap();
+                    s.send(9).unwrap();
                 });
             });
         }
@@ -106,22 +101,16 @@ macro_rules! tests {
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
-                    select! {
-                        recv(r) => panic!(),
-                        recv(channel::after(ms(1000))) => {}
-                    }
-                    select! {
-                        recv(r, v) => assert_eq!(v, Some(7)),
-                        recv(channel::after(ms(1000))) => panic!(),
-                    }
-                    select! {
-                        recv(r, v) => assert_eq!(v, None),
-                        recv(channel::after(ms(1000))) => panic!(),
-                    }
+                    assert_eq!(r.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
+                    assert_eq!(r.recv_timeout(ms(1000)), Ok(7));
+                    assert_eq!(
+                        r.recv_timeout(ms(1000)),
+                        Err(RecvTimeoutError::Disconnected)
+                    );
                 });
                 scope.spawn(move || {
                     thread::sleep(ms(1500));
-                    s.send(7);
+                    s.send(7).unwrap();
                 });
             });
         }
@@ -132,15 +121,15 @@ macro_rules! tests {
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
-                    assert_eq!(r.try_recv(), None);
+                    assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
                     thread::sleep(ms(1500));
-                    assert_eq!(r.try_recv(), Some(7));
+                    assert_eq!(r.try_recv(), Ok(7));
                     thread::sleep(ms(500));
-                    assert_eq!(r.try_recv(), None);
+                    assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
                 });
                 scope.spawn(move || {
                     thread::sleep(ms(1000));
-                    s.send(7);
+                    s.send(7).unwrap();
                 });
             });
         }
@@ -149,16 +138,16 @@ macro_rules! tests {
         fn recv_after_close() {
             let (s, r) = channel::unbounded();
 
-            s.send(1);
-            s.send(2);
-            s.send(3);
+            s.send(1).unwrap();
+            s.send(2).unwrap();
+            s.send(3).unwrap();
 
             drop(s);
 
-            assert_eq!(r.recv(), Some(1));
-            assert_eq!(r.recv(), Some(2));
-            assert_eq!(r.recv(), Some(3));
-            assert_eq!(r.recv(), None);
+            assert_eq!(r.recv(), Ok(1));
+            assert_eq!(r.recv(), Ok(2));
+            assert_eq!(r.recv(), Ok(3));
+            assert_eq!(r.recv(), Err(RecvError));
         }
 
         #[test]
@@ -169,7 +158,7 @@ macro_rules! tests {
             assert_eq!(r.len(), 0);
 
             for i in 0..50 {
-                s.send(i);
+                s.send(i).unwrap();
                 assert_eq!(s.len(), i + 1);
             }
 
@@ -188,7 +177,7 @@ macro_rules! tests {
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
-                    assert_eq!(r.recv(), None);
+                    assert_eq!(r.recv(), Err(RecvError));
                 });
                 scope.spawn(move || {
                     thread::sleep(ms(1000));
@@ -206,13 +195,13 @@ macro_rules! tests {
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
                     for i in 0..COUNT {
-                        assert_eq!(r.recv(), Some(i));
+                        assert_eq!(r.recv(), Ok(i));
                     }
-                    assert_eq!(r.recv(), None);
+                    assert_eq!(r.recv(), Err(RecvError));
                 });
                 scope.spawn(move || {
                     for i in 0..COUNT {
-                        s.send(i);
+                        s.send(i).unwrap();
                     }
                 });
             });
@@ -238,13 +227,13 @@ macro_rules! tests {
                 for _ in 0..THREADS {
                     scope.spawn(|| {
                         for i in 0..COUNT {
-                            s.send(i);
+                            s.send(i).unwrap();
                         }
                     });
                 }
             });
 
-            assert_eq!(r.try_recv(), None);
+            assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 
             for c in v {
                 assert_eq!(c.load(Ordering::SeqCst), THREADS);
@@ -263,7 +252,7 @@ macro_rules! tests {
                         if i % 2 == 0 {
                             thread::sleep(ms(50));
                         }
-                        s.send(i);
+                        s.send(i).unwrap();
                     }
                 });
 
@@ -273,12 +262,9 @@ macro_rules! tests {
                             thread::sleep(ms(50));
                         }
                         loop {
-                            select! {
-                                recv(r, v) => {
-                                    assert_eq!(v, Some(i));
-                                    break;
-                                }
-                                recv(channel::after(ms(10))) => {}
+                            if let Ok(x) = r.recv_timeout(ms(10)) {
+                                assert_eq!(x, i);
+                                break;
                             }
                         }
                     }
@@ -317,13 +303,13 @@ macro_rules! tests {
 
                     scope.spawn(|| {
                         for _ in 0..steps {
-                            s.send(DropCounter);
+                            s.send(DropCounter).unwrap();
                         }
                     });
                 });
 
                 for _ in 0..additional {
-                    s.send(DropCounter);
+                    s.try_send(DropCounter).unwrap();
                 }
 
                 assert_eq!(DROPS.load(Ordering::SeqCst), steps);
@@ -344,7 +330,7 @@ macro_rules! tests {
                 for _ in 0..THREADS {
                     scope.spawn(|| {
                         for _ in 0..COUNT {
-                            s.send(0);
+                            s.send(0).unwrap();
                             r.try_recv().unwrap();
                         }
                     });
@@ -360,8 +346,8 @@ macro_rules! tests {
             let (s2, r2) = channel::unbounded::<()>();
 
             for _ in 0..COUNT {
-                s1.send(());
-                s2.send(());
+                s1.send(()).unwrap();
+                s2.send(()).unwrap();
             }
 
             let mut hits = [0usize; 2];
@@ -381,7 +367,7 @@ macro_rules! tests {
             let (s, r) = channel::unbounded();
 
             for _ in 0..COUNT {
-                s.send(());
+                s.send(()).unwrap();
             }
 
             let mut hits = [0usize; 5];
@@ -400,10 +386,10 @@ macro_rules! tests {
         #[test]
         fn recv_in_send() {
             let (s, r) = channel::unbounded();
-            s.send(());
+            s.send(()).unwrap();
 
             select! {
-                send(s, assert_eq!(r.recv(), Some(()))) => {}
+                send(s, assert_eq!(r.recv(), Ok(()))) => {}
             }
         }
     };

@@ -14,12 +14,12 @@ fn nested_recv_iter() {
             for x in &r {
                 acc += x;
             }
-            total_s.send(acc);
+            total_s.send(acc).unwrap();
         });
 
-        s.send(3);
-        s.send(1);
-        s.send(2);
+        s.send(3).unwrap();
+        s.send(1).unwrap();
+        s.send(2).unwrap();
         drop(s);
         assert_eq!(total_r.recv().unwrap(), 6);
     });
@@ -40,12 +40,12 @@ fn recv_iter_break() {
                     count += x;
                 }
             }
-            count_s.send(count);
+            count_s.send(count).unwrap();
         });
 
-        s.send(2);
-        s.send(2);
-        s.send(2);
+        s.send(2).unwrap();
+        s.send(2).unwrap();
+        s.send(2).unwrap();
         let _ = s.send(2);
         drop(s);
         assert_eq!(count_r.recv().unwrap(), 4);
@@ -56,8 +56,8 @@ fn recv_iter_break() {
 fn recv_into_iter_owned() {
     let mut iter = {
         let (s, r) = channel::unbounded::<i32>();
-        s.send(1);
-        s.send(2);
+        s.send(1).unwrap();
+        s.send(2).unwrap();
         r.into_iter()
     };
 
@@ -69,8 +69,8 @@ fn recv_into_iter_owned() {
 #[test]
 fn recv_into_iter_borrowed() {
     let (s, r) = channel::unbounded::<i32>();
-    s.send(1);
-    s.send(2);
+    s.send(1).unwrap();
+    s.send(2).unwrap();
     drop(s);
 
     let mut iter = (&r).into_iter();

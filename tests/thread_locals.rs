@@ -47,7 +47,7 @@ fn use_while_exiting() {
 
         scope.spawn(|| {
             thread::sleep(ms(100));
-            s.send(());
+            s.send(()).unwrap();
         });
     });
 }
