@@ -15,9 +15,9 @@ macro_rules! tests {
         use std::thread;
         use std::time::Duration;
 
-        use $channel as channel;
         use crossbeam;
         use parking_lot::Mutex;
+        use $channel as channel;
 
         fn ms(ms: u64) -> Duration {
             Duration::from_millis(ms)
@@ -38,11 +38,15 @@ macro_rules! tests {
                 let (done_s, done_r) = channel::unbounded();
                 let (mux_s, mux_r) = channel::unbounded();
 
-                fn mux(out: channel::Sender<i32>, in_c: channel::Receiver<i32>, done: channel::Sender<bool>) {
+                fn mux(
+                    out: channel::Sender<i32>,
+                    in_c: channel::Receiver<i32>,
+                    done: channel::Sender<bool>,
+                ) {
                     for val in in_c.0 {
                         out.send(val);
                     }
-                    
+
                     drop(out);
                     done.send(true);
                 }
@@ -129,7 +133,12 @@ macro_rules! tests {
                 }
             }
 
-            fn chain(ch: channel::Receiver<i32>, val: i32, in_c: channel::Receiver<i32>, out: channel::Sender<i32>) {
+            fn chain(
+                ch: channel::Receiver<i32>,
+                val: i32,
+                in_c: channel::Receiver<i32>,
+                out: channel::Sender<i32>,
+            ) {
                 in_c.recv();
                 if ch.recv() != Some(val) {
                     panic!(val);
@@ -194,7 +203,36 @@ macro_rules! tests {
 
         // https://github.com/golang/go/blob/master/test/chan/select6.go
         mod select6 {
-            // TODO
+            use super::*;
+
+            #[test]
+            fn select6() {
+                let (c1, r1) = channel::bounded::<bool>(0);
+                let (c2, r2) = channel::bounded::<bool>(0);
+                let (c3, r3) = channel::bounded::<bool>(0);
+
+                crossbeam::scope(|scope| {
+                    scope.spawn(|| {
+                        r1.recv();
+                    });
+
+                    scope.spawn(|| {
+                        select! {
+                            recv(r1) => panic!("dummy"),
+                            recv(r2) => c3.send(true),
+                        }
+                        r1.recv();
+                    });
+
+                    scope.spawn(|| {
+                        c2.send(true);
+                    });
+
+                    r3.recv();
+                    c1.send(true);
+                    c1.send(true);
+                });
+            }
         }
 
         // https://github.com/golang/go/blob/master/test/chan/select7.go
@@ -590,9 +628,7 @@ macro_rules! tests {
                     }
 
                     {
-                        let mut s = c.iter()
-                            .map(|(s, _)| Some(s.clone()))
-                            .collect::<Vec<_>>();
+                        let mut s = c.iter().map(|(s, _)| Some(s.clone())).collect::<Vec<_>>();
 
                         scope.spawn(move || {
                             let mut n = [0i32; 4];
@@ -614,9 +650,7 @@ macro_rules! tests {
                     }
 
                     {
-                        let mut r = c.iter()
-                            .map(|(_, r)| Some(r.clone()))
-                            .collect::<Vec<_>>();
+                        let mut r = c.iter().map(|(_, r)| Some(r.clone())).collect::<Vec<_>>();
 
                         scope.spawn(move || {
                             let mut n = [0i32; 4];
@@ -657,19 +691,18 @@ macro_rules! tests {
                 let (done_s, done_r) = channel::bounded::<u8>(TRIALS + 1);
 
                 crossbeam::scope(|scope| {
-                    scope.spawn(|| {
-                        loop {
-                            let b = select! {
-                                recv(r3, m) => m,
-                                recv(r4, m) => m,
-                                recv(r1, m) => m,
-                                recv(r2, m) => m,
-                            }.unwrap();
+                    scope.spawn(|| loop {
+                        let b = select! {
+                            recv(r3, m) => m,
+                            recv(r4, m) => m,
+                            recv(r1, m) => m,
+                            recv(r2, m) => m,
+                        }
+                        .unwrap();
 
-                            select! {
-                                send(out_s, b) => {}
-                                recv(done_r) => return
-                            }
+                        select! {
+                            send(out_s, b) => {}
+                            recv(done_r) => return
                         }
                     });
 
@@ -693,9 +726,7 @@ macro_rules! tests {
                     if e > 4.4172 / (2.0 * (TRIALS as f64).sqrt()) {
                         panic!(
                             "unfair select: in {} trials, results were {}, {}",
-                            TRIALS,
-                            cnt1,
-                            cnt2,
+                            TRIALS, cnt1, cnt2,
                         );
                     }
 
@@ -757,9 +788,7 @@ macro_rules! tests {
                         if n0 <= N as i32 / 10 || n1 <= N as i32 / 10 {
                             panic!(
                                 "Want pseudorandom, got {} zeros and {} ones (chan cap {})",
-                                n0,
-                                n1,
-                                cap,
+                                n0, n1, cap,
                             );
                         }
                     });
@@ -882,7 +911,7 @@ macro_rules! tests {
         mod chan1 {
             // TODO
         }
-    }
+    };
 }
 
 mod normal {
