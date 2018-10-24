@@ -1,5 +1,5 @@
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use std::ptr;
+use std::{ptr, mem};
 
 use epoch::{self, Atomic, Owned};
 
@@ -15,6 +15,13 @@ pub struct TreiberStack<T> {
 struct Node<T> {
     data: T,
     next: Atomic<Node<T>>,
+}
+
+impl<T> Node<T> {
+    /// Deallocates the memory for this node without executing T's destructor.
+    fn finalize(n: Node<T>) {
+        mem::forget(n.data);
+    }
 }
 
 impl<T> TreiberStack<T> {
@@ -57,7 +64,9 @@ impl<T> TreiberStack<T> {
                         .is_ok()
                     {
                         unsafe {
-                            guard.defer(move || head_shared.into_owned());
+                            guard.defer(move || {
+                                Node::<T>::finalize(*head_shared.into_owned().into_box())
+                            } );
                             return Some(ptr::read(&(*head).data));
                         }
                     }
@@ -89,6 +98,8 @@ impl<T> Default for TreiberStack<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use ::{thread, epoch};
+    use std::sync::atomic::{Ordering, AtomicUsize};
 
     #[test]
     fn is_empty() {
@@ -103,5 +114,32 @@ mod test {
         assert!(q.is_empty());
         q.push(25);
         assert!(!q.is_empty());
+    }
+
+    #[test]
+    fn no_double_drop() {
+        static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+        struct Dropper;
+
+        impl Drop for Dropper {
+            fn drop(&mut self) {
+                DROP_COUNT.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        const N_THREADS: usize = 8;
+        thread::scope(|s| {
+            for _ in 0..N_THREADS {
+                s.spawn(|| {
+                    let q: TreiberStack<Dropper> = TreiberStack::new();
+                    for _ in 0..4 { q.push(Dropper); }
+                    drop(q);
+                    epoch::pin().flush();
+                } );
+            }
+        } );
+
+        assert!(DROP_COUNT.load(Ordering::SeqCst) == N_THREADS * 4);
     }
 }
