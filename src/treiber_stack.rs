@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use std::{ptr, mem};
+use std::mem::ManuallyDrop;
+use std::ptr;
 
 use epoch::{self, Atomic, Owned};
 
@@ -13,15 +14,8 @@ pub struct TreiberStack<T> {
 
 #[derive(Debug)]
 struct Node<T> {
-    data: T,
+    data: ManuallyDrop<T>,
     next: Atomic<Node<T>>,
-}
-
-impl<T> Node<T> {
-    /// Deallocates the memory for this node without executing T's destructor.
-    fn finalize(n: Node<T>) {
-        mem::forget(n.data);
-    }
 }
 
 impl<T> TreiberStack<T> {
@@ -35,7 +29,7 @@ impl<T> TreiberStack<T> {
     /// Push `t` on top of the stack.
     pub fn push(&self, t: T) {
         let mut n = Owned::new(Node {
-            data: t,
+            data: ManuallyDrop::new(t),
             next: Atomic::null(),
         });
         let guard = epoch::pin();
@@ -64,10 +58,8 @@ impl<T> TreiberStack<T> {
                         .is_ok()
                     {
                         unsafe {
-                            guard.defer(move || {
-                                Node::<T>::finalize(*head_shared.into_owned().into_box())
-                            } );
-                            return Some(ptr::read(&(*head).data));
+                            guard.defer(move || drop(head_shared.into_owned()) );
+                            return Some(ManuallyDrop::into_inner(ptr::read(&(*head).data)));
                         }
                     }
                 }
