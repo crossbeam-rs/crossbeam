@@ -91,37 +91,6 @@ use std::panic;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, ThreadId};
 
-/// Like [`std::thread::spawn`], but without lifetime bounds on the closure.
-///
-/// [`std::thread::spawn`]: https://doc.rust-lang.org/stable/std/thread/fn.spawn.html
-pub unsafe fn spawn_unchecked<'env, F, T>(f: F) -> thread::JoinHandle<T>
-where
-    F: FnOnce() -> T,
-    F: Send + 'env,
-    T: Send + 'static,
-{
-    let builder = thread::Builder::new();
-    builder_spawn_unchecked(builder, f).unwrap()
-}
-
-/// Like [`std::thread::Builder::spawn`], but without lifetime bounds on the closure.
-///
-/// [`std::thread::Builder::spawn`]:
-///     https://doc.rust-lang.org/nightly/std/thread/struct.Builder.html#method.spawn
-pub unsafe fn builder_spawn_unchecked<'env, F, T>(
-    builder: thread::Builder,
-    f: F,
-) -> io::Result<thread::JoinHandle<T>>
-where
-    F: FnOnce() -> T,
-    F: Send + 'env,
-    T: Send + 'static,
-{
-    let closure: Box<FnBox<T> + Send + 'env> = Box::new(f);
-    let closure: Box<FnBox<T> + Send + 'static> = mem::transmute(closure);
-    builder.spawn(move || closure.call_box())
-}
-
 /// Creates a new `Scope` for [*scoped thread spawning*](struct.Scope.html#method.spawn).
 ///
 /// No matter what happens, before the `Scope` is dropped, it is guaranteed that all the unjoined
@@ -248,12 +217,17 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     {
         let result = Arc::new(Mutex::new(None));
 
-        let join_handle = unsafe {
+        let join_handle = {
             let mut thread_result = Arc::clone(&result);
-            builder_spawn_unchecked(self.builder, move || {
+
+            let closure = move || {
                 *thread_result.lock().unwrap() = Some(f());
-            })
-        }?;
+            };
+            let closure: Box<FnBox<()> + Send + 'env> = Box::new(closure);
+            let closure: Box<FnBox<()> + Send + 'static> = unsafe { mem::transmute(closure) };
+
+            self.builder.spawn(move || closure.call_box())?
+        };
 
         let thread = join_handle.thread().clone();
         let join_state = JoinState::<T>::new(join_handle, result);
