@@ -14,12 +14,12 @@ const SMALL_STACK_SIZE: usize = 20;
 fn join() {
     let counter = AtomicUsize::new(0);
     thread::scope(|scope| {
-        let handle = scope.spawn(|| {
+        let handle = scope.spawn(|_| {
             counter.store(1, Ordering::Relaxed);
         });
         assert!(handle.join().is_ok());
 
-        let panic_handle = scope.spawn(|| {
+        let panic_handle = scope.spawn(|_| {
             panic!("\"My honey is running out!\", said Pooh.");
         });
         assert!(panic_handle.join().is_err());
@@ -34,7 +34,7 @@ fn counter() {
     let counter = AtomicUsize::new(0);
     thread::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 counter.fetch_add(1, Ordering::Relaxed);
             });
         }
@@ -52,7 +52,7 @@ fn counter_builder() {
                 .builder()
                 .name(format!("child-{}", i))
                 .stack_size(SMALL_STACK_SIZE)
-                .spawn(|| {
+                .spawn(|_| {
                     counter.fetch_add(1, Ordering::Relaxed);
                 })
                 .unwrap();
@@ -66,13 +66,13 @@ fn counter_builder() {
 fn counter_panic() {
     let counter = AtomicUsize::new(0);
     let result = thread::scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             panic!("\"My honey is running out!\", said Pooh.");
         });
         sleep(Duration::from_millis(100));
 
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 counter.fetch_add(1, Ordering::Relaxed);
             });
         }
@@ -85,10 +85,13 @@ fn counter_panic() {
 #[test]
 fn panic_twice() {
     let result = thread::scope(|scope| {
-        scope.spawn(|| {
-            panic!("thread");
+        scope.spawn(|_| {
+            sleep(Duration::from_millis(500));
+            panic!("thread #1");
         });
-        panic!("scope");
+        scope.spawn(|_| {
+            panic!("thread #2");
+        });
     });
 
     let err = result.unwrap_err();
@@ -97,16 +100,16 @@ fn panic_twice() {
 
     let first = vec[0].downcast_ref::<&str>().unwrap();
     let second = vec[1].downcast_ref::<&str>().unwrap();
-    assert_eq!("scope", *first);
-    assert_eq!("thread", *second)
+    assert_eq!("thread #1", *first);
+    assert_eq!("thread #2", *second)
 }
 
 #[test]
 fn panic_many() {
     let result = thread::scope(|scope| {
-        scope.spawn(|| panic!("deliberate panic #1"));
-        scope.spawn(|| panic!("deliberate panic #2"));
-        scope.spawn(|| panic!("deliberate panic #3"));
+        scope.spawn(|_| panic!("deliberate panic #1"));
+        scope.spawn(|_| panic!("deliberate panic #2"));
+        scope.spawn(|_| panic!("deliberate panic #3"));
     });
 
     let err = result.unwrap_err();
@@ -123,4 +126,53 @@ fn panic_many() {
                 || *panic == "deliberate panic #3"
         );
     }
+}
+
+#[test]
+fn nesting() {
+    let var = "foo".to_string();
+
+    struct Wrapper<'a> {
+        var: &'a String,
+    }
+
+    impl<'a> Wrapper<'a> {
+        fn recurse(&'a self, scope: &thread::Scope<'a>, depth: usize) {
+            assert_eq!(self.var, "foo");
+
+            if depth > 0 {
+                scope.spawn(move |scope| {
+                    self.recurse(scope, depth - 1);
+                });
+            }
+        }
+    }
+
+    let wrapper = Wrapper {
+        var: &var,
+    };
+
+    thread::scope(|scope| {
+        scope.spawn(|scope| {
+            scope.spawn(|scope| {
+                wrapper.recurse(scope, 5);
+            });
+        });
+    }).unwrap();
+}
+
+#[test]
+fn join_nested() {
+    thread::scope(|scope| {
+        scope.spawn(|scope| {
+            let handle = scope.spawn(|_| {
+                7
+            });
+
+            sleep(Duration::from_millis(200));
+            handle.join().unwrap();
+        });
+
+        sleep(Duration::from_millis(100));
+    }).unwrap();
 }

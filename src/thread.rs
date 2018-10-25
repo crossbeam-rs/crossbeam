@@ -13,7 +13,7 @@
 //!
 //! thread::scope(|scope| {
 //!     for person in &people {
-//!         scope.spawn(move || {
+//!         scope.spawn(move |_| {
 //!             println!("Hello, {}!", person);
 //!         });
 //!     }
@@ -36,7 +36,7 @@
 //! let mut threads = Vec::new();
 //!
 //! for person in &people {
-//!     threads.push(thread::spawn(move || {
+//!     threads.push(thread::spawn(move |_| {
 //!         println!("Hello, {}!", person);
 //!     }));
 //! }
@@ -80,16 +80,18 @@
 //!
 //! [`std::thread::spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
 
-use std::any::Any;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
 use std::panic;
 use std::sync::{Arc, Mutex};
-use std::thread::{self, ThreadId};
+use std::thread;
+
+use sync::WaitGroup;
+
+type SharedVec<T> = Arc<Mutex<Vec<T>>>;
+type SharedOption<T> = Arc<Mutex<Option<T>>>;
 
 /// Creates a new `Scope` for [*scoped thread spawning*](struct.Scope.html#method.spawn).
 ///
@@ -106,8 +108,8 @@ use std::thread::{self, ThreadId};
 ///
 /// ```
 /// crossbeam_utils::thread::scope(|scope| {
-///     scope.spawn(|| println!("Exiting scope"));
-///     scope.spawn(|| println!("Running child thread in scope"));
+///     scope.spawn(|_| println!("Exiting scope"));
+///     scope.spawn(|_| println!("Running child thread in scope"));
 /// }).unwrap();
 /// ```
 pub fn scope<'env, F, R>(f: F) -> thread::Result<R>
@@ -115,33 +117,61 @@ where
     F: FnOnce(&Scope<'env>) -> R,
 {
     let scope = Scope {
-        joins: RefCell::new(Vec::new()),
+        handles: SharedVec::default(),
+        wg: WaitGroup::new(),
         _marker: PhantomData,
     };
 
     // Execute the scoped function, but catch any panics.
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| f(&scope)));
+
+    // Wait until all nested scopes are dropped.
+    scope.wg.wait();
+
     // Join all remaining spawned threads.
-    let mut panics = scope.join_all();
+    let panics: Vec<_> = {
+        let mut handles = scope
+            .handles
+            .lock()
+            .unwrap();
 
-    if panics.is_empty() {
-        result.map_err(|res| Box::new(vec![res]) as _)
-    } else {
-        if let Err(err) = result {
-            panics.reserve(1);
-            panics.insert(0, err);
+        // Filter handles that haven't been joined, join them, and collect errors.
+        let panics = handles
+            .drain(..)
+            .filter_map(|handle| handle.lock().unwrap().take())
+            .filter_map(|handle| handle.join().err())
+            .collect();
+
+        panics
+    };
+
+    // If `f` has panicked, resume unwinding.
+    // If any of the child threads have panicked, return the panic errors.
+    // Otherwise, everything is OK and return the result of `f`.
+    match result {
+        Err(err) => panic::resume_unwind(err),
+        Ok(res) => {
+            if panics.is_empty() {
+                Ok(res)
+            } else {
+                Err(Box::new(panics))
+            }
         }
-
-        Err(Box::new(panics))
     }
 }
 
 pub struct Scope<'env> {
-    /// The list of the thread join jobs.
-    joins: RefCell<Vec<Box<FnBox<thread::Result<()>> + 'env>>>,
-    // !Send + !Sync
-    _marker: PhantomData<*const ()>,
+    /// The list of the thread join handles.
+    handles: SharedVec<SharedOption<thread::JoinHandle<()>>>,
+
+    /// Used to wait until all subscopes all dropped.
+    wg: WaitGroup,
+
+    /// Borrows data with lifetime `'env`.
+    _marker: PhantomData<&'env ()>,
 }
+
+unsafe impl<'env> Sync for Scope<'env> {}
 
 impl<'env> Scope<'env> {
     /// Create a scoped thread.
@@ -154,7 +184,7 @@ impl<'env> Scope<'env> {
     /// [`spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
     pub fn spawn<'scope, F, T>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
     where
-        F: FnOnce() -> T,
+        F: FnOnce(&Scope<'env>) -> T,
         F: Send + 'env,
         T: Send + 'env,
     {
@@ -168,16 +198,6 @@ impl<'env> Scope<'env> {
             scope: self,
             builder: thread::Builder::new(),
         }
-    }
-
-    /// Join all remaining threads and return all potential error payloads
-    fn join_all(self) -> Vec<Box<Any + Send + 'static>> {
-        self
-            .joins
-            .into_inner()
-            .into_iter()
-            .filter_map(|join| join.call_box().err())
-            .collect()
     }
 }
 
@@ -211,44 +231,70 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     /// Spawns a new thread, and returns a join handle for it.
     pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'scope, T>>
     where
-        F: FnOnce() -> T,
+        F: FnOnce(&Scope<'env>) -> T,
         F: Send + 'env,
         T: Send + 'env,
     {
-        let result = Arc::new(Mutex::new(None));
+        // The result of `f` will be stored here.
+        let result = SharedOption::default();
 
-        let join_handle = {
-            let mut thread_result = Arc::clone(&result);
+        // Spawn the thread and grab its join handle and thread handle.
+        let (handle, thread) = {
+            let result = Arc::clone(&result);
 
-            let closure = move || {
-                *thread_result.lock().unwrap() = Some(f());
+            // A clone of the scope that will be moved into the new thread.
+            let scope = Scope {
+                handles: Arc::clone(&self.scope.handles),
+                wg: self.scope.wg.clone(),
+                _marker: PhantomData,
             };
-            let closure: Box<FnBox<()> + Send + 'env> = Box::new(closure);
-            let closure: Box<FnBox<()> + Send + 'static> = unsafe { mem::transmute(closure) };
 
-            self.builder.spawn(move || closure.call_box())?
+            // Spawn the thread.
+            let handle = {
+                let closure = move || {
+                    // Make sure the scope is inside the closure with the proper `'env` lifetime.
+                    let scope: Scope<'env> = scope;
+
+                    // Run the closure.
+                    let res = f(&scope);
+
+                    // Store the result if the closure didn't panic.
+                    *result.lock().unwrap() = Some(res);
+                };
+
+                // Change the type of `closure` from `FnOnce() -> T` to `FnMut() -> T`.
+                let mut closure = Some(closure);
+                let closure = move || closure.take().unwrap()();
+
+                // Allocate `clsoure` on the heap and erase the `'env` bound.
+                let closure: Box<FnMut() + Send + 'env> = Box::new(closure);
+                let closure: Box<FnMut() + Send + 'static> = unsafe {
+                    mem::transmute(closure)
+                };
+
+                // Finally, spawn the closure.
+                let mut closure = closure;
+                self.builder.spawn(move || closure())?
+            };
+
+            let thread = handle.thread().clone();
+            let handle = Arc::new(Mutex::new(Some(handle)));
+            (handle, thread)
         };
 
-        let thread = join_handle.thread().clone();
-        let join_state = JoinState::<T>::new(join_handle, result);
+        // Add the handle to the shared list of join handles.
+        self.scope
+            .handles
+            .lock()
+            .unwrap()
+            .push(Arc::clone(&handle));
 
-        let handle = ScopedJoinHandle {
-            inner: Arc::new(Mutex::new(Some(join_state))),
+        Ok(ScopedJoinHandle {
+            handle,
+            result,
             thread,
             _marker: PhantomData,
-        };
-
-        let deferred_handle = Arc::clone(&handle.inner);
-        self.scope.joins.borrow_mut().push(Box::new(move || {
-            let state = deferred_handle.lock().unwrap().take();
-            if let Some(state) = state {
-                state.join().map(|_| ())
-            } else {
-                Ok(())
-            }
-        }));
-
-        Ok(handle)
+        })
     }
 }
 
@@ -257,8 +303,16 @@ unsafe impl<'scope, T> Sync for ScopedJoinHandle<'scope, T> {}
 
 /// A handle to a scoped thread
 pub struct ScopedJoinHandle<'scope, T: 'scope> {
-    inner: Arc<Mutex<Option<JoinState<T>>>>,
+    /// A join handle to the spawned thread.
+    handle: SharedOption<thread::JoinHandle<()>>,
+
+    /// Holds the result of the inner closure.
+    result: SharedOption<T>,
+
+    /// A handle to the the spawned thread.
     thread: thread::Thread,
+
+    /// Borrows the parent scope with lifetime `'scope`.
     _marker: PhantomData<&'scope T>,
 }
 
@@ -275,8 +329,23 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
     /// This function may panic on some platforms if a thread attempts to join itself or otherwise
     /// may create a deadlock with joining threads.
     pub fn join(self) -> thread::Result<T> {
-        let state = self.inner.lock().unwrap().take();
-        state.unwrap().join()
+        // Take out the handle. The handle will surely be available because the root scope waits
+        // for nested scopes before joining remaining threads.
+        let handle = self
+            .handle
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap();
+
+        // Join the thread and then take the result out of its inner closure.
+        handle.join().map(|()| {
+            self.result
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap()
+        })
     }
 
     /// Gets the underlying [`std::thread::Thread`] handle.
@@ -291,107 +360,4 @@ impl<'scope, T> fmt::Debug for ScopedJoinHandle<'scope, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ScopedJoinHandle {{ ... }}")
     }
-}
-
-type ScopedThreadResult<T> = Arc<Mutex<Option<T>>>;
-
-struct JoinState<T> {
-    join_handle: thread::JoinHandle<()>,
-    result: ScopedThreadResult<T>,
-}
-
-impl<T> JoinState<T> {
-    fn new(join_handle: thread::JoinHandle<()>, result: ScopedThreadResult<T>) -> JoinState<T> {
-        JoinState {
-            join_handle,
-            result,
-        }
-    }
-
-    fn join(self) -> thread::Result<T> {
-        let result = self.result;
-        self.join_handle
-            .join()
-            .map(|_| result.lock().unwrap().take().unwrap())
-    }
-}
-
-trait FnBox<T> {
-    fn call_box(self: Box<Self>) -> T;
-}
-
-impl<T, F: FnOnce() -> T> FnBox<T> for F {
-    fn call_box(self: Box<Self>) -> T {
-        (*self)()
-    }
-}
-
-/// Returns a `usize` that identifies the current thread.
-///
-/// Each thread is associated with an 'index'. While there are no particular guarantees, indices
-/// usually tend to be consecutive numbers between 0 and the number of running threads.
-///
-/// Since this function accesses TLS, `None` might be returned if the current thread's TLS is
-/// tearing down.
-#[inline]
-pub fn current_index() -> Option<usize> {
-    REGISTRATION.try_with(|reg| reg.index).ok()
-}
-
-/// The global registry keeping track of registered threads and indices.
-struct ThreadIndices {
-    /// Mapping from `ThreadId` to thread index.
-    mapping: HashMap<ThreadId, usize>,
-
-    /// A list of free indices.
-    free_list: Vec<usize>,
-
-    /// The next index to allocate if the free list is empty.
-    next_index: usize,
-}
-
-lazy_static! {
-    static ref THREAD_INDICES: Mutex<ThreadIndices> = Mutex::new(ThreadIndices {
-        mapping: HashMap::new(),
-        free_list: Vec::new(),
-        next_index: 0,
-    });
-}
-
-/// A registration of a thread with an index.
-///
-/// When dropped, unregisters the thread and frees the reserved index.
-struct Registration {
-    index: usize,
-    thread_id: ThreadId,
-}
-
-impl Drop for Registration {
-    fn drop(&mut self) {
-        let mut indices = THREAD_INDICES.lock().unwrap();
-        indices.mapping.remove(&self.thread_id);
-        indices.free_list.push(self.index);
-    }
-}
-
-thread_local! {
-    static REGISTRATION: Registration = {
-        let thread_id = thread::current().id();
-        let mut indices = THREAD_INDICES.lock().unwrap();
-
-        let index = match indices.free_list.pop() {
-            Some(i) => i,
-            None => {
-                let i = indices.next_index;
-                indices.next_index += 1;
-                i
-            }
-        };
-        indices.mapping.insert(thread_id, index);
-
-        Registration {
-            index,
-            thread_id,
-        }
-    };
 }
