@@ -24,3 +24,9 @@ crossbeam-deque = "0.6"
 
 [dev-dependencies]
 rand = "0.5"
+
+[workspace]
+members = [
+  ".",
+  "crossbeam-utils",
+]

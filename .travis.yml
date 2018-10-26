@@ -7,14 +7,5 @@ rust:
   - 1.26.0
 
 script:
-  - cargo build
-  - cargo build --release
-  - cargo build --no-default-features
-  - cargo build --release --no-default-features
-  - cargo test
-  - cargo test --release
-  - |
-    if [ $TRAVIS_RUST_VERSION == nightly ]; then
-      cargo test --features nightly
-      cargo test --features nightly --release
-    fi
+  - ./ci/script.sh
+  - (cd crossbeam-utils && ./ci/script.sh)
