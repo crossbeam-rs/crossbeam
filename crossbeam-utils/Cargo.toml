@@ -1,0 +1,23 @@
+[package]
+name = "crossbeam-utils"
+version = "0.5.0"
+authors = ["The Crossbeam Project Developers"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/crossbeam-rs/crossbeam-utils"
+homepage = "https://github.com/crossbeam-rs/crossbeam-utils"
+documentation = "https://docs.rs/crossbeam-utils"
+description = "Utilities for concurrent programming"
+keywords = ["scoped", "thread", "atomic", "cache"]
+categories = ["algorithms", "concurrency", "data-structures"]
+
+[features]
+default = ["use_std"]
+use_std = []
+nightly = []
+
+[dependencies]
+cfg-if = "0.1"
+lazy_static = "1.1.0"
+num_cpus = "1.8.0"
+parking_lot = "0.6.4"
