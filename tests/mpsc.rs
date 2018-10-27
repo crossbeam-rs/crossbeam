@@ -1,18 +1,36 @@
-// //! Tests borrowed from `std::sync::mpsc`.
-// //!
-// //! This is a channel implementation mimicking MPSC channels from the standard library, but the
-// //! internals actually use `crossbeam-channel`. There's an auxilliary channel `disconnected`, which
-// //! becomes closed once the receiver gets dropped, thus notifying the senders that the MPSC channel
-// //! is disconnected.
-// //!
-// //! This channel is then tested against the original tests for MPSC channels.
-// //!
-// //! Three minor tweaks were needed to make the tests compile:
-// //!
-// //! - Replace `box` syntax with `Box::new`.
-// //! - Replace all uses of `Select` with `select!`. TODO
-// //! - Use type anotation in one test. TODO ???
-//
+//! Tests copied from `std::sync::mpsc`.
+//!
+//! This is a channel implementation mimicking MPSC channels from the standard library, but the
+//! internals actually use `crossbeam-channel`. There's an auxilliary channel `disconnected`, which
+//! becomes closed once the receiver gets dropped, thus notifying the senders that the MPSC channel
+//! is disconnected.
+//!
+//! This channel is then tested against the original tests for MPSC channels.
+//!
+//! Three minor tweaks were needed to make the tests compile:
+//!
+//! - Replace `box` syntax with `Box::new`.
+//! - Replace all uses of `Select` with `select!`.
+//! - Use type anotation in one test.
+//!
+//! # Notes on the original code
+//!
+//! Copyright notice from the original code:
+//!
+//! ```
+//! Copyright 2013-2014 The Rust Project Developers. See the COPYRIGHT
+//! file at the top-level directory of this distribution and at
+//! http://rust-lang.org/COPYRIGHT.
+//!
+//! Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+//! http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+//! <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+//! option. This file may not be copied, modified, or distributed
+//! except according to those terms.
+//! ```
+//!
+//! Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
+
 // #[macro_use]
 // extern crate crossbeam_channel as channel;
 //
