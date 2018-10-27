@@ -1,5 +1,6 @@
-//! Translation of the following Go program into Rust.
-//! Source: https://www.nada.kth.se/~snilsson/concurrency/#Match
+//! Translation of a simple program demonstrating CSP from Go into Rust.
+//!
+//! The original program in Go follows:
 //!
 //! ```go
 //! func main() {
@@ -31,6 +32,12 @@
 //!     wg.Done()
 //! }
 //! ```
+//!
+//! # Notes on the original code
+//!
+//! Author: Stefan Nilsson
+//! License: Creative Commons Attribution 3.0 Unported License.
+//! Source: https://web.archive.org/web/20171209034309/https://www.nada.kth.se/~snilsson/concurrency
 
 extern crate crossbeam;
 #[macro_use]
