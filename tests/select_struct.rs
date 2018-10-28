@@ -10,8 +10,13 @@ use std::thread;
 use std::time::Duration;
 
 use channel::Select;
+use channel::TryRecvError;
 
 // TODO: here and in select.rs use default(timeout) instead of after (and everywhere else)
+// TODO: do we need after/tick? Answer: Absolutely Yes!
+// TODO: closing wakes up senders (same in select.rs)
+// TODO: If SelectedCase is dropped without being completed, panic!
+// TODO: test: verify that Select can be reused
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -22,7 +27,7 @@ fn smoke1() {
     let (s1, r1) = channel::unbounded::<usize>();
     let (s2, r2) = channel::unbounded::<usize>();
 
-    s1.send(1);
+    s1.send(1).unwrap();
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r1);
@@ -34,7 +39,7 @@ fn smoke1() {
         _ => unreachable!(),
     }
 
-    s2.send(2);
+    s2.send(2).unwrap();
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r1);
@@ -55,7 +60,7 @@ fn smoke2() {
     let (_s4, r4) = channel::unbounded::<i32>();
     let (s5, r5) = channel::unbounded::<i32>();
 
-    s5.send(5);
+    s5.send(5).unwrap();
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r1);
@@ -74,49 +79,66 @@ fn smoke2() {
     }
 }
 
-// #[test]
-// fn closed() {
-//     let (s1, r1) = channel::unbounded::<i32>();
-//     let (s2, r2) = channel::unbounded::<i32>();
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             drop(s1);
-//             thread::sleep(ms(500));
-//             s2.send(5);
-//         });
-//
-//         let after = channel::after(ms(1000));
-//         Select::new()
-//             .recv(&r1, |v| assert!(v.is_none()))
-//             .recv(&r2, |_| panic!())
-//             .recv(&after, |_| panic!())
-//             .wait();
-//
-//         r2.recv().unwrap();
-//     });
-//
-//     let after = channel::after(ms(1000));
-//     Select::new()
-//         .recv(&r1, |v| assert!(v.is_none()))
-//         .recv(&r2, |_| panic!())
-//         .recv(&after, |_| panic!())
-//         .wait();
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             thread::sleep(ms(500));
-//             drop(s2);
-//         });
-//
-//         let after = channel::after(ms(1000));
-//         Select::new()
-//             .recv(&r2, |v| assert!(v.is_none()))
-//             .recv(&after, |_| panic!())
-//             .wait();
-//     });
-// }
-//
+#[test]
+fn closed() {
+    let (s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::unbounded::<i32>();
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            drop(s1);
+            thread::sleep(ms(500));
+            s2.send(5).unwrap();
+        });
+
+        let after = channel::after(ms(1000));
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        let case3 = sel.recv(&after);
+        let case = sel.select();
+        match case.index() {
+            i if i == case1 => assert!(case.recv(&r1).is_err()),
+            i if i == case2 => panic!(),
+            i if i == case3 => panic!(),
+            _ => unreachable!(),
+        }
+
+        r2.recv().unwrap();
+    });
+
+    let after = channel::after(ms(1000));
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r1);
+    let case2 = sel.recv(&r2);
+    let case3 = sel.recv(&after);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => assert!(case.recv(&r1).is_err()),
+        i if i == case2 => panic!(),
+        i if i == case3 => panic!(),
+        _ => unreachable!(),
+    }
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(ms(500));
+            drop(s2);
+        });
+
+        let after = channel::after(ms(1000));
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r2);
+        let case2 = sel.recv(&after);
+        let case = sel.select();
+        match case.index() {
+            i if i == case1 => assert!(case.recv(&r2).is_err()),
+            i if i == case2 => panic!(),
+            _ => unreachable!(),
+        }
+    });
+}
+
 // #[test]
 // fn default() {
 //     let (s1, r1) = channel::unbounded::<i32>();
@@ -152,7 +174,7 @@ fn smoke2() {
 //         .default(|| ())
 //         .wait();
 // }
-//
+
 // #[test]
 // fn timeout() {
 //     let (_s1, r1) = channel::unbounded::<i32>();
@@ -165,18 +187,30 @@ fn smoke2() {
 //         });
 //
 //         let after = channel::after(ms(1000));
-//         Select::new()
-//             .recv(&r1, |_| panic!())
-//             .recv(&r2, |_| panic!())
-//             .recv(&after, |_| ())
-//             .wait();
+//         let mut sel = Select::new();
+//         let case1 = sel.recv(&r1);
+//         let case2 = sel.recv(&r2);
+//         let case3 = sel.recv(&after);
+//         let case = sel.select();
+//         match case.index() {
+//             i if i == case1 => panic!(),
+//             i if i == case2 => panic!(),
+//             i if i == case3 => sel.recv(&after).unwrap(),
+//             _ => unreachable!(),
+//         }
 //
 //         let after = channel::after(ms(1000));
-//         Select::new()
-//             .recv(&r1, |_| panic!())
-//             .recv(&r2, |v| assert_eq!(v, Some(2)))
-//             .recv(&after, |_| panic!())
-//             .wait();
+//         let mut sel = Select::new();
+//         let case1 = sel.recv(&r1);
+//         let case2 = sel.recv(&r2);
+//         let case3 = sel.recv(&after);
+//         let case = sel.select();
+//         match case.index() {
+//             i if i == case1 => panic!(),
+//             i if i == case2 => assert_eq!(sel.recv(&rx2), Ok(2)),
+//             i if i == case3 => panic!(),
+//             _ => unreachable!(),
+//         }
 //     });
 //
 //     crossbeam::scope(|scope| {
@@ -198,7 +232,7 @@ fn smoke2() {
 //             .wait();
 //     });
 // }
-//
+
 // #[test]
 // fn default_when_closed() {
 //     let (_, r) = channel::unbounded::<i32>();
@@ -216,62 +250,79 @@ fn smoke2() {
 //         .recv(&after, |_| panic!())
 //         .wait();
 // }
-//
-// #[test]
-// fn unblocks() {
-//     let (s1, r1) = channel::bounded::<i32>(0);
-//     let (s2, r2) = channel::bounded::<i32>(0);
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             thread::sleep(ms(500));
-//             s2.send(2);
-//         });
-//
-//         let after = channel::after(ms(1000));
-//         Select::new()
-//             .recv(&r1, |_| panic!())
-//             .recv(&r2, |v| assert_eq!(v, Some(2)))
-//             .recv(&after, |_| panic!())
-//             .wait();
-//     });
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             thread::sleep(ms(500));
-//             assert_eq!(r1.recv().unwrap(), 1);
-//         });
-//
-//         let after = channel::after(ms(1000));
-//         Select::new()
-//             .send(&s1, || 1, || ())
-//             .send(&s2, || 2, || panic!())
-//             .recv(&after, |_| panic!())
-//             .wait();
-//     });
-// }
-//
-// #[test]
-// fn both_ready() {
-//     let (s1, r1) = channel::bounded(0);
-//     let (s2, r2) = channel::bounded(0);
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             thread::sleep(ms(500));
-//             s1.send(1);
-//             assert_eq!(r2.recv().unwrap(), 2);
-//         });
-//
-//         for _ in 0..2 {
-//             Select::new()
-//                 .recv(&r1, |v| assert_eq!(v, Some(1)))
-//                 .send(&s2, || 2, || ())
-//                 .wait();
-//         }
-//     });
-// }
-//
+
+#[test]
+fn unblocks() {
+    let (s1, r1) = channel::bounded::<i32>(0);
+    let (s2, r2) = channel::bounded::<i32>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(ms(500));
+            s2.send(2);
+        });
+
+        let after = channel::after(ms(1000));
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        let case3 = sel.recv(&after);
+        let case = sel.select();
+        match case.index() {
+            i if i == case1 => panic!(),
+            i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
+            i if i == case3 => panic!(),
+            _ => unreachable!(),
+        }
+    });
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(ms(500));
+            assert_eq!(r1.recv().unwrap(), 1);
+        });
+
+        let after = channel::after(ms(1000));
+        let mut sel = Select::new();
+        let case1 = sel.send(&s1);
+        let case2 = sel.send(&s2);
+        let case3 = sel.recv(&after);
+        let case = sel.select();
+        match case.index() {
+            i if i == case1 => case.send(&s1, 1).unwrap(),
+            i if i == case2 => panic!(),
+            i if i == case3 => panic!(),
+            _ => unreachable!(),
+        }
+    });
+}
+
+#[test]
+fn both_ready() {
+    let (s1, r1) = channel::bounded(0);
+    let (s2, r2) = channel::bounded(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(ms(500));
+            s1.send(1);
+            assert_eq!(r2.recv().unwrap(), 2);
+        });
+
+        for _ in 0..2 {
+            let mut sel = Select::new();
+            let case1 = sel.recv(&r1);
+            let case2 = sel.send(&s2);
+            let case = sel.select();
+            match case.index() {
+                i if i == case1 => assert_eq!(case.recv(&r1), Ok(1)),
+                i if i == case2 => case.send(&s2, 2).unwrap(),
+                _ => unreachable!(),
+            }
+        }
+    });
+}
+
 // #[test]
 // fn loop_try() {
 //     const RUNS: usize = 20;
@@ -337,104 +388,146 @@ fn smoke2() {
 //         });
 //     }
 // }
-//
-// #[test]
-// fn cloning1() {
-//     crossbeam::scope(|scope| {
-//         let (s1, r1) = channel::unbounded::<i32>();
-//         let (_s2, r2) = channel::unbounded::<i32>();
-//         let (s3, r3) = channel::unbounded::<()>();
-//
-//         scope.spawn(move || {
-//             r3.recv().unwrap();
-//             drop(s1.clone());
-//             assert_eq!(r3.try_recv(), None);
-//             s1.send(1);
-//             r3.recv().unwrap();
-//         });
-//
-//         s3.send(());
-//
-//         Select::new()
-//             .recv(&r1, |_| ())
-//             .recv(&r2, |_| ())
-//             .wait();
-//
-//         s3.send(());
-//     });
-// }
-//
-// #[test]
-// fn cloning2() {
-//     let (s1, r1) = channel::unbounded::<()>();
-//     let (s2, r2) = channel::unbounded::<()>();
-//     let (_s3, _r3) = channel::unbounded::<()>();
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(move || {
-//             Select::new()
-//                 .recv(&r1, |_| panic!())
-//                 .recv(&r2, |_| ())
-//                 .wait();
-//         });
-//
-//         thread::sleep(ms(500));
-//         drop(s1.clone());
-//         s2.send(());
-//     })
-// }
-//
-// #[test]
-// fn preflight1() {
-//     let (s, r) = channel::unbounded();
-//     s.send(());
-//
-//     Select::new()
-//         .recv(&r, |_| ())
-//         .wait();
-// }
-//
-// #[test]
-// fn preflight2() {
-//     let (s, r) = channel::unbounded();
-//     drop(s.clone());
-//     s.send(());
-//     drop(s);
-//
-//     Select::new()
-//         .recv(&r, |v| assert!(v.is_some()))
-//         .wait();
-//     assert_eq!(r.try_recv(), None);
-// }
-//
-// #[test]
-// fn preflight3() {
-//     let (s, r) = channel::unbounded();
-//     drop(s.clone());
-//     s.send(());
-//     drop(s);
-//     r.recv().unwrap();
-//
-//     Select::new()
-//         .recv(&r, |v| assert!(v.is_none()))
-//         .wait();
-// }
-//
-// #[test]
-// fn duplicate_cases() {
-//     let (s, r) = channel::unbounded::<i32>();
-//     let hit = vec![Cell::new(false); 4];
-//
-//     while hit.iter().map(|h| h.get()).any(|hit| !hit) {
-//         Select::new()
-//             .recv(&r, |_| hit[0].set(true))
-//             .recv(&r, |_| hit[1].set(true))
-//             .send(&s, || 0, || hit[2].set(true))
-//             .send(&s, || 0, || hit[3].set(true))
-//             .wait();
-//     }
-// }
-//
+
+#[test]
+fn cloning1() {
+    crossbeam::scope(|scope| {
+        let (s1, r1) = channel::unbounded::<i32>();
+        let (_s2, r2) = channel::unbounded::<i32>();
+        let (s3, r3) = channel::unbounded::<()>();
+
+        scope.spawn(move || {
+            r3.recv().unwrap();
+            drop(s1.clone());
+            assert!(r3.try_recv().is_err());
+            s1.send(1);
+            r3.recv().unwrap();
+        });
+
+        s3.send(());
+
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        let case = sel.select();
+        match case.index() {
+            i if i == case1 => drop(case.recv(&r1)),
+            i if i == case2 => drop(case.recv(&r2)),
+            _ => unreachable!(),
+        }
+
+        s3.send(());
+    });
+}
+
+#[test]
+fn cloning2() {
+    let (s1, r1) = channel::unbounded::<()>();
+    let (s2, r2) = channel::unbounded::<()>();
+    let (_s3, _r3) = channel::unbounded::<()>();
+
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            let mut sel = Select::new();
+            let case1 = sel.recv(&r1);
+            let case2 = sel.recv(&r2);
+            let case = sel.select();
+            match case.index() {
+                i if i == case1 => panic!(),
+                i if i == case2 => drop(case.recv(&r2)),
+                _ => unreachable!(),
+            }
+        });
+
+        thread::sleep(ms(500));
+        drop(s1.clone());
+        s2.send(());
+    })
+}
+
+#[test]
+fn preflight1() {
+    let (s, r) = channel::unbounded();
+    s.send(());
+
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => drop(case.recv(&r)),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn preflight2() {
+    let (s, r) = channel::unbounded();
+    drop(s.clone());
+    s.send(());
+    drop(s);
+
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => assert_eq!(case.recv(&r), Ok(())),
+        _ => unreachable!(),
+    }
+
+    assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
+}
+
+#[test]
+fn preflight3() {
+    let (s, r) = channel::unbounded();
+    drop(s.clone());
+    s.send(());
+    drop(s);
+    r.recv().unwrap();
+
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => assert!(case.recv(&r).is_err()),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn duplicate_cases() {
+    let (s, r) = channel::unbounded::<i32>();
+    let hit = vec![Cell::new(false); 4];
+
+    while hit.iter().map(|h| h.get()).any(|hit| !hit) {
+        let mut sel = Select::new();
+        let case0 = sel.recv(&r);
+        let case1 = sel.recv(&r);
+        let case2 = sel.send(&s);
+        let case3 = sel.send(&s);
+        let case = sel.select();
+        match case.index() {
+            i if i == case0 => {
+                assert!(case.recv(&r).is_ok());
+                hit[0].set(true);
+            }
+            i if i == case1 => {
+                assert!(case.recv(&r).is_ok());
+                hit[1].set(true);
+            }
+            i if i == case2 => {
+                assert!(case.send(&s, 0).is_ok());
+                hit[2].set(true);
+            }
+            i if i == case3 => {
+                assert!(case.send(&s, 0).is_ok());
+                hit[3].set(true);
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
 // #[test]
 // fn nesting() {
 //     let (s, r) = channel::unbounded::<i32>();

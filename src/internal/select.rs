@@ -681,7 +681,7 @@ impl<'a> SelectedCase<'a> {
         }
     }
 
-    pub fn send<T>(&mut self, s: &'a Sender<T>, msg: T) -> Result<(), SendError<T>> {
+    pub fn send<T>(mut self, s: &'a Sender<T>, msg: T) -> Result<(), SendError<T>> {
         assert!(
             s as *const Sender<T> as *const u8 == self.ptr,
             "passed a sender that wasn't selected",
