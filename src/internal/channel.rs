@@ -378,8 +378,8 @@ impl<T> Sender<T> {
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
         // TODO: custom timeout impl
         select! {
-            send(self, msg) => Ok(()),
-            recv(after(timeout)) => Err(SendTimeoutError::Timeout(msg)),
+            send(self, msg) -> _ => Ok(()),
+            recv(after(timeout)) -> _ => Err(SendTimeoutError::Timeout(msg)),
         }
     }
 
@@ -719,8 +719,8 @@ impl<T> Receiver<T> {
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         // TODO: custom timeout impl
         select! {
-            recv(self, msg) => msg.map_err(|_| RecvTimeoutError::Disconnected),
-            recv(after(timeout)) => Err(RecvTimeoutError::Timeout),
+            recv(self) -> res => res.map_err(|_| RecvTimeoutError::Disconnected),
+            recv(after(timeout)) -> _ => Err(RecvTimeoutError::Timeout),
         }
     }
 

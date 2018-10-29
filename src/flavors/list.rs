@@ -561,7 +561,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
     }
 
     fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Context) -> bool {
-        false
+        !self.0.is_closed()
     }
 
     fn unregister(&self, _oper: Operation) {}

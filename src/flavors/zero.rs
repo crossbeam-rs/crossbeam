@@ -120,6 +120,9 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.receivers.wake_one() {
             token.zero = operation.packet;
             return true;
+        } else if inner.is_closed {
+            token.zero = 0;
+            return true;
         }
 
         if !short_pause {
@@ -506,7 +509,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         inner
             .senders
             .register_with_packet(oper, packet as usize, cx);
-        !inner.receivers.can_wake_one()
+        !inner.receivers.can_wake_one() && !inner.is_closed
     }
 
     fn unregister(&self, oper: Operation) {

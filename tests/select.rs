@@ -12,6 +12,8 @@ use std::time::Duration;
 
 use channel::TryRecvError;
 
+// TODO: modify a borrowed sender/receiver inside select! body
+
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
@@ -24,15 +26,15 @@ fn smoke1() {
     s1.send(1).unwrap();
 
     select! {
-        recv(r1, v) => assert_eq!(v, Ok(1)),
-        recv(r2) => panic!(),
+        recv(r1) -> v => assert_eq!(v, Ok(1)),
+        recv(r2) -> _ => panic!(),
     }
 
     s2.send(2).unwrap();
 
     select! {
-        recv(r1) => panic!(),
-        recv(r2, v) => assert_eq!(v, Ok(2)),
+        recv(r1) -> _ => panic!(),
+        recv(r2) -> v => assert_eq!(v, Ok(2)),
     }
 }
 
@@ -47,11 +49,11 @@ fn smoke2() {
     s5.send(5).unwrap();
 
     select! {
-        recv(r1) => panic!(),
-        recv(r2) => panic!(),
-        recv(r3) => panic!(),
-        recv(r4) => panic!(),
-        recv(r5, v) => assert_eq!(v, Ok(5)),
+        recv(r1) -> _ => panic!(),
+        recv(r2) -> _ => panic!(),
+        recv(r3) -> _ => panic!(),
+        recv(r4) -> _ => panic!(),
+        recv(r5) -> v => assert_eq!(v, Ok(5)),
     }
 }
 
@@ -68,18 +70,18 @@ fn closed() {
         });
 
         select! {
-            recv(r1, v) => assert!(v.is_err()),
-            recv(r2) => panic!(),
-            recv(channel::after(ms(1000))) => panic!(),
+            recv(r1) -> v => assert!(v.is_err()),
+            recv(r2) -> _ => panic!(),
+            recv(channel::after(ms(1000))) -> _ => panic!(),
         }
 
         r2.recv().unwrap();
     });
 
     select! {
-        recv(r1, v) => assert!(v.is_err()),
-        recv(r2) => panic!(),
-        recv(channel::after(ms(1000))) => panic!(),
+        recv(r1) -> v => assert!(v.is_err()),
+        recv(r2) -> _ => panic!(),
+        recv(channel::after(ms(1000))) -> _ => panic!(),
     }
 
     crossbeam::scope(|scope| {
@@ -89,8 +91,8 @@ fn closed() {
         });
 
         select! {
-            recv(r2, v) => assert!(v.is_err()),
-            recv(channel::after(ms(1000))) => panic!(),
+            recv(r2) -> v => assert!(v.is_err()),
+            recv(channel::after(ms(1000))) -> _ => panic!(),
         }
     });
 }
@@ -101,28 +103,28 @@ fn default() {
     let (s2, r2) = channel::unbounded::<i32>();
 
     select! {
-        recv(r1) => panic!(),
-        recv(r2) => panic!(),
+        recv(r1) -> _ => panic!(),
+        recv(r2) -> _ => panic!(),
         default => {}
     }
 
     drop(s1);
 
     select! {
-        recv(r1, v) => assert!(v.is_err()),
-        recv(r2) => panic!(),
+        recv(r1) -> v => assert!(v.is_err()),
+        recv(r2) -> _ => panic!(),
         default => panic!(),
     }
 
     s2.send(2).unwrap();
 
     select! {
-        recv(r2, v) => assert_eq!(v, Ok(2)),
+        recv(r2) -> v => assert_eq!(v, Ok(2)),
         default => panic!(),
     }
 
     select! {
-        recv(r2) => panic!(),
+        recv(r2) -> _ => panic!(),
         default => {},
     }
 
@@ -143,15 +145,15 @@ fn timeout() {
         });
 
         select! {
-            recv(r1) => panic!(),
-            recv(r2) => panic!(),
-            recv(channel::after(ms(1000))) => {},
+            recv(r1) -> _ => panic!(),
+            recv(r2) -> _ => panic!(),
+            recv(channel::after(ms(1000))) -> _ => {},
         }
 
         select! {
-            recv(r1) => panic!(),
-            recv(r2, v) => assert_eq!(v, Ok(2)),
-            recv(channel::after(ms(1000))) => panic!(),
+            recv(r1) -> _ => panic!(),
+            recv(r2) -> v => assert_eq!(v, Ok(2)),
+            recv(channel::after(ms(1000))) -> _ => panic!(),
         }
     });
 
@@ -164,9 +166,9 @@ fn timeout() {
         });
 
         select! {
-            recv(channel::after(ms(1000))) => {
+            recv(channel::after(ms(1000))) -> _ => {
                 select! {
-                    recv(r, v) => assert!(v.is_err()),
+                    recv(r) -> v => assert!(v.is_err()),
                     default => panic!(),
                 }
             }
@@ -179,15 +181,15 @@ fn default_when_closed() {
     let (_, r) = channel::unbounded::<i32>();
 
     select! {
-        recv(r, v) => assert!(v.is_err()),
+        recv(r) -> v => assert!(v.is_err()),
         default => panic!(),
     }
 
     let (_, r) = channel::unbounded::<i32>();
 
     select! {
-        recv(r, v) => assert!(v.is_err()),
-        recv(channel::after(ms(1000))) => panic!(),
+        recv(r) -> v => assert!(v.is_err()),
+        recv(channel::after(ms(1000))) -> _ => panic!(),
     }
 }
 
@@ -203,9 +205,9 @@ fn unblocks() {
         });
 
         select! {
-            recv(r1) => panic!(),
-            recv(r2, v) => assert_eq!(v, Ok(2)),
-            recv(channel::after(ms(1000))) => panic!(),
+            recv(r1) -> _ => panic!(),
+            recv(r2) -> v => assert_eq!(v, Ok(2)),
+            recv(channel::after(ms(1000))) -> _ => panic!(),
         }
     });
 
@@ -216,9 +218,9 @@ fn unblocks() {
         });
 
         select! {
-            send(s1, 1) => {},
-            send(s2, 2) => panic!(),
-            recv(channel::after(ms(1000))) => panic!(),
+            send(s1, 1) -> _ => {},
+            send(s2, 2) -> _ => panic!(),
+            recv(channel::after(ms(1000))) -> _ => panic!(),
         }
     });
 }
@@ -237,8 +239,8 @@ fn both_ready() {
 
         for _ in 0..2 {
             select! {
-                recv(r1, v) => assert_eq!(v, Ok(1)),
-                send(s2, 2) => {},
+                recv(r1) -> v => assert_eq!(v, Ok(1)),
+                send(s2, 2) -> _ => {},
             }
         }
     });
@@ -257,12 +259,12 @@ fn loop_try() {
             scope.spawn(|| {
                 loop {
                     select! {
-                        send(s1, 1) => break,
+                        send(s1, 1) -> _ => break,
                         default => {}
                     }
 
                     select! {
-                        recv(r_end) => break,
+                        recv(r_end) -> _ => break,
                         default => {}
                     }
                 }
@@ -276,7 +278,7 @@ fn loop_try() {
                     }
 
                     select! {
-                        recv(r_end) => break,
+                        recv(r_end) -> _ => break,
                         default => {}
                     }
                 }
@@ -286,9 +288,9 @@ fn loop_try() {
                 thread::sleep(ms(500));
 
                 select! {
-                    recv(r1, v) => assert_eq!(v, Ok(1)),
-                    send(s2, 2) => {},
-                    recv(channel::after(ms(500))) => panic!(),
+                    recv(r1) -> v => assert_eq!(v, Ok(1)),
+                    send(s2, 2) -> _ => {},
+                    recv(channel::after(ms(500))) -> _ => panic!(),
                 }
 
                 drop(s_end);
@@ -315,8 +317,8 @@ fn cloning1() {
         s3.send(()).unwrap();
 
         select! {
-            recv(r1) => {},
-            recv(r2) => {},
+            recv(r1) -> _ => {},
+            recv(r2) -> _ => {},
         }
 
         s3.send(()).unwrap();
@@ -332,8 +334,8 @@ fn cloning2() {
     crossbeam::scope(|scope| {
         scope.spawn(move || {
             select! {
-                recv(r1) => panic!(),
-                recv(r2) => {},
+                recv(r1) -> _ => panic!(),
+                recv(r2) -> _ => {},
             }
         });
 
@@ -349,7 +351,7 @@ fn preflight1() {
     s.send(()).unwrap();
 
     select! {
-        recv(r) => {}
+        recv(r) -> _ => {}
     }
 }
 
@@ -361,7 +363,7 @@ fn preflight2() {
     drop(s);
 
     select! {
-        recv(r, v) => assert!(v.is_ok()),
+        recv(r) -> v => assert!(v.is_ok()),
     }
     assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
 }
@@ -375,7 +377,7 @@ fn preflight3() {
     r.recv().unwrap();
 
     select! {
-        recv(r, v) => assert!(v.is_err())
+        recv(r) -> v => assert!(v.is_err())
     }
 }
 
@@ -386,96 +388,12 @@ fn duplicate_cases() {
 
     while hit.iter().any(|hit| !hit) {
         select! {
-            recv(r) => hit[0] = true,
-            recv(Some(&r)) => hit[1] = true,
-            send(s, 0) => hit[2] = true,
-            send(Some(&s), 0) => hit[3] = true,
+            recv(r) -> _ => hit[0] = true,
+            recv(r) -> _ => hit[1] = true,
+            send(s, 0) -> _ => hit[2] = true,
+            send(s, 0) -> _ => hit[3] = true,
         }
     }
-}
-
-#[test]
-fn multiple_receivers() {
-    let (_, r1) = channel::unbounded::<i32>();
-    let (_, r2) = channel::bounded::<i32>(5);
-    select! {
-        recv([&r1, &r2].iter().map(|x| *x), msg) => assert!(msg.is_err()),
-    }
-    select! {
-        recv([r1, r2].iter(), msg) => assert!(msg.is_err()),
-    }
-
-    let (_, r1) = channel::unbounded::<i32>();
-    let (_, r2) = channel::bounded::<i32>(5);
-    select! {
-        recv(&[r1, r2], msg) => assert!(msg.is_err()),
-    }
-}
-
-#[test]
-fn multiple_senders() {
-    let (s1, _) = channel::unbounded::<i32>();
-    let (s2, _) = channel::bounded::<i32>(5);
-    select! {
-        send([&s1, &s2].iter().map(|x| *x), 0) => {}
-    }
-    select! {
-        send([s1, s2].iter(), 0) => {}
-    }
-
-    let (s1, _) = channel::unbounded::<i32>();
-    let (s2, _) = channel::bounded::<i32>(5);
-    select! {
-        send(&[s1, s2], 0) => {},
-    }
-}
-
-#[test]
-fn recv_handle() {
-    let (s1, r1) = channel::unbounded::<i32>();
-    let (s2, r2) = channel::unbounded::<i32>();
-    let rs = [r1, r2];
-
-    s2.send(0).unwrap();
-    select! {
-        recv(rs, _, r) => assert_eq!(r, &s2),
-        default => panic!(),
-    }
-
-    s1.send(0).unwrap();
-    select! {
-        recv(rs, _, r) => assert_eq!(r, &s1),
-        default => panic!(),
-    }
-}
-
-#[test]
-fn send_handle() {
-    let (s1, r1) = channel::bounded::<i32>(0);
-    let (s2, r2) = channel::bounded::<i32>(0);
-    let ss = [s1, s2];
-
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
-            thread::sleep(ms(500));
-            select! {
-                send(ss, 0, s) => assert_eq!(s, &r2),
-                default => panic!(),
-            }
-        });
-        r2.recv().unwrap();
-    });
-
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
-            thread::sleep(ms(500));
-            select! {
-                send(ss, 0, s) => assert_eq!(s, &r1),
-                default => panic!(),
-            }
-        });
-        r1.recv().unwrap();
-    });
 }
 
 #[test]
@@ -483,14 +401,14 @@ fn nesting() {
     let (s, r) = channel::unbounded::<i32>();
 
     select! {
-        send(s, 0) => {
+        send(s, 0) -> _ => {
             select! {
-                recv(r, v) => {
+                recv(r) -> v => {
                     assert_eq!(v, Ok(0));
                     select! {
-                        send(s, 1) => {
+                        send(s, 1) -> _ => {
                             select! {
-                                recv(r, v) => {
+                                recv(r) -> v => {
                                     assert_eq!(v, Ok(1));
                                 }
                             }
@@ -503,37 +421,6 @@ fn nesting() {
 }
 
 #[test]
-fn conditional_send() {
-    let (s, _) = channel::unbounded();
-
-    select! {
-        send(if 1 + 1 == 3 { Some(&s) } else { None }, ()) => panic!(),
-        recv(channel::after(ms(1000))) => {}
-    }
-
-    select! {
-        send(if 1 + 1 == 2 { Some(&s) } else { None }, ()) => {},
-        recv(channel::after(ms(1000))) => panic!(),
-    }
-}
-
-#[test]
-fn conditional_recv() {
-    let (s, r) = channel::unbounded();
-    s.send(()).unwrap();
-
-    select! {
-        recv(if 1 + 1 == 3 { Some(&r) } else { None }) => panic!(),
-        recv(channel::after(ms(1000))) => {}
-    }
-
-    select! {
-        recv(if 1 + 1 == 2 { Some(&r) } else { None }) => {},
-        recv(channel::after(ms(1000))) => panic!(),
-    }
-}
-
-#[test]
 #[should_panic(expected = "send panicked")]
 fn panic_send() {
     fn get() -> channel::Sender<i32> {
@@ -541,7 +428,7 @@ fn panic_send() {
     }
 
     select! {
-        send(get(), panic!()) => {}
+        send(get(), panic!()) -> _ => {}
     }
 }
 
@@ -553,7 +440,7 @@ fn panic_recv() {
     }
 
     select! {
-        recv(get()) => {}
+        recv(get()) -> _ => {}
     }
 }
 
@@ -579,8 +466,8 @@ fn stress_recv() {
         for i in 0..COUNT {
             for _ in 0..2 {
                 select! {
-                    recv(r1, v) => assert_eq!(v, Ok(i)),
-                    recv(r2, v) => assert_eq!(v, Ok(i)),
+                    recv(r1) -> v => assert_eq!(v, Ok(i)),
+                    recv(r2) -> v => assert_eq!(v, Ok(i)),
                 }
 
                 s3.send(()).unwrap();
@@ -609,8 +496,8 @@ fn stress_send() {
         for i in 0..COUNT {
             for _ in 0..2 {
                 select! {
-                    send(s1, i) => {},
-                    send(s2, i) => {},
+                    send(s1, i) -> _ => {},
+                    send(s2, i) -> _ => {},
                 }
             }
             s3.send(()).unwrap();
@@ -638,8 +525,8 @@ fn stress_mixed() {
         for i in 0..COUNT {
             for _ in 0..2 {
                 select! {
-                    recv(r1, v) => assert_eq!(v, Ok(i)),
-                    send(s2, i) => {},
+                    recv(r1) -> v => assert_eq!(v, Ok(i)),
+                    send(s2, i) -> _ => {},
                 }
             }
             s3.send(()).unwrap();
@@ -662,8 +549,8 @@ fn stress_timeout_two_threads() {
 
                 loop {
                     select! {
-                        send(s, i) => break,
-                        recv(channel::after(ms(100))) => {}
+                        send(s, i) -> _ => break,
+                        recv(channel::after(ms(100))) -> _ => {}
                     }
                 }
             }
@@ -677,11 +564,11 @@ fn stress_timeout_two_threads() {
 
                 loop {
                     select! {
-                        recv(r, v) => {
+                        recv(r) -> v => {
                             assert_eq!(v, Ok(i));
                             break;
                         }
-                        recv(channel::after(ms(100))) => {}
+                        recv(channel::after(ms(100))) -> _ => {}
                     }
                 }
             }
@@ -693,16 +580,16 @@ fn stress_timeout_two_threads() {
 fn send_recv_same_channel() {
     let (s, r) = channel::bounded::<i32>(0);
     select! {
-        send(s, 0) => panic!(),
-        recv(r) => panic!(),
-        recv(channel::after(ms(500))) => {}
+        send(s, 0) -> _ => panic!(),
+        recv(r) -> _ => panic!(),
+        recv(channel::after(ms(500))) -> _ => {}
     }
 
     let (s, r) = channel::unbounded::<i32>();
     select! {
-        send(s, 0) => {},
-        recv(r) => panic!(),
-        recv(channel::after(ms(500))) => panic!(),
+        send(s, 0) -> _ => {},
+        recv(r) -> _ => panic!(),
+        recv(channel::after(ms(500))) -> _ => panic!(),
     }
 }
 
@@ -716,8 +603,8 @@ fn matching() {
         for i in 0..THREADS {
             scope.spawn(move || {
                 select! {
-                    recv(r, v) => assert_ne!(v.unwrap(), i),
-                    send(s, i) => {},
+                    recv(r) -> v => assert_ne!(v.unwrap(), i),
+                    send(s, i) -> _ => {},
                 }
             });
         }
@@ -736,8 +623,8 @@ fn matching_with_leftover() {
         for i in 0..THREADS {
             scope.spawn(move || {
                 select! {
-                    recv(r, v) => assert_ne!(v.unwrap(), i),
-                    send(s, i) => {},
+                    recv(r) -> v => assert_ne!(v.unwrap(), i),
+                    send(s, i) -> _ => {},
                 }
             });
         }
@@ -765,7 +652,7 @@ fn channel_through_channel() {
                     let mut new_r: T = Box::new(Some(new_r));
 
                     select! {
-                        send(s, new_r) => {}
+                        send(s, new_r) -> _ => {}
                     }
 
                     s = new_s;
@@ -777,7 +664,7 @@ fn channel_through_channel() {
 
                 for _ in 0..COUNT {
                     r = select! {
-                        recv(r, mut msg) => {
+                        recv(r) -> mut msg => {
                             msg.unwrap()
                                 .downcast_mut::<Option<channel::Receiver<T>>>()
                                 .unwrap()
@@ -812,8 +699,8 @@ fn linearizable() {
 
                     s1.send(1).unwrap();
                     select! {
-                        recv(r1) => {}
-                        recv(r2) => {}
+                        recv(r1) -> _ => {}
+                        recv(r2) -> _ => {}
                         default => unreachable!()
                     }
 
@@ -849,10 +736,10 @@ fn fairness1() {
     let mut hits = [0usize; 4];
     while hits[0] + hits[1] < 2 * COUNT {
         select! {
-            recv(r1) => hits[0] += 1,
-            recv(r2) => hits[1] += 1,
-            recv(channel::after(ms(0))) => hits[2] += 1,
-            recv(channel::tick(ms(0))) => hits[3] += 1,
+            recv(r1) -> _ => hits[0] += 1,
+            recv(r2) -> _ => hits[1] += 1,
+            recv(channel::after(ms(0))) -> _ => hits[2] += 1,
+            recv(channel::tick(ms(0))) -> _ => hits[3] += 1,
         }
     }
 
@@ -861,35 +748,4 @@ fn fairness1() {
 
     let sum: usize = hits.iter().sum();
     assert!(hits.iter().all(|x| *x >= sum / hits.len() / 2));
-}
-
-#[test]
-fn fairness2() {
-    const COUNT: usize = 10_000;
-
-    let (s1, r1) = channel::unbounded::<()>();
-    let (s2, r2) = channel::bounded::<()>(1);
-    let (s3, r3) = channel::bounded::<()>(0);
-
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
-            for _ in 0..COUNT {
-                select! {
-                    send(if s1.is_empty() { Some(&s1) } else { None }, ()) => {}
-                    send(if s2.is_empty() { Some(&s2) } else { None }, ()) => {}
-                    send(s3, ()) => {}
-                }
-            }
-        });
-
-        let mut hits = [0usize; 3];
-        for _ in 0..COUNT {
-            select! {
-                recv(r1) => hits[0] += 1,
-                recv(r2) => hits[1] += 1,
-                recv(r3) => hits[2] += 1,
-            }
-        }
-        assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 10));
-    });
 }

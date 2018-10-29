@@ -692,104 +692,736 @@ impl<'a> SelectedCase<'a> {
     }
 }
 
-/// Dereference the pointer and bind it to the lifetime in the iterator.
-///
-/// The returned reference will appear as if it was previously produced by the iterator.
-pub unsafe fn deref_from_iterator<'a, T: 'a, I>(ptr: *const T, _: &I) -> &'a T
-where
-    I: Iterator<Item = &'a T>,
-{
-    &*ptr
-}
-
-// TODO: only support Receiver<T> and Option<&Receiver<T>> (and same for sender)
-
-/// Receiver argument types allowed in `recv` cases.
-pub trait RecvArgument<'a, T: 'a>: Clone {
-    type Iter: Iterator<Item = &'a Receiver<T>>;
-
-    /// Converts the argument into an iterator over receivers.
-    fn _as_recv_argument(&'a self) -> Self::Iter;
-}
-
-impl<'a, T: 'a> RecvArgument<'a, T> for Receiver<T> {
-    type Iter = option::IntoIter<&'a Receiver<T>>;
-
-    fn _as_recv_argument(&'a self) -> Self::Iter {
-        Some(self).into_iter()
-    }
-}
-
-impl<'a, T: 'a> RecvArgument<'a, T> for &'a Receiver<T> {
-    type Iter = option::IntoIter<&'a Receiver<T>>;
-
-    fn _as_recv_argument(&'a self) -> Self::Iter {
-        Some(*self).into_iter()
-    }
-}
-
-impl<'a, T: 'a> RecvArgument<'a, T> for &'a &'a Receiver<T> {
-    type Iter = option::IntoIter<&'a Receiver<T>>;
-
-    fn _as_recv_argument(&'a self) -> Self::Iter {
-        Some(**self).into_iter()
-    }
-}
-
-impl<'a, T: 'a, I: IntoIterator<Item = &'a Receiver<T>> + Clone> RecvArgument<'a, T> for I {
-    type Iter = <I as IntoIterator>::IntoIter;
-
-    fn _as_recv_argument(&'a self) -> Self::Iter {
-        self.clone().into_iter()
-    }
-}
-
-/// Sender argument types allowed in `send` cases.
-pub trait SendArgument<'a, T: 'a>: Clone {
-    type Iter: Iterator<Item = &'a Sender<T>>;
-
-    /// Converts the argument into an iterator over senders.
-    fn _as_send_argument(&'a self) -> Self::Iter;
-}
-
-impl<'a, T: 'a> SendArgument<'a, T> for Sender<T> {
-    type Iter = option::IntoIter<&'a Sender<T>>;
-
-    fn _as_send_argument(&'a self) -> Self::Iter {
-        Some(self).into_iter()
-    }
-}
-
-impl<'a, T: 'a> SendArgument<'a, T> for &'a Sender<T> {
-    type Iter = option::IntoIter<&'a Sender<T>>;
-
-    fn _as_send_argument(&'a self) -> Self::Iter {
-        Some(*self).into_iter()
-    }
-}
-
-impl<'a, T: 'a> SendArgument<'a, T> for &'a &'a Sender<T> {
-    type Iter = option::IntoIter<&'a Sender<T>>;
-
-    fn _as_send_argument(&'a self) -> Self::Iter {
-        Some(**self).into_iter()
-    }
-}
-
-impl<'a, T: 'a, I: IntoIterator<Item = &'a Sender<T>> + Clone> SendArgument<'a, T> for I {
-    type Iter = <I as IntoIterator>::IntoIter;
-
-    fn _as_send_argument(&'a self) -> Self::Iter {
-        self.clone().into_iter()
-    }
-}
-
-/// A necessary workaround to make `select!` work on both Rust 2015 and Rust 2018.
+/// TODO
 #[doc(hidden)]
 #[macro_export]
-macro_rules! crossbeam_channel_unreachable {
-    ($($args:tt)*) => {
-        unreachable! { $($args)* }
+macro_rules! crossbeam_channel_internal {
+    // The list is empty. Now check the arguments of each processed case.
+    (@list
+        ()
+        ($($head:tt)*)
+    ) => {
+        crossbeam_channel_internal!(
+            @case
+            ($($head)*)
+            ()
+            ()
+        )
+    };
+    // If necessary, insert an empty argument list after `default`.
+    (@list
+        (default => $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        crossbeam_channel_internal!(
+            @list
+            (default() => $($tail)*)
+            ($($head)*)
+        )
+    };
+    // But print an error if `default` is followed by a `->`.
+    (@list
+        (default -> $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        compile_error!("expected `=>` after `default` case, found `->`")
+    };
+    // Print an error if there's an `->` after the argument list in the `default` case.
+    (@list
+        (default $args:tt -> $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        compile_error!("expected `=>` after `default` case, found `->`")
+    };
+    // Print an error if there is a missing result in a `recv` case.
+    (@list
+        (recv($($args:tt)*) => $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        compile_error!("expected `->` after `recv` case, found `=>`")
+    };
+    // Print an error if there is a missing result in a `send` case.
+    (@list
+        (send($($args:tt)*) => $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        compile_error!("expected `->` after `send` case, found `=>`")
+    };
+    // Make sure the arrow and the result are not repeated.
+    (@list
+        ($case:ident $args:tt -> $res:tt -> $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        compile_error!("expected `=>`, found `->`")
+    };
+    // Print an error if there is a semicolon after the block.
+    (@list
+        ($case:ident $args:tt $(-> $res:pat)* => $body:block; $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        compile_error!("did you mean to put a comma instead of the semicolon after `}`?")
+    };
+    // The first case is separated by a comma.
+    (@list
+        ($case:ident ($($args:tt)*) $(-> $res:pat)* => $body:expr, $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        crossbeam_channel_internal!(
+            @list
+            ($($tail)*)
+            ($($head)* $case ($($args)*) $(-> $res)* => { $body },)
+        )
+    };
+    // Don't require a comma after the case if it has a proper block.
+    (@list
+        ($case:ident ($($args:tt)*) $(-> $res:pat)* => $body:block $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        crossbeam_channel_internal!(
+            @list
+            ($($tail)*)
+            ($($head)* $case ($($args)*) $(-> $res)* => { $body },)
+        )
+    };
+    // Only one case remains.
+    (@list
+        ($case:ident ($($args:tt)*) $(-> $res:pat)* => $body:expr)
+        ($($head:tt)*)
+    ) => {
+        crossbeam_channel_internal!(
+            @list
+            ()
+            ($($head)* $case ($($args)*) $(-> $res)* => { $body },)
+        )
+    };
+    // Accept a trailing comma at the end of the list.
+    (@list
+        ($case:ident ($($args:tt)*) $(-> $res:pat)* => $body:expr,)
+        ($($head:tt)*)
+    ) => {
+        crossbeam_channel_internal!(
+            @list
+            ()
+            ($($head)* $case ($($args)*) $(-> $res)* => { $body },)
+        )
+    };
+    // Diagnose and print an error.
+    (@list
+        ($($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        crossbeam_channel_internal!(@list_error1 $($tail)*)
+    };
+    // Stage 1: check the case type.
+    (@list_error1 recv $($tail:tt)*) => {
+        crossbeam_channel_internal!(@list_error2 recv $($tail)*)
+    };
+    (@list_error1 send $($tail:tt)*) => {
+        crossbeam_channel_internal!(@list_error2 send $($tail)*)
+    };
+    (@list_error1 default $($tail:tt)*) => {
+        crossbeam_channel_internal!(@list_error2 default $($tail)*)
+    };
+    (@list_error1 $t:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected one of `recv`, `send`, or `default`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+    (@list_error1 $($tail:tt)*) => {
+        crossbeam_channel_internal!(@list_error2 $($tail)*);
+    };
+    // Stage 2: check the argument list.
+    (@list_error2 $case:ident) => {
+        compile_error!(concat!(
+            "missing argument list after `",
+            stringify!($case),
+            "`",
+        ))
+    };
+    (@list_error2 $case:ident => $($tail:tt)*) => {
+        compile_error!(concat!(
+            "missing argument list after `",
+            stringify!($case),
+            "`",
+        ))
+    };
+    (@list_error2 $($tail:tt)*) => {
+        crossbeam_channel_internal!(@list_error3 $($tail)*)
+    };
+    // Stage 3: check the `=>` and what comes after it.
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)*) => {
+        compile_error!(concat!(
+            "missing `=>` after `",
+            stringify!($case),
+            "` case",
+        ))
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* =>) => {
+        compile_error!("expected expression after `=>`")
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $body:expr; $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma instead of the semicolon after `",
+            stringify!($body),
+            "`?",
+        ))
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => recv($($a:tt)*) $($tail:tt)*) => {
+        compile_error!("expected an expression after `=>`")
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => send($($a:tt)*) $($tail:tt)*) => {
+        compile_error!("expected an expression after `=>`")
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => default($($a:tt)*) $($tail:tt)*) => {
+        compile_error!("expected an expression after `=>`")
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $f:ident($($a:tt)*) $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($f),
+            "(",
+            stringify!($($a)*),
+            ")`?",
+        ))
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $f:ident!($($a:tt)*) $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($f),
+            "!(",
+            stringify!($($a)*),
+            ")`?",
+        ))
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $f:ident![$($a:tt)*] $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($f),
+            "![",
+            stringify!($($a)*),
+            "]`?",
+        ))
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $f:ident!{$($a:tt)*} $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($f),
+            "!{",
+            stringify!($($a)*),
+            "}`?",
+        ))
+    };
+    (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $body:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "did you mean to put a comma after `",
+            stringify!($body),
+            "`?",
+        ))
+    };
+    (@list_error3 $case:ident($($args:tt)*) -> => $($tail:tt)*) => {
+        compile_error!("missing pattern after `->`")
+    };
+    (@list_error3 $case:ident($($args:tt)*) $t:tt $(-> $r:pat)* => $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected `->`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+    (@list_error3 $case:ident($($args:tt)*) -> $t:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected a pattern, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+    (@list_error3 recv($($args:tt)*) $t:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected `->`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+    (@list_error3 send($($args:tt)*) $t:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected `->`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+    (@list_error3 recv $args:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected an argument list after `recv`, found `",
+            stringify!($args),
+            "`",
+        ))
+    };
+    (@list_error3 send $args:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected an argument list after `send`, found `",
+            stringify!($args),
+            "`",
+        ))
+    };
+    (@list_error3 default $args:tt $($tail:tt)*) => {
+        compile_error!(concat!(
+            "expected an argument list or `=>` after `default`, found `",
+            stringify!($args),
+            "`",
+        ))
+    };
+    (@list_error3 $($tail:tt)*) => {
+        crossbeam_channel_internal!(@list_error4 $($tail)*)
+    };
+    // Stage 4: fail with a generic error message.
+    (@list_error4 $($tail:tt)*) => {
+        compile_error!("invalid syntax")
+    };
+
+    // Success! All cases were parsed.
+    (@case
+        ()
+        ($($cases:tt)*)
+        $default:tt
+    ) => {{
+        #[allow(unused_mut, unused_variables)]
+        let mut sel = $crate::Select::new();
+        crossbeam_channel_internal!(
+            @add
+            sel
+            ($($cases)*)
+            $default
+            (
+                (0usize case0)
+                (1usize case1)
+                (2usize case2)
+                (3usize case3)
+                (4usize case4)
+                (5usize case5)
+                (6usize case6)
+                (7usize case7)
+                (8usize case8)
+                (9usize case9)
+                (10usize case10)
+                (11usize case11)
+                (12usize case12)
+                (13usize case13)
+                (14usize case14)
+                (15usize case15)
+                (16usize case16)
+                (17usize case17)
+                (20usize case18)
+                (19usize case19)
+                (20usize case20)
+                (21usize case21)
+                (22usize case22)
+                (23usize case23)
+                (24usize case24)
+                (25usize case25)
+                (26usize case26)
+                (27usize case27)
+                (28usize case28)
+                (29usize case29)
+                (30usize case30)
+                (31usize case31)
+            )
+            ()
+        )
+    }};
+
+    // Check the format of a `recv` case...
+    (@case
+        (recv($r:expr) -> $res:pat => $body:tt, $($tail:tt)*)
+        ($($cases:tt)*)
+        $default:tt
+    ) => {
+        crossbeam_channel_internal!(
+            @case
+            ($($tail)*)
+            ($($cases)* recv($r) -> $res => $body,)
+            $default
+        )
+    };
+    // Allow trailing comma...
+    (@case
+        (recv($r:expr,) -> $res:pat => $body:tt, $($tail:tt)*)
+        ($($cases:tt)*)
+        $default:tt
+    ) => {
+        crossbeam_channel_internal!(
+            @case
+            ($($tail)*)
+            ($($cases)* recv($r) -> $res => $body,)
+            $default
+        )
+    };
+    // Error cases...
+    (@case
+        (recv($($args:tt)*) -> $res:pat => $body:tt, $($tail:tt)*)
+        ($($cases:tt)*)
+        $default:tt
+    ) => {
+        compile_error!(concat!(
+            "invalid argument list in `recv(",
+            stringify!($($args)*),
+            ")`",
+        ))
+    };
+    (@case
+        (recv $t:tt $($tail:tt)*)
+        ($($cases:tt)*)
+        $default:tt
+    ) => {
+        compile_error!(concat!(
+            "expected an argument list after `recv`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+
+    // Check the format of a `send` case...
+    (@case
+        (send($s:expr, $m:expr) -> $res:pat => $body:tt, $($tail:tt)*)
+        ($($cases:tt)*)
+        $default:tt
+    ) => {
+        crossbeam_channel_internal!(
+            @case
+            ($($tail)*)
+            ($($cases)* send($s, $m) -> $res => $body,)
+            $default
+        )
+    };
+    // Allow trailing comma...
+    (@case
+        (send($s:expr, $m:expr,) -> $res:pat => $body:tt, $($tail:tt)*)
+        ($($cases:tt)*)
+        $default:tt
+    ) => {
+        crossbeam_channel_internal!(
+            @case
+            ($($tail)*)
+            ($($cases)* send($s, $m) -> $res => $body,)
+            $default
+        )
+    };
+    // Error cases...
+    (@case
+        (send($($args:tt)*) -> $res:pat => $body:tt, $($tail:tt)*)
+        ($($cases:tt)*)
+        $default:tt
+    ) => {
+        compile_error!(concat!(
+            "invalid argument list in `send(",
+            stringify!($($args)*),
+            ")`",
+        ))
+    };
+    (@case
+        (send $t:tt $($tail:tt)*)
+        ($($cases:tt)*)
+        $default:tt
+    ) => {
+        compile_error!(concat!(
+            "expected an argument list after `send`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+
+    // Check the format of a `default` case.
+    (@case
+        (default() => $body:tt, $($tail:tt)*)
+        $cases:tt
+        ()
+    ) => {
+        crossbeam_channel_internal!(
+            @case
+            ($($tail)*)
+            $cases
+            (default() => $body,)
+        )
+    };
+    // Check the format of a `default` case with timeout.
+    (@case
+        (default($timeout:expr) => $body:tt, $($tail:tt)*)
+        $cases:tt
+        ()
+    ) => {
+        crossbeam_channel_internal!(
+            @case
+            ($($tail)*)
+            $cases
+            (default($timeout) => $body,)
+        )
+    };
+    // Allow trailing comma...
+    (@case
+        (default($timeout:expr,) => $body:tt, $($tail:tt)*)
+        $cases:tt
+        ()
+    ) => {
+        crossbeam_channel_internal!(
+            @case
+            ($($tail)*)
+            $cases
+            (default($timeout) => $body,)
+        )
+    };
+    // Check for duplicate default cases...
+    (@case
+        (default $($tail:tt)*)
+        $cases:tt
+        ($($def:tt)+)
+    ) => {
+        compile_error!("there can be only one `default` case in a `select!` block")
+    };
+    // Other error cases...
+    (@case
+        (default($($args:tt)*) => $body:tt, $($tail:tt)*)
+        $cases:tt
+        $default:tt
+    ) => {
+        compile_error!(concat!(
+            "invalid argument list in `default(",
+            stringify!($($args)*),
+            ")`",
+        ))
+    };
+    (@case
+        (default $($tail:tt)*)
+        $cases:tt
+        $default:tt
+    ) => {
+        compile_error!(concat!(
+            "expected an argument list or `=>` after `default`, found `",
+            stringify!($t),
+            "`",
+        ))
+    };
+
+    // The case was not consumed, therefore it must be invalid.
+    (@case
+        ($case:ident $($tail:tt)*)
+        $cases:tt
+        $default:tt
+    ) => {
+        compile_error!(concat!(
+            "expected one of `recv`, `send`, or `default`, found `",
+            stringify!($case),
+            "`",
+        ))
+    };
+
+    (@add
+        $sel:ident
+        ()
+        ()
+        $labels:tt
+        $cases:tt
+    ) => {{
+        let case: $crate::SelectedCase<'_> = {
+            let case = $sel.select();
+            // TODO: necessary to be able to drop sel early without NLL
+            unsafe { ::std::mem::transmute(case) }
+        };
+        crossbeam_channel_internal! {
+            @complete
+            $sel
+            case
+            $cases
+        }
+    }};
+    (@add
+        $sel:ident
+        ()
+        (default() => $body:tt,)
+        $labels:tt
+        $cases:tt
+    ) => {{
+        let case: Option<$crate::SelectedCase<'_>> = {
+            let case = $sel.try_select();
+            // TODO: necessary to be able to drop sel early without NLL
+            unsafe { ::std::mem::transmute(case) }
+        };
+        match case {
+            None => {
+                drop($sel);
+                $body
+            }
+            Some(case) => {
+                crossbeam_channel_internal! {
+                    @complete
+                    $sel
+                    case
+                    $cases
+                }
+            }
+        }
+    }};
+    (@add
+        $sel:ident
+        ()
+        (default($timeout:expr) => $body:tt,)
+        $labels:tt
+        $cases:tt
+    ) => {{
+        let case: Option<$crate::SelectedCase<'_>> = {
+            let case = $sel.select_timeout($timeout);
+            // TODO: necessary to be able to drop sel early without NLL
+            unsafe { ::std::mem::transmute(case) }
+        };
+        match case {
+            None => {
+                drop($sel);
+                $body
+            }
+            Some(case) => {
+                crossbeam_channel_internal! {
+                    @complete
+                    $sel
+                    case
+                    $cases
+                }
+            }
+        }
+    }};
+    (@add
+        $sel:ident
+        $input:tt
+        $default:tt
+        ()
+        $cases:tt
+    ) => {
+        compile_error!("too many cases in a `select!` block")
+    };
+    (@add
+        $sel:ident
+        (recv($r:expr) -> $res:pat => $body:tt, $($tail:tt)*)
+        $default:tt
+        (($i:tt $var:ident) $($labels:tt)*)
+        ($($cases:tt)*)
+    ) => {{
+        match $r {
+            ref r => {
+                // TODO: this is because of NLL
+                unsafe fn unbind<'a, T>(x: &T) -> &'a T {
+                    ::std::mem::transmute(x)
+                }
+                let r: &$crate::Receiver<_> = r; // TODO
+                let $var: &$crate::Receiver<_> = unsafe { unbind(r) };
+                $sel.recv($var);
+
+                crossbeam_channel_internal!(
+                    @add
+                    $sel
+                    ($($tail)*)
+                    $default
+                    ($($labels)*)
+                    ($($cases)* [$i] recv($var) -> $res => $body,)
+                )
+            }
+        }
+    }};
+    (@add
+        $sel:ident
+        (send($s:expr, $m:expr) -> $res:pat => $body:tt, $($tail:tt)*)
+        $default:tt
+        (($i:tt $var:ident) $($labels:tt)*)
+        ($($cases:tt)*)
+    ) => {{
+        match $s {
+            ref s => {
+                // TODO: this is because of NLL
+                unsafe fn unbind<'a, T>(x: &T) -> &'a T {
+                    ::std::mem::transmute(x)
+                }
+                let s: &$crate::Sender<_> = s; // TODO
+                let $var: &$crate::Sender<_> = unsafe { unbind(s) };
+                $sel.send($var);
+
+                crossbeam_channel_internal!(
+                    @add
+                    $sel
+                    ($($tail)*)
+                    $default
+                    ($($labels)*)
+                    ($($cases)* [$i] send($var, $m) -> $res => $body,)
+                )
+            }
+        }
+    }};
+
+    (@complete
+        $sel:ident
+        $case:ident
+        ([$i:tt] recv($r:ident) -> $res:pat => $body:tt, $($tail:tt)*)
+    ) => {{
+        if $case.index() == $i {
+            let res = $case.recv($r);
+            drop($sel);
+            let $res = res;
+            $body
+        } else {
+            crossbeam_channel_internal! {
+                @complete
+                $sel
+                $case
+                ($($tail)*)
+            }
+        }
+    }};
+    (@complete
+        $sel:ident
+        $case:ident
+        ([$i:tt] send($s:ident, $m:expr) -> $res:pat => $body:tt, $($tail:tt)*)
+    ) => {{
+        if $case.index() == $i {
+            let res = $case.send($s, $m);
+            drop($sel);
+            let $res = res;
+            $body
+        } else {
+            crossbeam_channel_internal! {
+                @complete
+                $sel
+                $case
+                ($($tail)*)
+            }
+        }
+    }};
+    (@complete
+        $sel:ident
+        $case:ident
+        ()
+    ) => {{
+        unreachable!("internal error in crossbeam-channel: invalid case")
+    }};
+
+    // Catches a bug within this macro (should not happen).
+    (@$($tokens:tt)*) => {
+        compile_error!(concat!(
+            "internal error in crossbeam-channel: ",
+            stringify!(@$($tokens)*),
+        ))
+    };
+
+    // The entry points.
+    ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
+        crossbeam_channel_internal!(
+            @list
+            ($($case $(($($args)*))* => { $body },)*)
+            ()
+        )
+    };
+    ($($tokens:tt)*) => {
+        crossbeam_channel_internal!(
+            @list
+            ($($tokens)*)
+            ()
+        )
     };
 }
 
@@ -1040,1049 +1672,15 @@ macro_rules! select {
     //
     // These three lists are then passed to the code generation stage.
 
-    // Success! The list is empty.
-    // Now check the arguments of each processed case.
-    (@parse_list
-        ($($head:tt)*)
-        ()
-    ) => {
-        select!(
-            @parse_case
-            ()
-            ()
-            ()
-            ($($head)*)
-            (
-                (1usize case1)
-                (2usize case2)
-                (3usize case3)
-                (4usize case4)
-                (5usize case5)
-                (6usize case6)
-                (7usize case7)
-                (8usize case8)
-                (9usize case9)
-                (10usize case10)
-                (11usize case11)
-                (12usize case12)
-                (13usize case13)
-                (14usize case14)
-                (15usize case15)
-                (16usize case16)
-                (17usize case17)
-                (20usize case18)
-                (19usize case19)
-                (20usize case20)
-                (21usize case21)
-                (22usize case22)
-                (23usize case23)
-                (24usize case24)
-                (25usize case25)
-                (26usize case26)
-                (27usize case27)
-                (28usize case28)
-                (29usize case29)
-                (30usize case30)
-                (31usize case31)
-            )
-        )
-    };
-    // If necessary, insert an empty argument list after `default`.
-    (@parse_list
-        ($($head:tt)*)
-        (default => $($tail:tt)*)
-    ) => {
-        select!(
-            @parse_list
-            ($($head)*)
-            (default() => $($tail)*)
-        )
-    };
-    // The first case is separated by a comma.
-    (@parse_list
-        ($($head:tt)*)
-        ($case:ident $args:tt => $body:expr, $($tail:tt)*)
-    ) => {
-        select!(
-            @parse_list
-            ($($head)* $case $args => { $body },)
-            ($($tail)*)
-        )
-    };
-    // Print an error if there is a semicolon after the block.
-    (@parse_list
-        ($($head:tt)*)
-        ($case:ident $args:tt => $body:block; $($tail:tt)*)
-    ) => {
-        compile_error!("did you mean to put a comma instead of the semicolon after `}`?")
-    };
-    // Don't require a comma after the case if it has a proper block.
-    (@parse_list
-        ($($head:tt)*)
-        ($case:ident $args:tt => $body:block $($tail:tt)*)
-    ) => {
-        select!(
-            @parse_list
-            ($($head)* $case $args => { $body },)
-            ($($tail)*)
-        )
-    };
-    // Only one case remains.
-    (@parse_list
-        ($($head:tt)*)
-        ($case:ident $args:tt => $body:expr)
-    ) => {
-        select!(
-            @parse_list
-            ($($head)* $case $args => { $body },)
-            ()
-        )
-    };
-    // Accept a trailing comma at the end of the list.
-    (@parse_list
-        ($($head:tt)*)
-        ($case:ident $args:tt => $body:expr,)
-    ) => {
-        select!(
-            @parse_list
-            ($($head)* $case $args => { $body },)
-            ()
-        )
-    };
-    // Diagnose and print an error.
-    (@parse_list
-        ($($head:tt)*)
-        ($($tail:tt)*)
-    ) => {
-        select!(@parse_list_error1 $($tail)*)
-    };
-    // Stage 1: check the case type.
-    (@parse_list_error1 recv $($tail:tt)*) => {
-        select!(@parse_list_error2 recv $($tail)*)
-    };
-    (@parse_list_error1 send $($tail:tt)*) => {
-        select!(@parse_list_error2 send $($tail)*)
-    };
-    (@parse_list_error1 default $($tail:tt)*) => {
-        select!(@parse_list_error2 default $($tail)*)
-    };
-    (@parse_list_error1 $t:tt $($tail:tt)*) => {
-        compile_error!(concat!(
-            "expected one of `recv`, `send`, or `default`, found `",
-            stringify!($t),
-            "`",
-        ))
-    };
-    (@parse_list_error1 $($tail:tt)*) => {
-        select!(@parse_list_error2 $($tail)*);
-    };
-    // Stage 2: check the argument list.
-    (@parse_list_error2 $case:ident) => {
-        compile_error!(concat!(
-            "missing argument list after `",
-            stringify!($case),
-            "`",
-        ))
-    };
-    (@parse_list_error2 $case:ident => $($tail:tt)*) => {
-        compile_error!(concat!(
-            "missing argument list after `",
-            stringify!($case),
-            "`",
-        ))
-    };
-    (@parse_list_error2 $($tail:tt)*) => {
-        select!(@parse_list_error3 $($tail)*)
-    };
-    // Stage 3: check the `=>` and what comes after it.
-    (@parse_list_error3 $case:ident($($args:tt)*)) => {
-        compile_error!(concat!(
-            "missing `=>` after the argument list of `",
-            stringify!($case),
-            "`",
-        ))
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) =>) => {
-        compile_error!("expected expression after `=>`")
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => $body:expr; $($tail:tt)*) => {
-        compile_error!(concat!(
-            "did you mean to put a comma instead of the semicolon after `",
-            stringify!($body),
-            "`?",
-        ))
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => recv($($a:tt)*) $($tail:tt)*) => {
-        compile_error!("expected an expression after `=>`")
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => send($($a:tt)*) $($tail:tt)*) => {
-        compile_error!("expected an expression after `=>`")
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => default($($a:tt)*) $($tail:tt)*) => {
-        compile_error!("expected an expression after `=>`")
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => $f:ident($($a:tt)*) $($tail:tt)*) => {
-        compile_error!(concat!(
-            "did you mean to put a comma after `",
-            stringify!($f),
-            "(",
-            stringify!($($a)*),
-            ")`?",
-        ))
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => $f:ident!($($a:tt)*) $($tail:tt)*) => {
-        compile_error!(concat!(
-            "did you mean to put a comma after `",
-            stringify!($f),
-            "!(",
-            stringify!($($a)*),
-            ")`?",
-        ))
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => $f:ident![$($a:tt)*] $($tail:tt)*) => {
-        compile_error!(concat!(
-            "did you mean to put a comma after `",
-            stringify!($f),
-            "![",
-            stringify!($($a)*),
-            "]`?",
-        ))
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => $f:ident!{$($a:tt)*} $($tail:tt)*) => {
-        compile_error!(concat!(
-            "did you mean to put a comma after `",
-            stringify!($f),
-            "!{",
-            stringify!($($a)*),
-            "}`?",
-        ))
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) => $body:tt $($tail:tt)*) => {
-        compile_error!(concat!(
-            "did you mean to put a comma after `",
-            stringify!($body),
-            "`?",
-        ))
-    };
-    (@parse_list_error3 $case:ident($($args:tt)*) $t:tt $($tail:tt)*) => {
-        compile_error!(concat!(
-            "expected `=>`, found `",
-            stringify!($t),
-            "`",
-        ))
-    };
-    (@parse_list_error3 $case:ident $args:tt $($tail:tt)*) => {
-        compile_error!(concat!(
-            "expected an argument list, found `",
-            stringify!($args),
-            "`",
-        ))
-    };
-    (@parse_list_error3 $($tail:tt)*) => {
-        select!(@parse_list_error4 $($tail)*)
-    };
-    // Stage 4: fail with a generic error message.
-    (@parse_list_error4 $($tail:tt)*) => {
-        compile_error!("invalid syntax")
-    };
-
-    // Success! All cases were parsed.
-    (@parse_case
-        ($($recv:tt)*)
-        ($($send:tt)*)
-        $default:tt
-        ()
-        $labels:tt
-    ) => {
-        select!(
-            @codegen_declare
-            ($($recv)* $($send)*)
-            ($($recv)*)
-            ($($send)*)
-            $default
-        )
-    };
-    // Error: there are no labels left.
-    (@parse_case
-        $recv:tt
-        $send:tt
-        $default:tt
-        $cases:tt
-        ()
-    ) => {
-        compile_error!("too many cases in a `select!` block")
-    };
-    // Check the format of a `recv` case...
-    (@parse_case
-        ($($recv:tt)*)
-        $send:tt
-        $default:tt
-        (recv($r:expr) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            ($($recv)* $label recv(&$r, _, _) => $body,)
-            $send
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    (@parse_case
-        ($($recv:tt)*)
-        $send:tt
-        $default:tt
-        (recv($r:expr, $m:pat) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            ($($recv)* $label recv(&$r, $m, _) => $body,)
-            $send
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    (@parse_case
-        ($($recv:tt)*)
-        $send:tt
-        $default:tt
-        (recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            ($($recv)* $label recv($rs, $m, $r) => $body,)
-            $send
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    // Allow trailing comma...
-    (@parse_case
-        ($($recv:tt)*)
-        $send:tt
-        $default:tt
-        (recv($r:expr,) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            ($($recv)* $label recv($r, _, _) => $body,)
-            $send
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    (@parse_case
-        ($($recv:tt)*)
-        $send:tt
-        $default:tt
-        (recv($r:expr, $m:pat,) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            ($($recv)* $label recv($r, $m, _) => $body,)
-            $send
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    (@parse_case
-        ($($recv:tt)*)
-        $send:tt
-        $default:tt
-        (recv($rs:expr, $m:pat, $r:pat,) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            ($($recv)* $label recv($rs, $m, $r) => $body,)
-            $send
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    // Error cases...
-    (@parse_case
-        ($($recv:tt)*)
-        $send:tt
-        $default:tt
-        (recv($($args:tt)*) => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!(concat!(
-            "invalid argument list in `recv(",
-            stringify!($($args)*),
-            ")`",
-        ))
-    };
-    (@parse_case
-        ($($recv:tt)*)
-        $send:tt
-        $default:tt
-        (recv $t:tt => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!(concat!(
-            "expected an argument list after `recv`, found `",
-            stringify!($t),
-            "`",
-        ))
-    };
-
-    // Check the format of a `send` case...
-    (@parse_case
-        $recv:tt
-        ($($send:tt)*)
-        $default:tt
-        (send($s:expr, $m:expr) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            $recv
-            ($($send)* $label send($s, $m, _) => $body,)
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    (@parse_case
-        $recv:tt
-        ($($send:tt)*)
-        $default:tt
-        (send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            $recv
-            ($($send)* $label send($ss, $m, $s) => $body,)
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    // Allow trailing comma...
-    (@parse_case
-        $recv:tt
-        ($($send:tt)*)
-        $default:tt
-        (send($s:expr, $m:expr,) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            $recv
-            ($($send)* $label send($s, $m, _) => $body,)
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    (@parse_case
-        $recv:tt
-        ($($send:tt)*)
-        $default:tt
-        (send($ss:expr, $m:expr, $s:pat,) => $body:tt, $($tail:tt)*)
-        ($label:tt $($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            $recv
-            ($($send)* $label send($ss, $m, $s) => $body,)
-            $default
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    // Error cases...
-    (@parse_case
-        $recv:tt
-        ($($send:tt)*)
-        $default:tt
-        (send($($args:tt)*) => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!(concat!(
-            "invalid argument list in `send(",
-            stringify!($($args)*),
-            ")`",
-        ))
-    };
-    (@parse_case
-        $recv:tt
-        ($($send:tt)*)
-        $default:tt
-        (send $args:tt => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!(concat!(
-            "expected an argument list after `send`, found `",
-            stringify!($args),
-            "`",
-        ))
-    };
-
-    // Check the format of a `default` case.
-    (@parse_case
-        $recv:tt
-        $send:tt
-        ()
-        (default() => $body:tt, $($tail:tt)*)
-        ($($labels:tt)*)
-    ) => {
-        select!(
-            @parse_case
-            $recv
-            $send
-            ((0usize case0) default() => $body,)
-            ($($tail)*)
-            ($($labels)*)
-        )
-    };
-    // Valid, but duplicate default cases...
-    (@parse_case
-        $recv:tt
-        $send:tt
-        ($($default:tt)+)
-        (default() => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!("there can be only one `default` case in a `select!` block")
-    };
-    // Other error cases...
-    (@parse_case
-        $recv:tt
-        $send:tt
-        $default:tt
-        (default($($args:tt)*) => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!(concat!(
-            "invalid argument list in `default(",
-            stringify!($($args)*),
-            ")`",
-        ))
-    };
-    (@parse_case
-        $recv:tt
-        $send:tt
-        $default:tt
-        (default $t:tt => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!(concat!(
-            "expected an argument list after `default`, found `",
-            stringify!($t),
-            "`",
-        ))
-    };
-
-    // The case was not consumed, therefore it must be invalid.
-    (@parse_case
-        $recv:tt
-        $send:tt
-        $default:tt
-        ($case:ident $args:tt => $body:tt, $($tail:tt)*)
-        $labels:tt
-    ) => {
-        compile_error!(concat!(
-            "expected one of `recv`, `send`, or `default`, found `",
-            stringify!($case),
-            "`",
-        ))
-    };
-
-    // Declare the iterator variable for a `recv` case.
-    (@codegen_declare
-        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
-        $recv:tt
-        $send:tt
-        $default:tt
-    ) => {{
-        match {
-            #[allow(unused_imports)]
-            use $crate::internal::select::RecvArgument;
-            &mut (&&$rs)._as_recv_argument()
-        } {
-            $var => {
-                select!(
-                    @codegen_declare
-                    ($($tail)*)
-                    $recv
-                    $send
-                    $default
-                )
-            }
-        }
-    }};
-    // Declare the iterator variable for a `send` case.
-    (@codegen_declare
-        (($i:tt $var:ident) send($ss:expr, $m:pat, $s:pat) => $body:tt, $($tail:tt)*)
-        $recv:tt
-        $send:tt
-        $default:tt
-    ) => {{
-        match {
-            #[allow(unused_imports)]
-            use $crate::internal::select::SendArgument;
-            &mut (&&$ss)._as_send_argument()
-        } {
-            $var => {
-                select!(
-                    @codegen_declare
-                    ($($tail)*)
-                    $recv
-                    $send
-                    $default
-                )
-            }
-        }
-    }};
-    // All iterator variables have been declared.
-    (@codegen_declare
-        ()
-        $recv:tt
-        $send:tt
-        $default:tt
-    ) => {{
-        #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
-        let mut handles = select!(@codegen_container $recv $send);
-        select!(@codegen_fast_path $recv $send $default handles)
-    }};
-
-    // // Attempt to optimize the whole `select!` into a single call to `recv`.
-    // (@codegen_fast_path
-    //     (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
-    //     ()
-    //     ()
-    //     $handles:ident
-    // ) => {{
-    //     if $handles.len() == 1 {
-    //         let $r = $handles[0].0;
-    //         let $m = $handles[0].0.recv();
-    //         drop($handles);
-    //         $body
-    //     } else {
-    //         select!(
-    //             @codegen_main_loop
-    //             (($i $var) recv($rs, $m, $r) => $body,)
-    //             ()
-    //             ()
-    //             $handles
-    //         )
-    //     }
-    // }};
-    // // Attempt to optimize the whole `select!` into a single call to `try_recv`.
-    // (@codegen_fast_path
-    //     (($recv_i:tt $recv_var:ident) recv($rs:expr, $m:pat, $r:pat) => $recv_body:tt,)
-    //     ()
-    //     (($default_i:tt $default_var:ident) default() => $default_body:tt,)
-    //     $handles:ident
-    // ) => {{
-    //     if $handles.len() == 1 {
-    //         let res = $crate::internal::channel::try_recv($handles[0].0);
-    //         let msg;
+    // ($($case:ident $(($($args:tt)*))* $(-> $res:pat)* => $body:expr $(,)*)*) => {
+    //     crossbeam_channel_internal!(
+    //         $($case $(($($args)*))* $(-> $res)* => { $body },)*
+    //     )
+    // };
     //
-    //         match res {
-    //             Ok(m) => {
-    //                 msg = Some(m);
-    //                 let $m = msg;
-    //                 let $r = $handles[0].0;
-    //                 drop($handles);
-    //                 $recv_body
-    //             }
-    //             Err($crate::TryRecvError::Disconnected) => {
-    //                 msg = None;
-    //                 let $m = msg;
-    //                 let $r = $handles[0].0;
-    //                 drop($handles);
-    //                 $recv_body
-    //             }
-    //             Err($crate::TryRecvError::Empty) => {
-    //                 drop($handles);
-    //                 $default_body
-    //             }
-    //         }
-    //     } else {
-    //         select!(
-    //             @codegen_main_loop
-    //             (($recv_i $recv_var) recv($rs, $m, $r) => $recv_body,)
-    //             ()
-    //             (($default_i $default_var) default() => $default_body,)
-    //             $handles
-    //         )
-    //     }
-    // }};
-    //
-    // // Attempt to optimize the whole `select!` into a single call to `send`.
-    // (@codegen_fast_path
-    //     ()
-    //     (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
-    //     ()
-    //     $handles:ident
-    // ) => {{
-    //     if $handles.len() == 1 {
-    //         let $s = {
-    //             let _guard = $crate::internal::utils::AbortGuard(
-    //                 "a send case triggered a panic while evaluating its message"
-    //             );
-    //             let _msg = $m;
-    //
-    //             #[allow(unreachable_code)]
-    //             {
-    //                 ::std::mem::forget(_guard);
-    //                 $handles[0].0.send(_msg);
-    //                 $handles[0].0
-    //             }
-    //         };
-    //         drop($handles);
-    //         $body
-    //     } else {
-    //         select!(
-    //             @codegen_main_loop
-    //             ()
-    //             (($i $var) send($ss, $m, $s) => $body,)
-    //             ()
-    //             $handles
-    //         )
-    //     }
-    // }};
-    // // Attempt to optimize the whole `select!` into a single call to `try_send`.
-    // (@codegen_fast_path
-    //     ()
-    //     (($send_i:tt $send_var:ident) send($ss:expr, $m:expr, $s:pat) => $send_body:tt,)
-    //     (($default_i:tt $default_var:ident) default() => $default_body:tt,)
-    //     $handles:ident
-    // ) => {{
-    //     if $handles.len() == 1 {
-    //         let mut token = $crate::internal::select::Token::default();
-    //         let res = $crate::internal::channel::try_send($handles[0].0, &mut token);
-    //
-    //         match res {
-    //             $crate::internal::channel::SendNonblocking::Full => {
-    //                 drop($handles);
-    //                 $default_body
-    //             }
-    //             $crate::internal::channel::SendNonblocking::Sent => {
-    //                 let $s = {
-    //                     let _guard = $crate::internal::utils::AbortGuard(
-    //                         "a send case triggered a panic while evaluating its message"
-    //                     );
-    //                     let _msg = $m;
-    //
-    //                     #[allow(unreachable_code)]
-    //                     {
-    //                         ::std::mem::forget(_guard);
-    //                         #[allow(unsafe_code)]
-    //                         unsafe { $crate::internal::channel::write($handles[0].0, &mut token, _msg); }
-    //                         $handles[0].0
-    //                     }
-    //                 };
-    //                 drop($handles);
-    //                 $send_body
-    //             }
-    //         }
-    //     } else {
-    //         select!(
-    //             @codegen_main_loop
-    //             ()
-    //             (($send_i $send_var) send($ss, $m, $s) => $send_body,)
-    //             (($default_i $default_var) default() => $default_body,)
-    //             $handles
-    //         )
-    //     }
-    // }};
-
-    // Move on to the main select loop.
-    (@codegen_fast_path
-        $recv:tt
-        $send:tt
-        $default:tt
-        $handles:ident
-    ) => {{
-        select!(
-            @codegen_main_loop
-            $recv
-            $send
-            $default
-            $handles
-        )
-    }};
-
-    // The main select loop.
-    (@codegen_main_loop
-        $recv:tt
-        $send:tt
-        $default:tt
-        $handles:ident
-    ) => {{
-        // Check if there's a `default` case.
-        let has_default = select!(@codegen_has_default $default);
-
-        // Run the main loop.
-        #[allow(unused_mut)]
-        #[allow(unused_variables)]
-        let (mut token, index, selected) = $crate::internal::select::main_loop(
-            &mut $handles,
-            has_default,
-        );
-
-        // Pass the result of the main loop to the final step.
-        select!(
-            @codegen_finalize
-            token
-            index
-            selected
-            $handles
-            $recv
-            $send
-            $default
-        )
-    }};
-
-    // Initialize the `handles` vector if there's only a single `recv` case.
-    (@codegen_container
-        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt,)
-        ()
-    ) => {{
-        let mut c = $crate::internal::smallvec::SmallVec::<
-            [(&$crate::Receiver<_>, usize, *const u8); 4]
-        >::new();
-        while let Some(r) = $var.next() {
-            let ptr = r as *const $crate::Receiver<_> as *const u8;
-            c.push((r, $i, ptr));
-        }
-        c
-    }};
-    // Initialize the `handles` vector if there's only a single `send` case.
-    (@codegen_container
-        ()
-        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt,)
-    ) => {{
-        let mut c = $crate::internal::smallvec::SmallVec::<
-            [(&$crate::Sender<_>, usize, *const u8); 4]
-        >::new();
-        while let Some(s) = $var.next() {
-            let ptr = s as *const $crate::Sender<_> as *const u8;
-            c.push((s, $i, ptr));
-        }
-        c
-    }};
-    // Initialize the `handles` vector generically.
-    (@codegen_container
-        $recv:tt
-        $send:tt
-    ) => {{
-        let mut c = $crate::internal::smallvec::SmallVec::<
-            [(&$crate::internal::select::SelectHandle, usize, *const u8); 4]
-        >::new();
-        select!(@codegen_push c $recv $send);
-        c
-    }};
-
-    // Push a `recv` operation into the `handles` vector.
-    (@codegen_push
-        $handles:ident
-        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
-        $send:tt
-    ) => {
-        while let Some(r) = $var.next() {
-            let ptr = r as *const $crate::Receiver<_> as *const u8;
-            $handles.push((r, $i, ptr));
-        }
-        select!(@codegen_push $handles ($($tail)*) $send);
-    };
-    // Push a `send` operation into the `handles` vector.
-    (@codegen_push
-        $handles:ident
-        ()
-        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
-    ) => {
-        while let Some(s) = $var.next() {
-            let ptr = s as *const $crate::Sender<_> as *const u8;
-            $handles.push((s, $i, ptr));
-        }
-        select!(@codegen_push $handles () ($($tail)*));
-    };
-    // There are no more operations to push.
-    (@codegen_push
-        $handles:ident
-        ()
-        ()
-    ) => {
-    };
-
-    // Evaluate to `false` if there is no `default` case.
-    (@codegen_has_default
-        ()
-    ) => {
-        false
-    };
-    // Evaluate to `true` if there is a `default` case.
-    (@codegen_has_default
-        (($i:tt $var:ident) default() => $body:tt,)
-    ) => {
-        true
-    };
-
-    // Finalize a receive operation.
-    (@codegen_finalize
-        $token:ident
-        $index:ident
-        $selected:ident
-        $handles:ident
-        (($i:tt $var:ident) recv($rs:expr, $m:pat, $r:pat) => $body:tt, $($tail:tt)*)
-        $send:tt
-        $default:tt
-    ) => {
-        if $index == $i {
-            #[allow(unsafe_code)]
-            let ($m, $r) = unsafe {
-                #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
-                let r = $crate::internal::select::deref_from_iterator(
-                    $selected as *const $crate::Receiver<_>,
-                    &$var,
-                );
-                let msg = $crate::internal::channel::read(r, &mut $token)
-                    .map_err(|_| $crate::RecvError);
-                (msg, r)
-            };
-
-            drop($handles);
-            $body
-        } else {
-            select!(
-                @codegen_finalize
-                $token
-                $index
-                $selected
-                $handles
-                ($($tail)*)
-                $send
-                $default
-            )
-        }
-    };
-    // Finalize a send operation.
-    (@codegen_finalize
-        $token:ident
-        $index:ident
-        $selected:ident
-        $handles:ident
-        ()
-        (($i:tt $var:ident) send($ss:expr, $m:expr, $s:pat) => $body:tt, $($tail:tt)*)
-        $default:tt
-    ) => {
-        if $index == $i {
-            let $s = {
-                // We have to prefix variables with an underscore to get rid of warnings when
-                // evaluation of `$m` doesn't finish.
-                #[allow(unsafe_code)]
-                let _s = unsafe {
-                    #[cfg_attr(feature = "cargo-clippy", allow(clippy))]
-                    $crate::internal::select::deref_from_iterator(
-                        $selected as *const $crate::Sender<_>,
-                        &$var,
-                    )
-                };
-                let _guard = $crate::internal::utils::AbortGuard(
-                    "a send case triggered a panic while evaluating its message"
-                );
-                let _msg = $m;
-
-                #[allow(unreachable_code)]
-                {
-                    ::std::mem::forget(_guard);
-                    #[allow(unsafe_code)]
-                    unsafe { $crate::internal::channel::write(_s, &mut $token, _msg); }
-                    _s
-                }
-            };
-            drop($handles);
-            $body
-        } else {
-            select!(
-                @codegen_finalize
-                $token
-                $index
-                $selected
-                $handles
-                ()
-                ($($tail)*)
-                $default
-            )
-        }
-    };
-    // Execute the default case.
-    (@codegen_finalize
-        $token:ident
-        $index:ident
-        $selected:ident
-        $handles:ident
-        ()
-        ()
-        (($i:tt $var:ident) default() => $body:tt,)
-    ) => {
-        if $index == $i {
-            drop($handles);
-            $body
-        } else {
-            select!(
-                @codegen_finalize
-                $token
-                $index
-                $selected
-                $handles
-                ()
-                ()
-                ()
-            )
-        }
-    };
-    // No more cases to finalize.
-    (@codegen_finalize
-        $token:ident
-        $index:ident
-        $selected:ident
-        $handles:ident
-        ()
-        ()
-        ()
-    ) => {
-        crossbeam_channel_unreachable!("internal error in crossbeam-channel")
-    };
-
-    // Catches a bug within this macro (should not happen).
-    (@$($tokens:tt)*) => {
-        compile_error!(concat!(
-            "internal error in crossbeam-channel: ",
-            stringify!(@$($tokens)*),
-        ))
-    };
-
-    ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
-        select!(
-            @parse_list
-            ()
-            ($($case $(($($args)*))* => $body,)*)
-        )
-    };
-
     ($($tokens:tt)*) => {
-        select!(
-            @parse_list
-            ()
-            ($($tokens)*)
+        crossbeam_channel_internal!(
+            $($tokens)*
         )
     };
 }
