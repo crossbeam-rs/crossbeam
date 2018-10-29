@@ -9,10 +9,12 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use err::{RecvError, TryRecvError};
+use err::{RecvTimeoutError, TryRecvError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Token};
 use internal::utils;
+
+// TODO: rename deadline to something better
 
 /// Result of a receive operation.
 pub type AfterToken = Option<Instant>;
@@ -99,19 +101,31 @@ impl Channel {
 
     /// Receives a message from the channel.
     #[inline]
-    pub fn recv(&self) -> Result<Instant, RecvError> {
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<Instant, RecvTimeoutError> {
         if self.flag().load(Ordering::SeqCst) {
-            // If the message was already received, block forever.
-            utils::sleep_forever();
+            utils::sleep_until(deadline);
+            return Err(RecvTimeoutError::Timeout);
         }
 
-        // Wait until the deadline.
+        // Wait until the message is received or the deadline is reached.
         loop {
             let now = Instant::now();
+
+            // Check if we can receive the next message.
             if now >= self.deadline {
                 break;
             }
-            thread::sleep(self.deadline - now);
+
+            // Check if the operation deadline has been reached.
+            if let Some(d) = deadline {
+                if now >= d {
+                    return Err(RecvTimeoutError::Timeout);
+                }
+
+                thread::sleep(self.deadline.min(d) - now);
+            } else {
+                thread::sleep(self.deadline - now);
+            }
         }
 
         // Try consuming the message if it is still available.

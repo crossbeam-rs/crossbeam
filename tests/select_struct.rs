@@ -21,6 +21,7 @@ use channel::TryRecvError;
 // TODO: rename select_struct.rs to select.rs and select.rs to select_macro.rs
 // TODO: forbid empty select
 // TODO: unify parse and codegen
+// TODO: disconnection vs closing? probably disconnection
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

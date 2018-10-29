@@ -9,9 +9,11 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
-use err::{RecvError, TryRecvError};
+use err::{RecvTimeoutError, TryRecvError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Token};
+
+// TODO: rename deadline to something better
 
 /// Result of a receive operation.
 pub type TickToken = Option<Instant>;
@@ -73,14 +75,14 @@ impl Channel {
 
     /// Receives a message from the channel.
     #[inline]
-    pub fn recv(&self) -> Result<Instant, RecvError> {
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<Instant, RecvTimeoutError> {
         loop {
-            // Compute the time to sleep until the next message.
+            // Compute the time to sleep until the next message or the deadline.
             let offset = {
                 let mut inner = self.inner.lock();
                 let now = Instant::now();
 
-                // If the deadline has been reached, we can receive the next message.
+                // Check if we can receive the next message.
                 if now >= inner.deadline {
                     let msg = inner.deadline;
                     inner.deadline = now + self.duration;
@@ -88,7 +90,16 @@ impl Channel {
                     return Ok(msg);
                 }
 
-                inner.deadline - now
+                // Check if the operation deadline has been reached.
+                if let Some(d) = deadline {
+                    if now >= d {
+                        return Err(RecvTimeoutError::Timeout);
+                    }
+
+                    inner.deadline.min(d) - now
+                } else {
+                    inner.deadline - now
+                }
             };
 
             thread::sleep(offset);

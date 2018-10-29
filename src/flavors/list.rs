@@ -10,7 +10,7 @@ use std::time::Instant;
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 use crossbeam_utils::CachePadded;
 
-use err::{RecvError, SendError, TryRecvError, TrySendError};
+use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
@@ -361,15 +361,20 @@ impl<T> Channel<T> {
 
     /// Attempts to send a message into the channel.
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        self.send(msg).map_err(|SendError(m)| TrySendError::Disconnected(m))
+        self.send(msg, None).map_err(|err| {
+            match err {
+                SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
+                SendTimeoutError::Timeout(_) => unreachable!(),
+            }
+        })
     }
 
     /// Sends a message into the channel.
-    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
+    pub fn send(&self, msg: T, _deadline: Option<Instant>) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
         assert!(self.start_send(token));
         unsafe {
-            self.write(token, msg).map_err(|m| SendError(m))
+            self.write(token, msg).map_err(|m| SendTimeoutError::Disconnected(m))
         }
     }
 
@@ -387,7 +392,7 @@ impl<T> Channel<T> {
     }
 
     /// Receives a message from the channel.
-    pub fn recv(&self) -> Result<T, RecvError> {
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         let token = &mut Token::default();
         loop {
             // Try receiving a message several times.
@@ -395,7 +400,7 @@ impl<T> Channel<T> {
             loop {
                 if self.start_recv(token) {
                     unsafe {
-                        return self.read(token).map_err(|_| RecvError);
+                        return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
                     }
                 }
                 if !backoff.snooze() {
@@ -414,7 +419,7 @@ impl<T> Channel<T> {
                 }
 
                 // Block the current thread.
-                let sel = cx.wait_until(None);
+                let sel = cx.wait_until(deadline);
 
                 match sel {
                     Selected::Waiting => unreachable!(),
@@ -424,7 +429,13 @@ impl<T> Channel<T> {
                     }
                     Selected::Operation(_) => {}
                 }
-            })
+            });
+
+            if let Some(d) = deadline {
+                if Instant::now() >= d {
+                    return Err(RecvTimeoutError::Timeout);
+                }
+            }
         }
     }
 

@@ -5,7 +5,7 @@ use std::num::Wrapping;
 use std::process;
 use std::sync::atomic;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rand;
 
@@ -110,5 +110,21 @@ pub fn shuffle<T>(v: &mut [T]) {
 pub fn sleep_forever() -> ! {
     loop {
         thread::sleep(Duration::from_secs(1000));
+    }
+}
+
+// TODO: replace sleep_forever with this
+pub fn sleep_until(deadline: Option<Instant>)  {
+    loop {
+        match deadline {
+            None => thread::sleep(Duration::from_secs(1000)),
+            Some(d) => {
+                let now = Instant::now();
+                if now >= d {
+                    break;
+                }
+                thread::sleep(d - now);
+            }
+        }
     }
 }

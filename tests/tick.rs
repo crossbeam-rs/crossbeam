@@ -7,8 +7,6 @@ extern crate rand;
 
 mod wrappers;
 
-// TODO: add a try_recv and recv_timeout test
-
 macro_rules! tests {
     ($channel:path) => {
         use std::sync::atomic::AtomicUsize;
@@ -107,6 +105,25 @@ macro_rules! tests {
         }
 
         #[test]
+        fn try_recv() {
+            let start = Instant::now();
+            let r = channel::tick(ms(200));
+
+            assert!(r.try_recv().is_err());
+
+            thread::sleep(ms(100));
+            assert!(r.try_recv().is_err());
+
+            thread::sleep(ms(200));
+            assert!(r.try_recv().is_ok());
+            assert!(r.try_recv().is_err());
+
+            thread::sleep(ms(200));
+            assert!(r.try_recv().is_ok());
+            assert!(r.try_recv().is_err());
+        }
+
+        #[test]
         fn recv() {
             let start = Instant::now();
             let r = channel::tick(ms(50));
@@ -120,6 +137,30 @@ macro_rules! tests {
             assert!(now - fired < fired - start);
 
             assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
+        }
+
+        #[test]
+        fn recv_timeout() {
+            let start = Instant::now();
+            let r = channel::tick(ms(200));
+
+            assert!(r.recv_timeout(ms(100)).is_err());
+            let now = Instant::now();
+            assert!(now - start >= ms(100));
+            assert!(now - start <= ms(150));
+
+            let fired = r.recv_timeout(ms(200)).unwrap();
+            assert!(fired - start >= ms(200));
+            assert!(fired - start <= ms(250));
+
+            assert!(r.recv_timeout(ms(100)).is_err());
+            let now = Instant::now();
+            assert!(now - start >= ms(300));
+            assert!(now - start <= ms(350));
+
+            let fired = r.recv_timeout(ms(200)).unwrap();
+            assert!(fired - start >= ms(400));
+            assert!(fired - start <= ms(450));
         }
 
         #[test]

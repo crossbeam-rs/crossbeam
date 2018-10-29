@@ -341,10 +341,15 @@ impl<T> Sender<T> {
     /// ```
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         match &self.inner.flavor {
-            ChannelFlavor::Array(chan) => chan.send(msg),
-            ChannelFlavor::List(chan) => chan.send(msg),
-            ChannelFlavor::Zero(chan) => chan.send(msg),
-        }
+            ChannelFlavor::Array(chan) => chan.send(msg, None),
+            ChannelFlavor::List(chan) => chan.send(msg, None),
+            ChannelFlavor::Zero(chan) => chan.send(msg, None),
+        }.map_err(|err| {
+            match err {
+                SendTimeoutError::Disconnected(msg) => SendError(msg),
+                SendTimeoutError::Timeout(_) => unreachable!(),
+            }
+        })
     }
 
     /// Sends a message into the channel, blocking if the channel is full for a limited time.
@@ -376,10 +381,12 @@ impl<T> Sender<T> {
     /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
     /// ```
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
-        // TODO: custom timeout impl
-        select! {
-            send(self, msg) -> _ => Ok(()),
-            recv(after(timeout)) -> _ => Err(SendTimeoutError::Timeout(msg)),
+        let deadline = Instant::now() + timeout;
+
+        match &self.inner.flavor {
+            ChannelFlavor::Array(chan) => chan.send(msg, Some(deadline)),
+            ChannelFlavor::List(chan) => chan.send(msg, Some(deadline)),
+            ChannelFlavor::Zero(chan) => chan.send(msg, Some(deadline)),
         }
     }
 
@@ -669,23 +676,29 @@ impl<T> Receiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
         match &self.flavor {
             ReceiverFlavor::Channel(arc) => match &arc.flavor {
-                ChannelFlavor::Array(chan) => chan.recv(),
-                ChannelFlavor::List(chan) => chan.recv(),
-                ChannelFlavor::Zero(chan) => chan.recv(),
+                ChannelFlavor::Array(chan) => chan.recv(None),
+                ChannelFlavor::List(chan) => chan.recv(None),
+                ChannelFlavor::Zero(chan) => chan.recv(None),
             },
             ReceiverFlavor::After(chan) => {
-                let msg = chan.recv();
+                let msg = chan.recv(None);
                 unsafe {
-                    mem::transmute_copy::<Result<Instant, RecvError>, Result<T, RecvError>>(&msg)
+                    mem::transmute_copy::<
+                        Result<Instant, RecvTimeoutError>,
+                        Result<T, RecvTimeoutError>,
+                    >(&msg)
                 }
             },
             ReceiverFlavor::Tick(chan) => {
-                let msg = chan.recv();
+                let msg = chan.recv(None);
                 unsafe {
-                    mem::transmute_copy::<Result<Instant, RecvError>, Result<T, RecvError>>(&msg)
+                    mem::transmute_copy::<
+                        Result<Instant, RecvTimeoutError>,
+                        Result<T, RecvTimeoutError>,
+                    >(&msg)
                 }
             },
-        }
+        }.map_err(|_| RecvError)
     }
 
     /// Waits for a message to be received from the channel but only for a limited time.
@@ -717,10 +730,32 @@ impl<T> Receiver<T> {
     /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
     /// ```
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        // TODO: custom timeout impl
-        select! {
-            recv(self) -> res => res.map_err(|_| RecvTimeoutError::Disconnected),
-            recv(after(timeout)) -> _ => Err(RecvTimeoutError::Timeout),
+        let deadline = Instant::now() + timeout;
+
+        match &self.flavor {
+            ReceiverFlavor::Channel(arc) => match &arc.flavor {
+                ChannelFlavor::Array(chan) => chan.recv(Some(deadline)),
+                ChannelFlavor::List(chan) => chan.recv(Some(deadline)),
+                ChannelFlavor::Zero(chan) => chan.recv(Some(deadline)),
+            },
+            ReceiverFlavor::After(chan) => {
+                let msg = chan.recv(Some(deadline));
+                unsafe {
+                    mem::transmute_copy::<
+                        Result<Instant, RecvTimeoutError>,
+                        Result<T, RecvTimeoutError>,
+                    >(&msg)
+                }
+            },
+            ReceiverFlavor::Tick(chan) => {
+                let msg = chan.recv(Some(deadline));
+                unsafe {
+                    mem::transmute_copy::<
+                        Result<Instant, RecvTimeoutError>,
+                        Result<T, RecvTimeoutError>,
+                    >(&msg)
+                }
+            },
         }
     }
 

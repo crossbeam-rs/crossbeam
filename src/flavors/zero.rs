@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use parking_lot::Mutex;
 
-use err::{RecvError, SendError, TryRecvError, TrySendError};
+use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use internal::context::Context;
 use internal::select::{Operation, SelectHandle, Selected, Token};
 use internal::utils::Backoff;
@@ -300,7 +300,7 @@ impl<T> Channel<T> {
     }
 
     /// Sends a message into the channel.
-    pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
+    pub fn send(&self, msg: T, deadline: Option<Instant>) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
         let mut inner = self.inner.lock();
 
@@ -315,7 +315,7 @@ impl<T> Channel<T> {
         }
 
         if inner.is_closed {
-            return Err(SendError(msg));
+            return Err(SendTimeoutError::Disconnected(msg));
         }
 
         Context::with(|cx| {
@@ -328,14 +328,19 @@ impl<T> Channel<T> {
             drop(inner);
 
             // Block the current thread.
-            let sel = cx.wait_until(None);
+            let sel = cx.wait_until(deadline);
 
             match sel {
-                Selected::Waiting | Selected::Aborted => unreachable!(),
+                Selected::Waiting => unreachable!(),
+                Selected::Aborted => {
+                    self.inner.lock().senders.unregister(oper).unwrap();
+                    let msg = unsafe { packet.msg.get().replace(None).unwrap() };
+                    Err(SendTimeoutError::Timeout(msg))
+                }
                 Selected::Closed => {
                     self.inner.lock().senders.unregister(oper).unwrap();
                     let msg = unsafe { packet.msg.get().replace(None).unwrap() };
-                    Err(SendError(msg))
+                    Err(SendTimeoutError::Disconnected(msg))
                 }
                 Selected::Operation(_) => {
                     // Wait until the message is read, then drop the packet.
@@ -366,7 +371,7 @@ impl<T> Channel<T> {
     }
 
     /// Receives a message from the channel.
-    pub fn recv(&self) -> Result<T, RecvError> {
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         let token = &mut Token::default();
         let mut inner = self.inner.lock();
 
@@ -375,12 +380,12 @@ impl<T> Channel<T> {
             token.zero = operation.packet;
             drop(inner);
             unsafe {
-                return self.read(token).map_err(|_| RecvError);
+                return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
             }
         }
 
         if inner.is_closed {
-            return Err(RecvError);
+            return Err(RecvTimeoutError::Disconnected);
         }
 
         Context::with(|cx| {
@@ -393,13 +398,17 @@ impl<T> Channel<T> {
             drop(inner);
 
             // Block the current thread.
-            let sel = cx.wait_until(None);
+            let sel = cx.wait_until(deadline);
 
             match sel {
-                Selected::Waiting | Selected::Aborted => unreachable!(),
+                Selected::Waiting => unreachable!(),
+                Selected::Aborted => {
+                    self.inner.lock().receivers.unregister(oper).unwrap();
+                    Err(RecvTimeoutError::Timeout)
+                }
                 Selected::Closed => {
                     self.inner.lock().receivers.unregister(oper).unwrap();
-                    Err(RecvError)
+                    Err(RecvTimeoutError::Disconnected)
                 }
                 Selected::Operation(_) => {
                     // Wait until the message is provided, then read it.
