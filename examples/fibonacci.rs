@@ -9,12 +9,12 @@ fn fibonacci(fib: channel::Sender<u64>, quit: channel::Receiver<()>) {
     let (mut x, mut y) = (0, 1);
     loop {
         select! {
-            send(fib, x) => {
+            send(fib, x) -> _ => {
                 let tmp = x;
                 x = y;
                 y = tmp + y;
             }
-            recv(quit) => {
+            recv(quit) -> _ => {
                 println!("quit");
                 return;
             }

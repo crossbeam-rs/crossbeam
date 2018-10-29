@@ -41,25 +41,26 @@ impl<T> Deref for Sender<T> {
 }
 
 impl<T> Sender<T> {
+    // TODO: try_send (and in other files)
+
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         select! {
-            send(self.0, msg) => {}
+            send(self.0, msg) -> res => res
         }
-        Ok(())
     }
 }
 
 impl<T> Receiver<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         select! {
-            recv(self.0, msg) => msg.map_err(|_| TryRecvError::Disconnected),
+            recv(self.0) -> res => res.map_err(|_| TryRecvError::Disconnected),
             default => Err(TryRecvError::Empty),
         }
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {
         select! {
-            recv(self.0, msg) => msg,
+            recv(self.0) -> res => res,
         }
     }
 }

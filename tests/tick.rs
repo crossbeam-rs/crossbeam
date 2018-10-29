@@ -43,13 +43,13 @@ macro_rules! tests {
             assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 
             select! {
-                recv(r) => panic!(),
+                recv(r) -> _ => panic!(),
                 default => {}
             }
 
             select! {
-                recv(r) => {}
-                recv(channel::after(ms(200))) => panic!(),
+                recv(r) -> _ => {}
+                recv(channel::after(ms(200))) -> _ => panic!(),
             }
         }
 
@@ -131,16 +131,16 @@ macro_rules! tests {
                 scope.spawn(|| {
                     for _ in 0..10 {
                         select! {
-                            recv(r1) => {}
-                            recv(r2) => {}
+                            recv(r1) -> _ => {}
+                            recv(r2) -> _ => {}
                         }
                     }
                 });
                 scope.spawn(|| {
                     for _ in 0..10 {
                         select! {
-                            recv(r1) => {}
-                            recv(r2) => {}
+                            recv(r1) -> _ => {}
+                            recv(r2) -> _ => {}
                         }
                     }
                 });
@@ -150,13 +150,13 @@ macro_rules! tests {
         #[test]
         fn recv_race() {
             select! {
-                recv(channel::tick(ms(50))) => {}
-                recv(channel::tick(ms(100))) => panic!(),
+                recv(channel::tick(ms(50))) -> _ => {}
+                recv(channel::tick(ms(100))) -> _ => panic!(),
             }
 
             select! {
-                recv(channel::tick(ms(100))) => panic!(),
-                recv(channel::tick(ms(50))) => {}
+                recv(channel::tick(ms(100))) -> _ => panic!(),
+                recv(channel::tick(ms(50))) -> _ => {}
             }
         }
 
@@ -166,14 +166,14 @@ macro_rules! tests {
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::tick(ms(0))) => {}
+                    recv(channel::tick(ms(0))) -> _ => {}
                     default => panic!(),
                 }
             }
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::tick(ms(100))) => panic!(),
+                    recv(channel::tick(ms(100))) -> _ => panic!(),
                     default => {}
                 }
             }
@@ -190,15 +190,16 @@ macro_rules! tests {
             crossbeam::scope(|scope| {
                 for _ in 0..THREADS {
                     scope.spawn(|| {
-                        let v = vec![&r1.0, &r2.0];
                         let timeout = channel::after(ms(1100));
-
                         loop {
                             select! {
-                                recv(v) => {
+                                recv(r1) -> _ => {
                                     hits.fetch_add(1, Ordering::SeqCst);
                                 }
-                                recv(timeout) => break
+                                recv(r2) -> _ => {
+                                    hits.fetch_add(1, Ordering::SeqCst);
+                                }
+                                recv(timeout) -> _ => break
                             }
                         }
                     });
@@ -221,8 +222,8 @@ macro_rules! tests {
 
                     for _ in 0..COUNT {
                         select! {
-                            recv(r1) => hits[0] += 1,
-                            recv(r2) => hits[1] += 1,
+                            recv(r1) -> _ => hits[0] += 1,
+                            recv(r2) -> _ => hits[1] += 1,
                         }
                     }
                 }
@@ -243,11 +244,11 @@ macro_rules! tests {
 
                     for _ in 0..COUNT {
                         select! {
-                            recv(r) => hits[0] += 1,
-                            recv(r) => hits[1] += 1,
-                            recv(r) => hits[2] += 1,
-                            recv(r) => hits[3] += 1,
-                            recv(r) => hits[4] += 1,
+                            recv(r) -> _ => hits[0] += 1,
+                            recv(r) -> _ => hits[1] += 1,
+                            recv(r) -> _ => hits[2] += 1,
+                            recv(r) -> _ => hits[3] += 1,
+                            recv(r) -> _ => hits[4] += 1,
                         }
                     }
                 }

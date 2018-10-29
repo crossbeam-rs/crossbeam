@@ -46,24 +46,23 @@ impl<T> Sender<T> {
         if self.0.capacity() == Some(0) {
             // Zero-capacity channel are an exception - they need truly blocking operations.
             select! {
-                send(self.0, msg) => {}
+                send(self.0, msg) -> res => res
             }
         } else {
             loop {
                 select! {
-                    send(self.0, msg) => break,
+                    send(self.0, msg) -> res => break res,
                     default => thread::yield_now(),
                 }
             }
         }
-        Ok(())
     }
 }
 
 impl<T> Receiver<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         select! {
-            recv(self.0, msg) => msg.map_err(|_| TryRecvError::Disconnected),
+            recv(self.0) -> res => res.map_err(|_| TryRecvError::Disconnected),
             default => Err(TryRecvError::Empty),
         }
     }
@@ -72,12 +71,12 @@ impl<T> Receiver<T> {
         if self.0.capacity() == Some(0) {
             // Zero-capacity channel are an exception - they need truly blocking operations.
             select! {
-                recv(self.0, msg) => msg,
+                recv(self.0) -> res => res,
             }
         } else {
             loop {
                 select! {
-                    recv(self.0, msg) => break msg,
+                    recv(self.0) -> res => break res,
                     default => thread::yield_now(),
                 }
             }

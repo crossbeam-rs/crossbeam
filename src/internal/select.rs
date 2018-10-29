@@ -606,6 +606,7 @@ where
 //     }
 // }
 
+// TODO impl Clone for Select<'a>, Debug and so on (we need some of those on SelectedCase too)
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,

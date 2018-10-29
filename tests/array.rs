@@ -496,8 +496,8 @@ macro_rules! tests {
             let mut hits = [0usize; 2];
             for _ in 0..COUNT {
                 select! {
-                    recv(r1) => hits[0] += 1,
-                    recv(r2) => hits[1] += 1,
+                    recv(r1) -> _  => hits[0] += 1,
+                    recv(r2) -> _  => hits[1] += 1,
                 }
             }
             assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
@@ -516,11 +516,11 @@ macro_rules! tests {
             let mut hits = [0usize; 5];
             for _ in 0..COUNT {
                 select! {
-                    recv(r) => hits[0] += 1,
-                    recv(r) => hits[1] += 1,
-                    recv(r) => hits[2] += 1,
-                    recv(r) => hits[3] += 1,
-                    recv(r) => hits[4] += 1,
+                    recv(r) -> _ => hits[0] += 1,
+                    recv(r) -> _ => hits[1] += 1,
+                    recv(r) -> _ => hits[2] += 1,
+                    recv(r) -> _ => hits[3] += 1,
+                    recv(r) -> _ => hits[4] += 1,
                 }
             }
             assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
@@ -532,7 +532,7 @@ macro_rules! tests {
             s.send(()).unwrap();
 
             select! {
-                send(s, panic!()) => panic!(),
+                send(s, panic!()) -> _ => panic!(),
                 default => {}
             }
 
@@ -540,7 +540,7 @@ macro_rules! tests {
             s.send(()).unwrap();
 
             select! {
-                send(s, assert_eq!(r.recv(), Ok(()))) => {}
+                send(s, assert_eq!(r.recv(), Ok(()))) -> _ => {}
             }
         }
     };

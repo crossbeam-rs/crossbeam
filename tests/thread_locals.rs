@@ -23,8 +23,8 @@ fn use_while_exiting() {
             // use the thread-locals and must not panic.
             let (_s, r) = channel::unbounded::<()>();
             select! {
-                recv(r) => {}
-                recv(channel::after(ms(100))) => {}
+                recv(r) -> _ => {}
+                recv(channel::after(ms(100))) -> _ => {}
             }
         }
     }
