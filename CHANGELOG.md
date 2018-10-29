@@ -9,7 +9,7 @@
   old implementation.  Its API is changed in a backward-incompatible way.
 - Switch to the new implementation of `CachePadded` and scoped thread in
   [`crossbeam-utils`](https://github.com/crossbeam-rs/crossbeam-utils).  The scoped thread API is
-  changed in a backward-incompatible way.  
+  changed in a backward-incompatible way.
 - Switch to the new implementation of Chase-Lev deque in
   [`crossbeam-deque`](https://github.com/crossbeam-rs/crossbeam-deque).  Its API is changed in a
   backward-incompatible way.
