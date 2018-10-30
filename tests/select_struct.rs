@@ -22,6 +22,7 @@ use channel::TryRecvError;
 // TODO: forbid empty select
 // TODO: unify parse and codegen
 // TODO: disconnection vs closing? probably disconnection
+// TODO: make sure linearizable with timeout == now
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -96,33 +97,31 @@ fn closed() {
             s2.send(5).unwrap();
         });
 
-        let after = channel::after(ms(1000));
         let mut sel = Select::new();
         let case1 = sel.recv(&r1);
         let case2 = sel.recv(&r2);
-        let case3 = sel.recv(&after);
-        let case = sel.select();
-        match case.index() {
-            i if i == case1 => assert!(case.recv(&r1).is_err()),
-            i if i == case2 => panic!(),
-            i if i == case3 => panic!(),
-            _ => unreachable!(),
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => assert!(case.recv(&r1).is_err()),
+                i if i == case2 => panic!(),
+                _ => unreachable!(),
+            }
         }
 
         r2.recv().unwrap();
     });
 
-    let after = channel::after(ms(1000));
     let mut sel = Select::new();
     let case1 = sel.recv(&r1);
     let case2 = sel.recv(&r2);
-    let case3 = sel.recv(&after);
-    let case = sel.select();
-    match case.index() {
-        i if i == case1 => assert!(case.recv(&r1).is_err()),
-        i if i == case2 => panic!(),
-        i if i == case3 => panic!(),
-        _ => unreachable!(),
+    match sel.select_timeout(ms(1000)) {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert!(case.recv(&r1).is_err()),
+            i if i == case2 => panic!(),
+            _ => unreachable!(),
+        }
     }
 
     crossbeam::scope(|scope| {
@@ -131,15 +130,15 @@ fn closed() {
             drop(s2);
         });
 
-        let after = channel::after(ms(1000));
         let mut sel = Select::new();
         let case1 = sel.recv(&r2);
-        let case2 = sel.recv(&after);
-        let case = sel.select();
-        match case.index() {
-            i if i == case1 => assert!(case.recv(&r2).is_err()),
-            i if i == case2 => panic!(),
-            _ => unreachable!(),
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => assert!(case.recv(&r2).is_err()),
+                i if i == case2 => panic!(),
+                _ => unreachable!(),
+            }
         }
     });
 }
@@ -186,74 +185,78 @@ fn default() {
     let mut sel = Select::new();
     let _case1 = sel.recv(&r2);
     match sel.try_select() {
-        None => {},
+        None => {}
         Some(_) => panic!(),
     }
 
     let mut sel = Select::new();
     match sel.try_select() {
-        None => {},
+        None => {}
         Some(_) => panic!(),
     }
 }
 
-// #[test]
-// fn timeout() {
-//     let (_s1, r1) = channel::unbounded::<i32>();
-//     let (s2, r2) = channel::unbounded::<i32>();
-//
-//     crossbeam::scope(|scope| {
-//         scope.spawn(|| {
-//             thread::sleep(ms(1500));
-//             s2.send(2).unwrap();
-//         });
-//
-//         let after = channel::after(ms(1000));
-//         let mut sel = Select::new();
-//         let case1 = sel.recv(&r1);
-//         let case2 = sel.recv(&r2);
-//         let case3 = sel.recv(&after);
-//         let case = sel.select();
-//         match case.index() {
-//             i if i == case1 => panic!(),
-//             i if i == case2 => panic!(),
-//             i if i == case3 => sel.recv(&after).unwrap(),
-//             _ => unreachable!(),
-//         }
-//
-//         let after = channel::after(ms(1000));
-//         let mut sel = Select::new();
-//         let case1 = sel.recv(&r1);
-//         let case2 = sel.recv(&r2);
-//         let case3 = sel.recv(&after);
-//         let case = sel.select();
-//         match case.index() {
-//             i if i == case1 => panic!(),
-//             i if i == case2 => assert_eq!(sel.recv(&rx2), Ok(2)),
-//             i if i == case3 => panic!(),
-//             _ => unreachable!(),
-//         }
-//     });
-//
-//     crossbeam::scope(|scope| {
-//         let (s, r) = channel::unbounded::<i32>();
-//
-//         scope.spawn(move || {
-//             thread::sleep(ms(500));
-//             drop(s);
-//         });
-//
-//         let after = channel::after(ms(1000));
-//         Select::new()
-//             .recv(&after, |_| {
-//                 Select::new()
-//                     .recv(&r, |v| assert!(v.is_none()))
-//                     .default(|| panic!())
-//                     .wait();
-//             })
-//             .wait();
-//     });
-// }
+#[test]
+fn timeout() {
+    let (_s1, r1) = channel::unbounded::<i32>();
+    let (s2, r2) = channel::unbounded::<i32>();
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(ms(1500));
+            s2.send(2).unwrap();
+        });
+
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        match sel.select_timeout(ms(1000)) {
+            None => {}
+            Some(case) => match case.index() {
+                i if i == case1 => panic!(),
+                i if i == case2 => panic!(),
+                _ => unreachable!(),
+            }
+        }
+
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => panic!(),
+                i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
+                _ => unreachable!(),
+            }
+        }
+    });
+
+    crossbeam::scope(|scope| {
+        let (s, r) = channel::unbounded::<i32>();
+
+        scope.spawn(move || {
+            thread::sleep(ms(500));
+            drop(s);
+        });
+
+        let mut sel = Select::new();
+        match sel.select_timeout(ms(1000)) {
+            None => {
+                let mut sel = Select::new();
+                let case1 = sel.recv(&r);
+                match sel.try_select() {
+                    None => panic!(),
+                    Some(case) => match case.index() {
+                        i if i == case1 => assert!(case.recv(&r).is_err()),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            Some(_) => unreachable!(),
+        }
+    });
+}
 
 #[test]
 fn default_when_closed() {
@@ -271,17 +274,18 @@ fn default_when_closed() {
 
     let (_, r) = channel::unbounded::<i32>();
 
-    let after = channel::after(ms(1000));
     let mut sel = Select::new();
     let case1 = sel.recv(&r);
-    let case2 = sel.recv(&after);
-    let case = sel.select();
-    match case.index() {
-        i if i == case1 => assert!(case.recv(&r).is_err()),
-        i if i == case2 => panic!(),
-        _ => unreachable!(),
+    match sel.select_timeout(ms(1000)) {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert!(case.recv(&r).is_err()),
+            _ => unreachable!(),
+        }
     }
 }
+
+// TODO: default when sender closed
 
 #[test]
 fn unblocks() {
@@ -294,17 +298,16 @@ fn unblocks() {
             s2.send(2).unwrap();
         });
 
-        let after = channel::after(ms(1000));
         let mut sel = Select::new();
         let case1 = sel.recv(&r1);
         let case2 = sel.recv(&r2);
-        let case3 = sel.recv(&after);
-        let case = sel.select();
-        match case.index() {
-            i if i == case1 => panic!(),
-            i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
-            i if i == case3 => panic!(),
-            _ => unreachable!(),
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => panic!(),
+                i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
+                _ => unreachable!(),
+            }
         }
     });
 
@@ -314,17 +317,16 @@ fn unblocks() {
             assert_eq!(r1.recv().unwrap(), 1);
         });
 
-        let after = channel::after(ms(1000));
         let mut sel = Select::new();
         let case1 = sel.send(&s1);
         let case2 = sel.send(&s2);
-        let case3 = sel.recv(&after);
-        let case = sel.select();
-        match case.index() {
-            i if i == case1 => case.send(&s1, 1).unwrap(),
-            i if i == case2 => panic!(),
-            i if i == case3 => panic!(),
-            _ => unreachable!(),
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => case.send(&s1, 1).unwrap(),
+                i if i == case2 => panic!(),
+                _ => unreachable!(),
+            }
         }
     });
 }
@@ -432,17 +434,16 @@ fn loop_try() {
             scope.spawn(|| {
                 thread::sleep(ms(500));
 
-                let after = channel::after(ms(1000));
                 let mut sel = Select::new();
                 let case1 = sel.recv(&r1);
                 let case2 = sel.send(&s2);
-                let case3 = sel.recv(&after);
-                let case = sel.select();
-                match case.index() {
-                    i if i == case1 => assert_eq!(case.recv(&r1), Ok(1)),
-                    i if i == case2 => assert!(case.send(&s2, 2).is_ok()),
-                    i if i == case3 => assert!(case.recv(&after).is_ok()),
-                    _ => unreachable!(),
+                match sel.select_timeout(ms(1000)) {
+                    None => {}
+                    Some(case) => match case.index() {
+                        i if i == case1 => assert_eq!(case.recv(&r1), Ok(1)),
+                        i if i == case2 => assert!(case.send(&s2, 2).is_ok()),
+                        _ => unreachable!(),
+                    }
                 }
 
                 drop(s_end);
@@ -755,18 +756,17 @@ fn stress_timeout_two_threads() {
 
                 let mut done = false;
                 while !done {
-                    let after = channel::after(ms(100));
                     let mut sel = Select::new();
                     let case1 = sel.send(&s);
-                    let case2 = sel.recv(&after);
-                    let case = sel.select();
-                    match case.index() {
-                        c if c == case1 => {
-                            assert!(case.send(&s, i).is_ok());
-                            break;
+                    match sel.select_timeout(ms(100)) {
+                        None => {}
+                        Some(case) => match case.index() {
+                            c if c == case1 => {
+                                assert!(case.send(&s, i).is_ok());
+                                break;
+                            }
+                            _ => unreachable!(),
                         }
-                        c if c == case2 => assert!(case.recv(&after).is_ok()),
-                        _ => unreachable!(),
                     }
                 }
             }
@@ -780,18 +780,17 @@ fn stress_timeout_two_threads() {
 
                 let mut done = false;
                 while !done {
-                    let after = channel::after(ms(100));
                     let mut sel = Select::new();
                     let case1 = sel.recv(&r);
-                    let case2 = sel.recv(&after);
-                    let case = sel.select();
-                    match case.index() {
-                        c if c == case1 => {
-                            assert_eq!(case.recv(&r), Ok(i));
-                            done = true;
+                    match sel.select_timeout(ms(100)) {
+                        None => {}
+                        Some(case) => match case.index() {
+                            c if c == case1 => {
+                                assert_eq!(case.recv(&r), Ok(i));
+                                done = true;
+                            }
+                            _ => unreachable!(),
                         }
-                        c if c == case2 => assert!(case.recv(&after).is_ok()),
-                        _ => unreachable!(),
                     }
                 }
             }
@@ -802,31 +801,29 @@ fn stress_timeout_two_threads() {
 #[test]
 fn send_recv_same_channel() {
     let (s, r) = channel::bounded::<i32>(0);
-    let after = channel::after(ms(500));
     let mut sel = Select::new();
     let case1 = sel.send(&s);
     let case2 = sel.recv(&r);
-    let case3 = sel.recv(&after);
-    let case = sel.select();
-    match case.index() {
-        c if c == case1 => panic!(),
-        c if c == case2 => panic!(),
-        c if c == case3 => assert!(case.recv(&after).is_ok()),
-        _ => unreachable!(),
+    match sel.select_timeout(ms(100)) {
+        None => {}
+        Some(case) => match case.index() {
+            c if c == case1 => panic!(),
+            c if c == case2 => panic!(),
+            _ => unreachable!(),
+        }
     }
 
     let (s, r) = channel::unbounded::<i32>();
-    let after = channel::after(ms(500));
     let mut sel = Select::new();
     let case1 = sel.send(&s);
     let case2 = sel.recv(&r);
-    let case3 = sel.recv(&after);
-    let case = sel.select();
-    match case.index() {
-        c if c == case1 => assert!(case.send(&s, 0).is_ok()),
-        c if c == case2 => panic!(),
-        c if c == case3 => panic!(),
-        _ => unreachable!(),
+    match sel.select_timeout(ms(100)) {
+        None => panic!(),
+        Some(case) => match case.index() {
+            c if c == case1 => assert!(case.send(&s, 0).is_ok()),
+            c if c == case2 => panic!(),
+            _ => unreachable!(),
+        }
     }
 }
 

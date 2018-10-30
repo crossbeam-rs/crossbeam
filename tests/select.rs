@@ -13,6 +13,9 @@ use std::time::Duration;
 use channel::TryRecvError;
 
 // TODO: modify a borrowed sender/receiver inside select! body
+// TODO: fix unreachable lints in select!
+// TODO: use abortguard so that panicking message prints a more sensible message
+// TODO: remove all instances of std::process
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -72,7 +75,7 @@ fn closed() {
         select! {
             recv(r1) -> v => assert!(v.is_err()),
             recv(r2) -> _ => panic!(),
-            recv(channel::after(ms(1000))) -> _ => panic!(),
+            default(ms(1000)) => panic!(),
         }
 
         r2.recv().unwrap();
@@ -81,7 +84,7 @@ fn closed() {
     select! {
         recv(r1) -> v => assert!(v.is_err()),
         recv(r2) -> _ => panic!(),
-        recv(channel::after(ms(1000))) -> _ => panic!(),
+        default(ms(1000)) => panic!(),
     }
 
     crossbeam::scope(|scope| {
@@ -92,7 +95,7 @@ fn closed() {
 
         select! {
             recv(r2) -> v => assert!(v.is_err()),
-            recv(channel::after(ms(1000))) -> _ => panic!(),
+            default(ms(1000)) => panic!(),
         }
     });
 }
@@ -147,13 +150,13 @@ fn timeout() {
         select! {
             recv(r1) -> _ => panic!(),
             recv(r2) -> _ => panic!(),
-            recv(channel::after(ms(1000))) -> _ => {},
+            default(ms(1000)) => {},
         }
 
         select! {
             recv(r1) -> _ => panic!(),
             recv(r2) -> v => assert_eq!(v, Ok(2)),
-            recv(channel::after(ms(1000))) -> _ => panic!(),
+            default(ms(1000)) => panic!(),
         }
     });
 
@@ -166,7 +169,7 @@ fn timeout() {
         });
 
         select! {
-            recv(channel::after(ms(1000))) -> _ => {
+            default(ms(1000)) => {
                 select! {
                     recv(r) -> v => assert!(v.is_err()),
                     default => panic!(),
@@ -189,9 +192,11 @@ fn default_when_closed() {
 
     select! {
         recv(r) -> v => assert!(v.is_err()),
-        recv(channel::after(ms(1000))) -> _ => panic!(),
+        default(ms(1000)) => panic!(),
     }
 }
+
+// TODO: default when sender closed
 
 #[test]
 fn unblocks() {
@@ -207,7 +212,7 @@ fn unblocks() {
         select! {
             recv(r1) -> _ => panic!(),
             recv(r2) -> v => assert_eq!(v, Ok(2)),
-            recv(channel::after(ms(1000))) -> _ => panic!(),
+            default(ms(1000)) => panic!(),
         }
     });
 
@@ -220,7 +225,7 @@ fn unblocks() {
         select! {
             send(s1, 1) -> _ => {},
             send(s2, 2) -> _ => panic!(),
-            recv(channel::after(ms(1000))) -> _ => panic!(),
+            default(ms(1000)) => panic!(),
         }
     });
 }
@@ -290,7 +295,7 @@ fn loop_try() {
                 select! {
                     recv(r1) -> v => assert_eq!(v, Ok(1)),
                     send(s2, 2) -> _ => {},
-                    recv(channel::after(ms(500))) -> _ => panic!(),
+                    default(ms(500)) => panic!(),
                 }
 
                 drop(s_end);
@@ -550,7 +555,7 @@ fn stress_timeout_two_threads() {
                 loop {
                     select! {
                         send(s, i) -> _ => break,
-                        recv(channel::after(ms(100))) -> _ => {}
+                        default(ms(100)) => {}
                     }
                 }
             }
@@ -568,7 +573,7 @@ fn stress_timeout_two_threads() {
                             assert_eq!(v, Ok(i));
                             break;
                         }
-                        recv(channel::after(ms(100))) -> _ => {}
+                        default(ms(100)) => {}
                     }
                 }
             }
@@ -582,14 +587,14 @@ fn send_recv_same_channel() {
     select! {
         send(s, 0) -> _ => panic!(),
         recv(r) -> _ => panic!(),
-        recv(channel::after(ms(500))) -> _ => {}
+        default(ms(500)) => {}
     }
 
     let (s, r) = channel::unbounded::<i32>();
     select! {
         send(s, 0) -> _ => {},
         recv(r) -> _ => panic!(),
-        recv(channel::after(ms(500))) -> _ => panic!(),
+        default(ms(500)) => panic!(),
     }
 }
 

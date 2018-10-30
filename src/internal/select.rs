@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::option;
 use std::ptr;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use err::{RecvError, SendError};
 use internal::channel::{self, Receiver, Sender};
@@ -148,13 +148,20 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
     }
 }
 
+#[derive(Eq, PartialEq)]
+enum Timeout {
+    Now,
+    Never,
+    At(Instant),
+}
+
 /// Runs until one of the operations is fired, potentially blocking the current thread.
 ///
 /// Receive operations will have to be followed up by `read`, and send operations by `write`.
-pub fn main_loop<S>(
+fn main_loop<S>(
     handles: &mut [(&S, usize, *const u8)],
-    has_default: bool,
-) -> (Token, usize, *const u8) // TODO: return Option<_> (for default case)
+    timeout: Timeout,
+) -> Option<(Token, usize, *const u8)>
 where
     S: SelectHandle + ?Sized,
 {
@@ -162,74 +169,92 @@ where
     // and is later used by a call to `read` or `write` that completes the selected operation.
     let mut token = Token::default();
 
-    // Shuffle the operations for fairness.
-    if handles.len() >= 2 {
-        utils::shuffle(handles);
-    }
-
     if handles.is_empty() {
-        if has_default {
-            // If there is only the `default` case, return.
-            return (token, 0, ptr::null());
-        } else {
-            // If there are no operations at all, block forever.
-            utils::sleep_forever();
+        // Wait until the timeout and return.
+        match timeout {
+            Timeout::Now => return None,
+            Timeout::Never => {
+                utils::sleep_until(None);
+                unreachable!();
+            }
+            Timeout::At(when) => {
+                utils::sleep_until(Some(when));
+                return None;
+            }
         }
     }
 
-    if has_default && handles.len() > 1 {
-        let mut states = SmallVec::<[usize; 4]>::with_capacity(handles.len());
-
-        // Snapshot the channel states of all operations.
-        for &(handle, _, _) in handles.iter() {
-            states.push(handle.state());
-        }
-
-        loop {
-            // Try firing the operations.
+    let try_select = |handles: &mut [(&S, usize, *const u8)], mut token: Token| {
+        if handles.len() <= 1 {
+            // Try firing the operations without blocking.
             for &(handle, i, ptr) in handles.iter() {
                 if handle.try(&mut token) {
-                    return (token, i, ptr);
+                    return Some((token, i, ptr));
                 }
             }
 
-            let mut changed = false;
+            None
+        } else {
+            // Shuffle the operations for fairness.
+            utils::shuffle(handles);
 
-            // Update the channel states and check whether any have been changed.
-            for (&(handle, _, _), state) in handles.iter().zip(states.iter_mut()) {
-                let current = handle.state();
+            let mut states = SmallVec::<[usize; 4]>::with_capacity(handles.len());
 
-                if *state != current {
-                    *state = current;
-                    changed = true;
-                }
+            // Snapshot the channel states of all operations.
+            for &(handle, _, _) in handles.iter() {
+                states.push(handle.state());
             }
 
-            // If none of the states have changed, select the `default` case.
-            if !changed {
-                return (token, 0, ptr::null());
+            loop {
+                // Try firing the operations.
+                for &(handle, i, ptr) in handles.iter() {
+                    if handle.try(&mut token) {
+                        return Some((token, i, ptr));
+                    }
+                }
+
+                let mut changed = false;
+
+                // Update the channel states and check whether any have been changed.
+                for (&(handle, _, _), state) in handles.iter().zip(states.iter_mut()) {
+                    let current = handle.state();
+
+                    if *state != current {
+                        *state = current;
+                        changed = true;
+                    }
+                }
+
+                // If none of the states have changed, select the `default` case.
+                if !changed {
+                    return None;
+                }
             }
         }
+    };
+
+    if timeout == Timeout::Now {
+        return try_select(handles, token);
     }
 
     loop {
+        // Shuffle the operations for fairness.
+        if handles.len() >= 2 {
+            utils::shuffle(handles);
+        }
+
         // Try firing the operations without blocking.
         for &(handle, i, ptr) in handles.iter() {
             if handle.try(&mut token) {
-                return (token, i, ptr);
+                return Some((token, i, ptr));
             }
-        }
-
-        if has_default {
-            // Selected the `default` case.
-            return (token, 0, ptr::null());
         }
 
         // Before blocking, try firing the operations one more time. Retries are permitted to take
         // a little bit more time than the initial tries, but they still mustn't block.
         for &(handle, i, ptr) in handles.iter() {
             if handle.retry(&mut token) {
-                return (token, i, ptr);
+                return Some((token, i, ptr));
             }
         }
 
@@ -262,7 +287,11 @@ where
             if sel == Selected::Waiting {
                 // Check with each operation for how long we're allowed to block, and compute the
                 // earliest deadline.
-                let mut deadline: Option<Instant> = None;
+                let mut deadline: Option<Instant> = match timeout {
+                    Timeout::Now => unreachable!(),
+                    Timeout::Never => None,
+                    Timeout::At(when) => Some(when),
+                };
                 for &(handle, _, _) in handles.iter() {
                     if let Some(x) = handle.deadline() {
                         deadline = deadline.map(|y| x.min(y)).or(Some(x));
@@ -292,11 +321,6 @@ where
                             }
                         }
                     }
-
-                    // Before the next round, reshuffle the operations for fairness.
-                    if handles.len() >= 2 {
-                        utils::shuffle(handles);
-                    }
                 }
             }
 
@@ -305,8 +329,19 @@ where
 
         // Return if an operation was fired.
         if let Some((i, ptr)) = res {
-            return (token, i, ptr);
+            return Some((token, i, ptr));
         }
+
+        // Check for timeout.
+        match timeout {
+            Timeout::Now => unreachable!(),
+            Timeout::Never => {},
+            Timeout::At(when) => {
+                if Instant::now() >= when {
+                    return try_select(handles, token);
+                }
+            }
+        };
     }
 }
 
@@ -634,28 +669,34 @@ impl<'a> Select<'a> {
     }
 
     pub fn try_select(&mut self) -> Option<SelectedCase<'_>> {
-        let (token, index, ptr) = main_loop(&mut self.handles, true);
-
-        if index == 0 {
-            None
-        } else {
-            Some(SelectedCase {
+        main_loop(&mut self.handles, Timeout::Now)
+            .map(|(token, index, ptr)| SelectedCase {
                 token,
                 index,
                 ptr,
                 _marker: PhantomData,
             })
-        }
     }
 
     pub fn select(&mut self) -> SelectedCase<'_> {
-        let (token, index, ptr) = main_loop(&mut self.handles, false);
+        let (token, index, ptr) = main_loop(&mut self.handles, Timeout::Never).unwrap();
         SelectedCase {
             token,
             index,
             ptr,
             _marker: PhantomData,
         }
+    }
+
+    pub fn select_timeout(&mut self, timeout: Duration) -> Option<SelectedCase<'_>> {
+        let timeout = Timeout::At(Instant::now() + timeout);
+        main_loop(&mut self.handles, timeout)
+            .map(|(token, index, ptr)| SelectedCase {
+                token,
+                index,
+                ptr,
+                _marker: PhantomData,
+            })
     }
 }
 
