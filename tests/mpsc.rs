@@ -25,7 +25,7 @@
 //! except according to those terms.
 //! ```
 //!
-//! Source: https://github.com/rust-lang/rust/tree/e8aef7cae14bc7a56859408c90253e9bcc07fcff/src/libstd/sync/mpsc
+//! Source: https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
 
 #[macro_use]
 extern crate crossbeam_channel as channel;
@@ -204,7 +204,7 @@ macro_rules! tests {
             (s, r)
         }
 
-        // Source: https://github.com/rust-lang/rust/blob/e8aef7cae14bc7a56859408c90253e9bcc07fcff/src/libstd/sync/mpsc/mod.rs#L1829-L2507
+        // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
         mod channel_tests {
             use super::*;
 
@@ -886,7 +886,7 @@ macro_rules! tests {
             }
         }
 
-        // Source: https://github.com/rust-lang/rust/blob/e8aef7cae14bc7a56859408c90253e9bcc07fcff/src/libstd/sync/mpsc/mod.rs#L2510-L3130
+        // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
         mod sync_channel_tests {
             use super::*;
 
@@ -1510,7 +1510,7 @@ macro_rules! tests {
             }
         }
 
-        // Source: https://github.com/rust-lang/rust/blob/e8aef7cae14bc7a56859408c90253e9bcc07fcff/src/libstd/sync/mpsc/select.rs#L369-L779
+        // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/select.rs
         mod select_tests {
             use super::*;
 

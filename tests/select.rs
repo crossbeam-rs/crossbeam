@@ -16,7 +16,6 @@ use channel::TryRecvError;
 // TODO: move most of the stuff inside `internal` into the parent module?
 // TODO: verify that compile_error! and unreachable! work in edition 2018
 // TODO: try_select and select_timeout should return Result<SelectedCase, TrySelectError/SelectTimeoutError>
-// TODO: use permanent github links everywhere (even in Go tests and Rust tests)
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
