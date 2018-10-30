@@ -2,8 +2,8 @@
 //!
 //! This is a channel implementation mimicking MPSC channels from the standard library, but the
 //! internals actually use `crossbeam-channel`. There's an auxilliary channel `disconnected`, which
-//! becomes closed once the receiver gets dropped, thus notifying the senders that the MPSC channel
-//! is disconnected.
+//! becomes disconnected once the receiver gets dropped, thus notifying the senders that the MPSC
+//! channel is disconnected.
 //!
 //! This channel is then tested against the original tests for MPSC channels.
 //!

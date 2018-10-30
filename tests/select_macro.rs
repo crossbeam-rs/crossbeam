@@ -60,7 +60,7 @@ fn smoke2() {
 }
 
 #[test]
-fn closed() {
+fn disconnected() {
     let (s1, r1) = channel::unbounded::<i32>();
     let (s2, r2) = channel::unbounded::<i32>();
 
@@ -179,7 +179,7 @@ fn timeout() {
 }
 
 #[test]
-fn default_when_closed() {
+fn default_when_disconnected() {
     let (_, r) = channel::unbounded::<i32>();
 
     select! {

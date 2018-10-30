@@ -151,8 +151,8 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 
 /// Creates a receiver that delivers a message after a certain duration of time.
 ///
-/// The channel is bounded with capacity of 1 and is never closed. Exactly one message will be
-/// automatically sent into the channel after `duration` elapses. The message is the instant at
+/// The channel is bounded with capacity of 1 and is never disconnected. Exactly one message will
+/// be automatically sent into the channel after `duration` elapses. The message is the instant at
 /// which it is sent into the channel.
 ///
 /// # Examples
@@ -202,10 +202,10 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 
 /// Creates a receiver that delivers messages periodically.
 ///
-/// The channel is bounded with capacity of 1 and is never closed. Messages will be automatically
-/// sent into the channel in intervals of `duration`, but the time intervals are only measured
-/// while the channel is empty. The channel always contains at most one message. Each message is
-/// the instant at which it is sent into the channel.
+/// The channel is bounded with capacity of 1 and is never disconnected. Messages will be
+/// automatically sent into the channel in intervals of `duration`, but the time intervals are only
+/// measured while the channel is empty. The channel always contains at most one message. Each
+/// message is the instant at which it is sent into the channel.
 ///
 /// # Examples
 ///
@@ -484,9 +484,9 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         if self.inner.senders.fetch_sub(1, Ordering::SeqCst) == 1 {
             match &self.inner.flavor {
-                ChannelFlavor::Array(chan) => chan.close(),
-                ChannelFlavor::List(chan) => chan.close(),
-                ChannelFlavor::Zero(chan) => chan.close(),
+                ChannelFlavor::Array(chan) => chan.disconnect(),
+                ChannelFlavor::List(chan) => chan.disconnect(),
+                ChannelFlavor::Zero(chan) => chan.disconnect(),
             };
         }
     }
@@ -614,12 +614,12 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Blocks the current thread until a message is received or the channel is closed.
+    /// Blocks the current thread until a message is received or the channel is disconnected.
     ///
-    /// Returns the message if it was received, or `None` if the channel is closed and empty.
+    /// Returns the message if it was received, or `None` if the channel is disconnected and empty.
     ///
     /// If called on a zero-capacity channel, this method blocks the current thread until a send
-    /// operation appears on the other side of the channel or it becomes closed.
+    /// operation appears on the other side of the channel or it becomes disconnected.
     ///
     /// Note: `r.recv()` is equivalent to `select! { recv(r, msg) => msg }`.
     ///
@@ -635,7 +635,7 @@ impl<T> Receiver<T> {
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s.send(5);
-    ///     // `s` gets dropped, thus closing the channel.
+    ///     // `s` gets dropped, thus disconnecting the channel.
     /// });
     ///
     /// assert_eq!(r.recv(), Some(5));
@@ -897,9 +897,9 @@ impl<T> Drop for Receiver<T> {
         if let ReceiverFlavor::Channel(chan) = &self.flavor {
             if chan.receivers.fetch_sub(1, Ordering::SeqCst) == 1 {
                 match &chan.flavor {
-                    ChannelFlavor::Array(chan) => chan.close(),
-                    ChannelFlavor::List(chan) => chan.close(),
-                    ChannelFlavor::Zero(chan) => chan.close(),
+                    ChannelFlavor::Array(chan) => chan.disconnect(),
+                    ChannelFlavor::List(chan) => chan.disconnect(),
+                    ChannelFlavor::Zero(chan) => chan.disconnect(),
                 }
             }
         }

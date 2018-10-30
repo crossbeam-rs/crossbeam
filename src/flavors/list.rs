@@ -99,10 +99,10 @@ pub struct Channel<T> {
     /// The tail of the channel.
     tail: CachePadded<Position<T>>,
 
-    /// Equals `true` when the channel is closed.
-    is_closed: AtomicBool,
+    /// Equals `true` when the channel is disconnected.
+    is_disconnected: AtomicBool,
 
-    /// Receivers waiting while the channel is empty and not closed.
+    /// Receivers waiting while the channel is empty and not disconnected.
     receivers: SyncWaker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
@@ -121,7 +121,7 @@ impl<T> Channel<T> {
                 index: AtomicUsize::new(0),
                 block: Atomic::null(),
             }),
-            is_closed: AtomicBool::new(false),
+            is_disconnected: AtomicBool::new(false),
             receivers: SyncWaker::new(),
             _marker: PhantomData,
         };
@@ -146,8 +146,8 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token) -> bool {
-        // If the channel is closed, return early.
-        if self.is_closed() {
+        // If the channel is disconnected, return early.
+        if self.is_disconnected() {
             token.list.slot = ptr::null();
             return true;
         }
@@ -223,7 +223,7 @@ impl<T> Channel<T> {
 
     /// Writes a message into the channel.
     pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
-        // If there is no slot, the channel is closed.
+        // If there is no slot, the channel is disconnected.
         if token.list.slot.is_null() {
             return Err(msg);
         }
@@ -287,8 +287,8 @@ impl<T> Channel<T> {
 
                     // If the tail equals the head, that means the channel is empty.
                     if tail_index == head_index {
-                        // If the channel is closed...
-                        if self.is_closed() {
+                        // If the channel is disconnected...
+                        if self.is_disconnected() {
                             // ...and still empty...
                             if self.tail.index.load(Ordering::SeqCst) == tail_index {
                                 // ...then receive an error.
@@ -340,7 +340,7 @@ impl<T> Channel<T> {
     /// Reads a message from the channel.
     pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.list.slot.is_null() {
-            // The channel is closed.
+            // The channel is disconnected.
             return Err(());
         }
 
@@ -414,7 +414,7 @@ impl<T> Channel<T> {
                 self.receivers.register(oper, cx);
 
                 // Has the channel become ready just now?
-                if !self.is_empty() || self.is_closed() {
+                if !self.is_empty() || self.is_disconnected() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
@@ -423,9 +423,10 @@ impl<T> Channel<T> {
 
                 match sel {
                     Selected::Waiting => unreachable!(),
-                    Selected::Aborted | Selected::Closed => {
+                    Selected::Aborted | Selected::Disconnected => {
                         self.receivers.unregister(oper).unwrap();
-                        // If the channel was closed, we still have to check for remaining messages.
+                        // If the channel was disconnected, we still have to check for remaining
+                        // messages.
                     }
                     Selected::Operation(_) => {}
                 }
@@ -458,16 +459,16 @@ impl<T> Channel<T> {
         None
     }
 
-    /// Closes the channel and wakes up all blocked receivers.
-    pub fn close(&self) {
-        if !self.is_closed.swap(true, Ordering::SeqCst) {
-            self.receivers.close();
+    /// Disconnects the channel and wakes up all blocked receivers.
+    pub fn disconnect(&self) {
+        if !self.is_disconnected.swap(true, Ordering::SeqCst) {
+            self.receivers.disconnect();
         }
     }
 
-    /// Returns `true` if the channel is closed.
-    pub fn is_closed(&self) -> bool {
-        self.is_closed.load(Ordering::SeqCst)
+    /// Returns `true` if the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        self.is_disconnected.load(Ordering::SeqCst)
     }
 
     /// Returns `true` if the channel is empty.
@@ -542,7 +543,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
 
     fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
         self.0.receivers.register(oper, cx);
-        self.0.is_empty() && !self.0.is_closed()
+        self.0.is_empty() && !self.0.is_disconnected()
     }
 
     fn unregister(&self, oper: Operation) {
@@ -572,7 +573,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
     }
 
     fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Context) -> bool {
-        !self.0.is_closed()
+        !self.0.is_disconnected()
     }
 
     fn unregister(&self, _oper: Operation) {}

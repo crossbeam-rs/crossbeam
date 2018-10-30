@@ -76,8 +76,8 @@ struct Inner {
     /// Receivers waiting to pair up with a send operation.
     receivers: Waker,
 
-    /// Equals `true` when the channel is closed.
-    is_closed: bool,
+    /// Equals `true` when the channel is disconnected.
+    is_disconnected: bool,
 }
 
 /// Zero-capacity channel.
@@ -96,7 +96,7 @@ impl<T> Channel<T> {
             inner: Mutex::new(Inner {
                 senders: Waker::new(),
                 receivers: Waker::new(),
-                is_closed: false,
+                is_disconnected: false,
             }),
             _marker: PhantomData,
         }
@@ -120,7 +120,7 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.receivers.wake_one() {
             token.zero = operation.packet;
             return true;
-        } else if inner.is_closed {
+        } else if inner.is_disconnected {
             token.zero = 0;
             return true;
         }
@@ -148,7 +148,7 @@ impl<T> Channel<T> {
 
             match sel {
                 Selected::Waiting => unreachable!(),
-                Selected::Closed => {
+                Selected::Disconnected => {
                     // Unregister and destroy the packet.
                     let operation = self.inner.lock().senders.unregister(oper).unwrap();
                     unsafe {
@@ -178,7 +178,7 @@ impl<T> Channel<T> {
 
     /// Writes a message into the packet.
     pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
-        // If there is no packet, the channel is closed.
+        // If there is no packet, the channel is disconnected.
         if token.zero == 0 {
             return Err(msg);
         }
@@ -197,7 +197,7 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.senders.wake_one() {
             token.zero = operation.packet;
             return true;
-        } else if inner.is_closed {
+        } else if inner.is_disconnected {
             token.zero = 0;
             return true;
         }
@@ -233,7 +233,7 @@ impl<T> Channel<T> {
                     }
                     false
                 }
-                Selected::Closed => {
+                Selected::Disconnected => {
                     // Unregister and destroy the packet.
                     let operation = self.inner.lock().receivers.unregister(oper).unwrap();
                     unsafe {
@@ -255,7 +255,7 @@ impl<T> Channel<T> {
 
     /// Reads a message from the packet.
     pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
-        // If there is no packet, the channel is closed.
+        // If there is no packet, the channel is disconnected.
         if token.zero == 0 {
             return Err(());
         }
@@ -292,7 +292,7 @@ impl<T> Channel<T> {
                 self.write(token, msg).ok().unwrap();
             }
             Ok(())
-        } else if inner.is_closed {
+        } else if inner.is_disconnected {
             Err(TrySendError::Disconnected(msg))
         } else {
             Err(TrySendError::Full(msg))
@@ -314,7 +314,7 @@ impl<T> Channel<T> {
             return Ok(());
         }
 
-        if inner.is_closed {
+        if inner.is_disconnected {
             return Err(SendTimeoutError::Disconnected(msg));
         }
 
@@ -337,7 +337,7 @@ impl<T> Channel<T> {
                     let msg = unsafe { packet.msg.get().replace(None).unwrap() };
                     Err(SendTimeoutError::Timeout(msg))
                 }
-                Selected::Closed => {
+                Selected::Disconnected => {
                     self.inner.lock().senders.unregister(oper).unwrap();
                     let msg = unsafe { packet.msg.get().replace(None).unwrap() };
                     Err(SendTimeoutError::Disconnected(msg))
@@ -363,7 +363,7 @@ impl<T> Channel<T> {
             unsafe {
                 self.read(token).map_err(|_| TryRecvError::Disconnected)
             }
-        } else if inner.is_closed {
+        } else if inner.is_disconnected {
             Err(TryRecvError::Disconnected)
         } else {
             Err(TryRecvError::Empty)
@@ -384,7 +384,7 @@ impl<T> Channel<T> {
             }
         }
 
-        if inner.is_closed {
+        if inner.is_disconnected {
             return Err(RecvTimeoutError::Disconnected);
         }
 
@@ -406,7 +406,7 @@ impl<T> Channel<T> {
                     self.inner.lock().receivers.unregister(oper).unwrap();
                     Err(RecvTimeoutError::Timeout)
                 }
-                Selected::Closed => {
+                Selected::Disconnected => {
                     self.inner.lock().receivers.unregister(oper).unwrap();
                     Err(RecvTimeoutError::Disconnected)
                 }
@@ -419,14 +419,14 @@ impl<T> Channel<T> {
         })
     }
 
-    /// Closes the channel and wakes up all blocked receivers.
-    pub fn close(&self) {
+    /// Disconnects the channel and wakes up all blocked receivers.
+    pub fn disconnect(&self) {
         let mut inner = self.inner.lock();
 
-        if !inner.is_closed {
-            inner.is_closed = true;
-            inner.senders.close();
-            inner.receivers.close();
+        if !inner.is_disconnected {
+            inner.is_disconnected = true;
+            inner.senders.disconnect();
+            inner.receivers.disconnect();
         }
     }
 
@@ -477,7 +477,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         inner
             .receivers
             .register_with_packet(oper, packet as usize, cx);
-        !inner.senders.can_wake_one() && !inner.is_closed
+        !inner.senders.can_wake_one() && !inner.is_disconnected
     }
 
     fn unregister(&self, oper: Operation) {
@@ -518,7 +518,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         inner
             .senders
             .register_with_packet(oper, packet as usize, cx);
-        !inner.receivers.can_wake_one() && !inner.is_closed
+        !inner.receivers.can_wake_one() && !inner.is_disconnected
     }
 
     fn unregister(&self, oper: Operation) {

@@ -140,11 +140,11 @@
 //! Note that cloning only creates a new reference to the same sending or receiving side. Cloning
 //! does not create a new channel.
 //!
-//! # Closing channels
+//! # Disconnecting channels
 //!
-//! When all senders associated with a channel get dropped, the channel becomes closed. No more
-//! messages can be sent, but any remaining messages can still be received. Receive operations on a
-//! closed channel never block, even if the channel is empty.
+//! When all senders associated with a channel get dropped, the channel becomes disconnected. No
+//! more messages can be sent, but any remaining messages can still be received. Receive operations
+//! on a disconnected channel never block, even if the channel is empty.
 //!
 //! ```
 //! use crossbeam_channel as channel;
@@ -154,7 +154,7 @@
 //! s.send(2);
 //! s.send(3);
 //!
-//! // The only sender is dropped, closing the channel.
+//! // The only sender is dropped, disconnecting the channel.
 //! drop(s);
 //!
 //! // The remaining messages can be received.
@@ -178,8 +178,8 @@
 //! operation appears on the other side of the channel.
 //!
 //! Receiving from an empty channel blocks until a message is sent into the channel or the channel
-//! becomes closed. Zero-capacity channels are always empty, and receiving blocks until a send
-//! operation appears on the other side of the channel or it becomes closed.
+//! becomes disconnected. Zero-capacity channels are always empty, and receiving blocks until a
+//! send operation appears on the other side of the channel or it becomes disconnected.
 //!
 //! There is also a non-blocking method [`try_recv`], which receives a message if it is immediately
 //! available, or returns `None` otherwise.
@@ -204,10 +204,10 @@
 //! // Try receiving a message without blocking.
 //! assert_eq!(r.try_recv(), None);
 //!
-//! // Close the channel.
+//! // Disconnect the channel.
 //! drop(s);
 //!
-//! // This call doesn't block because the channel is now closed.
+//! // This call doesn't block because the channel is now disconnected.
 //! assert_eq!(r.recv(), None);
 //! ```
 //!
@@ -230,13 +230,13 @@
 //!     s.send(2);
 //!     s.send(3);
 //!     // `s` was moved into the closure so now it gets dropped,
-//!     // thus closing the channel.
+//!     // thus disconnecting the channel.
 //! });
 //!
 //! // Collect all messages from the channel.
 //! //
 //! // Note that the call to `collect` blocks until the channel becomes
-//! // closed and empty, i.e. until `r.next()` returns `None`.
+//! // disconnected and empty, i.e. until `r.next()` returns `None`.
 //! let v: Vec<_> = r.collect();
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
@@ -278,7 +278,7 @@
 //!
 //! # Frequently asked questions
 //!
-//! ### How to try receiving a message, but also check whether the channel is empty or closed?
+//! ### How to try receiving a message, but also check whether the channel is empty or disconnected?
 //!
 //! Use the [`select!`] macro:
 //!
@@ -294,7 +294,7 @@
 //! select! {
 //!     recv(r, msg) => match msg {
 //!         Some(msg) => println!("received {:?}", msg),
-//!         None => println!("the channel is closed"),
+//!         None => println!("the channel is disconnected"),
 //!     }
 //!     default => println!("the channel is empty"),
 //! }
@@ -343,7 +343,7 @@
 //! select! {
 //!     recv(r, msg) => match msg {
 //!         Some(msg) => println!("received {:?}", msg),
-//!         None => println!("the channel is closed"),
+//!         None => println!("the channel is disconnected"),
 //!     }
 //!     recv(channel::after(timeout)) => println!("timed out; the channel is still empty"),
 //! }

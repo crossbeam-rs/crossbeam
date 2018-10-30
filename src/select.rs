@@ -49,8 +49,8 @@ pub enum Selected {
     /// The select or blocking operation has been aborted.
     Aborted,
 
-    /// A channel was closed.
-    Closed,
+    /// A channel was disconnected.
+    Disconnected,
 
     /// An operation became ready.
     Operation(Operation),
@@ -62,7 +62,7 @@ impl From<usize> for Selected {
         match val {
             0 => Selected::Waiting,
             1 => Selected::Aborted,
-            2 => Selected::Closed,
+            2 => Selected::Disconnected,
             oper => Selected::Operation(Operation(oper)),
         }
     }
@@ -74,7 +74,7 @@ impl Into<usize> for Selected {
         match self {
             Selected::Waiting => 0,
             Selected::Aborted => 1,
-            Selected::Closed => 2,
+            Selected::Disconnected => 2,
             Selected::Operation(Operation(val)) => val,
         }
     }
@@ -308,7 +308,7 @@ where
             match sel {
                 Selected::Waiting => unreachable!(),
                 Selected::Aborted => {}
-                Selected::Closed | Selected::Operation(_) => {
+                Selected::Disconnected | Selected::Operation(_) => {
                     // Find the selected operation.
                     for (handle, i, ptr) in handles.iter_mut() {
                         // Is this the selected operation?

@@ -15,7 +15,6 @@ use channel::TryRecvError;
 // TODO: test: verify that Select can be reused
 // TODO: move most of the stuff inside `internal` into the parent module?
 // TODO: verify that compile_error! and unreachable! work in edition 2018
-// TODO: disconnection vs closing? probably disconnection
 // TODO: try_select and select_timeout should return Result<SelectedCase, TrySelectError/SelectTimeoutError>
 
 fn ms(ms: u64) -> Duration {
@@ -80,7 +79,7 @@ fn smoke2() {
 }
 
 #[test]
-fn closed() {
+fn disconnected() {
     let (s1, r1) = channel::unbounded::<i32>();
     let (s2, r2) = channel::unbounded::<i32>();
 
@@ -253,7 +252,7 @@ fn timeout() {
 }
 
 #[test]
-fn default_when_closed() {
+fn default_when_disconnected() {
     let (_, r) = channel::unbounded::<i32>();
 
     let mut sel = Select::new();

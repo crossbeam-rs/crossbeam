@@ -64,6 +64,25 @@ macro_rules! tests {
         }
 
         #[test]
+        fn try_recv() {
+            let (s, r) = channel::bounded(0);
+
+            crossbeam::scope(|scope| {
+                scope.spawn(move || {
+                    assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
+                    thread::sleep(ms(1500));
+                    assert_eq!(r.try_recv(), Ok(7));
+                    thread::sleep(ms(500));
+                    assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
+                });
+                scope.spawn(move || {
+                    thread::sleep(ms(1000));
+                    s.send(7).unwrap();
+                });
+            });
+        }
+
+        #[test]
         fn recv() {
             let (s, r) = channel::bounded(0);
 
@@ -106,20 +125,20 @@ macro_rules! tests {
         }
 
         #[test]
-        fn try_recv() {
+        fn try_send() {
             let (s, r) = channel::bounded(0);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
-                    assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
+                    assert_eq!(s.try_send(7), Err(TrySendError::Full(7)));
                     thread::sleep(ms(1500));
-                    assert_eq!(r.try_recv(), Ok(7));
+                    assert_eq!(s.try_send(8), Ok(()));
                     thread::sleep(ms(500));
-                    assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
+                    assert_eq!(s.try_send(9), Err(TrySendError::Disconnected(9)));
                 });
                 scope.spawn(move || {
                     thread::sleep(ms(1000));
-                    s.send(7).unwrap();
+                    assert_eq!(r.recv(), Ok(8));
                 });
             });
         }
@@ -169,25 +188,6 @@ macro_rules! tests {
         }
 
         #[test]
-        fn try_send() {
-            let (s, r) = channel::bounded(0);
-
-            crossbeam::scope(|scope| {
-                scope.spawn(move || {
-                    assert_eq!(s.try_send(7), Err(TrySendError::Full(7)));
-                    thread::sleep(ms(1500));
-                    assert_eq!(s.try_send(8), Ok(()));
-                    thread::sleep(ms(500));
-                    assert_eq!(s.try_send(9), Err(TrySendError::Disconnected(9)));
-                });
-                scope.spawn(move || {
-                    thread::sleep(ms(1000));
-                    assert_eq!(r.recv(), Ok(8));
-                });
-            });
-        }
-
-        #[test]
         fn len() {
             const COUNT: usize = 25_000;
 
@@ -217,7 +217,7 @@ macro_rules! tests {
         }
 
         #[test]
-        fn close_wakes_sender() {
+        fn disconnect_wakes_sender() {
             let (s, r) = channel::bounded(0);
 
             crossbeam::scope(|scope| {
@@ -232,7 +232,7 @@ macro_rules! tests {
         }
 
         #[test]
-        fn close_wakes_receiver() {
+        fn disconnect_wakes_receiver() {
             let (s, r) = channel::bounded::<()>(0);
 
             crossbeam::scope(|scope| {
