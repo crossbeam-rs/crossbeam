@@ -12,8 +12,4 @@
 pub mod cloned;
 pub mod normal;
 pub mod select;
-pub mod select_multi;
 pub mod select_spin;
-
-// TODO: add a wrapper with really long send_timeout and recv_timeout
-// TODO: select wrappers should do send_timeout, recv_timeout, and try_send

@@ -184,6 +184,7 @@ where
         }
     }
 
+    // TODO: rename and extract this
     let try_select = |handles: &mut [(&S, usize, *const u8)], mut token: Token| {
         if handles.len() <= 1 {
             // Try firing the operations without blocking.
@@ -1451,6 +1452,9 @@ macro_rules! crossbeam_channel_internal {
     };
 
     // The entry points.
+    () => {
+        compile_error!("empty `select!` block")
+    };
     ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
         crossbeam_channel_internal!(
             @list

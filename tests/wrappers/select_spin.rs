@@ -7,7 +7,9 @@ use std::ops::Deref;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use channel::{self, RecvError, SendError, TryRecvError};
+use channel;
+use channel::{RecvError, RecvTimeoutError, TryRecvError};
+use channel::{SendError, SendTimeoutError, TrySendError};
 
 pub struct Sender<T>(pub channel::Sender<T>);
 
@@ -42,6 +44,13 @@ impl<T> Deref for Sender<T> {
 }
 
 impl<T> Sender<T> {
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        select! {
+            send(self.0, msg) -> res => res.map_err(|SendError(m)| TrySendError::Disconnected(m)),
+            default => Err(TrySendError::Full(msg)),
+        }
+    }
+
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         if self.0.capacity() == Some(0) {
             // Zero-capacity channel are an exception - they need truly blocking operations.
@@ -55,6 +64,15 @@ impl<T> Sender<T> {
                     default => thread::yield_now(),
                 }
             }
+        }
+    }
+
+    pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
+        select! {
+            send(self.0, msg) -> res => {
+                res.map_err(|SendError(m)| SendTimeoutError::Disconnected(m))
+            }
+            default(timeout) => Err(SendTimeoutError::Timeout(msg)),
         }
     }
 }
@@ -80,6 +98,13 @@ impl<T> Receiver<T> {
                     default => thread::yield_now(),
                 }
             }
+        }
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
+        select! {
+            recv(self.0) -> res => res.map_err(|_| RecvTimeoutError::Disconnected),
+            default(timeout) => Err(RecvTimeoutError::Timeout),
         }
     }
 }

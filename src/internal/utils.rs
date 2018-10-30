@@ -52,6 +52,7 @@ impl Backoff {
     }
 }
 
+// TODO: do we need to remove this?
 /// Once dropped, aborts with an error message.
 ///
 /// This guard is used for protection from unrecoverable panics.
@@ -106,14 +107,7 @@ pub fn shuffle<T>(v: &mut [T]) {
     });
 }
 
-/// Blocks the current thread forever.
-pub fn sleep_forever() -> ! {
-    loop {
-        thread::sleep(Duration::from_secs(1000));
-    }
-}
-
-// TODO: replace sleep_forever with this
+/// Sleeps until the deadline, or forever if the deadline isn't specified.
 pub fn sleep_until(deadline: Option<Instant>)  {
     loop {
         match deadline {

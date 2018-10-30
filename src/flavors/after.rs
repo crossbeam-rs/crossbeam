@@ -134,7 +134,8 @@ impl Channel {
             Ok(self.deadline)
         } else {
             // The message was already received. Block forever.
-            utils::sleep_forever();
+            utils::sleep_until(None);
+            unreachable!()
         }
     }
 

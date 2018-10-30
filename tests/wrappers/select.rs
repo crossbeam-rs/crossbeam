@@ -6,7 +6,9 @@
 use std::ops::Deref;
 use std::time::{Duration, Instant};
 
-use channel::{self, RecvError, SendError, TryRecvError};
+use channel;
+use channel::{RecvError, RecvTimeoutError, TryRecvError};
+use channel::{SendError, SendTimeoutError, TrySendError};
 
 pub struct Sender<T>(pub channel::Sender<T>);
 
@@ -41,11 +43,25 @@ impl<T> Deref for Sender<T> {
 }
 
 impl<T> Sender<T> {
-    // TODO: try_send (and in other files)
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        select! {
+            send(self.0, msg) -> res => res.map_err(|SendError(m)| TrySendError::Disconnected(m)),
+            default => Err(TrySendError::Full(msg)),
+        }
+    }
 
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         select! {
             send(self.0, msg) -> res => res
+        }
+    }
+
+    pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
+        select! {
+            send(self.0, msg) -> res => {
+                res.map_err(|SendError(m)| SendTimeoutError::Disconnected(m))
+            }
+            default(timeout) => Err(SendTimeoutError::Timeout(msg)),
         }
     }
 }
@@ -61,6 +77,13 @@ impl<T> Receiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
         select! {
             recv(self.0) -> res => res,
+        }
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
+        select! {
+            recv(self.0) -> res => res.map_err(|_| RecvTimeoutError::Disconnected),
+            default(timeout) => Err(RecvTimeoutError::Timeout),
         }
     }
 }

@@ -24,7 +24,7 @@ fn use_while_exiting() {
             let (_s, r) = channel::unbounded::<()>();
             select! {
                 recv(r) -> _ => {}
-                recv(channel::after(ms(100))) -> _ => {}
+                default(ms(100)) => {}
             }
         }
     }

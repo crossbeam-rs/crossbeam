@@ -145,29 +145,28 @@ macro_rules! tests {
             });
         }
 
-        // TODO
-        // #[test]
-        // fn send_timeout() {
-        //     let (s, r) = channel::bounded(0);
-        //
-        //     crossbeam::scope(|scope| {
-        //         scope.spawn(move || {
-        //             assert_eq!(
-        //                 s.send_timeout(7, ms(1000)),
-        //                 Err(SendTimeoutError::Timeout(7))
-        //             );
-        //             assert_eq!(s.send_timeout(8, ms(1000)), Ok(()));
-        //             assert_eq!(
-        //                 s.send_timeout(9, ms(1000)),
-        //                 Err(SendTimeoutError::Disconnected(9))
-        //             );
-        //         });
-        //         scope.spawn(move || {
-        //             thread::sleep(ms(1500));
-        //             assert_eq!(r.recv(), Ok(8));
-        //         });
-        //     });
-        // }
+        #[test]
+        fn send_timeout() {
+            let (s, r) = channel::bounded(0);
+
+            crossbeam::scope(|scope| {
+                scope.spawn(move || {
+                    assert_eq!(
+                        s.send_timeout(7, ms(1000)),
+                        Err(SendTimeoutError::Timeout(7))
+                    );
+                    assert_eq!(s.send_timeout(8, ms(1000)), Ok(()));
+                    assert_eq!(
+                        s.send_timeout(9, ms(1000)),
+                        Err(SendTimeoutError::Disconnected(9))
+                    );
+                });
+                scope.spawn(move || {
+                    thread::sleep(ms(1500));
+                    assert_eq!(r.recv(), Ok(8));
+                });
+            });
+        }
 
         #[test]
         fn try_send() {
@@ -473,15 +472,10 @@ mod cloned {
     tests!(wrappers::cloned);
 }
 
-// TODO
-// mod select {
-//     tests!(wrappers::select);
-// }
-//
-// mod select_spin {
-//     tests!(wrappers::select_spin);
-// }
-//
-// mod select_multi {
-//     tests!(wrappers::select_multi);
-// }
+mod select {
+    tests!(wrappers::select);
+}
+
+mod select_spin {
+    tests!(wrappers::select_spin);
+}

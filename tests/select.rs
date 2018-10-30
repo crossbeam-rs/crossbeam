@@ -1,21 +1,21 @@
-//! Tests for the `select!` macro.
-
-#![deny(unsafe_code)]
+//! Tests for the `Select` struct.
 
 extern crate crossbeam;
-#[macro_use]
 extern crate crossbeam_channel as channel;
 
 use std::any::Any;
+use std::cell::Cell;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use channel::Select;
 use channel::TryRecvError;
 
-// TODO: modify a borrowed sender/receiver inside select! body
-// TODO: fix unreachable lints in select!
-// TODO: use abortguard so that panicking message prints a more sensible message
-// TODO: remove all instances of std::process
+// TODO: If SelectedCase is dropped without being completed, panic!
+// TODO: test: verify that Select can be reused
+// TODO: move most of the stuff inside `internal` into the parent module?
+// TODO: verify that compile_error! and unreachable! work in edition 2018
+// TODO: disconnection vs closing? probably disconnection
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -28,16 +28,26 @@ fn smoke1() {
 
     s1.send(1).unwrap();
 
-    select! {
-        recv(r1) -> v => assert_eq!(v, Ok(1)),
-        recv(r2) -> _ => panic!(),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r1);
+    let case2 = sel.recv(&r2);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => assert_eq!(case.recv(&r1), Ok(1)),
+        i if i == case2 => panic!(),
+        _ => unreachable!(),
     }
 
     s2.send(2).unwrap();
 
-    select! {
-        recv(r1) -> _ => panic!(),
-        recv(r2) -> v => assert_eq!(v, Ok(2)),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r1);
+    let case2 = sel.recv(&r2);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => panic!(),
+        i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
+        _ => unreachable!(),
     }
 }
 
@@ -51,12 +61,20 @@ fn smoke2() {
 
     s5.send(5).unwrap();
 
-    select! {
-        recv(r1) -> _ => panic!(),
-        recv(r2) -> _ => panic!(),
-        recv(r3) -> _ => panic!(),
-        recv(r4) -> _ => panic!(),
-        recv(r5) -> v => assert_eq!(v, Ok(5)),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r1);
+    let case2 = sel.recv(&r2);
+    let case3 = sel.recv(&r3);
+    let case4 = sel.recv(&r4);
+    let case5 = sel.recv(&r5);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => panic!(),
+        i if i == case2 => panic!(),
+        i if i == case3 => panic!(),
+        i if i == case4 => panic!(),
+        i if i == case5 => assert_eq!(case.recv(&r5), Ok(5)),
+        _ => unreachable!(),
     }
 }
 
@@ -72,19 +90,31 @@ fn closed() {
             s2.send(5).unwrap();
         });
 
-        select! {
-            recv(r1) -> v => assert!(v.is_err()),
-            recv(r2) -> _ => panic!(),
-            default(ms(1000)) => panic!(),
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => assert!(case.recv(&r1).is_err()),
+                i if i == case2 => panic!(),
+                _ => unreachable!(),
+            }
         }
 
         r2.recv().unwrap();
     });
 
-    select! {
-        recv(r1) -> v => assert!(v.is_err()),
-        recv(r2) -> _ => panic!(),
-        default(ms(1000)) => panic!(),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r1);
+    let case2 = sel.recv(&r2);
+    match sel.select_timeout(ms(1000)) {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert!(case.recv(&r1).is_err()),
+            i if i == case2 => panic!(),
+            _ => unreachable!(),
+        }
     }
 
     crossbeam::scope(|scope| {
@@ -93,9 +123,15 @@ fn closed() {
             drop(s2);
         });
 
-        select! {
-            recv(r2) -> v => assert!(v.is_err()),
-            default(ms(1000)) => panic!(),
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r2);
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => assert!(case.recv(&r2).is_err()),
+                i if i == case2 => panic!(),
+                _ => unreachable!(),
+            }
         }
     });
 }
@@ -105,34 +141,51 @@ fn default() {
     let (s1, r1) = channel::unbounded::<i32>();
     let (s2, r2) = channel::unbounded::<i32>();
 
-    select! {
-        recv(r1) -> _ => panic!(),
-        recv(r2) -> _ => panic!(),
-        default => {}
+    let mut sel = Select::new();
+    let _case1 = sel.recv(&r1);
+    let _case2 = sel.recv(&r2);
+    match sel.try_select() {
+        None => {}
+        Some(_) => panic!(),
     }
 
     drop(s1);
 
-    select! {
-        recv(r1) -> v => assert!(v.is_err()),
-        recv(r2) -> _ => panic!(),
-        default => panic!(),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r1);
+    let case2 = sel.recv(&r2);
+    match sel.try_select() {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert!(case.recv(&r1).is_err()),
+            i if i == case2 => panic!(),
+            _ => unreachable!()
+        }
     }
 
     s2.send(2).unwrap();
 
-    select! {
-        recv(r2) -> v => assert_eq!(v, Ok(2)),
-        default => panic!(),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r2);
+    match sel.try_select() {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert_eq!(case.recv(&r2), Ok(2)),
+            _ => unreachable!()
+        }
     }
 
-    select! {
-        recv(r2) -> _ => panic!(),
-        default => {},
+    let mut sel = Select::new();
+    let _case1 = sel.recv(&r2);
+    match sel.try_select() {
+        None => {}
+        Some(_) => panic!(),
     }
 
-    select! {
-        default => {},
+    let mut sel = Select::new();
+    match sel.try_select() {
+        None => {}
+        Some(_) => panic!(),
     }
 }
 
@@ -147,16 +200,28 @@ fn timeout() {
             s2.send(2).unwrap();
         });
 
-        select! {
-            recv(r1) -> _ => panic!(),
-            recv(r2) -> _ => panic!(),
-            default(ms(1000)) => {},
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        match sel.select_timeout(ms(1000)) {
+            None => {}
+            Some(case) => match case.index() {
+                i if i == case1 => panic!(),
+                i if i == case2 => panic!(),
+                _ => unreachable!(),
+            }
         }
 
-        select! {
-            recv(r1) -> _ => panic!(),
-            recv(r2) -> v => assert_eq!(v, Ok(2)),
-            default(ms(1000)) => panic!(),
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => panic!(),
+                i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
+                _ => unreachable!(),
+            }
         }
     });
 
@@ -168,13 +233,20 @@ fn timeout() {
             drop(s);
         });
 
-        select! {
-            default(ms(1000)) => {
-                select! {
-                    recv(r) -> v => assert!(v.is_err()),
-                    default => panic!(),
+        let mut sel = Select::new();
+        match sel.select_timeout(ms(1000)) {
+            None => {
+                let mut sel = Select::new();
+                let case1 = sel.recv(&r);
+                match sel.try_select() {
+                    None => panic!(),
+                    Some(case) => match case.index() {
+                        i if i == case1 => assert!(case.recv(&r).is_err()),
+                        _ => unreachable!(),
+                    }
                 }
             }
+            Some(_) => unreachable!(),
         }
     });
 }
@@ -183,20 +255,67 @@ fn timeout() {
 fn default_when_closed() {
     let (_, r) = channel::unbounded::<i32>();
 
-    select! {
-        recv(r) -> v => assert!(v.is_err()),
-        default => panic!(),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    match sel.try_select() {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert!(case.recv(&r).is_err()),
+            _ => unreachable!(),
+        }
     }
 
     let (_, r) = channel::unbounded::<i32>();
 
-    select! {
-        recv(r) -> v => assert!(v.is_err()),
-        default(ms(1000)) => panic!(),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    match sel.select_timeout(ms(1000)) {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert!(case.recv(&r).is_err()),
+            _ => unreachable!(),
+        }
+    }
+
+    let (s, _) = channel::bounded::<i32>(0);
+
+    let mut sel = Select::new();
+    let case1 = sel.send(&s);
+    match sel.try_select() {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert!(case.send(&s, 0).is_err()),
+            _ => unreachable!(),
+        }
+    }
+
+    let (s, _) = channel::bounded::<i32>(0);
+
+    let mut sel = Select::new();
+    let case1 = sel.send(&s);
+    match sel.select_timeout(ms(1000)) {
+        None => panic!(),
+        Some(case) => match case.index() {
+            i if i == case1 => assert!(case.send(&s, 0).is_err()),
+            _ => unreachable!(),
+        }
     }
 }
 
-// TODO: default when sender closed
+#[test]
+fn default_only() {
+    let start = Instant::now();
+    assert!(Select::new().try_select().is_none());
+    let now = Instant::now();
+    assert!(now - start <= ms(50));
+
+    let start = Instant::now();
+    assert!(Select::new().select_timeout(ms(500)).is_none());
+    let now = Instant::now();
+    assert!(now - start >= ms(450));
+    assert!(now - start <= ms(550));
+}
+
 
 #[test]
 fn unblocks() {
@@ -209,10 +328,16 @@ fn unblocks() {
             s2.send(2).unwrap();
         });
 
-        select! {
-            recv(r1) -> _ => panic!(),
-            recv(r2) -> v => assert_eq!(v, Ok(2)),
-            default(ms(1000)) => panic!(),
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => panic!(),
+                i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
+                _ => unreachable!(),
+            }
         }
     });
 
@@ -222,10 +347,16 @@ fn unblocks() {
             assert_eq!(r1.recv().unwrap(), 1);
         });
 
-        select! {
-            send(s1, 1) -> _ => {},
-            send(s2, 2) -> _ => panic!(),
-            default(ms(1000)) => panic!(),
+        let mut sel = Select::new();
+        let case1 = sel.send(&s1);
+        let case2 = sel.send(&s2);
+        match sel.select_timeout(ms(1000)) {
+            None => panic!(),
+            Some(case) => match case.index() {
+                i if i == case1 => case.send(&s1, 1).unwrap(),
+                i if i == case2 => panic!(),
+                _ => unreachable!(),
+            }
         }
     });
 }
@@ -243,9 +374,14 @@ fn both_ready() {
         });
 
         for _ in 0..2 {
-            select! {
-                recv(r1) -> v => assert_eq!(v, Ok(1)),
-                send(s2, 2) -> _ => {},
+            let mut sel = Select::new();
+            let case1 = sel.recv(&r1);
+            let case2 = sel.send(&s2);
+            let case = sel.select();
+            match case.index() {
+                i if i == case1 => assert_eq!(case.recv(&r1), Ok(1)),
+                i if i == case2 => case.send(&s2, 2).unwrap(),
+                _ => unreachable!(),
             }
         }
     });
@@ -263,14 +399,38 @@ fn loop_try() {
         crossbeam::scope(|scope| {
             scope.spawn(|| {
                 loop {
-                    select! {
-                        send(s1, 1) -> _ => break,
-                        default => {}
+                    let mut done = false;
+
+                    let mut sel = Select::new();
+                    let case1 = sel.send(&s1);
+                    match sel.try_select() {
+                        None => {}
+                        Some(case) => match case.index() {
+                            i if i == case1 => {
+                                let _ = case.send(&s1, 1);
+                                done = true;
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    if done {
+                        break;
                     }
 
-                    select! {
-                        recv(r_end) -> _ => break,
-                        default => {}
+                    let mut sel = Select::new();
+                    let case1 = sel.recv(&r_end);
+                    match sel.try_select() {
+                        None => {}
+                        Some(case) => match case.index() {
+                            i if i == case1 => {
+                                let _ = case.recv(&r_end);
+                                done = true;
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    if done {
+                        break;
                     }
                 }
             });
@@ -282,9 +442,21 @@ fn loop_try() {
                         break;
                     }
 
-                    select! {
-                        recv(r_end) -> _ => break,
-                        default => {}
+                    let mut done = false;
+                    let mut sel = Select::new();
+                    let case1 = sel.recv(&r_end);
+                    match sel.try_select() {
+                        None => {}
+                        Some(case) => match case.index() {
+                            i if i == case1 => {
+                                let _ = case.recv(&r_end);
+                                done = true;
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    if done {
+                        break;
                     }
                 }
             });
@@ -292,10 +464,16 @@ fn loop_try() {
             scope.spawn(|| {
                 thread::sleep(ms(500));
 
-                select! {
-                    recv(r1) -> v => assert_eq!(v, Ok(1)),
-                    send(s2, 2) -> _ => {},
-                    default(ms(500)) => panic!(),
+                let mut sel = Select::new();
+                let case1 = sel.recv(&r1);
+                let case2 = sel.send(&s2);
+                match sel.select_timeout(ms(1000)) {
+                    None => {}
+                    Some(case) => match case.index() {
+                        i if i == case1 => assert_eq!(case.recv(&r1), Ok(1)),
+                        i if i == case2 => assert!(case.send(&s2, 2).is_ok()),
+                        _ => unreachable!(),
+                    }
                 }
 
                 drop(s_end);
@@ -314,16 +492,21 @@ fn cloning1() {
         scope.spawn(move || {
             r3.recv().unwrap();
             drop(s1.clone());
-            assert_eq!(r3.try_recv(), Err(TryRecvError::Empty));
+            assert!(r3.try_recv().is_err());
             s1.send(1).unwrap();
             r3.recv().unwrap();
         });
 
         s3.send(()).unwrap();
 
-        select! {
-            recv(r1) -> _ => {},
-            recv(r2) -> _ => {},
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        let case = sel.select();
+        match case.index() {
+            i if i == case1 => drop(case.recv(&r1)),
+            i if i == case2 => drop(case.recv(&r2)),
+            _ => unreachable!(),
         }
 
         s3.send(()).unwrap();
@@ -338,9 +521,14 @@ fn cloning2() {
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
-            select! {
-                recv(r1) -> _ => panic!(),
-                recv(r2) -> _ => {},
+            let mut sel = Select::new();
+            let case1 = sel.recv(&r1);
+            let case2 = sel.recv(&r2);
+            let case = sel.select();
+            match case.index() {
+                i if i == case1 => panic!(),
+                i if i == case2 => drop(case.recv(&r2)),
+                _ => unreachable!(),
             }
         });
 
@@ -355,8 +543,12 @@ fn preflight1() {
     let (s, r) = channel::unbounded();
     s.send(()).unwrap();
 
-    select! {
-        recv(r) -> _ => {}
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => drop(case.recv(&r)),
+        _ => unreachable!(),
     }
 }
 
@@ -367,9 +559,14 @@ fn preflight2() {
     s.send(()).unwrap();
     drop(s);
 
-    select! {
-        recv(r) -> v => assert!(v.is_ok()),
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => assert_eq!(case.recv(&r), Ok(())),
+        _ => unreachable!(),
     }
+
     assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
 }
 
@@ -381,22 +578,45 @@ fn preflight3() {
     drop(s);
     r.recv().unwrap();
 
-    select! {
-        recv(r) -> v => assert!(v.is_err())
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => assert!(case.recv(&r).is_err()),
+        _ => unreachable!(),
     }
 }
 
 #[test]
 fn duplicate_cases() {
     let (s, r) = channel::unbounded::<i32>();
-    let mut hit = [false; 4];
+    let hit = vec![Cell::new(false); 4];
 
-    while hit.iter().any(|hit| !hit) {
-        select! {
-            recv(r) -> _ => hit[0] = true,
-            recv(r) -> _ => hit[1] = true,
-            send(s, 0) -> _ => hit[2] = true,
-            send(s, 0) -> _ => hit[3] = true,
+    while hit.iter().map(|h| h.get()).any(|hit| !hit) {
+        let mut sel = Select::new();
+        let case0 = sel.recv(&r);
+        let case1 = sel.recv(&r);
+        let case2 = sel.send(&s);
+        let case3 = sel.send(&s);
+        let case = sel.select();
+        match case.index() {
+            i if i == case0 => {
+                assert!(case.recv(&r).is_ok());
+                hit[0].set(true);
+            }
+            i if i == case1 => {
+                assert!(case.recv(&r).is_ok());
+                hit[1].set(true);
+            }
+            i if i == case2 => {
+                assert!(case.send(&s, 0).is_ok());
+                hit[2].set(true);
+            }
+            i if i == case3 => {
+                assert!(case.send(&s, 0).is_ok());
+                hit[3].set(true);
+            }
+            _ => unreachable!(),
         }
     }
 }
@@ -405,47 +625,44 @@ fn duplicate_cases() {
 fn nesting() {
     let (s, r) = channel::unbounded::<i32>();
 
-    select! {
-        send(s, 0) -> _ => {
-            select! {
-                recv(r) -> v => {
-                    assert_eq!(v, Ok(0));
-                    select! {
-                        send(s, 1) -> _ => {
-                            select! {
-                                recv(r) -> v => {
-                                    assert_eq!(v, Ok(1));
+    let mut sel = Select::new();
+    let case1 = sel.send(&s);
+    let case = sel.select();
+    match case.index() {
+        i if i == case1 => {
+            assert!(case.send(&s, 0).is_ok());
+
+            let mut sel = Select::new();
+            let case1 = sel.recv(&r);
+            let case = sel.select();
+            match case.index() {
+                i if i == case1 => {
+                    assert_eq!(case.recv(&r), Ok(0));
+
+                    let mut sel = Select::new();
+                    let case1 = sel.send(&s);
+                    let case = sel.select();
+                    match case.index() {
+                        i if i == case1 => {
+                            assert!(case.send(&s, 1).is_ok());
+
+                            let mut sel = Select::new();
+                            let case1 = sel.recv(&r);
+                            let case = sel.select();
+                            match case.index() {
+                                i if i == case1 => {
+                                    assert_eq!(case.recv(&r), Ok(1));
                                 }
+                                _ => unreachable!(),
                             }
                         }
+                        _ => unreachable!(),
                     }
                 }
+                _ => unreachable!(),
             }
         }
-    }
-}
-
-#[test]
-#[should_panic(expected = "send panicked")]
-fn panic_send() {
-    fn get() -> channel::Sender<i32> {
-        panic!("send panicked")
-    }
-
-    select! {
-        send(get(), panic!()) -> _ => {}
-    }
-}
-
-#[test]
-#[should_panic(expected = "recv panicked")]
-fn panic_recv() {
-    fn get() -> channel::Receiver<i32> {
-        panic!("recv panicked")
-    }
-
-    select! {
-        recv(get()) -> _ => {}
+        _ => unreachable!(),
     }
 }
 
@@ -470,9 +687,14 @@ fn stress_recv() {
 
         for i in 0..COUNT {
             for _ in 0..2 {
-                select! {
-                    recv(r1) -> v => assert_eq!(v, Ok(i)),
-                    recv(r2) -> v => assert_eq!(v, Ok(i)),
+                let mut sel = Select::new();
+                let case1 = sel.recv(&r1);
+                let case2 = sel.recv(&r2);
+                let case = sel.select();
+                match case.index() {
+                    c if c == case1 => assert_eq!(case.recv(&r1), Ok(i)),
+                    c if c == case2 => assert_eq!(case.recv(&r2), Ok(i)),
+                    _ => unreachable!(),
                 }
 
                 s3.send(()).unwrap();
@@ -500,9 +722,14 @@ fn stress_send() {
 
         for i in 0..COUNT {
             for _ in 0..2 {
-                select! {
-                    send(s1, i) -> _ => {},
-                    send(s2, i) -> _ => {},
+                let mut sel = Select::new();
+                let case1 = sel.send(&s1);
+                let case2 = sel.send(&s2);
+                let case = sel.select();
+                match case.index() {
+                    c if c == case1 => assert!(case.send(&s1, i).is_ok()),
+                    c if c == case2 => assert!(case.send(&s2, i).is_ok()),
+                    _ => unreachable!(),
                 }
             }
             s3.send(()).unwrap();
@@ -529,9 +756,14 @@ fn stress_mixed() {
 
         for i in 0..COUNT {
             for _ in 0..2 {
-                select! {
-                    recv(r1) -> v => assert_eq!(v, Ok(i)),
-                    send(s2, i) -> _ => {},
+                let mut sel = Select::new();
+                let case1 = sel.recv(&r1);
+                let case2 = sel.send(&s2);
+                let case = sel.select();
+                match case.index() {
+                    c if c == case1 => assert_eq!(case.recv(&r1), Ok(i)),
+                    c if c == case2 => assert!(case.send(&s2, i).is_ok()),
+                    _ => unreachable!(),
                 }
             }
             s3.send(()).unwrap();
@@ -552,10 +784,19 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(500));
                 }
 
-                loop {
-                    select! {
-                        send(s, i) -> _ => break,
-                        default(ms(100)) => {}
+                let mut done = false;
+                while !done {
+                    let mut sel = Select::new();
+                    let case1 = sel.send(&s);
+                    match sel.select_timeout(ms(100)) {
+                        None => {}
+                        Some(case) => match case.index() {
+                            c if c == case1 => {
+                                assert!(case.send(&s, i).is_ok());
+                                break;
+                            }
+                            _ => unreachable!(),
+                        }
                     }
                 }
             }
@@ -567,13 +808,19 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(500));
                 }
 
-                loop {
-                    select! {
-                        recv(r) -> v => {
-                            assert_eq!(v, Ok(i));
-                            break;
+                let mut done = false;
+                while !done {
+                    let mut sel = Select::new();
+                    let case1 = sel.recv(&r);
+                    match sel.select_timeout(ms(100)) {
+                        None => {}
+                        Some(case) => match case.index() {
+                            c if c == case1 => {
+                                assert_eq!(case.recv(&r), Ok(i));
+                                done = true;
+                            }
+                            _ => unreachable!(),
                         }
-                        default(ms(100)) => {}
                     }
                 }
             }
@@ -584,17 +831,29 @@ fn stress_timeout_two_threads() {
 #[test]
 fn send_recv_same_channel() {
     let (s, r) = channel::bounded::<i32>(0);
-    select! {
-        send(s, 0) -> _ => panic!(),
-        recv(r) -> _ => panic!(),
-        default(ms(500)) => {}
+    let mut sel = Select::new();
+    let case1 = sel.send(&s);
+    let case2 = sel.recv(&r);
+    match sel.select_timeout(ms(100)) {
+        None => {}
+        Some(case) => match case.index() {
+            c if c == case1 => panic!(),
+            c if c == case2 => panic!(),
+            _ => unreachable!(),
+        }
     }
 
     let (s, r) = channel::unbounded::<i32>();
-    select! {
-        send(s, 0) -> _ => {},
-        recv(r) -> _ => panic!(),
-        default(ms(500)) => panic!(),
+    let mut sel = Select::new();
+    let case1 = sel.send(&s);
+    let case2 = sel.recv(&r);
+    match sel.select_timeout(ms(100)) {
+        None => panic!(),
+        Some(case) => match case.index() {
+            c if c == case1 => assert!(case.send(&s, 0).is_ok()),
+            c if c == case2 => panic!(),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -607,9 +866,14 @@ fn matching() {
     crossbeam::scope(|scope| {
         for i in 0..THREADS {
             scope.spawn(move || {
-                select! {
-                    recv(r) -> v => assert_ne!(v.unwrap(), i),
-                    send(s, i) -> _ => {},
+                let mut sel = Select::new();
+                let case1 = sel.recv(&r);
+                let case2 = sel.send(&s);
+                let case = sel.select();
+                match case.index() {
+                    c if c == case1 => assert_ne!(case.recv(&r), Ok(i)),
+                    c if c == case2 => assert!(case.send(&s, i).is_ok()),
+                    _ => unreachable!(),
                 }
             });
         }
@@ -627,9 +891,14 @@ fn matching_with_leftover() {
     crossbeam::scope(|scope| {
         for i in 0..THREADS {
             scope.spawn(move || {
-                select! {
-                    recv(r) -> v => assert_ne!(v.unwrap(), i),
-                    send(s, i) -> _ => {},
+                let mut sel = Select::new();
+                let case1 = sel.recv(&r);
+                let case2 = sel.send(&s);
+                let case = sel.select();
+                match case.index() {
+                    c if c == case1 => assert_ne!(case.recv(&r), Ok(i)),
+                    c if c == case2 => assert!(case.send(&s, i).is_ok()),
+                    _ => unreachable!(),
                 }
             });
         }
@@ -656,8 +925,14 @@ fn channel_through_channel() {
                     let (new_s, new_r) = channel::bounded(cap);
                     let mut new_r: T = Box::new(Some(new_r));
 
-                    select! {
-                        send(s, new_r) -> _ => {}
+                    {
+                        let mut sel = Select::new();
+                        let case1 = sel.send(&s);
+                        let case = sel.select();
+                        match case.index() {
+                            c if c == case1 => assert!(case.send(&s, new_r).is_ok()),
+                            _ => unreachable!(),
+                        }
                     }
 
                     s = new_s;
@@ -668,15 +943,23 @@ fn channel_through_channel() {
                 let mut r = r;
 
                 for _ in 0..COUNT {
-                    r = select! {
-                        recv(r) -> mut msg => {
-                            msg.unwrap()
-                                .downcast_mut::<Option<channel::Receiver<T>>>()
-                                .unwrap()
-                                .take()
-                                .unwrap()
+                    let new = {
+                        let mut sel = Select::new();
+                        let case1 = sel.recv(&r);
+                        let case = sel.select();
+                        match case.index() {
+                            c if c == case1 => {
+                                 case.recv(&r)
+                                    .unwrap()
+                                    .downcast_mut::<Option<channel::Receiver<T>>>()
+                                    .unwrap()
+                                    .take()
+                                    .unwrap()
+                            }
+                            _ => unreachable!(),
                         }
-                    }
+                    };
+                    r = new;
                 }
             });
         });
@@ -684,7 +967,7 @@ fn channel_through_channel() {
 }
 
 #[test]
-fn linearizable() {
+fn linearizable_try() {
     const COUNT: usize = 100_000;
 
     for step in 0..2 {
@@ -703,10 +986,67 @@ fn linearizable() {
                     start_s.send(()).unwrap();
 
                     s1.send(1).unwrap();
-                    select! {
-                        recv(r1) -> _ => {}
-                        recv(r2) -> _ => {}
-                        default => unreachable!()
+
+                    let mut sel = Select::new();
+                    let case1 = sel.recv(&r1);
+                    let case2 = sel.recv(&r2);
+                    match sel.try_select() {
+                        None => unreachable!(),
+                        Some(case) => match case.index() {
+                            c if c == case1 => assert!(case.recv(&r1).is_ok()),
+                            c if c == case2 => assert!(case.recv(&r2).is_ok()),
+                            _ => unreachable!(),
+                        }
+                    }
+
+                    end_s.send(()).unwrap();
+                    let _ = r2.try_recv();
+                }
+            });
+
+            for _ in 0..COUNT {
+                start_r.recv().unwrap();
+
+                s2.send(1).unwrap();
+                let _ = r1.try_recv();
+
+                end_r.recv().unwrap();
+            }
+        });
+    }
+}
+
+#[test]
+fn linearizable_timeout() {
+    const COUNT: usize = 100_000;
+
+    for step in 0..2 {
+        let (start_s, start_r) = channel::bounded::<()>(0);
+        let (end_s, end_r) = channel::bounded::<()>(0);
+
+        let ((s1, r1), (s2, r2)) = if step == 0 {
+            (channel::bounded::<i32>(1), channel::bounded::<i32>(1))
+        } else {
+            (channel::unbounded::<i32>(), channel::unbounded::<i32>())
+        };
+
+        crossbeam::scope(|scope| {
+            scope.spawn(|| {
+                for _ in 0..COUNT {
+                    start_s.send(()).unwrap();
+
+                    s1.send(1).unwrap();
+
+                    let mut sel = Select::new();
+                    let case1 = sel.recv(&r1);
+                    let case2 = sel.recv(&r2);
+                    match sel.select_timeout(ms(0)) {
+                        None => unreachable!(),
+                        Some(case) => match case.index() {
+                            c if c == case1 => assert!(case.recv(&r1).is_ok()),
+                            c if c == case2 => assert!(case.recv(&r2).is_ok()),
+                            _ => unreachable!(),
+                        }
                     }
 
                     end_s.send(()).unwrap();
@@ -738,19 +1078,99 @@ fn fairness1() {
         s2.send(()).unwrap();
     }
 
-    let mut hits = [0usize; 4];
-    while hits[0] + hits[1] < 2 * COUNT {
-        select! {
-            recv(r1) -> _ => hits[0] += 1,
-            recv(r2) -> _ => hits[1] += 1,
-            recv(channel::after(ms(0))) -> _ => hits[2] += 1,
-            recv(channel::tick(ms(0))) -> _ => hits[3] += 1,
+    let hits = vec![Cell::new(0usize); 4];
+    while hits[0].get() + hits[1].get() < 2 * COUNT {
+        let after = channel::after(ms(0));
+        let tick = channel::tick(ms(0));
+
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.recv(&r2);
+        let case3 = sel.recv(&after);
+        let case4 = sel.recv(&tick);
+        let case = sel.select();
+        match case.index() {
+            i if i == case1 => {
+                case.recv(&r1).unwrap();
+                hits[0].set(hits[0].get() + 1);
+            }
+            i if i == case2 => {
+                case.recv(&r2).unwrap();
+                hits[1].set(hits[1].get() + 1);
+            }
+            i if i == case3 => {
+                case.recv(&after).unwrap();
+                hits[2].set(hits[2].get() + 1);
+            }
+            i if i == case4 => {
+                case.recv(&tick).unwrap();
+                hits[3].set(hits[3].get() + 1);
+            }
+            _ => unreachable!(),
         }
     }
 
     assert!(r1.is_empty());
     assert!(r2.is_empty());
 
-    let sum: usize = hits.iter().sum();
-    assert!(hits.iter().all(|x| *x >= sum / hits.len() / 2));
+    let sum: usize = hits.iter().map(|h| h.get()).sum();
+    assert!(hits.iter().all(|x| x.get() >= sum / hits.len() / 2));
+}
+
+#[test]
+fn fairness2() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = channel::unbounded::<()>();
+    let (s2, r2) = channel::bounded::<()>(1);
+    let (s3, r3) = channel::bounded::<()>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            for _ in 0..COUNT {
+                let mut sel = Select::new();
+                let mut case1 = None;
+                let mut case2 = None;
+                if s1.is_empty() {
+                    case1 = Some(sel.send(&s1));
+                }
+                if s2.is_empty() {
+                    case2 = Some(sel.send(&s2));
+                }
+                let case3 = sel.send(&s3);
+                let case = sel.select();
+                match case.index() {
+                    i if Some(i) == case1 => assert!(case.send(&s1, ()).is_ok()),
+                    i if Some(i) == case2 => assert!(case.send(&s2, ()).is_ok()),
+                    i if i == case3 => assert!(case.send(&s3, ()).is_ok()),
+                    _ => unreachable!(),
+                }
+            }
+        });
+
+        let hits = vec![Cell::new(0usize); 3];
+        for _ in 0..COUNT {
+            let mut sel = Select::new();
+            let case1 = sel.recv(&r1);
+            let case2 = sel.recv(&r2);
+            let case3 = sel.recv(&r3);
+            let case = sel.select();
+            match case.index() {
+                i if i == case1 => {
+                    case.recv(&r1).unwrap();
+                    hits[0].set(hits[0].get() + 1);
+                }
+                i if i == case2 => {
+                    case.recv(&r2).unwrap();
+                    hits[1].set(hits[1].get() + 1);
+                }
+                i if i == case3 => {
+                    case.recv(&r3).unwrap();
+                    hits[2].set(hits[2].get() + 1);
+                }
+                _ => unreachable!(),
+            }
+        }
+        assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 10));
+    });
 }
