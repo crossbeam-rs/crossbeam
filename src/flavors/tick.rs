@@ -9,11 +9,9 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
+use context::Context;
 use err::{RecvTimeoutError, TryRecvError};
-use internal::context::Context;
-use internal::select::{Operation, SelectHandle, Token};
-
-// TODO: rename deadline to something better
+use select::{Operation, SelectHandle, Token};
 
 /// Result of a receive operation.
 pub type TickToken = Option<Instant>;
@@ -21,7 +19,7 @@ pub type TickToken = Option<Instant>;
 /// Channel state.
 struct Inner {
     /// The instant at which the next message will be delivered.
-    deadline: Instant,
+    next_tick: Instant,
 
     /// The index of the next message to be received.
     index: Wrapping<usize>,
@@ -43,7 +41,7 @@ impl Channel {
     pub fn new(dur: Duration) -> Self {
         Channel {
             inner: Arc::new(Mutex::new(Inner {
-                deadline: Instant::now() + dur,
+                next_tick: Instant::now() + dur,
                 index: Wrapping(0),
             })),
             duration: dur,
@@ -56,10 +54,10 @@ impl Channel {
         let mut inner = self.inner.lock();
         let now = Instant::now();
 
-        // If the deadline has been reached, we can receive the next message.
-        if now >= inner.deadline {
-            let msg = inner.deadline;
-            inner.deadline = now + self.duration;
+        // If the next tick time has been reached, we can receive the next message.
+        if now >= inner.next_tick {
+            let msg = inner.next_tick;
+            inner.next_tick = now + self.duration;
             inner.index += Wrapping(1);
             Ok(msg)
         } else {
@@ -77,9 +75,9 @@ impl Channel {
                 let now = Instant::now();
 
                 // Check if we can receive the next message.
-                if now >= inner.deadline {
-                    let msg = inner.deadline;
-                    inner.deadline = now + self.duration;
+                if now >= inner.next_tick {
+                    let msg = inner.next_tick;
+                    inner.next_tick = now + self.duration;
                     inner.index += Wrapping(1);
                     return Ok(msg);
                 }
@@ -90,9 +88,9 @@ impl Channel {
                         return Err(RecvTimeoutError::Timeout);
                     }
 
-                    inner.deadline.min(d) - now
+                    inner.next_tick.min(d) - now
                 } else {
-                    inner.deadline - now
+                    inner.next_tick - now
                 }
             };
 
@@ -110,7 +108,7 @@ impl Channel {
     #[inline]
     pub fn is_empty(&self) -> bool {
         let inner = self.inner.lock();
-        Instant::now() < inner.deadline
+        Instant::now() < inner.next_tick
     }
 
     /// Returns the number of messages in the channel.
@@ -165,7 +163,7 @@ impl SelectHandle for Channel {
 
     #[inline]
     fn deadline(&self) -> Option<Instant> {
-        Some(self.inner.lock().deadline)
+        Some(self.inner.lock().next_tick)
     }
 
     #[inline]
@@ -185,7 +183,7 @@ impl SelectHandle for Channel {
     fn state(&self) -> usize {
         // Return the index of the next message to be delivered to the channel.
         let inner = self.inner.lock();
-        let index = if Instant::now() < inner.deadline {
+        let index = if Instant::now() < inner.next_tick {
             inner.index
         } else {
             inner.index + Wrapping(1)

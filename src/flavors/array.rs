@@ -11,11 +11,11 @@ use std::time::Instant;
 
 use crossbeam_utils::CachePadded;
 
+use context::Context;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use internal::context::Context;
-use internal::select::{Operation, SelectHandle, Selected, Token};
-use internal::utils::Backoff;
-use internal::waker::SyncWaker;
+use select::{Operation, SelectHandle, Selected, Token};
+use utils::Backoff;
+use waker::SyncWaker;
 
 /// A slot in a channel.
 struct Slot<T> {

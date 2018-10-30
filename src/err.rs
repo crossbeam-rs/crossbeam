@@ -41,16 +41,6 @@ pub enum SendTimeoutError<T> {
     Disconnected(T),
 }
 
-/// An error returned from the [`Select::send`] method.
-///
-/// This error occurs when the selection case doesn't send a message into the channel. Note that
-/// cases enumerated in a selection loop are sometimes simply skipped, so they might fail even if
-/// the channel is currently not full.
-///
-/// [`Select::send`]: struct.Select.html#method.send
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct SelectSendError<T>(pub T);
-
 /// An error returned from the [`Receiver::recv`] method.
 ///
 /// The [`recv`] operation can only fail if the sending half of a channel is disconnected and the
@@ -92,16 +82,6 @@ pub enum RecvTimeoutError {
     /// received on it.
     Disconnected,
 }
-
-/// An error returned from the [`Select::recv`] method.
-///
-/// This error occurs when the selection case doesn't receive a message from the channel. Note that
-/// cases enumerated in a selection loop are sometimes simply skipped, so they might fail even if
-/// the channel is currently not empty.
-///
-/// [`Select::recv`]: struct.Select.html#method.recv
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub struct SelectRecvError;
 
 impl<T> fmt::Debug for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -262,53 +242,6 @@ impl<T> SendTimeoutError<T> {
     }
 }
 
-impl<T: Send> fmt::Debug for SelectSendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "SelectSendError(..)".fmt(f)
-    }
-}
-
-impl<T: Send> fmt::Display for SelectSendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "selection `send` case is not ready".fmt(f)
-    }
-}
-
-impl<T: Send> error::Error for SelectSendError<T> {
-    fn description(&self) -> &str {
-        "selection `send` case is not ready"
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
-impl<T> SelectSendError<T> {
-    /// Unwraps the value.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let (tx, rx) = unbounded();
-    ///
-    /// let mut msg = "message".to_string();
-    /// let mut sel = Select::new();
-    /// loop {
-    ///     if let Err(err) = sel.send(&tx, msg) {
-    ///         msg = err.into_inner();
-    ///     } else {
-    ///         break;
-    ///     }
-    /// }
-    /// ```
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
 impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         "receiving on an empty and disconnected channel".fmt(f)
@@ -382,21 +315,5 @@ impl From<RecvError> for RecvTimeoutError {
         match err {
             RecvError => RecvTimeoutError::Disconnected,
         }
-    }
-}
-
-impl fmt::Display for SelectRecvError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "selection `recv` case is not ready".fmt(f)
-    }
-}
-
-impl error::Error for SelectRecvError {
-    fn description(&self) -> &str {
-        "selection `recv` case is not ready"
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
     }
 }

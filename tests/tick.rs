@@ -106,9 +106,7 @@ macro_rules! tests {
 
         #[test]
         fn try_recv() {
-            let start = Instant::now();
             let r = channel::tick(ms(200));
-
             assert!(r.try_recv().is_err());
 
             thread::sleep(ms(100));

@@ -16,6 +16,7 @@ use channel::TryRecvError;
 // TODO: move most of the stuff inside `internal` into the parent module?
 // TODO: verify that compile_error! and unreachable! work in edition 2018
 // TODO: disconnection vs closing? probably disconnection
+// TODO: try_select and select_timeout should return Result<SelectedCase, TrySelectError/SelectTimeoutError>
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

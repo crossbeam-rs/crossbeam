@@ -7,8 +7,8 @@ use std::thread::{self, ThreadId};
 
 use parking_lot::Mutex;
 
-use internal::context::Context;
-use internal::select::{Operation, Selected};
+use context::Context;
+use select::{Operation, Selected};
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {

@@ -9,12 +9,10 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use context::Context;
 use err::{RecvTimeoutError, TryRecvError};
-use internal::context::Context;
-use internal::select::{Operation, SelectHandle, Token};
-use internal::utils;
-
-// TODO: rename deadline to something better
+use select::{Operation, SelectHandle, Token};
+use utils;
 
 /// Result of a receive operation.
 pub type AfterToken = Option<Instant>;
@@ -22,7 +20,7 @@ pub type AfterToken = Option<Instant>;
 /// Channel that delivers a message after a certain amount of time.
 pub struct Channel {
     /// The instant at which the message will be delivered.
-    deadline: Instant,
+    delivery_time: Instant,
 
     /// The pointer to a lazily initialized boolean flag, which becomes `true` when the message
     /// gets received.
@@ -37,7 +35,7 @@ impl Channel {
     #[inline]
     pub fn new(dur: Duration) -> Self {
         Channel {
-            deadline: Instant::now() + dur,
+            delivery_time: Instant::now() + dur,
             ptr: AtomicPtr::new(ptr::null_mut()),
         }
     }
@@ -78,15 +76,15 @@ impl Channel {
             return Err(TryRecvError::Empty);
         }
 
-        if Instant::now() < self.deadline {
-            // The message was not "sent" yet.
+        if Instant::now() < self.delivery_time {
+            // The message was not delivered yet.
             return Err(TryRecvError::Empty);
         }
 
         // Try consuming the message if it is still available.
         if !self.flag().swap(true, Ordering::SeqCst) {
-            // Success! Return the message, which is the instant at which it was "sent".
-            Ok(self.deadline)
+            // Success! Return the message, which is the instant at which it was delivered.
+            Ok(self.delivery_time)
         } else {
             // The message was already received.
             Err(TryRecvError::Empty)
@@ -106,7 +104,7 @@ impl Channel {
             let now = Instant::now();
 
             // Check if we can receive the next message.
-            if now >= self.deadline {
+            if now >= self.delivery_time {
                 break;
             }
 
@@ -116,16 +114,16 @@ impl Channel {
                     return Err(RecvTimeoutError::Timeout);
                 }
 
-                thread::sleep(self.deadline.min(d) - now);
+                thread::sleep(self.delivery_time.min(d) - now);
             } else {
-                thread::sleep(self.deadline - now);
+                thread::sleep(self.delivery_time - now);
             }
         }
 
         // Try consuming the message if it is still available.
         if !self.flag().swap(true, Ordering::SeqCst) {
-            // Success! Return the message, which is the instant at which it was "sent".
-            Ok(self.deadline)
+            // Success! Return the message, which is the instant at which it was delivered.
+            Ok(self.delivery_time)
         } else {
             // The message was already received. Block forever.
             utils::sleep_until(None);
@@ -150,12 +148,13 @@ impl Channel {
             return true;
         }
 
-        // If the deadline hasn't been reached yet, the channel is empty.
-        if Instant::now() < self.deadline {
+        // If the delivery time hasn't been reached yet, the channel is empty.
+        if Instant::now() < self.delivery_time {
             return true;
         }
 
-        // The deadline has been reached. The channel is empty only if the message was received.
+        // The delivery time has been reached.
+        // The channel is empty only if the message was received.
         flag.load(Ordering::SeqCst)
     }
 
@@ -198,7 +197,7 @@ impl Clone for Channel {
         mem::forget(arc);
 
         Channel {
-            deadline: self.deadline,
+            delivery_time: self.delivery_time,
             ptr: AtomicPtr::new(flag as *const AtomicBool as *mut AtomicBool),
         }
     }
@@ -229,7 +228,7 @@ impl SelectHandle for Channel {
 
     #[inline]
     fn deadline(&self) -> Option<Instant> {
-        Some(self.deadline)
+        Some(self.delivery_time)
     }
 
     #[inline]
@@ -250,7 +249,7 @@ impl SelectHandle for Channel {
         // Return 1 if the deadline has been reached and 0 otherwise.
         if self.flag().load(Ordering::SeqCst) {
             1
-        } else if Instant::now() < self.deadline {
+        } else if Instant::now() < self.delivery_time {
             0
         } else {
             1

@@ -10,10 +10,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use context::Context;
 use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
 use flavors;
-use internal::context::Context;
-use internal::select::{Operation, SelectHandle, Token};
+use select::{Operation, SelectHandle, Token};
 
 /// A channel in the form of one of the different flavors.
 pub struct Channel<T> {

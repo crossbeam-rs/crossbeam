@@ -1,16 +1,13 @@
 //! Interface to the select mechanism.
 
 use std::marker::PhantomData;
-use std::mem;
-use std::option;
-use std::ptr;
 use std::time::{Duration, Instant};
 
+use channel::{self, Receiver, Sender};
+use context::Context;
 use err::{RecvError, SendError};
-use internal::channel::{self, Receiver, Sender};
-use internal::context::Context;
-use internal::smallvec::SmallVec;
-use internal::utils;
+use smallvec::SmallVec;
+use utils;
 
 use flavors;
 

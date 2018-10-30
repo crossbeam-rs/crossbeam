@@ -368,17 +368,21 @@ extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
 extern crate rand;
 extern crate parking_lot;
+extern crate smallvec;
 
+mod channel;
+mod context;
 mod err;
 mod flavors;
+mod utils;
+mod waker;
 
-#[doc(hidden)]
-pub mod internal;
+#[macro_use]
+mod select;
 
-pub use internal::channel::{Receiver, Sender};
-pub use internal::channel::{bounded, unbounded};
-pub use internal::channel::{after, tick};
-pub use internal::select::{Select, SelectedCase};
+pub use channel::{Receiver, Sender};
+pub use channel::{bounded, unbounded};
+pub use channel::{after, tick};
+pub use select::{Select, SelectedCase};
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
 pub use err::{SendError, SendTimeoutError, TrySendError};
-pub use err::{SelectRecvError, SelectSendError};
