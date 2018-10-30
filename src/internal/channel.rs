@@ -1,7 +1,6 @@
 //! The channel interface.
 
 use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::isize;
 use std::iter::FusedIterator;
 use std::mem;
@@ -272,6 +271,9 @@ pub struct Sender<T> {
 unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T: Send> Sync for Sender<T> {}
 
+impl<T> UnwindSafe for Sender<T> {}
+impl<T> RefUnwindSafe for Sender<T> {}
+
 impl<T> Sender<T> {
     /// Creates a sender handle for the channel and increments the sender count.
     fn new(chan: Arc<Channel<T>>) -> Self {
@@ -285,11 +287,6 @@ impl<T> Sender<T> {
         }
 
         Sender { inner: chan }
-    }
-
-    /// Returns a unique identifier for the channel.
-    fn channel_id(&self) -> usize {
-        &*self.inner as *const Channel<T> as usize
     }
 
     /// Attempts to send a message into the channel without blocking.
@@ -507,29 +504,6 @@ impl<T> fmt::Debug for Sender<T> {
     }
 }
 
-impl<T> Hash for Sender<T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.channel_id().hash(state)
-    }
-}
-
-impl<T> PartialEq for Sender<T> {
-    fn eq(&self, other: &Sender<T>) -> bool {
-        self.channel_id() == other.channel_id()
-    }
-}
-
-impl<T> Eq for Sender<T> {}
-
-impl<T> PartialEq<Receiver<T>> for Sender<T> {
-    fn eq(&self, other: &Receiver<T>) -> bool {
-        self.channel_id() == other.channel_id()
-    }
-}
-
-impl<T> UnwindSafe for Sender<T> {}
-impl<T> RefUnwindSafe for Sender<T> {}
-
 /// The receiving side of a channel.
 ///
 /// Receivers can be cloned and shared among multiple threads.
@@ -572,6 +546,9 @@ pub enum ReceiverFlavor<T> {
 unsafe impl<T: Send> Send for Receiver<T> {}
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
+impl<T> UnwindSafe for Receiver<T> {}
+impl<T> RefUnwindSafe for Receiver<T> {}
+
 impl<T> Receiver<T> {
     /// Creates a receiver handle for the channel and increments the receiver count.
     fn new(chan: Arc<Channel<T>>) -> Self {
@@ -581,20 +558,11 @@ impl<T> Receiver<T> {
         // counter. It's very difficult to recover sensibly from such degenerate scenarios so we
         // just abort when the count becomes very large.
         if old_count > isize::MAX as usize {
-            process::abort();
+            process::abort(); // TODO: use utils::abort?
         }
 
         Receiver {
             flavor: ReceiverFlavor::Channel(chan),
-        }
-    }
-
-    /// Returns a unique identifier for the channel.
-    fn channel_id(&self) -> usize {
-        match &self.flavor {
-            ReceiverFlavor::Channel(chan) => &**chan as *const Channel<T> as usize,
-            ReceiverFlavor::After(chan) => chan.channel_id(),
-            ReceiverFlavor::Tick(chan) => chan.channel_id(),
         }
     }
 
@@ -866,6 +834,62 @@ impl<T> Receiver<T> {
             ReceiverFlavor::Tick(chan) => chan.capacity(),
         }
     }
+
+    /// Returns an iterator that waits for messages until the channel is disconnected.
+    ///
+    /// Each call to `next` will block waiting for the next message. It will finally return `None`
+    /// when the channel is empty and disconnected.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded::<i32>();
+    ///
+    /// thread::spawn(move || {
+    ///     tx.send(1).unwrap();
+    ///     tx.send(2).unwrap();
+    ///     tx.send(3).unwrap();
+    /// });
+    ///
+    /// let v: Vec<_> = rx.iter().collect();
+    /// assert_eq!(v, [1, 2, 3]);
+    /// ```
+    pub fn iter(&self) -> Iter<T> {
+        Iter { rx: self }
+    }
+
+    /// Returns an iterator that receives messages until the channel is empty or disconnected.
+    ///
+    /// Each call to `next` will return a message if there is at least one in the channel. The
+    /// iterator will never block waiting for new messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (tx, rx) = unbounded::<i32>();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     tx.send(1).unwrap();
+    ///     tx.send(2).unwrap();
+    ///     thread::sleep(Duration::from_secs(2));
+    ///     tx.send(3).unwrap();
+    /// });
+    ///
+    /// thread::sleep(Duration::from_secs(2));
+    /// let v: Vec<_> = rx.try_iter().collect();
+    /// assert_eq!(v, [1, 2]);
+    /// ```
+    pub fn try_iter(&self) -> TryIter<T> {
+        TryIter { rx: self }
+    }
 }
 
 impl<T> Drop for Receiver<T> {
@@ -902,47 +926,138 @@ impl<T> fmt::Debug for Receiver<T> {
     }
 }
 
-impl<T> Hash for Receiver<T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.channel_id().hash(state)
+impl<'a, T> IntoIterator for &'a Receiver<T> {
+    type Item = T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
-impl<T> PartialEq for Receiver<T> {
-    fn eq(&self, other: &Receiver<T>) -> bool {
-        self.channel_id() == other.channel_id()
+impl<T> IntoIterator for Receiver<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { rx: self }
     }
 }
 
-impl<T> Eq for Receiver<T> {}
-
-impl<T> PartialEq<Sender<T>> for Receiver<T> {
-    fn eq(&self, other: &Sender<T>) -> bool {
-        self.channel_id() == other.channel_id()
-    }
+/// An iterator that waits for messages until the channel is disconnected.
+///
+/// Each call to `next` will block waiting for the next message. It will finally return `None` when
+/// the channel is empty and disconnected.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use crossbeam_channel::unbounded;
+///
+/// let (tx, rx) = unbounded();
+///
+/// thread::spawn(move || {
+///     tx.send(1).unwrap();
+///     tx.send(2).unwrap();
+///     tx.send(3).unwrap();
+/// });
+///
+/// let v: Vec<_> = rx.iter().collect();
+/// assert_eq!(v, [1, 2, 3]);
+/// ```
+#[derive(Debug)]
+pub struct Iter<'a, T: 'a> {
+    rx: &'a Receiver<T>,
 }
 
-impl<T> Iterator for Receiver<T> {
+impl<'a, T> FusedIterator for Iter<'a, T> {}
+
+impl<'a, T> Iterator for Iter<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.recv().ok()
+        self.rx.recv().ok()
     }
 }
 
-impl<T> FusedIterator for Receiver<T> {}
+/// An iterator that receives messages until the channel is empty or disconnected.
+///
+/// Each call to `next` will return a message if there is at least one in the channel. The iterator
+/// will never block waiting for new messages.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use std::time::Duration;
+/// use crossbeam_channel::unbounded;
+///
+/// let (tx, rx) = unbounded::<i32>();
+///
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     tx.send(1).unwrap();
+///     tx.send(2).unwrap();
+///     thread::sleep(Duration::from_secs(2));
+///     tx.send(3).unwrap();
+/// });
+///
+/// thread::sleep(Duration::from_secs(2));
+/// let v: Vec<_> = rx.try_iter().collect();
+/// assert_eq!(v, [1, 2]);
+/// ```
+#[derive(Debug)]
+pub struct TryIter<'a, T: 'a> {
+    rx: &'a Receiver<T>,
+}
 
-impl<'a, T> IntoIterator for &'a Receiver<T> {
+impl<'a, T> FusedIterator for TryIter<'a, T> {}
+
+impl<'a, T> Iterator for TryIter<'a, T> {
     type Item = T;
-    type IntoIter = Receiver<T>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.clone()
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rx.try_recv().ok()
     }
 }
 
-impl<T> UnwindSafe for Receiver<T> {}
-impl<T> RefUnwindSafe for Receiver<T> {}
+/// An owning iterator that waits for messages until the channel is disconnected.
+///
+/// Each call to `next` will block waiting for the next message. It will finally return `None` when
+/// the channel is empty and disconnected.
+///
+/// # Examples
+///
+/// ```
+/// use std::thread;
+/// use crossbeam_channel::unbounded;
+///
+/// let (tx, rx) = unbounded();
+///
+/// thread::spawn(move || {
+///     tx.send(1).unwrap();
+///     tx.send(2).unwrap();
+///     tx.send(3).unwrap();
+/// });
+///
+/// let v: Vec<_> = rx.into_iter().collect();
+/// assert_eq!(v, [1, 2, 3]);
+/// ```
+#[derive(Debug)]
+pub struct IntoIter<T> {
+    rx: Receiver<T>,
+}
+
+impl<T> FusedIterator for IntoIter<T> {}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rx.recv().ok()
+    }
+}
 
 impl<T> SelectHandle for Sender<T> {
     fn try(&self, token: &mut Token) -> bool {

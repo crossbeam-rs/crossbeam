@@ -14,8 +14,7 @@ use channel::TryRecvError;
 
 // TODO: modify a borrowed sender/receiver inside select! body
 // TODO: fix unreachable lints in select!
-// TODO: use abortguard so that panicking message prints a more sensible message
-// TODO: remove all instances of std::process
+// TODO: use abortguard so that panicking message in select! prints a more sensible message
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

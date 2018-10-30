@@ -42,12 +42,6 @@ impl Channel {
         }
     }
 
-    /// Returns a unique identifier for the channel.
-    #[inline]
-    pub fn channel_id(&self) -> usize {
-        self.flag() as *const AtomicBool as usize
-    }
-
     /// Returns the flag associated with this channel.
     ///
     /// The flag will be allocated on the heap and initialized with `false` on the first call to

@@ -50,12 +50,6 @@ impl Channel {
         }
     }
 
-    /// Returns a unique identifier for the channel.
-    #[inline]
-    pub fn channel_id(&self) -> usize {
-        self.inner.as_ref() as *const Mutex<Inner> as usize
-    }
-
     /// Attempts to receive a message without blocking.
     #[inline]
     pub fn try_recv(&self) -> Result<Instant, TryRecvError> {

@@ -11,7 +11,7 @@ fn nested_recv_iter() {
     crossbeam::scope(|scope| {
         scope.spawn(move || {
             let mut acc = 0;
-            for x in &r {
+            for x in r.iter() {
                 acc += x;
             }
             total_s.send(acc).unwrap();
@@ -33,7 +33,7 @@ fn recv_iter_break() {
     crossbeam::scope(|scope| {
         scope.spawn(move || {
             let mut count = 0;
-            for x in &r {
+            for x in r.iter() {
                 if count >= 3 {
                     break;
                 } else {
@@ -49,6 +49,35 @@ fn recv_iter_break() {
         let _ = s.send(2);
         drop(s);
         assert_eq!(count_r.recv().unwrap(), 4);
+    })
+}
+
+#[test]
+fn recv_try_iter() {
+    let (request_s, request_r) = channel::unbounded();
+    let (response_s, response_r) = channel::unbounded();
+
+    crossbeam::scope(|s| {
+        // Request `x`s until we have `6`.
+        s.spawn(move || {
+            let mut count = 0;
+            loop {
+                for x in response_r.try_iter() {
+                    count += x;
+                    if count == 6 {
+                        assert_eq!(count, 6);
+                        return;
+                    }
+                }
+                request_s.send(()).unwrap();
+            }
+        });
+
+        for _ in request_r.iter() {
+            if response_s.send(2).is_err() {
+                break;
+            }
+        }
     })
 }
 
