@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 
 use channel;
 
+pub use channel::{RecvError, RecvTimeoutError, TryRecvError};
+pub use channel::{SendError, SendTimeoutError, TrySendError};
+
 pub struct Sender<T>(pub channel::Sender<T>);
 
 pub struct Receiver<T>(pub channel::Receiver<T>);

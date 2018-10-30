@@ -7,8 +7,9 @@ use std::ops::Deref;
 use std::time::{Duration, Instant};
 
 use channel;
-use channel::{RecvError, RecvTimeoutError, TryRecvError};
-use channel::{SendError, SendTimeoutError, TrySendError};
+
+pub use channel::{RecvError, RecvTimeoutError, TryRecvError};
+pub use channel::{SendError, SendTimeoutError, TrySendError};
 
 pub struct Sender<T>(pub channel::Sender<T>);
 

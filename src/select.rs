@@ -36,7 +36,11 @@ impl Operation {
     /// and is alive for the entire duration of select or blocking operation.
     #[inline]
     pub fn hook<T>(r: &mut T) -> Operation {
-        Operation(r as *mut T as usize)
+        let val = r as *mut T as usize;
+        // Make sure that the pointer address doesn't equal the numerical representation of
+        // `Selected::{Waiting, Aborted, Disconnected}`.
+        assert!(val > 2);
+        Operation(val)
     }
 }
 

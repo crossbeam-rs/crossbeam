@@ -360,7 +360,7 @@ impl<T> Channel<T> {
                 self.senders.register(oper, cx);
 
                 // Has the channel become ready just now?
-                if !self.is_full() {
+                if !self.is_full() || self.is_disconnected() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
