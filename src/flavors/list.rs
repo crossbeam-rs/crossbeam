@@ -374,7 +374,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         assert!(self.start_send(token));
         unsafe {
-            self.write(token, msg).map_err(|m| SendTimeoutError::Disconnected(m))
+            self.write(token, msg).map_err(SendTimeoutError::Disconnected)
         }
     }
 

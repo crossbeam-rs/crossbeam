@@ -2,7 +2,6 @@
 
 use std::cell::Cell;
 use std::num::Wrapping;
-use std::process;
 use std::sync::atomic;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -49,25 +48,6 @@ impl Backoff {
 
         self.0 = self.0.wrapping_add(1);
         self.0 <= 10
-    }
-}
-
-// TODO: do we need to remove this?
-/// Once dropped, aborts with an error message.
-///
-/// This guard is used for protection from unrecoverable panics.
-pub struct AbortGuard(pub &'static str);
-
-impl Drop for AbortGuard {
-    fn drop(&mut self) {
-        eprintln!(
-            "{}, {}:{}:{}",
-            self.0,
-            file!(),
-            line!(),
-            column!(),
-        );
-        process::abort();
     }
 }
 

@@ -374,15 +374,16 @@ mod channel;
 mod context;
 mod err;
 mod flavors;
+mod select;
 mod utils;
 mod waker;
-
-#[macro_use]
-mod select;
 
 pub use channel::{Receiver, Sender};
 pub use channel::{bounded, unbounded};
 pub use channel::{after, tick};
+
 pub use select::{Select, SelectedCase};
+
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
 pub use err::{SendError, SendTimeoutError, TrySendError};
+pub use err::{SelectTimeoutError, TrySelectError};

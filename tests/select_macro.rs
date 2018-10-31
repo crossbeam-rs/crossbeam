@@ -12,10 +12,6 @@ use std::time::{Duration, Instant};
 
 use channel::TryRecvError;
 
-// TODO: modify a borrowed sender/receiver inside select! body
-// TODO: fix unreachable lints in select!
-// TODO: use abortguard so that panicking message in select! prints a more sensible message
-
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
@@ -456,19 +452,22 @@ fn nesting() {
 
 #[test]
 #[should_panic(expected = "send panicked")]
-fn panic_send() {
+fn panic_sender() {
     fn get() -> channel::Sender<i32> {
         panic!("send panicked")
     }
 
-    select! {
-        send(get(), panic!()) -> _ => {}
+    #[allow(unreachable_code)]
+    {
+        select! {
+            send(get(), panic!()) -> _ => {}
+        }
     }
 }
 
 #[test]
 #[should_panic(expected = "recv panicked")]
-fn panic_recv() {
+fn panic_receiver() {
     fn get() -> channel::Receiver<i32> {
         panic!("recv panicked")
     }

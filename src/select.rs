@@ -1,11 +1,12 @@
 //! Interface to the select mechanism.
 
 use std::marker::PhantomData;
+use std::mem;
 use std::time::{Duration, Instant};
 
 use channel::{self, Receiver, Sender};
 use context::Context;
-use err::{RecvError, SendError};
+use err::{RecvError, SelectTimeoutError, SendError, TrySelectError};
 use smallvec::SmallVec;
 use utils;
 
@@ -149,7 +150,7 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum Timeout {
     Now,
     Never,
@@ -166,10 +167,6 @@ fn main_loop<S>(
 where
     S: SelectHandle + ?Sized,
 {
-    // Create a token, which serves as a temporary variable that gets initialized in this function
-    // and is later used by a call to `read` or `write` that completes the selected operation.
-    let mut token = Token::default();
-
     if handles.is_empty() {
         // Wait until the timeout and return.
         match timeout {
@@ -185,8 +182,11 @@ where
         }
     }
 
-    // TODO: rename and extract this
-    let try_select = |handles: &mut [(&S, usize, *const u8)], mut token: Token| {
+    // Create a token, which serves as a temporary variable that gets initialized in this function
+    // and is later used by a call to `read` or `write` that completes the selected operation.
+    let mut token = Token::default();
+
+    if timeout == Timeout::Now {
         if handles.len() <= 1 {
             // Try firing the operations without blocking.
             for &(handle, i, ptr) in handles.iter() {
@@ -195,48 +195,44 @@ where
                 }
             }
 
-            None
-        } else {
-            // Shuffle the operations for fairness.
-            utils::shuffle(handles);
+            return None;
+        }
 
-            let mut states = SmallVec::<[usize; 4]>::with_capacity(handles.len());
+        // Shuffle the operations for fairness.
+        utils::shuffle(handles);
 
-            // Snapshot the channel states of all operations.
-            for &(handle, _, _) in handles.iter() {
-                states.push(handle.state());
+        let mut states = SmallVec::<[usize; 4]>::with_capacity(handles.len());
+
+        // Snapshot the channel states of all operations.
+        for &(handle, _, _) in handles.iter() {
+            states.push(handle.state());
+        }
+
+        loop {
+            // Try firing the operations.
+            for &(handle, i, ptr) in handles.iter() {
+                if handle.try(&mut token) {
+                    return Some((token, i, ptr));
+                }
             }
 
-            loop {
-                // Try firing the operations.
-                for &(handle, i, ptr) in handles.iter() {
-                    if handle.try(&mut token) {
-                        return Some((token, i, ptr));
-                    }
+            let mut changed = false;
+
+            // Update the channel states and check whether any have been changed.
+            for (&(handle, _, _), state) in handles.iter().zip(states.iter_mut()) {
+                let current = handle.state();
+
+                if *state != current {
+                    *state = current;
+                    changed = true;
                 }
+            }
 
-                let mut changed = false;
-
-                // Update the channel states and check whether any have been changed.
-                for (&(handle, _, _), state) in handles.iter().zip(states.iter_mut()) {
-                    let current = handle.state();
-
-                    if *state != current {
-                        *state = current;
-                        changed = true;
-                    }
-                }
-
-                // If none of the states have changed, select the `default` case.
-                if !changed {
-                    return None;
-                }
+            // If none of the states have changed, select the `default` case.
+            if !changed {
+                return None;
             }
         }
-    };
-
-    if timeout == Timeout::Now {
-        return try_select(handles, token);
     }
 
     loop {
@@ -340,7 +336,8 @@ where
             Timeout::Never => {},
             Timeout::At(when) => {
                 if Instant::now() >= when {
-                    return try_select(handles, token);
+                    // TODO: explain
+                    return main_loop(handles, Timeout::Now);
                 }
             }
         };
@@ -547,101 +544,6 @@ where
 //         cb.call(&mut token)
 //     }
 // }
-//
-// /// Some space to keep a `FnOnce()` object on the stack.
-// type Space = [usize; 2];
-//
-// /// A `FnOnce(&mut Token) -> R + 'a` that is stored inline if small, or otherwise boxed on the heap.
-// pub struct Callback<'a, R> {
-//     /// A wrapper function around the callback.
-//     ///
-//     /// The first argument is a pointer to `space`.
-//     ///
-//     /// The second argument may contain a reference to `Token`. If the argument is `Some`, the
-//     /// reference is passed to the callback. If the argument is `None`, the callback is read and
-//     /// dropped without invocation.
-//     ///
-//     /// This function may be called only once.
-//     call: unsafe fn(*mut u8, token: Option<&mut Token>) -> Option<R>,
-//
-//     /// Some space where a function can be stored, if it fits.
-//     space: Space,
-//
-//     /// Indicates that a `Callback` is `!Send + !Sync` and borrows `'a`.
-//     _marker: PhantomData<(*mut (), &'a ())>,
-// }
-//
-// impl<'a, R> Callback<'a, R> {
-//     /// Constructs a new `Callback<'a, R>` from a `FnOnce(&mut Token) -> R + 'a`.
-//     pub fn new<F>(f: F) -> Self
-//     where
-//         F: FnOnce(&mut Token) -> R + 'a,
-//     {
-//         let size = mem::size_of::<F>();
-//         let align = mem::align_of::<F>();
-//
-//         unsafe {
-//             let mut space: Space = Space::default();
-//
-//             let call = if size <= mem::size_of::<Space>() && align <= mem::align_of::<Space>() {
-//                 unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
-//                 where
-//                     F: FnOnce(&mut Token) -> R + 'a,
-//                 {
-//                     // Read the function from the stack.
-//                     let f: F = ptr::read(raw as *mut F);
-//                     token.map(f)
-//                 }
-//
-//                 // Write the function into the space.
-//                 ptr::write(&mut space as *mut Space as *mut F, f);
-//                 call::<F, R>
-//             } else {
-//                 unsafe fn call<'a, F, R>(raw: *mut u8, token: Option<&mut Token>) -> Option<R>
-//                 where
-//                     F: FnOnce(&mut Token) -> R + 'a,
-//                 {
-//                     // Read the pointer to the function from the stack.
-//                     let b: Box<F> = ptr::read(raw as *mut Box<F>);
-//                     token.map(*b)
-//                 }
-//
-//                 // The function doesn't fit, so box it and write the pointer into the space.
-//                 let b: Box<F> = Box::new(f);
-//                 ptr::write(&mut space as *mut Space as *mut Box<F>, b);
-//                 call::<F, R>
-//             };
-//
-//             Callback {
-//                 call,
-//                 space,
-//                 _marker: PhantomData,
-//             }
-//         }
-//     }
-//
-//     /// Invokes the callback.
-//     #[inline]
-//     pub fn call(self, token: &mut Token) -> R {
-//         // Disassemble `self` and forget it so that the destructor doesn't invoke `call`.
-//         let Callback {
-//             call, mut space, ..
-//         } = self;
-//         mem::forget(self);
-//
-//         // Invoke the callback.
-//         unsafe { (call)(&mut space as *mut Space as *mut u8, Some(token)).unwrap() }
-//     }
-// }
-//
-// impl<'a, R> Drop for Callback<'a, R> {
-//     fn drop(&mut self) {
-//         // Call the function with `None` in order to drop the callback.
-//         unsafe {
-//             (self.call)(&mut self.space as *mut Space as *mut u8, None);
-//         }
-//     }
-// }
 
 // TODO impl Clone for Select<'a>, Debug and so on (we need some of those on SelectedCase too)
 pub struct Select<'a> {
@@ -670,14 +572,16 @@ impl<'a> Select<'a> {
         i - 1
     }
 
-    pub fn try_select(&mut self) -> Option<SelectedCase<'_>> {
-        main_loop(&mut self.handles, Timeout::Now)
-            .map(|(token, index, ptr)| SelectedCase {
+    pub fn try_select(&mut self) -> Result<SelectedCase<'_>, TrySelectError> {
+        match main_loop(&mut self.handles, Timeout::Now) {
+            None => Err(TrySelectError),
+            Some((token, index, ptr)) => Ok(SelectedCase {
                 token,
                 index,
                 ptr,
                 _marker: PhantomData,
-            })
+            }),
+        }
     }
 
     pub fn select(&mut self) -> SelectedCase<'_> {
@@ -690,15 +594,21 @@ impl<'a> Select<'a> {
         }
     }
 
-    pub fn select_timeout(&mut self, timeout: Duration) -> Option<SelectedCase<'_>> {
+    pub fn select_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<SelectedCase<'_>, SelectTimeoutError> {
         let timeout = Timeout::At(Instant::now() + timeout);
-        main_loop(&mut self.handles, timeout)
-            .map(|(token, index, ptr)| SelectedCase {
+
+        match main_loop(&mut self.handles, timeout) {
+            None => Err(SelectTimeoutError),
+            Some((token, index, ptr)) => Ok(SelectedCase {
                 token,
                 index,
                 ptr,
                 _marker: PhantomData,
-            })
+            }),
+        }
     }
 }
 
@@ -715,30 +625,54 @@ impl<'a> SelectedCase<'a> {
         self.index - 1
     }
 
-    pub fn recv<T>(mut self, r: &'a Receiver<T>) -> Result<T, RecvError> {
+    pub fn recv<T>(mut self, r: &Receiver<T>) -> Result<T, RecvError> {
         assert!(
             r as *const Receiver<T> as *const u8 == self.ptr,
             "passed a receiver that wasn't selected",
         );
-        unsafe {
+        let res = unsafe {
             channel::read(r, &mut self.token).map_err(|_| RecvError)
-        }
+        };
+        mem::forget(self);
+        res
     }
 
-    pub fn send<T>(mut self, s: &'a Sender<T>, msg: T) -> Result<(), SendError<T>> {
+    pub fn send<T>(mut self, s: &Sender<T>, msg: T) -> Result<(), SendError<T>> {
         assert!(
             s as *const Sender<T> as *const u8 == self.ptr,
             "passed a sender that wasn't selected",
         );
-        unsafe {
-            channel::write(s, &mut self.token, msg).map_err(|m| SendError(m))
-        }
+        let res = unsafe {
+            channel::write(s, &mut self.token, msg).map_err(SendError)
+        };
+        mem::forget(self);
+        res
     }
+}
+
+impl<'a> Drop for SelectedCase<'a> {
+    fn drop(&mut self) {
+        panic!("dropped `SelectedCase` without completing the operation");
+    }
+}
+
+/// TODO: comment on this
+/// From version 1.30 onwards we'll be able to:
+///     - remove `#[macro_export(local_inner_macros)]`
+///     - remove `crossbeam_channel_unreachable`
+///     - replace `crossbeam_channel_unreachable!` with `std::unreachable!`
+///     - replace `crossbeam_channel_internal!` with `$crate::crossbeam_channel_internal!`
+#[doc(hidden)]
+#[macro_export]
+macro_rules! crossbeam_channel_unreachable {
+    ($($args:tt)*) => {
+        unreachable! { $($args)* }
+    };
 }
 
 /// TODO
 #[doc(hidden)]
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! crossbeam_channel_internal {
     // The list is empty. Now check the arguments of each processed case.
     (@list
@@ -1354,7 +1288,7 @@ macro_rules! crossbeam_channel_internal {
                 unsafe fn unbind<'a, T>(x: &T) -> &'a T {
                     ::std::mem::transmute(x)
                 }
-                let r: &$crate::Receiver<_> = r; // TODO
+                let r: &$crate::Receiver<_> = r;
                 let $var: &$crate::Receiver<_> = unsafe { unbind(r) };
                 $sel.recv($var);
 
@@ -1382,7 +1316,7 @@ macro_rules! crossbeam_channel_internal {
                 unsafe fn unbind<'a, T>(x: &T) -> &'a T {
                     ::std::mem::transmute(x)
                 }
-                let s: &$crate::Sender<_> = s; // TODO
+                let s: &$crate::Sender<_> = s;
                 let $var: &$crate::Sender<_> = unsafe { unbind(s) };
                 $sel.send($var);
 
@@ -1441,7 +1375,7 @@ macro_rules! crossbeam_channel_internal {
         $case:ident
         ()
     ) => {{
-        unreachable!("internal error in crossbeam-channel: invalid case")
+        crossbeam_channel_unreachable!("internal error in crossbeam-channel: invalid case")
     }};
 
     // Catches a bug within this macro (should not happen).

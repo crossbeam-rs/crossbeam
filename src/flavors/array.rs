@@ -329,7 +329,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         if self.start_send(token) {
             unsafe {
-                return self.write(token, msg).map_err(|m| TrySendError::Disconnected(m));
+                self.write(token, msg).map_err(TrySendError::Disconnected)
             }
         } else {
             Err(TrySendError::Full(msg))
@@ -346,7 +346,7 @@ impl<T> Channel<T> {
                 if self.start_send(token) {
                     unsafe {
                         return self.write(token, msg)
-                            .map_err(|m| SendTimeoutError::Disconnected(m));
+                            .map_err(SendTimeoutError::Disconnected);
                     }
                 }
                 if !backoff.snooze() {

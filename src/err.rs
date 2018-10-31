@@ -83,6 +83,12 @@ pub enum RecvTimeoutError {
     Disconnected,
 }
 
+// TODO impls and so on
+pub struct TrySelectError;
+
+// TODO impls and so on
+pub struct SelectTimeoutError;
+
 impl<T> fmt::Debug for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         "SendError(..)".fmt(f)

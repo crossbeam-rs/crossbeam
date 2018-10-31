@@ -546,9 +546,12 @@ macro_rules! tests {
             let (s, _r) = channel::bounded(1);
             s.send(()).unwrap();
 
-            select! {
-                send(s, panic!()) -> _ => panic!(),
-                default => {}
+            #[allow(unreachable_code)]
+            {
+                select! {
+                    send(s, panic!()) -> _ => panic!(),
+                    default => {}
+                }
             }
 
             let (s, r) = channel::bounded(2);

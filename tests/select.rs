@@ -11,11 +11,9 @@ use std::time::{Duration, Instant};
 use channel::Select;
 use channel::TryRecvError;
 
-// TODO: If SelectedCase is dropped without being completed, panic!
 // TODO: test: verify that Select can be reused
-// TODO: move most of the stuff inside `internal` into the parent module?
-// TODO: verify that compile_error! and unreachable! work in edition 2018
-// TODO: try_select and select_timeout should return Result<SelectedCase, TrySelectError/SelectTimeoutError>
+// TODO: and make sure it can't while selectedcase is alive
+// TODO: write a todo mentioning kleimkuhler's contributions
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -93,9 +91,10 @@ fn disconnected() {
         let mut sel = Select::new();
         let case1 = sel.recv(&r1);
         let case2 = sel.recv(&r2);
-        match sel.select_timeout(ms(1000)) {
-            None => panic!(),
-            Some(case) => match case.index() {
+        let case = sel.select_timeout(ms(1000));
+        match case {
+            Err(_) => panic!(),
+            Ok(case) => match case.index() {
                 i if i == case1 => assert!(case.recv(&r1).is_err()),
                 i if i == case2 => panic!(),
                 _ => unreachable!(),
@@ -108,9 +107,10 @@ fn disconnected() {
     let mut sel = Select::new();
     let case1 = sel.recv(&r1);
     let case2 = sel.recv(&r2);
-    match sel.select_timeout(ms(1000)) {
-        None => panic!(),
-        Some(case) => match case.index() {
+    let case = sel.select_timeout(ms(1000));
+    match case {
+        Err(_) => panic!(),
+        Ok(case) => match case.index() {
             i if i == case1 => assert!(case.recv(&r1).is_err()),
             i if i == case2 => panic!(),
             _ => unreachable!(),
@@ -125,9 +125,10 @@ fn disconnected() {
 
         let mut sel = Select::new();
         let case1 = sel.recv(&r2);
-        match sel.select_timeout(ms(1000)) {
-            None => panic!(),
-            Some(case) => match case.index() {
+        let case = sel.select_timeout(ms(1000));
+        match case {
+            Err(_) => panic!(),
+            Ok(case) => match case.index() {
                 i if i == case1 => assert!(case.recv(&r2).is_err()),
                 i if i == case2 => panic!(),
                 _ => unreachable!(),
@@ -144,9 +145,10 @@ fn default() {
     let mut sel = Select::new();
     let _case1 = sel.recv(&r1);
     let _case2 = sel.recv(&r2);
-    match sel.try_select() {
-        None => {}
-        Some(_) => panic!(),
+    let case = sel.try_select();
+    match case {
+        Err(_) => {}
+        Ok(_) => panic!(),
     }
 
     drop(s1);
@@ -154,9 +156,10 @@ fn default() {
     let mut sel = Select::new();
     let case1 = sel.recv(&r1);
     let case2 = sel.recv(&r2);
-    match sel.try_select() {
-        None => panic!(),
-        Some(case) => match case.index() {
+    let case = sel.try_select();
+    match case {
+        Err(_) => panic!(),
+        Ok(case) => match case.index() {
             i if i == case1 => assert!(case.recv(&r1).is_err()),
             i if i == case2 => panic!(),
             _ => unreachable!()
@@ -167,9 +170,10 @@ fn default() {
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r2);
-    match sel.try_select() {
-        None => panic!(),
-        Some(case) => match case.index() {
+    let case = sel.try_select();
+    match case {
+        Err(_) => panic!(),
+        Ok(case) => match case.index() {
             i if i == case1 => assert_eq!(case.recv(&r2), Ok(2)),
             _ => unreachable!()
         }
@@ -177,15 +181,17 @@ fn default() {
 
     let mut sel = Select::new();
     let _case1 = sel.recv(&r2);
-    match sel.try_select() {
-        None => {}
-        Some(_) => panic!(),
+    let case = sel.try_select();
+    match case {
+        Err(_) => {}
+        Ok(_) => panic!(),
     }
 
     let mut sel = Select::new();
-    match sel.try_select() {
-        None => {}
-        Some(_) => panic!(),
+    let case = sel.try_select();
+    match case {
+        Err(_) => {}
+        Ok(_) => panic!(),
     }
 }
 
@@ -203,9 +209,10 @@ fn timeout() {
         let mut sel = Select::new();
         let case1 = sel.recv(&r1);
         let case2 = sel.recv(&r2);
-        match sel.select_timeout(ms(1000)) {
-            None => {}
-            Some(case) => match case.index() {
+        let case = sel.select_timeout(ms(1000));
+        match case {
+            Err(_) => {}
+            Ok(case) => match case.index() {
                 i if i == case1 => panic!(),
                 i if i == case2 => panic!(),
                 _ => unreachable!(),
@@ -215,9 +222,10 @@ fn timeout() {
         let mut sel = Select::new();
         let case1 = sel.recv(&r1);
         let case2 = sel.recv(&r2);
-        match sel.select_timeout(ms(1000)) {
-            None => panic!(),
-            Some(case) => match case.index() {
+        let case = sel.select_timeout(ms(1000));
+        match case {
+            Err(_) => panic!(),
+            Ok(case) => match case.index() {
                 i if i == case1 => panic!(),
                 i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
                 _ => unreachable!(),
@@ -234,19 +242,21 @@ fn timeout() {
         });
 
         let mut sel = Select::new();
-        match sel.select_timeout(ms(1000)) {
-            None => {
+        let case = sel.select_timeout(ms(1000));
+        match case {
+            Err(_) => {
                 let mut sel = Select::new();
                 let case1 = sel.recv(&r);
-                match sel.try_select() {
-                    None => panic!(),
-                    Some(case) => match case.index() {
+                let case = sel.try_select();
+                match case {
+                    Err(_) => panic!(),
+                    Ok(case) => match case.index() {
                         i if i == case1 => assert!(case.recv(&r).is_err()),
                         _ => unreachable!(),
                     }
                 }
             }
-            Some(_) => unreachable!(),
+            Ok(_) => unreachable!(),
         }
     });
 }
@@ -257,9 +267,10 @@ fn default_when_disconnected() {
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r);
-    match sel.try_select() {
-        None => panic!(),
-        Some(case) => match case.index() {
+    let case = sel.try_select();
+    match case {
+        Err(_) => panic!(),
+        Ok(case) => match case.index() {
             i if i == case1 => assert!(case.recv(&r).is_err()),
             _ => unreachable!(),
         }
@@ -269,9 +280,10 @@ fn default_when_disconnected() {
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r);
-    match sel.select_timeout(ms(1000)) {
-        None => panic!(),
-        Some(case) => match case.index() {
+    let case = sel.select_timeout(ms(1000));
+    match case {
+        Err(_) => panic!(),
+        Ok(case) => match case.index() {
             i if i == case1 => assert!(case.recv(&r).is_err()),
             _ => unreachable!(),
         }
@@ -281,9 +293,10 @@ fn default_when_disconnected() {
 
     let mut sel = Select::new();
     let case1 = sel.send(&s);
-    match sel.try_select() {
-        None => panic!(),
-        Some(case) => match case.index() {
+    let case = sel.try_select();
+    match case {
+        Err(_) => panic!(),
+        Ok(case) => match case.index() {
             i if i == case1 => assert!(case.send(&s, 0).is_err()),
             _ => unreachable!(),
         }
@@ -293,9 +306,10 @@ fn default_when_disconnected() {
 
     let mut sel = Select::new();
     let case1 = sel.send(&s);
-    match sel.select_timeout(ms(1000)) {
-        None => panic!(),
-        Some(case) => match case.index() {
+    let case = sel.select_timeout(ms(1000));
+    match case {
+        Err(_) => panic!(),
+        Ok(case) => match case.index() {
             i if i == case1 => assert!(case.send(&s, 0).is_err()),
             _ => unreachable!(),
         }
@@ -305,12 +319,17 @@ fn default_when_disconnected() {
 #[test]
 fn default_only() {
     let start = Instant::now();
-    assert!(Select::new().try_select().is_none());
+
+    let mut sel = Select::new();
+    let case = sel.try_select();
+    assert!(case.is_err());
     let now = Instant::now();
     assert!(now - start <= ms(50));
 
     let start = Instant::now();
-    assert!(Select::new().select_timeout(ms(500)).is_none());
+    let mut sel = Select::new();
+    let case = sel.select_timeout(ms(500));
+    assert!(case.is_err());
     let now = Instant::now();
     assert!(now - start >= ms(450));
     assert!(now - start <= ms(550));
@@ -331,9 +350,10 @@ fn unblocks() {
         let mut sel = Select::new();
         let case1 = sel.recv(&r1);
         let case2 = sel.recv(&r2);
-        match sel.select_timeout(ms(1000)) {
-            None => panic!(),
-            Some(case) => match case.index() {
+        let case = sel.select_timeout(ms(1000));
+        match case {
+            Err(_) => panic!(),
+            Ok(case) => match case.index() {
                 i if i == case1 => panic!(),
                 i if i == case2 => assert_eq!(case.recv(&r2), Ok(2)),
                 _ => unreachable!(),
@@ -350,9 +370,10 @@ fn unblocks() {
         let mut sel = Select::new();
         let case1 = sel.send(&s1);
         let case2 = sel.send(&s2);
-        match sel.select_timeout(ms(1000)) {
-            None => panic!(),
-            Some(case) => match case.index() {
+        let case = sel.select_timeout(ms(1000));
+        match case {
+            Err(_) => panic!(),
+            Ok(case) => match case.index() {
                 i if i == case1 => case.send(&s1, 1).unwrap(),
                 i if i == case2 => panic!(),
                 _ => unreachable!(),
@@ -403,9 +424,10 @@ fn loop_try() {
 
                     let mut sel = Select::new();
                     let case1 = sel.send(&s1);
-                    match sel.try_select() {
-                        None => {}
-                        Some(case) => match case.index() {
+                    let case = sel.try_select();
+                    match case {
+                        Err(_) => {}
+                        Ok(case) => match case.index() {
                             i if i == case1 => {
                                 let _ = case.send(&s1, 1);
                                 done = true;
@@ -419,9 +441,10 @@ fn loop_try() {
 
                     let mut sel = Select::new();
                     let case1 = sel.recv(&r_end);
-                    match sel.try_select() {
-                        None => {}
-                        Some(case) => match case.index() {
+                    let case = sel.try_select();
+                    match case {
+                        Err(_) => {}
+                        Ok(case) => match case.index() {
                             i if i == case1 => {
                                 let _ = case.recv(&r_end);
                                 done = true;
@@ -445,9 +468,10 @@ fn loop_try() {
                     let mut done = false;
                     let mut sel = Select::new();
                     let case1 = sel.recv(&r_end);
-                    match sel.try_select() {
-                        None => {}
-                        Some(case) => match case.index() {
+                    let case = sel.try_select();
+                    match case {
+                        Err(_) => {}
+                        Ok(case) => match case.index() {
                             i if i == case1 => {
                                 let _ = case.recv(&r_end);
                                 done = true;
@@ -467,9 +491,10 @@ fn loop_try() {
                 let mut sel = Select::new();
                 let case1 = sel.recv(&r1);
                 let case2 = sel.send(&s2);
-                match sel.select_timeout(ms(1000)) {
-                    None => {}
-                    Some(case) => match case.index() {
+                let case = sel.select_timeout(ms(1000));
+                match case {
+                    Err(_) => {}
+                    Ok(case) => match case.index() {
                         i if i == case1 => assert_eq!(case.recv(&r1), Ok(1)),
                         i if i == case2 => assert!(case.send(&s2, 2).is_ok()),
                         _ => unreachable!(),
@@ -788,9 +813,10 @@ fn stress_timeout_two_threads() {
                 while !done {
                     let mut sel = Select::new();
                     let case1 = sel.send(&s);
-                    match sel.select_timeout(ms(100)) {
-                        None => {}
-                        Some(case) => match case.index() {
+                    let case = sel.select_timeout(ms(100));
+                    match case {
+                        Err(_) => {}
+                        Ok(case) => match case.index() {
                             c if c == case1 => {
                                 assert!(case.send(&s, i).is_ok());
                                 break;
@@ -812,9 +838,10 @@ fn stress_timeout_two_threads() {
                 while !done {
                     let mut sel = Select::new();
                     let case1 = sel.recv(&r);
-                    match sel.select_timeout(ms(100)) {
-                        None => {}
-                        Some(case) => match case.index() {
+                    let case = sel.select_timeout(ms(100));
+                    match case {
+                        Err(_) => {}
+                        Ok(case) => match case.index() {
                             c if c == case1 => {
                                 assert_eq!(case.recv(&r), Ok(i));
                                 done = true;
@@ -834,9 +861,10 @@ fn send_recv_same_channel() {
     let mut sel = Select::new();
     let case1 = sel.send(&s);
     let case2 = sel.recv(&r);
-    match sel.select_timeout(ms(100)) {
-        None => {}
-        Some(case) => match case.index() {
+    let case = sel.select_timeout(ms(100));
+    match case {
+        Err(_) => {}
+        Ok(case) => match case.index() {
             c if c == case1 => panic!(),
             c if c == case2 => panic!(),
             _ => unreachable!(),
@@ -847,9 +875,10 @@ fn send_recv_same_channel() {
     let mut sel = Select::new();
     let case1 = sel.send(&s);
     let case2 = sel.recv(&r);
-    match sel.select_timeout(ms(100)) {
-        None => panic!(),
-        Some(case) => match case.index() {
+    let case = sel.select_timeout(ms(100));
+    match case {
+        Err(_) => panic!(),
+        Ok(case) => match case.index() {
             c if c == case1 => assert!(case.send(&s, 0).is_ok()),
             c if c == case2 => panic!(),
             _ => unreachable!(),
@@ -990,9 +1019,10 @@ fn linearizable_try() {
                     let mut sel = Select::new();
                     let case1 = sel.recv(&r1);
                     let case2 = sel.recv(&r2);
-                    match sel.try_select() {
-                        None => unreachable!(),
-                        Some(case) => match case.index() {
+                    let case = sel.try_select();
+                    match case {
+                        Err(_) => unreachable!(),
+                        Ok(case) => match case.index() {
                             c if c == case1 => assert!(case.recv(&r1).is_ok()),
                             c if c == case2 => assert!(case.recv(&r2).is_ok()),
                             _ => unreachable!(),
@@ -1040,9 +1070,10 @@ fn linearizable_timeout() {
                     let mut sel = Select::new();
                     let case1 = sel.recv(&r1);
                     let case2 = sel.recv(&r2);
-                    match sel.select_timeout(ms(0)) {
-                        None => unreachable!(),
-                        Some(case) => match case.index() {
+                    let case = sel.select_timeout(ms(0));
+                    match case {
+                        Err(_) => unreachable!(),
+                        Ok(case) => match case.index() {
                             c if c == case1 => assert!(case.recv(&r1).is_ok()),
                             c if c == case2 => assert!(case.recv(&r2).is_ok()),
                             _ => unreachable!(),

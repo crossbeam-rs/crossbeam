@@ -38,17 +38,11 @@
 //! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //! ```
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel as channel;
 extern crate parking_lot;
 
-use std::cell::Cell;
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
-
-// TODO(stjepang): Write a custom select! macro
-// TODO(stjepang): Write an equivalent to `t.Failed()`
 
 mod wrappers;
 
@@ -66,7 +60,7 @@ macro_rules! go {
         go!(@parse $($tail)*)
     }};
     (@parse $body:expr) => {
-        thread::spawn(move || $body)
+        ::std::thread::spawn(move || $body)
     };
     (@parse $($tail:tt)*) => {
         compile_error!("invalid `go!` syntax")
@@ -77,7 +71,7 @@ macro_rules! go {
 }
 
 struct Defer<F: FnOnce()> {
-    f: Cell<Option<Box<F>>>,
+    f: Option<Box<F>>,
 }
 
 impl<F: FnOnce()> Drop for Defer<F> {
@@ -92,7 +86,7 @@ impl<F: FnOnce()> Drop for Defer<F> {
 macro_rules! defer {
     ($body:expr) => {
         let _defer = Defer {
-            f: Cell::new(Some(Box::new(|| $body))),
+            f: Some(Box::new(|| $body)),
         };
     };
 }
@@ -136,14 +130,10 @@ macro_rules! tests {
     ($channel:path) => {
         use super::*;
 
-        use std::any::Any;
         use std::collections::HashMap;
-        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-        use std::thread;
         use std::time::Duration;
 
         use $channel as channel;
-        use crossbeam;
         use parking_lot::Mutex;
 
         fn ms(ms: u64) -> Duration {
@@ -175,15 +165,15 @@ macro_rules! tests {
                     .as_ref()
                     .expect("sending into closed channel")
                     .clone();
-                s.send(msg);
+                let _ = s.send(msg);
             }
 
             fn try_recv(&self) -> Option<T> {
-                self.inner
+                let r = self.inner
                     .lock()
                     .r
-                    .try_recv()
-                    .ok()
+                    .clone();
+                r.try_recv().ok()
             }
 
             fn recv(&self) -> Option<T> {
@@ -619,7 +609,7 @@ macro_rules! tests {
             fn test_nonblock_recv_race() {
                 const N: usize = 1000;
 
-                for i in 0..N {
+                for _ in 0..N {
                     let c = make::<i32>(1);
                     c.send(1);
 
@@ -641,7 +631,7 @@ macro_rules! tests {
                 const N: usize = 1000;
 
                 let done = make::<bool>(1);
-                for i in 0..N {
+                for _ in 0..N {
                     let c1 = make::<i32>(1);
                     let c2 = make::<i32>(1);
                     c1.send(1);
@@ -674,7 +664,7 @@ macro_rules! tests {
                 const N: usize = 1000;
 
                 let done = make::<bool>(1);
-                for i in 0..N {
+                for _ in 0..N {
                     let c1 = make::<i32>(1);
                     let c2 = make::<i32>(0);
                     c1.send(1);
@@ -723,7 +713,6 @@ macro_rules! tests {
                                         recv(c.rx()) -> v => {
                                             if cap == 0 && v.ok() == Some(p) {
                                                 panic!("self receive");
-                                                return
                                             }
                                         }
                                     }
@@ -732,7 +721,6 @@ macro_rules! tests {
                                         recv(c.rx()) -> v => {
                                             if cap == 0 && v.ok() == Some(p) {
                                                 panic!("self receive");
-                                                return
                                             }
                                         }
                                         send(c.tx(), p) -> _ => {}
