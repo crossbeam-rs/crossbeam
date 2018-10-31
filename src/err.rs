@@ -1,99 +1,99 @@
 use std::error;
 use std::fmt;
 
-// TODO(stjepang): Reword documentation in this module.
-
-/// An error returned from the [`Sender::send`] method.
+/// An error returned from the [`send`] method.
 ///
-/// A send operation can only fail if the receiving end of a channel is disconnected, implying that
-/// the data could never be received. The error contains the data being sent as a payload so it can
-/// be recovered.
+/// A send operation can only fail if the channel is disconnected, implying that the message could
+/// never be sent.
 ///
-/// [`Sender::send`]: struct.Sender.html#method.send
+/// The error contains the message being sent so it can be recovered.
+///
+/// [`send`]: struct.Sender.html#method.send
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(pub T);
 
-/// This enumeration is the list of the possible error outcomes for the [`try_send`] method.
+/// An error returned from the [`try_send`] method.
+///
+/// The error contains the message being sent so it can be recovered.
 ///
 /// [`try_send`]: struct.Sender.html#method.try_send
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum TrySendError<T> {
-    /// The data could not be sent on the channel because it would require that the callee block to
-    /// send the data.
+    /// The message could not be sent because the channel is full.
     ///
     /// If this is a zero-capacity channel, then the error indicates that there was no receiver
     /// available to receive the message at the time.
     Full(T),
 
-    /// This channel's receiving half has disconnected, so the data could not be sent. The data is
-    /// returned back to the callee in this case.
+    /// The message could not be sent because the channel is disconnected.
     Disconnected(T),
 }
 
-/// This enumeration is the list of possible errors that made [`send_timeout`] unable to return
-/// data when called. This can occur with bounded channels only.
+/// An error returned from the [`send_timeout`] method.
+///
+/// The error contains the message being sent so it can be recovered.
 ///
 /// [`send_timeout`]: struct.Sender.html#method.send_timeout
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum SendTimeoutError<T> {
-    /// This channel is currently full, but the receivers have not yet disconnected.
+    /// The message could not be sent because the channel is full and the operation timed out.
+    ///
+    /// If this is a zero-capacity channel, then the error indicates that there was no receiver
+    /// available to receive the message and the operation timed out.
     Timeout(T),
 
-    /// The channel's receiving half has become disconnected.
+    /// The message could not be sent because the channel is disconnected.
     Disconnected(T),
 }
 
-/// An error returned from the [`Receiver::recv`] method.
+/// An error returned from the [`recv`] method.
 ///
-/// The [`recv`] operation can only fail if the sending half of a channel is disconnected and the
-/// channel is empty, implying that no further messages will ever be received.
+/// A receive operation can only fail if the channel is empty and disconnected.
+/// implying that a message could never be received.
 ///
-/// [`Receiver::recv`]: struct.Receiver.html#method.recv
+/// [`recv`]: struct.Receiver.html#method.recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RecvError;
 
-/// This enumeration is the list of the possible reasons that [`try_recv`] could not return data
-/// when called. This can occur with both bounded and unbounded channels.
+/// An error returned from the [`try_recv`] method.
 ///
 /// [`try_recv`]: struct.Receiver.html#method.recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum TryRecvError {
-    /// This channel is currently empty, but the senders have not yet disconnected, so data may yet
-    /// become available.
+    /// A message could not be received because the channel is empty.
     ///
     /// If this is a zero-capacity channel, then the error indicates that there was no sender
-    /// available to at the time.
+    /// available to send a message at the time.
     Empty,
 
-    /// The channel's sending half has become disconnected, and there will never be any more data
-    /// received on it.
+    /// The message could not be received because the channel is empty and disconnected.
     Disconnected,
 }
 
-/// This enumeration is the list of possible errors that made [`recv_timeout`] unable to return
-/// data when called. This can occur with both bounded and unbounded channels.
+/// An error returned from the [`recv_timeout`] method.
 ///
 /// [`recv_timeout`]: struct.Receiver.html#method.recv_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum RecvTimeoutError {
-    /// This channel is currently empty, but the senders have not yet disconnected, so data may yet
-    /// become available.
+    /// A message could not be received because the channel is empty and the operation timed out.
+    ///
+    /// If this is a zero-capacity channel, then the error indicates that there was no sender
+    /// available to send a message and the operation timed out.
     Timeout,
 
-    /// The channel's sending half has become disconnected, and there will never be any more data
-    /// received on it.
+    /// The message could not be received because the channel is empty and disconnected.
     Disconnected,
 }
 
-/// An error returned from the [`Select::try_select`] method.
+/// An error returned from the [`try_select`] method.
 ///
-/// [`Select::try_select`]: struct.Select.html#method.try_select
+/// [`try_select`]: struct.Select.html#method.try_select
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct TrySelectError;
 
-/// An error returned from the [`Select::select_timeout`] method.
+/// An error returned from the [`select_timeout`] method.
 ///
-/// [`Select::select_timeout`]: struct.Select.html#method.select_timeout
+/// [`select_timeout`]: struct.Select.html#method.select_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct SelectTimeoutError;
 
@@ -120,17 +120,17 @@ impl<T: Send> error::Error for SendError<T> {
 }
 
 impl<T> SendError<T> {
-    /// Unwraps the value.
+    /// Unwraps the message.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use crossbeam_channel::unbounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (tx, rx) = unbounded();
-    /// drop(rx);
+    /// let (s, r) = channel::unbounded();
+    /// drop(r);
     ///
-    /// if let Err(err) = tx.send("foo") {
+    /// if let Err(err) = s.send("foo") {
     ///     assert_eq!(err.into_inner(), "foo");
     /// }
     /// ```
@@ -179,16 +179,16 @@ impl<T> From<SendError<T>> for TrySendError<T> {
 }
 
 impl<T> TrySendError<T> {
-    /// Unwraps the value.
+    /// Unwraps the message.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use crossbeam_channel::bounded;
+    /// use crossbeam_channel as bounded;
     ///
-    /// let (tx, rx) = bounded(0);
+    /// let (s, r) = channel::bounded(0);
     ///
-    /// if let Err(err) = tx.try_send("foo") {
+    /// if let Err(err) = s.try_send("foo") {
     ///     assert_eq!(err.into_inner(), "foo");
     /// }
     /// ```
@@ -209,7 +209,7 @@ impl<T> fmt::Debug for SendTimeoutError<T> {
 impl<T> fmt::Display for SendTimeoutError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            SendTimeoutError::Timeout(..) => "timed out waiting on channel".fmt(f),
+            SendTimeoutError::Timeout(..) => "timed out waiting on send operation".fmt(f),
             SendTimeoutError::Disconnected(..) => "sending on a disconnected channel".fmt(f),
         }
     }
@@ -234,17 +234,17 @@ impl<T> From<SendError<T>> for SendTimeoutError<T> {
 }
 
 impl<T> SendTimeoutError<T> {
-    /// Unwraps the value.
+    /// Unwraps the message.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use std::time::Duration;
-    /// use crossbeam_channel::unbounded;
+    /// use crossbeam_channel as channel;
     ///
-    /// let (tx, rx) = unbounded();
+    /// let (s, r) = channel::unbounded();
     ///
-    /// if let Err(err) = tx.send_timeout("foo", Duration::from_secs(0)) {
+    /// if let Err(err) = s.send_timeout("foo", Duration::from_secs(0)) {
     ///     assert_eq!(err.into_inner(), "foo");
     /// }
     /// ```
@@ -305,7 +305,7 @@ impl From<RecvError> for TryRecvError {
 impl fmt::Display for RecvTimeoutError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            RecvTimeoutError::Timeout => "timed out waiting on channel".fmt(f),
+            RecvTimeoutError::Timeout => "timed out waiting on receive operation".fmt(f),
             RecvTimeoutError::Disconnected => "channel is empty and disconnected".fmt(f),
         }
     }
@@ -314,8 +314,8 @@ impl fmt::Display for RecvTimeoutError {
 impl error::Error for RecvTimeoutError {
     fn description(&self) -> &str {
         match *self {
-            RecvTimeoutError::Timeout => "timed out waiting on channel",
-            RecvTimeoutError::Disconnected => "channel is empty and sending half is Disconnected",
+            RecvTimeoutError::Timeout => "timed out waiting on receive operation",
+            RecvTimeoutError::Disconnected => "channel is empty and disconnected",
         }
     }
 
