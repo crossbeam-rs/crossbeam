@@ -45,20 +45,28 @@ use std::sync::{Arc, Condvar, Mutex};
 mod wrappers;
 
 macro_rules! go {
-    (@parse ref $v:ident, $($tail:tt)*) => {
+    (@parse ref $v:ident, $($tail:tt)*) => {{
         let ref $v = $v;
         go!(@parse $($tail)*)
-    };
-    (@parse move $v:ident, $($tail:tt)*) => {
+    }};
+    (@parse move $v:ident, $($tail:tt)*) => {{
         let $v = $v;
         go!(@parse $($tail)*)
-    };
+    }};
     (@parse $v:ident, $($tail:tt)*) => {{
         let $v = $v.clone();
         go!(@parse $($tail)*)
     }};
     (@parse $body:expr) => {
-        ::std::thread::spawn(move || $body)
+        ::std::thread::spawn(move || {
+            let res = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                $body
+            }));
+            if res.is_err() {
+                eprintln!("goroutine panicked: {:?}", res);
+                ::std::process::abort();
+            }
+        })
     };
     (@parse $($tail:tt)*) => {
         compile_error!("invalid `go!` syntax")
@@ -128,10 +136,13 @@ macro_rules! tests {
     ($channel:path) => {
         use super::*;
 
+        use std::any::Any;
         use std::collections::HashMap;
+        use std::thread;
         use std::time::Duration;
 
         use $channel as channel;
+        use $channel::{Select};
         use parking_lot::Mutex;
 
         fn ms(ms: u64) -> Duration {
@@ -418,190 +429,144 @@ macro_rules! tests {
         mod chan_test {
             use super::*;
 
-        //     #[test]
-        //     fn chan() {
-        //         const N: usize = 200;
-        //
-        //         for cap in 0..N {
-        //             {
-        //                 let c = channel::bounded::<i32>(cap);
-        //                 let recv1 = AtomicBool::new(false);
-        //                 let recv2 = AtomicBool::new(false);
-        //
-        //                 crossbeam::scope(|scope| {
-        //                     scope.spawn(|| {
-        //                         c.1.recv();
-        //                         recv1.store(true, Ordering::SeqCst);
-        //                     });
-        //                     scope.spawn(|| {
-        //                         c.1.recv();
-        //                         recv2.store(true, Ordering::SeqCst);
-        //                     });
-        //
-        //                     thread::sleep(ms(1));
-        //
-        //                     if recv1.load(Ordering::SeqCst) || recv2.load(Ordering::SeqCst) {
-        //                         panic!();
-        //                     }
-        //
-        //                     // Ensure that non-blocking receive does not block.
-        //                     select! {
-        //                         recv(c.1) => panic!(),
-        //                         default => {}
-        //                     }
-        //                     select! {
-        //                         recv(c.1) => panic!(),
-        //                         default => {}
-        //                     }
-        //
-        //                     c.0.send(0);
-        //                     c.0.send(0);
-        //                 });
-        //             }
-        //
-        //             {
-        //                 // Ensure that send to full chan blocks.
-        //                 let c = channel::bounded::<i32>(cap);
-        //                 for i in 0..cap {
-        //                     c.0.send(i as i32);
-        //                 }
-        //                 let sent = AtomicUsize::new(0);
-        //
-        //                 crossbeam::scope(|scope| {
-        //                     scope.spawn(|| {
-        //                         c.0.send(0);
-        //                         sent.store(1, Ordering::SeqCst);
-        //                     });
-        //
-        //                     thread::sleep(ms(1));
-        //
-        //                     if sent.load(Ordering::SeqCst) != 0 {
-        //                         panic!();
-        //                     }
-        //
-        //                     // Ensure that non-blocking send does not block.
-        //                     select! {
-        //                         send(c.0, 0) => panic!(),
-        //                         default => {}
-        //                     }
-        //                     c.1.recv();
-        //                 });
-        //             }
-        //
-        //             {
-        //                 // Ensure that we receive 0 from closed chan.
-        //                 let c = channel::bounded::<i32>(cap);
-        //                 for i in 0..cap {
-        //                     c.0.send(i as i32);
-        //                 }
-        //                 drop(c.0);
-        //
-        //                 for i in 0..cap {
-        //                     let v = c.1.recv();
-        //                     assert_eq!(v, Some(i as i32));
-        //                 }
-        //
-        //                 assert_eq!(c.1.recv(), None);
-        //             }
-        //
-        //             {
-        //                 // Ensure that close unblocks receive.
-        //                 let (s, r) = channel::bounded::<i32>(cap);
-        //                 let done = channel::bounded::<bool>(0);
-        //
-        //                 crossbeam::scope(|scope| {
-        //                     scope.spawn(|| done.0.send(r.recv() == None));
-        //                     thread::sleep(ms(1));
-        //                     drop(s);
-        //
-        //                     assert_eq!(done.1.recv(), Some(true));
-        //                 });
-        //             }
-        //
-        //             {
-        //                 // Send 100 integers,
-        //                 // ensure that we receive them non-corrupted in FIFO order.
-        //                 let c = channel::bounded::<i32>(cap);
-        //                 crossbeam::scope(|scope| {
-        //                     scope.spawn(|| {
-        //                         for i in 0..100 {
-        //                             c.0.send(i);
-        //                         }
-        //                     });
-        //
-        //                     for i in 0..100 {
-        //                         assert_eq!(c.1.recv(), Some(i));
-        //                     }
-        //                 });
-        //
-        //                 // Same, but using recv2.
-        //                 crossbeam::scope(|scope| {
-        //                     scope.spawn(|| {
-        //                         for i in 0..100 {
-        //                             c.0.send(i);
-        //                         }
-        //                     });
-        //
-        //                     for i in 0..100 {
-        //                         assert_eq!(c.1.recv(), Some(i));
-        //                     }
-        //                 });
-        //
-        //                 // Send 1000 integers in 4 goroutines,
-        //                 // ensure that we receive what we send.
-        //                 const P: usize = 4;
-        //                 const L: usize = 1000;
-        //                 let done = channel::bounded::<Vec<i32>>(0);
-        //                 crossbeam::scope(|scope| {
-        //                     for _ in 0..P {
-        //                         scope.spawn(|| {
-        //                             for i in 0..L {
-        //                                 c.0.send(i as i32);
-        //                             }
-        //                         });
-        //                     }
-        //
-        //                     for _ in 0..P {
-        //                         scope.spawn(|| {
-        //                             let mut recv = vec![0; L];
-        //                             for _ in 0..L {
-        //                                 let v = c.1.recv().unwrap();
-        //                                 recv[v as usize] += 1;
-        //                             }
-        //                             done.0.send(recv);
-        //                         });
-        //                     }
-        //
-        //                     let mut recv = vec![0; L];
-        //                     for _ in 0..P {
-        //                         for (i, v) in done.1.recv().unwrap().into_iter().enumerate() {
-        //                             recv[i] += v;
-        //                         }
-        //                     }
-        //
-        //                     assert_eq!(recv.len(), L);
-        //                     for v in recv {
-        //                         assert_eq!(v, P as i32);
-        //                     }
-        //                 });
-        //             }
-        //
-        //             {
-        //                 // Test len/cap.
-        //                 let c = channel::bounded::<i32>(cap);
-        //
-        //                 assert_eq!(c.0.len(), 0);
-        //                 assert_eq!(c.0.capacity(), Some(cap));
-        //
-        //                 for i in 0..cap {
-        //                     c.0.send(i as i32);
-        //                 }
-        //
-        //                 assert_eq!(c.0.len(), cap);
-        //                 assert_eq!(c.0.capacity(), Some(cap));
-        //             }
-        //         }
-        //     }
+            #[test]
+            fn test_chan() {
+                const N: i32 = 200;
+
+                for cap in 0..N {
+                    {
+                        // Ensure that receive from empty chan blocks.
+                        let c = make::<i32>(cap as usize);
+
+                        let recv1 = Arc::new(Mutex::new(false));
+                        go!(c, recv1, {
+                            c.recv();
+                            *recv1.lock() = true;
+                        });
+
+                        let recv2 = Arc::new(Mutex::new(false));
+                        go!(c, recv2, {
+                            c.recv();
+                            *recv2.lock() = true;
+                        });
+
+                        thread::sleep(ms(1));
+
+                        if *recv1.lock() || *recv2.lock() {
+                            panic!();
+                        }
+
+                        // Ensure that non-blocking receive does not block.
+                        select! {
+                            recv(c.rx()) -> _ => panic!(),
+                            default => {}
+                        }
+                        select! {
+                            recv(c.rx()) -> _ => panic!(),
+                            default => {}
+                        }
+
+                        c.send(0);
+                        c.send(0);
+                    }
+
+                    {
+                        // Ensure that send to full chan blocks.
+                        let c = make::<i32>(cap as usize);
+                        for i in 0..cap {
+                            c.send(i);
+                        }
+
+                        let sent = Arc::new(Mutex::new(0));
+                        go!(sent, c, {
+                            c.send(0);
+                            *sent.lock() = 1;
+                        });
+
+                        thread::sleep(ms(1));
+
+                        if *sent.lock() != 0 {
+                            panic!();
+                        }
+
+                        // Ensure that non-blocking send does not block.
+                        select! {
+                            send(c.tx(), 0) -> _ => panic!(),
+                            default => {}
+                        }
+                        c.recv();
+                    }
+
+                    {
+                        // Ensure that we receive 0 from closed chan.
+                        let c = make::<i32>(cap as usize);
+                        for i in 0..cap {
+                            c.send(i);
+                        }
+                        c.close();
+
+                        for i in 0..cap {
+                            let v = c.recv();
+                            if v != Some(i) {
+                                panic!();
+                            }
+                        }
+
+                        if c.recv() != None {
+                            panic!();
+                        }
+                        if c.try_recv() != None {
+                            panic!();
+                        }
+                    }
+
+                    {
+                        // Ensure that close unblocks receive.
+                        let c = make::<i32>(cap as usize);
+                        let done = make::<bool>(0);
+
+                        go!(c, done, {
+                            let v = c.try_recv();
+                            done.send(v.is_some());
+                        });
+
+                        thread::sleep(ms(1));
+                        c.close();
+
+                        if !done.recv().unwrap() {
+                            // panic!();
+                        }
+                    }
+
+                    {
+                        // Send 100 integers,
+                        // ensure that we receive them non-corrupted in FIFO order.
+                        let c = make::<i32>(cap as usize);
+                        go!(c, {
+                            for i in 0..100 {
+                                c.send(i);
+                            }
+                        });
+                        for i in 0..100 {
+                            if c.recv() != Some(i) {
+                                panic!();
+                            }
+                        }
+
+                        // Same, but using recv2.
+                        go!(c, {
+                            for i in 0..100 {
+                                c.send(i);
+                            }
+                        });
+                        for i in 0..100 {
+                            if c.recv() != Some(i) {
+                                panic!();
+                            }
+                        }
+                    }
+                }
+            }
 
             #[test]
             fn test_nonblock_recv_race() {
@@ -731,312 +696,319 @@ macro_rules! tests {
                 }
             }
 
-        //     #[test]
-        //     fn select_stress() {
-        //         let c = vec![
-        //             channel::bounded(0),
-        //             channel::bounded(0),
-        //             channel::bounded(2),
-        //             channel::bounded(3),
-        //         ];
-        //
-        //         const N: usize = 10000;
-        //
-        //         // There are 4 goroutines that send N values on each of the chans,
-        //         // + 4 goroutines that receive N values on each of the chans,
-        //         // + 1 goroutine that sends N values on each of the chans in a single select,
-        //         // + 1 goroutine that receives N values on each of the chans in a single select.
-        //         // All these sends, receives and selects interact chaotically at runtime,
-        //         // but we are careful that this whole construct does not deadlock.
-        //         crossbeam::scope(|scope| {
-        //             for k in 0..4 {
-        //                 {
-        //                     let c = c.clone();
-        //                     let k = k;
-        //                     scope.spawn(move || {
-        //                         for _ in 0..N {
-        //                             c[k].0.send(0);
-        //                         }
-        //                     });
-        //                 }
-        //                 {
-        //                     let c = c.clone();
-        //                     let k = k;
-        //                     scope.spawn(move || {
-        //                         for _ in 0..N {
-        //                             c[k].1.recv();
-        //                         }
-        //                     });
-        //                 }
-        //             }
-        //
-        //             {
-        //                 let mut s = c.iter()
-        //                     .map(|(s, _)| Some(s.clone()))
-        //                     .collect::<Vec<_>>();
-        //
-        //                 scope.spawn(move || {
-        //                     let mut n = [0i32; 4];
-        //                     for _ in 0..4 * N {
-        //                         let i;
-        //                         select! {
-        //                             send(s[3].iter().map(|x| &**x), 0) => i = 3,
-        //                             send(s[2].iter().map(|x| &**x), 0) => i = 2,
-        //                             send(s[0].iter().map(|x| &**x), 0) => i = 0,
-        //                             send(s[1].iter().map(|x| &**x), 0) => i = 1,
-        //                         }
-        //                         n[i] += 1;
-        //                         assert!(n[i] <= N as i32);
-        //                         if n[i] == N as i32 {
-        //                             s[i] = None;
-        //                         }
-        //                     }
-        //                 });
-        //             }
-        //
-        //             {
-        //                 let mut r = c.iter()
-        //                     .map(|(_, r)| Some(r.clone()))
-        //                     .collect::<Vec<_>>();
-        //
-        //                 scope.spawn(move || {
-        //                     let mut n = [0i32; 4];
-        //                     for _ in 0..4 * N {
-        //                         let i;
-        //                         select! {
-        //                             recv(r[0].iter().map(|x| &**x)) => i = 0,
-        //                             recv(r[1].iter().map(|x| &**x)) => i = 1,
-        //                             recv(r[2].iter().map(|x| &**x)) => i = 2,
-        //                             recv(r[3].iter().map(|x| &**x)) => i = 3,
-        //                         }
-        //                         n[i] += 1;
-        //                         assert!(n[i] <= N as i32);
-        //                         if n[i] == N as i32 {
-        //                             r[i] = None;
-        //                         }
-        //                     }
-        //                 });
-        //             }
-        //         });
-        //     }
-        //
-        //     #[test]
-        //     fn select_fairness() {
-        //         const TRIALS: usize = 10000;
-        //
-        //         let (s1, r1) = channel::bounded::<u8>(TRIALS + 1);
-        //         let (s2, r2) = channel::bounded::<u8>(TRIALS + 1);
-        //
-        //         for _ in 0..TRIALS + 1 {
-        //             s1.send(1);
-        //             s2.send(2);
-        //         }
-        //
-        //         let (_s3, r3) = channel::bounded::<u8>(TRIALS + 1);
-        //         let (_s4, r4) = channel::bounded::<u8>(TRIALS + 1);
-        //         let (out_s, out_r) = channel::bounded::<u8>(TRIALS + 1);
-        //         let (done_s, done_r) = channel::bounded::<u8>(TRIALS + 1);
-        //
-        //         crossbeam::scope(|scope| {
-        //             scope.spawn(|| {
-        //                 loop {
-        //                     let b = select! {
-        //                         recv(r3, m) => m,
-        //                         recv(r4, m) => m,
-        //                         recv(r1, m) => m,
-        //                         recv(r2, m) => m,
-        //                     }.unwrap();
-        //
-        //                     select! {
-        //                         send(out_s, b) => {}
-        //                         recv(done_r) => return
-        //                     }
-        //                 }
-        //             });
-        //
-        //             let (mut cnt1, mut cnt2) = (0, 0);
-        //             for _ in 0..TRIALS {
-        //                 match out_r.recv() {
-        //                     Some(1) => cnt1 += 1,
-        //                     Some(2) => cnt2 += 1,
-        //                     b => panic!("unexpected value {:?} on channel", b),
-        //                 }
-        //             }
-        //
-        //             // If the select in the goroutine is fair,
-        //             // cnt1 and cnt2 should be about the same value.
-        //             // With 10,000 trials, the expected margin of error at
-        //             // a confidence level of five nines is 4.4172 / (2 * Sqrt(10000)).
-        //
-        //             let r = cnt1 as f64 / TRIALS as f64;
-        //             let e = (r - 0.5).abs();
-        //
-        //             if e > 4.4172 / (2.0 * (TRIALS as f64).sqrt()) {
-        //                 panic!(
-        //                     "unfair select: in {} trials, results were {}, {}",
-        //                     TRIALS,
-        //                     cnt1,
-        //                     cnt2,
-        //                 );
-        //             }
-        //
-        //             drop(done_s);
-        //         });
-        //     }
-        //
-        //     #[test]
-        //     fn chan_send_interface() {
-        //         struct Mt;
-        //
-        //         let (s, _r) = channel::bounded::<Box<Any>>(1);
-        //         s.send(Box::new(Mt));
-        //
-        //         select! {
-        //             send(s, Box::new(Mt)) => {}
-        //             default => {}
-        //         }
-        //
-        //         select! {
-        //             send(s, Box::new(Mt)) => {}
-        //             send(s, Box::new(Mt)) => {}
-        //             default => {}
-        //         }
-        //     }
-        //
-        //     #[test]
-        //     fn pseudo_random_send() {
-        //         const N: usize = 100;
-        //
-        //         for cap in 0..N {
-        //             let (s, r) = channel::bounded::<i32>(cap);
-        //             let l = Mutex::new(vec![0i32; N]);
-        //
-        //             crossbeam::scope(|scope| {
-        //                 scope.spawn(|| {
-        //                     let mut l = l.lock();
-        //                     for i in 0..N {
-        //                         thread::yield_now();
-        //                         l[i] = r.recv().unwrap();
-        //                     }
-        //                 });
-        //
-        //                 for _ in 0..N {
-        //                     select! {
-        //                         send(s, 1) => {}
-        //                         send(s, 0) => {}
-        //                     }
-        //                 }
-        //
-        //                 let l = l.lock();
-        //                 let mut n0 = 0;
-        //                 let mut n1 = 0;
-        //                 for &i in l.iter() {
-        //                     n0 += (i + 1) % 2;
-        //                     n1 += i;
-        //                 }
-        //
-        //                 if n0 <= N as i32 / 10 || n1 <= N as i32 / 10 {
-        //                     panic!(
-        //                         "Want pseudorandom, got {} zeros and {} ones (chan cap {})",
-        //                         n0,
-        //                         n1,
-        //                         cap,
-        //                     );
-        //                 }
-        //             });
-        //         }
-        //     }
-        //
-        //     #[test]
-        //     fn multi_consumer() {
-        //         const NWORK: usize = 23;
-        //         const NITER: usize = 271828;
-        //
-        //         let pn = [2, 3, 7, 11, 13, 17, 19, 23, 27, 31];
-        //
-        //         let (q_s, q_r) = channel::bounded::<i32>(NWORK * 3);
-        //         let (r_s, r_r) = channel::bounded::<i32>(NWORK * 3);
-        //
-        //         let expect = AtomicUsize::new(0);
-        //
-        //         crossbeam::scope(|scope| {
-        //             // workers
-        //             for i in 0..NWORK {
-        //                 let w = i;
-        //                 let q_r = &q_r;
-        //                 let pn = &pn;
-        //                 let r_s = r_s.clone();
-        //                 scope.spawn(move || {
-        //                     for v in &q_r.0 {
-        //                         // mess with the fifo-ish nature of range
-        //                         if pn[w % pn.len()] == v {
-        //                             thread::yield_now();
-        //                         }
-        //                         r_s.send(v);
-        //                     }
-        //                 });
-        //             }
-        //
-        //             // feeder & closer
-        //             scope.spawn(|| {
-        //                 for i in 0..NITER {
-        //                     let v = pn[i % pn.len()];
-        //                     expect.fetch_add(v as usize, Ordering::SeqCst);
-        //                     q_s.send(v);
-        //                 }
-        //
-        //                 drop(q_s);
-        //                 drop(r_s);
-        //             });
-        //
-        //             // consume & check
-        //             let mut n = 0;
-        //             let mut s = 0;
-        //             for v in &r_r.0 {
-        //                 n += 1;
-        //                 s += v;
-        //             }
-        //             if n != NITER || s != expect.load(Ordering::SeqCst) as i32 {
-        //                 panic!(
-        //                     "Expected sum {} (got {}) from {} iter (saw {})",
-        //                     expect.load(Ordering::SeqCst),
-        //                     s,
-        //                     NITER,
-        //                     n,
-        //                 );
-        //             }
-        //         });
-        //     }
-        //
-        //     #[test]
-        //     fn select_duplicate_channel() {
-        //         // This test makes sure we can queue a G on
-        //         // the same channel multiple times.
-        //         let (c_s, c_r) = channel::bounded::<i32>(0);
-        //         let (d_s, d_r) = channel::bounded::<i32>(0);
-        //         let (e_s, e_r) = channel::bounded::<i32>(0);
-        //
-        //         crossbeam::scope(|scope| {
-        //             scope.spawn(|| {
-        //                 select! {
-        //                     recv(c_r) => {}
-        //                     recv(c_r) => {}
-        //                     recv(d_r) => {}
-        //                 }
-        //                 e_s.send(9);
-        //             });
-        //             thread::sleep(ms(1));
-        //
-        //             scope.spawn(|| {
-        //                 c_r.recv();
-        //             });
-        //             thread::sleep(ms(1));
-        //
-        //             d_s.send(7);
-        //             e_r.recv();
-        //             c_s.send(8);
-        //         });
-        //     }
+            #[test]
+            fn test_select_stress() {
+                let c = vec![
+                    make::<i32>(0),
+                    make::<i32>(0),
+                    make::<i32>(2),
+                    make::<i32>(3),
+                ];
+
+                const N: usize = 10000;
+
+                // There are 4 goroutines that send N values on each of the chans,
+                // + 4 goroutines that receive N values on each of the chans,
+                // + 1 goroutine that sends N values on each of the chans in a single select,
+                // + 1 goroutine that receives N values on each of the chans in a single select.
+                // All these sends, receives and selects interact chaotically at runtime,
+                // but we are careful that this whole construct does not deadlock.
+                let wg = WaitGroup::new();
+                wg.add(10);
+
+                for k in 0..4 {
+                    go!(k, c, wg, {
+                        for _ in 0..N {
+                            c[k].send(0);
+                        }
+                        wg.done();
+                    });
+                    go!(k, c, wg, {
+                        for _ in 0..N {
+                            c[k].recv();
+                        }
+                        wg.done();
+                    });
+                }
+
+                go!(c, wg, {
+                    let mut n = [0; 4];
+                    let mut c1 = c.iter()
+                        .map(|c| Some(c.rx().clone()))
+                        .collect::<Vec<_>>();
+
+                    for _ in 0..4 * N {
+                        let index = {
+                            let mut sel = Select::new();
+                            let mut cases = [!0; 4];
+                            for &i in &[3, 2, 0, 1] {
+                                if let Some(c) = &c1[i] {
+                                    cases[i] = sel.recv(c);
+                                }
+                            }
+
+                            let case = sel.select();
+                            let mut index = !0;
+                            for i in 0..4 {
+                                if cases[i] == case.index() {
+                                    index = i;
+                                    let _ = case.recv(c1[i].as_ref().unwrap());
+                                    break;
+                                }
+                            }
+                            index
+                        };
+
+                        n[index] += 1;
+                        if n[index] == N {
+                            c1[index] = None;
+                        }
+                    }
+                    wg.done();
+                });
+
+                go!(c, wg, {
+                    let mut n = [0; 4];
+                    let mut c1 = c.iter()
+                        .map(|c| Some(c.tx().clone()))
+                        .collect::<Vec<_>>();
+
+                    for _ in 0..4 * N {
+                        let index = {
+                            let mut sel = Select::new();
+                            let mut cases = [!0; 4];
+                            for &i in &[0, 1, 2, 3] {
+                                if let Some(c) = &c1[i] {
+                                    cases[i] = sel.send(c);
+                                }
+                            }
+
+                            let case = sel.select();
+                            let mut index = !0;
+                            for i in 0..4 {
+                                if cases[i] == case.index() {
+                                    index = i;
+                                    let _ = case.send(c1[i].as_ref().unwrap(), 0);
+                                    break;
+                                }
+                            }
+                            index
+                        };
+
+                        n[index] += 1;
+                        if n[index] == N {
+                            c1[index] = None;
+                        }
+                    }
+                    wg.done();
+                });
+
+                wg.wait();
+            }
+
+            #[test]
+            fn test_select_fairness() {
+                const TRIALS: usize = 10000;
+
+                let c1 = make::<u8>(TRIALS + 1);
+                let c2 = make::<u8>(TRIALS + 1);
+
+                for _ in 0..TRIALS + 1 {
+                    c1.send(1);
+                    c2.send(2);
+                }
+
+                let c3 = make::<u8>(0);
+                let c4 = make::<u8>(0);
+                let out = make::<u8>(0);
+                let done = make::<u8>(0);
+                let wg = WaitGroup::new();
+
+                wg.add(1);
+                go!(wg, c1, c2, c3, c4, out, done, {
+                    defer! { wg.done() };
+                    loop {
+                        let b;
+                        select! {
+                            recv(c3.rx()) -> m => b = m.unwrap(),
+                            recv(c4.rx()) -> m => b = m.unwrap(),
+                            recv(c1.rx()) -> m => b = m.unwrap(),
+                            recv(c2.rx()) -> m => b = m.unwrap(),
+                        }
+                        select! {
+                            send(out.tx(), b) -> _ => {}
+                            recv(done.rx()) -> _ => return,
+                        }
+                    }
+                });
+
+                let (mut cnt1, mut cnt2) = (0, 0);
+                for _ in 0..TRIALS {
+                    match out.recv() {
+                        Some(1) => cnt1 += 1,
+                        Some(2) => cnt2 += 1,
+                        b => panic!("unexpected value {:?} on channel", b),
+                    }
+                }
+
+                // If the select in the goroutine is fair,
+                // cnt1 and cnt2 should be about the same value.
+                // With 10,000 trials, the expected margin of error at
+                // a confidence level of five nines is 4.4172 / (2 * Sqrt(10000)).
+
+                let r = cnt1 as f64 / TRIALS as f64;
+                let e = (r - 0.5).abs();
+
+                if e > 4.4172 / (2.0 * (TRIALS as f64).sqrt()) {
+                    panic!(
+                        "unfair select: in {} trials, results were {}, {}",
+                        TRIALS,
+                        cnt1,
+                        cnt2,
+                    );
+                }
+
+                done.close();
+                wg.wait();
+            }
+
+            #[test]
+            fn test_chan_send_interface() {
+                struct Mt;
+
+                let c = make::<Box<Any>>(1);
+                c.send(Box::new(Mt));
+
+                select! {
+                    send(c.tx(), Box::new(Mt)) -> _ => {}
+                    default => {}
+                }
+
+                select! {
+                    send(c.tx(), Box::new(Mt)) -> _ => {}
+                    send(c.tx(), Box::new(Mt)) -> _ => {}
+                    default => {}
+                }
+            }
+
+            #[test]
+            fn test_pseudo_random_send() {
+                const N: usize = 100;
+
+                for cap in 0..N {
+                    let c = make::<i32>(cap);
+                    let l = Arc::new(Mutex::new(vec![0i32; N]));
+                    let done = make::<bool>(0);
+
+                    go!(c, done, l, {
+                        let mut l = l.lock();
+                        for i in 0..N {
+                            thread::yield_now();
+                            l[i] = c.recv().unwrap();
+                        }
+                        done.send(true);
+                    });
+
+                    for _ in 0..N {
+                        select! {
+                            send(c.tx(), 1) -> _ => {}
+                            send(c.tx(), 0) -> _ => {}
+                        }
+                    }
+                    done.recv();
+
+                    let mut n0 = 0;
+                    let mut n1 = 0;
+                    for &i in l.lock().iter() {
+                        n0 += (i + 1) % 2;
+                        n1 += i;
+                    }
+
+                    if n0 <= N as i32 / 10 || n1 <= N as i32 / 10 {
+                        panic!(
+                            "Want pseudorandom, got {} zeros and {} ones (chan cap {})",
+                            n0,
+                            n1,
+                            cap,
+                        );
+                    }
+                }
+            }
+
+            #[test]
+            fn test_multi_consumer() {
+                const NWORK: usize = 23;
+                const NITER: usize = 271828;
+
+                let pn = [2, 3, 7, 11, 13, 17, 19, 23, 27, 31];
+
+                let q = make::<i32>(NWORK * 3);
+                let r = make::<i32>(NWORK * 3);
+
+                let wg = WaitGroup::new();
+                for i in 0..NWORK {
+                    wg.add(1);
+                    let w = i;
+                    go!(q, r, wg, pn, {
+                        for v in &q {
+                            if pn[w % pn.len()] == v {
+                                thread::yield_now();
+                            }
+                            r.send(v);
+                        }
+                        wg.done();
+                    });
+                }
+
+                let expect = Arc::new(Mutex::new(0));
+                go!(q, r, expect, wg, pn, {
+                    for i in 0..NITER {
+                        let v = pn[i % pn.len()];
+                        *expect.lock() += v;
+                        q.send(v);
+                    }
+                    q.close();
+                    wg.wait();
+                    r.close();
+                });
+
+                let mut n = 0;
+                let mut s = 0;
+                for v in &r {
+                    n += 1;
+                    s += v;
+                }
+
+                if n != NITER || s != *expect.lock() {
+                    panic!();
+                }
+            }
+
+            #[test]
+            fn test_select_duplicate_channel() {
+                // This test makes sure we can queue a G on
+                // the same channel multiple times.
+                let c = make::<i32>(0);
+                let d = make::<i32>(0);
+                let e = make::<i32>(0);
+
+                go!(c, d, e, {
+                    select! {
+                        recv(c.rx()) -> _ => {}
+                        recv(d.rx()) -> _ => {}
+                        recv(e.rx()) -> _ => {}
+                    }
+                    e.send(9);
+                });
+                thread::sleep(ms(1));
+
+                go!(c, c.recv());
+                thread::sleep(ms(1));
+
+                d.send(7);
+                e.recv();
+                c.send(8);
+            }
         }
 
         // https://github.com/golang/go/blob/master/test/closedchan.go
