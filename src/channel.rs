@@ -1012,8 +1012,6 @@ pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
-impl<'a, T> FusedIterator for TryIter<'a, T> {}
-
 impl<'a, T> Iterator for TryIter<'a, T> {
     type Item = T;
 
