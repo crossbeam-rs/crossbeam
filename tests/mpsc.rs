@@ -9,11 +9,12 @@
 //! - Replace all uses of `Select` with `select!`.
 //! - Change the imports.
 //!
-//! # Notes on the original code
+//! # Copyright
 //!
-//! Copyright notice from the original code:
+//! License: https://github.com/rust-lang/rust/blob/master/COPYRIGHT
+//! Source: https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
 //!
-//! ```
+//! ```text
 //! Copyright 2013-2014 The Rust Project Developers. See the COPYRIGHT
 //! file at the top-level directory of this distribution and at
 //! http://rust-lang.org/COPYRIGHT.
@@ -24,8 +25,6 @@
 //! option. This file may not be copied, modified, or distributed
 //! except according to those terms.
 //! ```
-//!
-//! Source: https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
 
 #[macro_use]
 extern crate crossbeam_channel as channel;
@@ -1901,18 +1900,10 @@ macro_rules! tests {
     }
 }
 
-mod normal {
-    tests!(wrappers::normal);
-}
-
-mod cloned {
-    tests!(wrappers::cloned);
+mod vanilla {
+    tests!(wrappers::vanilla);
 }
 
 mod select {
     tests!(wrappers::select);
-}
-
-mod select_spin {
-    tests!(wrappers::select_spin);
 }

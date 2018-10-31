@@ -15,7 +15,7 @@ pub struct Context {
     inner: Arc<Inner>,
 }
 
-/// Inner representation of `Context`
+/// Inner representation of `Context`.
 struct Inner {
     /// Selected operation.
     select: AtomicUsize,

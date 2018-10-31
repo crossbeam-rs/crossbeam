@@ -11,10 +11,6 @@ use std::time::{Duration, Instant};
 use channel::Select;
 use channel::TryRecvError;
 
-// TODO: test: verify that Select can be reused
-// TODO: and make sure it can't while selectedcase is alive
-// TODO: write a todo mentioning kleimkuhler's contributions
-
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
@@ -1203,5 +1199,95 @@ fn fairness2() {
             }
         }
         assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 10));
+    });
+}
+
+#[test]
+fn sync_and_clone() {
+    const THREADS: usize = 20;
+
+    let (s, r) = &channel::bounded::<usize>(0);
+
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    let case2 = sel.send(&s);
+    let sel = &sel;
+
+    crossbeam::scope(|scope| {
+        for i in 0..THREADS {
+            scope.spawn(move || {
+                let mut sel = sel.clone();
+                let case = sel.select();
+                match case.index() {
+                    c if c == case1 => assert_ne!(case.recv(&r), Ok(i)),
+                    c if c == case2 => assert!(case.send(&s, i).is_ok()),
+                    _ => unreachable!(),
+                }
+            });
+        }
+    });
+
+    assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[test]
+fn send_and_clone() {
+    const THREADS: usize = 20;
+
+    let (s, r) = &channel::bounded::<usize>(0);
+
+    let mut sel = Select::new();
+    let case1 = sel.recv(&r);
+    let case2 = sel.send(&s);
+
+    crossbeam::scope(|scope| {
+        for i in 0..THREADS {
+            let mut sel = sel.clone();
+            scope.spawn(move || {
+                let case = sel.select();
+                match case.index() {
+                    c if c == case1 => assert_ne!(case.recv(&r), Ok(i)),
+                    c if c == case2 => assert!(case.send(&s, i).is_ok()),
+                    _ => unreachable!(),
+                }
+            });
+        }
+    });
+
+    assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[test]
+fn reuse() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = channel::bounded(0);
+    let (s2, r2) = channel::bounded(0);
+    let (s3, r3) = channel::bounded(100);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            for i in 0..COUNT {
+                s1.send(i).unwrap();
+                assert_eq!(r2.recv().unwrap(), i);
+                r3.recv().unwrap();
+            }
+        });
+
+        let mut sel = Select::new();
+        let case1 = sel.recv(&r1);
+        let case2 = sel.send(&s2);
+
+        for i in 0..COUNT {
+            for _ in 0..2 {
+                let case = sel.select();
+                match case.index() {
+                    c if c == case1 => assert_eq!(case.recv(&r1), Ok(i)),
+                    c if c == case2 => assert!(case.send(&s2, i).is_ok()),
+                    _ => unreachable!(),
+                }
+            }
+            s3.send(()).unwrap();
+        }
     });
 }

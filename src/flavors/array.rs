@@ -1,6 +1,43 @@
 //! Bounded channel based on a preallocated array.
 //!
 //! This flavor has a fixed, positive capacity.
+//!
+//! # Copyright
+//!
+//! The implementation is based on Dmitry Vyukov's bounded MPMC queue.
+//!
+//! Author: Dmitry Vyukov
+//! License: http://www.1024cores.net/home/code-license
+//! Sources:
+//!   - http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
+//!   - https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
+//!
+//! ```text
+//! Copyright (c) 2010-2011 Dmitry Vyukov. All rights reserved.
+//!
+//! Redistribution and use in source and binary forms, with or without modification, are permitted
+//! provided that the following conditions are met:
+//!
+//!    1. Redistributions of source code must retain the above copyright notice, this list of
+//!       conditions and the following disclaimer.
+//!
+//!    2. Redistributions in binary form must reproduce the above copyright notice, this list
+//!       of conditions and the following disclaimer in the documentation and/or other materials
+//!       provided with the distribution.
+//!
+//! THIS SOFTWARE IS PROVIDED BY DMITRY VYUKOV "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//! INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+//! PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL DMITRY VYUKOV OR CONTRIBUTORS BE LIABLE
+//! FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+//! BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+//! OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+//! STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+//! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//!
+//! The views and conclusions contained in the software and documentation are those of the authors
+//! and should not be interpreted as representing official policies, either expressed or implied,
+//! of Dmitry Vyukov.
+//! ```
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -51,11 +88,6 @@ impl Default for ArrayToken {
 }
 
 /// Bounded channel based on a preallocated array.
-///
-/// The implementation is based on Dmitry Vyukov's bounded MPMC queue:
-///
-/// - http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
-/// - https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
 pub struct Channel<T> {
     /// The head of the channel.
     ///
@@ -102,7 +134,7 @@ impl<T> Channel<T> {
     ///
     /// # Panics
     ///
-    /// Panics if the capacity is not in range `1 .. usize::max_value() / 4 + 1`.
+    /// Panics if the capacity is not in the range `1 ..= usize::max_value() / 4`.
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
@@ -344,10 +376,8 @@ impl<T> Channel<T> {
             let mut backoff = Backoff::new();
             loop {
                 if self.start_send(token) {
-                    unsafe {
-                        return self.write(token, msg)
-                            .map_err(SendTimeoutError::Disconnected);
-                    }
+                    let res = unsafe { self.write(token, msg) };
+                    return res.map_err(SendTimeoutError::Disconnected);
                 }
                 if !backoff.snooze() {
                     break;
@@ -405,10 +435,8 @@ impl<T> Channel<T> {
             let mut backoff = Backoff::new();
             loop {
                 if self.start_recv(token) {
-                    unsafe {
-                        return self.read(token)
-                            .map_err(|_| RecvTimeoutError::Disconnected);
-                    }
+                    let res = unsafe { self.read(token) };
+                    return res.map_err(|_| RecvTimeoutError::Disconnected);
                 }
                 if !backoff.snooze() {
                     break;

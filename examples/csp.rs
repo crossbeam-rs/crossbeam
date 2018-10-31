@@ -2,7 +2,7 @@
 //!
 //! The original program in Go follows:
 //!
-//! ```go
+//! ```text
 //! func main() {
 //!     people := []string{"Anna", "Bob", "Cody", "Dave", "Eva"}
 //!     match := make(chan string, 1) // Make room for one unmatched send.
@@ -33,7 +33,7 @@
 //! }
 //! ```
 //!
-//! # Notes on the original code
+//! # Copyright
 //!
 //! Author: Stefan Nilsson
 //! License: Creative Commons Attribution 3.0 Unported License.

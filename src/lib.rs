@@ -3,6 +3,8 @@
 //! Crossbeam's channels are an alternative to the [`std::sync::mpsc`] channels provided by the
 //! standard library. They are an improvement in terms of performance, ergonomics, and features.
 //!
+//! # TODO: Hello, World!
+//!
 //! Here's a quick example:
 //!
 //! ```
@@ -381,6 +383,7 @@ mod waker;
 pub use channel::{Receiver, Sender};
 pub use channel::{bounded, unbounded};
 pub use channel::{after, tick};
+pub use channel::{IntoIter, Iter, TryIter};
 
 pub use select::{Select, SelectedCase};
 

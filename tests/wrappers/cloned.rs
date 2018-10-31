@@ -1,7 +1,7 @@
-//! Channels with cloned senders and receivers immediately upon construction.
+//! Channels with senders and receivers cloned immediately upon construction.
 //!
 //! Some channel types might take advantage of the fact that the first sender or receiver was never
-//! cloned, so this wrapper turns off such optimizations right away.
+//! cloned, so this wrapper prevents such optimizations right away.
 
 use std::ops::Deref;
 use std::time::{Duration, Instant};
@@ -10,6 +10,7 @@ use channel;
 
 pub use channel::{RecvError, RecvTimeoutError, TryRecvError};
 pub use channel::{SendError, SendTimeoutError, TrySendError};
+pub use channel::Select;
 
 pub struct Sender<T>(pub channel::Sender<T>);
 

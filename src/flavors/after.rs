@@ -83,7 +83,7 @@ impl Channel {
 
         // Try consuming the message if it is still available.
         if !self.flag().swap(true, Ordering::SeqCst) {
-            // Success! Return the message, which is the instant at which it was delivered.
+            // Success! Return delivery time as the message.
             Ok(self.delivery_time)
         } else {
             // The message was already received.
@@ -108,7 +108,7 @@ impl Channel {
                 break;
             }
 
-            // Check if the operation deadline has been reached.
+            // Check if the deadline has been reached.
             if let Some(d) = deadline {
                 if now >= d {
                     return Err(RecvTimeoutError::Timeout);

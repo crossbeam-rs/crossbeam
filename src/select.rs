@@ -1,5 +1,6 @@
 //! Interface to the select mechanism.
 
+use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::time::{Duration, Instant};
@@ -551,6 +552,9 @@ pub struct Select<'a> {
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
 }
 
+unsafe impl<'a> Send for Select<'a> {}
+unsafe impl<'a> Sync for Select<'a> {}
+
 impl<'a> Select<'a> {
     pub fn new() -> Select<'a> {
         Select {
@@ -559,17 +563,17 @@ impl<'a> Select<'a> {
     }
 
     pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
-        let i = self.handles.len() + 1;
+        let i = self.handles.len();
         let ptr = r as *const Receiver<_> as *const u8;
         self.handles.push((r, i, ptr));
-        i - 1
+        i
     }
 
     pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
-        let i = self.handles.len() + 1;
+        let i = self.handles.len();
         let ptr = s as *const Sender<_> as *const u8;
         self.handles.push((s, i, ptr));
-        i - 1
+        i
     }
 
     pub fn try_select(&mut self) -> Result<SelectedCase<'_>, TrySelectError> {
@@ -612,6 +616,20 @@ impl<'a> Select<'a> {
     }
 }
 
+impl<'a> Clone for Select<'a> {
+    fn clone(&self) -> Select<'a> {
+        Select {
+            handles: self.handles.clone(),
+        }
+    }
+}
+
+impl<'a> fmt::Debug for Select<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Select").finish()
+    }
+}
+
 #[must_use]
 pub struct SelectedCase<'a> {
     token: Token,
@@ -622,7 +640,7 @@ pub struct SelectedCase<'a> {
 
 impl<'a> SelectedCase<'a> {
     pub fn index(&self) -> usize {
-        self.index - 1
+        self.index
     }
 
     pub fn recv<T>(mut self, r: &Receiver<T>) -> Result<T, RecvError> {
@@ -647,6 +665,12 @@ impl<'a> SelectedCase<'a> {
         };
         mem::forget(self);
         res
+    }
+}
+
+impl<'a> fmt::Debug for SelectedCase<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SelectedCase").finish()
     }
 }
 

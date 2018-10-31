@@ -14,8 +14,8 @@ macro_rules! tests {
         use std::thread;
         use std::time::{Duration, Instant};
 
-        use super::channel::TryRecvError;
         use $channel as channel;
+        use $channel::{TryRecvError};
         use crossbeam;
 
         fn ms(ms: u64) -> Duration {
@@ -298,8 +298,8 @@ macro_rules! tests {
     };
 }
 
-mod normal {
-    tests!(wrappers::normal);
+mod vanilla {
+    tests!(wrappers::vanilla);
 }
 
 mod cloned {
@@ -308,8 +308,4 @@ mod cloned {
 
 mod select {
     tests!(wrappers::select);
-}
-
-mod select_spin {
-    tests!(wrappers::select_spin);
 }

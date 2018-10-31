@@ -1,14 +1,12 @@
 //! Tests copied from Go and rewritten in Rust.
 //!
-//! # Notes on the original code
+//! # Copyright
 //!
 //! Authors: https://golang.org/AUTHORS
 //! License: https://golang.org/LICENSE
 //! Source: https://github.com/golang/go
 //!
-//! A copy of the license notice from the source repository:
-//!
-//! ```
+//! ```text
 //! Copyright (c) 2009 The Go Authors. All rights reserved.
 //!
 //! Redistribution and use in source and binary forms, with or without
@@ -1068,18 +1066,10 @@ macro_rules! tests {
     }
 }
 
-mod normal {
-    tests!(wrappers::normal);
-}
-
-mod cloned {
-    tests!(wrappers::cloned);
+mod vanilla {
+    tests!(wrappers::vanilla);
 }
 
 mod select {
     tests!(wrappers::select);
-}
-
-mod select_spin {
-    tests!(wrappers::select_spin);
 }

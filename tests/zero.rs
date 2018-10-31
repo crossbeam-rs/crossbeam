@@ -14,10 +14,9 @@ macro_rules! tests {
         use std::thread;
         use std::time::Duration;
 
-        use super::channel::{
-            RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError
-        };
         use $channel as channel;
+        use $channel::{RecvError, RecvTimeoutError, TryRecvError};
+        use $channel::{SendError, SendTimeoutError, TrySendError};
         use crossbeam;
         use rand::{thread_rng, Rng};
 
@@ -464,18 +463,10 @@ macro_rules! tests {
     };
 }
 
-mod normal {
-    tests!(wrappers::normal);
-}
-
-mod cloned {
-    tests!(wrappers::cloned);
+mod vanilla {
+    tests!(wrappers::vanilla);
 }
 
 mod select {
     tests!(wrappers::select);
-}
-
-mod select_spin {
-    tests!(wrappers::select_spin);
 }

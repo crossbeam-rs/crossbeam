@@ -1,6 +1,8 @@
 use std::error;
 use std::fmt;
 
+// TODO(stjepang): Reword documentation in this module.
+
 /// An error returned from the [`Sender::send`] method.
 ///
 /// A send operation can only fail if the receiving end of a channel is disconnected, implying that
@@ -83,10 +85,16 @@ pub enum RecvTimeoutError {
     Disconnected,
 }
 
-// TODO impls and so on
+/// An error returned from the [`Select::try_select`] method.
+///
+/// [`Select::try_select`]: struct.Select.html#method.try_select
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct TrySelectError;
 
-// TODO impls and so on
+/// An error returned from the [`Select::select_timeout`] method.
+///
+/// [`Select::select_timeout`]: struct.Select.html#method.select_timeout
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct SelectTimeoutError;
 
 impl<T> fmt::Debug for SendError<T> {
@@ -321,5 +329,37 @@ impl From<RecvError> for RecvTimeoutError {
         match err {
             RecvError => RecvTimeoutError::Disconnected,
         }
+    }
+}
+
+impl fmt::Display for TrySelectError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        "all cases in select would block".fmt(f)
+    }
+}
+
+impl error::Error for TrySelectError {
+    fn description(&self) -> &str {
+        "all cases in select would block"
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        None
+    }
+}
+
+impl fmt::Display for SelectTimeoutError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        "timed out waiting on select".fmt(f)
+    }
+}
+
+impl error::Error for SelectTimeoutError {
+    fn description(&self) -> &str {
+        "timed out waiting on select"
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        None
     }
 }

@@ -1,6 +1,6 @@
-//! Native interface with the default behavior.
+//! Vanilla channels.
 //!
-//! This wrapper does not try to provoke or prevent any optimizations.
+//! This wrapper does not modify the inner workings of channels.
 
 use std::ops::Deref;
 use std::time::{Duration, Instant};
@@ -9,6 +9,7 @@ use channel;
 
 pub use channel::{RecvError, RecvTimeoutError, TryRecvError};
 pub use channel::{SendError, SendTimeoutError, TrySendError};
+pub use channel::Select;
 
 pub struct Sender<T>(pub channel::Sender<T>);
 

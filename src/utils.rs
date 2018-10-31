@@ -51,7 +51,7 @@ impl Backoff {
     }
 }
 
-/// Shuffles a slice randomly.
+/// Randomly shuffles a slice.
 pub fn shuffle<T>(v: &mut [T]) {
     let len = v.len();
     if len <= 1 {
@@ -68,7 +68,8 @@ pub fn shuffle<T>(v: &mut [T]) {
     let _ = RNG.try_with(|rng| {
         for i in 1..len {
             // This is the 32-bit variant of Xorshift.
-            // https://en.wikipedia.org/wiki/Xorshift
+            //
+            // Source: https://en.wikipedia.org/wiki/Xorshift
             let mut x = rng.get();
             x ^= x << 13;
             x ^= x >> 17;
@@ -79,7 +80,9 @@ pub fn shuffle<T>(v: &mut [T]) {
             let n = i + 1;
 
             // This is a fast alternative to `let j = x % n`.
-            // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+            //
+            // Author: Daniel Lemire
+            // Source: https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
             let j = ((x as u64).wrapping_mul(n as u64) >> 32) as u32 as usize;
 
             v.swap(i, j);
@@ -88,7 +91,7 @@ pub fn shuffle<T>(v: &mut [T]) {
 }
 
 /// Sleeps until the deadline, or forever if the deadline isn't specified.
-pub fn sleep_until(deadline: Option<Instant>)  {
+pub fn sleep_until(deadline: Option<Instant>) {
     loop {
         match deadline {
             None => thread::sleep(Duration::from_secs(1000)),

@@ -1,7 +1,6 @@
 //! Channels with send and receive operations implemented using `select!`.
 //!
-//! Such `select!` invocations will often try to optimize the macro invocations by converting them
-//! into direct calls to `recv()` or `send()`.
+//! This wrapper is used to test the selection mechanism more thoroughly.
 
 use std::ops::Deref;
 use std::time::{Duration, Instant};
@@ -10,6 +9,7 @@ use channel;
 
 pub use channel::{RecvError, RecvTimeoutError, TryRecvError};
 pub use channel::{SendError, SendTimeoutError, TrySendError};
+pub use channel::Select;
 
 pub struct Sender<T>(pub channel::Sender<T>);
 
