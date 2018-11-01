@@ -31,7 +31,7 @@ pub struct Token {
 pub struct Operation(usize);
 
 impl Operation {
-    /// Creates an identifier from a mutable reference.
+    /// Creates an operation identifier from a mutable reference.
     ///
     /// This function essentially just turns the address of the reference into a number. The
     /// reference should point to a variable that is specific to the thread and the operation,
@@ -52,7 +52,7 @@ pub enum Selected {
     /// Still waiting for an operation.
     Waiting,
 
-    /// The select or blocking operation has been aborted.
+    /// The attempt to block the current thread has been aborted.
     Aborted,
 
     /// A channel was disconnected.
@@ -151,17 +151,22 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
     }
 }
 
+/// TODO
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Timeout {
+    /// TODO
     Now,
+    /// TODO
     Never,
+    /// TODO
     At(Instant),
 }
 
 /// Runs until one of the operations is fired, potentially blocking the current thread.
 ///
-/// Receive operations will have to be followed up by `read`, and send operations by `write`.
-fn main_loop<S>(
+/// Successful receive operations will have to be followed up by `channel::read()` and successful
+/// send operations by `channel::write()`.
+fn run_select<S>(
     handles: &mut [(&S, usize, *const u8)],
     timeout: Timeout,
 ) -> Option<(Token, usize, *const u8)>
@@ -184,9 +189,11 @@ where
     }
 
     // Create a token, which serves as a temporary variable that gets initialized in this function
-    // and is later used by a call to `read` or `write` that completes the selected operation.
+    // and is later used by a call to `channel::read()` or `channel::write()` that completes the
+    // selected operation.
     let mut token = Token::default();
 
+    // Is this is a non-blocking select?
     if timeout == Timeout::Now {
         if handles.len() <= 1 {
             // Try firing the operations without blocking.
@@ -337,216 +344,106 @@ where
             Timeout::Never => {},
             Timeout::At(when) => {
                 if Instant::now() >= when {
-                    // TODO: explain
-                    return main_loop(handles, Timeout::Now);
+                    // Fall back to one final non-blocking select. This is needed to make the whole
+                    // select invocation appear from the outside as a single operation.
+                    return run_select(handles, Timeout::Now);
                 }
             }
         };
     }
 }
 
-// /// Waits on a set of channel operations.
-// ///
-// /// This struct with builder-like interface allows declaring a set of channel operations and
-// /// blocking until any one of them becomes ready. Finally, one of the operations is executed. If
-// /// multiple operations are ready at the same time, a random one is chosen. It is also possible to
-// /// declare a default case that gets executed if none of the operations are initially ready.
-// ///
-// /// Note that this method of selecting over channel operations is typically somewhat slower than
-// /// the [`select!`] macro.
-// ///
-// /// [`select!`]: macro.select.html
-// ///
-// /// # Receiving
-// ///
-// /// Receiving a message from two channels, whichever becomes ready first:
-// ///
-// /// ```
-// /// use std::thread;
-// /// use crossbeam_channel as channel;
-// ///
-// /// let (s1, r1) = channel::unbounded();
-// /// let (s2, r2) = channel::unbounded();
-// ///
-// /// thread::spawn(move || s1.send("foo"));
-// /// thread::spawn(move || s2.send("bar"));
-// ///
-// /// // Only one of these two receive operations will be executed.
-// /// channel::Select::new()
-// ///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
-// ///     .recv(&r2, |msg| assert_eq!(msg, Some("bar")))
-// ///     .wait();
-// /// ```
-// ///
-// /// # Sending
-// ///
-// /// Waiting on a send and a receive operation:
-// ///
-// /// ```
-// /// use std::thread;
-// /// use crossbeam_channel as channel;
-// ///
-// /// let (s1, r1) = channel::unbounded();
-// /// let (s2, r2) = channel::unbounded();
-// ///
-// /// s1.send("foo");
-// ///
-// /// // Since both operations are initially ready, a random one will be executed.
-// /// channel::Select::new()
-// ///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
-// ///     .send(&s2, || "bar", || assert_eq!(r2.recv(), Some("bar")))
-// ///     .wait();
-// /// ```
-// ///
-// /// # Default case
-// ///
-// /// A special kind of case is `default`, which gets executed if none of the operations can be
-// /// executed, i.e. they would block:
-// ///
-// /// ```
-// /// use std::thread;
-// /// use std::time::{Duration, Instant};
-// /// use crossbeam_channel as channel;
-// ///
-// /// let (s, r) = channel::unbounded();
-// ///
-// /// thread::spawn(move || {
-// ///     thread::sleep(Duration::from_secs(1));
-// ///     s.send("foo");
-// /// });
-// ///
-// /// // Don't block on the receive operation.
-// /// channel::Select::new()
-// ///     .recv(&r, |_| panic!())
-// ///     .default(|| println!("The message is not yet available."))
-// ///     .wait();
-// /// ```
-// ///
-// /// # Execution
-// ///
-// /// 1. A `Select` is constructed, cases are added, and `.wait()` is called.
-// /// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
-// ///    operations are ready, a random one is chosen.
-// /// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
-// ///    there is no `default` case, the current thread is blocked until an operation becomes ready.
-// /// 4. If a `recv` operation gets executed, its callback is invoked.
-// /// 5. If a `send` operation gets executed, the message is lazily evaluated and sent into the
-// ///    channel. Finally, the callback is invoked.
-// ///
-// /// **Note**: If evaluation of the message panics, the process will be aborted because it's
-// /// impossible to recover from such panics. All the other callbacks are allowed to panic, however.
-// #[must_use]
-// pub struct Select<'a, R> {
-//     /// A list of senders and receivers participating in selection.
-//     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
-//
-//     /// A list of callbacks, one per handle.
-//     callbacks: SmallVec<[Callback<'a, R>; 4]>,
-//
-//     /// Callback for the default case.
-//     default: Option<Callback<'a, R>>,
-// }
-//
-// impl<'a, R> Select<'a, R> {
-//     /// Creates a new `Select`.
-//     pub fn new() -> Select<'a, R> {
-//         Select {
-//             handles: SmallVec::new(),
-//             callbacks: SmallVec::new(),
-//             default: None,
-//         }
-//     }
-//
-//     /// Adds a receive case.
-//     ///
-//     /// The callback will get invoked if the receive operation completes.
-//     #[inline]
-//     pub fn recv<T, C>(mut self, r: &'a Receiver<T>, cb: C) -> Select<'a, R>
-//     where
-//         C: FnOnce(Option<T>) -> R + 'a,
-//     {
-//         let i = self.handles.len() + 1;
-//         let ptr = r as *const Receiver<_> as *const u8;
-//         self.handles.push((r, i, ptr));
-//
-//         self.callbacks.push(Callback::new(move |token| {
-//             let msg = unsafe { channel::read(r, token) };
-//             cb(msg)
-//         }));
-//
-//         self
-//     }
-//
-//     /// Adds a send case.
-//     ///
-//     /// If the send operation succeeds, the message will be generated and sent into the channel.
-//     /// Finally, the callback gets invoked once the operation is completed.
-//     ///
-//     /// **Note**: If function `msg` panics, the process will be aborted because it's impossible to
-//     /// recover from such panics. However, function `cb` is allowed to panic.
-//     #[inline]
-//     pub fn send<T, M, C>(mut self, s: &'a Sender<T>, msg: M, cb: C) -> Select<'a, R>
-//     where
-//         M: FnOnce() -> T + 'a,
-//         C: FnOnce() -> R + 'a,
-//     {
-//         let i = self.handles.len() + 1;
-//         let ptr = s as *const Sender<_> as *const u8;
-//         self.handles.push((s, i, ptr));
-//
-//         self.callbacks.push(Callback::new(move |token| {
-//             let _guard =
-//                 utils::AbortGuard("a send case triggered a panic while evaluating its message");
-//             let msg = msg();
-//
-//             ::std::mem::forget(_guard);
-//             unsafe {
-//                 channel::write(s, token, msg);
-//             }
-//
-//             cb()
-//         }));
-//
-//         self
-//     }
-//
-//     /// Adds a default case.
-//     ///
-//     /// This case gets executed if none of the channel operations are ready.
-//     ///
-//     /// If called more than once, this method keeps only the last callback for the default case.
-//     #[inline]
-//     pub fn default<C>(mut self, cb: C) -> Select<'a, R>
-//     where
-//         C: FnOnce() -> R + 'a,
-//     {
-//         self.default = Some(Callback::new(move |_| cb()));
-//         self
-//     }
-//
-//     /// Starts selection and waits until it completes.
-//     ///
-//     /// The result of the executed callback function will be returned.
-//     pub fn wait(mut self) -> R {
-//         let (mut token, index, _) = main_loop(&mut self.handles, self.default.is_some());
-//         let cb;
-//
-//         // Initialize `cb` with the right callback and drop all other callbacks.
-//         if index == 0 {
-//             self.callbacks.clear();
-//             cb = self.default.take().unwrap();
-//         } else {
-//             cb = self.callbacks.remove(index - 1);
-//             self.callbacks.clear();
-//             self.default.take();
-//         }
-//
-//         // Invoke the callback.
-//         cb.call(&mut token)
-//     }
-// }
-
-// TODO impl Clone for Select<'a>, Debug and so on (we need some of those on SelectedCase too)
+// TODO
+/// Waits on a set of channel operations.
+///
+/// This struct with builder-like interface allows declaring a set of channel operations and
+/// blocking until any one of them becomes ready. Finally, one of the operations is executed. If
+/// multiple operations are ready at the same time, a random one is chosen. It is also possible to
+/// declare a default case that gets executed if none of the operations are initially ready.
+///
+/// Note that this method of selecting over channel operations is typically somewhat slower than
+/// the [`select!`] macro.
+///
+/// [`select!`]: macro.select.html
+///
+/// # Receiving
+///
+/// Receiving a message from two channels, whichever becomes ready first:
+///
+/// ```
+/// use std::thread;
+/// use crossbeam_channel as channel;
+///
+/// let (s1, r1) = channel::unbounded();
+/// let (s2, r2) = channel::unbounded();
+///
+/// thread::spawn(move || s1.send("foo"));
+/// thread::spawn(move || s2.send("bar"));
+///
+/// // Only one of these two receive operations will be executed.
+/// channel::Select::new()
+///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
+///     .recv(&r2, |msg| assert_eq!(msg, Some("bar")))
+///     .wait();
+/// ```
+///
+/// # Sending
+///
+/// Waiting on a send and a receive operation:
+///
+/// ```
+/// use std::thread;
+/// use crossbeam_channel as channel;
+///
+/// let (s1, r1) = channel::unbounded();
+/// let (s2, r2) = channel::unbounded();
+///
+/// s1.send("foo");
+///
+/// // Since both operations are initially ready, a random one will be executed.
+/// channel::Select::new()
+///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
+///     .send(&s2, || "bar", || assert_eq!(r2.recv(), Some("bar")))
+///     .wait();
+/// ```
+///
+/// # Default case
+///
+/// A special kind of case is `default`, which gets executed if none of the operations can be
+/// executed, i.e. they would block:
+///
+/// ```
+/// use std::thread;
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel as channel;
+///
+/// let (s, r) = channel::unbounded();
+///
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     s.send("foo");
+/// });
+///
+/// // Don't block on the receive operation.
+/// channel::Select::new()
+///     .recv(&r, |_| panic!())
+///     .default(|| println!("The message is not yet available."))
+///     .wait();
+/// ```
+///
+/// # Execution
+///
+/// 1. A `Select` is constructed, cases are added, and `.wait()` is called.
+/// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
+///    operations are ready, a random one is chosen.
+/// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
+///    there is no `default` case, the current thread is blocked until an operation becomes ready.
+/// 4. If a `recv` operation gets executed, its callback is invoked.
+/// 5. If a `send` operation gets executed, the message is lazily evaluated and sent into the
+///    channel. Finally, the callback is invoked.
+///
+/// **Note**: If evaluation of the message panics, the process will be aborted because it's
+/// impossible to recover from such panics. All the other callbacks are allowed to panic, however.
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
@@ -556,12 +453,14 @@ unsafe impl<'a> Send for Select<'a> {}
 unsafe impl<'a> Sync for Select<'a> {}
 
 impl<'a> Select<'a> {
+    /// Creates a new `Select`.
     pub fn new() -> Select<'a> {
         Select {
             handles: SmallVec::new(),
         }
     }
 
+    /// TODO
     pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
         let i = self.handles.len();
         let ptr = r as *const Receiver<_> as *const u8;
@@ -569,6 +468,7 @@ impl<'a> Select<'a> {
         i
     }
 
+    /// TODO
     pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
         let i = self.handles.len();
         let ptr = s as *const Sender<_> as *const u8;
@@ -576,8 +476,9 @@ impl<'a> Select<'a> {
         i
     }
 
+    /// TODO
     pub fn try_select(&mut self) -> Result<SelectedCase<'_>, TrySelectError> {
-        match main_loop(&mut self.handles, Timeout::Now) {
+        match run_select(&mut self.handles, Timeout::Now) {
             None => Err(TrySelectError),
             Some((token, index, ptr)) => Ok(SelectedCase {
                 token,
@@ -588,8 +489,9 @@ impl<'a> Select<'a> {
         }
     }
 
+    /// TODO
     pub fn select(&mut self) -> SelectedCase<'_> {
-        let (token, index, ptr) = main_loop(&mut self.handles, Timeout::Never).unwrap();
+        let (token, index, ptr) = run_select(&mut self.handles, Timeout::Never).unwrap();
         SelectedCase {
             token,
             index,
@@ -598,13 +500,14 @@ impl<'a> Select<'a> {
         }
     }
 
+    /// TODO
     pub fn select_timeout(
         &mut self,
         timeout: Duration,
     ) -> Result<SelectedCase<'_>, SelectTimeoutError> {
         let timeout = Timeout::At(Instant::now() + timeout);
 
-        match main_loop(&mut self.handles, timeout) {
+        match run_select(&mut self.handles, timeout) {
             None => Err(SelectTimeoutError),
             Some((token, index, ptr)) => Ok(SelectedCase {
                 token,
@@ -630,41 +533,45 @@ impl<'a> fmt::Debug for Select<'a> {
     }
 }
 
+/// TODO
 #[must_use]
 pub struct SelectedCase<'a> {
+    /// TODO
     token: Token,
+    /// TODO
     index: usize,
+    /// TODO
     ptr: *const u8,
+    /// TODO
     _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> SelectedCase<'a> {
+    /// TODO
     pub fn index(&self) -> usize {
         self.index
     }
 
+    /// TODO
     pub fn recv<T>(mut self, r: &Receiver<T>) -> Result<T, RecvError> {
         assert!(
             r as *const Receiver<T> as *const u8 == self.ptr,
             "passed a receiver that wasn't selected",
         );
-        let res = unsafe {
-            channel::read(r, &mut self.token).map_err(|_| RecvError)
-        };
+        let res = unsafe { channel::read(r, &mut self.token) };
         mem::forget(self);
-        res
+        res.map_err(|_| RecvError)
     }
 
+    /// TODO
     pub fn send<T>(mut self, s: &Sender<T>, msg: T) -> Result<(), SendError<T>> {
         assert!(
             s as *const Sender<T> as *const u8 == self.ptr,
             "passed a sender that wasn't selected",
         );
-        let res = unsafe {
-            channel::write(s, &mut self.token, msg).map_err(SendError)
-        };
+        let res = unsafe { channel::write(s, &mut self.token, msg) };
         mem::forget(self);
-        res
+        res.map_err(SendError)
     }
 }
 
@@ -1059,7 +966,7 @@ macro_rules! crossbeam_channel_internal {
             $default
         )
     };
-    // Error cases...
+    // Print an error if the argument list is invalid.
     (@case
         (recv($($args:tt)*) -> $res:pat => $body:tt, $($tail:tt)*)
         ($($cases:tt)*)
@@ -1071,6 +978,7 @@ macro_rules! crossbeam_channel_internal {
             ")`",
         ))
     };
+    // Print an error if there is no argument list.
     (@case
         (recv $t:tt $($tail:tt)*)
         ($($cases:tt)*)
@@ -1109,7 +1017,7 @@ macro_rules! crossbeam_channel_internal {
             $default
         )
     };
-    // Error cases...
+    // Print an error if the argument list is invalid.
     (@case
         (send($($args:tt)*) -> $res:pat => $body:tt, $($tail:tt)*)
         ($($cases:tt)*)
@@ -1121,6 +1029,7 @@ macro_rules! crossbeam_channel_internal {
             ")`",
         ))
     };
+    // Print an error if there is no argument list.
     (@case
         (send $t:tt $($tail:tt)*)
         ($($cases:tt)*)
@@ -1180,7 +1089,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {
         compile_error!("there can be only one `default` case in a `select!` block")
     };
-    // Other error cases...
+    // Print an error if the argument list is invalid.
     (@case
         (default($($args:tt)*) => $body:tt, $($tail:tt)*)
         $cases:tt
@@ -1192,6 +1101,7 @@ macro_rules! crossbeam_channel_internal {
             ")`",
         ))
     };
+    // Print an error if there is an unexpected token after `default`.
     (@case
         (default $($tail:tt)*)
         $cases:tt
@@ -1217,6 +1127,7 @@ macro_rules! crossbeam_channel_internal {
         ))
     };
 
+    // Start the blocking select operation.
     (@add
         $sel:ident
         ()
@@ -1226,7 +1137,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         let case: $crate::SelectedCase<'_> = {
             let case = $sel.select();
-            // TODO: necessary to be able to drop sel early without NLL
+            // Erase the lifetime so that `sel` can be dropped early even without NLL.
             unsafe { ::std::mem::transmute(case) }
         };
         crossbeam_channel_internal! {
@@ -1236,6 +1147,7 @@ macro_rules! crossbeam_channel_internal {
             $cases
         }
     }};
+    // Start the non-blocking select operation.
     (@add
         $sel:ident
         ()
@@ -1245,7 +1157,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         let case: Option<$crate::SelectedCase<'_>> = {
             let case = $sel.try_select();
-            // TODO: necessary to be able to drop sel early without NLL
+            // Erase the lifetime so that `sel` can be dropped early even without NLL.
             unsafe { ::std::mem::transmute(case) }
         };
         match case {
@@ -1263,6 +1175,7 @@ macro_rules! crossbeam_channel_internal {
             }
         }
     }};
+    // Start the select operation with a timeout.
     (@add
         $sel:ident
         ()
@@ -1272,7 +1185,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         let case: Option<$crate::SelectedCase<'_>> = {
             let case = $sel.select_timeout($timeout);
-            // TODO: necessary to be able to drop sel early without NLL
+            // Erase the lifetime so that `sel` can be dropped early even without NLL.
             unsafe { ::std::mem::transmute(case) }
         };
         match case {
@@ -1290,6 +1203,7 @@ macro_rules! crossbeam_channel_internal {
             }
         }
     }};
+    // Have we used up all labels?
     (@add
         $sel:ident
         $input:tt
@@ -1299,6 +1213,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {
         compile_error!("too many cases in a `select!` block")
     };
+    // Add a receive case to `sel`.
     (@add
         $sel:ident
         (recv($r:expr) -> $res:pat => $body:tt, $($tail:tt)*)
@@ -1327,6 +1242,7 @@ macro_rules! crossbeam_channel_internal {
             }
         }
     }};
+    // Add a send case to `sel`.
     (@add
         $sel:ident
         (send($s:expr, $m:expr) -> $res:pat => $body:tt, $($tail:tt)*)
@@ -1356,6 +1272,7 @@ macro_rules! crossbeam_channel_internal {
         }
     }};
 
+    // Complete a receive operation.
     (@complete
         $sel:ident
         $case:ident
@@ -1375,6 +1292,7 @@ macro_rules! crossbeam_channel_internal {
             }
         }
     }};
+    // Complete a send operation.
     (@complete
         $sel:ident
         $case:ident
@@ -1394,6 +1312,7 @@ macro_rules! crossbeam_channel_internal {
             }
         }
     }};
+    // Panic if we don't identify the selected case, but this should never happen.
     (@complete
         $sel:ident
         $case:ident
@@ -1430,6 +1349,7 @@ macro_rules! crossbeam_channel_internal {
     };
 }
 
+/// TODO
 /// Waits on a set of channel operations.
 ///
 /// This macro allows declaring a set of channel operations and blocking until any one of them
@@ -1623,6 +1543,7 @@ macro_rules! crossbeam_channel_internal {
 /// however.
 #[macro_export(local_inner_macros)]
 macro_rules! select {
+    // TODO
     // The macro consists of two stages:
     // 1. Parsing
     // 2. Code generation
@@ -1677,12 +1598,6 @@ macro_rules! select {
     //
     // These three lists are then passed to the code generation stage.
 
-    // ($($case:ident $(($($args:tt)*))* $(-> $res:pat)* => $body:expr $(,)*)*) => {
-    //     crossbeam_channel_internal!(
-    //         $($case $(($($args)*))* $(-> $res)* => { $body },)*
-    //     )
-    // };
-    //
     ($($tokens:tt)*) => {
         crossbeam_channel_internal!(
             $($tokens)*
