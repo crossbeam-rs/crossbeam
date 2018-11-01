@@ -151,14 +151,16 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
     }
 }
 
-/// TODO
+/// Determines when a select operation should time out.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Timeout {
-    /// TODO
+    /// Try firing operations without blocking.
     Now,
-    /// TODO
+
+    /// Block forever.
     Never,
-    /// TODO
+
+    /// Time out after an instant in time.
     At(Instant),
 }
 
@@ -353,97 +355,43 @@ where
     }
 }
 
-// TODO
 /// Waits on a set of channel operations.
 ///
-/// This struct with builder-like interface allows declaring a set of channel operations and
-/// blocking until any one of them becomes ready. Finally, one of the operations is executed. If
-/// multiple operations are ready at the same time, a random one is chosen. It is also possible to
-/// declare a default case that gets executed if none of the operations are initially ready.
+/// `Select` allows the user to specify a set of channel operations, block until any one of them
+/// becomes ready, and finally execute it. If multiple operations are ready at the same time, a
+/// random one among them is selected.
 ///
-/// Note that this method of selecting over channel operations is typically somewhat slower than
-/// the [`select!`] macro.
+/// An operation is considered to be ready if it doesn't have to block. Note that it might be ready
+/// even if it will simply return an error because the channel is disconnected.
 ///
-/// [`select!`]: macro.select.html
+/// The [`select`] macro is a wrapper around `Select` with a more pleasant interface. However, it
+/// can only handle a static list of cases, i.e. send/receive operation cannot be dynamically added
+/// to it.
 ///
-/// # Receiving
+/// [`select`]: macro.select.html
 ///
-/// Receiving a message from two channels, whichever becomes ready first:
-///
-/// ```
-/// use std::thread;
-/// use crossbeam_channel as channel;
-///
-/// let (s1, r1) = channel::unbounded();
-/// let (s2, r2) = channel::unbounded();
-///
-/// thread::spawn(move || s1.send("foo"));
-/// thread::spawn(move || s2.send("bar"));
-///
-/// // Only one of these two receive operations will be executed.
-/// channel::Select::new()
-///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
-///     .recv(&r2, |msg| assert_eq!(msg, Some("bar")))
-///     .wait();
-/// ```
-///
-/// # Sending
-///
-/// Waiting on a send and a receive operation:
+/// # Examples
 ///
 /// ```
 /// use std::thread;
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::{unbounded, Select};
 ///
-/// let (s1, r1) = channel::unbounded();
-/// let (s2, r2) = channel::unbounded();
+/// let (s1, r1) = unbounded();
+/// let (s2, r2) = unbounded();
+/// s1.send(10).unwrap();
 ///
-/// s1.send("foo");
+/// let mut sel = Select::new();
+/// let case1 = sel.recv(&r1);
+/// let case2 = sel.send(&s2);
 ///
-/// // Since both operations are initially ready, a random one will be executed.
-/// channel::Select::new()
-///     .recv(&r1, |msg| assert_eq!(msg, Some("foo")))
-///     .send(&s2, || "bar", || assert_eq!(r2.recv(), Some("bar")))
-///     .wait();
+/// // Both operations are initially ready, so a random one will be executed.
+/// let case = sel.select();
+/// match case.index() {
+///     i if i == case1 => assert_eq!(case.recv(&r1), Ok(10)),
+///     i if i == case2 => assert_eq!(case.send(&s2, 20), Ok(())),
+///     _ => unreachable!(),
+/// }
 /// ```
-///
-/// # Default case
-///
-/// A special kind of case is `default`, which gets executed if none of the operations can be
-/// executed, i.e. they would block:
-///
-/// ```
-/// use std::thread;
-/// use std::time::{Duration, Instant};
-/// use crossbeam_channel as channel;
-///
-/// let (s, r) = channel::unbounded();
-///
-/// thread::spawn(move || {
-///     thread::sleep(Duration::from_secs(1));
-///     s.send("foo");
-/// });
-///
-/// // Don't block on the receive operation.
-/// channel::Select::new()
-///     .recv(&r, |_| panic!())
-///     .default(|| println!("The message is not yet available."))
-///     .wait();
-/// ```
-///
-/// # Execution
-///
-/// 1. A `Select` is constructed, cases are added, and `.wait()` is called.
-/// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
-///    operations are ready, a random one is chosen.
-/// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
-///    there is no `default` case, the current thread is blocked until an operation becomes ready.
-/// 4. If a `recv` operation gets executed, its callback is invoked.
-/// 5. If a `send` operation gets executed, the message is lazily evaluated and sent into the
-///    channel. Finally, the callback is invoked.
-///
-/// **Note**: If evaluation of the message panics, the process will be aborted because it's
-/// impossible to recover from such panics. All the other callbacks are allowed to panic, however.
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
@@ -454,21 +402,46 @@ unsafe impl<'a> Sync for Select<'a> {}
 
 impl<'a> Select<'a> {
     /// Creates a new `Select`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::Select;
+    ///
+    /// let mut sel = Select::new();
+    ///
+    /// // The list of cases is empty, which means no operation can be selected.
+    /// assert!(sel.try_select().is_err());
+    /// ```
     pub fn new() -> Select<'a> {
         Select {
             handles: SmallVec::new(),
         }
     }
 
-    /// TODO
-    pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
-        let i = self.handles.len();
-        let ptr = r as *const Receiver<_> as *const u8;
-        self.handles.push((r, i, ptr));
-        i
-    }
-
-    /// TODO
+    /// Adds a send case.
+    ///
+    /// Returns the index of the added case.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded::<i32>();
+    /// let (s2, r2) = unbounded::<i32>();
+    /// let (s3, r3) = unbounded::<i32>();
+    ///
+    /// let mut sel = Select::new();
+    /// let case1 = sel.send(&s1);
+    /// let case2 = sel.send(&s2);
+    /// let case3 = sel.send(&s3);
+    ///
+    /// assert_eq!(case1, 0);
+    /// assert_eq!(case2, 1);
+    /// assert_eq!(case3, 2);
+    /// ```
     pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
         let i = self.handles.len();
         let ptr = s as *const Sender<_> as *const u8;
@@ -476,7 +449,75 @@ impl<'a> Select<'a> {
         i
     }
 
-    /// TODO
+    /// Adds a receive case.
+    ///
+    /// The index of the added case is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded::<i32>();
+    /// let (s2, r2) = unbounded::<i32>();
+    /// let (s3, r3) = unbounded::<i32>();
+    ///
+    /// let mut sel = Select::new();
+    /// let case1 = sel.recv(&r1);
+    /// let case2 = sel.recv(&r2);
+    /// let case3 = sel.recv(&r3);
+    ///
+    /// assert_eq!(case1, 0);
+    /// assert_eq!(case2, 1);
+    /// assert_eq!(case3, 2);
+    /// ```
+    pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
+        let i = self.handles.len();
+        let ptr = r as *const Receiver<_> as *const u8;
+        self.handles.push((r, i, ptr));
+        i
+    }
+
+    /// Attempts to execute one of the operations without blocking.
+    ///
+    /// If an operation is ready, it is selected and returned. If multiple operations are ready at
+    /// the same time, a random one among them is selected. If none of the operations are ready, an
+    /// error is returned.
+    ///
+    /// The selected operation must be completed with [`SelectedCase::send`]
+    /// or [`SelectedCase::recv`].
+    ///
+    /// [`SelectedCase::send`]: struct.SelectedCase.html#method.send
+    /// [`SelectedCase::recv`]: struct.SelectedCase.html#method.recv
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded();
+    /// let (s2, r2) = unbounded();
+    ///
+    /// s1.send(10).unwrap();
+    /// s2.send(20).unwrap();
+    ///
+    /// let mut sel = Select::new();
+    /// let case1 = sel.recv(&r1);
+    /// let case2 = sel.recv(&r2);
+    ///
+    /// // Both operations are initially ready, so a random one will be executed.
+    /// let case = sel.try_select();
+    /// match case {
+    ///     Err(_) => panic!("both operations should be ready"),
+    ///     Ok(case) => match case.index() {
+    ///         i if i == case1 => assert_eq!(case.recv(&r1), Ok(10)),
+    ///         i if i == case2 => assert_eq!(case.recv(&r2), Ok(20)),
+    ///         _ => unreachable!(),
+    ///     }
+    /// }
+    /// ```
     pub fn try_select(&mut self) -> Result<SelectedCase<'_>, TrySelectError> {
         match run_select(&mut self.handles, Timeout::Now) {
             None => Err(TrySelectError),
@@ -489,8 +530,53 @@ impl<'a> Select<'a> {
         }
     }
 
-    /// TODO
+    /// Blocks until one of the operations becomes ready.
+    ///
+    /// Once an operation becomes ready, it is selected and returned.
+    ///
+    /// The selected operation must be completed with [`SelectedCase::send`]
+    /// or [`SelectedCase::recv`].
+    ///
+    /// [`SelectedCase::send`]: struct.SelectedCase.html#method.send
+    /// [`SelectedCase::recv`]: struct.SelectedCase.html#method.recv
+    ///
+    /// # Panics
+    ///
+    /// Panics if no operations have been added to `Select`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded();
+    /// let (s2, r2) = unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     s1.send(10).unwrap();
+    /// });
+    /// thread::spawn(move || s2.send(20).unwrap());
+    ///
+    /// let mut sel = Select::new();
+    /// let case1 = sel.recv(&r1);
+    /// let case2 = sel.recv(&r2);
+    ///
+    /// // The second operation will be selected because it becomes ready first.
+    /// let case = sel.select();
+    /// match case.index() {
+    ///     i if i == case1 => assert_eq!(case.recv(&r1), Ok(10)),
+    ///     i if i == case2 => assert_eq!(case.recv(&r2), Ok(20)),
+    ///     _ => unreachable!(),
+    /// }
+    /// ```
     pub fn select(&mut self) -> SelectedCase<'_> {
+        if self.handles.is_empty() {
+            panic!("no operations have been added to select");
+        }
+
         let (token, index, ptr) = run_select(&mut self.handles, Timeout::Never).unwrap();
         SelectedCase {
             token,
@@ -500,7 +586,49 @@ impl<'a> Select<'a> {
         }
     }
 
-    /// TODO
+    /// Waits until one of the operations becomes ready, but only for a limited time.
+    ///
+    /// If an operation becomes ready, it is selected and returned. If multiple operations are
+    /// ready at the same time, a random one among them is selected. If none of the operations
+    /// become ready for the specified duration, an error is returned.
+    ///
+    /// The selected operation must be completed with [`SelectedCase::send`]
+    /// or [`SelectedCase::recv`].
+    ///
+    /// [`SelectedCase::send`]: struct.SelectedCase.html#method.send
+    /// [`SelectedCase::recv`]: struct.SelectedCase.html#method.recv
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded();
+    /// let (s2, r2) = unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     s1.send(10).unwrap();
+    /// });
+    /// thread::spawn(move || s2.send(20).unwrap());
+    ///
+    /// let mut sel = Select::new();
+    /// let case1 = sel.recv(&r1);
+    /// let case2 = sel.recv(&r2);
+    ///
+    /// // The second operation will be selected because it becomes ready first.
+    /// let case = sel.select_timeout(Duration::from_millis(500));
+    /// match case {
+    ///     Err(_) => panic!("should not have timed out"),
+    ///     Ok(case) => match case.index() {
+    ///         i if i == case1 => assert_eq!(case.recv(&r1), Ok(10)),
+    ///         i if i == case2 => assert_eq!(case.recv(&r2), Ok(20)),
+    ///         _ => unreachable!(),
+    ///     }
+    /// }
+    /// ```
     pub fn select_timeout(
         &mut self,
         timeout: Duration,
@@ -533,37 +661,81 @@ impl<'a> fmt::Debug for Select<'a> {
     }
 }
 
-/// TODO
+/// A selected case that needs to be completed.
+///
+/// To complete the operation, call [`send`] or [`recv`].
+///
+/// Forgetting to complete the operation is an error and might lead to deadlocks in the future. If
+/// a `SelectedCase` is dropped without completing the operation, a panic will occur.
+///
+/// [`send`]: struct.SelectedCase.html#method.send
+/// [`recv`]: struct.SelectedCase.html#method.recv
 #[must_use]
 pub struct SelectedCase<'a> {
-    /// TODO
+    /// Token needed to complete the operation.
     token: Token,
-    /// TODO
+
+    /// The index of the selected case.
     index: usize,
-    /// TODO
+
+    /// The address of the selected `Sender` or `Receiver`.
     ptr: *const u8,
-    /// TODO
-    _marker: PhantomData<&'a ()>,
+
+    /// Indicates that a `Select<'a>` is mutably borrowed.
+    _marker: PhantomData<&'a mut Select<'a>>,
 }
 
 impl<'a> SelectedCase<'a> {
-    /// TODO
+    /// Returns the index of the selected operation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded::<i32>();
+    /// let (s2, r2) = unbounded::<i32>();
+    /// let (s3, r3) = unbounded::<i32>();
+    /// s3.send(0).unwrap();
+    ///
+    /// let mut sel = Select::new();
+    /// let case1 = sel.recv(&r1);
+    /// let case2 = sel.recv(&r2);
+    /// let case3 = sel.recv(&r3);
+    ///
+    /// // Only the last case is ready.
+    /// let case = sel.select();
+    /// assert_eq!(case.index(), 2);
+    /// assert_eq!(case3, 2);
+    /// case.recv(&r3).unwrap();
+    /// ```
     pub fn index(&self) -> usize {
         self.index
     }
 
-    /// TODO
-    pub fn recv<T>(mut self, r: &Receiver<T>) -> Result<T, RecvError> {
-        assert!(
-            r as *const Receiver<T> as *const u8 == self.ptr,
-            "passed a receiver that wasn't selected",
-        );
-        let res = unsafe { channel::read(r, &mut self.token) };
-        mem::forget(self);
-        res.map_err(|_| RecvError)
-    }
-
-    /// TODO
+    /// Completes the send operation.
+    ///
+    /// The passed [`Sender`] reference must be the same one that was used in [`Select::send`],
+    /// otherwise this method will panic and might cause deadlocks in the future.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::{bounded, Select, SendError};
+    ///
+    /// let (s, r) = bounded::<i32>(0);
+    /// drop(r);
+    ///
+    /// let mut sel = Select::new();
+    /// let case1 = sel.send(&s);
+    ///
+    /// let case = sel.select();
+    /// assert_eq!(case.index(), case1);
+    /// assert_eq!(case.send(&s, 10), Err(SendError(10)));
+    /// ```
+    ///
+    /// [`Sender`]: struct.Sender.html
+    /// [`Select::send`]: struct.Select.html#method.send
     pub fn send<T>(mut self, s: &Sender<T>, msg: T) -> Result<(), SendError<T>> {
         assert!(
             s as *const Sender<T> as *const u8 == self.ptr,
@@ -572,6 +744,39 @@ impl<'a> SelectedCase<'a> {
         let res = unsafe { channel::write(s, &mut self.token, msg) };
         mem::forget(self);
         res.map_err(SendError)
+    }
+
+    /// Completes the receive operation.
+    ///
+    /// The passed [`Receiver`] reference must be the same one that was used in [`Select::recv`],
+    /// otherwise this method will panic and might cause deadlocks in the future.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::{bounded, Select, RecvError};
+    ///
+    /// let (s, r) = bounded::<i32>(0);
+    /// drop(s);
+    ///
+    /// let mut sel = Select::new();
+    /// let case1 = sel.recv(&r);
+    ///
+    /// let case = sel.select();
+    /// assert_eq!(case.index(), case1);
+    /// assert_eq!(case.recv(&r), Err(RecvError));
+    /// ```
+    ///
+    /// [`Receiver`]: struct.Receiver.html
+    /// [`Select::recv`]: struct.Select.html#method.recv
+    pub fn recv<T>(mut self, r: &Receiver<T>) -> Result<T, RecvError> {
+        assert!(
+            r as *const Receiver<T> as *const u8 == self.ptr,
+            "passed a receiver that wasn't selected",
+        );
+        let res = unsafe { channel::read(r, &mut self.token) };
+        mem::forget(self);
+        res.map_err(|_| RecvError)
     }
 }
 
@@ -587,12 +792,17 @@ impl<'a> Drop for SelectedCase<'a> {
     }
 }
 
-/// TODO: comment on this
-/// From version 1.30 onwards we'll be able to:
-///     - remove `#[macro_export(local_inner_macros)]`
-///     - remove `crossbeam_channel_unreachable`
-///     - replace `crossbeam_channel_unreachable!` with `std::unreachable!`
-///     - replace `crossbeam_channel_internal!` with `$crate::crossbeam_channel_internal!`
+/// A simple wrapper around `std::unreachable`.
+///
+/// This is just an ugly workaround until it becomes possible to import macros with `use`
+/// statements.
+///
+/// TODO(stjepang): When we bump the minimum required Rust version to 1.30 or newer, we should:
+///
+/// 1. Remove all `#[macro_export(local_inner_macros)]` lines.
+/// 2. Remove `crossbeam_channel_unreachable`.
+/// 3. Replace `crossbeam_channel_unreachable!` with `std::unreachable!`.
+/// 4. Replace `crossbeam_channel_internal!` with `$crate::crossbeam_channel_internal!`.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! crossbeam_channel_unreachable {
@@ -601,7 +811,23 @@ macro_rules! crossbeam_channel_unreachable {
     };
 }
 
-/// TODO
+/// A helper macro for `select!` that hides the ugly macro rules from the documentation.
+///
+/// The macro consists of two stages:
+/// 1. Parsing
+/// 2. Code generation
+///
+/// The parsing stage consists of these subparts:
+/// 1. @list: Turns a list of tokens into a list of cases.
+/// 2. @list_errorN: Diagnoses the syntax error.
+/// 3. @case: Parses a single case and verifies its argument list.
+///
+/// The codegen stage consists of these subparts:
+/// 1. @add: Adds send/receive cases to the `Select` and starts selection.
+/// 2. @complete: Completes the selected send/receive operation.
+///
+/// If the parsing stage encounters a syntax error or the codegen stage ends up with too many
+/// cases to process, the macro will fail with a compile-time error.
 #[doc(hidden)]
 #[macro_export(local_inner_macros)]
 macro_rules! crossbeam_channel_internal {
@@ -1232,13 +1458,14 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         match $r {
             ref r => {
-                // TODO: this is because of NLL
                 #[allow(unsafe_code)]
                 let $var: &$crate::Receiver<_> = unsafe {
+                    let r: &$crate::Receiver<_> = r;
+
+                    // Erase the lifetime so that `sel` can be dropped early even without NLL.
                     unsafe fn unbind<'a, T>(x: &T) -> &'a T {
                         ::std::mem::transmute(x)
                     }
-                    let r: &$crate::Receiver<_> = r;
                     unbind(r)
                 };
                 $sel.recv($var);
@@ -1264,13 +1491,14 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         match $s {
             ref s => {
-                // TODO: this is because of NLL
                 #[allow(unsafe_code)]
                 let $var: &$crate::Sender<_> = unsafe {
+                    let s: &$crate::Sender<_> = s;
+
+                    // Erase the lifetime so that `sel` can be dropped early even without NLL.
                     unsafe fn unbind<'a, T>(x: &T) -> &'a T {
                         ::std::mem::transmute(x)
                     }
-                    let s: &$crate::Sender<_> = s;
                     unbind(s)
                 };
                 $sel.send($var);
@@ -1366,255 +1594,114 @@ macro_rules! crossbeam_channel_internal {
     };
 }
 
-/// TODO
 /// Waits on a set of channel operations.
 ///
-/// This macro allows declaring a set of channel operations and blocking until any one of them
-/// becomes ready. Finally, one of the operations is executed. If multiple operations are ready at
-/// the same time, a random one is chosen. It is also possible to declare a `default` case that
-/// gets executed if none of the operations are initially ready.
+/// This macro allows the user to specify a set of channel operations, block until any one of them
+/// becomes ready, and finally execute it. If multiple operations are ready at the same time, a
+/// random one among them is selected.
 ///
-/// If you need to dynamically add cases rather than define them statically inside the macro, use
-/// [`Select`] instead.
+/// It is also possible to specify a `default` case that gets executed if none of the operations
+/// are ready, either currently or for a certain duration of time.
+///
+/// An operation is considered to be ready if it doesn't have to block. Note that it might be ready
+/// even if it will simply return an error because the channel is disconnected.
+///
+/// The `select` macro is a wrapper around [`Select`] with a more pleasant interface. However, it
+/// can only handle a static list of cases, i.e. send/receive operation cannot be dynamically added
+/// to it.
 ///
 /// [`Select`]: struct.Select.html
 ///
-/// # Receiving
+/// # Examples
 ///
-/// Receiving a message from two channels, whichever becomes ready first:
-///
-/// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
-/// use std::thread;
-/// use crossbeam_channel as channel;
-///
-/// let (s1, r1) = channel::unbounded();
-/// let (s2, r2) = channel::unbounded();
-///
-/// thread::spawn(move || s1.send("foo"));
-/// thread::spawn(move || s2.send("bar"));
-///
-/// // Only one of these two receive operations will be executed.
-/// select! {
-///     recv(r1, msg) => assert_eq!(msg, Ok("foo")),
-///     recv(r2, msg) => assert_eq!(msg, Ok("bar")),
-/// }
-/// # }
-/// ```
-///
-/// # Sending
-///
-/// Waiting on a send and a receive operation:
+/// Block until a send or a receive operation becomes ready:
 ///
 /// ```
 /// # #[macro_use]
 /// # extern crate crossbeam_channel;
 /// # fn main() {
 /// use std::thread;
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (s1, r1) = channel::unbounded();
-/// let (s2, r2) = channel::unbounded();
+/// let (s1, r1) = unbounded();
+/// let (s2, r2) = unbounded();
 ///
-/// s1.send("foo");
+/// thread::spawn(move || s1.send(10).unwrap());
 ///
 /// // Since both operations are initially ready, a random one will be executed.
 /// select! {
-///     recv(r1, msg) => assert_eq!(msg, Ok("foo")),
-///     send(s2, "bar") => assert_eq!(r2.recv(), Ok("bar")),
-/// }
-/// # }
-/// ```
-///
-/// # Default case
-///
-/// A special kind of case is `default`, which gets executed if none of the operations can be
-/// executed, i.e. they would block:
-///
-/// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
-/// use std::thread;
-/// use std::time::{Duration, Instant};
-/// use crossbeam_channel as channel;
-///
-/// let (s, r) = channel::unbounded();
-///
-/// thread::spawn(move || {
-///     thread::sleep(Duration::from_secs(1));
-///     s.send("foo");
-/// });
-///
-/// // Don't block on the receive operation.
-/// select! {
-///     recv(r) => panic!(),
-///     default => println!("The message is not yet available."),
-/// }
-/// # }
-/// ```
-///
-/// # Iterators
-///
-/// It is possible to have arbitrary iterators of senders or receivers in a single `send` or `recv`
-/// case:
-///
-/// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
-/// use std::thread;
-/// use std::time::{Duration, Instant};
-/// use crossbeam_channel as channel;
-///
-/// let (s1, r1) = channel::unbounded();
-/// let (s2, r2) = channel::unbounded();
-///
-/// s1.send("foo");
-/// s2.send("bar");
-/// let receivers = vec![r1, r2];
-///
-/// // Both receivers are initially ready so one of the two receive operations
-/// // will be chosen randomly.
-/// select! {
-///     // The third argument to `recv` is optional and is assigned a
-///     // reference to the receiver the message was received from.
-///     recv(receivers, msg, from) => {
-///         for (i, r) in receivers.iter().enumerate() {
-///             if r == from {
-///                 println!("Received {:?} from the {}-th receiver.", msg, i);
-///             }
-///         }
+///     recv(r1) -> msg => assert_eq!(msg, Ok(10)),
+///     send(s2, 20) -> res => {
+///         assert_eq!(res, Ok(());
+///         assert_eq!(r2.recv(), Ok(20));
 ///     }
 /// }
 /// # }
 /// ```
 ///
-/// # Syntax
+/// Waiting on a set of cases without blocking:
 ///
-/// An invocation of `select!` consists of a list of cases. Consecutive cases are delimited by a
-/// comma, but it's not required if the preceding case has a block expression (the syntax is very
-/// similar to `match` statements).
+/// ```
+/// # #[macro_use]
+/// # extern crate crossbeam_channel;
+/// # fn main() {
+/// use std::thread;
+/// use std::time::Duration;
+/// use crossbeam_channel::unbounded;
 ///
-/// The following invocation illustrates all the possible forms cases can take:
+/// let (s1, r1) = unbounded();
+/// let (s2, r2) = unbounded();
 ///
-/// ```ignore
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     s1.send(10).unwrap();
+/// });
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_millis(500));
+///     s2.send(20).unwrap();
+/// });
+///
+/// // The second operation will be selected because it becomes ready first.
 /// select! {
-///     recv(r1) => body1,
-///     recv(r2, msg2) => body2,
-///     recv(r3, msg3, from3) => body3,
-///
-///     send(s4, msg4) => body4,
-///     send(s5, msg5, into5) => body5,
-///
-///     default => body6,
+///     recv(r1) -> msg => panic!(),
+///     recv(r2) -> msg => panic!(),
+///     default => println!("not ready"),
 /// }
+/// # }
 /// ```
 ///
-/// Input expressions: `r1`, `r2`, `r3`, `s4`, `s5`, `msg4`, `msg5`, `body1`, `body2`, `body3`,
-/// `body4`, `body5`, `body6`
+/// Waiting on a set of cases with a timeout:
 ///
-/// Output patterns: `msg2`, `msg3`, `msg4`, `msg5`, `from3`, `into5`
+/// ```
+/// # #[macro_use]
+/// # extern crate crossbeam_channel;
+/// # fn main() {
+/// use std::thread;
+/// use std::time::Duration;
+/// use crossbeam_channel::unbounded;
 ///
-/// Types of expressions and patterns (generic over types `A`, `B`, `C`, `D`, `E`, and `F`):
+/// let (s1, r1) = unbounded();
+/// let (s2, r2) = unbounded();
 ///
-/// * `r1`: one of `Receiver<A>`, `&Receiver<A>`, or `impl IntoIterator<Item = &Receiver<A>>`
-/// * `r2`: one of `Receiver<B>`, `&Receiver<B>`, or `impl IntoIterator<Item = &Receiver<B>>`
-/// * `r3`: one of `Receiver<C>`, `&Receiver<C>`, or `impl IntoIterator<Item = &Receiver<C>>`
-/// * `s4`: one of `Sender<D>`, `&Sender<D>`, or `impl IntoIterator<Item = &Sender<D>>`
-/// * `s5`: one of `Sender<E>`, `&Sender<E>`, or `impl IntoIterator<Item = &Sender<E>>`
-/// * `msg2`: `Option<B>`
-/// * `msg3`: `Option<C>`
-/// * `msg4`: `D`
-/// * `msg5`: `E`
-/// * `from3`: `&Receiver<C>`
-/// * `into5`: `&Sender<E>`
-/// * `body1`, `body2`, `body3`, `body4`, `body5`, `body6`: `F`
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     s1.send(10).unwrap();
+/// });
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_millis(500));
+///     s2.send(10).unwrap();
+/// });
 ///
-/// Pattern `from3` is bound to the receiver in `r3` from which `msg3` was received.
-///
-/// Pattern `into5` is bound to the sender in `s5` into which `msg5` was sent.
-///
-/// There can be at most one `default` case.
-///
-/// # Execution
-///
-/// 1. All sender and receiver arguments (`r1`, `r2`, `r3`, `s4`, and `s5`) are evaluated.
-/// 2. If any of the `recv` or `send` operations are ready, one of them is executed. If multiple
-///    operations are ready, a random one is chosen.
-/// 3. If none of the `recv` and `send` operations are ready, the `default` case is executed. If
-///    there is no `default` case, the current thread is blocked until an operation becomes ready.
-/// 4. If a `recv` operation gets executed, the message pattern (`msg2` or `msg3`) is
-///    bound to the received message, and the receiver pattern (`from3`) is bound to the receiver
-///    from which the message was received.
-/// 5. If a `send` operation gets executed, the message (`msg4` or `msg5`) is evaluated and sent
-///    into the channel. Then, the sender pattern (`into5`) is bound to the sender into which the
-///    message was sent.
-/// 6. Finally, the body (`body1`, `body2`, `body3`, `body4`, `body5`, or `body6`) of the executed
-///    case is evaluated. The whole `select!` invocation evaluates to that expression.
-///
-/// **Note**: If evaluation of `msg4` or `msg5` panics, the process will be aborted because it's
-/// impossible to recover from such panics. All the other expressions are allowed to panic,
-/// however.
+/// // The second operation will be selected because it becomes ready first.
+/// select! {
+///     recv(r1) -> msg => panic!(),
+///     recv(r2) -> msg => panic!(),
+///     default(Duration::from_millis(100)) => println!("timed out"),
+/// }
+/// # }
+/// ```
 #[macro_export(local_inner_macros)]
 macro_rules! select {
-    // TODO
-    // The macro consists of two stages:
-    // 1. Parsing
-    // 2. Code generation
-    //
-    // The parsing stage consists of these subparts:
-    // 1. parse_list: Turns a list of tokens into a list of cases.
-    // 2. parse_list_error: Diagnoses the syntax error.
-    // 3. parse_case: Parses a single case and verifies its argument list.
-    //
-    // The codegen stage consists of these subparts:
-    // 1. codegen_fast_path: Optimizes `select!` into a single send or receive operation.
-    // 2. codegen_main_loop: Builds the main loop that fires cases and puts the thread to sleep.
-    // 3. codegen_container: Initializes the vector containing channel operations.
-    // 4: codegen_push: Pushes an operation into the vector of operations.
-    // 5. codegen_has_default: A helper that checks whether there's a default operation.
-    // 6. codegen_finalize: Completes the channel operation that has been selected.
-    //
-    // If the parsing stage encounters a syntax error, it fails with a compile-time error.
-    // Otherwise, the macro parses the input into three token trees and passes them to the code
-    // generation stage. The three token trees are lists of comma-separated cases, written inside
-    // parentheses:
-    // 1. Receive cases.
-    // 2. Send cases.
-    // 3. Default cases (there can be at most one).
-    //
-    // Each case is of the form `(index, variable) case(arguments) => block`, where:
-    // - `index` is a unique index for the case (index 0 is reserved for the `default` case).
-    // - `variable` is a unique variable name associated with it.
-    // - `case` is one of `recv`, `send`, or `default`.
-    // - `arguments` is a list of arguments.
-    //
-    // All lists, if not empty, have a trailing comma at the end.
-    //
-    // For example, this invocation of `select!`:
-    //
-    // ```ignore
-    // select! {
-    //     recv(a) => x,
-    //     recv(b, m) => y,
-    //     send(s, msg) => { z }
-    //     default => {}
-    // }
-    // ```
-    //
-    // Would be parsed as:
-    //
-    // ```ignore
-    // ((1usize case1) recv(a, _, _) => { x }, (2usize, case2) recv(b, m, _) => { y },)
-    // ((3usize case3) send(s, msg, _) => { { z } },)
-    // ((0usize case0) default() => { {} },)
-    // ```
-    //
-    // These three lists are then passed to the code generation stage.
-
     ($($tokens:tt)*) => {
         crossbeam_channel_internal!(
             $($tokens)*

@@ -65,9 +65,9 @@
 //! }
 //! ```
 //!
-//! A rather special case is a bounded, zero-capacity channel. This kind of channel cannot hold any
-//! messages at all! In order to send a message through the channel, a sending thread and a
-//! receiving thread have to pair up at the same time:
+//! A special case is zero-capacity channel, also known as *rendezvous* channel. Such a channel
+//! cannot hold any messages because it doesn't have a buffer. Instead, send and receive operations
+//! must appear at the same time in order to pair up and pass the message over.
 //!
 //! ```
 //! use std::thread;
@@ -231,8 +231,7 @@
 //!     s.send(1);
 //!     s.send(2);
 //!     s.send(3);
-//!     // `s` was moved into the closure so now it gets dropped,
-//!     // thus disconnecting the channel.
+//!     drop(s); // Disconnect the channel.
 //! });
 //!
 //! // Collect all messages from the channel.
