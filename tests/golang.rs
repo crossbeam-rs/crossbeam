@@ -392,6 +392,28 @@ macro_rules! tests {
         // https://github.com/golang/go/blob/master/test/chan/select6.go
         mod select6 {
             // TODO
+            use super::*;
+
+            #[test]
+            fn main() {
+                let c1 = make::<bool>(0);
+                let c2 = make::<bool>(0);
+                let c3 = make::<bool>(0);
+
+                go!(c1, c1.recv());
+                go!(c1, c2, c3, {
+                    select! {
+                        recv(c1.rx()) -> _ => panic!("dummy"),
+                        recv(c2.rx()) -> _ => c3.send(true),
+                    }
+                    c1.recv();
+                });
+                go!(c2, c2.send(true));
+
+                c3.recv();
+                c1.send(true);
+                c1.send(true);
+            }
         }
 
         // https://github.com/golang/go/blob/master/test/chan/select7.go
