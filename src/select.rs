@@ -895,11 +895,11 @@ macro_rules! crossbeam_channel_internal {
         ($($cases:tt)*)
         $default:tt
     ) => {{
-        #[allow(unused_mut, unused_variables)]
-        let mut sel = $crate::Select::new();
+        #[allow(unused_mut)]
+        let mut _sel = $crate::Select::new();
         crossbeam_channel_internal!(
             @add
-            sel
+            _sel
             ($($cases)*)
             $default
             (
@@ -1135,15 +1135,18 @@ macro_rules! crossbeam_channel_internal {
         $labels:tt
         $cases:tt
     ) => {{
-        let case: $crate::SelectedCase<'_> = {
-            let case = $sel.select();
+        let _case: $crate::SelectedCase<'_> = {
+            let _case = $sel.select();
+
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            unsafe { ::std::mem::transmute(case) }
+            #[allow(unsafe_code)]
+            unsafe { ::std::mem::transmute(_case) }
         };
+
         crossbeam_channel_internal! {
             @complete
             $sel
-            case
+            _case
             $cases
         }
     }};
@@ -1155,21 +1158,24 @@ macro_rules! crossbeam_channel_internal {
         $labels:tt
         $cases:tt
     ) => {{
-        let case: Option<$crate::SelectedCase<'_>> = {
-            let case = $sel.try_select();
+        let _case: Option<$crate::SelectedCase<'_>> = {
+            let _case = $sel.try_select();
+
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            unsafe { ::std::mem::transmute(case) }
+            #[allow(unsafe_code)]
+            unsafe { ::std::mem::transmute(_case) }
         };
-        match case {
+
+        match _case {
             None => {
                 drop($sel);
                 $body
             }
-            Some(case) => {
+            Some(_case) => {
                 crossbeam_channel_internal! {
                     @complete
                     $sel
-                    case
+                    _case
                     $cases
                 }
             }
@@ -1183,21 +1189,24 @@ macro_rules! crossbeam_channel_internal {
         $labels:tt
         $cases:tt
     ) => {{
-        let case: Option<$crate::SelectedCase<'_>> = {
-            let case = $sel.select_timeout($timeout);
+        let _case: Option<$crate::SelectedCase<'_>> = {
+            let _case = $sel.select_timeout($timeout);
+
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            unsafe { ::std::mem::transmute(case) }
+            #[allow(unsafe_code)]
+            unsafe { ::std::mem::transmute(_case) }
         };
-        match case {
+
+        match _case {
             None => {
                 drop($sel);
                 $body
             }
-            Some(case) => {
+            Some(_case) => {
                 crossbeam_channel_internal! {
                     @complete
                     $sel
-                    case
+                    _case
                     $cases
                 }
             }
@@ -1224,11 +1233,14 @@ macro_rules! crossbeam_channel_internal {
         match $r {
             ref r => {
                 // TODO: this is because of NLL
-                unsafe fn unbind<'a, T>(x: &T) -> &'a T {
-                    ::std::mem::transmute(x)
-                }
-                let r: &$crate::Receiver<_> = r;
-                let $var: &$crate::Receiver<_> = unsafe { unbind(r) };
+                #[allow(unsafe_code)]
+                let $var: &$crate::Receiver<_> = unsafe {
+                    unsafe fn unbind<'a, T>(x: &T) -> &'a T {
+                        ::std::mem::transmute(x)
+                    }
+                    let r: &$crate::Receiver<_> = r;
+                    unbind(r)
+                };
                 $sel.recv($var);
 
                 crossbeam_channel_internal!(
@@ -1253,11 +1265,14 @@ macro_rules! crossbeam_channel_internal {
         match $s {
             ref s => {
                 // TODO: this is because of NLL
-                unsafe fn unbind<'a, T>(x: &T) -> &'a T {
-                    ::std::mem::transmute(x)
-                }
-                let s: &$crate::Sender<_> = s;
-                let $var: &$crate::Sender<_> = unsafe { unbind(s) };
+                #[allow(unsafe_code)]
+                let $var: &$crate::Sender<_> = unsafe {
+                    unsafe fn unbind<'a, T>(x: &T) -> &'a T {
+                        ::std::mem::transmute(x)
+                    }
+                    let s: &$crate::Sender<_> = s;
+                    unbind(s)
+                };
                 $sel.send($var);
 
                 crossbeam_channel_internal!(
@@ -1279,9 +1294,10 @@ macro_rules! crossbeam_channel_internal {
         ([$i:tt] recv($r:ident) -> $res:pat => $body:tt, $($tail:tt)*)
     ) => {{
         if $case.index() == $i {
-            let res = $case.recv($r);
+            let _res = $case.recv($r);
             drop($sel);
-            let $res = res;
+
+            let $res = _res;
             $body
         } else {
             crossbeam_channel_internal! {
@@ -1299,9 +1315,10 @@ macro_rules! crossbeam_channel_internal {
         ([$i:tt] send($s:ident, $m:expr) -> $res:pat => $body:tt, $($tail:tt)*)
     ) => {{
         if $case.index() == $i {
-            let res = $case.send($s, $m);
+            let _res = $case.send($s, $m);
             drop($sel);
-            let $res = res;
+
+            let $res = _res;
             $body
         } else {
             crossbeam_channel_internal! {
