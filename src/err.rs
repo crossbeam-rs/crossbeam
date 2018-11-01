@@ -125,9 +125,9 @@ impl<T> SendError<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (s, r) = channel::unbounded();
+    /// let (s, r) = unbounded();
     /// drop(r);
     ///
     /// if let Err(err) = s.send("foo") {
@@ -184,9 +184,9 @@ impl<T> TrySendError<T> {
     /// # Examples
     ///
     /// ```rust
-    /// use crossbeam_channel as bounded;
+    /// use crossbeam_channel::bounded;
     ///
-    /// let (s, r) = channel::bounded(0);
+    /// let (s, r) = bounded(0);
     ///
     /// if let Err(err) = s.try_send("foo") {
     ///     assert_eq!(err.into_inner(), "foo");
@@ -240,9 +240,9 @@ impl<T> SendTimeoutError<T> {
     ///
     /// ```rust
     /// use std::time::Duration;
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (s, r) = channel::unbounded();
+    /// let (s, r) = unbounded();
     ///
     /// if let Err(err) = s.send_timeout("foo", Duration::from_secs(0)) {
     ///     assert_eq!(err.into_inner(), "foo");

@@ -1,5 +1,7 @@
 //! The channel interface.
 
+// TODO: ditch "crossbeam_channel as channel" from examples (maybe even tests)
+
 use std::fmt;
 use std::isize;
 use std::iter::FusedIterator;
@@ -47,9 +49,9 @@ enum ChannelFlavor<T> {
 ///
 /// ```
 /// use std::thread;
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (s, r) = channel::unbounded();
+/// let (s, r) = unbounded();
 ///
 /// // An expensive computation.
 /// fn fib(n: i32) -> i32 {
@@ -62,7 +64,7 @@ enum ChannelFlavor<T> {
 ///
 /// // Spawn a thread doing an expensive computation.
 /// thread::spawn(move || {
-///     s.send(fib(20));
+///     s.send(fib(20)).unwrap();
 /// });
 ///
 /// // Let's see what's the result of the computation.
@@ -84,9 +86,9 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 ///
 /// This type of channel has an internal buffer of length `cap` in which messages get queued.
 ///
-/// A rather special case is zero-capacity channel, also known as *rendezvous* channel. Such a
-/// channel cannot hold any messages since its buffer is of length zero. Instead, send and receive
-/// operations must be executing at the same time in order to pair up and pass the message over.
+/// A special case is zero-capacity channel, also known as *rendezvous* channel. Such a channel
+/// cannot hold any messages because it doesn't have a buffer. Instead, send and receive operations
+/// must appear at the same time in order to pair up and pass the message over.
 ///
 /// # Panics
 ///
@@ -94,42 +96,46 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 ///
 /// # Examples
 ///
+/// A channel of capacity 1:
+///
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::bounded;
 ///
-/// let (s, r) = channel::bounded(1);
+/// let (s, r) = bounded(1);
 ///
-/// // This call returns immediately since there is enough space in the channel.
-/// s.send(1);
+/// // This call returns immediately because there is enough space in the channel.
+/// s.send(1).unwrap();
 ///
 /// thread::spawn(move || {
 ///     // This call blocks the current thread because the channel is full.
 ///     // It will be able to complete only after the first message is received.
-///     s.send(2);
+///     s.send(2).unwrap();
 /// });
 ///
 /// thread::sleep(Duration::from_secs(1));
-/// assert_eq!(r.recv(), Some(1));
-/// assert_eq!(r.recv(), Some(2));
+/// assert_eq!(r.recv(), Ok(1));
+/// assert_eq!(r.recv(), Ok(2));
 /// ```
+///
+/// A zero-capacity channel:
 ///
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::bounded;
 ///
-/// let (s, r) = channel::bounded(0);
+/// let (s, r) = bounded(0);
 ///
 /// thread::spawn(move || {
 ///     // This call blocks the current thread until a receive operation appears
 ///     // on the other side of the channel.
-///     s.send(1);
+///     s.send(1).unwrap();
 /// });
 ///
 /// thread::sleep(Duration::from_secs(1));
-/// assert_eq!(r.recv(), Some(1));
+/// assert_eq!(r.recv(), Ok(1));
 /// ```
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let chan = Arc::new(Channel {
@@ -157,27 +163,31 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 ///
 /// # Examples
 ///
+/// Using an `after` channel for timeouts:
+///
 /// ```
 /// # #[macro_use]
 /// # extern crate crossbeam_channel;
 /// # fn main() {
 /// use std::time::Duration;
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::{after, unbounded};
 ///
-/// let (s, r) = channel::unbounded::<i32>();
-///
+/// let (s, r) = unbounded::<i32>();
 /// let timeout = Duration::from_millis(100);
+///
 /// select! {
-///     recv(r, msg) => println!("got {:?}", msg),
-///     recv(channel::after(timeout)) => println!("timed out"),
+///     recv(r) -> msg => println!("received {:?}", msg),
+///     recv(after(timeout)) -> _ => println!("timed out"),
 /// }
 /// # }
 /// ```
 ///
+/// Checking when the message was sent:
+///
 /// ```
 /// use std::thread;
 /// use std::time::{Duration, Instant};
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::after;
 ///
 /// // Converts a number into a `Duration` in milliseconds.
 /// let ms = |ms| Duration::from_millis(ms);
@@ -186,7 +196,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// let eq = |a, b| a + ms(50) > b && b + ms(50) > a;
 ///
 /// let start = Instant::now();
-/// let r = channel::after(ms(100));
+/// let r = after(ms(100));
 ///
 /// thread::sleep(ms(500));
 ///
@@ -207,12 +217,36 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// measured while the channel is empty. The channel always contains at most one message. Each
 /// message is the instant at which it is sent into the channel.
 ///
+/// // TODO: what about ticker with period of zero? add it to tests and maybe add a comment here
+///
 /// # Examples
+///
+/// Using a `tick` channel to periodically print the current time:
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate crossbeam_channel;
+/// # fn main() {
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel::tick;
+///
+/// let period = Duration::from_millis(100);
+/// let tick = tick(period);
+///
+/// for _ in 0..5 {
+///     select! {
+///         recv(tick) -> _ => println!("current time: {:?}", Instant::now())
+///     }
+/// }
+/// # }
+/// ```
+///
+/// Checking when the messages were sent:
 ///
 /// ```
 /// use std::thread;
 /// use std::time::{Duration, Instant};
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::tick;
 ///
 /// // Converts a number into a `Duration` in milliseconds.
 /// let ms = |ms| Duration::from_millis(ms);
@@ -221,7 +255,7 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// let eq = |a, b| a + ms(50) > b && b + ms(50) > a;
 ///
 /// let start = Instant::now();
-/// let r = channel::tick(ms(100));
+/// let r = tick(ms(100));
 ///
 /// // This message was sent 100 ms from the start and received 100 ms from the start.
 /// assert!(eq(r.recv().unwrap(), start + ms(100)));
@@ -251,13 +285,13 @@ pub fn tick(duration: Duration) -> Receiver<Instant> {
 ///
 /// ```
 /// use std::thread;
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (s1, r) = channel::unbounded();
+/// let (s1, r) = unbounded();
 /// let s2 = s1.clone();
 ///
-/// thread::spawn(move || s1.send(1));
-/// thread::spawn(move || s2.send(2));
+/// thread::spawn(move || s1.send(1).unwrap());
+/// thread::spawn(move || s2.send(2).unwrap());
 ///
 /// let msg1 = r.recv().unwrap();
 /// let msg2 = r.recv().unwrap();
@@ -291,22 +325,24 @@ impl<T> Sender<T> {
 
     /// Attempts to send a message into the channel without blocking.
     ///
-    /// This method will either send a message into the channel immediately, or return an error if
+    /// This method will either send a message into the channel immediately or return an error if
     /// the channel is full or disconnected. The returned error contains the original message.
     ///
-    /// If called on a zero-capacity channel, this method will send a message the message only if
-    /// there happens to be a receive operation on the other side of the channel at the same time.
+    /// If called on a zero-capacity channel, this method will send the message only if there
+    /// happens to be a receive operation on the other side of the channel at the same time.
     ///
     /// # Examples
     ///
     /// ```
     /// use crossbeam_channel::{bounded, TrySendError};
     ///
-    /// let (tx, rx) = bounded(1);
-    /// assert_eq!(tx.try_send(1), Ok(()));
-    /// assert_eq!(tx.try_send(2), Err(TrySendError::Full(2)));
-    /// drop(rx);
-    /// assert_eq!(tx.try_send(2), Err(TrySendError::Disconnected(2)));
+    /// let (s, r) = bounded(1);
+    ///
+    /// assert_eq!(s.try_send(1), Ok(()));
+    /// assert_eq!(s.try_send(2), Err(TrySendError::Full(2)));
+    ///
+    /// drop(r);
+    /// assert_eq!(s.try_send(3), Err(TrySendError::Disconnected(3)));
     /// ```
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         match &self.inner.flavor {
@@ -316,25 +352,33 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Sends a message into the channel, blocking the current thread if the channel is full.
+    /// Blocks the current thread until a message is sent or the channel is disconnected.
     ///
-    /// If called on a zero-capacity channel, this method blocks the current thread until a receive
-    /// operation appears on the other side of the channel.
+    /// If the channel is full and not disconnected, this call will block until the send operation
+    /// can proceed. If the channel becomes disconnected, this call will wake up and return an
+    /// error.
     ///
-    /// Note: `s.send(msg)` is equivalent to `select! { send(s, msg) => {} }`.
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel.
     ///
     /// # Examples
     ///
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::{bounded, SendError};
     ///
-    /// let (s, r) = channel::bounded(0);
+    /// let (s, r) = bounded(1);
+    /// assert_eq!(s.send(1), Ok(()));
     ///
-    /// thread::spawn(move || s.send(1));
+    /// thread::spawn(move || {
+    ///     assert_eq!(r.recv(), Ok(1));
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     drop(r);
+    /// });
     ///
-    /// assert_eq!(r.recv(), Some(1));
+    /// assert_eq!(s.send(2), Ok(()));
+    /// assert_eq!(s.send(3), Err(SendError(3)));
     /// ```
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         match &self.inner.flavor {
@@ -349,11 +393,11 @@ impl<T> Sender<T> {
         })
     }
 
-    /// Sends a message into the channel, blocking if the channel is full for a limited time.
+    /// Waits for a message to be sent into the channel, but only for a limited time.
     ///
-    /// If the channel is full (its capacity is fully utilized), this call will block until the
-    /// send operation can proceed. If the channel is (or becomes) disconnected, or if it waits for
-    /// longer than `timeout`, this call will wake up and return an error.
+    /// If the channel is full and not disconnected, this call will block until the send operation
+    /// can proceed or the operation times out. If the channel becomes disconnected, this call will
+    /// wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel.
@@ -363,19 +407,28 @@ impl<T> Sender<T> {
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
+    /// use crossbeam_channel::{bounded, SendTimeoutError};
     ///
-    /// let (tx, rx) = unbounded();
+    /// let (s, r) = bounded(0);
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5).unwrap();
-    ///     drop(tx);
+    ///     assert_eq!(r.recv(), Ok(2));
+    ///     drop(r);
     /// });
     ///
-    /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
+    /// assert_eq!(
+    ///     s.send_timeout(1, Duration::from_millis(500)),
+    ///     Err(SendTimeoutError::Timeout(1)),
+    /// );
+    /// assert_eq!(
+    ///     s.send_timeout(2, Duration::from_secs(1)),
+    ///     Ok(()),
+    /// );
+    /// assert_eq!(
+    ///     s.send_timeout(3, Duration::from_millis(500)),
+    ///     Err(SendTimeoutError::Disconnected(3)),
+    /// );
     /// ```
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
         let deadline = Instant::now() + timeout;
@@ -394,12 +447,12 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (s, r) = channel::unbounded();
+    /// let (s, r) = unbounded();
     /// assert!(s.is_empty());
     ///
-    /// s.send(0);
+    /// s.send(0).unwrap();
     /// assert!(!s.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
@@ -417,12 +470,12 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::bounded;
     ///
-    /// let (s, r) = channel::bounded(1);
+    /// let (s, r) = bounded(1);
     ///
     /// assert!(!s.is_full());
-    /// s.send(0);
+    /// s.send(0).unwrap();
     /// assert!(s.is_full());
     /// ```
     pub fn is_full(&self) -> bool {
@@ -438,13 +491,13 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (s, r) = channel::unbounded();
+    /// let (s, r) = unbounded();
     /// assert_eq!(s.len(), 0);
     ///
-    /// s.send(1);
-    /// s.send(2);
+    /// s.send(1).unwrap();
+    /// s.send(2).unwrap();
     /// assert_eq!(s.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
@@ -460,15 +513,15 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::{bounded, unbounded};
     ///
-    /// let (s, _) = channel::unbounded::<i32>();
+    /// let (s, _) = unbounded::<i32>();
     /// assert_eq!(s.capacity(), None);
     ///
-    /// let (s, _) = channel::bounded::<i32>(5);
+    /// let (s, _) = bounded::<i32>(5);
     /// assert_eq!(s.capacity(), Some(5));
     ///
-    /// let (s, _) = channel::bounded::<i32>(0);
+    /// let (s, _) = bounded::<i32>(0);
     /// assert_eq!(s.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
@@ -513,9 +566,9 @@ impl<T> fmt::Debug for Sender<T> {
 /// ```
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel as channel;
+/// use crossbeam_channel::unbounded;
 ///
-/// let (s, r) = channel::unbounded();
+/// let (s, r) = unbounded();
 ///
 /// thread::spawn(move || {
 ///     s.send("Hello world!");
@@ -568,23 +621,25 @@ impl<T> Receiver<T> {
 
     /// Attempts to receive a message from the channel without blocking.
     ///
-    /// If there is no message ready to be received, returns `None`.
+    /// This method will either receive a message from the channel immediately or return an error
+    /// if the channel is empty.
     ///
-    /// Note: `r.try_recv()` is equivalent to `select! { recv(r, msg) => msg, default => None }`.
+    /// If called on a zero-capacity channel, this method will receive a message only if there
+    /// happens to be a send operation on the other side of the channel at the same time.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::{unbounded, TryRecvError};
     ///
-    /// let (s, r) = channel::unbounded();
-    /// assert_eq!(r.try_recv(), None);
+    /// let (s, r) = unbounded();
+    /// assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
     ///
-    /// s.send(5);
+    /// s.send(5).unwrap();
     /// drop(s);
     ///
-    /// assert_eq!(r.try_recv(), Some(5));
-    /// assert_eq!(r.try_recv(), None);
+    /// assert_eq!(r.try_recv(), Ok(5));
+    /// assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
     /// ```
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match &self.flavor {
@@ -614,32 +669,33 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Blocks the current thread until a message is received or the channel is disconnected.
+    /// Blocks the current thread until a message is received or the channel is empty and
+    /// disconnected.
     ///
-    /// Returns the message if it was received, or `None` if the channel is disconnected and empty.
+    /// If the channel is empty and not disconnected, this call will block until the receive
+    /// operation can proceed. If the channel also becomes disconnected, this call will wake up and
+    /// return an error.
     ///
-    /// If called on a zero-capacity channel, this method blocks the current thread until a send
-    /// operation appears on the other side of the channel or it becomes disconnected.
-    ///
-    /// Note: `r.recv()` is equivalent to `select! { recv(r, msg) => msg }`.
+    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
+    /// on the other side of the channel.
     ///
     /// # Examples
     ///
     /// ```
     /// use std::thread;
     /// use std::time::Duration;
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::{unbounded, RecvError};
     ///
-    /// let (s, r) = channel::unbounded();
+    /// let (s, r) = unbounded();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     s.send(5);
-    ///     // `s` gets dropped, thus disconnecting the channel.
+    ///     s.send(5).unwrap();
+    ///     drop(s);
     /// });
     ///
-    /// assert_eq!(r.recv(), Some(5));
-    /// assert_eq!(r.recv(), None);
+    /// assert_eq!(r.recv(), Ok(5));
+    /// assert_eq!(r.recv(), Err(RecvError));
     /// ```
     pub fn recv(&self) -> Result<T, RecvError> {
         match &self.flavor {
@@ -669,11 +725,12 @@ impl<T> Receiver<T> {
         }.map_err(|_| RecvError)
     }
 
-    /// Waits for a message to be received from the channel but only for a limited time.
+    /// Waits for a message to be received from the channel, but only for a limited time.
+    /// disconnected.
     ///
-    /// This method will always block in order to wait for a message to become available. If the
-    /// channel is (or becomes) empty and disconnected, or if it waits for longer than `timeout`,
-    /// it will wake up and return an error.
+    /// If the channel is empty and not disconnected, this call will block until the receive
+    /// operation can proceed or the operation times out. If the channel also becomes disconnected,
+    /// this call will wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
     /// on the other side of the channel.
@@ -685,17 +742,26 @@ impl<T> Receiver<T> {
     /// use std::time::Duration;
     /// use crossbeam_channel::{unbounded, RecvTimeoutError};
     ///
-    /// let (tx, rx) = unbounded();
+    /// let (s, r) = unbounded();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(5).unwrap();
-    ///     drop(tx);
+    ///     s.send(5).unwrap();
+    ///     drop(s);
     /// });
     ///
-    /// assert_eq!(rx.recv_timeout(Duration::from_millis(500)), Err(RecvTimeoutError::Timeout));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Ok(5));
-    /// assert_eq!(rx.recv_timeout(Duration::from_secs(1)), Err(RecvTimeoutError::Disconnected));
+    /// assert_eq!(
+    ///     r.recv_timeout(Duration::from_millis(500)),
+    ///     Err(RecvTimeoutError::Timeout),
+    /// );
+    /// assert_eq!(
+    ///     r.recv_timeout(Duration::from_secs(1)),
+    ///     Ok(5),
+    /// );
+    /// assert_eq!(
+    ///     r.recv_timeout(Duration::from_secs(1)),
+    ///     Err(RecvTimeoutError::Disconnected),
+    /// );
     /// ```
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         let deadline = Instant::now() + timeout;
@@ -734,12 +800,12 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (s, r) = channel::unbounded();
+    /// let (s, r) = unbounded();
     ///
     /// assert!(r.is_empty());
-    /// s.send(0);
+    /// s.send(0).unwrap();
     /// assert!(!r.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
@@ -761,12 +827,12 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::bounded;
     ///
-    /// let (s, r) = channel::bounded(1);
+    /// let (s, r) = bounded(1);
     ///
     /// assert!(!r.is_full());
-    /// s.send(0);
+    /// s.send(0).unwrap();
     /// assert!(r.is_full());
     /// ```
     pub fn is_full(&self) -> bool {
@@ -786,13 +852,13 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::unbounded;
     ///
-    /// let (s, r) = channel::unbounded();
+    /// let (s, r) = unbounded();
     /// assert_eq!(r.len(), 0);
     ///
-    /// s.send(1);
-    /// s.send(2);
+    /// s.send(1).unwrap();
+    /// s.send(2).unwrap();
     /// assert_eq!(r.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
@@ -812,15 +878,15 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel as channel;
+    /// use crossbeam_channel::{bounded, unbounded};
     ///
-    /// let (_, r) = channel::unbounded::<i32>();
+    /// let (_, r) = unbounded::<i32>();
     /// assert_eq!(r.capacity(), None);
     ///
-    /// let (_, r) = channel::bounded::<i32>(5);
+    /// let (_, r) = bounded::<i32>(5);
     /// assert_eq!(r.capacity(), Some(5));
     ///
-    /// let (_, r) = channel::bounded::<i32>(0);
+    /// let (_, r) = bounded::<i32>(0);
     /// assert_eq!(r.capacity(), Some(0));
     /// ```
     pub fn capacity(&self) -> Option<usize> {
@@ -835,10 +901,11 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns an iterator that waits for messages until the channel is disconnected.
+    /// Returns an iterator that receives messages until the channel becomes empty and
+    /// disconnected.
     ///
-    /// Each call to `next` will block waiting for the next message. It will finally return `None`
-    /// when the channel is empty and disconnected.
+    /// Each call to `next` blocks waiting for the next message and then returns it. However, if
+    /// the channel is empty and disconnected, it returns `None` without blocking.
     ///
     /// # Examples
     ///
@@ -846,25 +913,29 @@ impl<T> Receiver<T> {
     /// use std::thread;
     /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = unbounded::<i32>();
+    /// let (s, r) = unbounded();
     ///
     /// thread::spawn(move || {
-    ///     tx.send(1).unwrap();
-    ///     tx.send(2).unwrap();
-    ///     tx.send(3).unwrap();
+    ///     s.send(1).unwrap();
+    ///     s.send(2).unwrap();
+    ///     s.send(3).unwrap();
+    ///     drop(s); // Disconnect the channel.
     /// });
     ///
-    /// let v: Vec<_> = rx.iter().collect();
+    /// // Collect all messages from the channel.
+    /// //
+    /// // Note that the call to `collect` blocks until the sender is dropped.
+    /// let v: Vec<_> = r.iter().collect();
     /// assert_eq!(v, [1, 2, 3]);
     /// ```
     pub fn iter(&self) -> Iter<T> {
-        Iter { rx: self }
+        Iter { receiver: self }
     }
 
-    /// Returns an iterator that receives messages until the channel is empty or disconnected.
+    /// Returns an iterator that receives messages until the channel becomes empty or disconnected.
     ///
-    /// Each call to `next` will return a message if there is at least one in the channel. The
-    /// iterator will never block waiting for new messages.
+    /// Each call to `next` returns a message if there is at least one in the channel. The iterator
+    /// never blocks waiting for the next message.
     ///
     /// # Examples
     ///
@@ -873,22 +944,22 @@ impl<T> Receiver<T> {
     /// use std::time::Duration;
     /// use crossbeam_channel::unbounded;
     ///
-    /// let (tx, rx) = unbounded::<i32>();
+    /// let (s, r) = unbounded::<i32>();
     ///
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
-    ///     tx.send(1).unwrap();
-    ///     tx.send(2).unwrap();
+    ///     s.send(1).unwrap();
+    ///     s.send(2).unwrap();
     ///     thread::sleep(Duration::from_secs(2));
-    ///     tx.send(3).unwrap();
+    ///     s.send(3).unwrap();
     /// });
     ///
     /// thread::sleep(Duration::from_secs(2));
-    /// let v: Vec<_> = rx.try_iter().collect();
+    /// let v: Vec<_> = r.try_iter().collect();
     /// assert_eq!(v, [1, 2]);
     /// ```
     pub fn try_iter(&self) -> TryIter<T> {
-        TryIter { rx: self }
+        TryIter { receiver: self }
     }
 }
 
@@ -940,14 +1011,14 @@ impl<T> IntoIterator for Receiver<T> {
     type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        IntoIter { rx: self }
+        IntoIter { receiver: self }
     }
 }
 
-/// An iterator that waits for messages until the channel is disconnected.
+/// An iterator that receives messages until the channel becomes empty and disconnected.
 ///
-/// Each call to `next` will block waiting for the next message. It will finally return `None` when
-/// the channel is empty and disconnected.
+/// Each call to `next` blocks waiting for the next message and then returns it. However, if the
+/// channel is empty and disconnected, it returns `None` without blocking.
 ///
 /// # Examples
 ///
@@ -955,20 +1026,24 @@ impl<T> IntoIterator for Receiver<T> {
 /// use std::thread;
 /// use crossbeam_channel::unbounded;
 ///
-/// let (tx, rx) = unbounded();
+/// let (s, r) = unbounded();
 ///
 /// thread::spawn(move || {
-///     tx.send(1).unwrap();
-///     tx.send(2).unwrap();
-///     tx.send(3).unwrap();
+///     s.send(1).unwrap();
+///     s.send(2).unwrap();
+///     s.send(3).unwrap();
+///     drop(s); // Disconnect the channel.
 /// });
 ///
-/// let v: Vec<_> = rx.iter().collect();
+/// // Collect all messages from the channel.
+/// //
+/// // Note that the call to `collect` blocks until the sender is dropped.
+/// let v: Vec<_> = r.iter().collect();
 /// assert_eq!(v, [1, 2, 3]);
 /// ```
 #[derive(Debug)]
 pub struct Iter<'a, T: 'a> {
-    rx: &'a Receiver<T>,
+    receiver: &'a Receiver<T>,
 }
 
 impl<'a, T> FusedIterator for Iter<'a, T> {}
@@ -977,14 +1052,14 @@ impl<'a, T> Iterator for Iter<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.rx.recv().ok()
+        self.receiver.recv().ok()
     }
 }
 
-/// An iterator that receives messages until the channel is empty or disconnected.
+/// An iterator that receives messages until the channel becomes empty or disconnected.
 ///
-/// Each call to `next` will return a message if there is at least one in the channel. The iterator
-/// will never block waiting for new messages.
+/// Each call to `next` returns a message if there is at least one in the channel. The iterator
+/// never blocks waiting for the next message.
 ///
 /// # Examples
 ///
@@ -993,37 +1068,37 @@ impl<'a, T> Iterator for Iter<'a, T> {
 /// use std::time::Duration;
 /// use crossbeam_channel::unbounded;
 ///
-/// let (tx, rx) = unbounded::<i32>();
+/// let (s, r) = unbounded::<i32>();
 ///
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_secs(1));
-///     tx.send(1).unwrap();
-///     tx.send(2).unwrap();
+///     s.send(1).unwrap();
+///     s.send(2).unwrap();
 ///     thread::sleep(Duration::from_secs(2));
-///     tx.send(3).unwrap();
+///     s.send(3).unwrap();
 /// });
 ///
 /// thread::sleep(Duration::from_secs(2));
-/// let v: Vec<_> = rx.try_iter().collect();
+/// let v: Vec<_> = r.try_iter().collect();
 /// assert_eq!(v, [1, 2]);
 /// ```
 #[derive(Debug)]
 pub struct TryIter<'a, T: 'a> {
-    rx: &'a Receiver<T>,
+    receiver: &'a Receiver<T>,
 }
 
 impl<'a, T> Iterator for TryIter<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.rx.try_recv().ok()
+        self.receiver.try_recv().ok()
     }
 }
 
-/// An owning iterator that waits for messages until the channel is disconnected.
+/// An iterator that receives messages until the channel becomes empty and disconnected.
 ///
-/// Each call to `next` will block waiting for the next message. It will finally return `None` when
-/// the channel is empty and disconnected.
+/// Each call to `next` blocks waiting for the next message and then returns it. However, if the
+/// channel is empty and disconnected, it returns `None` without blocking.
 ///
 /// # Examples
 ///
@@ -1031,20 +1106,24 @@ impl<'a, T> Iterator for TryIter<'a, T> {
 /// use std::thread;
 /// use crossbeam_channel::unbounded;
 ///
-/// let (tx, rx) = unbounded();
+/// let (s, r) = unbounded();
 ///
 /// thread::spawn(move || {
-///     tx.send(1).unwrap();
-///     tx.send(2).unwrap();
-///     tx.send(3).unwrap();
+///     s.send(1).unwrap();
+///     s.send(2).unwrap();
+///     s.send(3).unwrap();
+///     drop(s); // Disconnect the channel.
 /// });
 ///
-/// let v: Vec<_> = rx.into_iter().collect();
+/// // Collect all messages from the channel.
+/// //
+/// // Note that the call to `collect` blocks until the sender is dropped.
+/// let v: Vec<_> = r.into_iter().collect();
 /// assert_eq!(v, [1, 2, 3]);
 /// ```
 #[derive(Debug)]
 pub struct IntoIter<T> {
-    rx: Receiver<T>,
+    receiver: Receiver<T>,
 }
 
 impl<T> FusedIterator for IntoIter<T> {}
@@ -1053,7 +1132,7 @@ impl<T> Iterator for IntoIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.rx.recv().ok()
+        self.receiver.recv().ok()
     }
 }
 

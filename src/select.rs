@@ -357,7 +357,7 @@ where
 
 /// Waits on a set of channel operations.
 ///
-/// `Select` allows the user to specify a set of channel operations, block until any one of them
+/// `Select` allows the user to define a set of channel operations, block until any one of them
 /// becomes ready, and finally execute it. If multiple operations are ready at the same time, a
 /// random one among them is selected.
 ///
@@ -805,7 +805,7 @@ impl<'a> Drop for SelectedCase<'a> {
 /// 4. Replace `crossbeam_channel_internal!` with `$crate::crossbeam_channel_internal!`.
 #[doc(hidden)]
 #[macro_export]
-macro_rules! crossbeam_channel_unreachable {
+macro_rules! crossbeam_channel_unreachable { // TODO: use this for compile_error!, concat! and others
     ($($args:tt)*) => {
         unreachable! { $($args)* }
     };
@@ -827,7 +827,7 @@ macro_rules! crossbeam_channel_unreachable {
 /// 2. @complete: Completes the selected send/receive operation.
 ///
 /// If the parsing stage encounters a syntax error or the codegen stage ends up with too many
-/// cases to process, the macro will fail with a compile-time error.
+/// cases to process, the macro fails with a compile-time error.
 #[doc(hidden)]
 #[macro_export(local_inner_macros)]
 macro_rules! crossbeam_channel_internal {
@@ -1596,12 +1596,12 @@ macro_rules! crossbeam_channel_internal {
 
 /// Waits on a set of channel operations.
 ///
-/// This macro allows the user to specify a set of channel operations, block until any one of them
+/// This macro allows the user to define a set of channel operations, block until any one of them
 /// becomes ready, and finally execute it. If multiple operations are ready at the same time, a
 /// random one among them is selected.
 ///
-/// It is also possible to specify a `default` case that gets executed if none of the operations
-/// are ready, either currently or for a certain duration of time.
+/// It is also possible to define a `default` case that gets executed if none of the operations are
+/// ready, either currently or for a certain duration of time.
 ///
 /// An operation is considered to be ready if it doesn't have to block. Note that it might be ready
 /// even if it will simply return an error because the channel is disconnected.
