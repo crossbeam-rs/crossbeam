@@ -20,9 +20,9 @@
 //! assert_eq!(r.recv(), Ok("Hello, world!"));
 //! ```
 //!
-//! # Types of channels
+//! # Channel types
 //!
-//! Channels are created using two functions:
+//! Channels can be created using two functions:
 //!
 //! * [`bounded`] creates a channel of bounded capacity, i.e. there is a limit to how many messages
 //!   it can hold at a time.
@@ -296,16 +296,22 @@
 //! instead. The [`select`] macro is just a wrapper around [`Select`] with a more pleasant
 //! interface.
 //!
-//! # Additional tools
+//! # Extra channels
 //!
-//! There are two functions that create special kinds of channels:
+//! Two functions create special kinds of channels:
 //!
 //! * [`after`] creates a channel that delivers a single message after a certain duration of time.
 //! * [`tick`] creates a channel that delivers messages periodically.
+//! // TODO: never()
+//! // TODO: Example: never() is useful for disabling an operation in select
+//! // TODO: Rename SelectedCase -> SelectedOperation
+//! // TODO: grep for "case" and replace it with "operation" everywhere
+//! // TODO: make sure these work in parse.rs:
+//! // TODO: - recv(foo.unwrap_or(&never()))
+//! // TODO: - recv(foo.unwrap_or(never()))
 //!
-//! These functions return only a [`Receiver`] because messages get automatically sent into such
-//! channels. They are more convenient and more efficient than equivalent manually spawned threads
-//! that just sleep and send messages into a channel.
+//! These functions return a [`Receiver`] only. In such channels, messages appear automatically on
+//! demand, which makes them very efficient.
 //!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
