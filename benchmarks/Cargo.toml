@@ -45,10 +45,6 @@ name = "mpsc"
 path = "mpsc.rs"
 
 [[bin]]
-name = "mpsc-wrapper"
-path = "mpsc-wrapper.rs"
-
-[[bin]]
 name = "msqueue"
 path = "msqueue.rs"
 
