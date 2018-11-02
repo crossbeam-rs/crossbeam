@@ -10,7 +10,7 @@ use std::any::Any;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{after, bounded, unbounded, tick, Sender, Select, Receiver, TryRecvError};
+use crossbeam_channel::{after, bounded, unbounded, tick, Sender, Receiver, TryRecvError};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
