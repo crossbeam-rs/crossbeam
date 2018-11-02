@@ -41,14 +41,16 @@
 
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
+
+use crossbeam_channel::bounded;
 
 fn main() {
     let people = vec!["Anna", "Bob", "Cody", "Dave", "Eva"];
-    let (s, r) = &channel::bounded(1); // Make room for one unmatched send.
+    let (s, r) = bounded(1); // Make room for one unmatched send.
 
     // Either send my name into the channel or receive someone else's, whatever happens first.
-    let seek = |name, s: &channel::Sender<_>, r: &channel::Receiver<_>| {
+    let seek = |name, s, r| {
         select! {
             recv(r) -> peer => println!("{} received a message from {}.", name, peer.unwrap()),
             send(s, name) -> _ => {}, // Wait for someone to receive my message.
@@ -57,6 +59,7 @@ fn main() {
 
     crossbeam::scope(|scope| {
         for name in people {
+            let (s, r) = (s.clone(), r.clone());
             scope.spawn(move || seek(name, s, r));
         }
     });

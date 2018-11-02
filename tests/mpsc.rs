@@ -27,7 +27,7 @@
 //! ```
 
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 
 mod wrappers;
 

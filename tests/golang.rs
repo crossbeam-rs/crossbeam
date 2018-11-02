@@ -37,7 +37,7 @@
 //! ```
 
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 extern crate parking_lot;
 
 use std::sync::{Arc, Condvar, Mutex};
@@ -141,8 +141,7 @@ macro_rules! tests {
         use std::thread;
         use std::time::Duration;
 
-        use $channel as channel;
-        use $channel::{Select};
+        use $channel::{bounded, Receiver, Select, Sender};
         use parking_lot::Mutex;
 
         fn ms(ms: u64) -> Duration {
@@ -154,8 +153,8 @@ macro_rules! tests {
         }
 
         struct Inner<T> {
-            s: Option<channel::Sender<T>>,
-            r: channel::Receiver<T>,
+            s: Option<Sender<T>>,
+            r: Receiver<T>,
         }
 
         impl<T> Clone for Chan<T> {
@@ -201,17 +200,17 @@ macro_rules! tests {
                     .expect("channel already closed");
             }
 
-            fn rx(&self) -> channel::Receiver<T> {
+            fn rx(&self) -> Receiver<T> {
                 self.inner
                     .lock()
                     .r
                     .clone()
             }
 
-            fn tx(&self) -> channel::Sender<T> {
+            fn tx(&self) -> Sender<T> {
                 match self.inner.lock().s.as_ref() {
                     None => {
-                        let (s, r) = channel::bounded(0);
+                        let (s, r) = bounded(0);
                         std::mem::forget(r);
                         s
                     }
@@ -238,7 +237,7 @@ macro_rules! tests {
         }
 
         fn make<T>(cap: usize) -> Chan<T> {
-            let (s, r) = channel::bounded(cap);
+            let (s, r) = bounded(cap);
             Chan {
                 inner: Arc::new(Mutex::new(Inner {
                     s: Some(s),

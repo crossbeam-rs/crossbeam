@@ -357,9 +357,9 @@ where
 
 /// Waits on a set of channel operations.
 ///
-/// `Select` allows the user to define a set of channel operations, block until any one of them
-/// becomes ready, and finally execute it. If multiple operations are ready at the same time, a
-/// random one among them is selected.
+/// `Select` allows you to define a set of channel operations, block until any one of them becomes
+/// ready, and finally execute it. If multiple operations are ready at the same time, a random one
+/// among them is selected.
 ///
 /// An operation is considered to be ready if it doesn't have to block. Note that it might be ready
 /// even if it will simply return an error because the channel is disconnected.
@@ -803,7 +803,7 @@ impl<'a> Drop for SelectedCase<'a> {
 /// 2. Replace `crossbeam_channel_delegate` with direct macro invocations.
 #[doc(hidden)]
 #[macro_export]
-macro_rules! crossbeam_channel_delegate { // TODO: use this for compile_error!, concat! and others
+macro_rules! crossbeam_channel_delegate {
     (concat($($args:tt)*)) => {
         concat!($($args)*)
     };
@@ -1673,7 +1673,7 @@ macro_rules! crossbeam_channel_internal {
 
 /// Waits on a set of channel operations.
 ///
-/// This macro allows the user to define a set of channel operations, block until any one of them
+/// This macro allows you to define a set of channel operations, block until any one of them
 /// becomes ready, and finally execute it. If multiple operations are ready at the same time, a
 /// random one among them is selected.
 ///
@@ -1702,10 +1702,9 @@ macro_rules! crossbeam_channel_internal {
 ///
 /// let (s1, r1) = unbounded();
 /// let (s2, r2) = unbounded();
+/// s1.send(10).unwrap();
 ///
-/// thread::spawn(move || s1.send(10).unwrap());
-///
-/// // Since both operations are initially ready, a random one will be executed. TODO no theyre not
+/// // Since both operations are initially ready, a random one will be executed.
 /// select! {
 ///     recv(r1) -> msg => assert_eq!(msg, Ok(10)),
 ///     send(s2, 20) -> res => {
@@ -1738,7 +1737,7 @@ macro_rules! crossbeam_channel_internal {
 ///     s2.send(20).unwrap();
 /// });
 ///
-/// // The second operation will be selected because it becomes ready first.
+/// // None of the operations are initially ready.
 /// select! {
 ///     recv(r1) -> msg => panic!(),
 ///     recv(r2) -> msg => panic!(),
@@ -1769,7 +1768,7 @@ macro_rules! crossbeam_channel_internal {
 ///     s2.send(10).unwrap();
 /// });
 ///
-/// // The second operation will be selected because it becomes ready first.
+/// // None of the two operations will become ready within 100 milliseconds.
 /// select! {
 ///     recv(r1) -> msg => panic!(),
 ///     recv(r2) -> msg => panic!(),

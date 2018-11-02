@@ -1,7 +1,5 @@
 //! The channel interface.
 
-// TODO: ditch "crossbeam_channel as channel" from examples (maybe even tests)
-
 use std::fmt;
 use std::isize;
 use std::iter::FusedIterator;

@@ -4,8 +4,9 @@
 extern crate crossbeam_channel as channel;
 
 use std::thread;
+use crossbeam_channel::{bounded, Receiver, Sender};
 
-fn fibonacci(fib: channel::Sender<u64>, quit: channel::Receiver<()>) {
+fn fibonacci(fib: Sender<u64>, quit: Receiver<()>) {
     let (mut x, mut y) = (0, 1);
     loop {
         select! {
@@ -23,8 +24,8 @@ fn fibonacci(fib: channel::Sender<u64>, quit: channel::Receiver<()>) {
 }
 
 fn main() {
-    let (fib_s, fib_r) = channel::bounded(0);
-    let (quit_s, quit_r) = channel::bounded(0);
+    let (fib_s, fib_r) = bounded(0);
+    let (quit_s, quit_r) = bounded(0);
 
     thread::spawn(move || {
         for _ in 0..10 {

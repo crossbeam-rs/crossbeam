@@ -2,7 +2,7 @@
 
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 extern crate rand;
 
 mod wrappers;
@@ -14,8 +14,7 @@ macro_rules! tests {
         use std::thread;
         use std::time::{Duration, Instant};
 
-        use $channel as channel;
-        use $channel::{Select, TryRecvError};
+        use $channel::{after, Select, TryRecvError};
         use crossbeam;
 
         fn ms(ms: u64) -> Duration {
@@ -25,7 +24,7 @@ macro_rules! tests {
         #[test]
         fn fire() {
             let start = Instant::now();
-            let r = channel::after(ms(50));
+            let r = after(ms(50));
 
             assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
             thread::sleep(ms(100));
@@ -47,7 +46,7 @@ macro_rules! tests {
 
             select! {
                 recv(r) -> _ => panic!(),
-                recv(channel::after(ms(200))) -> _ => {}
+                recv(after(ms(200))) -> _ => {}
             }
         }
 
@@ -56,14 +55,14 @@ macro_rules! tests {
             const COUNT: usize = 10;
 
             for i in 0..COUNT {
-                let r = channel::after(ms(i as u64));
+                let r = after(ms(i as u64));
                 assert_eq!(r.capacity(), Some(1));
             }
         }
 
         #[test]
         fn len_empty_full() {
-            let r = channel::after(ms(50));
+            let r = after(ms(50));
 
             assert_eq!(r.len(), 0);
             assert_eq!(r.is_empty(), true);
@@ -84,7 +83,7 @@ macro_rules! tests {
 
         #[test]
         fn try_recv() {
-            let r = channel::after(ms(200));
+            let r = after(ms(200));
             assert!(r.try_recv().is_err());
 
             thread::sleep(ms(100));
@@ -101,7 +100,7 @@ macro_rules! tests {
         #[test]
         fn recv() {
             let start = Instant::now();
-            let r = channel::after(ms(50));
+            let r = after(ms(50));
 
             let fired = r.recv().unwrap();
             assert!(start < fired);
@@ -117,7 +116,7 @@ macro_rules! tests {
         #[test]
         fn recv_timeout() {
             let start = Instant::now();
-            let r = channel::after(ms(200));
+            let r = after(ms(200));
 
             assert!(r.recv_timeout(ms(100)).is_err());
             let now = Instant::now();
@@ -138,8 +137,8 @@ macro_rules! tests {
 
         #[test]
         fn recv_two() {
-            let r1 = channel::after(ms(50));
-            let r2 = channel::after(ms(50));
+            let r1 = after(ms(50));
+            let r2 = after(ms(50));
 
             crossbeam::scope(|scope| {
                 scope.spawn(|| {
@@ -160,13 +159,13 @@ macro_rules! tests {
         #[test]
         fn recv_race() {
             select! {
-                recv(channel::after(ms(50))) -> _ => {}
-                recv(channel::after(ms(100))) -> _ => panic!(),
+                recv(after(ms(50))) -> _ => {}
+                recv(after(ms(100))) -> _ => panic!(),
             }
 
             select! {
-                recv(channel::after(ms(100))) -> _ => panic!(),
-                recv(channel::after(ms(50))) -> _ => {}
+                recv(after(ms(100))) -> _ => panic!(),
+                recv(after(ms(50))) -> _ => {}
             }
         }
 
@@ -176,14 +175,14 @@ macro_rules! tests {
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::after(ms(0))) -> _ => {}
+                    recv(after(ms(0))) -> _ => {}
                     default => panic!(),
                 }
             }
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::after(ms(100))) -> _ => panic!(),
+                    recv(after(ms(100))) -> _ => panic!(),
                     default => {}
                 }
             }
@@ -195,7 +194,7 @@ macro_rules! tests {
             const COUNT: usize = 1000;
             const TIMEOUT_MS: u64 = 100;
 
-            let v = (0..COUNT).map(|i| channel::after(ms(i as u64 / TIMEOUT_MS / 2)))
+            let v = (0..COUNT).map(|i| after(ms(i as u64 / TIMEOUT_MS / 2)))
                 .collect::<Vec<_>>();
             let hits = AtomicUsize::new(0);
 
@@ -205,7 +204,7 @@ macro_rules! tests {
                         let v: Vec<&_> = v.iter().collect();
 
                         loop {
-                            let timeout = channel::after(ms(TIMEOUT_MS));
+                            let timeout = after(ms(TIMEOUT_MS));
                             let mut sel = Select::new();
                             for r in &v {
                                 sel.recv(r);
@@ -237,7 +236,7 @@ macro_rules! tests {
             const COUNT: usize = 1000;
             const TIMEOUT_MS: u64 = 100;
 
-            let v = (0..COUNT).map(|i| channel::after(ms(i as u64 / TIMEOUT_MS / 2)))
+            let v = (0..COUNT).map(|i| after(ms(i as u64 / TIMEOUT_MS / 2)))
                 .collect::<Vec<_>>();
             let hits = AtomicUsize::new(0);
 
@@ -245,7 +244,7 @@ macro_rules! tests {
                 for _ in 0..THREADS {
                     scope.spawn(|| {
                         loop {
-                            let timeout = channel::after(ms(TIMEOUT_MS));
+                            let timeout = after(ms(TIMEOUT_MS));
                             let mut sel = Select::new();
                             for r in &v {
                                 sel.recv(r);
@@ -278,7 +277,7 @@ macro_rules! tests {
             const COUNT: usize = 50;
 
             for i in 0..RUNS {
-                let r = channel::after(ms(i as u64));
+                let r = after(ms(i as u64));
 
                 crossbeam::scope(|scope| {
                     for _ in 0..THREADS {
@@ -305,8 +304,8 @@ macro_rules! tests {
 
                 for _ in 0..COUNT {
                     select! {
-                        recv(channel::after(ms(dur))) -> _ => hits[0] += 1,
-                        recv(channel::after(ms(dur))) -> _ => hits[1] += 1,
+                        recv(after(ms(dur))) -> _ => hits[0] += 1,
+                        recv(after(ms(dur))) -> _ => hits[1] += 1,
                     }
                 }
 
@@ -322,7 +321,7 @@ macro_rules! tests {
                 let mut hits = [0usize; 5];
 
                 for _ in 0..COUNT {
-                    let r = channel::after(ms(dur));
+                    let r = after(ms(dur));
                     select! {
                         recv(r) -> _ => hits[0] += 1,
                         recv(r) -> _ => hits[1] += 1,

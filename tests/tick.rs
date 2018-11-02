@@ -2,7 +2,7 @@
 
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 extern crate rand;
 
 mod wrappers;
@@ -14,8 +14,7 @@ macro_rules! tests {
         use std::thread;
         use std::time::{Duration, Instant};
 
-        use $channel as channel;
-        use $channel::{TryRecvError};
+        use $channel::{after, tick, TryRecvError};
         use crossbeam;
 
         fn ms(ms: u64) -> Duration {
@@ -25,7 +24,7 @@ macro_rules! tests {
         #[test]
         fn fire() {
             let start = Instant::now();
-            let r = channel::tick(ms(50));
+            let r = tick(ms(50));
 
             assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
             thread::sleep(ms(100));
@@ -47,14 +46,14 @@ macro_rules! tests {
 
             select! {
                 recv(r) -> _ => {}
-                recv(channel::after(ms(200))) -> _ => panic!(),
+                recv(tick(ms(200))) -> _ => panic!(),
             }
         }
 
         #[test]
         fn intervals() {
             let start = Instant::now();
-            let r = channel::tick(ms(50));
+            let r = tick(ms(50));
 
             let t1 = r.recv().unwrap();
             assert!(start + ms(50) <= t1);
@@ -78,14 +77,14 @@ macro_rules! tests {
             const COUNT: usize = 10;
 
             for i in 0..COUNT {
-                let r = channel::tick(ms(i as u64));
+                let r = tick(ms(i as u64));
                 assert_eq!(r.capacity(), Some(1));
             }
         }
 
         #[test]
         fn len_empty_full() {
-            let r = channel::tick(ms(50));
+            let r = tick(ms(50));
 
             assert_eq!(r.len(), 0);
             assert_eq!(r.is_empty(), true);
@@ -106,7 +105,7 @@ macro_rules! tests {
 
         #[test]
         fn try_recv() {
-            let r = channel::tick(ms(200));
+            let r = tick(ms(200));
             assert!(r.try_recv().is_err());
 
             thread::sleep(ms(100));
@@ -124,7 +123,7 @@ macro_rules! tests {
         #[test]
         fn recv() {
             let start = Instant::now();
-            let r = channel::tick(ms(50));
+            let r = tick(ms(50));
 
             let fired = r.recv().unwrap();
             assert!(start < fired);
@@ -140,7 +139,7 @@ macro_rules! tests {
         #[test]
         fn recv_timeout() {
             let start = Instant::now();
-            let r = channel::tick(ms(200));
+            let r = tick(ms(200));
 
             assert!(r.recv_timeout(ms(100)).is_err());
             let now = Instant::now();
@@ -163,8 +162,8 @@ macro_rules! tests {
 
         #[test]
         fn recv_two() {
-            let r1 = channel::tick(ms(50));
-            let r2 = channel::tick(ms(50));
+            let r1 = tick(ms(50));
+            let r2 = tick(ms(50));
 
             crossbeam::scope(|scope| {
                 scope.spawn(|| {
@@ -189,13 +188,13 @@ macro_rules! tests {
         #[test]
         fn recv_race() {
             select! {
-                recv(channel::tick(ms(50))) -> _ => {}
-                recv(channel::tick(ms(100))) -> _ => panic!(),
+                recv(tick(ms(50))) -> _ => {}
+                recv(tick(ms(100))) -> _ => panic!(),
             }
 
             select! {
-                recv(channel::tick(ms(100))) -> _ => panic!(),
-                recv(channel::tick(ms(50))) -> _ => {}
+                recv(tick(ms(100))) -> _ => panic!(),
+                recv(tick(ms(50))) -> _ => {}
             }
         }
 
@@ -205,14 +204,14 @@ macro_rules! tests {
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::tick(ms(0))) -> _ => {}
+                    recv(tick(ms(0))) -> _ => {}
                     default => panic!(),
                 }
             }
 
             for _ in 0..COUNT {
                 select! {
-                    recv(channel::tick(ms(100))) -> _ => panic!(),
+                    recv(tick(ms(100))) -> _ => panic!(),
                     default => {}
                 }
             }
@@ -223,13 +222,13 @@ macro_rules! tests {
             const THREADS: usize = 4;
 
             let hits = AtomicUsize::new(0);
-            let r1 = channel::tick(ms(200));
-            let r2 = channel::tick(ms(300));
+            let r1 = tick(ms(200));
+            let r2 = tick(ms(300));
 
             crossbeam::scope(|scope| {
                 for _ in 0..THREADS {
                     scope.spawn(|| {
-                        let timeout = channel::after(ms(1100));
+                        let timeout = after(ms(1100));
                         loop {
                             select! {
                                 recv(r1) -> _ => {
@@ -256,8 +255,8 @@ macro_rules! tests {
                 let mut hits = [0usize; 2];
 
                 for _ in 0..COUNT {
-                    let r1 = channel::tick(ms(dur));
-                    let r2 = channel::tick(ms(dur));
+                    let r1 = tick(ms(dur));
+                    let r2 = tick(ms(dur));
 
                     for _ in 0..COUNT {
                         select! {
@@ -279,7 +278,7 @@ macro_rules! tests {
                 let mut hits = [0usize; 5];
 
                 for _ in 0..COUNT {
-                    let r = channel::tick(ms(dur));
+                    let r = tick(ms(dur));
 
                     for _ in 0..COUNT {
                         select! {

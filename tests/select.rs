@@ -1,15 +1,14 @@
 //! Tests for the `Select` struct.
 
 extern crate crossbeam;
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 
 use std::any::Any;
 use std::cell::Cell;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use channel::Select;
-use channel::TryRecvError;
+use crossbeam_channel::{after, bounded, unbounded, tick, Receiver, Select, TryRecvError};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -17,8 +16,8 @@ fn ms(ms: u64) -> Duration {
 
 #[test]
 fn smoke1() {
-    let (s1, r1) = channel::unbounded::<usize>();
-    let (s2, r2) = channel::unbounded::<usize>();
+    let (s1, r1) = unbounded::<usize>();
+    let (s2, r2) = unbounded::<usize>();
 
     s1.send(1).unwrap();
 
@@ -47,11 +46,11 @@ fn smoke1() {
 
 #[test]
 fn smoke2() {
-    let (_s1, r1) = channel::unbounded::<i32>();
-    let (_s2, r2) = channel::unbounded::<i32>();
-    let (_s3, r3) = channel::unbounded::<i32>();
-    let (_s4, r4) = channel::unbounded::<i32>();
-    let (s5, r5) = channel::unbounded::<i32>();
+    let (_s1, r1) = unbounded::<i32>();
+    let (_s2, r2) = unbounded::<i32>();
+    let (_s3, r3) = unbounded::<i32>();
+    let (_s4, r4) = unbounded::<i32>();
+    let (s5, r5) = unbounded::<i32>();
 
     s5.send(5).unwrap();
 
@@ -74,8 +73,8 @@ fn smoke2() {
 
 #[test]
 fn disconnected() {
-    let (s1, r1) = channel::unbounded::<i32>();
-    let (s2, r2) = channel::unbounded::<i32>();
+    let (s1, r1) = unbounded::<i32>();
+    let (s2, r2) = unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -135,8 +134,8 @@ fn disconnected() {
 
 #[test]
 fn default() {
-    let (s1, r1) = channel::unbounded::<i32>();
-    let (s2, r2) = channel::unbounded::<i32>();
+    let (s1, r1) = unbounded::<i32>();
+    let (s2, r2) = unbounded::<i32>();
 
     let mut sel = Select::new();
     let _case1 = sel.recv(&r1);
@@ -193,8 +192,8 @@ fn default() {
 
 #[test]
 fn timeout() {
-    let (_s1, r1) = channel::unbounded::<i32>();
-    let (s2, r2) = channel::unbounded::<i32>();
+    let (_s1, r1) = unbounded::<i32>();
+    let (s2, r2) = unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -230,7 +229,7 @@ fn timeout() {
     });
 
     crossbeam::scope(|scope| {
-        let (s, r) = channel::unbounded::<i32>();
+        let (s, r) = unbounded::<i32>();
 
         scope.spawn(move || {
             thread::sleep(ms(500));
@@ -259,7 +258,7 @@ fn timeout() {
 
 #[test]
 fn default_when_disconnected() {
-    let (_, r) = channel::unbounded::<i32>();
+    let (_, r) = unbounded::<i32>();
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r);
@@ -272,7 +271,7 @@ fn default_when_disconnected() {
         }
     }
 
-    let (_, r) = channel::unbounded::<i32>();
+    let (_, r) = unbounded::<i32>();
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r);
@@ -285,7 +284,7 @@ fn default_when_disconnected() {
         }
     }
 
-    let (s, _) = channel::bounded::<i32>(0);
+    let (s, _) = bounded::<i32>(0);
 
     let mut sel = Select::new();
     let case1 = sel.send(&s);
@@ -298,7 +297,7 @@ fn default_when_disconnected() {
         }
     }
 
-    let (s, _) = channel::bounded::<i32>(0);
+    let (s, _) = bounded::<i32>(0);
 
     let mut sel = Select::new();
     let case1 = sel.send(&s);
@@ -334,8 +333,8 @@ fn default_only() {
 
 #[test]
 fn unblocks() {
-    let (s1, r1) = channel::bounded::<i32>(0);
-    let (s2, r2) = channel::bounded::<i32>(0);
+    let (s1, r1) = bounded::<i32>(0);
+    let (s2, r2) = bounded::<i32>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -380,8 +379,8 @@ fn unblocks() {
 
 #[test]
 fn both_ready() {
-    let (s1, r1) = channel::bounded(0);
-    let (s2, r2) = channel::bounded(0);
+    let (s1, r1) = bounded(0);
+    let (s2, r2) = bounded(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -409,9 +408,9 @@ fn loop_try() {
     const RUNS: usize = 20;
 
     for _ in 0..RUNS {
-        let (s1, r1) = channel::bounded::<i32>(0);
-        let (s2, r2) = channel::bounded::<i32>(0);
-        let (s_end, r_end) = channel::bounded::<()>(0);
+        let (s1, r1) = bounded::<i32>(0);
+        let (s2, r2) = bounded::<i32>(0);
+        let (s_end, r_end) = bounded::<()>(0);
 
         crossbeam::scope(|scope| {
             scope.spawn(|| {
@@ -506,9 +505,9 @@ fn loop_try() {
 #[test]
 fn cloning1() {
     crossbeam::scope(|scope| {
-        let (s1, r1) = channel::unbounded::<i32>();
-        let (_s2, r2) = channel::unbounded::<i32>();
-        let (s3, r3) = channel::unbounded::<()>();
+        let (s1, r1) = unbounded::<i32>();
+        let (_s2, r2) = unbounded::<i32>();
+        let (s3, r3) = unbounded::<()>();
 
         scope.spawn(move || {
             r3.recv().unwrap();
@@ -536,9 +535,9 @@ fn cloning1() {
 
 #[test]
 fn cloning2() {
-    let (s1, r1) = channel::unbounded::<()>();
-    let (s2, r2) = channel::unbounded::<()>();
-    let (_s3, _r3) = channel::unbounded::<()>();
+    let (s1, r1) = unbounded::<()>();
+    let (s2, r2) = unbounded::<()>();
+    let (_s3, _r3) = unbounded::<()>();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
@@ -561,7 +560,7 @@ fn cloning2() {
 
 #[test]
 fn preflight1() {
-    let (s, r) = channel::unbounded();
+    let (s, r) = unbounded();
     s.send(()).unwrap();
 
     let mut sel = Select::new();
@@ -575,7 +574,7 @@ fn preflight1() {
 
 #[test]
 fn preflight2() {
-    let (s, r) = channel::unbounded();
+    let (s, r) = unbounded();
     drop(s.clone());
     s.send(()).unwrap();
     drop(s);
@@ -593,7 +592,7 @@ fn preflight2() {
 
 #[test]
 fn preflight3() {
-    let (s, r) = channel::unbounded();
+    let (s, r) = unbounded();
     drop(s.clone());
     s.send(()).unwrap();
     drop(s);
@@ -610,7 +609,7 @@ fn preflight3() {
 
 #[test]
 fn duplicate_cases() {
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
     let hit = vec![Cell::new(false); 4];
 
     while hit.iter().map(|h| h.get()).any(|hit| !hit) {
@@ -644,7 +643,7 @@ fn duplicate_cases() {
 
 #[test]
 fn nesting() {
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
 
     let mut sel = Select::new();
     let case1 = sel.send(&s);
@@ -691,9 +690,9 @@ fn nesting() {
 fn stress_recv() {
     const COUNT: usize = 10_000;
 
-    let (s1, r1) = channel::unbounded();
-    let (s2, r2) = channel::bounded(5);
-    let (s3, r3) = channel::bounded(100);
+    let (s1, r1) = unbounded();
+    let (s2, r2) = bounded(5);
+    let (s3, r3) = bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -728,9 +727,9 @@ fn stress_recv() {
 fn stress_send() {
     const COUNT: usize = 10_000;
 
-    let (s1, r1) = channel::bounded(0);
-    let (s2, r2) = channel::bounded(0);
-    let (s3, r3) = channel::bounded(100);
+    let (s1, r1) = bounded(0);
+    let (s2, r2) = bounded(0);
+    let (s3, r3) = bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -762,9 +761,9 @@ fn stress_send() {
 fn stress_mixed() {
     const COUNT: usize = 10_000;
 
-    let (s1, r1) = channel::bounded(0);
-    let (s2, r2) = channel::bounded(0);
-    let (s3, r3) = channel::bounded(100);
+    let (s1, r1) = bounded(0);
+    let (s2, r2) = bounded(0);
+    let (s3, r3) = bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -796,7 +795,7 @@ fn stress_mixed() {
 fn stress_timeout_two_threads() {
     const COUNT: usize = 20;
 
-    let (s, r) = channel::bounded(2);
+    let (s, r) = bounded(2);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -853,7 +852,7 @@ fn stress_timeout_two_threads() {
 
 #[test]
 fn send_recv_same_channel() {
-    let (s, r) = channel::bounded::<i32>(0);
+    let (s, r) = bounded::<i32>(0);
     let mut sel = Select::new();
     let case1 = sel.send(&s);
     let case2 = sel.recv(&r);
@@ -867,7 +866,7 @@ fn send_recv_same_channel() {
         }
     }
 
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
     let mut sel = Select::new();
     let case1 = sel.send(&s);
     let case2 = sel.recv(&r);
@@ -886,7 +885,7 @@ fn send_recv_same_channel() {
 fn matching() {
     const THREADS: usize = 44;
 
-    let (s, r) = &channel::bounded::<usize>(0);
+    let (s, r) = &bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
         for i in 0..THREADS {
@@ -911,7 +910,7 @@ fn matching() {
 fn matching_with_leftover() {
     const THREADS: usize = 55;
 
-    let (s, r) = &channel::bounded::<usize>(0);
+    let (s, r) = &bounded::<usize>(0);
 
     crossbeam::scope(|scope| {
         for i in 0..THREADS {
@@ -940,14 +939,14 @@ fn channel_through_channel() {
     type T = Box<Any + Send>;
 
     for cap in 0..3 {
-        let (s, r) = channel::bounded::<T>(cap);
+        let (s, r) = bounded::<T>(cap);
 
         crossbeam::scope(|scope| {
             scope.spawn(move || {
                 let mut s = s;
 
                 for _ in 0..COUNT {
-                    let (new_s, new_r) = channel::bounded(cap);
+                    let (new_s, new_r) = bounded(cap);
                     let mut new_r: T = Box::new(Some(new_r));
 
                     {
@@ -976,7 +975,7 @@ fn channel_through_channel() {
                             c if c == case1 => {
                                  case.recv(&r)
                                     .unwrap()
-                                    .downcast_mut::<Option<channel::Receiver<T>>>()
+                                    .downcast_mut::<Option<Receiver<T>>>()
                                     .unwrap()
                                     .take()
                                     .unwrap()
@@ -996,13 +995,13 @@ fn linearizable_try() {
     const COUNT: usize = 100_000;
 
     for step in 0..2 {
-        let (start_s, start_r) = channel::bounded::<()>(0);
-        let (end_s, end_r) = channel::bounded::<()>(0);
+        let (start_s, start_r) = bounded::<()>(0);
+        let (end_s, end_r) = bounded::<()>(0);
 
         let ((s1, r1), (s2, r2)) = if step == 0 {
-            (channel::bounded::<i32>(1), channel::bounded::<i32>(1))
+            (bounded::<i32>(1), bounded::<i32>(1))
         } else {
-            (channel::unbounded::<i32>(), channel::unbounded::<i32>())
+            (unbounded::<i32>(), unbounded::<i32>())
         };
 
         crossbeam::scope(|scope| {
@@ -1047,13 +1046,13 @@ fn linearizable_timeout() {
     const COUNT: usize = 100_000;
 
     for step in 0..2 {
-        let (start_s, start_r) = channel::bounded::<()>(0);
-        let (end_s, end_r) = channel::bounded::<()>(0);
+        let (start_s, start_r) = bounded::<()>(0);
+        let (end_s, end_r) = bounded::<()>(0);
 
         let ((s1, r1), (s2, r2)) = if step == 0 {
-            (channel::bounded::<i32>(1), channel::bounded::<i32>(1))
+            (bounded::<i32>(1), bounded::<i32>(1))
         } else {
-            (channel::unbounded::<i32>(), channel::unbounded::<i32>())
+            (unbounded::<i32>(), unbounded::<i32>())
         };
 
         crossbeam::scope(|scope| {
@@ -1097,8 +1096,8 @@ fn linearizable_timeout() {
 fn fairness1() {
     const COUNT: usize = 10_000;
 
-    let (s1, r1) = channel::bounded::<()>(COUNT);
-    let (s2, r2) = channel::unbounded::<()>();
+    let (s1, r1) = bounded::<()>(COUNT);
+    let (s2, r2) = unbounded::<()>();
 
     for _ in 0..COUNT {
         s1.send(()).unwrap();
@@ -1107,8 +1106,8 @@ fn fairness1() {
 
     let hits = vec![Cell::new(0usize); 4];
     while hits[0].get() + hits[1].get() < 2 * COUNT {
-        let after = channel::after(ms(0));
-        let tick = channel::tick(ms(0));
+        let after = after(ms(0));
+        let tick = tick(ms(0));
 
         let mut sel = Select::new();
         let case1 = sel.recv(&r1);
@@ -1148,9 +1147,9 @@ fn fairness1() {
 fn fairness2() {
     const COUNT: usize = 10_000;
 
-    let (s1, r1) = channel::unbounded::<()>();
-    let (s2, r2) = channel::bounded::<()>(1);
-    let (s3, r3) = channel::bounded::<()>(0);
+    let (s1, r1) = unbounded::<()>();
+    let (s2, r2) = bounded::<()>(1);
+    let (s3, r3) = bounded::<()>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {
@@ -1206,7 +1205,7 @@ fn fairness2() {
 fn sync_and_clone() {
     const THREADS: usize = 20;
 
-    let (s, r) = &channel::bounded::<usize>(0);
+    let (s, r) = &bounded::<usize>(0);
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r);
@@ -1234,7 +1233,7 @@ fn sync_and_clone() {
 fn send_and_clone() {
     const THREADS: usize = 20;
 
-    let (s, r) = &channel::bounded::<usize>(0);
+    let (s, r) = &bounded::<usize>(0);
 
     let mut sel = Select::new();
     let case1 = sel.recv(&r);
@@ -1261,9 +1260,9 @@ fn send_and_clone() {
 fn reuse() {
     const COUNT: usize = 10_000;
 
-    let (s1, r1) = channel::bounded(0);
-    let (s2, r2) = channel::bounded(0);
-    let (s3, r3) = channel::bounded(100);
+    let (s1, r1) = bounded(0);
+    let (s2, r2) = bounded(0);
+    let (s3, r3) = bounded(100);
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {

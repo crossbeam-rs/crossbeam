@@ -5,15 +5,15 @@
 use std::ops::Deref;
 use std::time::{Duration, Instant};
 
-use channel;
+use crossbeam_channel as cc;
 
-pub use channel::{RecvError, RecvTimeoutError, TryRecvError};
-pub use channel::{SendError, SendTimeoutError, TrySendError};
-pub use channel::Select;
+pub use self::cc::{RecvError, RecvTimeoutError, TryRecvError};
+pub use self::cc::{SendError, SendTimeoutError, TrySendError};
+pub use self::cc::Select;
 
-pub struct Sender<T>(pub channel::Sender<T>);
+pub struct Sender<T>(pub cc::Sender<T>);
 
-pub struct Receiver<T>(pub channel::Receiver<T>);
+pub struct Receiver<T>(pub cc::Receiver<T>);
 
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Sender<T> {
@@ -28,7 +28,7 @@ impl<T> Clone for Receiver<T> {
 }
 
 impl<T> Deref for Receiver<T> {
-    type Target = channel::Receiver<T>;
+    type Target = cc::Receiver<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -36,7 +36,7 @@ impl<T> Deref for Receiver<T> {
 }
 
 impl<T> Deref for Sender<T> {
-    type Target = channel::Sender<T>;
+    type Target = cc::Sender<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -90,21 +90,21 @@ impl<T> Receiver<T> {
 }
 
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
-    let (s, r) = channel::bounded(cap);
+    let (s, r) = cc::bounded(cap);
     (Sender(s), Receiver(r))
 }
 
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
-    let (s, r) = channel::unbounded();
+    let (s, r) = cc::unbounded();
     (Sender(s), Receiver(r))
 }
 
 pub fn after(dur: Duration) -> Receiver<Instant> {
-    let r = channel::after(dur);
+    let r = cc::after(dur);
     Receiver(r)
 }
 
 pub fn tick(dur: Duration) -> Receiver<Instant> {
-    let r = channel::tick(dur);
+    let r = cc::tick(dur);
     Receiver(r)
 }

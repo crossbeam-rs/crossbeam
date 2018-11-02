@@ -4,10 +4,12 @@
 
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 
 use std::thread;
 use std::time::Duration;
+
+use crossbeam_channel::unbounded;
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -21,7 +23,7 @@ fn use_while_exiting() {
         fn drop(&mut self) {
             // A blocking operation after the thread-locals have been dropped. This will attempt to
             // use the thread-locals and must not panic.
-            let (_s, r) = channel::unbounded::<()>();
+            let (_s, r) = unbounded::<()>();
             select! {
                 recv(r) -> _ => {}
                 default(ms(100)) => {}
@@ -33,7 +35,7 @@ fn use_while_exiting() {
         static FOO: Foo = Foo;
     }
 
-    let (s, r) = channel::unbounded::<()>();
+    let (s, r) = unbounded::<()>();
 
     crossbeam::scope(|scope| {
         scope.spawn(|| {

@@ -2,7 +2,7 @@
 
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 extern crate rand;
 
 mod wrappers;
@@ -14,7 +14,7 @@ macro_rules! tests {
         use std::thread;
         use std::time::Duration;
 
-        use $channel as channel;
+        use $channel::{bounded};
         use $channel::{RecvError, RecvTimeoutError, TryRecvError};
         use $channel::{SendError, SendTimeoutError, TrySendError};
         use crossbeam;
@@ -26,7 +26,7 @@ macro_rules! tests {
 
         #[test]
         fn smoke() {
-            let (s, r) = channel::bounded(1);
+            let (s, r) = bounded(1);
             s.send(7).unwrap();
             assert_eq!(r.try_recv(), Ok(7));
 
@@ -40,7 +40,7 @@ macro_rules! tests {
         #[test]
         fn capacity() {
             for i in 1..10 {
-                let (s, r) = channel::bounded::<()>(i);
+                let (s, r) = bounded::<()>(i);
                 assert_eq!(s.capacity(), Some(i));
                 assert_eq!(r.capacity(), Some(i));
             }
@@ -48,7 +48,7 @@ macro_rules! tests {
 
         #[test]
         fn len_empty_full() {
-            let (s, r) = channel::bounded(2);
+            let (s, r) = bounded(2);
 
             assert_eq!(s.len(), 0);
             assert_eq!(s.is_empty(), true);
@@ -87,7 +87,7 @@ macro_rules! tests {
 
         #[test]
         fn try_recv() {
-            let (s, r) = channel::bounded(100);
+            let (s, r) = bounded(100);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
@@ -106,7 +106,7 @@ macro_rules! tests {
 
         #[test]
         fn recv() {
-            let (s, r) = channel::bounded(100);
+            let (s, r) = bounded(100);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
@@ -128,7 +128,7 @@ macro_rules! tests {
 
         #[test]
         fn recv_timeout() {
-            let (s, r) = channel::bounded::<i32>(100);
+            let (s, r) = bounded::<i32>(100);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
@@ -148,7 +148,7 @@ macro_rules! tests {
 
         #[test]
         fn try_send() {
-            let (s, r) = channel::bounded(1);
+            let (s, r) = bounded(1);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
@@ -170,7 +170,7 @@ macro_rules! tests {
 
         #[test]
         fn send() {
-            let (s, r) = channel::bounded(1);
+            let (s, r) = bounded(1);
 
             crossbeam::scope(|scope| {
                 scope.spawn(|| {
@@ -193,7 +193,7 @@ macro_rules! tests {
 
         #[test]
         fn send_timeout() {
-            let (s, r) = channel::bounded(2);
+            let (s, r) = bounded(2);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
@@ -220,7 +220,7 @@ macro_rules! tests {
 
         #[test]
         fn send_after_disconnect() {
-            let (s, r) = channel::bounded(100);
+            let (s, r) = bounded(100);
 
             s.send(1).unwrap();
             s.send(2).unwrap();
@@ -235,7 +235,7 @@ macro_rules! tests {
 
         #[test]
         fn recv_after_disconnect() {
-            let (s, r) = channel::bounded(100);
+            let (s, r) = bounded(100);
 
             s.send(1).unwrap();
             s.send(2).unwrap();
@@ -254,7 +254,7 @@ macro_rules! tests {
             const COUNT: usize = 25_000;
             const CAP: usize = 1000;
 
-            let (s, r) = channel::bounded(CAP);
+            let (s, r) = bounded(CAP);
 
             assert_eq!(s.len(), 0);
             assert_eq!(r.len(), 0);
@@ -310,7 +310,7 @@ macro_rules! tests {
 
         #[test]
         fn disconnect_wakes_sender() {
-            let (s, r) = channel::bounded(1);
+            let (s, r) = bounded(1);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
@@ -326,7 +326,7 @@ macro_rules! tests {
 
         #[test]
         fn disconnect_wakes_receiver() {
-            let (s, r) = channel::bounded::<()>(1);
+            let (s, r) = bounded::<()>(1);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
@@ -343,7 +343,7 @@ macro_rules! tests {
         fn spsc() {
             const COUNT: usize = 100_000;
 
-            let (s, r) = channel::bounded(3);
+            let (s, r) = bounded(3);
 
             crossbeam::scope(|scope| {
                 scope.spawn(move || {
@@ -365,7 +365,7 @@ macro_rules! tests {
             const COUNT: usize = 25_000;
             const THREADS: usize = 4;
 
-            let (s, r) = channel::bounded::<usize>(3);
+            let (s, r) = bounded::<usize>(3);
             let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
             crossbeam::scope(|scope| {
@@ -395,7 +395,7 @@ macro_rules! tests {
         fn stress_timeout_two_threads() {
             const COUNT: usize = 100;
 
-            let (s, r) = channel::bounded(2);
+            let (s, r) = bounded(2);
 
             crossbeam::scope(|scope| {
                 scope.spawn(|| {
@@ -449,7 +449,7 @@ macro_rules! tests {
                 let additional = rng.gen_range(0, 50);
 
                 DROPS.store(0, Ordering::SeqCst);
-                let (s, r) = channel::bounded::<DropCounter>(50);
+                let (s, r) = bounded::<DropCounter>(50);
 
                 crossbeam::scope(|scope| {
                     scope.spawn(|| {
@@ -481,7 +481,7 @@ macro_rules! tests {
             const COUNT: usize = 25_000;
             const THREADS: usize = 4;
 
-            let (s, r) = channel::bounded(THREADS);
+            let (s, r) = bounded(THREADS);
 
             crossbeam::scope(|scope| {
                 for _ in 0..THREADS {
@@ -499,8 +499,8 @@ macro_rules! tests {
         fn fairness() {
             const COUNT: usize = 10_000;
 
-            let (s1, r1) = channel::bounded::<()>(COUNT);
-            let (s2, r2) = channel::bounded::<()>(COUNT);
+            let (s1, r1) = bounded::<()>(COUNT);
+            let (s2, r2) = bounded::<()>(COUNT);
 
             for _ in 0..COUNT {
                 s1.send(()).unwrap();
@@ -521,7 +521,7 @@ macro_rules! tests {
         fn fairness_duplicates() {
             const COUNT: usize = 10_000;
 
-            let (s, r) = channel::bounded::<()>(COUNT);
+            let (s, r) = bounded::<()>(COUNT);
 
             for _ in 0..COUNT {
                 s.send(()).unwrap();
@@ -542,7 +542,7 @@ macro_rules! tests {
 
         #[test]
         fn recv_in_send() {
-            let (s, _r) = channel::bounded(1);
+            let (s, _r) = bounded(1);
             s.send(()).unwrap();
 
             #[allow(unreachable_code)]
@@ -553,7 +553,7 @@ macro_rules! tests {
                 }
             }
 
-            let (s, r) = channel::bounded(2);
+            let (s, r) = bounded(2);
             s.send(()).unwrap();
 
             select! {

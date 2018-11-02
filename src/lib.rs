@@ -20,17 +20,16 @@
 //!
 //! # Types of channels
 //!
-//! Channels are usually created using two functions:
+//! Channels are created using two functions:
 //!
 //! * [`bounded`] creates a channel of bounded capacity, i.e. there is a limit to how many messages
 //!   it can hold at a time.
 //!
-//! * [`unbounded`] creates a channel of unbounded capacity, i.e. it can contain arbitrary number
-//!   of messages at any time.
+//! * [`unbounded`] creates a channel of unbounded capacity, i.e. it can contain any number of
+//!   messages at a time.
 //!
 //! Both functions return two handles: a sender and a receiver. Senders and receivers represent
-//! two opposite sides of a channel. Messages are sent into the channel through senders and
-//! received through receivers.
+//! two opposite sides of a channel.
 //!
 //! Creating a bounded channel:
 //!
@@ -64,8 +63,8 @@
 //! ```
 //!
 //! A special case is zero-capacity channel, also known as *rendezvous* channel. Such a channel
-//! cannot hold any messages because it doesn't have a buffer. Instead, send and receive operations
-//! must appear at the same time in order to pair up and pass the message over.
+//! cannot hold any messages. Instead, send and receive operations must appear at the same time in
+//! order to pair up and pass the message over:
 //!
 //! ```
 //! use std::thread;
@@ -85,39 +84,8 @@
 //!
 //! # Senders and receivers
 //!
-//! TODO: explain with an example that cloning receivers does not broadcast
-//!
-//! Senders and receivers can be shared among threads either by reference or by cloning. Since they
-//! are cloneable, multiple senders and multiple receivers can be associated with the same channel.
-//!
-//! Sharing by reference:
-//!
-//! ```
-//! # extern crate crossbeam_channel;
-//! extern crate crossbeam;
-//! # fn main() {
-//! use crossbeam_channel::unbounded;
-//!
-//! let (s, r) = unbounded();
-//!
-//! crossbeam::scope(|scope| {
-//!     // Spawn a thread that sends one message and then receives one.
-//!     scope.spawn(|| {
-//!         s.send(1).unwrap();
-//!         r.recv().unwrap();
-//!     });
-//!
-//!     // Spawn another thread that does the same thing.
-//!     scope.spawn(|| {
-//!         s.send(2).unwrap();
-//!         r.recv().unwrap();
-//!     });
-//! });
-//!
-//! # }
-//! ```
-//!
-//! Sharing by cloning:
+//! Even though senders and receivers can be shared among threads by reference, sometimes it's more
+//! convenient to clone them and send clones to other threads:
 //!
 //! ```
 //! use std::thread;
@@ -140,9 +108,25 @@
 //! ```
 //!
 //! Note that cloning only creates a new reference to the same sending or receiving side. Cloning
-//! does not create a new channel.
+//! does not create a separate stream of messages in any way:
 //!
-//! # Disconnecting channels
+//! ```
+//! use crossbeam_channel::unbounded;
+//!
+//! let (s1, r1) = unbounded();
+//! let (s2, r2) = (s1.clone(), r1.clone());
+//! let (s3, r3) = (s2.clone(), r2.clone());
+//!
+//! s1.send(10).unwrap();
+//! s2.send(20).unwrap();
+//! s3.send(30).unwrap();
+//!
+//! assert_eq!(r3.recv(), Ok(10));
+//! assert_eq!(r1.recv(), Ok(20));
+//! assert_eq!(r2.recv(), Ok(30));
+//! ```
+//!
+//! # Disconnection
 //!
 //! When all senders or all receivers associated with a channel get dropped, the channel becomes
 //! disconnected. No more messages can be sent, but any remaining messages can still be received.
@@ -174,22 +158,13 @@
 //!
 //! # Blocking operations
 //!
-//! When send operations block:
+//! Send and receive operations come in three flavors:
 //!
-//! * Sending into an unbounded channel never blocks because there is always enough space in it.
-//! * Sending a message into a full bounded channel will block until an empty slot in the channel
-//!   becomes available or the channel becomes disconnected.
-//! * Zero-capacity channels are always empty, and sending blocks until a receive operation appears
-//!   on the other side of the channel.
+//! * Non-blocking (returns immediately with success or failure).
+//! * Blocking (waits until the operation succeeds or the channel becomes disconnected).
+//! * Blocking with a timeout (blocks only for a certain duration of time).
 //!
-//! When receive operations block:
-//!
-//! * Receiving from an empty channel blocks until a message is sent into the channel or the
-//!   channel becomes disconnected.
-//! * Zero-capacity channels are always empty, and receiving blocks until a send operation appears
-//!   on the other side of the channel or it becomes disconnected.
-//!
-//! Here's a simple demonstration of blocking and non-blocking operations:
+//! Here's a simple example showing the difference between non-blocking and blocking operations:
 //!
 //! ```
 //! use crossbeam_channel::{bounded, RecvError, TryRecvError};
@@ -220,7 +195,7 @@
 //!
 //! # Iteration
 //!
-//! Receivers can be used as iterators. For example, method [`iter`] creates an interator that
+//! Receivers can be used as iterators. For example, method [`iter`] creates an iterator that
 //! receives messages until the channel becomes empty and disconnected. Note that iteration may
 //! block waiting for next message to arrive.
 //!
@@ -261,14 +236,14 @@
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
 //!
-//! # Select
+//! # Selection
 //!
-//! The [`select`] macro allows the user to define a set of channel operations, block until any
-//! one of them becomes ready, and finally execute it. If multiple operations are ready at the same
-//! time, a random one among them is selected.
+//! The [`select`] macro allows you to define a set of channel operations, block until any one of
+//! them becomes ready, and finally execute it. If multiple operations are ready at the same time,
+//! a random one among them is selected.
 //!
 //! It is also possible to define a `default` case that gets executed if none of the operations are
-//! ready, either currently or for a certain duration of time.
+//! ready, either right away or for a certain duration of time.
 //!
 //! An example of receiving a message from two channels, whichever becomes ready first:
 //!
@@ -295,18 +270,26 @@
 //! # }
 //! ```
 //!
-//! If you need to dynamically add channel operation rather than define them statically inside the
+//! If you need to dynamically add channel operations rather than define them statically inside the
 //! macro, use [`Select`] instead. The [`select`] macro is just a wrapper around [`Select`] with
 //! more pleasant interface.
 //!
-//! # Delayed and ticking channels
+//! # Additional tools
 //!
-//! TODO after and tick
+//! There are two functions that create special kinds of channels:
+//!
+//! * [`after`] creates a channel that delivers a single message after a certain duration of time.
+//! * [`tick`] creates a channel that delivers messages periodically.
+//!
+//! These functions return a receiver only because messages get automatically sent into such
+//! channels. They are sometimes more convenient and more efficient than manually spawning a thread
+//! that sleeps and sends messages into the channel.
 //!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
 //! [`bounded`]: fn.bounded.html
-//! [`after`]: fn.bounded.html
+//! [`after`]: fn.after.html
+//! [`tick`]: fn.tick.html
 //! [`send`]: struct.Sender.html#method.send
 //! [`recv`]: struct.Receiver.html#method.recv
 //! [`iter`]: struct.Receiver.html#method.iter

@@ -6,13 +6,16 @@
 
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 
 use std::ops::Deref;
 
+use crossbeam_channel as cc;
+use crossbeam_channel::{bounded, unbounded};
+
 #[test]
 fn references() {
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
     select! {
         send(s, 0) -> _ => {}
         recv(r) -> _ => {}
@@ -25,7 +28,7 @@ fn references() {
 
 #[test]
 fn blocks() {
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
 
     select! {
         recv(r) -> _ => 3.0,
@@ -50,7 +53,7 @@ fn blocks() {
 
 #[test]
 fn move_handles() {
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
     select! {
         recv((move || r)()) -> _ => {}
         send((move || s)(), 0) -> _ => {}
@@ -59,14 +62,14 @@ fn move_handles() {
 
 #[test]
 fn infer_types() {
-    let (s, r) = channel::unbounded();
+    let (s, r) = unbounded();
     select! {
         recv(r) -> _ => {}
         default => {}
     }
     s.send(()).unwrap();
 
-    let (s, r) = channel::unbounded();
+    let (s, r) = unbounded();
     select! {
         send(s, ()) -> _ => {}
     }
@@ -75,7 +78,7 @@ fn infer_types() {
 
 #[test]
 fn default() {
-    let (s, r) = channel::bounded::<i32>(0);
+    let (s, r) = bounded::<i32>(0);
 
     select! {
         recv(r) -> _ => panic!(),
@@ -95,7 +98,7 @@ fn default() {
 
 #[test]
 fn same_variable_name() {
-    let (_, r) = channel::unbounded::<i32>();
+    let (_, r) = unbounded::<i32>();
     select! {
         recv(r) -> r => assert!(r.is_err()),
     }
@@ -103,7 +106,7 @@ fn same_variable_name() {
 
 #[test]
 fn handles_on_heap() {
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
     let (s, r) = (Box::new(s), Box::new(r));
 
     select! {
@@ -118,7 +121,7 @@ fn handles_on_heap() {
 
 #[test]
 fn once_blocks() {
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
 
     let once = Box::new(());
     select! {
@@ -154,7 +157,7 @@ fn once_blocks() {
 
 #[test]
 fn once_receiver() {
-    let (_, r) = channel::unbounded::<i32>();
+    let (_, r) = unbounded::<i32>();
 
     let once = Box::new(());
     let get = move || {
@@ -169,7 +172,7 @@ fn once_receiver() {
 
 #[test]
 fn once_sender() {
-    let (s, _) = channel::unbounded::<i32>();
+    let (s, _) = unbounded::<i32>();
 
     let once = Box::new(());
     let get = move || {
@@ -184,7 +187,7 @@ fn once_sender() {
 
 #[test]
 fn nesting() {
-    let (_, r) = channel::unbounded::<i32>();
+    let (_, r) = unbounded::<i32>();
 
     select! {
         recv(r) -> _ => {
@@ -205,7 +208,7 @@ fn nesting() {
 
 #[test]
 fn evaluate() {
-    let (s, r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
 
     let v = select! {
         recv(r) -> _ => "foo".into(),
@@ -229,11 +232,11 @@ fn evaluate() {
 
 #[test]
 fn deref() {
-    struct Sender<T>(channel::Sender<T>);
-    struct Receiver<T>(channel::Receiver<T>);
+    struct Sender<T>(cc::Sender<T>);
+    struct Receiver<T>(cc::Receiver<T>);
 
     impl<T> Deref for Receiver<T> {
-        type Target = channel::Receiver<T>;
+        type Target = cc::Receiver<T>;
 
         fn deref(&self) -> &Self::Target {
             &self.0
@@ -241,14 +244,14 @@ fn deref() {
     }
 
     impl<T> Deref for Sender<T> {
-        type Target = channel::Sender<T>;
+        type Target = cc::Sender<T>;
 
         fn deref(&self) -> &Self::Target {
             &self.0
         }
     }
 
-    let (s, r) = channel::bounded::<i32>(0);
+    let (s, r) = bounded::<i32>(0);
     let (s, r) = (Sender(s), Receiver(r));
 
     select! {
