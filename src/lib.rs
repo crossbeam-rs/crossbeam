@@ -304,7 +304,6 @@
 //! * [`tick`] creates a channel that delivers messages periodically.
 //! // TODO: never()
 //! // TODO: Example: never() is useful for disabling an operation in select
-//! // TODO: Rename SelectedCase -> SelectedOperation
 //! // TODO: grep for "case" and replace it with "operation" everywhere
 //! // TODO: make sure these work in parse.rs:
 //! // TODO: - recv(foo.unwrap_or(&never()))
@@ -346,7 +345,7 @@ pub use channel::{bounded, unbounded};
 pub use channel::{after, tick};
 pub use channel::{IntoIter, Iter, TryIter};
 
-pub use select::{Select, SelectedCase};
+pub use select::{Select, SelectedOperation};
 
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
 pub use err::{SendError, SendTimeoutError, TrySendError};

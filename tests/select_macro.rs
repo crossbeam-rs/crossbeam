@@ -412,7 +412,7 @@ fn preflight3() {
 }
 
 #[test]
-fn duplicate_cases() {
+fn duplicate_operations() {
     let (s, r) = unbounded::<i32>();
     let mut hit = [false; 4];
 

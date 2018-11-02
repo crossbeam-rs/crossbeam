@@ -238,7 +238,7 @@ where
                 }
             }
 
-            // If none of the states have changed, select the `default` case.
+            // If none of the states have changed, selection failed.
             if !changed {
                 return None;
             }
@@ -380,14 +380,14 @@ where
 /// s1.send(10).unwrap();
 ///
 /// let mut sel = Select::new();
-/// let case1 = sel.recv(&r1);
-/// let case2 = sel.send(&s2);
+/// let oper1 = sel.recv(&r1);
+/// let oper2 = sel.send(&s2);
 ///
 /// // Both operations are initially ready, so a random one will be executed.
-/// let case = sel.select();
-/// match case.index() {
-///     i if i == case1 => assert_eq!(case.recv(&r1), Ok(10)),
-///     i if i == case2 => assert_eq!(case.send(&s2, 20), Ok(())),
+/// let oper = sel.select();
+/// match oper.index() {
+///     i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(10)),
+///     i if i == oper2 => assert_eq!(oper.send(&s2, 20), Ok(())),
 ///     _ => unreachable!(),
 /// }
 /// ```
@@ -409,7 +409,7 @@ impl<'a> Select<'a> {
     ///
     /// let mut sel = Select::new();
     ///
-    /// // The list of cases is empty, which means no operation can be selected.
+    /// // The list of operations is empty, which means no operation can be selected.
     /// assert!(sel.try_select().is_err());
     /// ```
     pub fn new() -> Select<'a> {
@@ -420,7 +420,7 @@ impl<'a> Select<'a> {
 
     /// Adds a send operation.
     ///
-    /// Returns the index of the added case.
+    /// Returns the index of the added operations.
     ///
     /// # Examples
     ///
@@ -433,13 +433,13 @@ impl<'a> Select<'a> {
     /// let (s3, r3) = unbounded::<i32>();
     ///
     /// let mut sel = Select::new();
-    /// let case1 = sel.send(&s1);
-    /// let case2 = sel.send(&s2);
-    /// let case3 = sel.send(&s3);
+    /// let oper1 = sel.send(&s1);
+    /// let oper2 = sel.send(&s2);
+    /// let oper3 = sel.send(&s3);
     ///
-    /// assert_eq!(case1, 0);
-    /// assert_eq!(case2, 1);
-    /// assert_eq!(case3, 2);
+    /// assert_eq!(oper1, 0);
+    /// assert_eq!(oper2, 1);
+    /// assert_eq!(oper3, 2);
     /// ```
     pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
         let i = self.handles.len();
@@ -450,7 +450,7 @@ impl<'a> Select<'a> {
 
     /// Adds a receive operation.
     ///
-    /// Returns the index of the added case.
+    /// Returns the index of the added operations.
     ///
     /// # Examples
     ///
@@ -463,13 +463,13 @@ impl<'a> Select<'a> {
     /// let (s3, r3) = unbounded::<i32>();
     ///
     /// let mut sel = Select::new();
-    /// let case1 = sel.recv(&r1);
-    /// let case2 = sel.recv(&r2);
-    /// let case3 = sel.recv(&r3);
+    /// let oper1 = sel.recv(&r1);
+    /// let oper2 = sel.recv(&r2);
+    /// let oper3 = sel.recv(&r3);
     ///
-    /// assert_eq!(case1, 0);
-    /// assert_eq!(case2, 1);
-    /// assert_eq!(case3, 2);
+    /// assert_eq!(oper1, 0);
+    /// assert_eq!(oper2, 1);
+    /// assert_eq!(oper3, 2);
     /// ```
     pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
         let i = self.handles.len();
@@ -487,11 +487,11 @@ impl<'a> Select<'a> {
     /// An operation is considered to be ready if it doesn't have to block. Note that it might be
     /// ready even if it will simply return an error because the channel is disconnected.
     ///
-    /// The selected operation must be completed with [`SelectedCase::send`]
-    /// or [`SelectedCase::recv`].
+    /// The selected operation must be completed with [`SelectedOperation::send`]
+    /// or [`SelectedOperation::recv`].
     ///
-    /// [`SelectedCase::send`]: struct.SelectedCase.html#method.send
-    /// [`SelectedCase::recv`]: struct.SelectedCase.html#method.recv
+    /// [`SelectedOperation::send`]: struct.SelectedOperation.html#method.send
+    /// [`SelectedOperation::recv`]: struct.SelectedOperation.html#method.recv
     ///
     /// # Examples
     ///
@@ -506,24 +506,24 @@ impl<'a> Select<'a> {
     /// s2.send(20).unwrap();
     ///
     /// let mut sel = Select::new();
-    /// let case1 = sel.recv(&r1);
-    /// let case2 = sel.recv(&r2);
+    /// let oper1 = sel.recv(&r1);
+    /// let oper2 = sel.recv(&r2);
     ///
     /// // Both operations are initially ready, so a random one will be executed.
-    /// let case = sel.try_select();
-    /// match case {
+    /// let oper = sel.try_select();
+    /// match oper {
     ///     Err(_) => panic!("both operations should be ready"),
-    ///     Ok(case) => match case.index() {
-    ///         i if i == case1 => assert_eq!(case.recv(&r1), Ok(10)),
-    ///         i if i == case2 => assert_eq!(case.recv(&r2), Ok(20)),
+    ///     Ok(oper) => match oper.index() {
+    ///         i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(10)),
+    ///         i if i == oper2 => assert_eq!(oper.recv(&r2), Ok(20)),
     ///         _ => unreachable!(),
     ///     }
     /// }
     /// ```
-    pub fn try_select(&mut self) -> Result<SelectedCase<'_>, TrySelectError> {
+    pub fn try_select(&mut self) -> Result<SelectedOperation<'_>, TrySelectError> {
         match run_select(&mut self.handles, Timeout::Now) {
             None => Err(TrySelectError),
-            Some((token, index, ptr)) => Ok(SelectedCase {
+            Some((token, index, ptr)) => Ok(SelectedOperation {
                 token,
                 index,
                 ptr,
@@ -539,11 +539,11 @@ impl<'a> Select<'a> {
     /// An operation is considered to be ready if it doesn't have to block. Note that it might be
     /// ready even if it will simply return an error because the channel is disconnected.
     ///
-    /// The selected operation must be completed with [`SelectedCase::send`]
-    /// or [`SelectedCase::recv`].
+    /// The selected operation must be completed with [`SelectedOperation::send`]
+    /// or [`SelectedOperation::recv`].
     ///
-    /// [`SelectedCase::send`]: struct.SelectedCase.html#method.send
-    /// [`SelectedCase::recv`]: struct.SelectedCase.html#method.recv
+    /// [`SelectedOperation::send`]: struct.SelectedOperation.html#method.send
+    /// [`SelectedOperation::recv`]: struct.SelectedOperation.html#method.recv
     ///
     /// # Panics
     ///
@@ -566,24 +566,24 @@ impl<'a> Select<'a> {
     /// thread::spawn(move || s2.send(20).unwrap());
     ///
     /// let mut sel = Select::new();
-    /// let case1 = sel.recv(&r1);
-    /// let case2 = sel.recv(&r2);
+    /// let oper1 = sel.recv(&r1);
+    /// let oper2 = sel.recv(&r2);
     ///
     /// // The second operation will be selected because it becomes ready first.
-    /// let case = sel.select();
-    /// match case.index() {
-    ///     i if i == case1 => assert_eq!(case.recv(&r1), Ok(10)),
-    ///     i if i == case2 => assert_eq!(case.recv(&r2), Ok(20)),
+    /// let oper = sel.select();
+    /// match oper.index() {
+    ///     i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(10)),
+    ///     i if i == oper2 => assert_eq!(oper.recv(&r2), Ok(20)),
     ///     _ => unreachable!(),
     /// }
     /// ```
-    pub fn select(&mut self) -> SelectedCase<'_> {
+    pub fn select(&mut self) -> SelectedOperation<'_> {
         if self.handles.is_empty() {
             panic!("no operations have been added to `Select`");
         }
 
         let (token, index, ptr) = run_select(&mut self.handles, Timeout::Never).unwrap();
-        SelectedCase {
+        SelectedOperation {
             token,
             index,
             ptr,
@@ -600,11 +600,11 @@ impl<'a> Select<'a> {
     /// An operation is considered to be ready if it doesn't have to block. Note that it might be
     /// ready even if it will simply return an error because the channel is disconnected.
     ///
-    /// The selected operation must be completed with [`SelectedCase::send`]
-    /// or [`SelectedCase::recv`].
+    /// The selected operation must be completed with [`SelectedOperation::send`]
+    /// or [`SelectedOperation::recv`].
     ///
-    /// [`SelectedCase::send`]: struct.SelectedCase.html#method.send
-    /// [`SelectedCase::recv`]: struct.SelectedCase.html#method.recv
+    /// [`SelectedOperation::send`]: struct.SelectedOperation.html#method.send
+    /// [`SelectedOperation::recv`]: struct.SelectedOperation.html#method.recv
     ///
     /// # Examples
     ///
@@ -623,16 +623,16 @@ impl<'a> Select<'a> {
     /// thread::spawn(move || s2.send(20).unwrap());
     ///
     /// let mut sel = Select::new();
-    /// let case1 = sel.recv(&r1);
-    /// let case2 = sel.recv(&r2);
+    /// let oper1 = sel.recv(&r1);
+    /// let oper2 = sel.recv(&r2);
     ///
     /// // The second operation will be selected because it becomes ready first.
-    /// let case = sel.select_timeout(Duration::from_millis(500));
-    /// match case {
+    /// let oper = sel.select_timeout(Duration::from_millis(500));
+    /// match oper {
     ///     Err(_) => panic!("should not have timed out"),
-    ///     Ok(case) => match case.index() {
-    ///         i if i == case1 => assert_eq!(case.recv(&r1), Ok(10)),
-    ///         i if i == case2 => assert_eq!(case.recv(&r2), Ok(20)),
+    ///     Ok(oper) => match oper.index() {
+    ///         i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(10)),
+    ///         i if i == oper2 => assert_eq!(oper.recv(&r2), Ok(20)),
     ///         _ => unreachable!(),
     ///     }
     /// }
@@ -640,12 +640,12 @@ impl<'a> Select<'a> {
     pub fn select_timeout(
         &mut self,
         timeout: Duration,
-    ) -> Result<SelectedCase<'_>, SelectTimeoutError> {
+    ) -> Result<SelectedOperation<'_>, SelectTimeoutError> {
         let timeout = Timeout::At(Instant::now() + timeout);
 
         match run_select(&mut self.handles, timeout) {
             None => Err(SelectTimeoutError),
-            Some((token, index, ptr)) => Ok(SelectedCase {
+            Some((token, index, ptr)) => Ok(SelectedOperation {
                 token,
                 index,
                 ptr,
@@ -669,21 +669,21 @@ impl<'a> fmt::Debug for Select<'a> {
     }
 }
 
-/// A selected case that needs to be completed.
+/// A selected operation that needs to be completed.
 ///
 /// To complete the operation, call [`send`] or [`recv`].
 ///
 /// Forgetting to complete the operation is an error and might lead to deadlocks in the future. If
-/// a `SelectedCase` is dropped without completing the operation, a panic will occur.
+/// a `SelectedOperation` is dropped without completing the operation, a panic will occur.
 ///
-/// [`send`]: struct.SelectedCase.html#method.send
-/// [`recv`]: struct.SelectedCase.html#method.recv
+/// [`send`]: struct.SelectedOperation.html#method.send
+/// [`recv`]: struct.SelectedOperation.html#method.recv
 #[must_use]
-pub struct SelectedCase<'a> {
+pub struct SelectedOperation<'a> {
     /// Token needed to complete the operation.
     token: Token,
 
-    /// The index of the selected case.
+    /// The index of the selected operation.
     index: usize,
 
     /// The address of the selected `Sender` or `Receiver`.
@@ -693,7 +693,7 @@ pub struct SelectedCase<'a> {
     _marker: PhantomData<&'a mut Select<'a>>,
 }
 
-impl<'a> SelectedCase<'a> {
+impl<'a> SelectedOperation<'a> {
     /// Returns the index of the selected operation.
     ///
     /// # Examples
@@ -707,15 +707,15 @@ impl<'a> SelectedCase<'a> {
     /// s3.send(0).unwrap();
     ///
     /// let mut sel = Select::new();
-    /// let case1 = sel.recv(&r1);
-    /// let case2 = sel.recv(&r2);
-    /// let case3 = sel.recv(&r3);
+    /// let oper1 = sel.recv(&r1);
+    /// let oper2 = sel.recv(&r2);
+    /// let oper3 = sel.recv(&r3);
     ///
-    /// // Only the last case is ready.
-    /// let case = sel.select();
-    /// assert_eq!(case.index(), 2);
-    /// assert_eq!(case3, 2);
-    /// case.recv(&r3).unwrap();
+    /// // Only the last operation is ready.
+    /// let oper = sel.select();
+    /// assert_eq!(oper.index(), 2);
+    /// assert_eq!(oper3, 2);
+    /// oper.recv(&r3).unwrap();
     /// ```
     pub fn index(&self) -> usize {
         self.index
@@ -739,11 +739,11 @@ impl<'a> SelectedCase<'a> {
     /// drop(r);
     ///
     /// let mut sel = Select::new();
-    /// let case1 = sel.send(&s);
+    /// let oper1 = sel.send(&s);
     ///
-    /// let case = sel.select();
-    /// assert_eq!(case.index(), case1);
-    /// assert_eq!(case.send(&s, 10), Err(SendError(10)));
+    /// let oper = sel.select();
+    /// assert_eq!(oper.index(), oper1);
+    /// assert_eq!(oper.send(&s, 10), Err(SendError(10)));
     /// ```
     ///
     /// [`Sender`]: struct.Sender.html
@@ -776,11 +776,11 @@ impl<'a> SelectedCase<'a> {
     /// drop(s);
     ///
     /// let mut sel = Select::new();
-    /// let case1 = sel.recv(&r);
+    /// let oper1 = sel.recv(&r);
     ///
-    /// let case = sel.select();
-    /// assert_eq!(case.index(), case1);
-    /// assert_eq!(case.recv(&r), Err(RecvError));
+    /// let oper = sel.select();
+    /// assert_eq!(oper.index(), oper1);
+    /// assert_eq!(oper.recv(&r), Err(RecvError));
     /// ```
     ///
     /// [`Receiver`]: struct.Receiver.html
@@ -796,15 +796,15 @@ impl<'a> SelectedCase<'a> {
     }
 }
 
-impl<'a> fmt::Debug for SelectedCase<'a> {
+impl<'a> fmt::Debug for SelectedOperation<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("SelectedCase").finish()
+        f.debug_struct("SelectedOperation").finish()
     }
 }
 
-impl<'a> Drop for SelectedCase<'a> {
+impl<'a> Drop for SelectedOperation<'a> {
     fn drop(&mut self) {
-        panic!("dropped `SelectedCase` without completing the operation");
+        panic!("dropped `SelectedOperation` without completing the operation");
     }
 }
 
@@ -846,7 +846,7 @@ macro_rules! crossbeam_channel_delegate {
 /// 3. `@case`: Parses a single case and verifies its argument list.
 ///
 /// The codegen stage consists of these subparts:
-/// 1. `@add`: Adds send/receive cases to the `Select` and starts selection.
+/// 1. `@add`: Adds send/receive operations to the `Select` and starts selection.
 /// 2. `@complete`: Completes the selected send/receive operation.
 ///
 /// If the parsing stage encounters a syntax error or the codegen stage ends up with too many
@@ -886,7 +886,7 @@ macro_rules! crossbeam_channel_internal {
             "expected `=>` after `default` case, found `->`"
         ))
     };
-    // Print an error if there's an `->` after the argument list in the `default` case.
+    // Print an error if there's an `->` after the argument list in the default case.
     (@list
         (default $args:tt -> $($tail:tt)*)
         ($($head:tt)*)
@@ -895,7 +895,7 @@ macro_rules! crossbeam_channel_internal {
             "expected `=>` after `default` case, found `->`"
         ))
     };
-    // Print an error if there is a missing result in a `recv` case.
+    // Print an error if there is a missing result in a recv case.
     (@list
         (recv($($args:tt)*) => $($tail:tt)*)
         ($($head:tt)*)
@@ -904,12 +904,14 @@ macro_rules! crossbeam_channel_internal {
             "expected `->` after `recv` case, found `=>`"
         ))
     };
-    // Print an error if there is a missing result in a `send` case.
+    // Print an error if there is a missing result in a send case.
     (@list
         (send($($args:tt)*) => $($tail:tt)*)
         ($($head:tt)*)
     ) => {
-        crossbeam_channel_delegate!(compile_error("expected `->` after `send` case, found `=>`"))
+        crossbeam_channel_delegate!(compile_error(
+            "expected `->` after `send` operation, found `=>`"
+        ))
     };
     // Make sure the arrow and the result are not repeated.
     (@list
@@ -1202,44 +1204,44 @@ macro_rules! crossbeam_channel_internal {
             ($($cases)*)
             $default
             (
-                (0usize case0)
-                (1usize case1)
-                (2usize case2)
-                (3usize case3)
-                (4usize case4)
-                (5usize case5)
-                (6usize case6)
-                (7usize case7)
-                (8usize case8)
-                (9usize case9)
-                (10usize case10)
-                (11usize case11)
-                (12usize case12)
-                (13usize case13)
-                (14usize case14)
-                (15usize case15)
-                (16usize case16)
-                (17usize case17)
-                (20usize case18)
-                (19usize case19)
-                (20usize case20)
-                (21usize case21)
-                (22usize case22)
-                (23usize case23)
-                (24usize case24)
-                (25usize case25)
-                (26usize case26)
-                (27usize case27)
-                (28usize case28)
-                (29usize case29)
-                (30usize case30)
-                (31usize case31)
+                (0usize oper0)
+                (1usize oper1)
+                (2usize oper2)
+                (3usize oper3)
+                (4usize oper4)
+                (5usize oper5)
+                (6usize oper6)
+                (7usize oper7)
+                (8usize oper8)
+                (9usize oper9)
+                (10usize oper10)
+                (11usize oper11)
+                (12usize oper12)
+                (13usize oper13)
+                (14usize oper14)
+                (15usize oper15)
+                (16usize oper16)
+                (17usize oper17)
+                (20usize oper18)
+                (19usize oper19)
+                (20usize oper20)
+                (21usize oper21)
+                (22usize oper22)
+                (23usize oper23)
+                (24usize oper24)
+                (25usize oper25)
+                (26usize oper26)
+                (27usize oper27)
+                (28usize oper28)
+                (29usize oper29)
+                (30usize oper30)
+                (31usize oper31)
             )
             ()
         )
     }};
 
-    // Check the format of a `recv` case...
+    // Check the format of a recv case.
     (@case
         (recv($r:expr) -> $res:pat => $body:tt, $($tail:tt)*)
         ($($cases:tt)*)
@@ -1294,7 +1296,7 @@ macro_rules! crossbeam_channel_internal {
         ))
     };
 
-    // Check the format of a `send` case...
+    // Check the format of a send case.
     (@case
         (send($s:expr, $m:expr) -> $res:pat => $body:tt, $($tail:tt)*)
         ($($cases:tt)*)
@@ -1349,7 +1351,7 @@ macro_rules! crossbeam_channel_internal {
         ))
     };
 
-    // Check the format of a `default` case.
+    // Check the format of a default case.
     (@case
         (default() => $body:tt, $($tail:tt)*)
         $cases:tt
@@ -1362,7 +1364,7 @@ macro_rules! crossbeam_channel_internal {
             (default() => $body,)
         )
     };
-    // Check the format of a `default` case with timeout.
+    // Check the format of a default case with timeout.
     (@case
         (default($timeout:expr) => $body:tt, $($tail:tt)*)
         $cases:tt
@@ -1442,7 +1444,7 @@ macro_rules! crossbeam_channel_internal {
         ))
     };
 
-    // Start the blocking select operation.
+    // Run blocking selection.
     (@add
         $sel:ident
         ()
@@ -1450,22 +1452,22 @@ macro_rules! crossbeam_channel_internal {
         $labels:tt
         $cases:tt
     ) => {{
-        let _case: $crate::SelectedCase<'_> = {
-            let _case = $sel.select();
+        let _oper: $crate::SelectedOperation<'_> = {
+            let _oper = $sel.select();
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             #[allow(unsafe_code)]
-            unsafe { ::std::mem::transmute(_case) }
+            unsafe { ::std::mem::transmute(_oper) }
         };
 
         crossbeam_channel_internal! {
             @complete
             $sel
-            _case
+            _oper
             $cases
         }
     }};
-    // Start the non-blocking select operation.
+    // Run non-blocking selection.
     (@add
         $sel:ident
         ()
@@ -1473,30 +1475,30 @@ macro_rules! crossbeam_channel_internal {
         $labels:tt
         $cases:tt
     ) => {{
-        let _case: Option<$crate::SelectedCase<'_>> = {
-            let _case = $sel.try_select();
+        let _oper: Option<$crate::SelectedOperation<'_>> = {
+            let _oper = $sel.try_select();
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             #[allow(unsafe_code)]
-            unsafe { ::std::mem::transmute(_case) }
+            unsafe { ::std::mem::transmute(_oper) }
         };
 
-        match _case {
+        match _oper {
             None => {
                 drop($sel);
                 $body
             }
-            Some(_case) => {
+            Some(_oper) => {
                 crossbeam_channel_internal! {
                     @complete
                     $sel
-                    _case
+                    _oper
                     $cases
                 }
             }
         }
     }};
-    // Start the select operation with a timeout.
+    // Run selection with a timeout.
     (@add
         $sel:ident
         ()
@@ -1504,24 +1506,24 @@ macro_rules! crossbeam_channel_internal {
         $labels:tt
         $cases:tt
     ) => {{
-        let _case: Option<$crate::SelectedCase<'_>> = {
-            let _case = $sel.select_timeout($timeout);
+        let _oper: Option<$crate::SelectedOperation<'_>> = {
+            let _oper = $sel.select_timeout($timeout);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             #[allow(unsafe_code)]
-            unsafe { ::std::mem::transmute(_case) }
+            unsafe { ::std::mem::transmute(_oper) }
         };
 
-        match _case {
+        match _oper {
             None => {
                 drop($sel);
                 $body
             }
-            Some(_case) => {
+            Some(_oper) => {
                 crossbeam_channel_internal! {
                     @complete
                     $sel
-                    _case
+                    _oper
                     $cases
                 }
             }
@@ -1535,9 +1537,9 @@ macro_rules! crossbeam_channel_internal {
         ()
         $cases:tt
     ) => {
-        crossbeam_channel_delegate!(compile_error("too many cases in a `select!` block"))
+        crossbeam_channel_delegate!(compile_error("too many operations in a `select!` block"))
     };
-    // Add a receive case to `sel`.
+    // Add a receive operation to `sel`.
     (@add
         $sel:ident
         (recv($r:expr) -> $res:pat => $body:tt, $($tail:tt)*)
@@ -1570,7 +1572,7 @@ macro_rules! crossbeam_channel_internal {
             }
         }
     }};
-    // Add a send case to `sel`.
+    // Add a send operation to `sel`.
     (@add
         $sel:ident
         (send($s:expr, $m:expr) -> $res:pat => $body:tt, $($tail:tt)*)
@@ -1730,7 +1732,7 @@ macro_rules! crossbeam_channel_internal {
 /// # }
 /// ```
 ///
-/// Wait on a set of cases without blocking:
+/// Wait on a set of operations without blocking:
 ///
 /// ```
 /// # #[macro_use]
@@ -1761,7 +1763,7 @@ macro_rules! crossbeam_channel_internal {
 /// # }
 /// ```
 ///
-/// Wait on a set of cases with a timeout:
+/// Wait on a set of operations with a timeout:
 ///
 /// ```
 /// # #[macro_use]

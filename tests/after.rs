@@ -209,16 +209,16 @@ macro_rules! tests {
                             for r in &v {
                                 sel.recv(r);
                             }
-                            let case_timeout = sel.recv(&timeout);
+                            let oper_timeout = sel.recv(&timeout);
 
-                            let case = sel.select();
-                            match case.index() {
-                                i if i == case_timeout => {
-                                    case.recv(&timeout).unwrap();
+                            let oper = sel.select();
+                            match oper.index() {
+                                i if i == oper_timeout => {
+                                    oper.recv(&timeout).unwrap();
                                     break;
                                 }
                                 i => {
-                                    case.recv(&v[i]).unwrap();
+                                    oper.recv(&v[i]).unwrap();
                                     hits.fetch_add(1, Ordering::SeqCst);
                                 }
                             }
@@ -249,16 +249,16 @@ macro_rules! tests {
                             for r in &v {
                                 sel.recv(r);
                             }
-                            let case_timeout = sel.recv(&timeout);
+                            let oper_timeout = sel.recv(&timeout);
 
-                            let case = sel.select();
-                            match case.index() {
-                                i if i == case_timeout => {
-                                    case.recv(&timeout).unwrap();
+                            let oper = sel.select();
+                            match oper.index() {
+                                i if i == oper_timeout => {
+                                    oper.recv(&timeout).unwrap();
                                     break;
                                 }
                                 i => {
-                                    case.recv(&v[i]).unwrap();
+                                    oper.recv(&v[i]).unwrap();
                                     hits.fetch_add(1, Ordering::SeqCst);
                                 }
                             }

@@ -761,19 +761,19 @@ macro_rules! tests {
                     for _ in 0..4 * N {
                         let index = {
                             let mut sel = Select::new();
-                            let mut cases = [!0; 4];
+                            let mut opers = [!0; 4];
                             for &i in &[3, 2, 0, 1] {
                                 if let Some(c) = &c1[i] {
-                                    cases[i] = sel.recv(c);
+                                    opers[i] = sel.recv(c);
                                 }
                             }
 
-                            let case = sel.select();
+                            let oper = sel.select();
                             let mut index = !0;
                             for i in 0..4 {
-                                if cases[i] == case.index() {
+                                if opers[i] == oper.index() {
                                     index = i;
-                                    let _ = case.recv(c1[i].as_ref().unwrap());
+                                    let _ = oper.recv(c1[i].as_ref().unwrap());
                                     break;
                                 }
                             }
@@ -797,19 +797,19 @@ macro_rules! tests {
                     for _ in 0..4 * N {
                         let index = {
                             let mut sel = Select::new();
-                            let mut cases = [!0; 4];
+                            let mut opers = [!0; 4];
                             for &i in &[0, 1, 2, 3] {
                                 if let Some(c) = &c1[i] {
-                                    cases[i] = sel.send(c);
+                                    opers[i] = sel.send(c);
                                 }
                             }
 
-                            let case = sel.select();
+                            let oper = sel.select();
                             let mut index = !0;
                             for i in 0..4 {
-                                if cases[i] == case.index() {
+                                if opers[i] == oper.index() {
                                     index = i;
-                                    let _ = case.send(c1[i].as_ref().unwrap(), 0);
+                                    let _ = oper.send(c1[i].as_ref().unwrap(), 0);
                                     break;
                                 }
                             }

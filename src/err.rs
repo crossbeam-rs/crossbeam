@@ -336,13 +336,13 @@ impl From<RecvError> for RecvTimeoutError {
 
 impl fmt::Display for TrySelectError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "all cases in select would block".fmt(f)
+        "all operations in select would block".fmt(f)
     }
 }
 
 impl error::Error for TrySelectError {
     fn description(&self) -> &str {
-        "all cases in select would block"
+        "all operations in select would block"
     }
 
     fn cause(&self) -> Option<&error::Error> {
