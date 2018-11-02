@@ -3,10 +3,9 @@ use std::fmt;
 
 /// An error returned from the [`send`] method.
 ///
-/// A send operation can only fail if the channel is disconnected, implying that the message could
-/// never be sent.
+/// The message could not be sent because the channel is disconnected.
 ///
-/// The error contains the message being sent so it can be recovered.
+/// The error contains the message so it can be recovered.
 ///
 /// [`send`]: struct.Sender.html#method.send
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -48,8 +47,7 @@ pub enum SendTimeoutError<T> {
 
 /// An error returned from the [`recv`] method.
 ///
-/// A receive operation can only fail if the channel is empty and disconnected.
-/// implying that a message could never be received.
+/// A message could not be received because the channel is empty and disconnected.
 ///
 /// [`recv`]: struct.Receiver.html#method.recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -87,11 +85,15 @@ pub enum RecvTimeoutError {
 
 /// An error returned from the [`try_select`] method.
 ///
+/// None of the channel operations were ready.
+///
 /// [`try_select`]: struct.Select.html#method.try_select
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct TrySelectError;
 
 /// An error returned from the [`select_timeout`] method.
+///
+/// None of the channel operations became ready before the timeout.
 ///
 /// [`select_timeout`]: struct.Select.html#method.select_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -244,7 +246,7 @@ impl<T> SendTimeoutError<T> {
     ///
     /// let (s, r) = unbounded();
     ///
-    /// if let Err(err) = s.send_timeout("foo", Duration::from_secs(0)) {
+    /// if let Err(err) = s.send_timeout("foo", Duration::from_secs(1)) {
     ///     assert_eq!(err.into_inner(), "foo");
     /// }
     /// ```

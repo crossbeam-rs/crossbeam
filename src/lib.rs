@@ -1,3 +1,5 @@
+#![warn(missing_docs, missing_debug_implementations)]
+
 //! Multi-producer multi-consumer channels for message passing.
 //!
 //! This library is an alternative to [`std::sync::mpsc`] with more features and better
@@ -28,8 +30,8 @@
 //! * [`unbounded`] creates a channel of unbounded capacity, i.e. it can contain any number of
 //!   messages at a time.
 //!
-//! Both functions return two handles: a sender and a receiver. Senders and receivers represent
-//! two opposite sides of a channel.
+//! Both functions return a [`Sender`] and a [`Receiver`], which represent the two opposite sides
+//! of a channel.
 //!
 //! Creating a bounded channel:
 //!
@@ -39,7 +41,7 @@
 //! // Create a channel that can hold at most 5 messages at a time.
 //! let (s, r) = bounded(5);
 //!
-//! // Can only send 5 messages without blocking.
+//! // Can send only 5 messages without blocking.
 //! for i in 0..5 {
 //!     s.send(i).unwrap();
 //! }
@@ -62,9 +64,8 @@
 //! }
 //! ```
 //!
-//! A special case is zero-capacity channel, also known as *rendezvous* channel. Such a channel
-//! cannot hold any messages. Instead, send and receive operations must appear at the same time in
-//! order to pair up and pass the message over:
+//! A special case is zero-capacity channel, which cannot hold any messages. Instead, send and
+//! receive operations must appear at the same time in order to pair up and pass the message over:
 //!
 //! ```
 //! use std::thread;
@@ -73,42 +74,37 @@
 //! // Create a zero-capacity channel.
 //! let (s, r) = bounded(0);
 //!
-//! // Spawn a thread that sends a message into the channel.
 //! // Sending blocks until a receive operation appears on the other side.
 //! thread::spawn(move || s.send("Hi!").unwrap());
 //!
-//! // Receive the message.
 //! // Receiving blocks until a send operation appears on the other side.
 //! assert_eq!(r.recv(), Ok("Hi!"));
 //! ```
 //!
-//! # Senders and receivers
+//! # Sharing channels
 //!
-//! Even though senders and receivers can be shared among threads by reference, sometimes it's more
-//! convenient to clone them and send clones to other threads:
+//! Senders and receivers can be cloned and sent to other threads:
 //!
 //! ```
 //! use std::thread;
-//! use crossbeam_channel::unbounded;
+//! use crossbeam_channel::bounded;
 //!
-//! let (s1, r1) = unbounded();
+//! let (s1, r1) = bounded(0);
 //! let (s2, r2) = (s1.clone(), r1.clone());
 //!
-//! // Spawn a thread that sends one message and then receives one.
-//! thread::spawn(move || {
-//!     s1.send(1).unwrap();
-//!     r1.recv().unwrap();
-//! });
-//!
-//! // Spawn another thread that receives a message and then sends one.
+//! // Spawn a thread that receives a message and then sends one.
 //! thread::spawn(move || {
 //!     r2.recv().unwrap();
 //!     s2.send(2).unwrap();
 //! });
+//!
+//! // Send a message and then receive one.
+//! s1.send(1).unwrap();
+//! r1.recv().unwrap();
 //! ```
 //!
-//! Note that cloning only creates a new reference to the same sending or receiving side. Cloning
-//! does not create a separate stream of messages in any way:
+//! Note that cloning only creates a new handle to the same sending or receiving side. It does not
+//! create a separate stream of messages in any way:
 //!
 //! ```
 //! use crossbeam_channel::unbounded;
@@ -124,6 +120,32 @@
 //! assert_eq!(r3.recv(), Ok(10));
 //! assert_eq!(r1.recv(), Ok(20));
 //! assert_eq!(r2.recv(), Ok(30));
+//! ```
+//!
+//! It's also possible to share senders and receivers by reference:
+//!
+//! ```
+//! # extern crate crossbeam;
+//! # extern crate crossbeam_channel;
+//! # fn main() {
+//! use std::thread;
+//! use crossbeam;
+//! use crossbeam_channel::bounded;
+//!
+//! let (s, r) = bounded(0);
+//!
+//! crossbeam::scope(|scope| {
+//!     // Spawn a thread that receives a message and then sends one.
+//!     scope.spawn(|| {
+//!         r.recv().unwrap();
+//!         s.send(2).unwrap();
+//!     });
+//!
+//!     // Send a message and then receive one.
+//!     s.send(1).unwrap();
+//!     r.recv().unwrap();
+//! });
+//! # }
 //! ```
 //!
 //! # Disconnection
@@ -151,7 +173,7 @@
 //! // There are no more messages in the channel.
 //! assert!(r.is_empty());
 //!
-//! // Note that calling `r.recv()` will not block.
+//! // Note that calling `r.recv()` does not block.
 //! // Instead, `Err(RecvError)` is returned immediately.
 //! assert_eq!(r.recv(), Err(RecvError));
 //! ```
@@ -219,8 +241,8 @@
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
 //!
-//! A non-blocking iterator can be created using [`try_iter`], which receives messages if they're
-//! available without blocking:
+//! A non-blocking iterator can be created using [`try_iter`], which receives all available
+//! messages without blocking:
 //!
 //! ```
 //! use crossbeam_channel::unbounded;
@@ -270,9 +292,9 @@
 //! # }
 //! ```
 //!
-//! If you need to dynamically add channel operations rather than define them statically inside the
-//! macro, use [`Select`] instead. The [`select`] macro is just a wrapper around [`Select`] with
-//! more pleasant interface.
+//! If you need to select over a dynamically created list of channel operations, use [`Select`]
+//! instead. The [`select`] macro is just a wrapper around [`Select`] with a more pleasant
+//! interface.
 //!
 //! # Additional tools
 //!
@@ -281,9 +303,9 @@
 //! * [`after`] creates a channel that delivers a single message after a certain duration of time.
 //! * [`tick`] creates a channel that delivers messages periodically.
 //!
-//! These functions return a receiver only because messages get automatically sent into such
-//! channels. They are sometimes more convenient and more efficient than manually spawning a thread
-//! that sleeps and sends messages into the channel.
+//! These functions return only a [`Receiver`] because messages get automatically sent into such
+//! channels. They are more convenient and more efficient than equivalent manually spawned threads
+//! that just sleep and send messages into a channel.
 //!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
@@ -301,8 +323,8 @@
 
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;
-extern crate rand;
 extern crate parking_lot;
+extern crate rand;
 extern crate smallvec;
 
 mod channel;

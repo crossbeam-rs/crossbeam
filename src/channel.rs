@@ -6,8 +6,8 @@ use std::iter::FusedIterator;
 use std::mem;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::process;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use context::Context;
@@ -15,7 +15,7 @@ use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError
 use flavors;
 use select::{Operation, SelectHandle, Token};
 
-/// A channel in the form of one of the different flavors.
+/// A channel in the form of one of the three different flavors.
 pub struct Channel<T> {
     /// The number of senders associated with this channel.
     senders: AtomicUsize,
@@ -41,7 +41,8 @@ enum ChannelFlavor<T> {
 
 /// Creates a channel of unbounded capacity.
 ///
-/// This type of channel can hold any number of messages (i.e. it has infinite capacity).
+/// This type of channel can hold any number of messages, i.e. it can contain any number of
+/// messages at a time.
 ///
 /// # Examples
 ///
@@ -84,9 +85,8 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 ///
 /// This type of channel has an internal buffer of length `cap` in which messages get queued.
 ///
-/// A special case is zero-capacity channel, also known as *rendezvous* channel. Such a channel
-/// cannot hold any messages because it doesn't have a buffer. Instead, send and receive operations
-/// must appear at the same time in order to pair up and pass the message over.
+/// A special case is zero-capacity channel, which cannot hold any messages. Instead, send and
+/// receive operations must appear at the same time in order to pair up and pass the message over.
 ///
 /// # Panics
 ///
@@ -211,11 +211,8 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// Creates a receiver that delivers messages periodically.
 ///
 /// The channel is bounded with capacity of 1 and is never disconnected. Messages will be
-/// automatically sent into the channel in intervals of `duration`, but the time intervals are only
-/// measured while the channel is empty. The channel always contains at most one message. Each
-/// message is the instant at which it is sent into the channel.
-///
-/// // TODO: what about ticker with period of zero? add it to tests and maybe add a comment here
+/// automatically sent into the channel in intervals of `duration`. The channel always contains at
+/// most one message. Each message is the instant at which it is sent into the channel.
 ///
 /// # Examples
 ///
@@ -276,8 +273,6 @@ pub fn tick(duration: Duration) -> Receiver<Instant> {
 }
 
 /// The sending side of a channel.
-///
-/// Senders can be cloned and shared among multiple threads.
 ///
 /// # Examples
 ///
@@ -354,7 +349,7 @@ impl<T> Sender<T> {
     ///
     /// If the channel is full and not disconnected, this call will block until the send operation
     /// can proceed. If the channel becomes disconnected, this call will wake up and return an
-    /// error.
+    /// error. The returned error contains the original message.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel.
@@ -395,7 +390,7 @@ impl<T> Sender<T> {
     ///
     /// If the channel is full and not disconnected, this call will block until the send operation
     /// can proceed or the operation times out. If the channel becomes disconnected, this call will
-    /// wake up and return an error.
+    /// wake up and return an error. The returned error contains the original message.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel.
@@ -440,7 +435,7 @@ impl<T> Sender<T> {
 
     /// Returns `true` if the channel is empty.
     ///
-    /// Note: zero-capacity channels are always empty.
+    /// Note: Zero-capacity channels are always empty.
     ///
     /// # Examples
     ///
@@ -463,7 +458,7 @@ impl<T> Sender<T> {
 
     /// Returns `true` if the channel is full.
     ///
-    /// Note: zero-capacity channels are always full.
+    /// Note: Zero-capacity channels are always full.
     ///
     /// # Examples
     ///
@@ -556,8 +551,6 @@ impl<T> fmt::Debug for Sender<T> {
 }
 
 /// The receiving side of a channel.
-///
-/// Receivers can be cloned and shared among multiple threads.
 ///
 /// # Examples
 ///
@@ -671,8 +664,8 @@ impl<T> Receiver<T> {
     /// disconnected.
     ///
     /// If the channel is empty and not disconnected, this call will block until the receive
-    /// operation can proceed. If the channel also becomes disconnected, this call will wake up and
-    /// return an error.
+    /// operation can proceed. If the channel is empty and becomes disconnected, this call will
+    /// wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
     /// on the other side of the channel.
@@ -727,8 +720,8 @@ impl<T> Receiver<T> {
     /// disconnected.
     ///
     /// If the channel is empty and not disconnected, this call will block until the receive
-    /// operation can proceed or the operation times out. If the channel also becomes disconnected,
-    /// this call will wake up and return an error.
+    /// operation can proceed or the operation times out. If the channel is empty and becomes
+    /// disconnected, this call will wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
     /// on the other side of the channel.
@@ -793,7 +786,7 @@ impl<T> Receiver<T> {
 
     /// Returns `true` if the channel is empty.
     ///
-    /// Note: zero-capacity channels are always empty.
+    /// Note: Zero-capacity channels are always empty.
     ///
     /// # Examples
     ///
@@ -820,7 +813,7 @@ impl<T> Receiver<T> {
 
     /// Returns `true` if the channel is full.
     ///
-    /// Note: zero-capacity channels are always full.
+    /// Note: Zero-capacity channels are always full.
     ///
     /// # Examples
     ///
@@ -899,11 +892,10 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns an iterator that receives messages until the channel becomes empty and
-    /// disconnected.
+    /// A blocking iterator over messages in the channel.
     ///
     /// Each call to `next` blocks waiting for the next message and then returns it. However, if
-    /// the channel is empty and disconnected, it returns `None` without blocking.
+    /// the channel becomes empty and disconnected, it returns `None` without blocking.
     ///
     /// # Examples
     ///
@@ -921,18 +913,18 @@ impl<T> Receiver<T> {
     /// });
     ///
     /// // Collect all messages from the channel.
-    /// //
     /// // Note that the call to `collect` blocks until the sender is dropped.
     /// let v: Vec<_> = r.iter().collect();
+    ///
     /// assert_eq!(v, [1, 2, 3]);
     /// ```
     pub fn iter(&self) -> Iter<T> {
         Iter { receiver: self }
     }
 
-    /// Returns an iterator that receives messages until the channel becomes empty or disconnected.
+    /// A non-blocking iterator over messages in the channel.
     ///
-    /// Each call to `next` returns a message if there is at least one in the channel. The iterator
+    /// Each call to `next` returns a message if there is one ready to be received. The iterator
     /// never blocks waiting for the next message.
     ///
     /// # Examples
@@ -945,15 +937,19 @@ impl<T> Receiver<T> {
     /// let (s, r) = unbounded::<i32>();
     ///
     /// thread::spawn(move || {
-    ///     thread::sleep(Duration::from_secs(1));
     ///     s.send(1).unwrap();
+    ///     thread::sleep(Duration::from_secs(1));
     ///     s.send(2).unwrap();
     ///     thread::sleep(Duration::from_secs(2));
     ///     s.send(3).unwrap();
     /// });
     ///
     /// thread::sleep(Duration::from_secs(2));
+    ///
+    /// // Collect all messages from the channel without blocking.
+    /// // The third message hasn't been sent yet so we'll collect only the first two.
     /// let v: Vec<_> = r.try_iter().collect();
+    ///
     /// assert_eq!(v, [1, 2]);
     /// ```
     pub fn try_iter(&self) -> TryIter<T> {
@@ -1013,10 +1009,10 @@ impl<T> IntoIterator for Receiver<T> {
     }
 }
 
-/// An iterator that receives messages until the channel becomes empty and disconnected.
+/// A blocking iterator over messages in the channel.
 ///
 /// Each call to `next` blocks waiting for the next message and then returns it. However, if the
-/// channel is empty and disconnected, it returns `None` without blocking.
+/// channel becomes empty and disconnected, it returns `None` without blocking.
 ///
 /// # Examples
 ///
@@ -1034,12 +1030,11 @@ impl<T> IntoIterator for Receiver<T> {
 /// });
 ///
 /// // Collect all messages from the channel.
-/// //
 /// // Note that the call to `collect` blocks until the sender is dropped.
 /// let v: Vec<_> = r.iter().collect();
+///
 /// assert_eq!(v, [1, 2, 3]);
 /// ```
-#[derive(Debug)]
 pub struct Iter<'a, T: 'a> {
     receiver: &'a Receiver<T>,
 }
@@ -1054,10 +1049,16 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-/// An iterator that receives messages until the channel becomes empty or disconnected.
+impl<'a, T> fmt::Debug for Iter<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Iter").finish()
+    }
+}
+
+/// A non-blocking iterator over messages in the channel.
 ///
-/// Each call to `next` returns a message if there is at least one in the channel. The iterator
-/// never blocks waiting for the next message.
+/// Each call to `next` returns a message if there is one ready to be received. The iterator never
+/// blocks waiting for the next message.
 ///
 /// # Examples
 ///
@@ -1069,18 +1070,21 @@ impl<'a, T> Iterator for Iter<'a, T> {
 /// let (s, r) = unbounded::<i32>();
 ///
 /// thread::spawn(move || {
-///     thread::sleep(Duration::from_secs(1));
 ///     s.send(1).unwrap();
+///     thread::sleep(Duration::from_secs(1));
 ///     s.send(2).unwrap();
 ///     thread::sleep(Duration::from_secs(2));
 ///     s.send(3).unwrap();
 /// });
 ///
 /// thread::sleep(Duration::from_secs(2));
+///
+/// // Collect all messages from the channel without blocking.
+/// // The third message hasn't been sent yet so we'll collect only the first two.
 /// let v: Vec<_> = r.try_iter().collect();
+///
 /// assert_eq!(v, [1, 2]);
 /// ```
-#[derive(Debug)]
 pub struct TryIter<'a, T: 'a> {
     receiver: &'a Receiver<T>,
 }
@@ -1093,10 +1097,16 @@ impl<'a, T> Iterator for TryIter<'a, T> {
     }
 }
 
-/// An iterator that receives messages until the channel becomes empty and disconnected.
+impl<'a, T> fmt::Debug for TryIter<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("TryIter").finish()
+    }
+}
+
+/// A blocking iterator over messages in the channel.
 ///
 /// Each call to `next` blocks waiting for the next message and then returns it. However, if the
-/// channel is empty and disconnected, it returns `None` without blocking.
+/// channel becomes empty and disconnected, it returns `None` without blocking.
 ///
 /// # Examples
 ///
@@ -1114,12 +1124,11 @@ impl<'a, T> Iterator for TryIter<'a, T> {
 /// });
 ///
 /// // Collect all messages from the channel.
-/// //
 /// // Note that the call to `collect` blocks until the sender is dropped.
 /// let v: Vec<_> = r.into_iter().collect();
+///
 /// assert_eq!(v, [1, 2, 3]);
 /// ```
-#[derive(Debug)]
 pub struct IntoIter<T> {
     receiver: Receiver<T>,
 }
@@ -1131,6 +1140,12 @@ impl<T> Iterator for IntoIter<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.receiver.recv().ok()
+    }
+}
+
+impl<T> fmt::Debug for IntoIter<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("IntoIter").finish()
     }
 }
 
@@ -1279,7 +1294,7 @@ pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Result<(), T
     }
 }
 
-/// Receives a message from the channel.
+/// Reads a message from the channel.
 pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()> {
     match &r.flavor {
         ReceiverFlavor::Channel(arc) => match &arc.flavor {

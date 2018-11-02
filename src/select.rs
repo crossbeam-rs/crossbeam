@@ -365,8 +365,7 @@ where
 /// even if it will simply return an error because the channel is disconnected.
 ///
 /// The [`select`] macro is a wrapper around `Select` with a more pleasant interface. However, it
-/// can only handle a static list of cases, i.e. send/receive operation cannot be dynamically added
-/// to it.
+/// cannot select over a dynamically created list of channel operations.
 ///
 /// [`select`]: macro.select.html
 ///
@@ -401,7 +400,7 @@ unsafe impl<'a> Send for Select<'a> {}
 unsafe impl<'a> Sync for Select<'a> {}
 
 impl<'a> Select<'a> {
-    /// Creates a new `Select`.
+    /// Creates an empty list of channel operations for selection.
     ///
     /// # Examples
     ///
@@ -419,7 +418,7 @@ impl<'a> Select<'a> {
         }
     }
 
-    /// Adds a send case.
+    /// Adds a send operation.
     ///
     /// Returns the index of the added case.
     ///
@@ -449,9 +448,9 @@ impl<'a> Select<'a> {
         i
     }
 
-    /// Adds a receive case.
+    /// Adds a receive operation.
     ///
-    /// The index of the added case is returned.
+    /// Returns the index of the added case.
     ///
     /// # Examples
     ///
@@ -484,6 +483,9 @@ impl<'a> Select<'a> {
     /// If an operation is ready, it is selected and returned. If multiple operations are ready at
     /// the same time, a random one among them is selected. If none of the operations are ready, an
     /// error is returned.
+    ///
+    /// An operation is considered to be ready if it doesn't have to block. Note that it might be
+    /// ready even if it will simply return an error because the channel is disconnected.
     ///
     /// The selected operation must be completed with [`SelectedCase::send`]
     /// or [`SelectedCase::recv`].
@@ -534,6 +536,9 @@ impl<'a> Select<'a> {
     ///
     /// Once an operation becomes ready, it is selected and returned.
     ///
+    /// An operation is considered to be ready if it doesn't have to block. Note that it might be
+    /// ready even if it will simply return an error because the channel is disconnected.
+    ///
     /// The selected operation must be completed with [`SelectedCase::send`]
     /// or [`SelectedCase::recv`].
     ///
@@ -574,7 +579,7 @@ impl<'a> Select<'a> {
     /// ```
     pub fn select(&mut self) -> SelectedCase<'_> {
         if self.handles.is_empty() {
-            panic!("no operations have been added to select");
+            panic!("no operations have been added to `Select`");
         }
 
         let (token, index, ptr) = run_select(&mut self.handles, Timeout::Never).unwrap();
@@ -591,6 +596,9 @@ impl<'a> Select<'a> {
     /// If an operation becomes ready, it is selected and returned. If multiple operations are
     /// ready at the same time, a random one among them is selected. If none of the operations
     /// become ready for the specified duration, an error is returned.
+    ///
+    /// An operation is considered to be ready if it doesn't have to block. Note that it might be
+    /// ready even if it will simply return an error because the channel is disconnected.
     ///
     /// The selected operation must be completed with [`SelectedCase::send`]
     /// or [`SelectedCase::recv`].
@@ -715,8 +723,12 @@ impl<'a> SelectedCase<'a> {
 
     /// Completes the send operation.
     ///
-    /// The passed [`Sender`] reference must be the same one that was used in [`Select::send`],
-    /// otherwise this method will panic and might cause deadlocks in the future.
+    /// The passed [`Sender`] reference must be the same one that was used in [`Select::send`]
+    /// when the operation was added.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an incorrect [`Sender`] reference is passed.
     ///
     /// # Examples
     ///
@@ -748,8 +760,12 @@ impl<'a> SelectedCase<'a> {
 
     /// Completes the receive operation.
     ///
-    /// The passed [`Receiver`] reference must be the same one that was used in [`Select::recv`],
-    /// otherwise this method will panic and might cause deadlocks in the future.
+    /// The passed [`Receiver`] reference must be the same one that was used in [`Select::recv`]
+    /// when the operation was added.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an incorrect [`Receiver`] reference is passed.
     ///
     /// # Examples
     ///
@@ -818,20 +834,20 @@ macro_rules! crossbeam_channel_delegate {
     };
 }
 
-/// A helper macro for `select!` that hides the ugly macro rules from the documentation.
+/// A helper macro for `select!` to hide the long list of macro patterns from the documentation.
 ///
 /// The macro consists of two stages:
 /// 1. Parsing
 /// 2. Code generation
 ///
 /// The parsing stage consists of these subparts:
-/// 1. @list: Turns a list of tokens into a list of cases.
-/// 2. @list_errorN: Diagnoses the syntax error.
-/// 3. @case: Parses a single case and verifies its argument list.
+/// 1. `@list`: Turns a list of tokens into a list of cases.
+/// 2. `@list_errorN`: Diagnoses the syntax error.
+/// 3. `@case`: Parses a single case and verifies its argument list.
 ///
 /// The codegen stage consists of these subparts:
-/// 1. @add: Adds send/receive cases to the `Select` and starts selection.
-/// 2. @complete: Completes the selected send/receive operation.
+/// 1. `@add`: Adds send/receive cases to the `Select` and starts selection.
+/// 2. `@complete`: Completes the selected send/receive operation.
 ///
 /// If the parsing stage encounters a syntax error or the codegen stage ends up with too many
 /// cases to process, the macro fails with a compile-time error.
@@ -1684,8 +1700,7 @@ macro_rules! crossbeam_channel_internal {
 /// even if it will simply return an error because the channel is disconnected.
 ///
 /// The `select` macro is a wrapper around [`Select`] with a more pleasant interface. However, it
-/// can only handle a static list of cases, i.e. send/receive operation cannot be dynamically added
-/// to it.
+/// cannot select over a dynamically created list of channel operations.
 ///
 /// [`Select`]: struct.Select.html
 ///
@@ -1715,7 +1730,7 @@ macro_rules! crossbeam_channel_internal {
 /// # }
 /// ```
 ///
-/// Waiting on a set of cases without blocking:
+/// Wait on a set of cases without blocking:
 ///
 /// ```
 /// # #[macro_use]
@@ -1746,7 +1761,7 @@ macro_rules! crossbeam_channel_internal {
 /// # }
 /// ```
 ///
-/// Waiting on a set of cases with a timeout:
+/// Wait on a set of cases with a timeout:
 ///
 /// ```
 /// # #[macro_use]

@@ -1,4 +1,4 @@
-//! Translation of a simple program demonstrating CSP from Go into Rust.
+//! Translation of a simple program demonstrating CSP from Go to Rust.
 //!
 //! The original program in Go follows:
 //!

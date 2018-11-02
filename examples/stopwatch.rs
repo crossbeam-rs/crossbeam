@@ -7,11 +7,15 @@ extern crate signal_hook;
 use std::io;
 use std::time::{Duration, Instant};
 use std::thread;
-use crossbeam_channel::{bounded, tick, Receiver};
 
+use crossbeam_channel::{bounded, tick, Receiver};
+use signal_hook::SIGINT;
+use signal_hook::iterator::Signals;
+
+// Creates a channel that gets a message every time `SIGINT` is signalled.
 fn sigint_notifier() -> io::Result<Receiver<()>> {
     let (s, r) = bounded(100);
-    let signals = signal_hook::iterator::Signals::new(&[signal_hook::SIGINT])?;
+    let signals = Signals::new(&[SIGINT])?;
 
     thread::spawn(move || {
         for _ in signals.forever() {
@@ -24,18 +28,25 @@ fn sigint_notifier() -> io::Result<Receiver<()>> {
     Ok(r)
 }
 
+// Prints the elapsed time.
+fn show(dur: Duration) {
+    println!("Elapsed: {}.{:03} sec", dur.as_secs(), dur.subsec_nanos() / 1_000_000);
+}
+
 fn main() {
-    let ctrl_c = sigint_notifier().unwrap();
+    let start = Instant::now();
     let update = tick(Duration::from_secs(1));
-    let now = Instant::now();
+    let ctrl_c = sigint_notifier().unwrap();
 
     loop {
         select! {
             recv(update) -> _ => {
-                println!("Elapsed time: {:?}", now.elapsed());
+                show(start.elapsed());
             }
             recv(ctrl_c) -> _ => {
+                println!();
                 println!("Goodbye!");
+                show(start.elapsed());
                 break;
             }
         }
