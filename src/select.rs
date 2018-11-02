@@ -22,6 +22,7 @@ pub struct Token {
     pub after: flavors::after::AfterToken,
     pub array: flavors::array::ArrayToken,
     pub list: flavors::list::ListToken,
+    pub never: flavors::never::NeverToken,
     pub tick: flavors::tick::TickToken,
     pub zero: flavors::zero::ZeroToken,
 }
@@ -714,7 +715,9 @@ impl<'a> SelectedOperation<'a> {
     /// // Only the last operation is ready.
     /// let oper = sel.select();
     /// assert_eq!(oper.index(), 2);
-    /// assert_eq!(oper3, 2);
+    /// assert_eq!(oper.index(), oper3);
+    ///
+    /// // Complete the operation.
     /// oper.recv(&r3).unwrap();
     /// ```
     pub fn index(&self) -> usize {

@@ -158,6 +158,12 @@ impl Channel {
         flag.load(Ordering::SeqCst)
     }
 
+    /// Returns `true` if the channel is full.
+    #[inline]
+    pub fn is_full(&self) -> bool {
+        !self.is_empty()
+    }
+
     /// Returns the number of messages in the channel.
     #[inline]
     pub fn len(&self) -> usize {

@@ -712,8 +712,8 @@ fn stress_recv() {
                 let oper2 = sel.recv(&r2);
                 let oper = sel.select();
                 match oper.index() {
-                    i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(i)),
-                    i if i == oper2 => assert_eq!(oper.recv(&r2), Ok(i)),
+                    ix if ix == oper1 => assert_eq!(oper.recv(&r1), Ok(i)),
+                    ix if ix == oper2 => assert_eq!(oper.recv(&r2), Ok(i)),
                     _ => unreachable!(),
                 }
 
@@ -747,8 +747,8 @@ fn stress_send() {
                 let oper2 = sel.send(&s2);
                 let oper = sel.select();
                 match oper.index() {
-                    i if i == oper1 => assert!(oper.send(&s1, i).is_ok()),
-                    i if i == oper2 => assert!(oper.send(&s2, i).is_ok()),
+                    ix if ix == oper1 => assert!(oper.send(&s1, i).is_ok()),
+                    ix if ix == oper2 => assert!(oper.send(&s2, i).is_ok()),
                     _ => unreachable!(),
                 }
             }
@@ -781,8 +781,8 @@ fn stress_mixed() {
                 let oper2 = sel.send(&s2);
                 let oper = sel.select();
                 match oper.index() {
-                    i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(i)),
-                    i if i == oper2 => assert!(oper.send(&s2, i).is_ok()),
+                    ix if ix == oper1 => assert_eq!(oper.recv(&r1), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(&s2, i).is_ok()),
                     _ => unreachable!(),
                 }
             }
@@ -812,7 +812,7 @@ fn stress_timeout_two_threads() {
                     match oper {
                         Err(_) => {}
                         Ok(oper) => match oper.index() {
-                            i if i == oper1 => {
+                            ix if ix == oper1 => {
                                 assert!(oper.send(&s, i).is_ok());
                                 break;
                             }
@@ -837,7 +837,7 @@ fn stress_timeout_two_threads() {
                     match oper {
                         Err(_) => {}
                         Ok(oper) => match oper.index() {
-                            i if i == oper1 => {
+                            ix if ix == oper1 => {
                                 assert_eq!(oper.recv(&r), Ok(i));
                                 done = true;
                             }
@@ -860,8 +860,8 @@ fn send_recv_same_channel() {
     match oper {
         Err(_) => {}
         Ok(oper) => match oper.index() {
-            i if i == oper1 => panic!(),
-            i if i == oper2 => panic!(),
+            ix if ix == oper1 => panic!(),
+            ix if ix == oper2 => panic!(),
             _ => unreachable!(),
         }
     }
@@ -874,8 +874,8 @@ fn send_recv_same_channel() {
     match oper {
         Err(_) => panic!(),
         Ok(oper) => match oper.index() {
-            i if i == oper1 => assert!(oper.send(&s, 0).is_ok()),
-            i if i == oper2 => panic!(),
+            ix if ix == oper1 => assert!(oper.send(&s, 0).is_ok()),
+            ix if ix == oper2 => panic!(),
             _ => unreachable!(),
         }
     }
@@ -895,8 +895,8 @@ fn matching() {
                 let oper2 = sel.send(&s);
                 let oper = sel.select();
                 match oper.index() {
-                    i if i == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
-                    i if i == oper2 => assert!(oper.send(&s, i).is_ok()),
+                    ix if ix == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(&s, i).is_ok()),
                     _ => unreachable!(),
                 }
             });
@@ -920,8 +920,8 @@ fn matching_with_leftover() {
                 let oper2 = sel.send(&s);
                 let oper = sel.select();
                 match oper.index() {
-                    i if i == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
-                    i if i == oper2 => assert!(oper.send(&s, i).is_ok()),
+                    ix if ix == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(&s, i).is_ok()),
                     _ => unreachable!(),
                 }
             });
@@ -954,7 +954,7 @@ fn channel_through_channel() {
                         let oper1 = sel.send(&s);
                         let oper = sel.select();
                         match oper.index() {
-                            i if i == oper1 => assert!(oper.send(&s, new_r).is_ok()),
+                            ix if ix == oper1 => assert!(oper.send(&s, new_r).is_ok()),
                             _ => unreachable!(),
                         }
                     }
@@ -972,7 +972,7 @@ fn channel_through_channel() {
                         let oper1 = sel.recv(&r);
                         let oper = sel.select();
                         match oper.index() {
-                            i if i == oper1 => {
+                            ix if ix == oper1 => {
                                  oper.recv(&r)
                                     .unwrap()
                                     .downcast_mut::<Option<Receiver<T>>>()
@@ -1018,8 +1018,8 @@ fn linearizable_try() {
                     match oper {
                         Err(_) => unreachable!(),
                         Ok(oper) => match oper.index() {
-                            i if i == oper1 => assert!(oper.recv(&r1).is_ok()),
-                            i if i == oper2 => assert!(oper.recv(&r2).is_ok()),
+                            ix if ix == oper1 => assert!(oper.recv(&r1).is_ok()),
+                            ix if ix == oper2 => assert!(oper.recv(&r2).is_ok()),
                             _ => unreachable!(),
                         }
                     }
@@ -1069,8 +1069,8 @@ fn linearizable_timeout() {
                     match oper {
                         Err(_) => unreachable!(),
                         Ok(oper) => match oper.index() {
-                            i if i == oper1 => assert!(oper.recv(&r1).is_ok()),
-                            i if i == oper2 => assert!(oper.recv(&r2).is_ok()),
+                            ix if ix == oper1 => assert!(oper.recv(&r1).is_ok()),
+                            ix if ix == oper2 => assert!(oper.recv(&r2).is_ok()),
                             _ => unreachable!(),
                         }
                     }
@@ -1144,7 +1144,7 @@ fn fairness1() {
 }
 
 #[test]
-fn fairness2() {
+fn fairness2() { // TODO: also use in select_loop.rs, but with never
     const COUNT: usize = 10_000;
 
     let (s1, r1) = unbounded::<()>();
@@ -1218,8 +1218,8 @@ fn sync_and_clone() {
                 let mut sel = sel.clone();
                 let oper = sel.select();
                 match oper.index() {
-                    i if i == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
-                    i if i == oper2 => assert!(oper.send(&s, i).is_ok()),
+                    ix if ix == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(&s, i).is_ok()),
                     _ => unreachable!(),
                 }
             });
@@ -1245,8 +1245,8 @@ fn send_and_clone() {
             scope.spawn(move || {
                 let oper = sel.select();
                 match oper.index() {
-                    i if i == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
-                    i if i == oper2 => assert!(oper.send(&s, i).is_ok()),
+                    ix if ix == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(&s, i).is_ok()),
                     _ => unreachable!(),
                 }
             });
@@ -1281,8 +1281,8 @@ fn reuse() {
             for _ in 0..2 {
                 let oper = sel.select();
                 match oper.index() {
-                    i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(i)),
-                    i if i == oper2 => assert!(oper.send(&s2, i).is_ok()),
+                    ix if ix == oper1 => assert_eq!(oper.recv(&r1), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(&s2, i).is_ok()),
                     _ => unreachable!(),
                 }
             }

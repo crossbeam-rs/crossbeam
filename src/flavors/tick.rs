@@ -111,6 +111,12 @@ impl Channel {
         Instant::now() < inner.next_tick
     }
 
+    /// Returns `true` if the channel is full.
+    #[inline]
+    pub fn is_full(&self) -> bool {
+        !self.is_empty()
+    }
+
     /// Returns the number of messages in the channel.
     #[inline]
     pub fn len(&self) -> usize {
