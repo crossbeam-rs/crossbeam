@@ -1,6 +1,6 @@
-//! TODO Channel that delivers messages periodically.
+//! Channel that never delivers messages.
 //!
-//! Messages cannot be sent into this kind of channel; they are materialized on demand.
+//! Messages cannot be sent into this kind of channel.
 
 use std::marker::PhantomData;
 use std::time::Instant;
@@ -13,13 +13,13 @@ use utils;
 /// This flavor doesn't need a token.
 pub type NeverToken = ();
 
-/// TODO Channel that delivers messages periodically.
+/// Channel that never delivers messages.
 pub struct Channel<T> {
     _marker: PhantomData<T>,
 }
 
 impl<T> Channel<T> {
-    /// TODO Creates a channel that delivers messages periodically.
+    /// Creates a channel that never delivers messages.
     #[inline]
     pub fn new() -> Self {
         Channel {
@@ -55,7 +55,7 @@ impl<T> Channel<T> {
     /// Returns `true` if the channel is full.
     #[inline]
     pub fn is_full(&self) -> bool {
-        true
+        false
     }
 
     /// Returns the number of messages in the channel.
@@ -67,7 +67,7 @@ impl<T> Channel<T> {
     /// Returns the capacity of the channel.
     #[inline]
     pub fn capacity(&self) -> Option<usize> {
-        Some(0)
+        Some(1)
     }
 }
 

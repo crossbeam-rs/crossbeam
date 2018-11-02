@@ -298,25 +298,50 @@
 //!
 //! # Extra channels
 //!
-//! Two functions create special kinds of channels:
+//! Three functions can create special kinds of channels, and all of them return just a single
+//! [`Receiver`] handle:
 //!
 //! * [`after`] creates a channel that delivers a single message after a certain duration of time.
 //! * [`tick`] creates a channel that delivers messages periodically.
+//! * [`never`] creates a channel that never delivers a message.
 //! // TODO: never()
 //! // TODO: Example: never() is useful for disabling an operation in select
 //! // TODO: make sure these work in parse.rs:
 //! // TODO: - recv(foo.unwrap_or(&never()))
 //! // TODO: - recv(foo.unwrap_or(never()))
-//! // TODO: simplify cloning in after()?
+//! // TODO: simplify cloning in after() and remove the cloned wrapper. delete wrappers?
 //!
-//! These functions return a [`Receiver`] only. In such channels, messages appear automatically on
-//! demand, which makes them very efficient.
+//! These channels are very efficient because messages are lazily generated on receive operations.
+//!
+//! As an example, the `never` channel is useful for optionally adding a receive operation to the
+//! `select` macro:
+//!
+//! ```
+//! # #[macro_use]
+//! # extern crate crossbeam_channel;
+//! # fn main() {
+//! use crossbeam_channel::{never, unbounded};
+//!
+//! let (s, r) = unbounded();
+//! s.send(1).unwrap();
+//!
+//! // Suppose the receiver can be either `Some` or `None`.
+//! let r = Some(r);
+//!
+//! select! {
+//!     // Use the receiver if it exists or fall back to `never`.
+//!     recv(r.as_ref().unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(1)),
+//!     default => panic!(),
+//! }
+//! # }
+//! ```
 //!
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 //! [`unbounded`]: fn.unbounded.html
 //! [`bounded`]: fn.bounded.html
 //! [`after`]: fn.after.html
 //! [`tick`]: fn.tick.html
+//! [`never`]: fn.never.html
 //! [`send`]: struct.Sender.html#method.send
 //! [`recv`]: struct.Receiver.html#method.recv
 //! [`iter`]: struct.Receiver.html#method.iter
