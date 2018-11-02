@@ -1,38 +1,36 @@
 //! An asynchronous fibonacci sequence generator.
 
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 
 use std::thread;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{bounded, Sender};
 
-fn fibonacci(fib: Sender<u64>, quit: Receiver<()>) {
+fn fibonacci(sender: Sender<u64>) {
     let (mut x, mut y) = (0, 1);
     loop {
         select! {
-            send(fib, x) -> _ => {
-                let tmp = x;
-                x = y;
-                y = tmp + y;
-            }
-            recv(quit) -> _ => {
-                println!("quit");
-                return;
+            send(sender, x) -> res => match res {
+                Err(_) => return,
+                Ok(()) => {
+                    let tmp = x;
+                    x = y;
+                    y = tmp + y;
+                }
             }
         }
     }
 }
 
 fn main() {
-    let (fib_s, fib_r) = bounded(0);
-    let (quit_s, quit_r) = bounded(0);
+    let (s, r) = bounded(0);
 
     thread::spawn(move || {
-        for _ in 0..10 {
-            println!("{}", fib_r.recv().unwrap());
+        for num in r.iter().take(20) {
+            println!("{}", num);
         }
-        quit_s.send(()).unwrap();
+        drop(r);
     });
 
-    fibonacci(fib_s, quit_r);
+    fibonacci(s);
 }
