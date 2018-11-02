@@ -304,10 +304,10 @@
 //! * [`tick`] creates a channel that delivers messages periodically.
 //! // TODO: never()
 //! // TODO: Example: never() is useful for disabling an operation in select
-//! // TODO: grep for "case" and replace it with "operation" everywhere
 //! // TODO: make sure these work in parse.rs:
 //! // TODO: - recv(foo.unwrap_or(&never()))
 //! // TODO: - recv(foo.unwrap_or(never()))
+//! // TODO: simplify cloning in after()?
 //!
 //! These functions return a [`Receiver`] only. In such channels, messages appear automatically on
 //! demand, which makes them very efficient.
@@ -342,7 +342,7 @@ mod waker;
 
 pub use channel::{Receiver, Sender};
 pub use channel::{bounded, unbounded};
-pub use channel::{after, tick};
+pub use channel::{after, never, tick};
 pub use channel::{IntoIter, Iter, TryIter};
 
 pub use select::{Select, SelectedOperation};
