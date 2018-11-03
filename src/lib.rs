@@ -298,23 +298,20 @@
 //!
 //! # Extra channels
 //!
-//! Three functions can create special kinds of channels, and all of them return just a single
-//! [`Receiver`] handle:
+//! Three functions can create special kinds of channels, all of which return just a [`Receiver`]
+//! handle:
 //!
 //! * [`after`] creates a channel that delivers a single message after a certain duration of time.
 //! * [`tick`] creates a channel that delivers messages periodically.
-//! * [`never`] creates a channel that never delivers a message.
-//! // TODO: never()
-//! // TODO: Example: never() is useful for disabling an operation in select
+//! * [`never`] creates a channel that never delivers messages.
 //! // TODO: make sure these work in parse.rs:
 //! // TODO: - recv(foo.unwrap_or(&never()))
 //! // TODO: - recv(foo.unwrap_or(never()))
 //! // TODO: simplify cloning in after() and remove the cloned wrapper. delete wrappers?
 //!
-//! These channels are very efficient because messages are lazily generated on receive operations.
+//! These channels are very efficient because messages get lazily generated on receive operations.
 //!
-//! As an example, the `never` channel is useful for optionally adding a receive operation to the
-//! `select` macro:
+//! As an example, [`never`] can be used to disable a receive operation inside [`select`]:
 //!
 //! ```
 //! # #[macro_use]
@@ -325,12 +322,11 @@
 //! let (s, r) = unbounded();
 //! s.send(1).unwrap();
 //!
-//! // Suppose the receiver can be either `Some` or `None`.
-//! let r = Some(r);
+//! // This flag can be `true` or `false`.
+//! let enabled = true;
 //!
 //! select! {
-//!     // Use the receiver if it exists or fall back to `never`.
-//!     recv(r.as_ref().unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(1)),
+//!     recv(if enabled { r } else { never() }) -> msg => assert_eq!(msg, Ok(1)),
 //!     default => panic!(),
 //! }
 //! # }

@@ -1029,7 +1029,7 @@ impl<T> IntoIterator for Receiver<T> {
     }
 }
 
-/// A blocking iterator over messages in the channel.
+/// A blocking iterator over messages in a channel.
 ///
 /// Each call to `next` blocks waiting for the next message and then returns it. However, if the
 /// channel becomes empty and disconnected, it returns `None` without blocking.
@@ -1075,7 +1075,7 @@ impl<'a, T> fmt::Debug for Iter<'a, T> {
     }
 }
 
-/// A non-blocking iterator over messages in the channel.
+/// A non-blocking iterator over messages in a channel.
 ///
 /// Each call to `next` returns a message if there is one ready to be received. The iterator never
 /// blocks waiting for the next message.
@@ -1123,7 +1123,7 @@ impl<'a, T> fmt::Debug for TryIter<'a, T> {
     }
 }
 
-/// A blocking iterator over messages in the channel.
+/// A blocking iterator over messages in a channel.
 ///
 /// Each call to `next` blocks waiting for the next message and then returns it. However, if the
 /// channel becomes empty and disconnected, it returns `None` without blocking.
