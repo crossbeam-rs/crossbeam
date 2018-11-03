@@ -310,23 +310,24 @@
 //!
 //! These channels are very efficient because messages get lazily generated on receive operations.
 //!
-//! As an example, [`never`] can be used to optionally add a receive operation to [`select!`]:
+//! An example that prints elapsed time every 50 milliseconds for the duration of 1 second:
 //!
 //! ```
 //! # #[macro_use]
 //! # extern crate crossbeam_channel;
 //! # fn main() {
-//! use crossbeam_channel::{never, unbounded};
+//! use std::time::{Duration, Instant};
+//! use crossbeam_channel::{after, tick};
 //!
-//! let (s, r) = unbounded();
-//! s.send(1).unwrap();
+//! let start = Instant::now();
+//! let ticker = tick(Duration::from_millis(50));
+//! let timeout = after(Duration::from_secs(1));
 //!
-//! // This receiver can be a `Some` or a `None`.
-//! let r = Some(r);
-//!
-//! select! {
-//!     recv(r.as_ref().unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(1)),
-//!     default => println!("no messages"),
+//! loop {
+//!     select! {
+//!         recv(ticker) -> _ => println!("elapsed: {:?}", start.elapsed()),
+//!         recv(timeout) -> _ => break,
+//!     }
 //! }
 //! # }
 //! ```

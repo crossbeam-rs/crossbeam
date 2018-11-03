@@ -247,24 +247,19 @@ pub fn never<T>() -> Receiver<T> {
 ///
 /// # Examples
 ///
-/// Using a `tick` channel to periodically print the current time:
+/// Using a `tick` channel to periodically print elapsed time:
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
 /// use std::time::{Duration, Instant};
 /// use crossbeam_channel::tick;
 ///
-/// let period = Duration::from_millis(100);
-/// let tick = tick(period);
+/// let start = Instant::now();
+/// let ticker = tick(Duration::from_millis(100));
 ///
 /// for _ in 0..5 {
-///     select! {
-///         recv(tick) -> _ => println!("current time: {:?}", Instant::now())
-///     }
+///     ticker.recv().unwrap();
+///     println!("elapsed: {:?}", start.elapsed());
 /// }
-/// # }
 /// ```
 ///
 /// When messages get sent:
