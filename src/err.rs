@@ -85,7 +85,7 @@ pub enum RecvTimeoutError {
 
 /// An error returned from the [`try_select`] method.
 ///
-/// None of the channel operations were ready.
+/// Failed because none of the channel operations were ready.
 ///
 /// [`try_select`]: struct.Select.html#method.try_select
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -93,7 +93,7 @@ pub struct TrySelectError;
 
 /// An error returned from the [`select_timeout`] method.
 ///
-/// None of the channel operations became ready before the timeout.
+/// Failed because none of the channel operations became ready before the timeout.
 ///
 /// [`select_timeout`]: struct.Select.html#method.select_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]

@@ -362,13 +362,13 @@ where
 /// ready, and finally execute it. If multiple operations are ready at the same time, a random one
 /// among them is selected.
 ///
-/// An operation is considered to be ready if it doesn't have to block. Note that it might be ready
-/// even if it will simply return an error because the channel is disconnected.
+/// An operation is considered to be ready if it doesn't have to block. Note that it is ready even
+/// when it will simply return an error because the channel is disconnected.
 ///
-/// The [`select`] macro is a wrapper around `Select` with a more pleasant interface. However, it
-/// cannot select over a dynamically created list of channel operations.
+/// The [`select!`] macro is a convenience wrapper around `Select`. However, it cannot select over a
+/// dynamically created list of channel operations.
 ///
-/// [`select`]: macro.select.html
+/// [`select!`]: macro.select.html
 ///
 /// # Examples
 ///
@@ -421,7 +421,7 @@ impl<'a> Select<'a> {
 
     /// Adds a send operation.
     ///
-    /// Returns the index of the added operations.
+    /// Returns the index of the added operation.
     ///
     /// # Examples
     ///
@@ -451,7 +451,7 @@ impl<'a> Select<'a> {
 
     /// Adds a receive operation.
     ///
-    /// Returns the index of the added operations.
+    /// Returns the index of the added operation.
     ///
     /// # Examples
     ///
@@ -485,8 +485,8 @@ impl<'a> Select<'a> {
     /// the same time, a random one among them is selected. If none of the operations are ready, an
     /// error is returned.
     ///
-    /// An operation is considered to be ready if it doesn't have to block. Note that it might be
-    /// ready even if it will simply return an error because the channel is disconnected.
+    /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
+    /// even when it will simply return an error because the channel is disconnected.
     ///
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
@@ -537,8 +537,8 @@ impl<'a> Select<'a> {
     ///
     /// Once an operation becomes ready, it is selected and returned.
     ///
-    /// An operation is considered to be ready if it doesn't have to block. Note that it might be
-    /// ready even if it will simply return an error because the channel is disconnected.
+    /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
+    /// even when it will simply return an error because the channel is disconnected.
     ///
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
@@ -598,8 +598,8 @@ impl<'a> Select<'a> {
     /// ready at the same time, a random one among them is selected. If none of the operations
     /// become ready for the specified duration, an error is returned.
     ///
-    /// An operation is considered to be ready if it doesn't have to block. Note that it might be
-    /// ready even if it will simply return an error because the channel is disconnected.
+    /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
+    /// even when it will simply return an error because the channel is disconnected.
     ///
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
@@ -674,8 +674,10 @@ impl<'a> fmt::Debug for Select<'a> {
 ///
 /// To complete the operation, call [`send`] or [`recv`].
 ///
-/// Forgetting to complete the operation is an error and might lead to deadlocks in the future. If
-/// a `SelectedOperation` is dropped without completing the operation, a panic will occur.
+/// # Panics
+///
+/// Forgetting to complete the operation is an error and might lead to deadlocks. If a
+/// `SelectedOperation` is dropped without completion, a panic occurs.
 ///
 /// [`send`]: struct.SelectedOperation.html#method.send
 /// [`recv`]: struct.SelectedOperation.html#method.recv
@@ -700,17 +702,16 @@ impl<'a> SelectedOperation<'a> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::{unbounded, Select};
+    /// use crossbeam_channel::{bounded, Select};
     ///
-    /// let (s1, r1) = unbounded::<i32>();
-    /// let (s2, r2) = unbounded::<i32>();
-    /// let (s3, r3) = unbounded::<i32>();
-    /// s3.send(0).unwrap();
+    /// let (s1, r1) = bounded::<()>(0);
+    /// let (s2, r2) = bounded::<()>(0);
+    /// let (s3, r3) = bounded::<()>(1);
     ///
     /// let mut sel = Select::new();
-    /// let oper1 = sel.recv(&r1);
+    /// let oper1 = sel.send(&s1);
     /// let oper2 = sel.recv(&r2);
-    /// let oper3 = sel.recv(&r3);
+    /// let oper3 = sel.send(&s3);
     ///
     /// // Only the last operation is ready.
     /// let oper = sel.select();
@@ -718,7 +719,7 @@ impl<'a> SelectedOperation<'a> {
     /// assert_eq!(oper.index(), oper3);
     ///
     /// // Complete the operation.
-    /// oper.recv(&r3).unwrap();
+    /// oper.send(&s3, ()).unwrap();
     /// ```
     pub fn index(&self) -> usize {
         self.index
@@ -1701,11 +1702,11 @@ macro_rules! crossbeam_channel_internal {
 /// It is also possible to define a `default` case that gets executed if none of the operations are
 /// ready, either right away or for a certain duration of time.
 ///
-/// An operation is considered to be ready if it doesn't have to block. Note that it might be ready
-/// even if it will simply return an error because the channel is disconnected.
+/// An operation is considered to be ready if it doesn't have to block. Note that it is ready even
+/// when it will simply return an error because the channel is disconnected.
 ///
-/// The `select` macro is a wrapper around [`Select`] with a more pleasant interface. However, it
-/// cannot select over a dynamically created list of channel operations.
+/// The `select` macro is a convenience wrapper around [`Select`]. However, it cannot select over a
+/// dynamically created list of channel operations.
 ///
 /// [`Select`]: struct.Select.html
 ///

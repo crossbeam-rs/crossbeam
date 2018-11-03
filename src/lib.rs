@@ -27,7 +27,7 @@
 //! * [`bounded`] creates a channel of bounded capacity, i.e. there is a limit to how many messages
 //!   it can hold at a time.
 //!
-//! * [`unbounded`] creates a channel of unbounded capacity, i.e. it can contain any number of
+//! * [`unbounded`] creates a channel of unbounded capacity, i.e. it can hold any number of
 //!   messages at a time.
 //!
 //! Both functions return a [`Sender`] and a [`Receiver`], which represent the two opposite sides
@@ -235,9 +235,9 @@
 //! });
 //!
 //! // Collect all messages from the channel.
-//! //
 //! // Note that the call to `collect` blocks until the sender is dropped.
 //! let v: Vec<_> = r.iter().collect();
+//!
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
 //!
@@ -255,17 +255,21 @@
 //!
 //! // Receive all messages currently in the channel.
 //! let v: Vec<_> = r.try_iter().collect();
+//!
 //! assert_eq!(v, [1, 2, 3]);
 //! ```
 //!
 //! # Selection
 //!
-//! The [`select`] macro allows you to define a set of channel operations, wait until any one of
+//! The [`select!`] macro allows you to define a set of channel operations, wait until any one of
 //! them becomes ready, and finally execute it. If multiple operations are ready at the same time,
 //! a random one among them is selected.
 //!
 //! It is also possible to define a `default` case that gets executed if none of the operations are
 //! ready, either right away or for a certain duration of time.
+//!
+//! An operation is considered to be ready if it doesn't have to block. Note that it is ready even
+//! when it will simply return an error because the channel is disconnected.
 //!
 //! An example of receiving a message from two channels, whichever becomes ready first:
 //!
@@ -293,8 +297,7 @@
 //! ```
 //!
 //! If you need to select over a dynamically created list of channel operations, use [`Select`]
-//! instead. The [`select`] macro is just a wrapper around [`Select`] with a more pleasant
-//! interface.
+//! instead. The [`select!`] macro is just a convenience wrapper around [`Select`].
 //!
 //! # Extra channels
 //!
@@ -307,7 +310,7 @@
 //!
 //! These channels are very efficient because messages get lazily generated on receive operations.
 //!
-//! As an example, [`never`] can be used to optionally add a receive operation to [`select`]:
+//! As an example, [`never`] can be used to optionally add a receive operation to [`select!`]:
 //!
 //! ```
 //! # #[macro_use]
@@ -323,7 +326,7 @@
 //!
 //! select! {
 //!     recv(r.as_ref().unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(1)),
-//!     default => panic!(),
+//!     default => println!("no messages"),
 //! }
 //! # }
 //! ```
@@ -338,7 +341,7 @@
 //! [`recv`]: struct.Receiver.html#method.recv
 //! [`iter`]: struct.Receiver.html#method.iter
 //! [`try_iter`]: struct.Receiver.html#method.try_iter
-//! [`select`]: macro.select.html
+//! [`select!`]: macro.select.html
 //! [`Select`]: struct.Select.html
 //! [`Sender`]: struct.Sender.html
 //! [`Receiver`]: struct.Receiver.html

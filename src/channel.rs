@@ -41,8 +41,7 @@ enum ChannelFlavor<T> {
 
 /// Creates a channel of unbounded capacity.
 ///
-/// This type of channel can hold any number of messages, i.e. it can contain any number of
-/// messages at a time.
+/// This channel has a growable buffer that can hold any number of messages at a time.
 ///
 /// # Examples
 ///
@@ -52,7 +51,7 @@ enum ChannelFlavor<T> {
 ///
 /// let (s, r) = unbounded();
 ///
-/// // An expensive computation.
+/// // Computes the n-th Fibonacci number.
 /// fn fib(n: i32) -> i32 {
 ///     if n <= 1 {
 ///         n
@@ -61,12 +60,10 @@ enum ChannelFlavor<T> {
 ///     }
 /// }
 ///
-/// // Spawn a thread doing an expensive computation.
-/// thread::spawn(move || {
-///     s.send(fib(20)).unwrap();
-/// });
+/// // Spawn an asynchronous computation.
+/// thread::spawn(move || s.send(fib(20)).unwrap());
 ///
-/// // Let's see what's the result of the computation.
+/// // Print the result of the computation.
 /// println!("{}", r.recv().unwrap());
 /// ```
 pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
@@ -83,7 +80,7 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 
 /// Creates a channel of bounded capacity.
 ///
-/// This type of channel has an internal buffer of length `cap` in which messages get queued.
+/// This channel has a buffer that can hold at most `cap` messages at a time.
 ///
 /// A special case is zero-capacity channel, which cannot hold any messages. Instead, send and
 /// receive operations must appear at the same time in order to pair up and pass the message over.
@@ -157,7 +154,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 ///
 /// The channel is bounded with capacity of 1 and never gets disconnected. Exactly one message will
 /// be sent into the channel after `duration` elapses. The message is the instant at which it is
-/// sent into the channel.
+/// sent.
 ///
 /// # Examples
 ///
@@ -180,7 +177,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// # }
 /// ```
 ///
-/// Checking when the message was sent:
+/// When messages get sent:
 ///
 /// ```
 /// use std::thread;
@@ -214,7 +211,7 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 ///
 /// # Examples
 ///
-/// Using a `never` channel to optionally add a receive operation to [`select`]:
+/// Using a `never` channel to optionally add a receive operation to [`select!`]:
 ///
 /// ```
 /// # #[macro_use]
@@ -230,12 +227,12 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 ///
 /// select! {
 ///     recv(r.as_ref().unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(1)),
-///     default => panic!(),
+///     default => println!("no messages"),
 /// }
 /// # }
 /// ```
 ///
-/// [`select`]: macro.select.html
+/// [`select!`]: macro.select.html
 pub fn never<T>() -> Receiver<T> {
     Receiver {
         flavor: ReceiverFlavor::Never(flavors::never::Channel::new()),
@@ -245,8 +242,8 @@ pub fn never<T>() -> Receiver<T> {
 /// Creates a receiver that delivers messages periodically.
 ///
 /// The channel is bounded with capacity of 1 and never gets disconnected. Messages will be
-/// sent into the channel in intervals of `duration`. The channel always contains at most one
-/// message. Each message is the instant at which it is sent into the channel.
+/// sent into the channel in intervals of `duration`. Each message is the instant at which it is
+/// sent.
 ///
 /// # Examples
 ///
@@ -270,7 +267,7 @@ pub fn never<T>() -> Receiver<T> {
 /// # }
 /// ```
 ///
-/// Checking when the messages were sent:
+/// When messages get sent:
 ///
 /// ```
 /// use std::thread;
@@ -596,14 +593,13 @@ impl<T> fmt::Debug for Sender<T> {
 /// let (s, r) = unbounded();
 ///
 /// thread::spawn(move || {
-///     s.send("Hello world!");
-///     thread::sleep(Duration::from_secs(2));
-///     s.send("Delayed for 2 seconds");
+///     s.send(1);
+///     thread::sleep(Duration::from_secs(1));
+///     s.send(2);
 /// });
 ///
-/// println!("{}", r.recv().unwrap()); // Received immediately.
-/// println!("Waiting...");
-/// println!("{}", r.recv().unwrap()); // Received after 2 seconds.
+/// assert_eq!(r.recv(), Ok(1)); // Received immediately.
+/// assert_eq!(r.recv(), Ok(2)); // Received after 1 second.
 /// ```
 pub struct Receiver<T> {
     flavor: ReceiverFlavor<T>
@@ -756,7 +752,6 @@ impl<T> Receiver<T> {
     }
 
     /// Waits for a message to be received from the channel, but only for a limited time.
-    /// disconnected.
     ///
     /// If the channel is empty and not disconnected, this call will block until the receive
     /// operation can proceed or the operation times out. If the channel is empty and becomes
@@ -938,8 +933,11 @@ impl<T> Receiver<T> {
 
     /// A blocking iterator over messages in the channel.
     ///
-    /// Each call to `next` blocks waiting for the next message and then returns it. However, if
-    /// the channel becomes empty and disconnected, it returns `None` without blocking.
+    /// Each call to [`next`] blocks waiting for the next message and then returns it. However, if
+    /// the channel becomes empty and disconnected, it returns [`None`] without blocking.
+    ///
+    /// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
+    /// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
     ///
     /// # Examples
     ///
@@ -968,8 +966,10 @@ impl<T> Receiver<T> {
 
     /// A non-blocking iterator over messages in the channel.
     ///
-    /// Each call to `next` returns a message if there is one ready to be received. The iterator
+    /// Each call to [`next`] returns a message if there is one ready to be received. The iterator
     /// never blocks waiting for the next message.
+    ///
+    /// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
     ///
     /// # Examples
     ///
@@ -1058,8 +1058,11 @@ impl<T> IntoIterator for Receiver<T> {
 
 /// A blocking iterator over messages in a channel.
 ///
-/// Each call to `next` blocks waiting for the next message and then returns it. However, if the
-/// channel becomes empty and disconnected, it returns `None` without blocking.
+/// Each call to [`next`] blocks waiting for the next message and then returns it. However, if the
+/// channel becomes empty and disconnected, it returns [`None`] without blocking.
+///
+/// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
+/// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
 ///
 /// # Examples
 ///
@@ -1104,8 +1107,10 @@ impl<'a, T> fmt::Debug for Iter<'a, T> {
 
 /// A non-blocking iterator over messages in a channel.
 ///
-/// Each call to `next` returns a message if there is one ready to be received. The iterator never
-/// blocks waiting for the next message.
+/// Each call to [`next`] returns a message if there is one ready to be received. The iterator
+/// never blocks waiting for the next message.
+///
+/// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
 ///
 /// # Examples
 ///
@@ -1152,8 +1157,11 @@ impl<'a, T> fmt::Debug for TryIter<'a, T> {
 
 /// A blocking iterator over messages in a channel.
 ///
-/// Each call to `next` blocks waiting for the next message and then returns it. However, if the
-/// channel becomes empty and disconnected, it returns `None` without blocking.
+/// Each call to [`next`] blocks waiting for the next message and then returns it. However, if the
+/// channel becomes empty and disconnected, it returns [`None`] without blocking.
+///
+/// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
+/// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
 ///
 /// # Examples
 ///
