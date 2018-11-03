@@ -10,7 +10,6 @@ extern crate crossbeam_channel;
 
 use std::ops::Deref;
 
-use crossbeam_channel as cc;
 use crossbeam_channel::{bounded, unbounded};
 
 #[test]
@@ -232,6 +231,8 @@ fn evaluate() {
 
 #[test]
 fn deref() {
+    use crossbeam_channel as cc;
+
     struct Sender<T>(cc::Sender<T>);
     struct Receiver<T>(cc::Receiver<T>);
 
