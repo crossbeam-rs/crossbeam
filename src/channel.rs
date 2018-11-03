@@ -214,7 +214,7 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 ///
 /// # Examples
 ///
-/// Using an `after` channel to disable a receive operation inside [`select`]:
+/// Using a `never` channel to optionally add a receive operation to [`select`]:
 ///
 /// ```
 /// # #[macro_use]
@@ -225,11 +225,11 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// let (s, r) = unbounded();
 /// s.send(1).unwrap();
 ///
-/// // This flag can be `true` or `false`.
-/// let enabled = true;
+/// // This receiver can be a `Some` or a `None`.
+/// let r = Some(r);
 ///
 /// select! {
-///     recv(if enabled { &r } else { &never() }) -> msg => assert_eq!(msg, Ok(1)),
+///     recv(r.as_ref().unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(1)),
 ///     default => panic!(),
 /// }
 /// # }
