@@ -37,8 +37,8 @@ fn seq_sync(cap: usize) {
 fn spsc_async() {
     let (tx, rx) = mpsc::channel();
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
             for i in 0..MESSAGES {
                 tx.send(message(i)).unwrap();
             }
@@ -53,8 +53,8 @@ fn spsc_async() {
 fn spsc_sync(cap: usize) {
     let (tx, rx) = mpsc::sync_channel(cap);
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
             for i in 0..MESSAGES {
                 tx.send(message(i)).unwrap();
             }
@@ -69,10 +69,10 @@ fn spsc_sync(cap: usize) {
 fn mpsc_async() {
     let (tx, rx) = mpsc::channel();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
             let tx = tx.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i)).unwrap();
                 }
@@ -88,10 +88,10 @@ fn mpsc_async() {
 fn mpsc_sync(cap: usize) {
     let (tx, rx) = mpsc::sync_channel(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
             let tx = tx.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i)).unwrap();
                 }
@@ -108,10 +108,10 @@ fn select_rx_async() {
     assert_eq!(THREADS, 4);
     let mut chans = (0..THREADS).map(|_| mpsc::channel()).collect::<Vec<_>>();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for &(ref tx, _) in &chans {
             let tx = tx.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i)).unwrap();
                 }
@@ -139,10 +139,10 @@ fn select_rx_sync(cap: usize) {
     assert_eq!(THREADS, 4);
     let mut chans = (0..THREADS).map(|_| mpsc::sync_channel(cap)).collect::<Vec<_>>();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for &(ref tx, _) in &chans {
             let tx = tx.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i)).unwrap();
                 }

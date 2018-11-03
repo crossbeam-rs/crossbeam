@@ -31,8 +31,8 @@ fn seq(cap: Option<usize>) {
 fn spsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..MESSAGES {
                 tx.send(message(i)).unwrap();
             }
@@ -47,9 +47,9 @@ fn spsc(cap: Option<usize>) {
 fn mpsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i)).unwrap();
                 }
@@ -65,9 +65,9 @@ fn mpsc(cap: Option<usize>) {
 fn mpmc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i)).unwrap();
                 }
@@ -75,7 +75,7 @@ fn mpmc(cap: Option<usize>) {
         }
 
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
                     rx.recv().unwrap();
                 }
@@ -87,10 +87,10 @@ fn mpmc(cap: Option<usize>) {
 fn select_rx(cap: Option<usize>) {
     let chans = (0..THREADS).map(|_| new(cap)).collect::<Vec<_>>();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for (tx, _) in &chans {
             let tx = tx.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i)).unwrap();
                 }
@@ -112,9 +112,9 @@ fn select_rx(cap: Option<usize>) {
 fn select_both(cap: Option<usize>) {
     let chans = (0..THREADS).map(|_| new(cap)).collect::<Vec<_>>();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     let mut sel = Select::new();
                     for (tx, _) in &chans {
@@ -128,7 +128,7 @@ fn select_both(cap: Option<usize>) {
         }
 
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
                     let mut sel = Select::new();
                     for (_, rx) in &chans {

@@ -31,8 +31,8 @@ fn seq(cap: Option<usize>) {
 fn spsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..MESSAGES {
                 tx.send(message(i));
             }
@@ -47,9 +47,9 @@ fn spsc(cap: Option<usize>) {
 fn mpsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i));
                 }
@@ -65,9 +65,9 @@ fn mpsc(cap: Option<usize>) {
 fn mpmc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i));
                 }
@@ -75,7 +75,7 @@ fn mpmc(cap: Option<usize>) {
         }
 
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
                     rx.recv().unwrap();
                 }
@@ -88,10 +88,10 @@ fn select_rx(cap: Option<usize>) {
     assert_eq!(THREADS, 4);
     let chans = (0..THREADS).map(|_| new(cap)).collect::<Vec<_>>();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for (tx, _) in &chans {
             let tx = tx.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
                     tx.send(message(i));
                 }
@@ -117,10 +117,10 @@ fn select_both(cap: Option<usize>) {
     assert_eq!(THREADS, 4);
     let chans = (0..THREADS).map(|_| new(cap)).collect::<Vec<_>>();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
             let chans = chans.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 let tx0 = &chans[0].0;
                 let tx1 = &chans[1].0;
                 let tx2 = &chans[2].0;
@@ -139,7 +139,7 @@ fn select_both(cap: Option<usize>) {
 
         for _ in 0..THREADS {
             let chans = chans.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 let rx0 = &chans[0].1;
                 let rx1 = &chans[1].1;
                 let rx2 = &chans[2].1;

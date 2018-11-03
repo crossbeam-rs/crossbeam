@@ -28,14 +28,14 @@ fn spsc() {
     let tx = Deque::new();
     let rx = tx.stealer();
 
-    crossbeam::scope(|s| {
-        s.spawn(move || {
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
             for i in 0..MESSAGES {
                 tx.push(i as i32);
             }
         });
 
-        s.spawn(move || {
+        scope.spawn(move || {
             for _ in 0..MESSAGES {
                 loop {
                     match rx.steal() {

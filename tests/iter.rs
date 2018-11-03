@@ -59,9 +59,8 @@ fn recv_try_iter() {
     let (request_s, request_r) = unbounded();
     let (response_s, response_r) = unbounded();
 
-    crossbeam::scope(|s| {
-        // Request `x`s until we have `6`.
-        s.spawn(move || {
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
             let mut count = 0;
             loop {
                 for x in response_r.try_iter() {

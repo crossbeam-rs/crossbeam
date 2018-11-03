@@ -25,8 +25,8 @@ fn spsc(cap: usize) {
     let mut tx = Bus::new(cap);
     let mut rx = tx.add_rx();
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..MESSAGES {
                 tx.broadcast(message(i));
             }

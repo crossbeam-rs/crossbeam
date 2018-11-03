@@ -24,8 +24,8 @@ fn seq() {
 fn spsc() {
     let q = SegQueue::new();
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..MESSAGES {
                 q.push(message(i));
             }
@@ -46,9 +46,9 @@ fn spsc() {
 fn mpsc() {
     let q = SegQueue::new();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     q.push(message(i));
                 }
@@ -70,9 +70,9 @@ fn mpsc() {
 fn mpmc() {
     let q = SegQueue::new();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     q.push(message(i));
                 }
@@ -80,7 +80,7 @@ fn mpmc() {
         }
 
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
                     loop {
                         if q.try_pop().is_none() {
