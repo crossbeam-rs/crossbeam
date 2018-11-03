@@ -208,7 +208,34 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
     }
 }
 
-/// TODO
+/// Creates a receiver that never delivers messages.
+///
+/// The channel is always empty and never gets disconnected.
+///
+/// # Examples
+///
+/// Using an `after` channel to disable a receive operation inside [`select`]:
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate crossbeam_channel;
+/// # fn main() {
+/// use crossbeam_channel::{never, unbounded};
+///
+/// let (s, r) = unbounded();
+/// s.send(1).unwrap();
+///
+/// // This flag can be `true` or `false`.
+/// let enabled = true;
+///
+/// select! {
+///     recv(if enabled { &r } else { &never() }) -> msg => assert_eq!(msg, Ok(1)),
+///     default => panic!(),
+/// }
+/// # }
+/// ```
+///
+/// [`select`]: macro.select.html
 pub fn never<T>() -> Receiver<T> {
     Receiver {
         flavor: ReceiverFlavor::Never(flavors::never::Channel::new()),

@@ -307,7 +307,6 @@
 //! // TODO: make sure these work in parse.rs:
 //! // TODO: - recv(foo.unwrap_or(&never()))
 //! // TODO: - recv(foo.unwrap_or(never()))
-//! // TODO: simplify cloning in after() and remove the cloned wrapper. delete all wrappers?
 //!
 //! These channels are very efficient because messages get lazily generated on receive operations.
 //!
@@ -326,7 +325,7 @@
 //! let enabled = true;
 //!
 //! select! {
-//!     recv(if enabled { r } else { never() }) -> msg => assert_eq!(msg, Ok(1)),
+//!     recv(if enabled { &r } else { &never() }) -> msg => assert_eq!(msg, Ok(1)),
 //!     default => panic!(),
 //! }
 //! # }
