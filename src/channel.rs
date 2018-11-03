@@ -177,14 +177,14 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// # }
 /// ```
 ///
-/// When messages get sent:
+/// When the message gets sent:
 ///
 /// ```
 /// use std::thread;
 /// use std::time::{Duration, Instant};
 /// use crossbeam_channel::after;
 ///
-/// // Converts a number into a `Duration` in milliseconds.
+/// // Converts a number of milliseconds into a `Duration`.
 /// let ms = |ms| Duration::from_millis(ms);
 ///
 /// // Returns `true` if `a` and `b` are very close `Instant`s.
@@ -211,23 +211,34 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 ///
 /// # Examples
 ///
-/// Using a `never` channel to optionally add a receive operation to [`select!`]:
+/// Using a `never` channel to optionally add a timeout to [`select!`]:
 ///
 /// ```
 /// # #[macro_use]
 /// # extern crate crossbeam_channel;
 /// # fn main() {
-/// use crossbeam_channel::{never, unbounded};
+/// use std::thread;
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel::{after, never, unbounded};
 ///
 /// let (s, r) = unbounded();
-/// s.send(1).unwrap();
 ///
-/// // This receiver can be a `Some` or a `None`.
-/// let r = Some(r);
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     s.send(1).unwrap();
+/// });
+///
+/// // This duration can be a `Some` or a `None`.
+/// let duration = Some(Duration::from_millis(100));
+///
+/// // Create a channel that times out after the specified duration.
+/// let timeout = duration
+///     .map(|d| after(d))
+///     .unwrap_or(never());
 ///
 /// select! {
-///     recv(r.as_ref().unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(1)),
-///     default => println!("no messages"),
+///     recv(r) -> msg => assert_eq!(msg, Ok(1)),
+///     recv(timeout) -> _ => println!("timed out"),
 /// }
 /// # }
 /// ```
@@ -269,7 +280,7 @@ pub fn never<T>() -> Receiver<T> {
 /// use std::time::{Duration, Instant};
 /// use crossbeam_channel::tick;
 ///
-/// // Converts a number into a `Duration` in milliseconds.
+/// // Converts a number of milliseconds into a `Duration`.
 /// let ms = |ms| Duration::from_millis(ms);
 ///
 /// // Returns `true` if `a` and `b` are very close `Instant`s.

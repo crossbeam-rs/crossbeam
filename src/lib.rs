@@ -186,7 +186,7 @@
 //! * Blocking (waits until the operation succeeds or the channel becomes disconnected).
 //! * Blocking with a timeout (blocks only for a certain duration of time).
 //!
-//! Here's a simple example showing the difference between non-blocking and blocking operations:
+//! A simple example showing the difference between non-blocking and blocking operations:
 //!
 //! ```
 //! use crossbeam_channel::{bounded, RecvError, TryRecvError};
@@ -271,7 +271,7 @@
 //! An operation is considered to be ready if it doesn't have to block. Note that it is ready even
 //! when it will simply return an error because the channel is disconnected.
 //!
-//! An example of receiving a message from two channels, whichever becomes ready first:
+//! An example of receiving a message from two channels:
 //!
 //! ```
 //! # #[macro_use]
@@ -287,7 +287,7 @@
 //! thread::spawn(move || s1.send(10).unwrap());
 //! thread::spawn(move || s2.send(20).unwrap());
 //!
-//! // Only one of these two receive operations will be executed.
+//! // At most one of these two receive operations will be executed.
 //! select! {
 //!     recv(r1) -> msg => assert_eq!(msg, Ok(10)),
 //!     recv(r2) -> msg => assert_eq!(msg, Ok(20)),
