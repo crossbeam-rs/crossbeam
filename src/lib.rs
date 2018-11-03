@@ -260,7 +260,7 @@
 //!
 //! # Selection
 //!
-//! The [`select`] macro allows you to define a set of channel operations, block until any one of
+//! The [`select`] macro allows you to define a set of channel operations, wait until any one of
 //! them becomes ready, and finally execute it. If multiple operations are ready at the same time,
 //! a random one among them is selected.
 //!
@@ -307,7 +307,7 @@
 //! // TODO: make sure these work in parse.rs:
 //! // TODO: - recv(foo.unwrap_or(&never()))
 //! // TODO: - recv(foo.unwrap_or(never()))
-//! // TODO: simplify cloning in after() and remove the cloned wrapper. delete wrappers?
+//! // TODO: simplify cloning in after() and remove the cloned wrapper. delete all wrappers?
 //!
 //! These channels are very efficient because messages get lazily generated on receive operations.
 //!

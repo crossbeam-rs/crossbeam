@@ -356,9 +356,9 @@ where
     }
 }
 
-/// Waits on a set of channel operations.
+/// Selects from a set of channel operations.
 ///
-/// `Select` allows you to define a set of channel operations, block until any one of them becomes
+/// `Select` allows you to define a set of channel operations, wait until any one of them becomes
 /// ready, and finally execute it. If multiple operations are ready at the same time, a random one
 /// among them is selected.
 ///
@@ -1692,11 +1692,11 @@ macro_rules! crossbeam_channel_internal {
     };
 }
 
-/// Waits on a set of channel operations.
+/// Selects from a set of channel operations.
 ///
-/// This macro allows you to define a set of channel operations, block until any one of them
-/// becomes ready, and finally execute it. If multiple operations are ready at the same time, a
-/// random one among them is selected.
+/// This macro allows you to define a set of channel operations, wait until any one of them becomes
+/// ready, and finally execute it. If multiple operations are ready at the same time, a random one
+/// among them is selected.
 ///
 /// It is also possible to define a `default` case that gets executed if none of the operations are
 /// ready, either right away or for a certain duration of time.
@@ -1735,7 +1735,7 @@ macro_rules! crossbeam_channel_internal {
 /// # }
 /// ```
 ///
-/// Wait on a set of operations without blocking:
+/// Select from a set of operations without blocking:
 ///
 /// ```
 /// # #[macro_use]

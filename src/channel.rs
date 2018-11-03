@@ -593,7 +593,7 @@ pub enum ReceiverFlavor<T> {
     /// The tick flavor.
     Tick(flavors::tick::Channel),
 
-    /// TODO
+    /// The never flavor.
     Never(flavors::never::Channel<T>),
 }
 
