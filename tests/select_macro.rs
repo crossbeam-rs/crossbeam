@@ -7,6 +7,7 @@ extern crate crossbeam;
 extern crate crossbeam_channel;
 
 use std::any::Any;
+use std::cell::Cell;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -824,4 +825,40 @@ fn fairness1() {
 
     let sum: usize = hits.iter().sum();
     assert!(hits.iter().all(|x| *x >= sum / hits.len() / 2));
+}
+
+#[test]
+fn fairness2() {
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = unbounded::<()>();
+    let (s2, r2) = bounded::<()>(1);
+    let (s3, r3) = bounded::<()>(0);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
+            let (hole, _r) = bounded(0);
+
+            for _ in 0..COUNT {
+                let s1 = if s1.is_empty() { &s1 } else { &hole };
+                let s2 = if s2.is_empty() { &s2 } else { &hole };
+
+                select! {
+                    send(s1, ()) -> res => assert!(res.is_ok()),
+                    send(s2, ()) -> res => assert!(res.is_ok()),
+                    send(s3, ()) -> res => assert!(res.is_ok()),
+                }
+            }
+        });
+
+        let hits = vec![Cell::new(0usize); 3];
+        for _ in 0..COUNT {
+            select! {
+                recv(r1) -> _ => hits[0].set(hits[0].get() + 1),
+                recv(r2) -> _ => hits[1].set(hits[1].get() + 1),
+                recv(r3) -> _ => hits[2].set(hits[2].get() + 1),
+            }
+        }
+        assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 10));
+    });
 }

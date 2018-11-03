@@ -304,9 +304,6 @@
 //! * [`after`] creates a channel that delivers a single message after a certain duration of time.
 //! * [`tick`] creates a channel that delivers messages periodically.
 //! * [`never`] creates a channel that never delivers messages.
-//! // TODO: make sure these work in parse.rs:
-//! // TODO: - recv(foo.unwrap_or(&never()))
-//! // TODO: - recv(foo.unwrap_or(never()))
 //!
 //! These channels are very efficient because messages get lazily generated on receive operations.
 //!

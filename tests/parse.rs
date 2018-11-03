@@ -10,7 +10,7 @@ extern crate crossbeam_channel;
 
 use std::ops::Deref;
 
-use crossbeam_channel::{bounded, unbounded};
+use crossbeam_channel::{bounded, never, unbounded};
 
 #[test]
 fn references() {
@@ -22,6 +22,14 @@ fn references() {
     select! {
         send(&&&&s, 0) -> _ => {}
         recv(&&&&r) -> _ => {}
+    }
+    select! {
+        recv(Some(&r).unwrap_or(&never())) -> _ => {},
+        default => {}
+    }
+    select! {
+        recv(Some(r).unwrap_or(never())) -> _ => {},
+        default => {}
     }
 }
 

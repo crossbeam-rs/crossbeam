@@ -1,6 +1,8 @@
-//! Tests copied from Go and rewritten in Rust.
+//! Tests copied from Go and manually rewritten in Rust.
 //!
 //! # Copyright
+//!
+//! The original tests can be found in the Go source distribution.
 //!
 //! Authors: https://golang.org/AUTHORS
 //! License: https://golang.org/LICENSE

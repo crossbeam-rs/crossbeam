@@ -55,7 +55,7 @@ impl<T> Channel<T> {
     /// Returns `true` if the channel is full.
     #[inline]
     pub fn is_full(&self) -> bool {
-        false
+        true
     }
 
     /// Returns the number of messages in the channel.
@@ -67,7 +67,7 @@ impl<T> Channel<T> {
     /// Returns the capacity of the channel.
     #[inline]
     pub fn capacity(&self) -> Option<usize> {
-        Some(1)
+        Some(0)
     }
 }
 

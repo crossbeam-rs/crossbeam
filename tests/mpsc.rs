@@ -1,5 +1,7 @@
 //! Tests copied from `std::sync::mpsc`.
 //!
+//! # Copyright
+//!
 //! This is a copy of tests for the `std::sync::mpsc` channels from the stanard library, but
 //! modified to work with `crossbeam-channel` instead.
 //!
@@ -8,8 +10,6 @@
 //! - Replace `box` syntax with `Box::new`.
 //! - Replace all uses of `Select` with `select!`.
 //! - Change the imports.
-//!
-//! # Copyright
 //!
 //! License: https://github.com/rust-lang/rust/blob/master/COPYRIGHT
 //! Source: https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc

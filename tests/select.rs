@@ -1144,7 +1144,7 @@ fn fairness1() {
 }
 
 #[test]
-fn fairness2() { // TODO: also use in select_loop.rs, but with never
+fn fairness2() {
     const COUNT: usize = 10_000;
 
     let (s1, r1) = unbounded::<()>();

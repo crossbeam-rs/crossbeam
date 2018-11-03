@@ -155,9 +155,9 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 
 /// Creates a receiver that delivers a message after a certain duration of time.
 ///
-/// The channel is bounded with capacity of 1 and is never disconnected. Exactly one message will
-/// be automatically sent into the channel after `duration` elapses. The message is the instant at
-/// which it is sent into the channel.
+/// The channel is bounded with capacity of 1 and never gets disconnected. Exactly one message will
+/// be sent into the channel after `duration` elapses. The message is the instant at which it is
+/// sent into the channel.
 ///
 /// # Examples
 ///
@@ -210,7 +210,7 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 
 /// Creates a receiver that never delivers messages.
 ///
-/// The channel is always empty and never gets disconnected.
+/// The channel is bounded with capacity of 0 and never gets disconnected.
 ///
 /// # Examples
 ///
@@ -244,9 +244,9 @@ pub fn never<T>() -> Receiver<T> {
 
 /// Creates a receiver that delivers messages periodically.
 ///
-/// The channel is bounded with capacity of 1 and is never disconnected. Messages will be
-/// automatically sent into the channel in intervals of `duration`. The channel always contains at
-/// most one message. Each message is the instant at which it is sent into the channel.
+/// The channel is bounded with capacity of 1 and never gets disconnected. Messages will be
+/// sent into the channel in intervals of `duration`. The channel always contains at most one
+/// message. Each message is the instant at which it is sent into the channel.
 ///
 /// # Examples
 ///
