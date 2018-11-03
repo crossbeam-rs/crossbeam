@@ -1,6 +1,14 @@
-//! Translation of a simple program demonstrating CSP from Go to Rust.
+//! Using `select!` to send and receive on the same channel at the same time.
 //!
-//! The original program in Go follows:
+//! # Copyright
+//!
+//! This example is based on the following program in Go.
+//!
+//! Author: Stefan Nilsson
+//! License: Creative Commons Attribution 3.0 Unported License.
+//! Sources:
+//!   - https://web.archive.org/web/20171209034309/https://www.nada.kth.se/~snilsson/concurrency
+//!   - http://www.nada.kth.se/~snilsson/concurrency/src/matching.go
 //!
 //! ```go
 //! func main() {
@@ -32,12 +40,6 @@
 //!     wg.Done()
 //! }
 //! ```
-//!
-//! # Copyright
-//!
-//! Author: Stefan Nilsson
-//! License: Creative Commons Attribution 3.0 Unported License.
-//! Source: https://web.archive.org/web/20171209034309/https://www.nada.kth.se/~snilsson/concurrency
 
 extern crate crossbeam;
 #[macro_use]
@@ -64,6 +66,7 @@ fn main() {
         }
     });
 
+    // Check if there is a pending send operation.
     if let Ok(name) = r.try_recv() {
         println!("No one received {}’s message.", name);
     }
