@@ -5,9 +5,7 @@
 [![Cargo](https://img.shields.io/crates/v/crossbeam-channel.svg)](https://crates.io/crates/crossbeam-channel)
 [![Documentation](https://docs.rs/crossbeam-channel/badge.svg)](https://docs.rs/crossbeam-channel)
 
-Crossbeam's channels are an alternative to the [`std::sync::mpsc`] channels
-provided by the standard library. They are an improvement in terms of
-performance, ergonomics, and features.
+This library is an alternative to [`std::sync::mpsc`] with more features and better performance.
 
 [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 
