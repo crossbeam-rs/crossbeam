@@ -1,7 +1,7 @@
 extern crate crossbeam;
-#[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
 
+use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 use shared::message;
 
 mod shared;
@@ -9,10 +9,10 @@ mod shared;
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
-fn new<T>(cap: Option<usize>) -> (channel::Sender<T>, channel::Receiver<T>) {
+fn new<T>(cap: Option<usize>) -> (Sender<T>, Receiver<T>) {
     match cap {
-        None => channel::unbounded(),
-        Some(cap) => channel::bounded(cap),
+        None => unbounded(),
+        Some(cap) => bounded(cap),
     }
 }
 
@@ -20,7 +20,7 @@ fn seq(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
     for i in 0..MESSAGES {
-        tx.send(message(i));
+        tx.send(message(i)).unwrap();
     }
 
     for _ in 0..MESSAGES {
@@ -31,10 +31,10 @@ fn seq(cap: Option<usize>) {
 fn spsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..MESSAGES {
-                tx.send(message(i));
+                tx.send(message(i)).unwrap();
             }
         });
 
@@ -47,11 +47,11 @@ fn spsc(cap: Option<usize>) {
 fn mpsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i));
+                    tx.send(message(i)).unwrap();
                 }
             });
         }
@@ -65,17 +65,17 @@ fn mpsc(cap: Option<usize>) {
 fn mpmc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i));
+                    tx.send(message(i)).unwrap();
                 }
             });
         }
 
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
                     rx.recv().unwrap();
                 }
@@ -87,20 +87,24 @@ fn mpmc(cap: Option<usize>) {
 fn select_rx(cap: Option<usize>) {
     let chans = (0..THREADS).map(|_| new(cap)).collect::<Vec<_>>();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for (tx, _) in &chans {
             let tx = tx.clone();
-            s.spawn(move || {
+            scope.spawn(move || {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i));
+                    tx.send(message(i)).unwrap();
                 }
             });
         }
 
         for _ in 0..MESSAGES {
-            select! {
-                recv(chans.iter().map(|c| &c.1), msg, _) => assert!(msg.is_some()),
+            let mut sel = Select::new();
+            for (_, rx) in &chans {
+                sel.recv(rx);
             }
+            let case = sel.select();
+            let index = case.index();
+            case.recv(&chans[index].1).unwrap();
         }
     });
 }
@@ -108,23 +112,31 @@ fn select_rx(cap: Option<usize>) {
 fn select_both(cap: Option<usize>) {
     let chans = (0..THREADS).map(|_| new(cap)).collect::<Vec<_>>();
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
-                    select! {
-                        send(chans.iter().map(|c| &c.0), message(i), _) => {}
+                    let mut sel = Select::new();
+                    for (tx, _) in &chans {
+                        sel.send(tx);
                     }
+                    let case = sel.select();
+                    let index = case.index();
+                    case.send(&chans[index].0, message(i)).unwrap();
                 }
             });
         }
 
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
-                    select! {
-                        recv(chans.iter().map(|c| &c.1), msg) => assert!(msg.is_some()),
+                    let mut sel = Select::new();
+                    for (_, rx) in &chans {
+                        sel.recv(rx);
                     }
+                    let case = sel.select();
+                    let index = case.index();
+                    case.recv(&chans[index].1).unwrap();
                 }
             });
         }

@@ -1,6 +1,43 @@
 //! Bounded channel based on a preallocated array.
 //!
 //! This flavor has a fixed, positive capacity.
+//!
+//! # Copyright
+//!
+//! The implementation is based on Dmitry Vyukov's bounded MPMC queue.
+//!
+//! Author: Dmitry Vyukov
+//! License: http://www.1024cores.net/home/code-license
+//! Sources:
+//!   - http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
+//!   - https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
+//!
+//! ```text
+//! Copyright (c) 2010-2011 Dmitry Vyukov. All rights reserved.
+//!
+//! Redistribution and use in source and binary forms, with or without modification, are permitted
+//! provided that the following conditions are met:
+//!
+//!    1. Redistributions of source code must retain the above copyright notice, this list of
+//!       conditions and the following disclaimer.
+//!
+//!    2. Redistributions in binary form must reproduce the above copyright notice, this list
+//!       of conditions and the following disclaimer in the documentation and/or other materials
+//!       provided with the distribution.
+//!
+//! THIS SOFTWARE IS PROVIDED BY DMITRY VYUKOV "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//! INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+//! PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL DMITRY VYUKOV OR CONTRIBUTORS BE LIABLE
+//! FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+//! BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+//! OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+//! STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+//! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//!
+//! The views and conclusions contained in the software and documentation are those of the authors
+//! and should not be interpreted as representing official policies, either expressed or implied,
+//! of Dmitry Vyukov.
+//! ```
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -11,11 +48,11 @@ use std::time::Instant;
 
 use crossbeam_utils::CachePadded;
 
-use internal::channel::RecvNonblocking;
-use internal::context::Context;
-use internal::select::{Operation, SelectHandle, Selected, Token};
-use internal::utils::Backoff;
-use internal::waker::SyncWaker;
+use context::Context;
+use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use select::{Operation, SelectHandle, Selected, Token};
+use utils::Backoff;
+use waker::SyncWaker;
 
 /// A slot in a channel.
 struct Slot<T> {
@@ -51,11 +88,6 @@ impl Default for ArrayToken {
 }
 
 /// Bounded channel based on a preallocated array.
-///
-/// The implementation is based on Dmitry Vyukov's bounded MPMC queue:
-///
-/// - http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
-/// - https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
 pub struct Channel<T> {
     /// The head of the channel.
     ///
@@ -84,13 +116,13 @@ pub struct Channel<T> {
     /// A stamp with the value of `{ lap: 1, index: 0 }`.
     one_lap: usize,
 
-    /// Equals `true` when the channel is closed.
-    is_closed: AtomicBool,
+    /// Equals `true` when the channel is disconnected.
+    is_disconnected: AtomicBool,
 
     /// Senders waiting while the channel is full.
     senders: SyncWaker,
 
-    /// Receivers waiting while the channel is empty and not closed.
+    /// Receivers waiting while the channel is empty and not disconnected.
     receivers: SyncWaker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
@@ -98,11 +130,11 @@ pub struct Channel<T> {
 }
 
 impl<T> Channel<T> {
-    /// Creates a bounded channel with capacity of `cap`.
+    /// Creates a bounded channel of capacity `cap`.
     ///
     /// # Panics
     ///
-    /// Panics if the capacity is not in the range `1 .. usize::max_value() / 4 + 1`.
+    /// Panics if the capacity is not in the range `1 ..= usize::max_value() / 4`.
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
@@ -146,7 +178,7 @@ impl<T> Channel<T> {
             buffer,
             cap,
             one_lap,
-            is_closed: AtomicBool::new(false),
+            is_disconnected: AtomicBool::new(false),
             head: CachePadded::new(AtomicUsize::new(head)),
             tail: CachePadded::new(AtomicUsize::new(tail)),
             senders: SyncWaker::new(),
@@ -167,6 +199,13 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token) -> bool {
+        // If the channel is disconnected, return early.
+        if self.is_disconnected() {
+            token.array.slot = ptr::null();
+            token.array.stamp = 0;
+            return true;
+        }
+
         let mut backoff = Backoff::new();
 
         loop {
@@ -218,8 +257,12 @@ impl<T> Channel<T> {
     }
 
     /// Writes a message into the channel.
-    pub unsafe fn write(&self, token: &mut Token, msg: T) {
-        debug_assert!(!token.array.slot.is_null());
+    pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
+        // If there is no slot, the channel is disconnected.
+        if token.array.slot.is_null() {
+            return Err(msg);
+        }
+
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
         // Write the message into the slot and update the stamp.
@@ -228,6 +271,7 @@ impl<T> Channel<T> {
 
         // Wake a sleeping receiver.
         self.receivers.wake_one();
+        Ok(())
     }
 
     /// Attempts to reserve a slot for receiving a message.
@@ -274,11 +318,11 @@ impl<T> Channel<T> {
                 // ...and if the tail lags one lap behind the head as well, that means the channel
                 // is empty.
                 if tail.wrapping_add(self.one_lap) == head {
-                    // If the channel is closed...
-                    if self.is_closed() {
+                    // If the channel is disconnected...
+                    if self.is_disconnected() {
                         // ...and still empty...
                         if self.tail.load(Ordering::SeqCst) == tail {
-                            // ...then receive `None`.
+                            // ...then receive an error.
                             token.array.slot = ptr::null();
                             token.array.stamp = 0;
                             return true;
@@ -295,10 +339,10 @@ impl<T> Channel<T> {
     }
 
     /// Reads a message from the channel.
-    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+    pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.array.slot.is_null() {
-            // The channel is closed.
-            return None;
+            // The channel is disconnected.
+            return Err(());
         }
 
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
@@ -309,22 +353,31 @@ impl<T> Channel<T> {
 
         // Wake a sleeping sender.
         self.senders.wake_one();
+        Ok(msg)
+    }
 
-        Some(msg)
+    /// Attempts to send a message into the channel.
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        let token = &mut Token::default();
+        if self.start_send(token) {
+            unsafe {
+                self.write(token, msg).map_err(TrySendError::Disconnected)
+            }
+        } else {
+            Err(TrySendError::Full(msg))
+        }
     }
 
     /// Sends a message into the channel.
-    pub fn send(&self, msg: T) {
+    pub fn send(&self, msg: T, deadline: Option<Instant>) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
         loop {
             // Try sending a message several times.
             let mut backoff = Backoff::new();
             loop {
                 if self.start_send(token) {
-                    unsafe {
-                        self.write(token, msg);
-                    }
-                    return;
+                    let res = unsafe { self.write(token, msg) };
+                    return res.map_err(SendTimeoutError::Disconnected);
                 }
                 if !backoff.snooze() {
                     break;
@@ -337,35 +390,53 @@ impl<T> Channel<T> {
                 self.senders.register(oper, cx);
 
                 // Has the channel become ready just now?
-                if !self.is_full() {
+                if !self.is_full() || self.is_disconnected() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
                 // Block the current thread.
-                let sel = cx.wait_until(None);
+                let sel = cx.wait_until(deadline);
 
                 match sel {
-                    Selected::Waiting | Selected::Closed => unreachable!(),
-                    Selected::Aborted => {
+                    Selected::Waiting => unreachable!(),
+                    Selected::Aborted | Selected::Disconnected => {
                         self.senders.unregister(oper).unwrap();
                     }
                     Selected::Operation(_) => {}
                 }
-            })
+            });
+
+            if let Some(d) = deadline {
+                if Instant::now() >= d {
+                    return Err(SendTimeoutError::Timeout(msg));
+                }
+            }
+        }
+    }
+
+    /// Attempts to receive a message without blocking.
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        let token = &mut Token::default();
+
+        if self.start_recv(token) {
+            unsafe {
+                self.read(token).map_err(|_| TryRecvError::Disconnected)
+            }
+        } else {
+            Err(TryRecvError::Empty)
         }
     }
 
     /// Receives a message from the channel.
-    pub fn recv(&self) -> Option<T> {
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         let token = &mut Token::default();
         loop {
             // Try receiving a message several times.
             let mut backoff = Backoff::new();
             loop {
                 if self.start_recv(token) {
-                    unsafe {
-                        return self.read(token);
-                    }
+                    let res = unsafe { self.read(token) };
+                    return res.map_err(|_| RecvTimeoutError::Disconnected);
                 }
                 if !backoff.snooze() {
                     break;
@@ -378,36 +449,29 @@ impl<T> Channel<T> {
                 self.receivers.register(oper, cx);
 
                 // Has the channel become ready just now?
-                if !self.is_empty() || self.is_closed() {
+                if !self.is_empty() || self.is_disconnected() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
                 // Block the current thread.
-                let sel = cx.wait_until(None);
+                let sel = cx.wait_until(deadline);
 
                 match sel {
                     Selected::Waiting => unreachable!(),
-                    Selected::Aborted | Selected::Closed => {
+                    Selected::Aborted | Selected::Disconnected => {
                         self.receivers.unregister(oper).unwrap();
-                        // If the channel was closed, we still have to check for remaining messages.
+                        // If the channel was disconnected, we still have to check for remaining
+                        // messages.
                     }
                     Selected::Operation(_) => {}
                 }
-            })
-        }
-    }
+            });
 
-    /// Attempts to receive a message without blocking.
-    pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
-        let token = &mut Token::default();
-
-        if self.start_recv(token) {
-            match unsafe { self.read(token) } {
-                None => RecvNonblocking::Closed,
-                Some(msg) => RecvNonblocking::Message(msg),
+            if let Some(d) = deadline {
+                if Instant::now() >= d {
+                    return Err(RecvTimeoutError::Timeout);
+                }
             }
-        } else {
-            RecvNonblocking::Empty
         }
     }
 
@@ -441,15 +505,17 @@ impl<T> Channel<T> {
         Some(self.cap)
     }
 
-    /// Closes the channel and wakes up all blocked receivers.
-    pub fn close(&self) {
-        assert!(!self.is_closed.swap(true, Ordering::SeqCst));
-        self.receivers.close();
+    /// Disconnects the channel and wakes up all blocked receivers.
+    pub fn disconnect(&self) {
+        if !self.is_disconnected.swap(true, Ordering::SeqCst) {
+            self.senders.disconnect();
+            self.receivers.disconnect();
+        }
     }
 
-    /// Returns `true` if the channel is closed.
-    pub fn is_closed(&self) -> bool {
-        self.is_closed.load(Ordering::SeqCst)
+    /// Returns `true` if the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        self.is_disconnected.load(Ordering::SeqCst)
     }
 
     /// Returns `true` if the channel is empty.
@@ -471,7 +537,7 @@ impl<T> Channel<T> {
 
         // Is the head lagging one lap behind tail?
         //
-        // note: If the tail changes just before we load the head, that means there was a moment
+        // Note: If the tail changes just before we load the head, that means there was a moment
         // when the channel was not full, so it is safe to just return `false`.
         head.wrapping_add(self.one_lap) == tail
     }
@@ -524,7 +590,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
 
     fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
         self.0.receivers.register(oper, cx);
-        self.0.is_empty() && !self.0.is_closed()
+        self.0.is_empty() && !self.0.is_disconnected()
     }
 
     fn unregister(&self, oper: Operation) {
@@ -555,7 +621,7 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
 
     fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
         self.0.senders.register(oper, cx);
-        self.0.is_full()
+        self.0.is_full() && !self.0.is_disconnected()
     }
 
     fn unregister(&self, oper: Operation) {

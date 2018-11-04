@@ -2,10 +2,9 @@
 
 use std::cell::Cell;
 use std::num::Wrapping;
-use std::process;
 use std::sync::atomic;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rand;
 
@@ -52,25 +51,7 @@ impl Backoff {
     }
 }
 
-/// Once dropped, aborts with an error message.
-///
-/// This guard is used for protection from unrecoverable panics.
-pub struct AbortGuard(pub &'static str);
-
-impl Drop for AbortGuard {
-    fn drop(&mut self) {
-        eprintln!(
-            "{}, {}:{}:{}",
-            self.0,
-            file!(),
-            line!(),
-            column!(),
-        );
-        process::abort();
-    }
-}
-
-/// Shuffles a slice randomly.
+/// Randomly shuffles a slice.
 pub fn shuffle<T>(v: &mut [T]) {
     let len = v.len();
     if len <= 1 {
@@ -87,7 +68,8 @@ pub fn shuffle<T>(v: &mut [T]) {
     let _ = RNG.try_with(|rng| {
         for i in 1..len {
             // This is the 32-bit variant of Xorshift.
-            // https://en.wikipedia.org/wiki/Xorshift
+            //
+            // Source: https://en.wikipedia.org/wiki/Xorshift
             let mut x = rng.get();
             x ^= x << 13;
             x ^= x >> 17;
@@ -98,7 +80,9 @@ pub fn shuffle<T>(v: &mut [T]) {
             let n = i + 1;
 
             // This is a fast alternative to `let j = x % n`.
-            // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+            //
+            // Author: Daniel Lemire
+            // Source: https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
             let j = ((x as u64).wrapping_mul(n as u64) >> 32) as u32 as usize;
 
             v.swap(i, j);
@@ -106,9 +90,18 @@ pub fn shuffle<T>(v: &mut [T]) {
     });
 }
 
-/// Blocks the current thread forever.
-pub fn sleep_forever() -> ! {
+/// Sleeps until the deadline, or forever if the deadline isn't specified.
+pub fn sleep_until(deadline: Option<Instant>) {
     loop {
-        thread::sleep(Duration::from_secs(1000));
+        match deadline {
+            None => thread::sleep(Duration::from_secs(1000)),
+            Some(d) => {
+                let now = Instant::now();
+                if now >= d {
+                    break;
+                }
+                thread::sleep(d - now);
+            }
+        }
     }
 }

@@ -7,8 +7,8 @@ use std::thread::{self, ThreadId};
 
 use parking_lot::Mutex;
 
-use internal::context::Context;
-use internal::select::{Operation, Selected};
+use context::Context;
+use select::{Operation, Selected};
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {
@@ -109,11 +109,11 @@ impl Waker {
         None
     }
 
-    /// Notifies all threads that the channel is closed.
+    /// Notifies all threads that the channel is disconnected.
     #[inline]
-    pub fn close(&mut self) {
+    pub fn disconnect(&mut self) {
         for entry in self.entries.iter() {
-            if entry.context.try_select(Selected::Closed).is_ok() {
+            if entry.context.try_select(Selected::Disconnected).is_ok() {
                 // Wake the thread up.
                 //
                 // Here we don't remove the entry from the queue. Registered threads must
@@ -223,9 +223,9 @@ impl SyncWaker {
         }
     }
 
-    /// Notifies all threads that the channel is closed.
-    pub fn close(&self) {
-        self.inner.lock().close();
+    /// Notifies all threads that the channel is disconnected.
+    pub fn disconnect(&self) {
+        self.inner.lock().disconnect();
     }
 }
 

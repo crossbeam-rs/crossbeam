@@ -2,17 +2,15 @@
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
-use std::mem;
-use std::ptr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use internal::channel::RecvNonblocking;
-use internal::context::Context;
-use internal::select::{Operation, SelectHandle, Token};
-use internal::utils;
+use context::Context;
+use err::{RecvTimeoutError, TryRecvError};
+use select::{Operation, SelectHandle, Token};
+use utils;
 
 /// Result of a receive operation.
 pub type AfterToken = Option<Instant>;
@@ -20,14 +18,10 @@ pub type AfterToken = Option<Instant>;
 /// Channel that delivers a message after a certain amount of time.
 pub struct Channel {
     /// The instant at which the message will be delivered.
-    deadline: Instant,
+    delivery_time: Instant,
 
-    /// The pointer to a lazily initialized boolean flag, which becomes `true` when the message
-    /// gets received.
-    ///
-    /// This `AtomicPtr` holds the raw value of an `Arc<AtomicBool>`.
-    // TODO: Use `AtomicPtr<AtomicCell<bool>>` here once we implement `AtomicCell`.
-    ptr: AtomicPtr<AtomicBool>,
+    /// `true` if the message has been received.
+    received: Arc<AtomicBool>,
 }
 
 impl Channel {
@@ -35,119 +29,105 @@ impl Channel {
     #[inline]
     pub fn new(dur: Duration) -> Self {
         Channel {
-            deadline: Instant::now() + dur,
-            ptr: AtomicPtr::new(ptr::null_mut()),
-        }
-    }
-
-    /// Returns a unique identifier for the channel.
-    #[inline]
-    pub fn channel_id(&self) -> usize {
-        self.flag() as *const AtomicBool as usize
-    }
-
-    /// Returns the flag associated with this channel.
-    ///
-    /// The flag will be allocated on the heap and initialized with `false` on the first call to
-    /// this method.
-    #[inline]
-    fn flag(&self) -> &AtomicBool {
-        let mut ptr = self.ptr.load(Ordering::Acquire);
-        loop {
-            if !ptr.is_null() {
-                return unsafe { &*(ptr as *const AtomicBool) };
-            }
-
-            // Try initializing the flag.
-            let new = Arc::into_raw(Arc::new(AtomicBool::new(false))) as *mut AtomicBool;
-            let old = self.ptr.compare_and_swap(ptr::null_mut(), new, Ordering::AcqRel);
-
-            if old.is_null() {
-                // The flag was successfully initialized.
-                ptr = new;
-            } else {
-                // Another thread has initialized the flag before us.
-                ptr = old;
-                unsafe { drop(Arc::<AtomicBool>::from_raw(new)) }
-            }
-        }
-    }
-
-    /// Receives a message from the channel.
-    #[inline]
-    pub fn recv(&self) -> Option<Instant> {
-        if self.flag().load(Ordering::SeqCst) {
-            // If the message was already received, block forever.
-            utils::sleep_forever();
-        }
-
-        // Wait until the deadline.
-        loop {
-            let now = Instant::now();
-            if now >= self.deadline {
-                break;
-            }
-            thread::sleep(self.deadline - now);
-        }
-
-        // Try consuming the message if it is still available.
-        if !self.flag().swap(true, Ordering::SeqCst) {
-            // Success! Return the message, which is the instant at which it was "sent".
-            Some(self.deadline)
-        } else {
-            // The message was already received. Block forever.
-            utils::sleep_forever();
+            delivery_time: Instant::now() + dur,
+            received: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Attempts to receive a message without blocking.
     #[inline]
-    pub fn recv_nonblocking(&self) -> RecvNonblocking<Instant> {
+    pub fn try_recv(&self) -> Result<Instant, TryRecvError> {
         // We use relaxed ordering because this is just an optional optimistic check.
-        if !self.ptr.load(Ordering::Relaxed).is_null() && self.flag().load(Ordering::SeqCst) {
-            // The message was already received.
-            return RecvNonblocking::Empty;
+        if self.received.load(Ordering::Relaxed) {
+            // The message has already been received.
+            return Err(TryRecvError::Empty);
         }
 
-        if Instant::now() < self.deadline {
-            // The message was not "sent" yet.
-            return RecvNonblocking::Empty;
+        if Instant::now() < self.delivery_time {
+            // The message was not delivered yet.
+            return Err(TryRecvError::Empty);
         }
 
-        // Try consuming the message if it is still available.
-        if !self.flag().swap(true, Ordering::SeqCst) {
-            // Success! Return the message, which is the instant at which it was "sent".
-            RecvNonblocking::Message(self.deadline)
+        // Try receiving the message if it is still available.
+        if !self.received.swap(true, Ordering::SeqCst) {
+            // Success! Return delivery time as the message.
+            Ok(self.delivery_time)
         } else {
             // The message was already received.
-            RecvNonblocking::Empty
+            Err(TryRecvError::Empty)
+        }
+    }
+
+    /// Receives a message from the channel.
+    #[inline]
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<Instant, RecvTimeoutError> {
+        // We use relaxed ordering because this is just an optional optimistic check.
+        if self.received.load(Ordering::Relaxed) {
+            // The message has already been received.
+            utils::sleep_until(deadline);
+            return Err(RecvTimeoutError::Timeout);
+        }
+
+        // Wait until the message is received or the deadline is reached.
+        loop {
+            let now = Instant::now();
+
+            // Check if we can receive the next message.
+            if now >= self.delivery_time {
+                break;
+            }
+
+            // Check if the deadline has been reached.
+            if let Some(d) = deadline {
+                if now >= d {
+                    return Err(RecvTimeoutError::Timeout);
+                }
+
+                thread::sleep(self.delivery_time.min(d) - now);
+            } else {
+                thread::sleep(self.delivery_time - now);
+            }
+        }
+
+        // Try receiving the message if it is still available.
+        if !self.received.swap(true, Ordering::SeqCst) {
+            // Success! Return the message, which is the instant at which it was delivered.
+            Ok(self.delivery_time)
+        } else {
+            // The message was already received. Block forever.
+            utils::sleep_until(None);
+            unreachable!()
         }
     }
 
     /// Reads a message from the channel.
     #[inline]
-    pub unsafe fn read(&self, token: &mut Token) -> Option<Instant> {
-        token.after
+    pub unsafe fn read(&self, token: &mut Token) -> Result<Instant, ()> {
+        token.after.ok_or(())
     }
 
     /// Returns `true` if the channel is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        let flag = self.flag();
-
-        // First, check whether the message was already received to avoid the expensive
-        // `Instant::now()` call.
-        if flag.load(Ordering::SeqCst) {
+        // We use relaxed ordering because this is just an optional optimistic check.
+        if self.received.load(Ordering::Relaxed) {
             return true;
         }
 
-        // If the deadline hasn't been reached yet, the channel is empty.
-        if Instant::now() < self.deadline {
+        // If the delivery time hasn't been reached yet, the channel is empty.
+        if Instant::now() < self.delivery_time {
             return true;
         }
 
-        // The deadline has been reached. The channel is empty only if the message was received.
-        flag.load(Ordering::SeqCst)
+        // The delivery time has been reached. The channel is empty only if the message has already
+        // been received.
+        self.received.load(Ordering::SeqCst)
+    }
+
+    /// Returns `true` if the channel is full.
+    #[inline]
+    pub fn is_full(&self) -> bool {
+        !self.is_empty()
     }
 
     /// Returns the number of messages in the channel.
@@ -167,30 +147,12 @@ impl Channel {
     }
 }
 
-impl Drop for Channel {
-    #[inline]
-    fn drop(&mut self) {
-        // Destroy the `Arc<AtomicBool>` if it was initialized.
-        let ptr = self.ptr.load(Ordering::Relaxed);
-        if !ptr.is_null() {
-            unsafe { drop(Arc::<AtomicBool>::from_raw(ptr)); }
-        }
-    }
-}
-
 impl Clone for Channel {
     #[inline]
     fn clone(&self) -> Channel {
-        let flag = self.flag();
-
-        // Increment the reference count.
-        let arc = unsafe { Arc::<AtomicBool>::from_raw(flag) };
-        mem::forget(arc.clone());
-        mem::forget(arc);
-
         Channel {
-            deadline: self.deadline,
-            ptr: AtomicPtr::new(flag as *const AtomicBool as *mut AtomicBool),
+            delivery_time: self.delivery_time,
+            received: self.received.clone(),
         }
     }
 }
@@ -198,16 +160,16 @@ impl Clone for Channel {
 impl SelectHandle for Channel {
     #[inline]
     fn try(&self, token: &mut Token) -> bool {
-        match self.recv_nonblocking() {
-            RecvNonblocking::Message(msg) => {
+        match self.try_recv() {
+            Ok(msg) => {
                 token.after = Some(msg);
                 true
             }
-            RecvNonblocking::Closed => {
+            Err(TryRecvError::Disconnected) => {
                 token.after = None;
                 true
             }
-            RecvNonblocking::Empty => {
+            Err(TryRecvError::Empty) => {
                 false
             }
         }
@@ -220,7 +182,7 @@ impl SelectHandle for Channel {
 
     #[inline]
     fn deadline(&self) -> Option<Instant> {
-        Some(self.deadline)
+        Some(self.delivery_time)
     }
 
     #[inline]
@@ -239,9 +201,9 @@ impl SelectHandle for Channel {
     #[inline]
     fn state(&self) -> usize {
         // Return 1 if the deadline has been reached and 0 otherwise.
-        if self.flag().load(Ordering::SeqCst) {
+        if self.received.load(Ordering::SeqCst) {
             1
-        } else if Instant::now() < self.deadline {
+        } else if Instant::now() < self.delivery_time {
             0
         } else {
             1

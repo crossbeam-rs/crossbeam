@@ -31,8 +31,8 @@ fn seq(cap: usize) {
 fn spsc(cap: usize) {
     let q = AtomicRingBuffer::with_capacity(cap);
 
-    crossbeam::scope(|s| {
-        s.spawn(|| {
+    crossbeam::scope(|scope| {
+        scope.spawn(|| {
             for i in 0..MESSAGES {
                 loop {
                     if q.try_push(message(i)).is_ok() {
@@ -59,9 +59,9 @@ fn spsc(cap: usize) {
 fn mpsc(cap: usize) {
     let q = AtomicRingBuffer::with_capacity(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
                         if q.try_push(message(i)).is_ok() {
@@ -89,9 +89,9 @@ fn mpsc(cap: usize) {
 fn mpmc(cap: usize) {
     let q = AtomicRingBuffer::with_capacity(cap);
 
-    crossbeam::scope(|s| {
+    crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
                         if q.try_push(message(i)).is_ok() {
@@ -104,7 +104,7 @@ fn mpmc(cap: usize) {
             });
         }
         for _ in 0..THREADS {
-            s.spawn(|| {
+            scope.spawn(|| {
                 for _ in 0..MESSAGES / THREADS {
                     loop {
                         if q.try_pop().is_none() {

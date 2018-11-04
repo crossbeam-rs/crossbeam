@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
-use internal::select::Selected;
-use internal::utils::Backoff;
+use select::Selected;
+use utils::Backoff;
 
 /// Thread-local context used in select.
 #[derive(Clone)]
@@ -15,7 +15,7 @@ pub struct Context {
     inner: Arc<Inner>,
 }
 
-/// Inner representation of `Context`
+/// Inner representation of `Context`.
 struct Inner {
     /// Selected operation.
     select: AtomicUsize,

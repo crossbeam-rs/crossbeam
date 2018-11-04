@@ -20,3 +20,4 @@ smallvec = "0.6.2"
 
 [dev-dependencies]
 crossbeam = "0.3.0"
+signal-hook = "0.1.5"

@@ -1,6 +1,14 @@
-//! Translation of a simple program demonstrating CSP from Go into Rust.
+//! Using `select!` to send and receive on the same channel at the same time.
 //!
-//! The original program in Go follows:
+//! # Copyright
+//!
+//! This example is based on the following program in Go.
+//!
+//! Author: Stefan Nilsson
+//! License: Creative Commons Attribution 3.0 Unported License.
+//! Sources:
+//!   - https://web.archive.org/web/20171209034309/https://www.nada.kth.se/~snilsson/concurrency
+//!   - http://www.nada.kth.se/~snilsson/concurrency/src/matching.go
 //!
 //! ```go
 //! func main() {
@@ -32,36 +40,34 @@
 //!     wg.Done()
 //! }
 //! ```
-//!
-//! # Notes on the original code
-//!
-//! Author: Stefan Nilsson
-//! License: Creative Commons Attribution 3.0 Unported License.
-//! Source: https://web.archive.org/web/20171209034309/https://www.nada.kth.se/~snilsson/concurrency
 
 extern crate crossbeam;
 #[macro_use]
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
+
+use crossbeam_channel::bounded;
 
 fn main() {
     let people = vec!["Anna", "Bob", "Cody", "Dave", "Eva"];
-    let (s, r) = &channel::bounded(1); // Make room for one unmatched send.
+    let (s, r) = bounded(1); // Make room for one unmatched send.
 
     // Either send my name into the channel or receive someone else's, whatever happens first.
-    let seek = |name, s: &channel::Sender<_>, r: &channel::Receiver<_>| {
+    let seek = |name, s, r| {
         select! {
-            recv(r, peer) => println!("{} received a message from {}.", name, peer.unwrap()),
-            send(s, name) => {}, // Wait for someone to receive my message.
+            recv(r) -> peer => println!("{} received a message from {}.", name, peer.unwrap()),
+            send(s, name) -> _ => {}, // Wait for someone to receive my message.
         }
     };
 
     crossbeam::scope(|scope| {
         for name in people {
+            let (s, r) = (s.clone(), r.clone());
             scope.spawn(move || seek(name, s, r));
         }
     });
 
-    if let Some(name) = r.try_recv() {
+    // Check if there is a pending send operation.
+    if let Ok(name) = r.try_recv() {
         println!("No one received {}’s message.", name);
     }
 }

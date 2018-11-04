@@ -1,6 +1,5 @@
 //! Unbounded channel implemented as a linked list.
 
-use std::alloc;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop};
@@ -8,17 +7,32 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
-use crossbeam_epoch::{self as epoch, Atomic, Guard, Shared};
+use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 use crossbeam_utils::CachePadded;
 
-use internal::channel::RecvNonblocking;
-use internal::context::Context;
-use internal::select::{Operation, SelectHandle, Selected, Token};
-use internal::utils::Backoff;
-use internal::waker::SyncWaker;
+use context::Context;
+use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use select::{Operation, SelectHandle, Selected, Token};
+use utils::Backoff;
+use waker::SyncWaker;
 
-/// The maximum number of slots a block can hold.
-const MAX_BLOCK_CAP: usize = 32;
+// TODO(stjepang): Once we bump the minimum required Rust version to 1.28 or newer, reapply the
+// following changes by @kleimkuhler:
+//
+// 1. https://github.com/crossbeam-rs/crossbeam-channel/pull/100
+// 2. https://github.com/crossbeam-rs/crossbeam-channel/pull/101
+
+/// The maximum number of messages a block can hold.
+const BLOCK_CAP: usize = 32;
+
+/// A slot in a block.
+struct Slot<T> {
+    /// The message.
+    msg: UnsafeCell<ManuallyDrop<T>>,
+
+    /// Equals `true` if the message is ready for reading.
+    ready: AtomicBool,
+}
 
 /// The token type for the list flavor.
 pub struct ListToken {
@@ -39,74 +53,30 @@ impl Default for ListToken {
     }
 }
 
-/// A slot in a block.
-struct Slot<T> {
-    /// The message.
-    msg: UnsafeCell<ManuallyDrop<T>>,
-
-    /// Equals `true` if the message is ready for reading.
-    ready: AtomicBool,
-}
-
 /// A block in a linked list.
 ///
-/// Each block in the list can hold up to `cap` slots. `cap` will double for each consecutive block
-/// - starting at 1 and growing no larger than `BLOCK_CAP`.
-#[repr(C)]
+/// Each block in the list can hold up to `BLOCK_CAP` messages.
 struct Block<T> {
     /// The start index of this block.
     ///
-    /// Slots in this block have indices in `start_index .. start_index + cap`.
+    /// Slots in this block have indices in `start_index .. start_index + BLOCK_CAP`.
     start_index: usize,
-
-    /// The number of slots this block can hold.
-    cap: usize,
 
     /// The next block in the linked list.
     next: Atomic<Block<T>>,
 
     /// Slots for messages.
-    slots: [Slot<T>; 0],
+    slots: [UnsafeCell<Slot<T>>; BLOCK_CAP],
 }
 
 impl<T> Block<T> {
     /// Creates an empty block that starts at `start_index`.
-    fn new<'a>(start_index: usize, cap: usize) -> Shared<'a, Block<T>> {
-        let block = unsafe {
-            let ptr = Self::alloc(cap);
-
-            // Write the `start_index` and `cap`. Initialize `next` to null and zero out `slots`.
-            ptr::write(&mut (*ptr).start_index, start_index);
-            ptr::write(&mut (*ptr).cap, cap);
-            ptr::write(&mut (*ptr).next, Atomic::null());
-            ptr::write_bytes((*ptr).slots.as_mut_ptr(), 0, cap);
-
-            ptr
-        };
-
-        Shared::from(block as *const _)
-    }
-
-    /// Allocate memory for a block with space to hold `cap` slots.
-    unsafe fn alloc(cap: usize) -> *mut Self {
-        let layout = Self::create_layout(cap);
-        // TODO(kleimkuhler): Use `GlobalAlloc::alloc` once `Global` becomes stable
-        alloc::alloc(layout) as *mut Self
-    }
-
-    /// Deallocate memory that a block holds.
-    unsafe fn dealloc(ptr: Shared<Block<T>>) {
-        let ptr = ptr.as_raw() as *mut Block<T>;
-        let layout = Self::create_layout((*ptr).cap);
-        // TODO(kleimkuhler): Use `GlobalAlloc::dealloc` once `Global` becomes stable
-        alloc::dealloc(ptr as *mut u8, layout)
-    }
-
-    /// Layout a block of memory for a block that can hold `cap` slots.
-    unsafe fn create_layout(cap: usize) -> alloc::Layout {
-        let size = mem::size_of::<Block<T>>() + cap * mem::size_of::<Slot<T>>();
-        let align = mem::align_of::<Block<T>>();
-        alloc::Layout::from_size_align_unchecked(size, align)
+    fn new(start_index: usize) -> Block<T> {
+        Block {
+            start_index,
+            slots: unsafe { mem::zeroed() },
+            next: Atomic::null(),
+        }
     }
 }
 
@@ -135,10 +105,10 @@ pub struct Channel<T> {
     /// The tail of the channel.
     tail: CachePadded<Position<T>>,
 
-    /// Equals `true` when the channel is closed.
-    is_closed: AtomicBool,
+    /// Equals `true` when the channel is disconnected.
+    is_disconnected: AtomicBool,
 
-    /// Receivers waiting while the channel is empty and not closed.
+    /// Receivers waiting while the channel is empty and not disconnected.
     receivers: SyncWaker,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
@@ -157,13 +127,13 @@ impl<T> Channel<T> {
                 index: AtomicUsize::new(0),
                 block: Atomic::null(),
             }),
-            is_closed: AtomicBool::new(false),
+            is_disconnected: AtomicBool::new(false),
             receivers: SyncWaker::new(),
             _marker: PhantomData,
         };
 
         // Allocate an empty block for the first batch of messages.
-        let block = Block::new(0, 1);
+        let block = unsafe { Owned::new(Block::new(0)).into_shared(epoch::unprotected()) };
         channel.head.block.store(block, Ordering::Relaxed);
         channel.tail.block.store(block, Ordering::Relaxed);
 
@@ -180,8 +150,14 @@ impl<T> Channel<T> {
         Sender(self)
     }
 
-    /// Writes a message into the channel.
-    pub fn write(&self, _token: &mut Token, msg: T) {
+    /// Attempts to reserve a slot for sending a message.
+    fn start_send(&self, token: &mut Token) -> bool {
+        // If the channel is disconnected, return early.
+        if self.is_disconnected() {
+            token.list.slot = ptr::null();
+            return true;
+        }
+
         let guard = epoch::pin();
         let mut backoff = Backoff::new();
 
@@ -200,19 +176,14 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `tail` in case it hasn't been yet.
             let install_next_block = || {
-                let new_slot_count = (tail.cap * 2).min(MAX_BLOCK_CAP);
-
                 let current = tail
                     .next
                     .compare_and_set(
                         Shared::null(),
-                        Block::new(tail.start_index.wrapping_add(tail.cap), new_slot_count),
+                        Owned::new(Block::new(tail.start_index.wrapping_add(BLOCK_CAP))),
                         Ordering::AcqRel,
                         &guard,
-                    ).unwrap_or_else(|err| {
-                        unsafe { Block::dealloc(err.new) };
-                        err.current
-                    });
+                    ).unwrap_or_else(|err| err.current);
 
                 let _ =
                     self.tail
@@ -221,7 +192,7 @@ impl<T> Channel<T> {
             };
 
             // If `tail_index` is pointing into `tail`...
-            if offset < tail.cap {
+            if offset < BLOCK_CAP {
                 // Try moving the tail index forward.
                 if self
                     .tail
@@ -234,26 +205,45 @@ impl<T> Channel<T> {
                     ).is_ok()
                 {
                     // If this was the last slot in the block, install a new block.
-                    if offset + 1 == tail.cap {
+                    if offset + 1 == BLOCK_CAP {
                         install_next_block();
                     }
 
                     unsafe {
-                        let slot = tail.slots.get_unchecked(offset);
-                        (*slot).msg.get().write(ManuallyDrop::new(msg));
-                        (*slot).ready.store(true, Ordering::Release);
+                        let slot = tail.slots.get_unchecked(offset).get();
+                        token.list.slot = slot as *const Slot<T> as *const u8;
                     }
                     break;
                 }
 
                 backoff.spin();
-            } else if offset == tail.cap {
+            } else if offset == BLOCK_CAP {
                 // Help install the next block.
                 install_next_block();
             }
         }
 
+        token.list.guard = Some(guard);
+        true
+    }
+
+    /// Writes a message into the channel.
+    pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
+        // If there is no slot, the channel is disconnected.
+        if token.list.slot.is_null() {
+            return Err(msg);
+        }
+
+        let slot = &*(token.list.slot as *const Slot<T>);
+        let _guard: Guard = token.list.guard.take().unwrap();
+
+        // Write the message into the slot.
+        (*slot).msg.get().write(ManuallyDrop::new(msg));
+        (*slot).ready.store(true, Ordering::Release);
+
+        // Wake a sleeping receiver.
         self.receivers.wake_one();
+        Ok(())
     }
 
     /// Attempts to reserve a slot for receiving a message.
@@ -278,19 +268,14 @@ impl<T> Channel<T> {
 
             // A closure that installs a block following `head` in case it hasn't been yet.
             let install_next_block = || {
-                let new_slot_count = (head.cap * 2).min(MAX_BLOCK_CAP);
-
                 let current = head
                     .next
                     .compare_and_set(
                         Shared::null(),
-                        Block::new(head.start_index.wrapping_add(head.cap), new_slot_count),
+                        Owned::new(Block::new(head.start_index.wrapping_add(BLOCK_CAP))),
                         Ordering::AcqRel,
                         &guard,
-                    ).unwrap_or_else(|err| {
-                        unsafe { Block::dealloc(err.new) };
-                        err.current
-                    });
+                    ).unwrap_or_else(|err| err.current);
 
                 let _ =
                     self.head
@@ -299,8 +284,8 @@ impl<T> Channel<T> {
             };
 
             // If `head_index` is pointing into `head`...
-            if offset < head.cap {
-                let slot = unsafe { &*head.slots.get_unchecked(offset) };
+            if offset < BLOCK_CAP {
+                let slot = unsafe { &*head.slots.get_unchecked(offset).get() };
 
                 // If this slot does not contain a message...
                 if !slot.ready.load(Ordering::Relaxed) {
@@ -308,11 +293,11 @@ impl<T> Channel<T> {
 
                     // If the tail equals the head, that means the channel is empty.
                     if tail_index == head_index {
-                        // If the channel is closed...
-                        if self.is_closed() {
+                        // If the channel is disconnected...
+                        if self.is_disconnected() {
                             // ...and still empty...
                             if self.tail.index.load(Ordering::SeqCst) == tail_index {
-                                // ...then receive `None`.
+                                // ...then receive an error.
                                 token.list.slot = ptr::null();
                                 return true;
                             }
@@ -336,10 +321,10 @@ impl<T> Channel<T> {
                 {
                     // If this was the last slot in the block, install a new block and destroy the
                     // old one.
-                    if offset + 1 == head.cap {
+                    if offset + 1 == BLOCK_CAP {
                         install_next_block();
                         unsafe {
-                            guard.defer_unchecked(move || Block::dealloc(head_ptr));
+                            guard.defer_destroy(head_ptr);
                         }
                     }
 
@@ -348,7 +333,7 @@ impl<T> Channel<T> {
                 }
 
                 backoff.spin();
-            } else if offset == head.cap {
+            } else if offset == BLOCK_CAP {
                 // Help install the next block.
                 install_next_block();
             }
@@ -359,10 +344,10 @@ impl<T> Channel<T> {
     }
 
     /// Reads a message from the channel.
-    pub unsafe fn read(&self, token: &mut Token) -> Option<T> {
+    pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.list.slot.is_null() {
-            // The channel is closed.
-            return None;
+            // The channel is disconnected.
+            return Err(());
         }
 
         let slot = &*(token.list.slot as *const Slot<T>);
@@ -377,17 +362,43 @@ impl<T> Channel<T> {
         // Read the message.
         let m = slot.msg.get().read();
         let msg = ManuallyDrop::into_inner(m);
-        Some(msg)
+        Ok(msg)
+    }
+
+    /// Attempts to send a message into the channel.
+    pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        self.send(msg, None).map_err(|err| {
+            match err {
+                SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
+                SendTimeoutError::Timeout(_) => unreachable!(),
+            }
+        })
     }
 
     /// Sends a message into the channel.
-    pub fn send(&self, msg: T) {
+    pub fn send(&self, msg: T, _deadline: Option<Instant>) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
-        self.write(token, msg);
+        assert!(self.start_send(token));
+        unsafe {
+            self.write(token, msg).map_err(SendTimeoutError::Disconnected)
+        }
+    }
+
+    /// Attempts to receive a message without blocking.
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        let token = &mut Token::default();
+
+        if self.start_recv(token) {
+            unsafe {
+                self.read(token).map_err(|_| TryRecvError::Disconnected)
+            }
+        } else {
+            Err(TryRecvError::Empty)
+        }
     }
 
     /// Receives a message from the channel.
-    pub fn recv(&self) -> Option<T> {
+    pub fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         let token = &mut Token::default();
         loop {
             // Try receiving a message several times.
@@ -395,7 +406,7 @@ impl<T> Channel<T> {
             loop {
                 if self.start_recv(token) {
                     unsafe {
-                        return self.read(token);
+                        return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
                     }
                 }
                 if !backoff.snooze() {
@@ -409,36 +420,29 @@ impl<T> Channel<T> {
                 self.receivers.register(oper, cx);
 
                 // Has the channel become ready just now?
-                if !self.is_empty() || self.is_closed() {
+                if !self.is_empty() || self.is_disconnected() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
                 // Block the current thread.
-                let sel = cx.wait_until(None);
+                let sel = cx.wait_until(deadline);
 
                 match sel {
                     Selected::Waiting => unreachable!(),
-                    Selected::Aborted | Selected::Closed => {
+                    Selected::Aborted | Selected::Disconnected => {
                         self.receivers.unregister(oper).unwrap();
-                        // If the channel was closed, we still have to check for remaining messages.
+                        // If the channel was disconnected, we still have to check for remaining
+                        // messages.
                     }
                     Selected::Operation(_) => {}
                 }
-            })
-        }
-    }
+            });
 
-    /// Attempts to receive a message without blocking.
-    pub fn recv_nonblocking(&self) -> RecvNonblocking<T> {
-        let token = &mut Token::default();
-
-        if self.start_recv(token) {
-            match unsafe { self.read(token) } {
-                None => RecvNonblocking::Closed,
-                Some(msg) => RecvNonblocking::Message(msg),
+            if let Some(d) = deadline {
+                if Instant::now() >= d {
+                    return Err(RecvTimeoutError::Timeout);
+                }
             }
-        } else {
-            RecvNonblocking::Empty
         }
     }
 
@@ -461,15 +465,16 @@ impl<T> Channel<T> {
         None
     }
 
-    /// Closes the channel and wakes up all blocked receivers.
-    pub fn close(&self) {
-        assert!(!self.is_closed.swap(true, Ordering::SeqCst));
-        self.receivers.close();
+    /// Disconnects the channel and wakes up all blocked receivers.
+    pub fn disconnect(&self) {
+        if !self.is_disconnected.swap(true, Ordering::SeqCst) {
+            self.receivers.disconnect();
+        }
     }
 
-    /// Returns `true` if the channel is closed.
-    pub fn is_closed(&self) -> bool {
-        self.is_closed.load(Ordering::SeqCst)
+    /// Returns `true` if the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        self.is_disconnected.load(Ordering::SeqCst)
     }
 
     /// Returns `true` if the channel is empty.
@@ -503,12 +508,12 @@ impl<T> Drop for Channel<T> {
                 let head = head_ptr.deref();
                 let offset = head_index.wrapping_sub(head.start_index);
 
-                let slot = head.slots.get_unchecked(offset);
-                ManuallyDrop::drop(&mut *(*slot).msg.get());
+                let slot = &mut *head.slots.get_unchecked(offset).get();
+                ManuallyDrop::drop(&mut (*slot).msg.get().read());
 
-                if offset + 1 == head.cap {
+                if offset + 1 == BLOCK_CAP {
                     let next = head.next.load(Ordering::Relaxed, epoch::unprotected());
-                    Block::dealloc(head_ptr);
+                    drop(head_ptr.into_owned());
                     head_ptr = next;
                 }
 
@@ -517,7 +522,7 @@ impl<T> Drop for Channel<T> {
 
             // If there is one last remaining block in the end, destroy it.
             if !head_ptr.is_null() {
-                Block::dealloc(head_ptr);
+                drop(head_ptr.into_owned());
             }
         }
     }
@@ -544,7 +549,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
 
     fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
         self.0.receivers.register(oper, cx);
-        self.0.is_empty() && !self.0.is_closed()
+        self.0.is_empty() && !self.0.is_disconnected()
     }
 
     fn unregister(&self, oper: Operation) {
@@ -561,12 +566,12 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
 }
 
 impl<'a, T> SelectHandle for Sender<'a, T> {
-    fn try(&self, _token: &mut Token) -> bool {
-        true
+    fn try(&self, token: &mut Token) -> bool {
+        self.0.start_send(token)
     }
 
-    fn retry(&self, _token: &mut Token) -> bool {
-        true
+    fn retry(&self, token: &mut Token) -> bool {
+        self.0.start_send(token)
     }
 
     fn deadline(&self) -> Option<Instant> {
@@ -574,13 +579,13 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
     }
 
     fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Context) -> bool {
-        false
+        !self.0.is_disconnected()
     }
 
     fn unregister(&self, _oper: Operation) {}
 
-    fn accept(&self, _token: &mut Token, _cx: &Context) -> bool {
-        true
+    fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
+        self.0.start_send(token)
     }
 
     fn state(&self) -> usize {

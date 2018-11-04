@@ -1,25 +1,27 @@
 //! Tests for iteration over receivers.
 
 extern crate crossbeam;
-extern crate crossbeam_channel as channel;
+extern crate crossbeam_channel;
+
+use crossbeam_channel::unbounded;
 
 #[test]
 fn nested_recv_iter() {
-    let (s, r) = channel::unbounded::<i32>();
-    let (total_s, total_r) = channel::unbounded::<i32>();
+    let (s, r) = unbounded::<i32>();
+    let (total_s, total_r) = unbounded::<i32>();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
             let mut acc = 0;
-            for x in &r {
+            for x in r.iter() {
                 acc += x;
             }
-            total_s.send(acc);
+            total_s.send(acc).unwrap();
         });
 
-        s.send(3);
-        s.send(1);
-        s.send(2);
+        s.send(3).unwrap();
+        s.send(1).unwrap();
+        s.send(2).unwrap();
         drop(s);
         assert_eq!(total_r.recv().unwrap(), 6);
     });
@@ -27,25 +29,25 @@ fn nested_recv_iter() {
 
 #[test]
 fn recv_iter_break() {
-    let (s, r) = channel::unbounded::<i32>();
-    let (count_s, count_r) = channel::unbounded();
+    let (s, r) = unbounded::<i32>();
+    let (count_s, count_r) = unbounded();
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
             let mut count = 0;
-            for x in &r {
+            for x in r.iter() {
                 if count >= 3 {
                     break;
                 } else {
                     count += x;
                 }
             }
-            count_s.send(count);
+            count_s.send(count).unwrap();
         });
 
-        s.send(2);
-        s.send(2);
-        s.send(2);
+        s.send(2).unwrap();
+        s.send(2).unwrap();
+        s.send(2).unwrap();
         let _ = s.send(2);
         drop(s);
         assert_eq!(count_r.recv().unwrap(), 4);
@@ -53,11 +55,39 @@ fn recv_iter_break() {
 }
 
 #[test]
+fn recv_try_iter() {
+    let (request_s, request_r) = unbounded();
+    let (response_s, response_r) = unbounded();
+
+    crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            let mut count = 0;
+            loop {
+                for x in response_r.try_iter() {
+                    count += x;
+                    if count == 6 {
+                        assert_eq!(count, 6);
+                        return;
+                    }
+                }
+                request_s.send(()).unwrap();
+            }
+        });
+
+        for _ in request_r.iter() {
+            if response_s.send(2).is_err() {
+                break;
+            }
+        }
+    })
+}
+
+#[test]
 fn recv_into_iter_owned() {
     let mut iter = {
-        let (s, r) = channel::unbounded::<i32>();
-        s.send(1);
-        s.send(2);
+        let (s, r) = unbounded::<i32>();
+        s.send(1).unwrap();
+        s.send(2).unwrap();
         r.into_iter()
     };
 
@@ -68,9 +98,9 @@ fn recv_into_iter_owned() {
 
 #[test]
 fn recv_into_iter_borrowed() {
-    let (s, r) = channel::unbounded::<i32>();
-    s.send(1);
-    s.send(2);
+    let (s, r) = unbounded::<i32>();
+    s.send(1).unwrap();
+    s.send(2).unwrap();
     drop(s);
 
     let mut iter = (&r).into_iter();
