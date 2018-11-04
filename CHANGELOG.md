@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Add a special `never` channel type.
 
 ### Changed
-- Dropping all senders now closes the channel.
+- Dropping all receivers now closes the channel.
 - The interface of sending and receiving methods is now very similar to those in v0.1.
 - The syntax for `send` in `select!` is now `send(sender, msg) -> res => body`.
 - The syntax for `recv` in `select!` is now `recv(receiver) -> res => body`.
