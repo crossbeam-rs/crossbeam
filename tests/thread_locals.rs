@@ -1,7 +1,5 @@
 //! Tests that make sure accessing thread-locals while exiting the thread doesn't cause panics.
 
-#![deny(unsafe_code)]
-
 extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;

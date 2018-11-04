@@ -16,8 +16,8 @@ use select::{Operation, SelectHandle, Selected, Token};
 use utils::Backoff;
 use waker::SyncWaker;
 
-// TODO(stjepang): Once we bump the minimum required Rust version to 1.28, reapply the following
-// changes by @kleimkuhler:
+// TODO(stjepang): Once we bump the minimum required Rust version to 1.28 or newer, reapply the
+// following changes by @kleimkuhler:
 //
 // 1. https://github.com/crossbeam-rs/crossbeam-channel/pull/100
 // 2. https://github.com/crossbeam-rs/crossbeam-channel/pull/101

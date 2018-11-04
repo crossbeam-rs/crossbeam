@@ -358,6 +358,7 @@ mod context;
 mod err;
 mod flavors;
 mod select;
+mod select_macro;
 mod utils;
 mod waker;
 

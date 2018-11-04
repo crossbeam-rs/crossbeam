@@ -1105,7 +1105,7 @@ fn fairness1() {
     }
 
     let hits = vec![Cell::new(0usize); 4];
-    while hits[0].get() + hits[1].get() < 2 * COUNT {
+    for _ in 0..COUNT {
         let after = after(ms(0));
         let tick = tick(ms(0));
 
@@ -1135,12 +1135,7 @@ fn fairness1() {
             _ => unreachable!(),
         }
     }
-
-    assert!(r1.is_empty());
-    assert!(r2.is_empty());
-
-    let sum: usize = hits.iter().map(|h| h.get()).sum();
-    assert!(hits.iter().all(|x| x.get() >= sum / hits.len() / 2));
+    assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 2));
 }
 
 #[test]
