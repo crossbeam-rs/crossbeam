@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.0] - 2018-11-04
+### Added
+- Add a special `never` channel type.
+
+### Changed
+- Dropping all senders now closes the channel.
+- The interface of sending and receiving methods is now very similar to those in v0.1.
+- The syntax for `send` in `select!` is now `send(sender, msg) -> res => body`.
+- The syntax for `recv` in `select!` is now `recv(receiver) -> res => body`.
+- New, more efficient interface for `Select` without callbacks.
+- Timeouts can be specified in `select!`.
+
 ## [0.2.6] - 2018-09-17
 ### Added
 - `Select` struct that can add cases dynamically.
@@ -112,7 +124,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - First implementation of the channels.
 - Add `select_loop!` macro by @TimNN.
 
-[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.6...v0.3.0
 [0.2.6]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/crossbeam-rs/crossbeam-channel/compare/v0.2.3...v0.2.4

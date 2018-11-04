@@ -17,7 +17,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-channel = "0.2"
+crossbeam-channel = "0.3"
 ```
 
 Next, add this to your crate:
