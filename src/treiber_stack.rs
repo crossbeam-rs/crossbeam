@@ -58,7 +58,7 @@ impl<T> TreiberStack<T> {
                         .is_ok()
                     {
                         unsafe {
-                            guard.defer(move || drop(head_shared.into_owned()) );
+                            guard.defer_destroy(head_shared);
                             return Some(ManuallyDrop::into_inner(ptr::read(&(*head).data)));
                         }
                     }
@@ -123,14 +123,16 @@ mod test {
         const N_THREADS: usize = 8;
         thread::scope(|s| {
             for _ in 0..N_THREADS {
-                s.spawn(|| {
-                    let q: TreiberStack<Dropper> = TreiberStack::new();
-                    for _ in 0..4 { q.push(Dropper); }
-                    drop(q);
+                s.spawn(|_| {
+                    let s: TreiberStack<Dropper> = TreiberStack::new();
+                    for _ in 0..4 {
+                        s.push(Dropper);
+                    }
+                    drop(s);
                     epoch::pin().flush();
-                } );
+                });
             }
-        } );
+        }).unwrap();
 
         assert!(DROP_COUNT.load(Ordering::SeqCst) == N_THREADS * 4);
     }

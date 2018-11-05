@@ -16,9 +16,9 @@ keywords = ["scoped", "thread", "atomic", "cache"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
 [features]
-default = ["use_std"]
-use_std = []
+default = ["std"]
 nightly = []
+std = []
 
 [dependencies]
 cfg-if = "0.1"

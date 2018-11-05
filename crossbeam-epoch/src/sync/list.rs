@@ -397,7 +397,7 @@ mod tests {
         let b = Barrier::new(THREADS);
 
         thread::scope(|s| for _ in 0..THREADS {
-            s.spawn(|| {
+            s.spawn(|_| {
                 b.wait();
 
                 let handle = collector.register();
@@ -418,7 +418,7 @@ mod tests {
                     }
                 }
             });
-        });
+        }).unwrap();
 
         let handle = collector.register();
         let guard = handle.pin();
@@ -436,7 +436,7 @@ mod tests {
         let b = Barrier::new(THREADS);
 
         thread::scope(|s| for _ in 0..THREADS {
-            s.spawn(|| {
+            s.spawn(|_| {
                 b.wait();
 
                 let handle = collector.register();
@@ -462,7 +462,7 @@ mod tests {
                     }
                 }
             });
-        });
+        }).unwrap();
 
         let handle = collector.register();
         let guard = handle.pin();

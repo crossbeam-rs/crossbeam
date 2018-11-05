@@ -19,15 +19,25 @@ categories = ["concurrency", "memory-management", "data-structures"]
 travis-ci = { repository = "crossbeam-rs/crossbeam" }
 
 [features]
-default = ["use_std"]
+default = ["std"]
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
-use_std = ["crossbeam-epoch/use_std", "crossbeam-utils/use_std"]
+std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 
-[dependencies]
-crossbeam-channel = "0.2"
-crossbeam-deque = "0.6"
-crossbeam-epoch = "0.5"
-crossbeam-utils = "0.5"
+[dependencies.crossbeam-channel]
+version = "0.2"
+# path = "./crossbeam-channel"
+
+[dependencies.crossbeam-deque]
+version = "0.6"
+path = "./crossbeam-deque"
+
+[dependencies.crossbeam-epoch]
+version = "0.6"
+path = "./crossbeam-epoch"
+
+[dependencies.crossbeam-utils]
+version = "0.5"
+path = "./crossbeam-utils"
 
 [dev-dependencies]
 rand = "0.5"

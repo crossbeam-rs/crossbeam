@@ -174,7 +174,7 @@ mod tests {
 
         thread::scope(|scope| {
             for _ in 0..NUM_THREADS {
-                scope.spawn(|| {
+                scope.spawn(|_| {
                     let handle = collector.register();
                     for _ in 0..500_000 {
                         let guard = &handle.pin();
@@ -187,7 +187,7 @@ mod tests {
                     }
                 });
             }
-        })
+        }).unwrap();
     }
 
     #[test]
@@ -405,7 +405,7 @@ mod tests {
 
         thread::scope(|scope| {
             for _ in 0..THREADS {
-                scope.spawn(|| {
+                scope.spawn(|_| {
                     let handle = collector.register();
                     for _ in 0..COUNT {
                         let guard = &handle.pin();
@@ -416,7 +416,7 @@ mod tests {
                     }
                 });
             }
-        });
+        }).unwrap();
 
         let handle = collector.register();
         while DROPS.load(Ordering::Relaxed) < COUNT * THREADS {

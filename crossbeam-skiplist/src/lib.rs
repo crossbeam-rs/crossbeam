@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 extern crate core;
-#[cfg(all(not(test), feature = "use_std"))]
+#[cfg(all(not(test), feature = "std"))]
 #[macro_use]
 extern crate std;
 
@@ -22,15 +22,15 @@ extern crate crossbeam_utils as utils;
 extern crate scopeguard;
 
 pub mod base;
-#[cfg(feature = "use_std")]
+#[cfg(feature = "std")]
 pub mod map;
-#[cfg(feature = "use_std")]
+#[cfg(feature = "std")]
 pub mod set;
 
 pub use base::SkipList;
-#[cfg(feature = "use_std")]
+#[cfg(feature = "std")]
 pub use map::SkipMap;
-#[cfg(feature = "use_std")]
+#[cfg(feature = "std")]
 pub use set::SkipSet;
 
 /// An endpoint of a range of keys.
