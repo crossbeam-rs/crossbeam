@@ -1,5 +1,6 @@
 #!/bin/bash
 
+cd "$(dirname "$0")"/..
 set -ex
 
 cargo test -- --test-threads=1

@@ -15,44 +15,42 @@ addons:
 matrix:
   include:
 
+  # Test crates on their minimum Rust versions.
   - rust: 1.26.0
     name: "crossbeam on 1.26.0"
     script: ./ci/script.sh
-  - rust: stable
-    name: "crossbeam on nightly"
-    script: ./ci/script.sh
-
   - rust: 1.26.0
     name: "crossbeam-channel on 1.26.0"
     script: ./crossbeam-channel/ci/script.sh
-  - rust: nightly
-    name: "crossbeam-channel on nightly"
-    script: ./crossbeam-channel/ci/script.sh
-
   - rust: 1.25.0
     name: "crossbeam-deque on 1.25.0"
     script: ./crossbeam-deque/ci/script.sh
-  - rust: nightly
-    name: "crossbeam-deque on nightly"
-    script: ./crossbeam-deque/ci/script.sh
-
   - rust: 1.26.0
     name: "crossbeam-epoch on 1.26.0"
     script: ./crossbeam-epoch/ci/script.sh
-  - rust: nightly
-    name: "crossbeam-epoch on nightly"
-    script: ./crossbeam-epoch/ci/script.sh
-
   - rust: 1.26.0
     name: "crossbeam-skiplist on 1.26.0"
     script: ./crossbeam-skiplist/ci/script.sh
-  - rust: nightly
-    name: "crossbeam-skiplist on nightly"
-    script: ./crossbeam-skiplist/ci/script.sh
-
   - rust: 1.26.0
     name: "crossbeam-utils on 1.26.0"
     script: ./crossbeam-utils/ci/script.sh
+
+  # Test crates on nightly Rust.
+  - rust: nightly
+    name: "crossbeam on nightly"
+    script: ./ci/script.sh
+  - rust: nightly
+    name: "crossbeam-channel on nightly"
+    script: ./crossbeam-channel/ci/script.sh
+  - rust: nightly
+    name: "crossbeam-deque on nightly"
+    script: ./crossbeam-deque/ci/script.sh
+  - rust: nightly
+    name: "crossbeam-epoch on nightly"
+    script: ./crossbeam-epoch/ci/script.sh
+  - rust: nightly
+    name: "crossbeam-skiplist on nightly"
+    script: ./crossbeam-skiplist/ci/script.sh
   - rust: nightly
     name: "crossbeam-utils on nightly"
     script: ./crossbeam-utils/ci/script.sh
