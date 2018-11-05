@@ -1,2 +1,4 @@
-/target/
+/crossbeam-channel/benchmarks/*.txt
+/crossbeam-channel/benchmarks/*.png
+target/
 Cargo.lock

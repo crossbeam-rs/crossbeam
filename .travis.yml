@@ -1,16 +1,19 @@
 language: rust
 
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - llvm-toolchain-precise
+      - llvm-toolchain-precise-3.8
+
 rust:
+  - 1.25.0
+  - 1.26.0
   - stable
   - beta
   - nightly
-  - 1.26.0
-
-install:
-  - cargo install cargo-tree
 
 script:
-  # TODO(stjepang): Uncomment the following line once we fix the dependency tree
-  # - (cargo tree --duplicate | grep ^crossbeam) && exit 1
   - ./ci/script.sh
   - (cd crossbeam-utils && ./ci/script.sh)

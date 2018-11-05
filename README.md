@@ -2,13 +2,10 @@
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)
-
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](
 https://github.com/crossbeam-rs/crossbeam)
-
 [![Cargo](https://img.shields.io/crates/v/crossbeam.svg)](
 https://crates.io/crates/crossbeam)
-
 [![Documentation](https://docs.rs/crossbeam/badge.svg)](
 https://docs.rs/crossbeam)
 

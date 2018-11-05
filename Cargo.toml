@@ -34,6 +34,10 @@ rand = "0.5"
 [workspace]
 members = [
   ".",
+  "crossbeam-channel",
+  "crossbeam-deque",
+  "crossbeam-epoch",
+  "crossbeam-skiplist",
   "crossbeam-utils",
 ]
 

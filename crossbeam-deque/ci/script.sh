@@ -7,15 +7,10 @@ check_min_version() {
         exit 0
     fi
 }
-check_min_version 1.26.0
+check_min_version 1.25.0
 
 set -ex
 
 export RUSTFLAGS="-D warnings"
 
-cargo build --no-default-features
 cargo test
-
-if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
-    cargo test --features nightly
-fi

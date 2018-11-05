@@ -11,11 +11,9 @@ check_min_version 1.26.0
 
 set -ex
 
-export RUSTFLAGS="-D warnings"
-
-cargo build --no-default-features
-cargo test
+cargo test -- --test-threads=1
 
 if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
-    cargo test --features nightly
+    cd benchmarks
+    cargo build --bins
 fi
