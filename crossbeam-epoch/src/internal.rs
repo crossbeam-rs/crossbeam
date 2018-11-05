@@ -406,7 +406,7 @@ impl Local {
         // Update the local epoch only if there's only one guard.
         if guard_count == 1 {
             let epoch = self.epoch.load(Ordering::Relaxed);
-            let global_epoch = self.global().epoch.load(Ordering::Relaxed);
+            let global_epoch = self.global().epoch.load(Ordering::Relaxed).pinned();
 
             // Update the local epoch only if the global epoch is greater than the local epoch.
             if epoch != global_epoch {
