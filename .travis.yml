@@ -54,3 +54,8 @@ matrix:
   - rust: nightly
     name: "crossbeam-utils on nightly"
     script: ./ci/crossbeam-utils.sh
+
+  # Check for duplicate dependencies.
+  - rust: stable
+    name: "dependency tree check"
+    script: ./ci/dependencies.sh
