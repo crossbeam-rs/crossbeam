@@ -1,4 +1,3 @@
-use alloc::boxed::Box;
 use core::borrow::{Borrow, BorrowMut};
 use core::cmp;
 use core::fmt;
@@ -9,7 +8,55 @@ use core::ptr;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_utils::atomic::AtomicConsume;
+
 use guard::Guard;
+
+/// Qualifies word-sized storage types that own `T`.
+///
+/// DST is very useful in the construction of concurrent data structures.  Consider a node in a
+/// skiplist.  It consists of: key, value, tower. The tower is an array of atomic pointers.  To save
+/// a level of indirection, it is wise to lay out the entire tower inside the node.  Since towers
+/// consist of variable number of pointers, skiplist nodes are dynamically sized.
+///
+/// Another example might be arrays backing hash-tables or Chase-Lev deques.  They too are
+/// dynamically sized so it might make sense to lay out the length together with array's elements.
+/// B-tree nodes may likewise be dynamically sized.
+///
+/// However, Crossbeam had not supported DST because it used `Box<T>` as the underlying storage for
+/// atomic pointers.  When `T` is a DST, `Box<T>` becomes a fat pointer (consisting of the
+/// underlying pointer and an integer representing the size), which doesn't support atomic
+/// operations (such as compare-and-swap or fetch-and-add) in stable Rust.  There are also other
+/// reasons why one might want thin pointers with length stored within the object, like performance
+/// (cache locality) and memory consumption.
+///
+/// This trait was introduced to support DST by generalizing `Box<T>`: roughly speaking, what we
+/// require for a storage type is that (1) it is represented as a word, and (2) it owns a value of
+/// type `T`.  `Box<T>` indeed satisfies these conditions and it implements `Storage<T>`.  For an
+/// example of DST, see [`Array`] and [`ArrayBox`].
+///
+/// [`Array`]: struct.Array.html
+/// [`ArrayBox`]: struct.ArrayBox.html
+///
+/// # Safety
+///
+/// When `S` implements `Storage<T>`, it should satisfy the following conditions:
+///
+/// - When an storage object is converted to `*mut T` and then back, it should be the same
+///   storage object.
+///
+/// - The result of `into_raw()` should be properly aligned as a pointer to `T`.
+pub unsafe trait Storage<T> {
+    /// Converts the storage type to `*mut T`.
+    fn into_raw(self) -> *mut T;
+
+    /// Converts back `*mut T` to the storage type.
+    ///
+    /// # Safety
+    ///
+    /// The given `*mut T` pointer shall be originated from a storage object; otherwise, the
+    /// behavior is undefined.
+    unsafe fn from_raw(*mut T) -> Self;
+}
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
 /// appropriate ordering for the failure case.
@@ -24,15 +71,17 @@ fn strongest_failure_ordering(ord: Ordering) -> Ordering {
 }
 
 /// The error returned on failed compare-and-set operation.
-pub struct CompareAndSetError<'g, T: 'g, P: Pointer<T>> {
+pub struct CompareAndSetError<'g, T: 'g, S: Storage<T>, P: Pointer<T, S>> {
     /// The value in the atomic pointer at the time of the failed operation.
-    pub current: Shared<'g, T>,
+    pub current: Shared<'g, T, S>,
 
     /// The new value, which the operation failed to store.
     pub new: P,
 }
 
-impl<'g, T: 'g, P: Pointer<T> + fmt::Debug> fmt::Debug for CompareAndSetError<'g, T, P> {
+impl<'g, T: 'g, S: Storage<T>, P: Pointer<T, S> + fmt::Debug> fmt::Debug
+    for CompareAndSetError<'g, T, S, P>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("CompareAndSetError")
             .field("current", &self.current)
@@ -109,7 +158,7 @@ fn data_with_tag<T>(data: usize, tag: usize) -> usize {
 
 /// Decomposes a tagged pointer `data` into the pointer and the tag.
 #[inline]
-fn decompose_data<T>(data: usize) -> (*mut T, usize) {
+pub fn decompose_data<T>(data: usize) -> (*mut T, usize) {
     let raw = (data & !low_bits::<T>()) as *mut T;
     let tag = data & low_bits::<T>();
     (raw, tag)
@@ -124,15 +173,15 @@ fn decompose_data<T>(data: usize) -> (*mut T, usize) {
 /// Any method that loads the pointer must be passed a reference to a [`Guard`].
 ///
 /// [`Guard`]: struct.Guard.html
-pub struct Atomic<T> {
+pub struct Atomic<T, S: Storage<T>> {
     data: AtomicUsize,
-    _marker: PhantomData<*mut T>,
+    _marker: PhantomData<(*mut T, S)>,
 }
 
-unsafe impl<T: Send + Sync> Send for Atomic<T> {}
-unsafe impl<T: Send + Sync> Sync for Atomic<T> {}
+unsafe impl<T: Send + Sync, S: Storage<T>> Send for Atomic<T, S> {}
+unsafe impl<T: Send + Sync, S: Storage<T>> Sync for Atomic<T, S> {}
 
-impl<T> Atomic<T> {
+impl<T, S: Storage<T>> Atomic<T, S> {
     /// Returns a new atomic pointer pointing to the tagged pointer `data`.
     fn from_usize(data: usize) -> Self {
         Self {
@@ -141,6 +190,24 @@ impl<T> Atomic<T> {
         }
     }
 
+    /// Returns a new atomic pointer pointing to `raw`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `raw` is not properly aligned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::ptr;
+    /// use crossbeam_epoch::Atomic;
+    ///
+    /// let a = Atomic::<i32>::from_raw(ptr::null::<i32>());
+    /// ```
+    pub fn from_raw(raw: *const T) -> Self {
+        Self::from_usize(raw as usize)
+    }
+
     /// Returns a new null atomic pointer.
     ///
     /// # Examples
@@ -150,8 +217,7 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(not(has_min_const_fn))]
-    pub fn null() -> Atomic<T> {
+    pub fn null() -> Atomic<T, S> {
         Self {
             data: AtomicUsize::new(0),
             _marker: PhantomData,
@@ -167,25 +233,12 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(has_min_const_fn)]
-    pub const fn null() -> Atomic<T> {
+    #[cfg(feature = "nightly")]
+    pub const fn null() -> Atomic<T, S> {
         Self {
             data: AtomicUsize::new(0),
             _marker: PhantomData,
         }
-    }
-
-    /// Allocates `value` on the heap and returns a new atomic pointer pointing to it.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Atomic;
-    ///
-    /// let a = Atomic::new(1234);
-    /// ```
-    pub fn new(value: T) -> Atomic<T> {
-        Self::from(Owned::new(value))
     }
 
     /// Loads a `Shared` from the atomic pointer.
@@ -205,7 +258,7 @@ impl<T> Atomic<T> {
     /// let guard = &epoch::pin();
     /// let p = a.load(SeqCst, guard);
     /// ```
-    pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+    pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Shared<'g, T, S> {
         unsafe { Shared::from_usize(self.data.load(ord)) }
     }
 
@@ -230,7 +283,7 @@ impl<T> Atomic<T> {
     /// let guard = &epoch::pin();
     /// let p = a.load_consume(guard);
     /// ```
-    pub fn load_consume<'g>(&self, _: &'g Guard) -> Shared<'g, T> {
+    pub fn load_consume<'g>(&self, _: &'g Guard) -> Shared<'g, T, S> {
         unsafe { Shared::from_usize(self.data.load_consume()) }
     }
 
@@ -251,7 +304,7 @@ impl<T> Atomic<T> {
     /// a.store(Shared::null(), SeqCst);
     /// a.store(Owned::new(1234), SeqCst);
     /// ```
-    pub fn store<'g, P: Pointer<T>>(&self, new: P, ord: Ordering) {
+    pub fn store<'g, P: Pointer<T, S>>(&self, new: P, ord: Ordering) {
         self.data.store(new.into_usize(), ord);
     }
 
@@ -273,7 +326,12 @@ impl<T> Atomic<T> {
     /// let guard = &epoch::pin();
     /// let p = a.swap(Shared::null(), SeqCst, guard);
     /// ```
-    pub fn swap<'g, P: Pointer<T>>(&self, new: P, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+    pub fn swap<'g, P: Pointer<T, S>>(
+        &self,
+        new: P,
+        ord: Ordering,
+        _: &'g Guard,
+    ) -> Shared<'g, T, S> {
         unsafe { Shared::from_usize(self.data.swap(new.into_usize(), ord)) }
     }
 
@@ -305,14 +363,14 @@ impl<T> Atomic<T> {
     /// ```
     pub fn compare_and_set<'g, O, P>(
         &self,
-        current: Shared<T>,
+        current: Shared<T, S>,
         new: P,
         ord: O,
         _: &'g Guard,
-    ) -> Result<Shared<'g, T>, CompareAndSetError<'g, T, P>>
+    ) -> Result<Shared<'g, T, S>, CompareAndSetError<'g, T, S, P>>
     where
         O: CompareAndSetOrdering,
-        P: Pointer<T>,
+        P: Pointer<T, S>,
     {
         let new = new.into_usize();
         self.data
@@ -375,14 +433,14 @@ impl<T> Atomic<T> {
     /// ```
     pub fn compare_and_set_weak<'g, O, P>(
         &self,
-        current: Shared<T>,
+        current: Shared<T, S>,
         new: P,
         ord: O,
         _: &'g Guard,
-    ) -> Result<Shared<'g, T>, CompareAndSetError<'g, T, P>>
+    ) -> Result<Shared<'g, T, S>, CompareAndSetError<'g, T, S, P>>
     where
         O: CompareAndSetOrdering,
-        P: Pointer<T>,
+        P: Pointer<T, S>,
     {
         let new = new.into_usize();
         self.data
@@ -417,7 +475,7 @@ impl<T> Atomic<T> {
     /// assert_eq!(a.fetch_and(2, SeqCst, guard).tag(), 3);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
-    pub fn fetch_and<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+    pub fn fetch_and<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T, S> {
         unsafe { Shared::from_usize(self.data.fetch_and(val | !low_bits::<T>(), ord)) }
     }
 
@@ -442,7 +500,7 @@ impl<T> Atomic<T> {
     /// assert_eq!(a.fetch_or(2, SeqCst, guard).tag(), 1);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 3);
     /// ```
-    pub fn fetch_or<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+    pub fn fetch_or<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T, S> {
         unsafe { Shared::from_usize(self.data.fetch_or(val & low_bits::<T>(), ord)) }
     }
 
@@ -467,7 +525,7 @@ impl<T> Atomic<T> {
     /// assert_eq!(a.fetch_xor(3, SeqCst, guard).tag(), 1);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
-    pub fn fetch_xor<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+    pub fn fetch_xor<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T, S> {
         unsafe { Shared::from_usize(self.data.fetch_xor(val & low_bits::<T>(), ord)) }
     }
 
@@ -505,12 +563,12 @@ impl<T> Atomic<T> {
     ///     }
     /// }
     /// ```
-    pub unsafe fn into_owned(self) -> Owned<T> {
+    pub unsafe fn into_owned(self) -> Owned<T, S> {
         Owned::from_usize(self.data.into_inner())
     }
 }
 
-impl<T> fmt::Debug for Atomic<T> {
+impl<T, S: Storage<T>> fmt::Debug for Atomic<T, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, tag) = decompose_data::<T>(data);
@@ -522,7 +580,7 @@ impl<T> fmt::Debug for Atomic<T> {
     }
 }
 
-impl<T> fmt::Pointer for Atomic<T> {
+impl<T, S: Storage<T>> fmt::Pointer for Atomic<T, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, _) = decompose_data::<T>(data);
@@ -530,7 +588,7 @@ impl<T> fmt::Pointer for Atomic<T> {
     }
 }
 
-impl<T> Clone for Atomic<T> {
+impl<T, S: Storage<T>> Clone for Atomic<T, S> {
     /// Returns a copy of the atomic value.
     ///
     /// Note that a `Relaxed` load is used here. If you need synchronization, use it with other
@@ -541,13 +599,13 @@ impl<T> Clone for Atomic<T> {
     }
 }
 
-impl<T> Default for Atomic<T> {
+impl<T, S: Storage<T>> Default for Atomic<T, S> {
     fn default() -> Self {
         Atomic::null()
     }
 }
 
-impl<T> From<Owned<T>> for Atomic<T> {
+impl<T, S: Storage<T>> From<Owned<T, S>> for Atomic<T, S> {
     /// Returns a new atomic pointer pointing to `owned`.
     ///
     /// # Examples
@@ -557,26 +615,20 @@ impl<T> From<Owned<T>> for Atomic<T> {
     ///
     /// let a = Atomic::<i32>::from(Owned::new(1234));
     /// ```
-    fn from(owned: Owned<T>) -> Self {
+    fn from(owned: Owned<T, S>) -> Self {
         let data = owned.data;
         mem::forget(owned);
         Self::from_usize(data)
     }
 }
 
-impl<T> From<Box<T>> for Atomic<T> {
-    fn from(b: Box<T>) -> Self {
-        Self::from(Owned::from(b))
+impl<T, S: Storage<T>> From<S> for Atomic<T, S> {
+    fn from(s: S) -> Self {
+        Self::from(Owned::from(s))
     }
 }
 
-impl<T> From<T> for Atomic<T> {
-    fn from(t: T) -> Self {
-        Self::new(t)
-    }
-}
-
-impl<'g, T> From<Shared<'g, T>> for Atomic<T> {
+impl<'g, T, S: Storage<T>> From<Shared<'g, T, S>> for Atomic<T, S> {
     /// Returns a new atomic pointer pointing to `ptr`.
     ///
     /// # Examples
@@ -586,29 +638,13 @@ impl<'g, T> From<Shared<'g, T>> for Atomic<T> {
     ///
     /// let a = Atomic::<i32>::from(Shared::<i32>::null());
     /// ```
-    fn from(ptr: Shared<'g, T>) -> Self {
+    fn from(ptr: Shared<'g, T, S>) -> Self {
         Self::from_usize(ptr.data)
     }
 }
 
-impl<T> From<*const T> for Atomic<T> {
-    /// Returns a new atomic pointer pointing to `raw`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::ptr;
-    /// use crossbeam_epoch::Atomic;
-    ///
-    /// let a = Atomic::<i32>::from(ptr::null::<i32>());
-    /// ```
-    fn from(raw: *const T) -> Self {
-        Self::from_usize(raw as usize)
-    }
-}
-
 /// A trait for either `Owned` or `Shared` pointers.
-pub trait Pointer<T> {
+pub trait Pointer<T, S: Storage<T>> {
     /// Returns the machine representation of the pointer.
     fn into_usize(self) -> usize;
 
@@ -618,16 +654,16 @@ pub trait Pointer<T> {
 
 /// An owned heap-allocated object.
 ///
-/// This type is very similar to `Box<T>`.
+/// This type is very similar to the storage type `S` (think: `Box<T>`).
 ///
 /// The pointer must be properly aligned. Since it is aligned, a tag can be stored into the unused
 /// least significant bits of the address.
-pub struct Owned<T> {
+pub struct Owned<T, S: Storage<T>> {
     data: usize,
-    _marker: PhantomData<Box<T>>,
+    _marker: PhantomData<(T, S)>,
 }
 
-impl<T> Pointer<T> for Owned<T> {
+impl<T, S: Storage<T>> Pointer<T, S> for Owned<T, S> {
     #[inline]
     fn into_usize(self) -> usize {
         let data = self.data;
@@ -650,20 +686,7 @@ impl<T> Pointer<T> for Owned<T> {
     }
 }
 
-impl<T> Owned<T> {
-    /// Allocates `value` on the heap and returns a new owned pointer pointing to it.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Owned;
-    ///
-    /// let o = Owned::new(1234);
-    /// ```
-    pub fn new(value: T) -> Owned<T> {
-        Self::from(Box::new(value))
-    }
-
+impl<T, S: Storage<T>> Owned<T, S> {
     /// Returns a new owned pointer pointing to `raw`.
     ///
     /// This function is unsafe because improper use may lead to memory problems. Argument `raw`
@@ -681,7 +704,7 @@ impl<T> Owned<T> {
     ///
     /// let o = unsafe { Owned::from_raw(Box::into_raw(Box::new(1234))) };
     /// ```
-    pub unsafe fn from_raw(raw: *mut T) -> Owned<T> {
+    pub unsafe fn from_raw(raw: *mut T) -> Owned<T, S> {
         ensure_aligned(raw);
         Self::from_usize(raw as usize)
     }
@@ -699,25 +722,8 @@ impl<T> Owned<T> {
     /// ```
     ///
     /// [`Shared`]: struct.Shared.html
-    pub fn into_shared<'g>(self, _: &'g Guard) -> Shared<'g, T> {
+    pub fn into_shared<'g>(self, _: &'g Guard) -> Shared<'g, T, S> {
         unsafe { Shared::from_usize(self.into_usize()) }
-    }
-
-    /// Converts the owned pointer into a `Box`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{self as epoch, Owned};
-    ///
-    /// let o = Owned::new(1234);
-    /// let b: Box<i32> = o.into_box();
-    /// assert_eq!(*b, 1234);
-    /// ```
-    pub fn into_box(self) -> Box<T> {
-        let (raw, _) = decompose_data::<T>(self.data);
-        mem::forget(self);
-        unsafe { Box::from_raw(raw) }
     }
 
     /// Returns the tag stored within the pointer.
@@ -747,22 +753,22 @@ impl<T> Owned<T> {
     /// let o = o.with_tag(2);
     /// assert_eq!(o.tag(), 2);
     /// ```
-    pub fn with_tag(self, tag: usize) -> Owned<T> {
+    pub fn with_tag(self, tag: usize) -> Owned<T, S> {
         let data = self.into_usize();
         unsafe { Self::from_usize(data_with_tag::<T>(data, tag)) }
     }
 }
 
-impl<T> Drop for Owned<T> {
+impl<T, S: Storage<T>> Drop for Owned<T, S> {
     fn drop(&mut self) {
         let (raw, _) = decompose_data::<T>(self.data);
         unsafe {
-            drop(Box::from_raw(raw));
+            drop(S::from_raw(raw));
         }
     }
 }
 
-impl<T> fmt::Debug for Owned<T> {
+impl<T, S: Storage<T>> fmt::Debug for Owned<T, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let (raw, tag) = decompose_data::<T>(self.data);
 
@@ -773,13 +779,7 @@ impl<T> fmt::Debug for Owned<T> {
     }
 }
 
-impl<T: Clone> Clone for Owned<T> {
-    fn clone(&self) -> Self {
-        Owned::new((**self).clone()).with_tag(self.tag())
-    }
-}
-
-impl<T> Deref for Owned<T> {
+impl<T, S: Storage<T>> Deref for Owned<T, S> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -788,20 +788,38 @@ impl<T> Deref for Owned<T> {
     }
 }
 
-impl<T> DerefMut for Owned<T> {
+impl<T, S: Storage<T>> DerefMut for Owned<T, S> {
     fn deref_mut(&mut self) -> &mut T {
         let (raw, _) = decompose_data::<T>(self.data);
         unsafe { &mut *raw }
     }
 }
 
-impl<T> From<T> for Owned<T> {
-    fn from(t: T) -> Self {
-        Owned::new(t)
+impl<T, S: Storage<T>> Borrow<T> for Owned<T, S> {
+    fn borrow(&self) -> &T {
+        &**self
     }
 }
 
-impl<T> From<Box<T>> for Owned<T> {
+impl<T, S: Storage<T>> BorrowMut<T> for Owned<T, S> {
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut **self
+    }
+}
+
+impl<T, S: Storage<T>> AsRef<T> for Owned<T, S> {
+    fn as_ref(&self) -> &T {
+        &**self
+    }
+}
+
+impl<T, S: Storage<T>> AsMut<T> for Owned<T, S> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut **self
+    }
+}
+
+impl<T, S: Storage<T>> From<S> for Owned<T, S> {
     /// Returns a new owned pointer pointing to `b`.
     ///
     /// # Panics
@@ -813,34 +831,10 @@ impl<T> From<Box<T>> for Owned<T> {
     /// ```
     /// use crossbeam_epoch::Owned;
     ///
-    /// let o = unsafe { Owned::from_raw(Box::into_raw(Box::new(1234))) };
+    /// let o = unsafe { Owned::<i32>::from(Box::new(1234)) };
     /// ```
-    fn from(b: Box<T>) -> Self {
-        unsafe { Self::from_raw(Box::into_raw(b)) }
-    }
-}
-
-impl<T> Borrow<T> for Owned<T> {
-    fn borrow(&self) -> &T {
-        &**self
-    }
-}
-
-impl<T> BorrowMut<T> for Owned<T> {
-    fn borrow_mut(&mut self) -> &mut T {
-        &mut **self
-    }
-}
-
-impl<T> AsRef<T> for Owned<T> {
-    fn as_ref(&self) -> &T {
-        &**self
-    }
-}
-
-impl<T> AsMut<T> for Owned<T> {
-    fn as_mut(&mut self) -> &mut T {
-        &mut **self
+    fn from(s: S) -> Self {
+        unsafe { Self::from_raw(s.into_raw()) }
     }
 }
 
@@ -850,12 +844,12 @@ impl<T> AsMut<T> for Owned<T> {
 ///
 /// The pointer must be properly aligned. Since it is aligned, a tag can be stored into the unused
 /// least significant bits of the address.
-pub struct Shared<'g, T: 'g> {
+pub struct Shared<'g, T: 'g, S: Storage<T>> {
     data: usize,
-    _marker: PhantomData<(&'g (), *const T)>,
+    _marker: PhantomData<(&'g (), *const T, S)>,
 }
 
-impl<'g, T> Clone for Shared<'g, T> {
+impl<'g, T, S: Storage<T>> Clone for Shared<'g, T, S> {
     fn clone(&self) -> Self {
         Shared {
             data: self.data,
@@ -864,9 +858,9 @@ impl<'g, T> Clone for Shared<'g, T> {
     }
 }
 
-impl<'g, T> Copy for Shared<'g, T> {}
+impl<'g, T, S: Storage<T>> Copy for Shared<'g, T, S> {}
 
-impl<'g, T> Pointer<T> for Shared<'g, T> {
+impl<'g, T, S: Storage<T>> Pointer<T, S> for Shared<'g, T, S> {
     #[inline]
     fn into_usize(self) -> usize {
         self.data
@@ -881,7 +875,7 @@ impl<'g, T> Pointer<T> for Shared<'g, T> {
     }
 }
 
-impl<'g, T> Shared<'g, T> {
+impl<'g, T, S: Storage<T>> Shared<'g, T, S> {
     /// Returns a new null pointer.
     ///
     /// # Examples
@@ -892,7 +886,7 @@ impl<'g, T> Shared<'g, T> {
     /// let p = Shared::<i32>::null();
     /// assert!(p.is_null());
     /// ```
-    pub fn null() -> Shared<'g, T> {
+    pub fn null() -> Shared<'g, T, S> {
         Shared {
             data: 0,
             _marker: PhantomData,
@@ -915,6 +909,25 @@ impl<'g, T> Shared<'g, T> {
     /// ```
     pub fn is_null(&self) -> bool {
         self.as_raw().is_null()
+    }
+
+    /// Returns a new pointer pointing to `raw`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `raw` is not properly aligned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::Shared;
+    ///
+    /// let p = Shared::from_raw(Box::into_raw(Box::new(1234)) as *const _);
+    /// assert!(!p.is_null());
+    /// ```
+    pub fn from_raw(raw: *const T) -> Self {
+        ensure_aligned(raw);
+        unsafe { Self::from_usize(raw as usize) }
     }
 
     /// Converts the pointer to a raw pointer (without the tag).
@@ -1072,7 +1085,7 @@ impl<'g, T> Shared<'g, T> {
     ///     drop(p.into_owned());
     /// }
     /// ```
-    pub unsafe fn into_owned(self) -> Owned<T> {
+    pub unsafe fn into_owned(self) -> Owned<T, S> {
         debug_assert!(
             self.as_raw() != ptr::null(),
             "converting a null `Shared` into `Owned`"
@@ -1116,53 +1129,32 @@ impl<'g, T> Shared<'g, T> {
     /// assert_eq!(p2.tag(), 2);
     /// assert_eq!(p1.as_raw(), p2.as_raw());
     /// ```
-    pub fn with_tag(&self, tag: usize) -> Shared<'g, T> {
+    pub fn with_tag(&self, tag: usize) -> Shared<'g, T, S> {
         unsafe { Self::from_usize(data_with_tag::<T>(self.data, tag)) }
     }
 }
 
-impl<'g, T> From<*const T> for Shared<'g, T> {
-    /// Returns a new pointer pointing to `raw`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `raw` is not properly aligned.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Shared;
-    ///
-    /// let p = unsafe { Shared::from(Box::into_raw(Box::new(1234)) as *const _) };
-    /// assert!(!p.is_null());
-    /// ```
-    fn from(raw: *const T) -> Self {
-        ensure_aligned(raw);
-        unsafe { Self::from_usize(raw as usize) }
-    }
-}
-
-impl<'g, T> PartialEq<Shared<'g, T>> for Shared<'g, T> {
+impl<'g, T, S: Storage<T>> PartialEq<Shared<'g, T, S>> for Shared<'g, T, S> {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
     }
 }
 
-impl<'g, T> Eq for Shared<'g, T> {}
+impl<'g, T, S: Storage<T>> Eq for Shared<'g, T, S> {}
 
-impl<'g, T> PartialOrd<Shared<'g, T>> for Shared<'g, T> {
+impl<'g, T, S: Storage<T>> PartialOrd<Shared<'g, T, S>> for Shared<'g, T, S> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.data.partial_cmp(&other.data)
     }
 }
 
-impl<'g, T> Ord for Shared<'g, T> {
+impl<'g, T, S: Storage<T>> Ord for Shared<'g, T, S> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.data.cmp(&other.data)
     }
 }
 
-impl<'g, T> fmt::Debug for Shared<'g, T> {
+impl<'g, T, S: Storage<T>> fmt::Debug for Shared<'g, T, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let (raw, tag) = decompose_data::<T>(self.data);
 
@@ -1173,13 +1165,13 @@ impl<'g, T> fmt::Debug for Shared<'g, T> {
     }
 }
 
-impl<'g, T> fmt::Pointer for Shared<'g, T> {
+impl<'g, T, S: Storage<T>> fmt::Pointer for Shared<'g, T, S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Pointer::fmt(&self.as_raw(), f)
     }
 }
 
-impl<'g, T> Default for Shared<'g, T> {
+impl<'g, T, S: Storage<T>> Default for Shared<'g, T, S> {
     fn default() -> Self {
         Shared::null()
     }
@@ -1191,11 +1183,11 @@ mod tests {
 
     #[test]
     fn valid_tag_i8() {
-        Shared::<i8>::null().with_tag(0);
+        Shared::<i8, Box<_>>::null().with_tag(0);
     }
 
     #[test]
     fn valid_tag_i64() {
-        Shared::<i64>::null().with_tag(7);
+        Shared::<i64, Box<_>>::null().with_tag(7);
     }
 }

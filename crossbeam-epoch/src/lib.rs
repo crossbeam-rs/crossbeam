@@ -87,11 +87,17 @@ cfg_if! {
         mod epoch;
         mod guard;
         mod internal;
+        mod storage;
         mod sync;
 
-        pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
+        pub use self::atomic::{
+            decompose_data, Atomic as AtomicTmpl, CompareAndSetError, CompareAndSetOrdering,
+            Owned as OwnedTmpl, Pointer, Shared as SharedTmpl, Storage,
+        };
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard};
+        pub use self::storage::array_storage::{Array, ArrayBox, AtomicArray, OwnedArray, SharedArray};
+        pub use self::storage::box_storage::{Atomic, Owned, Shared};
     }
 }
 

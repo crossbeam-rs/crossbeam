@@ -558,7 +558,7 @@ impl IsElement<Local> for Local {
     }
 
     unsafe fn finalize(entry: &Entry, guard: &Guard) {
-        guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _));
+        guard.defer_destroy::<_, Box<_>>(Shared::from_raw(Self::element_of(entry) as *const _));
     }
 }
 

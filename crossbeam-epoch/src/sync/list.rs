@@ -175,7 +175,7 @@ impl<T, C: IsElement<T>> List<T, C> {
         // Get the intrusively stored Entry of the new element to insert.
         let entry: &Entry = C::entry_of(container.deref());
         // Make a Shared ptr to that Entry.
-        let entry_ptr = Shared::from(entry as *const _);
+        let entry_ptr = Shared::from_raw(entry as *const _);
         // Read the current successor of where we want to insert.
         let mut next = to.load(Relaxed, guard);
 
