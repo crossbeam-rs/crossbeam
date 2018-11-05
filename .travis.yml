@@ -1,16 +1,5 @@
 language: rust
 
-addons:
-  apt:
-    sources:
-      - ubuntu-toolchain-r-test
-      - llvm-toolchain-precise
-      - llvm-toolchain-precise-3.8
-    packages:
-      - llvm-3.8
-      - llvm-3.8-dev
-      - clang-3.8
-      - clang-3.8-dev
 
 matrix:
   include:
@@ -48,6 +37,17 @@ matrix:
   - rust: nightly
     name: "crossbeam-epoch on nightly"
     script: ./ci/crossbeam-epoch.sh
+    addons:
+      apt:
+        sources:
+          - ubuntu-toolchain-r-test
+          - llvm-toolchain-precise
+          - llvm-toolchain-precise-3.8
+        packages:
+          - llvm-3.8
+          - llvm-3.8-dev
+          - clang-3.8
+          - clang-3.8-dev
   - rust: nightly
     name: "crossbeam-skiplist on nightly"
     script: ./ci/crossbeam-skiplist.sh
