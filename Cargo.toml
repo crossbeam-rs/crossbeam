@@ -15,6 +15,9 @@ description = "Support for concurrent programming: memory management, utilities,
 keywords = ["atomic", "garbage", "non-blocking", "lock-free", "rcu"]
 categories = ["concurrency", "memory-management", "data-structures"]
 
+[badges]
+travis-ci = { repository = "crossbeam-rs/crossbeam" }
+
 [features]
 default = ["use_std"]
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
