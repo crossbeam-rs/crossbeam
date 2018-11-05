@@ -2,13 +2,6 @@
 name = "benchmarks"
 version = "0.1.0"
 
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-incremental = false
-panic = 'abort'
-
 [dependencies]
 atomicring = "0.5.3"
 bus = "2.0.0"
