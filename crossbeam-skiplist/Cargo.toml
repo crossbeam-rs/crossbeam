@@ -21,9 +21,9 @@ use_std = ["crossbeam-epoch/use_std"]
 nightly = ["crossbeam-epoch/nightly"]
 
 [dependencies]
-crossbeam-epoch = {version = "0.4.1", default-features = false}
-crossbeam-utils = {version = "0.3.0", default-features = false}
-scopeguard = {version = "0.3.0", default-features = false}
+crossbeam-epoch = { version = "0.6.0", default-features = false }
+crossbeam-utils = { version = "0.3.0", default-features = false }
+scopeguard = { version = "0.3.0", default-features = false }
 
 [dev-dependencies]
 crossbeam = "0.3.2"

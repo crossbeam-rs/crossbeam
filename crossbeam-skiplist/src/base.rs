@@ -221,7 +221,7 @@ impl<K, V> Node<K, V> {
             .fetch_sub(1 << HEIGHT_BITS, Ordering::Release) >> HEIGHT_BITS == 1
         {
             fence(Ordering::Acquire);
-            guard.defer(move || Self::finalize(self));
+            guard.defer_unchecked(move || Self::finalize(self));
         }
     }
 
