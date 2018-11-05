@@ -1,5 +1,11 @@
 language: rust
 
+branches:
+  only:
+    - master
+    - staging
+    - trying
+
 matrix:
   fast_finish: true
   include:
