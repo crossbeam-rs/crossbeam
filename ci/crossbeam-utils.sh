@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd "$(dirname "$0")"/..
+cd "$(dirname "$0")"/../crossbeam-utils
 set -ex
 
 export RUSTFLAGS="-D warnings"

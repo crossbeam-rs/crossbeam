@@ -1,7 +1,9 @@
 #!/bin/bash
 
-cd "$(dirname "$0")"/..
+cd "$(dirname "$0")"/../crossbeam-channel
 set -ex
+
+export RUSTFLAGS="-D warnings"
 
 cargo test -- --test-threads=1
 
