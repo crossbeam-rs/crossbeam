@@ -62,7 +62,7 @@
 
 #[cfg(test)]
 extern crate core;
-#[cfg(all(not(test), feature = "use_std"))]
+#[cfg(all(not(test), feature = "std"))]
 #[macro_use]
 extern crate std;
 
@@ -74,7 +74,7 @@ extern crate std as alloc;
 
 extern crate arrayvec;
 extern crate crossbeam_utils;
-#[cfg(feature = "use_std")]
+#[cfg(feature = "std")]
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -84,7 +84,7 @@ extern crate scopeguard;
 
 mod atomic;
 mod collector;
-#[cfg(feature = "use_std")]
+#[cfg(feature = "std")]
 mod default;
 mod deferred;
 mod epoch;
@@ -94,6 +94,6 @@ mod sync;
 
 pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared, Pointer};
 pub use self::guard::{unprotected, Guard};
-#[cfg(feature = "use_std")]
+#[cfg(feature = "std")]
 pub use self::default::{default_collector, is_pinned, pin};
 pub use self::collector::{Collector, LocalHandle};

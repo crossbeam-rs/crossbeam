@@ -16,18 +16,31 @@ keywords = ["lock-free", "rcu", "atomic", "garbage"]
 categories = ["concurrency", "memory-management"]
 
 [features]
-default = ["use_std"]
-use_std = ["lazy_static", "crossbeam-utils/use_std"]
+default = ["std"]
 nightly = ["arrayvec/use_union"]
+std = ["lazy_static", "crossbeam-utils/std"]
 sanitize = [] # Makes it more likely to trigger any potential data races.
 
 [dependencies]
-arrayvec = { version = "0.4", default-features = false }
 cfg-if = "0.1"
-crossbeam-utils = { version = "0.5", default-features = false }
-lazy_static = { version = "1", optional = true }
-memoffset = { version = "0.2" }
-scopeguard = { version = "0.3", default-features = false }
+memoffset = "0.2"
+
+[dependencies.arrayvec]
+version = "0.4"
+default-features = false
+
+[dependencies.crossbeam-utils]
+version = "0.5"
+path = "../crossbeam-utils"
+default-features = false
+
+[dependencies.lazy_static]
+version = "1"
+optional = true
+
+[dependencies.scopeguard]
+version = "0.3"
+default-features = false
 
 [dev-dependencies]
 rand = "0.5"

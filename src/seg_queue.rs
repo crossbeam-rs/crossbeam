@@ -136,7 +136,7 @@ impl<T> SegQueue<T> {
                                 let next_shared = head.next.load(Acquire, &guard);
                                 if next_shared.as_ref().is_some() {
                                     self.head.store(next_shared, Release);
-                                    guard.defer(move || head_shared.into_owned());
+                                    guard.defer_destroy(head_shared);
                                     break;
                                 }
                             }
@@ -220,7 +220,7 @@ mod test {
         let q: SegQueue<i64> = SegQueue::new();
 
         scope(|scope| {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let mut next = 0;
 
                 while next < CONC_COUNT {
@@ -234,7 +234,7 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
-        });
+        }).unwrap();
     }
 
     #[test]
@@ -254,18 +254,17 @@ mod test {
         }
 
         let q: SegQueue<i64> = SegQueue::new();
-        let qr = &q;
         scope(|scope| {
             for i in 0..3 {
-                scope.spawn(move || recv(i, qr));
+                scope.spawn(|_| recv(i, &q));
             }
 
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..CONC_COUNT {
                     q.push(i);
                 }
-            })
-        });
+            });
+        }).unwrap();
     }
 
     #[test]
@@ -279,17 +278,17 @@ mod test {
 
         scope(|scope| {
             for _t in 0..2 {
-                scope.spawn(|| {
+                scope.spawn(|_| {
                     for i in CONC_COUNT - 1..CONC_COUNT {
                         q.push(LR::Left(i))
                     }
                 });
-                scope.spawn(|| {
+                scope.spawn(|_| {
                     for i in CONC_COUNT - 1..CONC_COUNT {
                         q.push(LR::Right(i))
                     }
                 });
-                scope.spawn(|| {
+                scope.spawn(|_| {
                     let mut vl = vec![];
                     let mut vr = vec![];
                     for _i in 0..CONC_COUNT {
@@ -309,6 +308,6 @@ mod test {
                     assert_eq!(vr, vr2);
                 });
             }
-        });
+        }).unwrap();
     }
 }

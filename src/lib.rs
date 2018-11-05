@@ -44,7 +44,7 @@ mod treiber_stack;
 
 /// Additional utilities for atomics.
 pub mod atomic {
-    pub use crossbeam_utils::AtomicConsume;
+    pub use crossbeam_utils::atomic::AtomicConsume;
     pub use arc_cell::ArcCell;
 }
 

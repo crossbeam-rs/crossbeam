@@ -638,10 +638,10 @@ impl Lock {
             if step < 10 {
                 atomic::spin_loop_hint();
             } else {
-                #[cfg(not(feature = "use_std"))]
+                #[cfg(not(feature = "std"))]
                 atomic::spin_loop_hint();
 
-                #[cfg(feature = "use_std")]
+                #[cfg(feature = "std")]
                 ::std::thread::yield_now();
             }
 

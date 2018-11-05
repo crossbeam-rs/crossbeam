@@ -16,14 +16,23 @@ keywords = ["map", "set", "skiplist", "lock-free"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
 [features]
-default = ["use_std"]
-use_std = ["crossbeam-epoch/use_std"]
+default = ["std"]
 nightly = ["crossbeam-epoch/nightly"]
+std = ["crossbeam-epoch/std"]
 
-[dependencies]
-crossbeam-epoch = { version = "0.6.0", default-features = false }
-crossbeam-utils = { version = "0.3.0", default-features = false }
-scopeguard = { version = "0.3.0", default-features = false }
+[dependencies.crossbeam-epoch]
+version = "0.6.0"
+path = "../crossbeam-epoch"
+default-features = false
+
+[dependencies.crossbeam-utils]
+version = "0.3.0"
+# path = "../crossbeam-utils"
+default-features = false
+
+[dependencies.scopeguard]
+version = "0.3.0"
+default-features = false
 
 [dev-dependencies]
 crossbeam = "0.3.2"

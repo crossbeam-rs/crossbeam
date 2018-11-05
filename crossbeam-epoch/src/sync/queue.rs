@@ -310,7 +310,7 @@ mod test {
         assert!(q.is_empty());
 
         thread::scope(|scope| {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let mut next = 0;
 
                 while next < CONC_COUNT {
@@ -324,7 +324,7 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
-        });
+        }).unwrap();
     }
 
     #[test]
@@ -345,16 +345,17 @@ mod test {
 
         let q: Queue<i64> = Queue::new();
         assert!(q.is_empty());
-        let qr = &q;
         thread::scope(|scope| {
             for i in 0..3 {
-                scope.spawn(move || recv(i, qr));
+                scope.spawn(|_| recv(i, &q));
             }
 
-            scope.spawn(|| for i in 0..CONC_COUNT {
-                q.push(i);
-            })
-        });
+            scope.spawn(|_| {
+                for i in 0..CONC_COUNT {
+                    q.push(i);
+                }
+            });
+        }).unwrap();
     }
 
     #[test]
@@ -368,13 +369,13 @@ mod test {
         assert!(q.is_empty());
 
         thread::scope(|scope| for _t in 0..2 {
-            scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
+            scope.spawn(|_| for i in CONC_COUNT - 1..CONC_COUNT {
                 q.push(LR::Left(i))
             });
-            scope.spawn(|| for i in CONC_COUNT - 1..CONC_COUNT {
+            scope.spawn(|_| for i in CONC_COUNT - 1..CONC_COUNT {
                 q.push(LR::Right(i))
             });
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let mut vl = vec![];
                 let mut vr = vec![];
                 for _i in 0..CONC_COUNT {
@@ -393,7 +394,7 @@ mod test {
                 assert_eq!(vl, vl2);
                 assert_eq!(vr, vr2);
             });
-        });
+        }).unwrap();
     }
 
     #[test]
@@ -401,7 +402,7 @@ mod test {
         let q: Queue<i64> = Queue::new();
 
         thread::scope(|scope| {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let mut next = 0;
                 while next < CONC_COUNT {
                     assert_eq!(q.pop(), next);
@@ -412,7 +413,7 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
-        });
+        }).unwrap();
         assert!(q.is_empty());
     }
 
