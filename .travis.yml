@@ -16,4 +16,8 @@ rust:
 
 script:
   - ./ci/script.sh
+  - (cd crossbeam-channel && ./ci/script.sh)
+  - (cd crossbeam-epoch && ./ci/script.sh)
+  - (cd crossbeam-deque && ./ci/script.sh)
+  - (cd crossbeam-skiplist && ./ci/script.sh)
   - (cd crossbeam-utils && ./ci/script.sh)
