@@ -5,12 +5,12 @@ extern crate crossbeam_channel;
 extern crate signal_hook;
 
 use std::io;
-use std::time::{Duration, Instant};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::{tick, unbounded, Receiver};
-use signal_hook::SIGINT;
 use signal_hook::iterator::Signals;
+use signal_hook::SIGINT;
 
 // Creates a channel that gets a message every time `SIGINT` is signalled.
 fn sigint_notifier() -> io::Result<Receiver<()>> {
@@ -30,7 +30,11 @@ fn sigint_notifier() -> io::Result<Receiver<()>> {
 
 // Prints the elapsed time.
 fn show(dur: Duration) {
-    println!("Elapsed: {}.{:03} sec", dur.as_secs(), dur.subsec_nanos() / 1_000_000);
+    println!(
+        "Elapsed: {}.{:03} sec",
+        dur.as_secs(),
+        dur.subsec_nanos() / 1_000_000
+    );
 }
 
 fn main() {

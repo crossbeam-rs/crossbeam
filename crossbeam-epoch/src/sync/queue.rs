@@ -39,7 +39,6 @@ struct Node<T> {
 unsafe impl<T: Send> Sync for Queue<T> {}
 unsafe impl<T: Send> Send for Queue<T> {}
 
-
 impl<T> Queue<T> {
     /// Create a new, empty queue.
     pub fn new() -> Queue<T> {
@@ -73,7 +72,8 @@ impl<T> Queue<T> {
             false
         } else {
             // looks like the actual tail; attempt to link in `n`
-            let result = o.next
+            let result = o
+                .next
                 .compare_and_set(Shared::null(), new, Release, guard)
                 .is_ok();
             if result {
@@ -116,8 +116,7 @@ impl<T> Queue<T> {
                     .map(|_| {
                         guard.defer_destroy(head);
                         Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
-                    })
-                    .map_err(|_| ())
+                    }).map_err(|_| ())
             },
             None => Ok(None),
         }
@@ -141,8 +140,7 @@ impl<T> Queue<T> {
                     .map(|_| {
                         guard.defer_destroy(head);
                         Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
-                    })
-                    .map_err(|_| ())
+                    }).map_err(|_| ())
             },
             None | Some(_) => Ok(None),
         }
@@ -190,7 +188,6 @@ impl<T> Drop for Queue<T> {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -203,7 +200,9 @@ mod test {
 
     impl<T> Queue<T> {
         pub fn new() -> Queue<T> {
-            Queue { queue: super::Queue::new() }
+            Queue {
+                queue: super::Queue::new(),
+            }
         }
 
         pub fn push(&self, t: T) {
@@ -368,32 +367,38 @@ mod test {
         let q: Queue<LR> = Queue::new();
         assert!(q.is_empty());
 
-        thread::scope(|scope| for _t in 0..2 {
-            scope.spawn(|_| for i in CONC_COUNT - 1..CONC_COUNT {
-                q.push(LR::Left(i))
-            });
-            scope.spawn(|_| for i in CONC_COUNT - 1..CONC_COUNT {
-                q.push(LR::Right(i))
-            });
-            scope.spawn(|_| {
-                let mut vl = vec![];
-                let mut vr = vec![];
-                for _i in 0..CONC_COUNT {
-                    match q.try_pop() {
-                        Some(LR::Left(x)) => vl.push(x),
-                        Some(LR::Right(x)) => vr.push(x),
-                        _ => {}
+        thread::scope(|scope| {
+            for _t in 0..2 {
+                scope.spawn(|_| {
+                    for i in CONC_COUNT - 1..CONC_COUNT {
+                        q.push(LR::Left(i))
                     }
-                }
+                });
+                scope.spawn(|_| {
+                    for i in CONC_COUNT - 1..CONC_COUNT {
+                        q.push(LR::Right(i))
+                    }
+                });
+                scope.spawn(|_| {
+                    let mut vl = vec![];
+                    let mut vr = vec![];
+                    for _i in 0..CONC_COUNT {
+                        match q.try_pop() {
+                            Some(LR::Left(x)) => vl.push(x),
+                            Some(LR::Right(x)) => vr.push(x),
+                            _ => {}
+                        }
+                    }
 
-                let mut vl2 = vl.clone();
-                let mut vr2 = vr.clone();
-                vl2.sort();
-                vr2.sort();
+                    let mut vl2 = vl.clone();
+                    let mut vr2 = vr.clone();
+                    vl2.sort();
+                    vr2.sort();
 
-                assert_eq!(vl, vl2);
-                assert_eq!(vr, vr2);
-            });
+                    assert_eq!(vl, vl2);
+                    assert_eq!(vr, vr2);
+                });
+            }
         }).unwrap();
     }
 

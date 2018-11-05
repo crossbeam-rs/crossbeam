@@ -41,7 +41,6 @@ fn optional() {
     }
 }
 
-
 #[test]
 fn tick_n() {
     let mut r = tick(ms(100));

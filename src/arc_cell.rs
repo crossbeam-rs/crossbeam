@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::mem;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// A type providing atomic storage and retrieval of an `Arc<T>`.
 #[derive(Debug)]
@@ -72,8 +72,8 @@ impl<T> From<T> for ArcCell<T> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+    use std::sync::Arc;
 
     use super::*;
 

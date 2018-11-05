@@ -156,9 +156,7 @@ impl SelectHandle for Channel {
                 token.tick = None;
                 true
             }
-            Err(TryRecvError::Empty) => {
-                false
-            }
+            Err(TryRecvError::Empty) => false,
         }
     }
 

@@ -131,7 +131,7 @@ fn main() {
                 "Rust atomicring",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
-        }
+        };
     }
 
     run!("bounded_mpmc", mpmc(MESSAGES));

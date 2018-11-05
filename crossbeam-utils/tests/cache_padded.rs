@@ -1,7 +1,7 @@
 extern crate crossbeam_utils;
 
-use std::mem;
 use std::cell::Cell;
+use std::mem;
 
 use crossbeam_utils::CachePadded;
 

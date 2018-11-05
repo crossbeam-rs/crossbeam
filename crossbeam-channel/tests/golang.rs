@@ -74,7 +74,8 @@ impl<T> Clone for Chan<T> {
 
 impl<T> Chan<T> {
     fn send(&self, msg: T) {
-        let s = self.inner
+        let s = self
+            .inner
             .lock()
             .s
             .as_ref()
@@ -84,34 +85,21 @@ impl<T> Chan<T> {
     }
 
     fn try_recv(&self) -> Option<T> {
-        let r = self.inner
-            .lock()
-            .r
-            .clone();
+        let r = self.inner.lock().r.clone();
         r.try_recv().ok()
     }
 
     fn recv(&self) -> Option<T> {
-        let r = self.inner
-            .lock()
-            .r
-            .clone();
+        let r = self.inner.lock().r.clone();
         r.recv().ok()
     }
 
     fn close(&self) {
-        self.inner
-            .lock()
-            .s
-            .take()
-            .expect("channel already closed");
+        self.inner.lock().s.take().expect("channel already closed");
     }
 
     fn rx(&self) -> Receiver<T> {
-        self.inner
-            .lock()
-            .r
-            .clone()
+        self.inner.lock().r.clone()
     }
 
     fn tx(&self) -> Sender<T> {
@@ -146,10 +134,7 @@ impl<'a, T> IntoIterator for &'a Chan<T> {
 fn make<T>(cap: usize) -> Chan<T> {
     let (s, r) = bounded(cap);
     Chan {
-        inner: Arc::new(Mutex::new(ChanInner {
-            s: Some(s),
-            r,
-        })),
+        inner: Arc::new(Mutex::new(ChanInner { s: Some(s), r })),
     }
 }
 
@@ -749,9 +734,7 @@ mod chan_test {
 
         go!(c, wg, {
             let mut n = [0; 4];
-            let mut c1 = c.iter()
-                .map(|c| Some(c.rx().clone()))
-                .collect::<Vec<_>>();
+            let mut c1 = c.iter().map(|c| Some(c.rx().clone())).collect::<Vec<_>>();
 
             for _ in 0..4 * N {
                 let index = {
@@ -785,9 +768,7 @@ mod chan_test {
 
         go!(c, wg, {
             let mut n = [0; 4];
-            let mut c1 = c.iter()
-                .map(|c| Some(c.tx().clone()))
-                .collect::<Vec<_>>();
+            let mut c1 = c.iter().map(|c| Some(c.tx().clone())).collect::<Vec<_>>();
 
             for _ in 0..4 * N {
                 let index = {
@@ -878,9 +859,7 @@ mod chan_test {
         if e > 4.4172 / (2.0 * (TRIALS as f64).sqrt()) {
             panic!(
                 "unfair select: in {} trials, results were {}, {}",
-                TRIALS,
-                cnt1,
-                cnt2,
+                TRIALS, cnt1, cnt2,
             );
         }
 
@@ -943,9 +922,7 @@ mod chan_test {
             if n0 <= N as i32 / 10 || n1 <= N as i32 / 10 {
                 panic!(
                     "Want pseudorandom, got {} zeros and {} ones (chan cap {})",
-                    n0,
-                    n1,
-                    cap,
+                    n0, n1, cap,
                 );
             }
         }

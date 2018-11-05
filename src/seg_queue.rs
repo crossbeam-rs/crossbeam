@@ -175,8 +175,8 @@ impl<T> Default for SegQueue<T> {
 mod test {
     const CONC_COUNT: i64 = 1000000;
 
-    use scope;
     use super::*;
+    use scope;
 
     #[test]
     fn push_pop_1() {

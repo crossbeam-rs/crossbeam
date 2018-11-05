@@ -309,7 +309,7 @@ macro_rules! impl_arithmetic {
                     let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
-                    *value = *value & val;
+                    *value &= val;
                     old
                 }
             }
@@ -335,7 +335,7 @@ macro_rules! impl_arithmetic {
                     let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
-                    *value = *value | val;
+                    *value |= val;
                     old
                 }
             }
@@ -361,7 +361,7 @@ macro_rules! impl_arithmetic {
                     let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
-                    *value = *value ^ val;
+                    *value ^= val;
                     old
                 }
             }
@@ -488,8 +488,16 @@ cfg_if! {
     }
 }
 
-impl_arithmetic!(usize, atomic::AtomicUsize, "let a = AtomicCell::new(7usize);");
-impl_arithmetic!(isize, atomic::AtomicIsize, "let a = AtomicCell::new(7isize);");
+impl_arithmetic!(
+    usize,
+    atomic::AtomicUsize,
+    "let a = AtomicCell::new(7usize);"
+);
+impl_arithmetic!(
+    isize,
+    atomic::AtomicIsize,
+    "let a = AtomicCell::new(7isize);"
+);
 
 impl AtomicCell<bool> {
     /// Applies logical "and" to the current value and returns the previous value.
@@ -671,7 +679,9 @@ impl Drop for WriteGuard {
     #[inline]
     fn drop(&mut self) {
         // Release the lock and increment the stamp.
-        self.lock.state.store(self.state.wrapping_add(2), Ordering::Release);
+        self.lock
+            .state
+            .store(self.state.wrapping_add(2), Ordering::Release);
     }
 }
 
@@ -689,7 +699,9 @@ fn lock(addr: usize) -> &'static Lock {
     // The number of locks is prime.
     const LEN: usize = 97;
 
-    const L: Lock = Lock { state: AtomicUsize::new(0) };
+    const L: Lock = Lock {
+        state: AtomicUsize::new(0),
+    };
     static LOCKS: [Lock; LEN] = [
         L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
         L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
@@ -723,7 +735,7 @@ impl AtomicUnit {
         _current: (),
         _new: (),
         _success: Ordering,
-        _failure: Ordering
+        _failure: Ordering,
     ) -> Result<(), ()> {
         Ok(())
     }
@@ -735,7 +747,7 @@ macro_rules! atomic {
     (@check, $t:ty, $atomic:ty, $a:ident, $atomic_op:expr) => {
         if can_transmute::<$t, $atomic>() {
             let $a: &$atomic;
-            break $atomic_op
+            break $atomic_op;
         }
     };
 
@@ -759,7 +771,7 @@ macro_rules! atomic {
                 atomic!(@check, $t, atomic::AtomicU64, $a, $atomic_op);
             }
 
-            break $fallback_op
+            break $fallback_op;
         }
     };
 }
@@ -798,7 +810,6 @@ where
                 if lock.validate_read(stamp) {
                     return val;
                 }
-                mem::forget(val);
             }
 
             // Grab a regular write lock so that writers don't starve this load.

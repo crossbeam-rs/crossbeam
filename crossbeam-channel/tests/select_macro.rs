@@ -12,8 +12,8 @@ use std::ops::Deref;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{after, bounded, never, unbounded, tick};
-use crossbeam_channel::{Sender, Receiver, RecvError, SendError, TryRecvError};
+use crossbeam_channel::{after, bounded, never, tick, unbounded};
+use crossbeam_channel::{Receiver, RecvError, SendError, Sender, TryRecvError};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -289,31 +289,27 @@ fn loop_try() {
         let (s_end, r_end) = bounded::<()>(0);
 
         crossbeam::scope(|scope| {
-            scope.spawn(|| {
-                loop {
-                    select! {
-                        send(s1, 1) -> _ => break,
-                        default => {}
-                    }
+            scope.spawn(|| loop {
+                select! {
+                    send(s1, 1) -> _ => break,
+                    default => {}
+                }
 
-                    select! {
-                        recv(r_end) -> _ => break,
-                        default => {}
-                    }
+                select! {
+                    recv(r_end) -> _ => break,
+                    default => {}
                 }
             });
 
-            scope.spawn(|| {
-                loop {
-                    if let Ok(x) = r2.try_recv() {
-                        assert_eq!(x, 2);
-                        break;
-                    }
+            scope.spawn(|| loop {
+                if let Ok(x) = r2.try_recv() {
+                    assert_eq!(x, 2);
+                    break;
+                }
 
-                    select! {
-                        recv(r_end) -> _ => break,
-                        default => {}
-                    }
+                select! {
+                    recv(r_end) -> _ => break,
+                    default => {}
                 }
             });
 

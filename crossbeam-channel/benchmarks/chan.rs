@@ -12,7 +12,7 @@ const THREADS: usize = 4;
 fn new<T>(cap: Option<usize>) -> (chan::Sender<T>, chan::Receiver<T>) {
     match cap {
         None => chan::async(),
-        Some(cap) => chan::sync(cap)
+        Some(cap) => chan::sync(cap),
     }
 }
 
@@ -170,7 +170,7 @@ fn main() {
                 "Rust chan",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
-        }
+        };
     }
 
     run!("bounded0_mpmc", mpmc(Some(0)));

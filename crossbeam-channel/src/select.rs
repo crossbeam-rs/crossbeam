@@ -344,7 +344,7 @@ where
         // Check for timeout.
         match timeout {
             Timeout::Now => unreachable!(),
-            Timeout::Never => {},
+            Timeout::Never => {}
             Timeout::At(when) => {
                 if Instant::now() >= when {
                     // Fall back to one final non-blocking select. This is needed to make the whole

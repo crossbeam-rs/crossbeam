@@ -54,8 +54,7 @@ fn counter_builder() {
                 .stack_size(SMALL_STACK_SIZE)
                 .spawn(|_| {
                     counter.fetch_add(1, Ordering::Relaxed);
-                })
-                .unwrap();
+                }).unwrap();
         }
     }).unwrap();
 
@@ -95,7 +94,9 @@ fn panic_twice() {
     });
 
     let err = result.unwrap_err();
-    let vec = err.downcast_ref::<Vec<Box<Any + Send + 'static>>>().unwrap();
+    let vec = err
+        .downcast_ref::<Vec<Box<Any + Send + 'static>>>()
+        .unwrap();
     assert_eq!(2, vec.len());
 
     let first = vec[0].downcast_ref::<&str>().unwrap();
@@ -148,9 +149,7 @@ fn nesting() {
         }
     }
 
-    let wrapper = Wrapper {
-        var: &var,
-    };
+    let wrapper = Wrapper { var: &var };
 
     thread::scope(|scope| {
         scope.spawn(|scope| {
@@ -165,9 +164,7 @@ fn nesting() {
 fn join_nested() {
     thread::scope(|scope| {
         scope.spawn(|scope| {
-            let handle = scope.spawn(|_| {
-                7
-            });
+            let handle = scope.spawn(|_| 7);
 
             sleep(Duration::from_millis(200));
             handle.join().unwrap();

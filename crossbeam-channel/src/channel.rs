@@ -6,8 +6,8 @@ use std::iter::FusedIterator;
 use std::mem;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::process;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use context::Context;
@@ -415,11 +415,9 @@ impl<T> Sender<T> {
             ChannelFlavor::Array(chan) => chan.send(msg, None),
             ChannelFlavor::List(chan) => chan.send(msg, None),
             ChannelFlavor::Zero(chan) => chan.send(msg, None),
-        }.map_err(|err| {
-            match err {
-                SendTimeoutError::Disconnected(msg) => SendError(msg),
-                SendTimeoutError::Timeout(_) => unreachable!(),
-            }
+        }.map_err(|err| match err {
+            SendTimeoutError::Disconnected(msg) => SendError(msg),
+            SendTimeoutError::Timeout(_) => unreachable!(),
         })
     }
 
@@ -608,7 +606,7 @@ impl<T> fmt::Debug for Sender<T> {
 /// assert_eq!(r.recv(), Ok(2)); // Received after 1 second.
 /// ```
 pub struct Receiver<T> {
-    flavor: ReceiverFlavor<T>
+    flavor: ReceiverFlavor<T>,
 }
 
 /// Receiver flavors.
@@ -681,21 +679,19 @@ impl<T> Receiver<T> {
             ReceiverFlavor::After(chan) => {
                 let msg = chan.try_recv();
                 unsafe {
-                    mem::transmute_copy::<
-                        Result<Instant, TryRecvError>,
-                        Result<T, TryRecvError>
-                    >(&msg)
+                    mem::transmute_copy::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
+                        &msg,
+                    )
                 }
-            },
+            }
             ReceiverFlavor::Tick(chan) => {
                 let msg = chan.try_recv();
                 unsafe {
-                    mem::transmute_copy::<
-                        Result<Instant, TryRecvError>,
-                        Result<T, TryRecvError>
-                    >(&msg)
+                    mem::transmute_copy::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
+                        &msg,
+                    )
                 }
-            },
+            }
             ReceiverFlavor::Never(chan) => chan.try_recv(),
         }
     }
@@ -743,7 +739,7 @@ impl<T> Receiver<T> {
                         Result<T, RecvTimeoutError>,
                     >(&msg)
                 }
-            },
+            }
             ReceiverFlavor::Tick(chan) => {
                 let msg = chan.recv(None);
                 unsafe {
@@ -752,7 +748,7 @@ impl<T> Receiver<T> {
                         Result<T, RecvTimeoutError>,
                     >(&msg)
                 }
-            },
+            }
             ReceiverFlavor::Never(chan) => chan.recv(None),
         }.map_err(|_| RecvError)
     }
@@ -811,7 +807,7 @@ impl<T> Receiver<T> {
                         Result<T, RecvTimeoutError>,
                     >(&msg)
                 }
-            },
+            }
             ReceiverFlavor::Tick(chan) => {
                 let msg = chan.recv(Some(deadline));
                 unsafe {
@@ -820,7 +816,7 @@ impl<T> Receiver<T> {
                         Result<T, RecvTimeoutError>,
                     >(&msg)
                 }
-            },
+            }
             ReceiverFlavor::Never(chan) => chan.recv(Some(deadline)),
         }
     }

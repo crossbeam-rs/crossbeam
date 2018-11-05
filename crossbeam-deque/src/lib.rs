@@ -69,8 +69,8 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::Arc;
 use std::sync::atomic::{self, AtomicIsize, Ordering};
+use std::sync::Arc;
 
 use epoch::{Atomic, Owned};
 use utils::CachePadded;
@@ -357,9 +357,10 @@ impl<T> Worker<T> {
         let guard = &epoch::pin();
 
         // Replace the old buffer with the new one.
-        let old = self.inner
-            .buffer
-            .swap(Owned::new(new).into_shared(guard), Ordering::Release, guard);
+        let old =
+            self.inner
+                .buffer
+                .swap(Owned::new(new).into_shared(guard), Ordering::Release, guard);
 
         // Destroy the old buffer later.
         guard.defer(move || old.into_owned().into_box().dealloc());
@@ -495,7 +496,8 @@ impl<T> Worker<T> {
             // Pop from the front of the deque.
             Flavor::Fifo => {
                 // Try incrementing the front index to pop the value.
-                if self.inner
+                if self
+                    .inner
                     .front
                     .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
                     .is_ok()
@@ -543,15 +545,15 @@ impl<T> Worker<T> {
                     // Are we popping the last element from the deque?
                     if len == 0 {
                         // Try incrementing the front index.
-                        if self.inner
+                        if self
+                            .inner
                             .front
                             .compare_exchange(
                                 f,
                                 f.wrapping_add(1),
                                 Ordering::SeqCst,
                                 Ordering::Relaxed,
-                            )
-                            .is_err()
+                            ).is_err()
                         {
                             // Failed. We didn't pop anything.
                             mem::forget(value.take());
@@ -661,7 +663,8 @@ impl<T> Stealer<T> {
         let value = unsafe { buffer.deref().read(f) };
 
         // Try incrementing the front index to steal the value.
-        if self.inner
+        if self
+            .inner
             .front
             .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
             .is_err()
@@ -747,15 +750,15 @@ impl<T> Stealer<T> {
                 }
 
                 // Try incrementing the front index to steal the batch.
-                if self.inner
+                if self
+                    .inner
                     .front
                     .compare_exchange(
                         f,
                         f.wrapping_add(additional + 1),
                         Ordering::SeqCst,
                         Ordering::Relaxed,
-                    )
-                    .is_err()
+                    ).is_err()
                 {
                     // We didn't steal this value, forget it.
                     mem::forget(value);
@@ -768,7 +771,9 @@ impl<T> Stealer<T> {
                 //
                 // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
                 // data races because it doesn't understand fences.
-                dest.inner.back.store(dest_b.wrapping_add(additional), Ordering::Release);
+                dest.inner
+                    .back
+                    .store(dest_b.wrapping_add(additional), Ordering::Release);
 
                 // Return the first stolen value.
                 Steal::Data(value)
@@ -777,7 +782,8 @@ impl<T> Stealer<T> {
             // Steal a batch of elements from the front one by one.
             Flavor::Lifo => {
                 // Try incrementing the front index to steal the value.
-                if self.inner
+                if self
+                    .inner
                     .front
                     .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
                     .is_err()
@@ -808,7 +814,8 @@ impl<T> Stealer<T> {
                     let value = unsafe { buffer.deref().read(f) };
 
                     // Try incrementing the front index to steal the value.
-                    if self.inner
+                    if self
+                        .inner
                         .front
                         .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
                         .is_err()

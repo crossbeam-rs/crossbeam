@@ -278,9 +278,7 @@ where
     T: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_tuple("Entry")
-            .field(&self.value())
-            .finish()
+        f.debug_tuple("Entry").field(&self.value()).finish()
     }
 }
 
@@ -297,8 +295,7 @@ impl<T> Iterator for IntoIter<T> {
     }
 }
 
-impl<T> fmt::Debug for IntoIter<T>
-{
+impl<T> fmt::Debug for IntoIter<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "IntoIter {{ ... }}")
     }
@@ -329,8 +326,7 @@ where
     }
 }
 
-impl<'a, T> fmt::Debug for Iter<'a, T>
-{
+impl<'a, T> fmt::Debug for Iter<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Iter {{ ... }}")
     }

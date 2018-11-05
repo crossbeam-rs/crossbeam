@@ -2,8 +2,8 @@
 
 extern crate crossbeam;
 
-use std::sync::mpsc;
 use shared::{message, shuffle};
+use std::sync::mpsc;
 
 mod shared;
 
@@ -137,7 +137,9 @@ fn select_rx_async() {
 
 fn select_rx_sync(cap: usize) {
     assert_eq!(THREADS, 4);
-    let mut chans = (0..THREADS).map(|_| mpsc::sync_channel(cap)).collect::<Vec<_>>();
+    let mut chans = (0..THREADS)
+        .map(|_| mpsc::sync_channel(cap))
+        .collect::<Vec<_>>();
 
     crossbeam::scope(|scope| {
         for &(ref tx, _) in &chans {
@@ -178,7 +180,7 @@ fn main() {
                 "Rust mpsc",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
-        }
+        };
     }
 
     run!("bounded0_mpsc", mpsc_sync(0));

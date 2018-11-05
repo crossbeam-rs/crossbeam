@@ -155,7 +155,7 @@ fn main() {
                 "Rust crossbeam-channel",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
-        }
+        };
     }
 
     run!("bounded0_mpmc", mpmc(Some(0)));

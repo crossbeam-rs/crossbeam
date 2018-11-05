@@ -107,7 +107,7 @@ fn main() {
                 "Rust msqueue",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
-        }
+        };
     }
 
     run!("unbounded_mpmc", mpmc());

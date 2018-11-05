@@ -217,8 +217,11 @@ impl<K, V> Node<K, V> {
     /// Decrements the reference count of a node, destroying it if the count becomes zero.
     #[inline]
     unsafe fn decrement(&self, guard: &Guard) {
-        if self.refs_and_height
-            .fetch_sub(1 << HEIGHT_BITS, Ordering::Release) >> HEIGHT_BITS == 1
+        if self
+            .refs_and_height
+            .fetch_sub(1 << HEIGHT_BITS, Ordering::Release)
+            >> HEIGHT_BITS
+            == 1
         {
             fence(Ordering::Acquire);
             guard.defer_unchecked(move || Self::finalize(self));
@@ -522,10 +525,9 @@ where
             //
             // Note that we're loading the pointer only to check whether it is null, so it's okay
             // to use `epoch::unprotected()` in this situation.
-            while height >= 4
-                && self.head[height - 2]
-                    .load(Ordering::Relaxed, epoch::unprotected())
-                    .is_null()
+            while height >= 4 && self.head[height - 2]
+                .load(Ordering::Relaxed, epoch::unprotected())
+                .is_null()
             {
                 height -= 1;
             }
@@ -642,10 +644,9 @@ where
                 let mut level = self.hot_data.max_height.load(Ordering::Relaxed);
 
                 // Fast loop to skip empty tower levels.
-                while level >= 1
-                    && self.head[level - 1]
-                        .load(Ordering::Relaxed, guard)
-                        .is_null()
+                while level >= 1 && self.head[level - 1]
+                    .load(Ordering::Relaxed, guard)
+                    .is_null()
                 {
                     level -= 1;
                 }
@@ -733,10 +734,9 @@ where
                 let mut level = self.hot_data.max_height.load(Ordering::Relaxed);
 
                 // Fast loop to skip empty tower levels.
-                while level >= 1
-                    && self.head[level - 1]
-                        .load(Ordering::Relaxed, guard)
-                        .is_null()
+                while level >= 1 && self.head[level - 1]
+                    .load(Ordering::Relaxed, guard)
+                    .is_null()
                 {
                     level -= 1;
                 }
@@ -1070,8 +1070,7 @@ where
                                 succ,
                                 Ordering::SeqCst,
                                 guard,
-                            )
-                            .is_ok()
+                            ).is_ok()
                         {
                             // Success! Decrement the reference count.
                             n.decrement(guard);
@@ -1340,7 +1339,8 @@ where
 
     /// Returns the previous entry in the skip list.
     pub fn prev(&self) -> Option<Entry<'a, 'g, K, V>> {
-        let n = self.parent
+        let n = self
+            .parent
             .search_bound(Bound::Excluded(&self.node.key), true, self.guard)?;
         Some(Entry {
             parent: self.parent,
@@ -1474,7 +1474,8 @@ where
         unsafe {
             let mut n = self.node;
             loop {
-                n = self.parent
+                n = self
+                    .parent
                     .next_node(&n.tower, Bound::Excluded(&n.key), guard)?;
                 if let Some(e) = RefEntry::try_acquire(self.parent, n) {
                     return Some(e);
@@ -1499,7 +1500,8 @@ where
         unsafe {
             let mut n = self.node;
             loop {
-                n = self.parent
+                n = self
+                    .parent
                     .search_bound(Bound::Excluded(&n.key), true, guard)?;
                 if let Some(e) = RefEntry::try_acquire(self.parent, n) {
                     return Some(e);
@@ -1531,9 +1533,11 @@ where
 
     fn next(&mut self) -> Option<Entry<'a, 'g, K, V>> {
         self.head = match self.head {
-            Some(n) => self.parent
+            Some(n) => self
+                .parent
                 .next_node(&n.tower, Bound::Excluded(&n.key), self.guard),
-            None => self.parent
+            None => self
+                .parent
                 .next_node(&self.parent.head, Bound::Unbounded, self.guard),
         };
         if let (Some(h), Some(t)) = (self.head, self.tail) {
@@ -1556,7 +1560,8 @@ where
 {
     fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V>> {
         self.tail = match self.tail {
-            Some(n) => self.parent
+            Some(n) => self
+                .parent
                 .search_bound(Bound::Excluded(&n.key), true, self.guard),
             None => self.parent.search_bound(Bound::Unbounded, true, self.guard),
         };
@@ -1649,9 +1654,11 @@ where
 
     fn next(&mut self) -> Option<Entry<'a, 'g, K, V>> {
         self.head = match self.head {
-            Some(n) => self.parent
+            Some(n) => self
+                .parent
                 .next_node(&n.tower, Bound::Excluded(&n.key), self.guard),
-            None => self.parent
+            None => self
+                .parent
                 .search_bound(self.lower_bound, false, self.guard),
         };
         if let Some(h) = self.head {
@@ -1681,7 +1688,8 @@ where
 {
     fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V>> {
         self.tail = match self.tail {
-            Some(n) => self.parent
+            Some(n) => self
+                .parent
                 .search_bound(Bound::Excluded(&n.key), true, self.guard),
             None => self.parent.search_bound(self.upper_bound, true, self.guard),
         };

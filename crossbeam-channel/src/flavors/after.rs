@@ -2,8 +2,8 @@
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -169,9 +169,7 @@ impl SelectHandle for Channel {
                 token.after = None;
                 true
             }
-            Err(TryRecvError::Empty) => {
-                false
-            }
+            Err(TryRecvError::Empty) => false,
         }
     }
 

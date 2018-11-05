@@ -57,7 +57,6 @@
 #![cfg_attr(feature = "nightly", feature(const_fn))]
 #![cfg_attr(feature = "nightly", feature(alloc))]
 #![cfg_attr(not(test), no_std)]
-
 #![warn(missing_docs, missing_debug_implementations)]
 
 #[cfg(test)]
@@ -92,8 +91,8 @@ mod guard;
 mod internal;
 mod sync;
 
-pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Shared, Pointer};
-pub use self::guard::{unprotected, Guard};
+pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
+pub use self::collector::{Collector, LocalHandle};
 #[cfg(feature = "std")]
 pub use self::default::{default_collector, is_pinned, pin};
-pub use self::collector::{Collector, LocalHandle};
+pub use self::guard::{unprotected, Guard};

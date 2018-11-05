@@ -362,13 +362,13 @@ mod select_macro;
 mod utils;
 mod waker;
 
-pub use channel::{Receiver, Sender};
-pub use channel::{bounded, unbounded};
 pub use channel::{after, never, tick};
+pub use channel::{bounded, unbounded};
 pub use channel::{IntoIter, Iter, TryIter};
+pub use channel::{Receiver, Sender};
 
 pub use select::{Select, SelectedOperation};
 
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
-pub use err::{SendError, SendTimeoutError, TrySendError};
 pub use err::{SelectTimeoutError, TrySelectError};
+pub use err::{SendError, SendTimeoutError, TrySendError};

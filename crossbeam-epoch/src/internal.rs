@@ -35,23 +35,23 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
+use alloc::boxed::Box;
 use core::cell::{Cell, UnsafeCell};
 use core::mem::{self, ManuallyDrop};
 use core::num::Wrapping;
 use core::ptr;
 use core::sync::atomic;
 use core::sync::atomic::Ordering;
-use alloc::boxed::Box;
 
-use crossbeam_utils::CachePadded;
 use arrayvec::ArrayVec;
+use crossbeam_utils::CachePadded;
 
 use atomic::Owned;
-use collector::{LocalHandle, Collector};
+use collector::{Collector, LocalHandle};
+use deferred::Deferred;
 use epoch::{AtomicEpoch, Epoch};
 use guard::{unprotected, Guard};
-use deferred::Deferred;
-use sync::list::{List, Entry, IterError, IsElement};
+use sync::list::{Entry, IsElement, IterError, List};
 use sync::queue::Queue;
 
 /// Maximum number of objects a bag can contain.
@@ -184,8 +184,7 @@ impl Global {
             match self.queue.try_pop_if(
                 &|sealed_bag: &SealedBag| sealed_bag.is_expired(global_epoch),
                 guard,
-            )
-            {
+            ) {
                 None => break,
                 Some(sealed_bag) => drop(sealed_bag),
             }
@@ -290,7 +289,9 @@ impl Local {
                 pin_count: Cell::new(Wrapping(0)),
             }).into_shared(&unprotected());
             collector.global.locals.insert(local, &unprotected());
-            LocalHandle { local: local.as_raw() }
+            LocalHandle {
+                local: local.as_raw(),
+            }
         }
     }
 
@@ -362,7 +363,9 @@ impl Local {
                 // Both instructions have the effect of a full barrier, but benchmarks have shown
                 // that the second one makes pinning faster in this particular case.
                 let current = Epoch::starting();
-                let previous = self.epoch.compare_and_swap(current, new_epoch, Ordering::SeqCst);
+                let previous = self
+                    .epoch
+                    .compare_and_swap(current, new_epoch, Ordering::SeqCst);
                 debug_assert_eq!(current, previous, "participant was expected to be unpinned");
             } else {
                 self.epoch.store(new_epoch, Ordering::Relaxed);
@@ -498,8 +501,8 @@ impl IsElement<Local> for Local {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
     use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
 
     use super::*;
 

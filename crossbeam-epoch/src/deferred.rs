@@ -1,8 +1,8 @@
+use alloc::boxed::Box;
 use core::fmt;
 use core::marker::PhantomData;
 use core::mem;
 use core::ptr;
-use alloc::boxed::Box;
 
 /// Number of words a piece of `Data` can hold.
 ///
@@ -78,8 +78,8 @@ impl Deferred {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
     use super::Deferred;
+    use std::cell::Cell;
 
     #[test]
     fn on_stack() {

@@ -1,5 +1,5 @@
-extern crate mpmc;
 extern crate crossbeam;
+extern crate mpmc;
 
 use shared::message;
 use std::thread;
@@ -131,7 +131,7 @@ fn main() {
                 "Rust mpmc",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
-        }
+        };
     }
 
     run!("bounded_mpmc", mpmc(MESSAGES));
