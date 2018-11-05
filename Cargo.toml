@@ -21,12 +21,10 @@ nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
 use_std = ["crossbeam-epoch/use_std", "crossbeam-utils/use_std"]
 
 [dependencies]
-crossbeam-epoch = "0.5"
-crossbeam-utils = "0.5"
-# TODO(stjepang): Uncomment this once we move all subcrates into this repo
-# crossbeam-utils = { version = "0.5", path = "./crossbeam-utils" }
 crossbeam-channel = "0.2"
 crossbeam-deque = "0.6"
+crossbeam-epoch = "0.5"
+crossbeam-utils = "0.5"
 
 [dev-dependencies]
 rand = "0.5"
@@ -42,7 +40,10 @@ members = [
   "crossbeam-utils",
 ]
 
-# TODO(stjepang): Uncomment this once we move all subcrates into this repo
-# [patch.crates-io]
+[patch.crates-io]
 # crossbeam = { path = "." }
+# crossbeam-channel = { path = "./crossbeam-channel" }
+# crossbeam-deque = { path = "./crossbeam-deque" }
+# crossbeam-epoch = { path = "./crossbeam-epoch" }
+# crossbeam-skiplist = { path = "./crossbeam-skiplist" }
 # crossbeam-utils = { path = "./crossbeam-utils" }
