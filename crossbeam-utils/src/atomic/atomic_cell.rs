@@ -309,7 +309,7 @@ macro_rules! impl_arithmetic {
                     let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
-                    *value = *value & val;
+                    *value &= val;
                     old
                 }
             }
@@ -335,7 +335,7 @@ macro_rules! impl_arithmetic {
                     let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
-                    *value = *value | val;
+                    *value |= val;
                     old
                 }
             }
@@ -361,7 +361,7 @@ macro_rules! impl_arithmetic {
                     let _guard = lock(self.value.get() as usize).write();
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
-                    *value = *value ^ val;
+                    *value ^= val;
                     old
                 }
             }
@@ -810,7 +810,6 @@ where
                 if lock.validate_read(stamp) {
                     return val;
                 }
-                mem::forget(val);
             }
 
             // Grab a regular write lock so that writers don't starve this load.
