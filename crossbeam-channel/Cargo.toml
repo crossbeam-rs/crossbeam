@@ -25,7 +25,7 @@ version = "0.6.0"
 path = "../crossbeam-epoch"
 
 [dependencies.crossbeam-utils]
-crossbeam-utils = "0.5.0"
+version = "0.5.0"
 path = "../crossbeam-utils"
 
 [dev-dependencies]
