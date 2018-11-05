@@ -33,6 +33,8 @@
 // #![warn(missing_debug_implementations)] // TODO: Uncomment this.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(alloc))]
+#![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
+#![cfg_attr(feature = "nightly", feature(integer_atomics))]
 
 #[macro_use]
 extern crate cfg_if;
@@ -94,7 +96,7 @@ cfg_if! {
         }
         pub use _channel::crossbeam_channel as channel;
 
-        // HACK(stjepang): This is the only way to reexport `select!` in Rust older than 1.30.0.
+        // HACK(stjepang): This is the only way to reexport `select!` in Rust older than 1.30.0
         #[doc(hidden)]
         pub use _channel::*;
 
