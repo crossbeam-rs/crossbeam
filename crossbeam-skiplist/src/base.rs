@@ -9,7 +9,7 @@ use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
 use epoch::{self, Atomic, Collector, Guard, Shared};
 use scopeguard;
-use utils::cache_padded::CachePadded;
+use utils::CachePadded;
 use Bound;
 
 /// Number of bits needed to store height.

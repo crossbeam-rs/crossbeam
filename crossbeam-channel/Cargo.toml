@@ -16,11 +16,17 @@ keywords = ["channel", "mpmc", "select", "golang", "message"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
 [dependencies]
-crossbeam-epoch = "0.6.0"
-crossbeam-utils = "0.5.0"
 parking_lot = "0.6.3"
 rand = "0.5.3"
 smallvec = "0.6.2"
+
+[dependencies.crossbeam-epoch]
+version = "0.6.0"
+path = "../crossbeam-epoch"
+
+[dependencies.crossbeam-utils]
+crossbeam-utils = "0.5.0"
+path = "../crossbeam-utils"
 
 [dev-dependencies]
 crossbeam = "0.3.0"
