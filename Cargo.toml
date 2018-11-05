@@ -24,8 +24,8 @@ nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
 std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 
 [dependencies.crossbeam-channel]
-version = "0.2"
-# path = "./crossbeam-channel"
+version = "0.3"
+path = "./crossbeam-channel"
 
 [dependencies.crossbeam-deque]
 version = "0.6"
