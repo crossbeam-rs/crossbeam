@@ -810,6 +810,7 @@ fn drops() {
 
     handle.pin().flush();
     handle.pin().flush();
+    handle.pin().flush();
     assert_eq!(KEYS.load(Ordering::SeqCst), 8);
     assert_eq!(VALUES.load(Ordering::SeqCst), 7);
 }
