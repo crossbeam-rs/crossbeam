@@ -1,32 +1,32 @@
-# Utilities for concurrent programming
+# Concurrent skip list
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](
-https://github.com/crossbeam-rs/crossbeam-utils/tree/master/src)
-[![Cargo](https://img.shields.io/crates/v/crossbeam-utils.svg)](
-https://crates.io/crates/crossbeam-utils)
-[![Documentation](https://docs.rs/crossbeam-utils/badge.svg)](
-https://docs.rs/crossbeam-utils)
+https://github.com/crossbeam-rs/crossbeam-skiplist)
+[![Cargo](https://img.shields.io/crates/v/crossbeam-skiplist.svg)](
+https://crates.io/crates/crossbeam-skiplist)
+[![Documentation](https://docs.rs/crossbeam-skiplist/badge.svg)](
+https://docs.rs/crossbeam-skiplist)
 
-This crate provides utilities for concurrent programming.
+This crate is still a work in progress.
 
+<!--
 ## Usage
 
 Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-utils = "0.5"
+crossbeam-skiplist = "0.1"
 ```
 
 Next, add this to your crate:
 
 ```rust
-extern crate crossbeam_utils;
+extern crate crossbeam_skiplist;
 ```
-
-The minimum required Rust version is 1.26.
+-->
 
 ## License
 

@@ -1,16 +1,56 @@
 language: rust
 
-rust:
-  - stable
-  - beta
-  - nightly
-  - 1.26.0
 
-install:
-  - cargo install cargo-tree
+matrix:
+  include:
 
-script:
-  # TODO(stjepang): Uncomment the following line once we fix the dependency tree
-  # - (cargo tree --duplicate | grep ^crossbeam) && exit 1
-  - ./ci/script.sh
-  - (cd crossbeam-utils && ./ci/script.sh)
+  # Test crates on their minimum Rust versions.
+  - rust: 1.26.0
+    name: "crossbeam on 1.26.0"
+    script: ./ci/crossbeam.sh
+  - rust: 1.26.0
+    name: "crossbeam-channel on 1.26.0"
+    script: ./ci/crossbeam-channel.sh
+  - rust: 1.25.0
+    name: "crossbeam-deque on 1.25.0"
+    script: ./ci/crossbeam-deque.sh
+  - rust: 1.26.0
+    name: "crossbeam-epoch on 1.26.0"
+    script: ./ci/crossbeam-epoch.sh
+  - rust: 1.26.0
+    name: "crossbeam-skiplist on 1.26.0"
+    script: ./ci/crossbeam-skiplist.sh
+  - rust: 1.26.0
+    name: "crossbeam-utils on 1.26.0"
+    script: ./ci/crossbeam-utils.sh
+
+  # Test crates on nightly Rust.
+  - rust: nightly
+    name: "crossbeam on nightly"
+    script: ./ci/crossbeam.sh
+  - rust: nightly
+    name: "crossbeam-channel on nightly"
+    script: ./ci/crossbeam-channel.sh
+  - rust: nightly
+    name: "crossbeam-deque on nightly"
+    script: ./ci/crossbeam-deque.sh
+  - rust: nightly
+    name: "crossbeam-epoch on nightly"
+    script: ./ci/crossbeam-epoch.sh
+    addons:
+      apt:
+        sources:
+          - ubuntu-toolchain-r-test
+          - llvm-toolchain-precise
+          - llvm-toolchain-precise-3.8
+        packages:
+          - llvm-3.8
+          - llvm-3.8-dev
+          - clang-3.8
+          - clang-3.8-dev
+  - rust: nightly
+    name: "crossbeam-skiplist on nightly"
+    script: ./ci/crossbeam-skiplist.sh
+  - rust: nightly
+    name: "crossbeam-utils on nightly"
+    script: ./ci/crossbeam-utils.sh

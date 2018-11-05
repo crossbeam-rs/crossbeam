@@ -1,0 +1,30 @@
+[package]
+name = "crossbeam-skiplist"
+# When publishing a new version:
+# - Update CHANGELOG.md
+# - Update README.md
+# - Create "crossbeam-skiplist-X.Y.Z" git tag
+version = "0.0.0"
+authors = ["The Crossbeam Project Developers"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/crossbeam-rs/crossbeam-skiplist"
+homepage = "https://github.com/crossbeam-rs/crossbeam-skiplist"
+documentation = "https://docs.rs/crossbeam-skiplist"
+description = "A concurrent skip list"
+keywords = ["map", "set", "skiplist", "lock-free"]
+categories = ["algorithms", "concurrency", "data-structures"]
+
+[features]
+default = ["use_std"]
+use_std = ["crossbeam-epoch/use_std"]
+nightly = ["crossbeam-epoch/nightly"]
+
+[dependencies]
+crossbeam-epoch = { version = "0.6.0", default-features = false }
+crossbeam-utils = { version = "0.3.0", default-features = false }
+scopeguard = { version = "0.3.0", default-features = false }
+
+[dev-dependencies]
+crossbeam = "0.3.2"
+rand = "0.5.3"
