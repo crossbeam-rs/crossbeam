@@ -12,17 +12,31 @@ addons:
       - clang-3.8
       - clang-3.8-dev
 
-rust:
-  - 1.25.0
-  - 1.26.0
-  - stable
-  - beta
-  - nightly
+matrix:
+  include:
 
-script:
-  - ./ci/script.sh
-  - (cd crossbeam-channel && ./ci/script.sh)
-  - (cd crossbeam-epoch && ./ci/script.sh)
-  - (cd crossbeam-deque && ./ci/script.sh)
-  - (cd crossbeam-skiplist && ./ci/script.sh)
-  - (cd crossbeam-utils && ./ci/script.sh)
+  - rust: 1.26.0
+    name: "crossbeam on 1.26.0"
+    script: ./ci/script.sh
+  - rust: stable
+    name: "crossbeam on stable"
+    script: ./ci/script.sh
+
+  - rust: 1.26.0
+    name: "crossbeam-channel on 1.26.0"
+    script: ./crossbeam-channel/ci/script.sh
+  - rust: stable
+    name: "crossbeam-channel on stable"
+    script: ./crossbeam-channel/ci/script.sh
+
+  # - name: "crossbeam-deque"
+  #   script: ./crossbeam-deque/ci/script.sh
+  #
+  # - name: "crossbeam-epoch"
+  #   script: ./crossbeam-epoch/ci/script.sh
+  #
+  # - name: "crossbeam-skiplist"
+  #   script: ./crossbeam-skiplist/ci/script.sh
+  #
+  # - name: "crossbeam-utils"
+  #   script: ./crossbeam-utils/ci/script.sh
