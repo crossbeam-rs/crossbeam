@@ -14,6 +14,7 @@ documentation = "https://docs.rs/crossbeam"
 description = "Support for concurrent programming: memory management, utilities, non-blocking data structures"
 keywords = ["atomic", "garbage", "non-blocking", "lock-free", "rcu"]
 categories = ["concurrency", "memory-management", "data-structures"]
+exclude = ["/ci/*", "/.travis.yml", "/bors.toml"]
 
 [badges]
 travis-ci = { repository = "crossbeam-rs/crossbeam" }

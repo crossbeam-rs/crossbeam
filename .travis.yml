@@ -1,7 +1,7 @@
 language: rust
 
-
 matrix:
+  fast_finish: true
   include:
 
   # Test crates on their minimum Rust versions.
