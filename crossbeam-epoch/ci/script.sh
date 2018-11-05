@@ -19,8 +19,6 @@ cargo test
 if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
     cargo test --features nightly
 
-    sudo apt-get install -y llvm-3.8 llvm-3.8-dev clang-3.8 clang-3.8-dev
-
     ASAN_OPTIONS="detect_odr_violation=0 detect_leaks=0" \
     RUSTFLAGS="-Z sanitizer=address" \
     cargo run \
