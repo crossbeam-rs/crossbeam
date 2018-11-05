@@ -93,8 +93,8 @@ pub mod epoch {
 ///
 /// // Only one of these two receive operations will be executed.
 /// select! {
-///     recv(r1, msg) => assert_eq!(msg, Some("foo")),
-///     recv(r2, msg) => assert_eq!(msg, Some("bar")),
+///     recv(r1) -> msg => assert_eq!(msg, Ok("foo")),
+///     recv(r2) -> msg => assert_eq!(msg, Ok("bar")),
 /// }
 /// # }
 /// ```
