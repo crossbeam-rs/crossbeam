@@ -593,7 +593,7 @@ where
         // If `succ` is marked, that means `curr` is removed. Let's try
         // unlinking it from the skip list at this level.
         match pred.compare_and_set(
-            Shared::from(curr as *const _),
+            Shared::from_raw(curr as *const _),
             succ.with_tag(0),
             Ordering::Release,
             guard,
@@ -883,7 +883,7 @@ where
                 ptr::write(&mut (*n).key, key);
                 ptr::write(&mut (*n).value, value);
 
-                (Shared::<Node<K, V>>::from(n as *const _), &*n)
+                (Shared::<Node<K, V>>::from_raw(n as *const _), &*n)
             };
 
             // Optimistically increment `len`.
@@ -1096,7 +1096,7 @@ where
                         // TODO(Amanieu): can we use release ordering here?
                         if search.left[level][level]
                             .compare_and_set(
-                                Shared::from(n as *const _),
+                                Shared::from_raw(n as *const _),
                                 succ,
                                 Ordering::SeqCst,
                                 guard,
