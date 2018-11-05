@@ -60,6 +60,9 @@
 //! [`fifo`]: fn.fifo.html
 //! [`lifo`]: fn.lifo.html
 
+#![warn(missing_docs)]
+#![warn(missing_debug_implementations)]
+
 extern crate crossbeam_epoch as epoch;
 extern crate crossbeam_utils as utils;
 

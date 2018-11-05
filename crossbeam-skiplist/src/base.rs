@@ -1,3 +1,5 @@
+//! TODO: docs
+
 use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::cmp;
@@ -1754,6 +1756,7 @@ where
         self.head.clone()
     }
 
+    /// TODO: docs
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.tail = match self.tail {
@@ -1779,6 +1782,7 @@ where
 }
 
 /// An owning iterator over the entries of a `SkipList`.
+#[derive(Debug)] // TODO: write a custom impl
 pub struct IntoIter<K, V> {
     /// The current node.
     ///

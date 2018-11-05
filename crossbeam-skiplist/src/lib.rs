@@ -1,20 +1,22 @@
+// #![warn(missing_docs)] // TODO: Uncomment this.
+// #![warn(missing_debug_implementations)] // TODO: Uncomment this.
+#![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(alloc))]
-#![cfg_attr(not(test), no_std)]
 
-#[cfg(test)]
-extern crate core;
-#[cfg(all(not(test), feature = "std"))]
 #[macro_use]
-extern crate std;
+extern crate cfg_if;
+#[cfg(feature = "std")]
+extern crate core;
 
-// Use liballoc on nightly to avoid a dependency on libstd
-#[cfg(feature = "nightly")]
-extern crate alloc;
-#[cfg(not(feature = "nightly"))]
-mod alloc {
-    // Tweak the module layout to match the one in liballoc
-    extern crate std;
-    pub use self::std::vec;
+cfg_if! {
+    if #[cfg(feature = "nightly")] {
+        extern crate alloc;
+    } else {
+        mod alloc {
+            extern crate std;
+            pub use self::std::*;
+        }
+    }
 }
 
 extern crate crossbeam_epoch as epoch;
@@ -22,16 +24,17 @@ extern crate crossbeam_utils as utils;
 extern crate scopeguard;
 
 pub mod base;
-#[cfg(feature = "std")]
-pub mod map;
-#[cfg(feature = "std")]
-pub mod set;
-
 pub use base::SkipList;
-#[cfg(feature = "std")]
-pub use map::SkipMap;
-#[cfg(feature = "std")]
-pub use set::SkipSet;
+
+cfg_if! {
+    if #[cfg(feature = "std")] {
+        pub mod map;
+        pub use map::SkipMap;
+
+        pub mod set;
+        pub use set::SkipSet;
+    }
+}
 
 /// An endpoint of a range of keys.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
