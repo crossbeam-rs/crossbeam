@@ -189,7 +189,8 @@ fn select_shared() {
     const COUNT: usize = 1000;
     const TIMEOUT_MS: u64 = 100;
 
-    let v = (0..COUNT).map(|i| after(ms(i as u64 / TIMEOUT_MS / 2)))
+    let v = (0..COUNT)
+        .map(|i| after(ms(i as u64 / TIMEOUT_MS / 2)))
         .collect::<Vec<_>>();
     let hits = AtomicUsize::new(0);
 
@@ -231,31 +232,30 @@ fn select_cloned() {
     const COUNT: usize = 1000;
     const TIMEOUT_MS: u64 = 100;
 
-    let v = (0..COUNT).map(|i| after(ms(i as u64 / TIMEOUT_MS / 2)))
+    let v = (0..COUNT)
+        .map(|i| after(ms(i as u64 / TIMEOUT_MS / 2)))
         .collect::<Vec<_>>();
     let hits = AtomicUsize::new(0);
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
-                loop {
-                    let timeout = after(ms(TIMEOUT_MS));
-                    let mut sel = Select::new();
-                    for r in &v {
-                        sel.recv(r);
-                    }
-                    let oper_timeout = sel.recv(&timeout);
+            scope.spawn(|| loop {
+                let timeout = after(ms(TIMEOUT_MS));
+                let mut sel = Select::new();
+                for r in &v {
+                    sel.recv(r);
+                }
+                let oper_timeout = sel.recv(&timeout);
 
-                    let oper = sel.select();
-                    match oper.index() {
-                        i if i == oper_timeout => {
-                            oper.recv(&timeout).unwrap();
-                            break;
-                        }
-                        i => {
-                            oper.recv(&v[i]).unwrap();
-                            hits.fetch_add(1, Ordering::SeqCst);
-                        }
+                let oper = sel.select();
+                match oper.index() {
+                    i if i == oper_timeout => {
+                        oper.recv(&timeout).unwrap();
+                        break;
+                    }
+                    i => {
+                        oper.recv(&v[i]).unwrap();
+                        hits.fetch_add(1, Ordering::SeqCst);
                     }
                 }
             });

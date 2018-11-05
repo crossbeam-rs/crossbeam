@@ -360,9 +360,7 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.senders.wake_one() {
             token.zero = operation.packet;
             drop(inner);
-            unsafe {
-                self.read(token).map_err(|_| TryRecvError::Disconnected)
-            }
+            unsafe { self.read(token).map_err(|_| TryRecvError::Disconnected) }
         } else if inner.is_disconnected {
             Err(TryRecvError::Disconnected)
         } else {

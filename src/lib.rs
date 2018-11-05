@@ -41,11 +41,10 @@ mod ms_queue;
 mod seg_queue;
 mod treiber_stack;
 
-
 /// Additional utilities for atomics.
 pub mod atomic {
-    pub use crossbeam_utils::atomic::AtomicConsume;
     pub use arc_cell::ArcCell;
+    pub use crossbeam_utils::atomic::AtomicConsume;
 }
 
 /// Utilities for concurrent programming.
@@ -61,7 +60,6 @@ pub mod utils {
 pub use crossbeam_utils::thread;
 pub use crossbeam_utils::thread::scope;
 
-
 /// Epoch-based memory reclamation.
 ///
 /// See [the `crossbeam-epoch` crate](https://github.com/crossbeam-rs/crossbeam-epoch) for more
@@ -69,7 +67,6 @@ pub use crossbeam_utils::thread::scope;
 pub mod epoch {
     pub use crossbeam_epoch::*;
 }
-
 
 /// Multi-producer multi-consumer channels for message passing.
 ///
@@ -107,7 +104,6 @@ pub mod channel {
 // precise way to re-export only the `select!` macro.
 #[doc(hidden)]
 pub use crossbeam_channel::*;
-
 
 /// A concurrent work-stealing deque.
 ///

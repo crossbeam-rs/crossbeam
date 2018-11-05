@@ -64,7 +64,8 @@ impl Waker {
     /// Unregisters an operation previously registered by the current thread.
     #[inline]
     pub fn unregister(&mut self, oper: Operation) -> Option<Entry> {
-        if let Some((i, _)) = self.entries
+        if let Some((i, _)) = self
+            .entries
             .iter()
             .enumerate()
             .find(|&(_, entry)| entry.oper == oper)

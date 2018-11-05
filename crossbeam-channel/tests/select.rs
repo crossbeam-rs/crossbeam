@@ -8,7 +8,7 @@ use std::cell::Cell;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{after, bounded, unbounded, tick, Receiver, Select, TryRecvError};
+use crossbeam_channel::{after, bounded, tick, unbounded, Receiver, Select, TryRecvError};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -93,7 +93,7 @@ fn disconnected() {
                 i if i == oper1 => assert!(oper.recv(&r1).is_err()),
                 i if i == oper2 => panic!(),
                 _ => unreachable!(),
-            }
+            },
         }
 
         r2.recv().unwrap();
@@ -109,7 +109,7 @@ fn disconnected() {
             i if i == oper1 => assert!(oper.recv(&r1).is_err()),
             i if i == oper2 => panic!(),
             _ => unreachable!(),
-        }
+        },
     }
 
     crossbeam::scope(|scope| {
@@ -127,7 +127,7 @@ fn disconnected() {
                 i if i == oper1 => assert!(oper.recv(&r2).is_err()),
                 i if i == oper2 => panic!(),
                 _ => unreachable!(),
-            }
+            },
         }
     });
 }
@@ -157,8 +157,8 @@ fn default() {
         Ok(oper) => match oper.index() {
             i if i == oper1 => assert!(oper.recv(&r1).is_err()),
             i if i == oper2 => panic!(),
-            _ => unreachable!()
-        }
+            _ => unreachable!(),
+        },
     }
 
     s2.send(2).unwrap();
@@ -170,8 +170,8 @@ fn default() {
         Err(_) => panic!(),
         Ok(oper) => match oper.index() {
             i if i == oper1 => assert_eq!(oper.recv(&r2), Ok(2)),
-            _ => unreachable!()
-        }
+            _ => unreachable!(),
+        },
     }
 
     let mut sel = Select::new();
@@ -211,7 +211,7 @@ fn timeout() {
                 i if i == oper1 => panic!(),
                 i if i == oper2 => panic!(),
                 _ => unreachable!(),
-            }
+            },
         }
 
         let mut sel = Select::new();
@@ -224,7 +224,7 @@ fn timeout() {
                 i if i == oper1 => panic!(),
                 i if i == oper2 => assert_eq!(oper.recv(&r2), Ok(2)),
                 _ => unreachable!(),
-            }
+            },
         }
     });
 
@@ -248,7 +248,7 @@ fn timeout() {
                     Ok(oper) => match oper.index() {
                         i if i == oper1 => assert!(oper.recv(&r).is_err()),
                         _ => unreachable!(),
-                    }
+                    },
                 }
             }
             Ok(_) => unreachable!(),
@@ -268,7 +268,7 @@ fn default_when_disconnected() {
         Ok(oper) => match oper.index() {
             i if i == oper1 => assert!(oper.recv(&r).is_err()),
             _ => unreachable!(),
-        }
+        },
     }
 
     let (_, r) = unbounded::<i32>();
@@ -281,7 +281,7 @@ fn default_when_disconnected() {
         Ok(oper) => match oper.index() {
             i if i == oper1 => assert!(oper.recv(&r).is_err()),
             _ => unreachable!(),
-        }
+        },
     }
 
     let (s, _) = bounded::<i32>(0);
@@ -294,7 +294,7 @@ fn default_when_disconnected() {
         Ok(oper) => match oper.index() {
             i if i == oper1 => assert!(oper.send(&s, 0).is_err()),
             _ => unreachable!(),
-        }
+        },
     }
 
     let (s, _) = bounded::<i32>(0);
@@ -307,7 +307,7 @@ fn default_when_disconnected() {
         Ok(oper) => match oper.index() {
             i if i == oper1 => assert!(oper.send(&s, 0).is_err()),
             _ => unreachable!(),
-        }
+        },
     }
 }
 
@@ -330,7 +330,6 @@ fn default_only() {
     assert!(now - start <= ms(550));
 }
 
-
 #[test]
 fn unblocks() {
     let (s1, r1) = bounded::<i32>(0);
@@ -352,7 +351,7 @@ fn unblocks() {
                 i if i == oper1 => panic!(),
                 i if i == oper2 => assert_eq!(oper.recv(&r2), Ok(2)),
                 _ => unreachable!(),
-            }
+            },
         }
     });
 
@@ -372,7 +371,7 @@ fn unblocks() {
                 i if i == oper1 => oper.send(&s1, 1).unwrap(),
                 i if i == oper2 => panic!(),
                 _ => unreachable!(),
-            }
+            },
         }
     });
 }
@@ -413,70 +412,66 @@ fn loop_try() {
         let (s_end, r_end) = bounded::<()>(0);
 
         crossbeam::scope(|scope| {
-            scope.spawn(|| {
-                loop {
-                    let mut done = false;
+            scope.spawn(|| loop {
+                let mut done = false;
 
-                    let mut sel = Select::new();
-                    let oper1 = sel.send(&s1);
-                    let oper = sel.try_select();
-                    match oper {
-                        Err(_) => {}
-                        Ok(oper) => match oper.index() {
-                            i if i == oper1 => {
-                                let _ = oper.send(&s1, 1);
-                                done = true;
-                            }
-                            _ => unreachable!(),
+                let mut sel = Select::new();
+                let oper1 = sel.send(&s1);
+                let oper = sel.try_select();
+                match oper {
+                    Err(_) => {}
+                    Ok(oper) => match oper.index() {
+                        i if i == oper1 => {
+                            let _ = oper.send(&s1, 1);
+                            done = true;
                         }
-                    }
-                    if done {
-                        break;
-                    }
+                        _ => unreachable!(),
+                    },
+                }
+                if done {
+                    break;
+                }
 
-                    let mut sel = Select::new();
-                    let oper1 = sel.recv(&r_end);
-                    let oper = sel.try_select();
-                    match oper {
-                        Err(_) => {}
-                        Ok(oper) => match oper.index() {
-                            i if i == oper1 => {
-                                let _ = oper.recv(&r_end);
-                                done = true;
-                            }
-                            _ => unreachable!(),
+                let mut sel = Select::new();
+                let oper1 = sel.recv(&r_end);
+                let oper = sel.try_select();
+                match oper {
+                    Err(_) => {}
+                    Ok(oper) => match oper.index() {
+                        i if i == oper1 => {
+                            let _ = oper.recv(&r_end);
+                            done = true;
                         }
-                    }
-                    if done {
-                        break;
-                    }
+                        _ => unreachable!(),
+                    },
+                }
+                if done {
+                    break;
                 }
             });
 
-            scope.spawn(|| {
-                loop {
-                    if let Ok(x) = r2.try_recv() {
-                        assert_eq!(x, 2);
-                        break;
-                    }
+            scope.spawn(|| loop {
+                if let Ok(x) = r2.try_recv() {
+                    assert_eq!(x, 2);
+                    break;
+                }
 
-                    let mut done = false;
-                    let mut sel = Select::new();
-                    let oper1 = sel.recv(&r_end);
-                    let oper = sel.try_select();
-                    match oper {
-                        Err(_) => {}
-                        Ok(oper) => match oper.index() {
-                            i if i == oper1 => {
-                                let _ = oper.recv(&r_end);
-                                done = true;
-                            }
-                            _ => unreachable!(),
+                let mut done = false;
+                let mut sel = Select::new();
+                let oper1 = sel.recv(&r_end);
+                let oper = sel.try_select();
+                match oper {
+                    Err(_) => {}
+                    Ok(oper) => match oper.index() {
+                        i if i == oper1 => {
+                            let _ = oper.recv(&r_end);
+                            done = true;
                         }
-                    }
-                    if done {
-                        break;
-                    }
+                        _ => unreachable!(),
+                    },
+                }
+                if done {
+                    break;
                 }
             });
 
@@ -493,7 +488,7 @@ fn loop_try() {
                         i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(1)),
                         i if i == oper2 => assert!(oper.send(&s2, 2).is_ok()),
                         _ => unreachable!(),
-                    }
+                    },
                 }
 
                 drop(s_end);
@@ -817,7 +812,7 @@ fn stress_timeout_two_threads() {
                                 break;
                             }
                             _ => unreachable!(),
-                        }
+                        },
                     }
                 }
             }
@@ -842,7 +837,7 @@ fn stress_timeout_two_threads() {
                                 done = true;
                             }
                             _ => unreachable!(),
-                        }
+                        },
                     }
                 }
             }
@@ -863,7 +858,7 @@ fn send_recv_same_channel() {
             ix if ix == oper1 => panic!(),
             ix if ix == oper2 => panic!(),
             _ => unreachable!(),
-        }
+        },
     }
 
     let (s, r) = unbounded::<i32>();
@@ -877,7 +872,7 @@ fn send_recv_same_channel() {
             ix if ix == oper1 => assert!(oper.send(&s, 0).is_ok()),
             ix if ix == oper2 => panic!(),
             _ => unreachable!(),
-        }
+        },
     }
 }
 
@@ -972,14 +967,13 @@ fn channel_through_channel() {
                         let oper1 = sel.recv(&r);
                         let oper = sel.select();
                         match oper.index() {
-                            ix if ix == oper1 => {
-                                 oper.recv(&r)
-                                    .unwrap()
-                                    .downcast_mut::<Option<Receiver<T>>>()
-                                    .unwrap()
-                                    .take()
-                                    .unwrap()
-                            }
+                            ix if ix == oper1 => oper
+                                .recv(&r)
+                                .unwrap()
+                                .downcast_mut::<Option<Receiver<T>>>()
+                                .unwrap()
+                                .take()
+                                .unwrap(),
                             _ => unreachable!(),
                         }
                     };
@@ -1021,7 +1015,7 @@ fn linearizable_try() {
                             ix if ix == oper1 => assert!(oper.recv(&r1).is_ok()),
                             ix if ix == oper2 => assert!(oper.recv(&r2).is_ok()),
                             _ => unreachable!(),
-                        }
+                        },
                     }
 
                     end_s.send(()).unwrap();
@@ -1072,7 +1066,7 @@ fn linearizable_timeout() {
                             ix if ix == oper1 => assert!(oper.recv(&r1).is_ok()),
                             ix if ix == oper2 => assert!(oper.recv(&r2).is_ok()),
                             _ => unreachable!(),
-                        }
+                        },
                     }
 
                     end_s.send(()).unwrap();

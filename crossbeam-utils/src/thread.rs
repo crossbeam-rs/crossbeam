@@ -130,10 +130,7 @@ where
 
     // Join all remaining spawned threads.
     let panics: Vec<_> = {
-        let mut handles = scope
-            .handles
-            .lock()
-            .unwrap();
+        let mut handles = scope.handles.lock().unwrap();
 
         // Filter handles that haven't been joined, join them, and collect errors.
         let panics = handles
@@ -268,9 +265,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
 
                 // Allocate `clsoure` on the heap and erase the `'env` bound.
                 let closure: Box<FnMut() + Send + 'env> = Box::new(closure);
-                let closure: Box<FnMut() + Send + 'static> = unsafe {
-                    mem::transmute(closure)
-                };
+                let closure: Box<FnMut() + Send + 'static> = unsafe { mem::transmute(closure) };
 
                 // Finally, spawn the closure.
                 let mut closure = closure;
@@ -283,11 +278,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
         };
 
         // Add the handle to the shared list of join handles.
-        self.scope
-            .handles
-            .lock()
-            .unwrap()
-            .push(Arc::clone(&handle));
+        self.scope.handles.lock().unwrap().push(Arc::clone(&handle));
 
         Ok(ScopedJoinHandle {
             handle,
@@ -331,21 +322,12 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
     pub fn join(self) -> thread::Result<T> {
         // Take out the handle. The handle will surely be available because the root scope waits
         // for nested scopes before joining remaining threads.
-        let handle = self
-            .handle
-            .lock()
-            .unwrap()
-            .take()
-            .unwrap();
+        let handle = self.handle.lock().unwrap().take().unwrap();
 
         // Join the thread and then take the result out of its inner closure.
-        handle.join().map(|()| {
-            self.result
-                .lock()
-                .unwrap()
-                .take()
-                .unwrap()
-        })
+        handle
+            .join()
+            .map(|()| self.result.lock().unwrap().take().unwrap())
     }
 
     /// Gets the underlying [`std::thread::Thread`] handle.

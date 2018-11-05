@@ -360,9 +360,7 @@ impl<T> Channel<T> {
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let token = &mut Token::default();
         if self.start_send(token) {
-            unsafe {
-                self.write(token, msg).map_err(TrySendError::Disconnected)
-            }
+            unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
         } else {
             Err(TrySendError::Full(msg))
         }
@@ -419,9 +417,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
 
         if self.start_recv(token) {
-            unsafe {
-                self.read(token).map_err(|_| TryRecvError::Disconnected)
-            }
+            unsafe { self.read(token).map_err(|_| TryRecvError::Disconnected) }
         } else {
             Err(TryRecvError::Empty)
         }

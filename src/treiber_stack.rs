@@ -1,6 +1,6 @@
-use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use std::mem::ManuallyDrop;
 use std::ptr;
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 use epoch::{self, Atomic, Owned};
 
@@ -53,7 +53,8 @@ impl<T> TreiberStack<T> {
             match unsafe { head_shared.as_ref() } {
                 Some(head) => {
                     let next = head.next.load(Relaxed, &guard);
-                    if self.head
+                    if self
+                        .head
                         .compare_and_set(head_shared, next, Release, &guard)
                         .is_ok()
                     {
@@ -90,8 +91,8 @@ impl<T> Default for TreiberStack<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ::{thread, epoch};
-    use std::sync::atomic::{Ordering, AtomicUsize};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use {epoch, thread};
 
     #[test]
     fn is_empty() {

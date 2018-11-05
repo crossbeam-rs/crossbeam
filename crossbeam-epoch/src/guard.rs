@@ -1,6 +1,6 @@
 use core::fmt;
-use core::ptr;
 use core::mem;
+use core::ptr;
 
 use atomic::Shared;
 use collector::Collector;

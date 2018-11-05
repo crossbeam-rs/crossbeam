@@ -50,7 +50,7 @@ fn main() {
                 "Rust bus",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
-        }
+        };
     }
 
     run!("bounded1_spsc", spsc(1));

@@ -15,8 +15,14 @@ fn is_lock_free() {
     assert_eq!(AtomicCell::<UsizeWrap>::is_lock_free(), true);
 
     assert_eq!(AtomicCell::<u8>::is_lock_free(), cfg!(feature = "nightly"));
-    assert_eq!(AtomicCell::<bool>::is_lock_free(), cfg!(feature = "nightly"));
-    assert_eq!(AtomicCell::<U8Wrap>::is_lock_free(), cfg!(feature = "nightly"));
+    assert_eq!(
+        AtomicCell::<bool>::is_lock_free(),
+        cfg!(feature = "nightly")
+    );
+    assert_eq!(
+        AtomicCell::<U8Wrap>::is_lock_free(),
+        cfg!(feature = "nightly")
+    );
 }
 
 #[test]

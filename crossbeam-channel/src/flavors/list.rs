@@ -367,11 +367,9 @@ impl<T> Channel<T> {
 
     /// Attempts to send a message into the channel.
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        self.send(msg, None).map_err(|err| {
-            match err {
-                SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
-                SendTimeoutError::Timeout(_) => unreachable!(),
-            }
+        self.send(msg, None).map_err(|err| match err {
+            SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
+            SendTimeoutError::Timeout(_) => unreachable!(),
         })
     }
 
@@ -380,7 +378,8 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         assert!(self.start_send(token));
         unsafe {
-            self.write(token, msg).map_err(SendTimeoutError::Disconnected)
+            self.write(token, msg)
+                .map_err(SendTimeoutError::Disconnected)
         }
     }
 
@@ -389,9 +388,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
 
         if self.start_recv(token) {
-            unsafe {
-                self.read(token).map_err(|_| TryRecvError::Disconnected)
-            }
+            unsafe { self.read(token).map_err(|_| TryRecvError::Disconnected) }
         } else {
             Err(TryRecvError::Empty)
         }

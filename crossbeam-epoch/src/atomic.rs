@@ -1,16 +1,16 @@
+use alloc::boxed::Box;
 use core::borrow::{Borrow, BorrowMut};
 use core::cmp;
 use core::fmt;
 use core::marker::PhantomData;
 use core::mem;
-use core::ptr;
 use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
+use core::ptr;
 use core::sync::atomic::Ordering;
-use alloc::boxed::Box;
+use core::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
 
-use guard::Guard;
 use crossbeam_utils::atomic::AtomicConsume;
+use guard::Guard;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
 /// appropriate ordering for the failure case.

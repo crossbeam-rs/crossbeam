@@ -1,8 +1,8 @@
 //! Thread-local context used in select.
 
 use std::cell::Cell;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
@@ -48,8 +48,8 @@ impl Context {
             f(cx)
         };
 
-        CONTEXT.try_with(|cell| {
-            match cell.take() {
+        CONTEXT
+            .try_with(|cell| match cell.take() {
                 None => f(&Context::new()),
                 Some(cx) => {
                     cx.reset();
@@ -57,10 +57,7 @@ impl Context {
                     cell.set(Some(cx));
                     res
                 }
-            }
-        }).unwrap_or_else(|_| {
-            f(&Context::new())
-        })
+            }).unwrap_or_else(|_| f(&Context::new()))
     }
 
     /// Creates a new `Context`.
@@ -79,7 +76,9 @@ impl Context {
     /// Resets `select` and `packet`.
     #[inline]
     fn reset(&self) {
-        self.inner.select.store(Selected::Waiting.into(), Ordering::Release);
+        self.inner
+            .select
+            .store(Selected::Waiting.into(), Ordering::Release);
         self.inner.packet.store(0, Ordering::Release);
     }
 
@@ -95,8 +94,7 @@ impl Context {
                 select.into(),
                 Ordering::AcqRel,
                 Ordering::Acquire,
-            )
-            .map(|_| ())
+            ).map(|_| ())
             .map_err(|e| e.into())
     }
 

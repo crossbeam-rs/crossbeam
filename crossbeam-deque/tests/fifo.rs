@@ -1,10 +1,10 @@
-extern crate rand;
 extern crate crossbeam_deque as deque;
 extern crate crossbeam_epoch as epoch;
+extern crate rand;
 
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use deque::{Pop, Steal};
@@ -94,8 +94,7 @@ fn stampede() {
                     }
                 }
             })
-        })
-        .collect::<Vec<_>>();
+        }).collect::<Vec<_>>();
 
     let mut last = 0;
     while remaining.load(SeqCst) > 0 {
@@ -155,8 +154,7 @@ fn run_stress() {
                     }
                 }
             })
-        })
-        .collect::<Vec<_>>();
+        }).collect::<Vec<_>>();
 
     let mut rng = rand::thread_rng();
     let mut expected = 0;
@@ -248,8 +246,7 @@ fn no_starvation() {
             };
 
             (t, hits)
-        })
-        .unzip();
+        }).unzip();
 
     let mut rng = rand::thread_rng();
     let mut my_hits = 0;
@@ -333,8 +330,7 @@ fn destructors() {
                     }
                 }
             })
-        })
-        .collect::<Vec<_>>();
+        }).collect::<Vec<_>>();
 
     for _ in 0..STEPS {
         loop {

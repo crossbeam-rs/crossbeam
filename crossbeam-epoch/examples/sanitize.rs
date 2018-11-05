@@ -1,11 +1,11 @@
 extern crate crossbeam_epoch as epoch;
 extern crate rand;
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use epoch::{Atomic, Collector, LocalHandle, Owned, Shared};
 use rand::Rng;
@@ -34,9 +34,7 @@ fn worker(a: Arc<Atomic<AtomicUsize>>, handle: LocalHandle) -> usize {
                 }
             } else {
                 let p = a.load(Acquire, guard);
-                unsafe {
-                    p.deref().fetch_add(sum, Relaxed)
-                }
+                unsafe { p.deref().fetch_add(sum, Relaxed) }
             };
 
             sum = sum.wrapping_add(val);
@@ -56,15 +54,15 @@ fn main() {
                 let a = a.clone();
                 let c = collector.clone();
                 thread::spawn(move || worker(a, c.register()))
-            })
-            .collect::<Vec<_>>();
+            }).collect::<Vec<_>>();
 
         for t in threads {
             t.join().unwrap();
         }
 
         unsafe {
-            a.swap(Shared::null(), AcqRel, epoch::unprotected()).into_owned();
+            a.swap(Shared::null(), AcqRel, epoch::unprotected())
+                .into_owned();
         }
     }
 }

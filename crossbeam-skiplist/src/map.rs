@@ -328,8 +328,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
     }
 }
 
-impl<K, V> fmt::Debug for IntoIter<K, V>
-{
+impl<K, V> fmt::Debug for IntoIter<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "IntoIter {{ ... }}")
     }
@@ -362,8 +361,7 @@ where
     }
 }
 
-impl<'a, K, V> fmt::Debug for Iter<'a, K, V>
-{
+impl<'a, K, V> fmt::Debug for Iter<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Iter {{ ... }}")
     }

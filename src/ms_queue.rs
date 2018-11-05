@@ -103,8 +103,7 @@ impl<T> MsQueue<T> {
                 .map(|shared| {
                     // try to move the tail pointer forward
                     let _ = self.tail.compare_and_set(onto, shared, Release, guard);
-                })
-                .map_err(|e| e.new)
+                }).map_err(|e| e.new)
         }
     }
 
@@ -176,7 +175,8 @@ impl<T> MsQueue<T> {
                 });
                 if let Some((blocked_node, signal)) = request {
                     // race to dequeue the node
-                    if self.head
+                    if self
+                        .head
                         .compare_and_set(head_shared, blocked_node, Release, &guard)
                         .is_ok()
                     {
@@ -206,7 +206,8 @@ impl<T> MsQueue<T> {
         if let Some(next) = unsafe { next_shared.as_ref() } {
             if let Payload::Data(ref t) = next.payload {
                 unsafe {
-                    if self.head
+                    if self
+                        .head
                         .compare_and_set(head_shared, next_shared, Release, guard)
                         .is_ok()
                     {
@@ -352,8 +353,8 @@ impl<T> Default for MsQueue<T> {
 mod test {
     const CONC_COUNT: i64 = 1000000;
 
-    use scope;
     use super::*;
+    use scope;
 
     #[test]
     fn push_try_pop_1() {

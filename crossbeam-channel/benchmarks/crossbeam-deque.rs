@@ -60,7 +60,7 @@ fn main() {
                 "Rust crossbeam-deque",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
-        }
+        };
     }
 
     run!("unbounded_seq", seq());

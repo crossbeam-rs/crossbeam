@@ -1,6 +1,6 @@
-use core::sync::atomic::Ordering;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use core::sync::atomic::compiler_fence;
+use core::sync::atomic::Ordering;
 
 /// Trait which allows reading from an atomic type with "consume" ordering.
 pub trait AtomicConsume {

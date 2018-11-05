@@ -10,7 +10,7 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded};
+use crossbeam_channel::bounded;
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
 use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
 use rand::{thread_rng, Rng};
@@ -225,7 +225,10 @@ fn send_after_disconnect() {
 
     assert_eq!(s.send(4), Err(SendError(4)));
     assert_eq!(s.try_send(5), Err(TrySendError::Disconnected(5)));
-    assert_eq!(s.send_timeout(6, ms(500)), Err(SendTimeoutError::Disconnected(6)));
+    assert_eq!(
+        s.send_timeout(6, ms(500)),
+        Err(SendTimeoutError::Disconnected(6))
+    );
 }
 
 #[test]
