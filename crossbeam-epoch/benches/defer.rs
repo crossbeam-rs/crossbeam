@@ -14,7 +14,7 @@ fn single_alloc_defer_free(b: &mut Bencher) {
         let guard = &epoch::pin();
         let p = Owned::new(1).into_shared(guard);
         unsafe {
-            guard.defer(move || p.into_owned());
+            guard.defer_destroy(p);
         }
     });
 }
@@ -23,9 +23,7 @@ fn single_alloc_defer_free(b: &mut Bencher) {
 fn single_defer(b: &mut Bencher) {
     b.iter(|| {
         let guard = &epoch::pin();
-        unsafe {
-            guard.defer(move || ());
-        }
+        guard.defer(move || ());
     });
 }
 
@@ -37,17 +35,17 @@ fn multi_alloc_defer_free(b: &mut Bencher) {
     b.iter(|| {
         scope(|s| {
             for _ in 0..THREADS {
-                s.spawn(|| {
+                s.spawn(|_| {
                     for _ in 0..STEPS {
                         let guard = &epoch::pin();
                         let p = Owned::new(1).into_shared(guard);
                         unsafe {
-                            guard.defer(move || p.into_owned());
+                            guard.defer_destroy(p);
                         }
                     }
                 });
             }
-        });
+        }).unwrap();
     });
 }
 
@@ -59,15 +57,13 @@ fn multi_defer(b: &mut Bencher) {
     b.iter(|| {
         scope(|s| {
             for _ in 0..THREADS {
-                s.spawn(|| {
+                s.spawn(|_| {
                     for _ in 0..STEPS {
                         let guard = &epoch::pin();
-                        unsafe {
-                            guard.defer(move || ());
-                        }
+                        guard.defer(move || ());
                     }
                 });
             }
-        });
+        }).unwrap();
     });
 }
