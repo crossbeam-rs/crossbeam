@@ -18,7 +18,7 @@ fn single_flush(b: &mut Bencher) {
 
     scope(|s| {
         for _ in 0..THREADS {
-            s.spawn(|| {
+            s.spawn(|_| {
                 epoch::pin();
                 start.wait();
                 end.wait();
@@ -28,7 +28,7 @@ fn single_flush(b: &mut Bencher) {
         start.wait();
         b.iter(|| epoch::pin().flush());
         end.wait();
-    });
+    }).unwrap();
 }
 
 #[bench]
@@ -39,13 +39,13 @@ fn multi_flush(b: &mut Bencher) {
     b.iter(|| {
         scope(|s| {
             for _ in 0..THREADS {
-                s.spawn(|| {
+                s.spawn(|_| {
                     for _ in 0..STEPS {
                         let guard = &epoch::pin();
                         guard.flush();
                     }
                 });
             }
-        });
+        }).unwrap();
     });
 }

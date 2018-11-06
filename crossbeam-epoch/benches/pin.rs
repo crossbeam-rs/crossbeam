@@ -20,12 +20,12 @@ fn multi_pin(b: &mut Bencher) {
     b.iter(|| {
         scope(|s| {
             for _ in 0..THREADS {
-                s.spawn(|| {
+                s.spawn(|_| {
                     for _ in 0..STEPS {
                         epoch::pin();
                     }
                 });
             }
-        });
+        }).unwrap();
     });
 }
