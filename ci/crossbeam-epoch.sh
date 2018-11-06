@@ -5,10 +5,11 @@ set -ex
 
 export RUSTFLAGS="-D warnings"
 
-cargo build --no-default-features
+cargo check --no-default-features
 cargo test
 
 if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
+    cargo check --no-default-features --features nightly
     cargo test --features nightly
 
     ASAN_OPTIONS="detect_odr_violation=0 detect_leaks=0" \

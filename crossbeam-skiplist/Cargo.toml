@@ -20,6 +20,9 @@ default = ["std"]
 nightly = ["crossbeam-epoch/nightly"]
 std = ["crossbeam-epoch/std"]
 
+[dependencies]
+cfg-if = "0.1"
+
 [dependencies.crossbeam-epoch]
 version = "0.6"
 path = "../crossbeam-epoch"

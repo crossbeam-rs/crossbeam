@@ -30,20 +30,42 @@
 //!    goal is to also include bags, sets and maps.
 
 #![warn(missing_docs)]
+// #![warn(missing_debug_implementations)] // TODO: Uncomment this.
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(feature = "nightly", feature(alloc))]
+#![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
+#![cfg_attr(feature = "nightly", feature(integer_atomics))]
 
-extern crate crossbeam_channel;
-extern crate crossbeam_deque;
-extern crate crossbeam_epoch;
-extern crate crossbeam_utils;
+#[macro_use]
+extern crate cfg_if;
+#[cfg(feature = "std")]
+extern crate core;
+
+cfg_if! {
+    if #[cfg(feature = "nightly")] {
+        extern crate alloc;
+    } else {
+        mod alloc {
+            extern crate std;
+            pub use self::std::*;
+        }
+    }
+}
+
+mod _epoch {
+    pub extern crate crossbeam_epoch;
+}
+pub use _epoch::crossbeam_epoch as epoch;
 
 mod arc_cell;
-mod ms_queue;
-mod seg_queue;
-mod treiber_stack;
+mod atomic_cell;
+
+extern crate crossbeam_utils;
 
 /// Additional utilities for atomics.
 pub mod atomic {
     pub use arc_cell::ArcCell;
+    pub use atomic_cell::AtomicCell;
     pub use crossbeam_utils::atomic::AtomicConsume;
 }
 
@@ -55,71 +77,55 @@ pub mod utils {
     pub use crossbeam_utils::CachePadded;
 }
 
-// Export `crossbeam_utils::thread` and `crossbeam_utils::thread::scope` in the crate root, in order
-// not to break established patterns.
-pub use crossbeam_utils::thread;
-pub use crossbeam_utils::thread::scope;
+cfg_if! {
+    if #[cfg(feature = "std")] {
+        pub use crossbeam_utils::thread;
 
-/// Epoch-based memory reclamation.
-///
-/// See [the `crossbeam-epoch` crate](https://github.com/crossbeam-rs/crossbeam-epoch) for more
-/// information.
-pub mod epoch {
-    pub use crossbeam_epoch::*;
-}
+        // Export `crossbeam_utils::thread::scope` into the crate root because it's become an
+        // established pattern.
+        pub use crossbeam_utils::thread::scope;
 
-/// Multi-producer multi-consumer channels for message passing.
-///
-/// See [the `crossbeam-channel` crate](https://github.com/crossbeam-rs/crossbeam-channel) for more
-/// information.
-///
-/// # Example
-///
-/// ```
-/// # #[macro_use]
-/// # extern crate crossbeam;
-/// # fn main() {
-/// use std::thread;
-/// use crossbeam::channel as channel;
-///
-/// let (s1, r1) = channel::unbounded();
-/// let (s2, r2) = channel::unbounded();
-///
-/// thread::spawn(move || s1.send("foo"));
-/// thread::spawn(move || s2.send("bar"));
-///
-/// // Only one of these two receive operations will be executed.
-/// select! {
-///     recv(r1) -> msg => assert_eq!(msg, Ok("foo")),
-///     recv(r2) -> msg => assert_eq!(msg, Ok("bar")),
-/// }
-/// # }
-/// ```
-pub mod channel {
-    pub use crossbeam_channel::*;
-}
+        mod _deque {
+            pub extern crate crossbeam_deque;
+        }
+        pub use _deque::crossbeam_deque as deque;
 
-// FIXME(jeehoonkang): The entirety of `crossbeam_channel::*` is re-exported as public in the crate
-// root because it seems it's the only way to re-export its `select!` macro.  We need to find a more
-// precise way to re-export only the `select!` macro.
-#[doc(hidden)]
-pub use crossbeam_channel::*;
+        mod _channel {
+            pub extern crate crossbeam_channel;
+            pub use self::crossbeam_channel::*;
+        }
+        pub use _channel::crossbeam_channel as channel;
 
-/// A concurrent work-stealing deque.
-///
-/// See [the `crossbeam-deque` crate](https://github.com/crossbeam-rs/crossbeam-deque) for more
-/// information.
-pub mod deque {
-    pub use crossbeam_deque::*;
-}
+        // HACK(stjepang): This is the only way to reexport `select!` in Rust older than 1.30.0
+        #[doc(hidden)]
+        pub use _channel::*;
 
-/// Concurrent queues.
-pub mod queue {
-    pub use ms_queue::MsQueue;
-    pub use seg_queue::SegQueue;
-}
+        #[macro_use]
+        extern crate lazy_static;
+        extern crate num_cpus;
+        extern crate parking_lot;
 
-/// Concurrent stacks.
-pub mod stack {
-    pub use treiber_stack::TreiberStack;
+        mod ms_queue;
+        mod seg_queue;
+        mod sharded_lock;
+        mod treiber_stack;
+        mod wait_group;
+
+        /// Concurrent queues.
+        pub mod queue {
+            pub use ms_queue::MsQueue;
+            pub use seg_queue::SegQueue;
+        }
+
+        /// Concurrent stacks.
+        pub mod stack {
+            pub use treiber_stack::TreiberStack;
+        }
+
+        /// Utilities for thread synchronization.
+        pub mod sync {
+            pub use sharded_lock::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
+            pub use wait_group::WaitGroup;
+        }
+    }
 }

@@ -1,5 +1,3 @@
-#![warn(missing_docs, missing_debug_implementations)]
-
 //! Multi-producer multi-consumer channels for message passing.
 //!
 //! This library is an alternative to [`std::sync::mpsc`] with more features and better
@@ -346,6 +344,9 @@
 //! [`Select`]: struct.Select.html
 //! [`Sender`]: struct.Sender.html
 //! [`Receiver`]: struct.Receiver.html
+
+#![warn(missing_docs)]
+#![warn(missing_debug_implementations)]
 
 extern crate crossbeam_epoch;
 extern crate crossbeam_utils;

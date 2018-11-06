@@ -11,10 +11,9 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::thread::{self, ThreadId};
 
+use crossbeam_utils::CachePadded;
 use num_cpus;
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
-
-use CachePadded;
 
 /// A scalable reader-writer lock.
 ///

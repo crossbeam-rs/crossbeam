@@ -1,5 +1,5 @@
-mod atomic_cell;
+//! Additional utilities for atomics.
+
 mod consume;
 
-pub use self::atomic_cell::AtomicCell;
 pub use self::consume::AtomicConsume;

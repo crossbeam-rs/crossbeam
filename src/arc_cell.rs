@@ -1,7 +1,7 @@
-use std::marker::PhantomData;
-use std::mem;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use alloc::sync::Arc;
+use core::marker::PhantomData;
+use core::mem;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// A type providing atomic storage and retrieval of an `Arc<T>`.
 #[derive(Debug)]
