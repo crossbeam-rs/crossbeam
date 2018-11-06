@@ -57,10 +57,10 @@ extern crate crossbeam;
 
 The minimum required Rust version is 1.26.
 
-[`crossbeam-epoch`]: https://github.com/crossbeam-rs/crossbeam-epoch
-[`crossbeam-utils`]: https://github.com/crossbeam-rs/crossbeam-utils
-[`crossbeam-channel`]: https://github.com/crossbeam-rs/crossbeam-channel
-[`crossbeam-deque`]: https://github.com/crossbeam-rs/crossbeam-deque
+[`crossbeam-epoch`]: https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-epoch
+[`crossbeam-utils`]: https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils
+[`crossbeam-channel`]: https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-channel
+[`crossbeam-deque`]: https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-epoch
 
 ## License
 
