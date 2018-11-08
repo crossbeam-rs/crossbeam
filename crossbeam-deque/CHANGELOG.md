@@ -1,5 +1,9 @@
 # Version 0.6.1
 
+- Update `crosbeam-utils` to `0.6`.
+
+# Version 0.6.1
+
 - Change a few `Relaxed` orderings to `Release` in order to fix false positives by tsan.
 
 # Version 0.6.0

@@ -1,3 +1,7 @@
+# Version 0.3.1
+
+- Update `crossbeam-utils` to `0.6`.
+
 # Version 0.3.0
 
 - Add a special `never` channel type.

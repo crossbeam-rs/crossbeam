@@ -1,3 +1,9 @@
+# Version 0.5.0
+
+- Update `crossbeam-channel` to 0.3.
+- Update `crossbeam-utils` to 0.6.
+- Add `AtomicCell`.
+
 # Version 0.4.1
 
 - Fix a double-free bug in `MsQueue` and `SegQueue`.

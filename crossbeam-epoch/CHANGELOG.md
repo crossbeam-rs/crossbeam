@@ -1,3 +1,7 @@
+# Version 0.6.1
+
+- Update `crossbeam-utils` to `0.6`.
+
 # Version 0.6.0
 
 - `defer` now requires `F: Send + 'static`.
