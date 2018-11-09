@@ -60,7 +60,7 @@ members = [
   "crossbeam-utils",
 ]
 
-[patch.crates-io]
+# [patch.crates-io]
 # crossbeam = { path = "." }
 # crossbeam-channel = { path = "./crossbeam-channel" }
 # crossbeam-deque = { path = "./crossbeam-deque" }
