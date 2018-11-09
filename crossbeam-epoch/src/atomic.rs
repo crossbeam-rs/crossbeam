@@ -217,6 +217,7 @@ impl<T, S: Storage<T>> Atomic<T, S> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
+    #[cfg(not(feature = "nightly"))]
     pub fn null() -> Atomic<T, S> {
         Self {
             data: AtomicUsize::new(0),

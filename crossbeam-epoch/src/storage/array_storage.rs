@@ -95,7 +95,7 @@ impl<T> Array<T> {
             self.size
         );
 
-        &self.anchor[index] as *const _
+        (&self.anchor as *const ManuallyDrop<T>).add(index)
     }
 }
 
