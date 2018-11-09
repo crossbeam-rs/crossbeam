@@ -2,7 +2,7 @@
 
 - Update `crossbeam-channel` to 0.3.
 - Update `crossbeam-utils` to 0.6.
-- Add `AtomicCell`.
+- Add `AtomicCell`, `SharedLock`, and `WaitGroup`.
 
 # Version 0.4.1
 

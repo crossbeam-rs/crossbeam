@@ -1,4 +1,4 @@
-# Version 0.6.1
+# Version 0.6.2
 
 - Update `crosbeam-utils` to `0.6`.
 
