@@ -1,3 +1,14 @@
+# Version 0.6.0
+
+- Move `AtomicConsume` to `atomic` module.
+- `scope()` returns a `Result` of thread joins.
+- Remove `spawn_unchecked`.
+- Fix a soundness bug due to incorrect lifetimes.
+- Improve documentation.
+- Support nested scoped spawns.
+- Implement `Copy`, `Hash`, `PartialEq`, and `Eq` for `CachePadded`.
+- Add `CachePadded::into_inner()`.
+
 # Version 0.5.0
 
 - Reorganize sub-modules and rename functions.
