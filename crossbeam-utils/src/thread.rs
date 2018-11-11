@@ -306,7 +306,7 @@ pub struct ScopedJoinHandle<'scope, T> {
     thread: thread::Thread,
 
     /// Borrows the parent scope with lifetime `'scope`.
-    _marker: PhantomData<(&'scope (), T)>,
+    _marker: PhantomData<&'scope ()>,
 }
 
 impl<'scope, T> ScopedJoinHandle<'scope, T> {
