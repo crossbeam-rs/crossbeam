@@ -159,7 +159,7 @@ impl Clone for Channel {
 
 impl SelectHandle for Channel {
     #[inline]
-    fn try(&self, token: &mut Token) -> bool {
+    fn try_select(&self, token: &mut Token) -> bool {
         match self.try_recv() {
             Ok(msg) => {
                 token.after = Some(msg);
@@ -174,18 +174,18 @@ impl SelectHandle for Channel {
     }
 
     #[inline]
-    fn retry(&self, token: &mut Token) -> bool {
-        self.try(token)
-    }
-
-    #[inline]
     fn deadline(&self) -> Option<Instant> {
-        Some(self.delivery_time)
+        // We use relaxed ordering because this is just an optional optimistic check.
+        if self.received.load(Ordering::Relaxed) {
+            None
+        } else {
+            Some(self.delivery_time)
+        }
     }
 
     #[inline]
-    fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Context) -> bool {
-        true
+    fn register(&self, _oper: Operation, _cx: &Context) -> bool {
+        self.is_ready()
     }
 
     #[inline]
@@ -193,8 +193,21 @@ impl SelectHandle for Channel {
 
     #[inline]
     fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
-        self.try(token)
+        self.try_select(token)
     }
+
+    #[inline]
+    fn is_ready(&self) -> bool {
+        !self.is_empty()
+    }
+
+    #[inline]
+    fn watch(&self, _oper: Operation, _cx: &Context) -> bool {
+        self.is_ready()
+    }
+
+    #[inline]
+    fn unwatch(&self, _oper: Operation) {}
 
     #[inline]
     fn state(&self) -> usize {
