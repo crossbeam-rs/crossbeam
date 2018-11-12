@@ -1,3 +1,8 @@
+# Version 0.6.1
+
+- Fix a soundness bug in `Scope::spawn()`.
+- Remove the `T: 'scope` bound on `ScopedJoinHandle`.
+-
 # Version 0.6.0
 
 - Move `AtomicConsume` to `atomic` module.
