@@ -125,12 +125,15 @@ fn select_rx_async() {
             let rx2 = &chans[2].1;
             let rx3 = &chans[3].1;
 
-            select! {
-                m = rx0.recv() => assert!(m.is_ok()),
-                m = rx1.recv() => assert!(m.is_ok()),
-                m = rx2.recv() => assert!(m.is_ok()),
-                m = rx3.recv() => assert!(m.is_ok())
-            };
+            #[allow(deprecated)]
+            {
+                select! {
+                    m = rx0.recv() => assert!(m.is_ok()),
+                    m = rx1.recv() => assert!(m.is_ok()),
+                    m = rx2.recv() => assert!(m.is_ok()),
+                    m = rx3.recv() => assert!(m.is_ok())
+                }
+            }
         }
     });
 }
@@ -158,11 +161,14 @@ fn select_rx_sync(cap: usize) {
             let rx2 = &chans[2].1;
             let rx3 = &chans[3].1;
 
-            select! {
-                m = rx0.recv() => assert!(m.is_ok()),
-                m = rx1.recv() => assert!(m.is_ok()),
-                m = rx2.recv() => assert!(m.is_ok()),
-                m = rx3.recv() => assert!(m.is_ok())
+            #[allow(deprecated)]
+            {
+                select! {
+                    m = rx0.recv() => assert!(m.is_ok()),
+                    m = rx1.recv() => assert!(m.is_ok()),
+                    m = rx2.recv() => assert!(m.is_ok()),
+                    m = rx3.recv() => assert!(m.is_ok())
+                }
             }
         }
     });
