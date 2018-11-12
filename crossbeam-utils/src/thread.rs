@@ -166,7 +166,7 @@ pub struct Scope<'env> {
     chan: mpsc::Sender<()>,
 
     /// Borrows data with invariant lifetime `'env`.
-    _marker: PhantomData<&'env mut &'env mut ()>,
+    _marker: PhantomData<&'env mut &'env ()>,
 }
 
 unsafe impl<'env> Sync for Scope<'env> {}
