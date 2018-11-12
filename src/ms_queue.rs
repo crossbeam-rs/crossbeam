@@ -466,10 +466,10 @@ mod test {
 
         let q: MsQueue<i64> = MsQueue::new();
         assert!(q.is_empty());
-        let qr = &q;
         scope(|scope| {
             for i in 0..3 {
-                scope.spawn(|_| recv(i, qr));
+                let q = &q;
+                scope.spawn(move |_| recv(i, q));
             }
 
             scope.spawn(|_| {

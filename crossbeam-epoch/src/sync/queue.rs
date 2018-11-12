@@ -346,7 +346,8 @@ mod test {
         assert!(q.is_empty());
         thread::scope(|scope| {
             for i in 0..3 {
-                scope.spawn(|_| recv(i, &q));
+                let q = &q;
+                scope.spawn(move |_| recv(i, q));
             }
 
             scope.spawn(|_| {

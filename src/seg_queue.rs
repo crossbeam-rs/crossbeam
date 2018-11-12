@@ -256,7 +256,8 @@ mod test {
         let q: SegQueue<i64> = SegQueue::new();
         scope(|scope| {
             for i in 0..3 {
-                scope.spawn(|_| recv(i, &q));
+                let q = &q;
+                scope.spawn(move |_| recv(i, q));
             }
 
             scope.spawn(|_| {

@@ -115,7 +115,7 @@ where
     F: FnOnce(&Scope<'env>) -> R,
 {
     let (tx, rx) = mpsc::channel();
-    let scope = Scope {
+    let scope = Scope::<'env> {
         handles: SharedVec::default(),
         chan: tx,
         _marker: PhantomData,
@@ -165,8 +165,8 @@ pub struct Scope<'env> {
     /// Used to wait until all subscopes all dropped.
     chan: mpsc::Sender<()>,
 
-    /// Borrows data with lifetime `'env`.
-    _marker: PhantomData<&'env ()>,
+    /// Borrows data with invariant lifetime `'env`.
+    _marker: PhantomData<&'env mut &'env ()>,
 }
 
 unsafe impl<'env> Sync for Scope<'env> {}
@@ -242,7 +242,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
             let result = Arc::clone(&result);
 
             // A clone of the scope that will be moved into the new thread.
-            let scope = Scope {
+            let scope = Scope::<'env> {
                 handles: Arc::clone(&self.scope.handles),
                 chan: self.scope.chan.clone(),
                 _marker: PhantomData,
@@ -295,7 +295,7 @@ unsafe impl<'scope, T> Send for ScopedJoinHandle<'scope, T> {}
 unsafe impl<'scope, T> Sync for ScopedJoinHandle<'scope, T> {}
 
 /// A handle to a scoped thread
-pub struct ScopedJoinHandle<'scope, T: 'scope> {
+pub struct ScopedJoinHandle<'scope, T> {
     /// A join handle to the spawned thread.
     handle: SharedOption<thread::JoinHandle<()>>,
 
@@ -306,7 +306,7 @@ pub struct ScopedJoinHandle<'scope, T: 'scope> {
     thread: thread::Thread,
 
     /// Borrows the parent scope with lifetime `'scope`.
-    _marker: PhantomData<&'scope T>,
+    _marker: PhantomData<&'scope ()>,
 }
 
 impl<'scope, T> ScopedJoinHandle<'scope, T> {
