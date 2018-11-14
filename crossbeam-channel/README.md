@@ -33,6 +33,37 @@ The minimum required Rust version is 1.26.
 
 ## License
 
-Licensed under the terms of MIT license and the Apache License (Version 2.0).
+Licensed under either of
 
-See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) for details.
+ * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
+
+### Third party software
+
+This product includes copies and modifications of software developed by third parties:
+
+* [examples/matching.rs](examples/matching.rs) includes
+  [matching.go](http://www.nada.kth.se/~snilsson/concurrency/src/matching.go) by Stefan Nilsson,
+  licensed under Creative Commons Attribution 3.0 Unported License.
+
+* [src/flavors/array.rs](src/flavors/array.rs) is based on
+  [Bounded MPMC queue](http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue)
+  by Dmitry Vyukov, licensed under the Simplified BSD License and the Apache License, Version 2.0.
+
+* [tests/mpsc.rs](tests/mpsc.rs) includes modifications of code from The Rust Programming Language,
+  licensed under the MIT License and the Apache License, Version 2.0.
+
+* [tests/golang.rs](tests/golang.rs) is based on code from The Go Programming Language, licensed
+  under the 3-Clause BSD License.
+
+See the source code files for more details.
+
+Copies of third party licenses can be found in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY).

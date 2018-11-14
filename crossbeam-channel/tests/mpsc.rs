@@ -1,7 +1,5 @@
 //! Tests copied from `std::sync::mpsc`.
 //!
-//! # Copyright
-//!
 //! This is a copy of tests for the `std::sync::mpsc` channels from the stanard library, but
 //! modified to work with `crossbeam-channel` instead.
 //!
@@ -11,20 +9,14 @@
 //! - Replace all uses of `Select` with `select!`.
 //! - Change the imports.
 //!
-//! License: https://github.com/rust-lang/rust/blob/master/COPYRIGHT
-//! Source: https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
+//! Source:
+//!   - https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
 //!
-//! ```text
-//! Copyright 2013-2014 The Rust Project Developers. See the COPYRIGHT
-//! file at the top-level directory of this distribution and at
-//! http://rust-lang.org/COPYRIGHT.
-//!
-//! Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-//! http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-//! <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-//! option. This file may not be copied, modified, or distributed
-//! except according to those terms.
-//! ```
+//! Copyright & License:
+//!   - Copyright 2013-2014 The Rust Project Developers
+//!   - Apache License, Version 2.0 or MIT license, at your option
+//!   - https://github.com/rust-lang/rust/blob/master/COPYRIGHT
+//!   - https://www.rust-lang.org/en-US/legal.html
 
 #[macro_use]
 extern crate crossbeam_channel as cc;
