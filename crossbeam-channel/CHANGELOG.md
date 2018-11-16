@@ -1,3 +1,7 @@
+# Version 0.3.2
+
+- More elaborate licensing notices.
+
 # Version 0.3.1
 
 - Update `crossbeam-utils` to `0.6`.
