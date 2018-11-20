@@ -361,7 +361,10 @@ impl Local {
                 //    instruction.
                 //
                 // Both instructions have the effect of a full barrier, but benchmarks have shown
-                // that the second one makes pinning faster in this particular case.
+                // that the second one makes pinning faster in this particular case.  It is not
+                // clear that this is permitted by the C++ memory model (SC fences work very
+                // differently from SC accesses), but experimental evidence suggests that this
+                // works fine.
                 let current = Epoch::starting();
                 let previous = self
                     .epoch
