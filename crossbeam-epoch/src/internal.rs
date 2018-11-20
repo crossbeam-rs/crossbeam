@@ -364,7 +364,8 @@ impl Local {
                 // that the second one makes pinning faster in this particular case.  It is not
                 // clear that this is permitted by the C++ memory model (SC fences work very
                 // differently from SC accesses), but experimental evidence suggests that this
-                // works fine.
+                // works fine.  Using inline assembly would be a viable (and correct) alternative,
+                // but alas, that is not possible on stable Rust.
                 let current = Epoch::starting();
                 let previous = self
                     .epoch
