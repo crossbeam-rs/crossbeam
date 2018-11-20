@@ -361,12 +361,20 @@ impl Local {
                 //    instruction.
                 //
                 // Both instructions have the effect of a full barrier, but benchmarks have shown
-                // that the second one makes pinning faster in this particular case.
+                // that the second one makes pinning faster in this particular case.  It is not
+                // clear that this is permitted by the C++ memory model (SC fences work very
+                // differently from SC accesses), but experimental evidence suggests that this
+                // works fine.  Using inline assembly would be a viable (and correct) alternative,
+                // but alas, that is not possible on stable Rust.
                 let current = Epoch::starting();
                 let previous = self
                     .epoch
                     .compare_and_swap(current, new_epoch, Ordering::SeqCst);
                 debug_assert_eq!(current, previous, "participant was expected to be unpinned");
+                // We add a compiler fence to make it less likely for LLVM to do something wrong
+                // here.  Formally, this is not enough to get rid of data races; practically,
+                // it should go a long way.
+                atomic::compiler_fence(Ordering::SeqCst);
             } else {
                 self.epoch.store(new_epoch, Ordering::Relaxed);
                 atomic::fence(Ordering::SeqCst);
