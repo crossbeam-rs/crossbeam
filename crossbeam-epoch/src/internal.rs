@@ -371,6 +371,10 @@ impl Local {
                     .epoch
                     .compare_and_swap(current, new_epoch, Ordering::SeqCst);
                 debug_assert_eq!(current, previous, "participant was expected to be unpinned");
+                // We add a compiler fence to make it less likely for LLVM to do something wrong
+                // here.  Formally, this is not enough to get rid of data races; practically,
+                // it should go a long way.
+                atomic::compiler_fence(Ordering::SeqCst);
             } else {
                 self.epoch.store(new_epoch, Ordering::Relaxed);
                 atomic::fence(Ordering::SeqCst);
