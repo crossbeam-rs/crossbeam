@@ -1,16 +1,11 @@
 use std::fmt;
-use std::sync::{Condvar, Mutex};
+use std::marker::PhantomData;
+use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 
-const EMPTY: usize = 0;
-const PARKED: usize = 1;
-const NOTIFIED: usize = 2;
-
 /// A thread parking primitive.
-///
-/// Only one thread at a time may call [`park`], but any thread may call [`unpark`] at any time.
 ///
 /// Conceptually, each `Parker` has an associated token which is initially not present:
 ///
@@ -31,37 +26,37 @@ const NOTIFIED: usize = 2;
 /// # Examples
 ///
 /// ```
-/// use std::sync::Arc;
 /// use std::thread;
 /// use std::time::Duration;
 /// use crossbeam_utils::sync::Parker;
 ///
-/// let parker = Arc::new(Parker::new());
+/// let mut p = Parker::new();
+/// let u = p.unparker().clone();
 ///
 /// // Make the token available.
-/// parker.unpark();
+/// u.unpark();
 /// // Wakes up immediately and consumes the token.
-/// parker.park();
+/// p.park();
 ///
-/// let parker2 = parker.clone();
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_millis(500));
-///     parker2.unpark();
+///     u.unpark();
 /// });
 ///
-/// // Wakes up when `parker2.unpark()` provides the token, but may also wake up
+/// // Wakes up when `u.unpark()` provides the token, but may also wake up
 /// // spuriously before that without consuming the token.
-/// parker.park();
+/// p.park();
 /// ```
 ///
 /// [`park`]: struct.Parker.html#method.park
 /// [`park_timeout`]: struct.Parker.html#method.park_timeout
-/// [`unpark`]: struct.Parker.html#method.unpark
+/// [`unpark`]: struct.Unparker.html#method.unpark
 pub struct Parker {
-    state: AtomicUsize,
-    lock: Mutex<()>,
-    cvar: Condvar,
+    unparker: Unparker,
+    _marker: PhantomData<*const ()>,
 }
+
+unsafe impl Send for Parker {}
 
 impl Parker {
     /// Creates a new `Parker`.
@@ -71,53 +66,49 @@ impl Parker {
     /// ```
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let parker = Parker::new();
+    /// let p = Parker::new();
     /// ```
     ///
     pub fn new() -> Parker {
         Parker {
-            state: AtomicUsize::new(EMPTY),
-            lock: Mutex::new(()),
-            cvar: Condvar::new(),
+            unparker: Unparker {
+                inner: Arc::new(Inner {
+                    state: AtomicUsize::new(EMPTY),
+                    lock: Mutex::new(()),
+                    cvar: Condvar::new(),
+                }),
+            },
+            _marker: PhantomData,
         }
     }
 
     /// Blocks the current thread until the token is made available.
     ///
-    /// A call to [`park`] may wake up spuriously without consuming the token, and callers should
-    /// be prepared for this possibility.
-    ///
-    /// Only one thread may call [`park`] or [`park_timeout`] at a time. If multiple threads call
-    /// it at the same time, deadlocks or panics might occur.
+    /// A call to `park` may wake up spuriously without consuming the token, and callers should be
+    /// prepared for this possibility.
     ///
     /// # Examples
     ///
     /// ```
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let parker = Parker::new();
+    /// let mut p = Parker::new();
+    /// let u = p.unparker().clone();
     ///
     /// // Make the token available.
-    /// parker.unpark();
+    /// u.unpark();
     ///
     /// // Wakes up immediately and consumes the token.
-    /// parker.park();
+    /// p.park();
     /// ```
-    ///
-    /// [`park`]: struct.Parker.html#method.park
-    /// [`park_timeout`]: struct.Parker.html#method.park_timeout
-    /// [`unpark`]: struct.Parker.html#method.unpark
-    pub fn park(&self) {
-        self.park_internal(None);
+    pub fn park(&mut self) {
+        self.unparker.inner.park(None);
     }
 
     /// Blocks the current thread until the token is made available, but only for a limited time.
     ///
-    /// A call to [`park_timeout`] may wake up spuriously without consuming the token, and callers
+    /// A call to `park_timeout` may wake up spuriously without consuming the token, and callers
     /// should be prepared for this possibility.
-    ///
-    /// Only one thread may call [`park`] or [`park_timeout`] at a time. If multiple threads call
-    /// it at the same time, deadlocks or panics might occur.
     ///
     /// # Examples
     ///
@@ -125,20 +116,117 @@ impl Parker {
     /// use std::time::Duration;
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let parker = Parker::new();
+    /// let mut p = Parker::new();
     ///
     /// // Waits for the token to become available, but will not wait longer than 500 ms.
-    /// parker.park_timeout(Duration::from_millis(500));
+    /// p.park_timeout(Duration::from_millis(500));
+    /// ```
+    pub fn park_timeout(&mut self, timeout: Duration) {
+        self.unparker.inner.park(Some(timeout));
+    }
+
+    /// Returns a reference to an associated [`Unparker`].
+    ///
+    /// The returned [`Unparker`] doesn't have to be used by reference - it can also be cloned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::sync::Parker;
+    ///
+    /// let mut p = Parker::new();
+    /// let u = p.unparker().clone();
+    ///
+    /// // Make the token available.
+    /// u.unpark();
+    /// // Wakes up immediately and consumes the token.
+    /// p.park();
     /// ```
     ///
     /// [`park`]: struct.Parker.html#method.park
     /// [`park_timeout`]: struct.Parker.html#method.park_timeout
-    /// [`unpark`]: struct.Parker.html#method.unpark
-    pub fn park_timeout(&self, timeout: Duration) {
-        self.park_internal(Some(timeout));
+    ///
+    /// [`Unparker`]: struct.Unparker.html
+    pub fn unparker(&self) -> &Unparker {
+        &self.unparker
     }
+}
 
-    fn park_internal(&self, timeout: Option<Duration>) {
+impl fmt::Debug for Parker {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Parker")
+    }
+}
+
+/// Unparks a thread parked by the associated [`Parker`].
+///
+/// [`Parker`]: struct.Parker.html
+pub struct Unparker {
+    inner: Arc<Inner>,
+}
+
+unsafe impl Send for Unparker {}
+unsafe impl Sync for Unparker {}
+
+impl Unparker {
+    /// Atomically makes the token available if it is not already.
+    ///
+    /// This method will wake up the thread blocked on [`park`] or [`park_timeout`], if there is
+    /// any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use crossbeam_utils::sync::Parker;
+    ///
+    /// let mut p = Parker::new();
+    /// let u = p.unparker().clone();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_millis(500));
+    ///     u.unpark();
+    /// });
+    ///
+    /// // Wakes up when `u.unpark()` provides the token, but may also wake up
+    /// // spuriously before that without consuming the token.
+    /// p.park();
+    /// ```
+    ///
+    /// [`park`]: struct.Parker.html#method.park
+    /// [`park_timeout`]: struct.Parker.html#method.park_timeout
+    pub fn unpark(&self) {
+        self.inner.unpark()
+    }
+}
+
+impl fmt::Debug for Unparker {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "UnParker")
+    }
+}
+
+impl Clone for Unparker {
+    fn clone(&self) -> Unparker {
+        Unparker {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+const EMPTY: usize = 0;
+const PARKED: usize = 1;
+const NOTIFIED: usize = 2;
+
+struct Inner {
+    state: AtomicUsize,
+    lock: Mutex<()>,
+    cvar: Condvar,
+}
+
+impl Inner {
+    fn park(&self, timeout: Option<Duration>) {
         // If we were previously notified then we consume this notification and return quickly.
         if self.state.compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst).is_ok() {
             return;
@@ -197,35 +285,6 @@ impl Parker {
         }
     }
 
-    /// Atomically makes the token available if it is not already.
-    ///
-    /// This method will wake up the thread blocked on [`park`] or [`park_timeout`], if there is
-    /// any.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    /// use std::thread;
-    /// use std::time::Duration;
-    /// use crossbeam_utils::sync::Parker;
-    ///
-    /// let parker = Arc::new(Parker::new());
-    ///
-    /// let parker2 = parker.clone();
-    /// thread::spawn(move || {
-    ///     thread::sleep(Duration::from_millis(500));
-    ///     parker2.unpark();
-    /// });
-    ///
-    /// // Wakes up when `parker2.unpark()` provides the token, but may also wake up
-    /// // spuriously before that without consuming the token.
-    /// parker.park();
-    /// ```
-    ///
-    /// [`park`]: struct.Parker.html#method.park
-    /// [`park_timeout`]: struct.Parker.html#method.park_timeout
-    /// [`unpark`]: struct.Parker.html#method.unpark
     pub fn unpark(&self) {
         // To ensure the unparked thread will observe any writes we made before this call, we must
         // perform a release operation that `park` can synchronize with. To do that we must write
@@ -248,11 +307,5 @@ impl Parker {
         // it doesn't get woken only to have to wait for us to release `lock`.
         drop(self.lock.lock().unwrap());
         self.cvar.notify_one();
-    }
-}
-
-impl fmt::Debug for Parker {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Parker")
     }
 }

@@ -2,4 +2,4 @@
 
 mod parker;
 
-pub use self::parker::Parker;
+pub use self::parker::{Parker, Unparker};
