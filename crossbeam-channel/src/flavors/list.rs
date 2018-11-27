@@ -281,6 +281,14 @@ impl<T> Channel<T> {
                     self.head
                         .block
                         .compare_and_set(head_ptr, current, Ordering::Release, &guard);
+
+                // We must update `tail` before defer_destroy(head_ptr).
+                if self.tail.block.load(Ordering::Acquire, &guard) == head_ptr {
+					let _ =
+						self.tail
+							.block
+							.compare_and_set(head_ptr, current, Ordering::Release, &guard);
+				}			
             };
 
             // If `head_index` is pointing into `head`...
