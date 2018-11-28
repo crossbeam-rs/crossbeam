@@ -222,9 +222,7 @@ impl<T> Queue<T> {
 
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
-        unsafe {
 
-        }
     }
 }
 
