@@ -52,7 +52,7 @@ use deferred::Deferred;
 use epoch::{AtomicEpoch, Epoch};
 use guard::{unprotected, Guard};
 use sync::list::{Entry, IsElement, IterError, List};
-use sync::queue::Queue;
+use sync::queue_base_block::Queue;
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(feature = "sanitize"))]
