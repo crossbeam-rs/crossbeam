@@ -1,12 +1,10 @@
 use core::mem::{self, ManuallyDrop};
-use core::ptr;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use core::marker::PhantomData;
+use core::std::cell::UnsafeCell;
+use core::std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crossbeam_utils::CachePadded;
-
 use {unprotected, Atomic, Guard, Owned, Shared};
-
-use std::thread;
+use core::marker::PhantomData;
 
 pub struct Queue<T> {
     /// The head of the channel.
@@ -22,9 +20,6 @@ pub struct Queue<T> {
 // Any particular `T` should never be accessed concurrently, so no need for `Sync`.
 unsafe impl<T: Send> Sync for Queue<T> {}
 unsafe impl<T: Send> Send for Queue<T> {}
-
-use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 const BLOCK_CAP: usize = 32;
 /// A slot in a block.
@@ -218,7 +213,6 @@ impl<T> Queue<T> {
                         let data = ManuallyDrop::into_inner(slot.msg.get().read());
                         return Some(data);
                     }
-                    
                 }
             } else if offset == BLOCK_CAP {
                 install_next_block();
