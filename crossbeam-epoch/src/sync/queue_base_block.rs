@@ -138,11 +138,6 @@ impl<T> Queue<T> {
         }
     }
     
-    pub fn try_pop(&self, guard: &Guard) -> Option<T> 
-    {
-        self.try_pop_if(|_| true, guard)
-    }
-    
     pub fn try_pop_if<F>(&self, condition: F, guard: &Guard) -> Option<T>
     where
         F: Fn(&T) -> bool,
