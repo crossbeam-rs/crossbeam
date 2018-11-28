@@ -1,5 +1,4 @@
 use core::mem::{self, ManuallyDrop};
-use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crossbeam_utils::CachePadded;
