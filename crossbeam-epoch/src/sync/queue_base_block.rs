@@ -1,7 +1,7 @@
 use core::mem::{self, ManuallyDrop};
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use core::std::cell::UnsafeCell;
-use core::std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crossbeam_utils::CachePadded;
 use {unprotected, Atomic, Guard, Owned, Shared};
 use core::marker::PhantomData;
