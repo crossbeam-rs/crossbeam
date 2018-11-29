@@ -39,4 +39,4 @@ default-features = false
 
 [dev-dependencies]
 crossbeam = "0.4"
-rand = "0.5"
+rand = "0.6"
