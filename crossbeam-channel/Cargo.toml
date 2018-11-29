@@ -17,7 +17,7 @@ categories = ["algorithms", "concurrency", "data-structures"]
 
 [dependencies]
 parking_lot = "0.7"
-rand = "0.5.3"
+rand = "0.6"
 smallvec = "0.6.2"
 
 [dependencies.crossbeam-epoch]
