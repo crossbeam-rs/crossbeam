@@ -224,31 +224,5 @@ impl<T> Drop for Queue<T> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crossbeam_utils::thread;
-    use pin;
 
-    struct Queue<T> {
-        queue: super::Queue<T>,
-    }
-
-    impl<T> Queue<T> {
-        pub fn new() -> Queue<T> {
-            Queue {
-                queue: super::Queue::new(),
-            }
-        }
-
-        pub fn push(&self, t: T) {
-            let guard = &pin();
-            self.queue.push(t, guard);
-        }
-
-        pub fn is_empty(&self) -> bool {
-            let guard = &pin();
-            let head = self.queue.head.index.load(Ordering::SeqCst);
-            let tail = self.queue.tail.index.load(Ordering::SeqCst);
-            head >= tail
-        }
-    }
 }
