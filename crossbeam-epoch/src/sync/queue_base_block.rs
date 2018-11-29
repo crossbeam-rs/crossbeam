@@ -257,7 +257,7 @@ mod test {
         }
 
         pub fn is_empty(&self) -> bool {
-            let guard = &pin();
+            let _guard = &pin();
             let head = self.queue.head.index.load(Ordering::SeqCst);
             let tail = self.queue.tail.index.load(Ordering::SeqCst);
             head >= tail
