@@ -145,7 +145,6 @@ impl<T> Queue<T> {
 
     pub fn try_pop_if<F>(&self, condition: F, guard: &Guard) -> Option<T>
     where
-        T: Sync,
         F: Fn(&T) -> bool,
     {
         loop {
@@ -229,7 +228,7 @@ impl<T> Drop for Queue<T> {
             while let Some(_) = self.try_pop(guard) {}
 
             // Destroy the remaining sentinel node.
-            let sentinel = self.head.block.load(Relaxed, guard);
+            let sentinel = self.head.block.load(Ordering::Relaxed, guard);
             drop(sentinel.into_owned());
         }
     }
