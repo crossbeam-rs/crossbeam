@@ -8,13 +8,13 @@ use std::io;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{tick, unbounded, Receiver};
+use crossbeam_channel::{bounded, tick, Receiver};
 use signal_hook::iterator::Signals;
 use signal_hook::SIGINT;
 
 // Creates a channel that gets a message every time `SIGINT` is signalled.
 fn sigint_notifier() -> io::Result<Receiver<()>> {
-    let (s, r) = unbounded();
+    let (s, r) = bounded(100);
     let signals = Signals::new(&[SIGINT])?;
 
     thread::spawn(move || {
