@@ -3,10 +3,10 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::iter::FromIterator;
+use std::ops::Bound;
 
 use base::{self, try_pin_loop};
 use epoch;
-use Bound;
 
 /// A map based on a lock-free skip list.
 pub struct SkipMap<K, V> {

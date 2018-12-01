@@ -5,14 +5,13 @@ use core::borrow::Borrow;
 use core::cmp;
 use core::fmt;
 use core::mem;
-use core::ops::{Deref, Index};
+use core::ops::{Bound, Deref, Index};
 use core::ptr;
 use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
 use epoch::{self, Atomic, Collector, Guard, Shared};
 use scopeguard;
 use utils::CachePadded;
-use Bound;
 
 /// Number of bits needed to store height.
 const HEIGHT_BITS: usize = 5;
