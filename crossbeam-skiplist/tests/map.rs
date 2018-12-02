@@ -1,6 +1,6 @@
 extern crate crossbeam_skiplist as skiplist;
 
-use skiplist::{Bound, SkipMap};
+use skiplist::SkipMap;
 
 #[test]
 fn smoke() {
@@ -36,7 +36,7 @@ fn iter() {
 
 #[test]
 fn iter_range() {
-    use Bound::*;
+    use std::ops::Bound::*;
     let s = SkipMap::new();
     let v = (0..10).map(|x| x * 10).collect::<Vec<_>>();
     for &x in v.iter() {

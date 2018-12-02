@@ -3,9 +3,9 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::iter::FromIterator;
+use std::ops::Bound;
 
 use map;
-use Bound;
 
 /// A set based on a lock-free skip list.
 pub struct SkipSet<T> {
