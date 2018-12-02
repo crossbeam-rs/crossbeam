@@ -124,6 +124,7 @@ cfg_if! {
 
         /// Utilities for thread synchronization.
         pub mod sync {
+            pub use crossbeam_utils::sync::Parker;
             pub use sharded_lock::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
             pub use wait_group::WaitGroup;
         }

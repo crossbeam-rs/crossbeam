@@ -43,4 +43,4 @@ version = "0.3"
 default-features = false
 
 [dev-dependencies]
-rand = "0.5"
+rand = "0.6"

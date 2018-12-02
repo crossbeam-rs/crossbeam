@@ -30,6 +30,7 @@ pub use cache_padded::CachePadded;
 
 cfg_if! {
     if #[cfg(feature = "std")] {
+        pub mod sync;
         pub mod thread;
     }
 }

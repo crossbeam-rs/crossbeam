@@ -208,11 +208,21 @@ impl<T> Buffer<T> {
     }
 
     /// Writes `value` into the specified `index`.
+    ///
+    /// Using this concurrently with another `read` or `write` is technically
+    /// speaking UB due to data races.  We should be using relaxed accesses, but
+    /// that would cost too much performance.  Hence, as a HACK, we use volatile
+    /// accesses instead.  Experimental evidence shows that this works.
     unsafe fn write(&self, index: isize, value: T) {
         ptr::write_volatile(self.at(index), value)
     }
 
     /// Reads a value from the specified `index`.
+    ///
+    /// Using this concurrently with a `write` is technically speaking UB due to
+    /// data races.  We should be using relaxed accesses, but that would cost
+    /// too much performance.  Hence, as a HACK, we use volatile accesses
+    /// instead.  Experimental evidence shows that this works.
     unsafe fn read(&self, index: isize) -> T {
         ptr::read_volatile(self.at(index))
     }

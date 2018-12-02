@@ -28,7 +28,7 @@ std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 cfg-if = "0.1"
 lazy_static = "1.1.0"
 num_cpus = "1.8.0"
-parking_lot = "0.6.4"
+parking_lot = "0.7"
 
 [dependencies.crossbeam-channel]
 version = "0.3"
@@ -47,7 +47,7 @@ version = "0.6"
 path = "./crossbeam-utils"
 
 [dev-dependencies]
-rand = "0.5"
+rand = "0.6"
 
 [workspace]
 members = [

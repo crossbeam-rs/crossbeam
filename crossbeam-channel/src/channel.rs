@@ -568,7 +568,7 @@ impl<T> Drop for Sender<T> {
                 ChannelFlavor::Array(chan) => chan.disconnect(),
                 ChannelFlavor::List(chan) => chan.disconnect(),
                 ChannelFlavor::Zero(chan) => chan.disconnect(),
-            };
+            }
         }
     }
 }

@@ -260,7 +260,11 @@ impl SyncWaker {
     /// Notifies all threads that the channel is disconnected.
     #[inline]
     pub fn disconnect(&self) {
-        self.inner.lock().disconnect();
+        if self.len.load(Ordering::SeqCst) > 0 {
+            let mut inner = self.inner.lock();
+            inner.disconnect();
+            self.len.store(inner.len(), Ordering::SeqCst);
+        }
     }
 }
 
