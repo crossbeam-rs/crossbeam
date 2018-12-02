@@ -263,7 +263,7 @@ impl SyncWaker {
         if self.len.load(Ordering::SeqCst) > 0 {
             let mut inner = self.inner.lock();
             inner.disconnect();
-            self.len.store(inner.len(), Ordering::SeqCst);
+            self.len.store(inner.selectors.len() + inner.observers.len(), Ordering::SeqCst);
         }
     }
 }
