@@ -42,8 +42,8 @@ impl Waker {
     pub fn new() -> Self {
         Waker {
             selectors: Vec::new(),
-            register_count: Wrapping(0),
             observers: Vec::new(),
+            register_count: Wrapping(0),
         }
     }
 
@@ -53,7 +53,7 @@ impl Waker {
         self.register_with_packet(oper, 0, cx);
     }
 
-    /// Registers a select operation with a packet.
+    /// Registers a select operation and a packet.
     #[inline]
     pub fn register_with_packet(&mut self, oper: Operation, packet: usize, cx: &Context) {
         self.selectors.push(Entry {
@@ -80,7 +80,7 @@ impl Waker {
         }
     }
 
-    /// Attempts to find an another thread's entry, select the operation, and wake it up.
+    /// Attempts to find another thread's entry, select the operation, and wake it up.
     #[inline]
     pub fn try_select(&mut self) -> Option<Entry> {
         let mut entry = None;

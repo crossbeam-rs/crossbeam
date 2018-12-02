@@ -169,13 +169,13 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
 /// Determines when a select operation should time out.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Timeout {
-    /// Try selecting an operation without blocking.
+    /// No blocking.
     Now,
 
     /// Block forever.
     Never,
 
-    /// Time out after an instant in time.
+    /// Time out after the time instant.
     At(Instant),
 }
 
@@ -394,7 +394,7 @@ fn run_ready(
     loop {
         let mut backoff = Backoff::new();
         loop {
-            // Check operations for readiness without blocking.
+            // Check operations for readiness.
             for &(handle, i, _) in handles.iter() {
                 if handle.is_ready() {
                     return Some(i);
@@ -422,12 +422,12 @@ fn run_ready(
             let mut sel = Selected::Waiting;
             let mut registered_count = 0;
 
-            // Register all readiness checks.
+            // Begin watching all operations.
             for (handle, _, _) in handles.iter_mut() {
                 registered_count += 1;
+                let oper = Operation::hook::<&SelectHandle>(handle);
 
                 // If registration returns `false`, that means the operation has just become ready.
-                let oper = Operation::hook::<&SelectHandle>(handle);
                 if handle.watch(oper, cx) {
                     sel = match cx.try_select(Selected::Operation(oper)) {
                         Ok(()) => Selected::Operation(oper),
@@ -436,7 +436,7 @@ fn run_ready(
                     break;
                 }
 
-                // If another thread has already selected one of the operations, stop registration.
+                // If another thread has already chosen one of the operations, stop registration.
                 sel = cx.selected();
                 if sel != Selected::Waiting {
                     break;
@@ -461,7 +461,7 @@ fn run_ready(
                 sel = cx.wait_until(deadline);
             }
 
-            // Unregister all registered readiness checks.
+            // Unwatch all operations.
             for (handle, _, _) in handles.iter_mut().take(registered_count) {
                 handle.unwatch(Operation::hook::<&SelectHandle>(handle));
             }
@@ -818,11 +818,9 @@ impl<'a> Select<'a> {
     /// // Both operations are initially ready, so a random one will be chosen.
     /// match sel.try_ready() {
     ///     Err(_) => panic!("both operations should be ready"),
-    ///     Ok(oper) => match oper {
-    ///         i if i == oper1 => assert_eq!(r1.try_recv(), Ok(10)),
-    ///         i if i == oper2 => assert_eq!(r2.try_recv(), Ok(20)),
-    ///         _ => unreachable!(),
-    ///     }
+    ///     Ok(i) if i == oper1 => assert_eq!(r1.try_recv(), Ok(10)),
+    ///     Ok(i) if i == oper2 => assert_eq!(r2.try_recv(), Ok(20)),
+    ///     Ok(_) => unreachable!(),
     /// }
     /// ```
     pub fn try_ready(&mut self) -> Result<usize, TryReadyError> {
@@ -911,11 +909,9 @@ impl<'a> Select<'a> {
     /// // The second operation will be selected because it becomes ready first.
     /// match sel.ready_timeout(Duration::from_millis(500)) {
     ///     Err(_) => panic!("should not have timed out"),
-    ///     Ok(oper) => match oper {
-    ///         i if i == oper1 => assert_eq!(r1.try_recv(), Ok(10)),
-    ///         i if i == oper2 => assert_eq!(r2.try_recv(), Ok(20)),
-    ///         _ => unreachable!(),
-    ///     }
+    ///     Ok(i) if i == oper1 => assert_eq!(r1.try_recv(), Ok(10)),
+    ///     Ok(i) if i == oper2 => assert_eq!(r2.try_recv(), Ok(20)),
+    ///     Ok(_) => unreachable!(),
     /// }
     /// ```
     pub fn ready_timeout(&mut self, timeout: Duration) -> Result<usize, ReadyTimeoutError> {
