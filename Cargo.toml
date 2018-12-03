@@ -27,7 +27,6 @@ std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 [dependencies]
 cfg-if = "0.1"
 lazy_static = "1.1.0"
-num_cpus = "1.8.0"
 parking_lot = "0.7"
 
 [dependencies.crossbeam-channel]
