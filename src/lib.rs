@@ -55,6 +55,7 @@ cfg_if! {
 mod _epoch {
     pub extern crate crossbeam_epoch;
 }
+#[doc(inline)]
 pub use _epoch::crossbeam_epoch as epoch;
 
 mod arc_cell;
@@ -88,12 +89,14 @@ cfg_if! {
         mod _deque {
             pub extern crate crossbeam_deque;
         }
+        #[doc(inline)]
         pub use _deque::crossbeam_deque as deque;
 
         mod _channel {
             pub extern crate crossbeam_channel;
             pub use self::crossbeam_channel::*;
         }
+        #[doc(inline)]
         pub use _channel::crossbeam_channel as channel;
 
         // HACK(stjepang): This is the only way to reexport `select!` in Rust older than 1.30.0
