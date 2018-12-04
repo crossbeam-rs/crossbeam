@@ -1,4 +1,4 @@
-# Concurrent work-stealing deque
+# Crossbeam Deque
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)

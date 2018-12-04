@@ -1,4 +1,4 @@
-# Epoch-based garbage collection
+# Crossbeam Epoch
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)

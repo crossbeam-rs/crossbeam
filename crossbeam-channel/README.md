@@ -1,4 +1,4 @@
-# Multi-producer multi-consumer channels for message passing
+# Crossbeam Channel
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)
@@ -11,7 +11,8 @@ https://docs.rs/crossbeam-channel)
 [![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
 https://www.rust-lang.org)
 
-This crate is an alternative to [`std::sync::mpsc`] with more features and better performance.
+This crate provides multi-producer multi-consumer channels for message passing.
+It is an alternative to [`std::sync::mpsc`] with more features and better performance.
 
 Some highlights:
 
