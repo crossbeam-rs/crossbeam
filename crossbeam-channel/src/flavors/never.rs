@@ -80,12 +80,7 @@ impl<T> Clone for Channel<T> {
 
 impl<T> SelectHandle for Channel<T> {
     #[inline]
-    fn try(&self, _token: &mut Token) -> bool {
-        false
-    }
-
-    #[inline]
-    fn retry(&self, _token: &mut Token) -> bool {
+    fn try_select(&self, _token: &mut Token) -> bool {
         false
     }
 
@@ -95,17 +90,30 @@ impl<T> SelectHandle for Channel<T> {
     }
 
     #[inline]
-    fn register(&self, _token: &mut Token, _oper: Operation, _cx: &Context) -> bool {
-        true
+    fn register(&self, _oper: Operation, _cx: &Context) -> bool {
+        self.is_ready()
     }
 
     #[inline]
     fn unregister(&self, _oper: Operation) {}
 
     #[inline]
-    fn accept(&self, _token: &mut Token, _cx: &Context) -> bool {
+    fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
+        self.try_select(token)
+    }
+
+    #[inline]
+    fn is_ready(&self) -> bool {
         false
     }
+
+    #[inline]
+    fn watch(&self, _oper: Operation, _cx: &Context) -> bool {
+        self.is_ready()
+    }
+
+    #[inline]
+    fn unwatch(&self, _oper: Operation) {}
 
     #[inline]
     fn state(&self) -> usize {

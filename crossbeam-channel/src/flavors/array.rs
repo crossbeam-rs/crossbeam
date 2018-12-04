@@ -244,7 +244,7 @@ impl<T> Channel<T> {
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping receiver.
-        self.receivers.wake_one();
+        self.receivers.notify();
         Ok(())
     }
 
@@ -326,7 +326,7 @@ impl<T> Channel<T> {
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping sender.
-        self.senders.wake_one();
+        self.senders.notify();
         Ok(msg)
     }
 
@@ -546,11 +546,7 @@ pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
 pub struct Sender<'a, T: 'a>(&'a Channel<T>);
 
 impl<'a, T> SelectHandle for Receiver<'a, T> {
-    fn try(&self, token: &mut Token) -> bool {
-        self.0.start_recv(token)
-    }
-
-    fn retry(&self, token: &mut Token) -> bool {
+    fn try_select(&self, token: &mut Token) -> bool {
         self.0.start_recv(token)
     }
 
@@ -558,9 +554,9 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
+    fn register(&self, oper: Operation, cx: &Context) -> bool {
         self.0.receivers.register(oper, cx);
-        self.0.is_empty() && !self.0.is_disconnected()
+        self.is_ready()
     }
 
     fn unregister(&self, oper: Operation) {
@@ -568,7 +564,20 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
     }
 
     fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
-        self.0.start_recv(token)
+        self.try_select(token)
+    }
+
+    fn is_ready(&self) -> bool {
+        !self.0.is_empty() || self.0.is_disconnected()
+    }
+
+    fn watch(&self, oper: Operation, cx: &Context) -> bool {
+        self.0.receivers.watch(oper, cx);
+        self.is_ready()
+    }
+
+    fn unwatch(&self, oper: Operation) {
+        self.0.receivers.unwatch(oper);
     }
 
     fn state(&self) -> usize {
@@ -577,11 +586,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
 }
 
 impl<'a, T> SelectHandle for Sender<'a, T> {
-    fn try(&self, token: &mut Token) -> bool {
-        self.0.start_send(token)
-    }
-
-    fn retry(&self, token: &mut Token) -> bool {
+    fn try_select(&self, token: &mut Token) -> bool {
         self.0.start_send(token)
     }
 
@@ -589,9 +594,9 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
         None
     }
 
-    fn register(&self, _token: &mut Token, oper: Operation, cx: &Context) -> bool {
+    fn register(&self, oper: Operation, cx: &Context) -> bool {
         self.0.senders.register(oper, cx);
-        self.0.is_full() && !self.0.is_disconnected()
+        self.is_ready()
     }
 
     fn unregister(&self, oper: Operation) {
@@ -599,7 +604,20 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
     }
 
     fn accept(&self, token: &mut Token, _cx: &Context) -> bool {
-        self.0.start_send(token)
+        self.try_select(token)
+    }
+
+    fn is_ready(&self) -> bool {
+        !self.0.is_full() || self.0.is_disconnected()
+    }
+
+    fn watch(&self, oper: Operation, cx: &Context) -> bool {
+        self.0.senders.watch(oper, cx);
+        self.is_ready()
+    }
+
+    fn unwatch(&self, oper: Operation) {
+        self.0.senders.unwatch(oper);
     }
 
     fn state(&self) -> usize {

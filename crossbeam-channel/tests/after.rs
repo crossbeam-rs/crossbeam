@@ -184,7 +184,7 @@ fn stress_default() {
 }
 
 #[test]
-fn select_shared() {
+fn select() {
     const THREADS: usize = 4;
     const COUNT: usize = 1000;
     const TIMEOUT_MS: u64 = 100;
@@ -227,7 +227,7 @@ fn select_shared() {
 }
 
 #[test]
-fn select_cloned() {
+fn ready() {
     const THREADS: usize = 4;
     const COUNT: usize = 1000;
     const TIMEOUT_MS: u64 = 100;
@@ -239,23 +239,26 @@ fn select_cloned() {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| loop {
-                let timeout = after(ms(TIMEOUT_MS));
-                let mut sel = Select::new();
-                for r in &v {
-                    sel.recv(r);
-                }
-                let oper_timeout = sel.recv(&timeout);
+            scope.spawn(|| {
+                let v: Vec<&_> = v.iter().collect();
 
-                let oper = sel.select();
-                match oper.index() {
-                    i if i == oper_timeout => {
-                        oper.recv(&timeout).unwrap();
-                        break;
+                loop {
+                    let timeout = after(ms(TIMEOUT_MS));
+                    let mut sel = Select::new();
+                    for r in &v {
+                        sel.recv(r);
                     }
-                    i => {
-                        oper.recv(&v[i]).unwrap();
-                        hits.fetch_add(1, Ordering::SeqCst);
+                    let oper_timeout = sel.recv(&timeout);
+
+                    loop {
+                        let i = sel.ready();
+                        if i == oper_timeout {
+                            timeout.try_recv().unwrap();
+                            return;
+                        } else if v[i].try_recv().is_ok() {
+                            hits.fetch_add(1, Ordering::SeqCst);
+                            break;
+                        }
                     }
                 }
             });

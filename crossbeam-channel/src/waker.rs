@@ -1,6 +1,5 @@
 //! Waking mechanism for threads blocked on channel operations.
 
-use std::collections::VecDeque;
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, ThreadId};
@@ -12,14 +11,14 @@ use select::{Operation, Selected};
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {
-    /// Context associated with the thread owning this operation.
-    pub context: Context,
-
     /// The operation.
     pub oper: Operation,
 
     /// Optional packet.
     pub packet: usize,
+
+    /// Context associated with the thread owning this operation.
+    pub cx: Context,
 }
 
 /// A queue of threads blocked on channel operations.
@@ -27,8 +26,11 @@ pub struct Entry {
 /// This data structure is used by threads to register blocking operations and get woken up once
 /// an operation becomes ready.
 pub struct Waker {
-    /// The list of registered blocking operations.
-    entries: VecDeque<Entry>,
+    /// A list of select operations.
+    selectors: Vec<Entry>,
+
+    /// A list of operations waiting to be ready.
+    observers: Vec<Entry>,
 
     /// The number of calls to `register` and `register_with_packet`.
     register_count: Wrapping<usize>,
@@ -39,133 +41,148 @@ impl Waker {
     #[inline]
     pub fn new() -> Self {
         Waker {
-            entries: VecDeque::new(),
+            selectors: Vec::new(),
+            observers: Vec::new(),
             register_count: Wrapping(0),
         }
     }
 
-    /// Registers the current thread with an operation.
+    /// Registers a select operation.
     #[inline]
     pub fn register(&mut self, oper: Operation, cx: &Context) {
         self.register_with_packet(oper, 0, cx);
     }
 
-    /// Registers the current thread with an operation and a packet.
+    /// Registers a select operation and a packet.
     #[inline]
     pub fn register_with_packet(&mut self, oper: Operation, packet: usize, cx: &Context) {
-        self.entries.push_back(Entry {
-            context: cx.clone(),
+        self.selectors.push(Entry {
             oper,
             packet,
+            cx: cx.clone(),
         });
         self.register_count += Wrapping(1);
     }
 
-    /// Unregisters an operation previously registered by the current thread.
+    /// Unregisters a select operation.
     #[inline]
     pub fn unregister(&mut self, oper: Operation) -> Option<Entry> {
         if let Some((i, _)) = self
-            .entries
+            .selectors
             .iter()
             .enumerate()
             .find(|&(_, entry)| entry.oper == oper)
         {
-            let entry = self.entries.remove(i);
-            Self::maybe_shrink(&mut self.entries);
-            entry
+            let entry = self.selectors.remove(i);
+            Some(entry)
         } else {
             None
         }
     }
 
-    /// Attempts to find one thread (not the current one), select its operation, and wake it up.
+    /// Attempts to find another thread's entry, select the operation, and wake it up.
     #[inline]
-    pub fn wake_one(&mut self) -> Option<Entry> {
-        if !self.entries.is_empty() {
+    pub fn try_select(&mut self) -> Option<Entry> {
+        let mut entry = None;
+
+        if !self.selectors.is_empty() {
             let thread_id = current_thread_id();
 
-            for i in 0..self.entries.len() {
+            for i in 0..self.selectors.len() {
                 // Does the entry belong to a different thread?
-                if self.entries[i].context.thread_id() != thread_id {
+                if self.selectors[i].cx.thread_id() != thread_id {
                     // Try selecting this operation.
-                    let sel = Selected::Operation(self.entries[i].oper);
-                    let res = self.entries[i].context.try_select(sel);
+                    let sel = Selected::Operation(self.selectors[i].oper);
+                    let res = self.selectors[i].cx.try_select(sel);
 
                     if res.is_ok() {
                         // Provide the packet.
-                        self.entries[i].context.store_packet(self.entries[i].packet);
+                        self.selectors[i].cx.store_packet(self.selectors[i].packet);
                         // Wake the thread up.
-                        self.entries[i].context.unpark();
+                        self.selectors[i].cx.unpark();
 
                         // Remove the entry from the queue to keep it clean and improve
                         // performance.
-                        let entry = self.entries.remove(i).unwrap();
-                        Self::maybe_shrink(&mut self.entries);
-                        return Some(entry);
+                        entry = Some(self.selectors.remove(i));
+                        break;
                     }
                 }
             }
         }
 
-        None
+        entry
     }
 
-    /// Notifies all threads that the channel is disconnected.
+    /// Returns `true` if there is an entry which can be selected by the current thread.
+    #[inline]
+    pub fn can_select(&self) -> bool {
+        if self.selectors.is_empty() {
+            false
+        } else {
+            let thread_id = current_thread_id();
+
+            self.selectors.iter().any(|entry| {
+                entry.cx.thread_id() != thread_id && entry.cx.selected() == Selected::Waiting
+            })
+        }
+    }
+
+    /// Registers an operation waiting to be ready.
+    #[inline]
+    pub fn watch(&mut self, oper: Operation, cx: &Context) {
+        self.observers.push(Entry {
+            oper,
+            packet: 0,
+            cx: cx.clone(),
+        });
+    }
+
+    /// Unregisters an operation waiting to be ready.
+    #[inline]
+    pub fn unwatch(&mut self, oper: Operation) {
+        self.observers.retain(|e| e.oper != oper);
+    }
+
+    /// Notifies all operations waiting to be ready.
+    #[inline]
+    pub fn notify(&mut self) {
+        for entry in self.observers.drain(..) {
+            if entry.cx.try_select(Selected::Operation(entry.oper)).is_ok() {
+                entry.cx.unpark();
+            }
+        }
+    }
+
+    /// Notifies all registered operations that the channel is disconnected.
     #[inline]
     pub fn disconnect(&mut self) {
-        for entry in self.entries.iter() {
-            if entry.context.try_select(Selected::Disconnected).is_ok() {
+        for entry in self.selectors.iter() {
+            if entry.cx.try_select(Selected::Disconnected).is_ok() {
                 // Wake the thread up.
                 //
                 // Here we don't remove the entry from the queue. Registered threads must
                 // unregister from the waker by themselves. They might also want to recover the
                 // packet value and destroy it, if necessary.
-                entry.context.unpark();
+                entry.cx.unpark();
             }
         }
+
+        self.notify();
     }
 
-    /// Returns `true` if there is an entry which can be woken up by the current thread.
-    #[inline]
-    pub fn can_wake_one(&self) -> bool {
-        if self.entries.is_empty() {
-            false
-        } else {
-            let thread_id = current_thread_id();
-
-            self.entries.iter().any(|entry| {
-                entry.context.thread_id() != thread_id
-                    && entry.context.selected() == Selected::Waiting
-            })
-        }
-    }
-
-    /// Returns the number of entries in the queue.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
+    /// Returns the number of calls to `register` and `register_with_packet` that have occurred so
+    /// far.
     #[inline]
     pub fn register_count(&self) -> usize {
         self.register_count.0
-    }
-
-    /// Shrinks the internal queue if its capacity is much larger than length.
-    #[inline]
-    fn maybe_shrink(entries: &mut VecDeque<Entry>) {
-        if entries.capacity() > 32 && entries.len() < entries.capacity() / 4 {
-            let mut v = VecDeque::with_capacity(entries.capacity() / 2);
-            v.extend(entries.drain(..));
-            *entries = v;
-        }
     }
 }
 
 impl Drop for Waker {
     #[inline]
     fn drop(&mut self) {
-        debug_assert!(self.entries.is_empty());
+        debug_assert_eq!(self.selectors.len(), 0);
+        debug_assert_eq!(self.observers.len(), 0);
     }
 }
 
@@ -195,7 +212,7 @@ impl SyncWaker {
     pub fn register(&self, oper: Operation, cx: &Context) {
         let mut inner = self.inner.lock();
         inner.register(oper, cx);
-        self.len.store(inner.len(), Ordering::SeqCst);
+        self.len.store(inner.selectors.len() + inner.observers.len(), Ordering::SeqCst);
     }
 
     /// Unregisters an operation previously registered by the current thread.
@@ -204,7 +221,7 @@ impl SyncWaker {
         if self.len.load(Ordering::SeqCst) > 0 {
             let mut inner = self.inner.lock();
             let entry = inner.unregister(oper);
-            self.len.store(inner.len(), Ordering::SeqCst);
+            self.len.store(inner.selectors.len() + inner.observers.len(), Ordering::SeqCst);
             entry
         } else {
             None
@@ -213,23 +230,40 @@ impl SyncWaker {
 
     /// Attempts to find one thread (not the current one), select its operation, and wake it up.
     #[inline]
-    pub fn wake_one(&self) -> Option<Entry> {
+    pub fn notify(&self) {
         if self.len.load(Ordering::SeqCst) > 0 {
             let mut inner = self.inner.lock();
-            let entry = inner.wake_one();
-            self.len.store(inner.len(), Ordering::SeqCst);
-            entry
-        } else {
-            None
+            inner.try_select();
+            inner.notify();
+            self.len.store(inner.selectors.len() + inner.observers.len(), Ordering::SeqCst);
+        }
+    }
+
+    /// Registers an operation waiting to be ready.
+    #[inline]
+    pub fn watch(&self, oper: Operation, cx: &Context) {
+        let mut inner = self.inner.lock();
+        inner.watch(oper, cx);
+        self.len.store(inner.selectors.len() + inner.observers.len(), Ordering::SeqCst);
+    }
+
+    /// Unregisters an operation waiting to be ready.
+    #[inline]
+    pub fn unwatch(&self, oper: Operation) {
+        if self.len.load(Ordering::SeqCst) > 0 {
+            let mut inner = self.inner.lock();
+            inner.unwatch(oper);
+            self.len.store(inner.selectors.len() + inner.observers.len(), Ordering::SeqCst);
         }
     }
 
     /// Notifies all threads that the channel is disconnected.
+    #[inline]
     pub fn disconnect(&self) {
         if self.len.load(Ordering::SeqCst) > 0 {
             let mut inner = self.inner.lock();
             inner.disconnect();
-            self.len.store(inner.len(), Ordering::SeqCst);
+            self.len.store(inner.selectors.len() + inner.observers.len(), Ordering::SeqCst);
         }
     }
 }
@@ -237,7 +271,6 @@ impl SyncWaker {
 impl Drop for SyncWaker {
     #[inline]
     fn drop(&mut self) {
-        debug_assert_eq!(self.inner.lock().len(), 0);
         debug_assert_eq!(self.len.load(Ordering::SeqCst), 0);
     }
 }

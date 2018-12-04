@@ -371,5 +371,5 @@ pub use channel::{Receiver, Sender};
 pub use select::{Select, SelectedOperation};
 
 pub use err::{RecvError, RecvTimeoutError, TryRecvError};
-pub use err::{SelectTimeoutError, TrySelectError};
+pub use err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
 pub use err::{SendError, SendTimeoutError, TrySendError};

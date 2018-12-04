@@ -10,7 +10,7 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{after, tick, TryRecvError};
+use crossbeam_channel::{after, tick, Select, TryRecvError};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -225,14 +225,72 @@ fn select() {
             scope.spawn(|| {
                 let timeout = after(ms(1100));
                 loop {
-                    select! {
-                        recv(r1) -> _ => {
+                    let mut sel = Select::new();
+                    let oper1 = sel.recv(&r1);
+                    let oper2 = sel.recv(&r2);
+                    let oper3 = sel.recv(&timeout);
+                    let oper = sel.select();
+                    match oper.index() {
+                        i if i == oper1 => {
+                            oper.recv(&r1).unwrap();
                             hits.fetch_add(1, Ordering::SeqCst);
                         }
-                        recv(r2) -> _ => {
+                        i if i == oper2 => {
+                            oper.recv(&r2).unwrap();
                             hits.fetch_add(1, Ordering::SeqCst);
                         }
-                        recv(timeout) -> _ => break
+                        i if i == oper3 => {
+                            oper.recv(&timeout).unwrap();
+                            break;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            });
+        }
+    });
+
+    assert_eq!(hits.load(Ordering::SeqCst), 8);
+}
+
+#[test]
+fn ready() {
+    const THREADS: usize = 4;
+
+    let hits = AtomicUsize::new(0);
+    let r1 = tick(ms(200));
+    let r2 = tick(ms(300));
+
+    crossbeam::scope(|scope| {
+        for _ in 0..THREADS {
+            scope.spawn(|| {
+                let timeout = after(ms(1100));
+                'outer: loop {
+                    let mut sel = Select::new();
+                    sel.recv(&r1);
+                    sel.recv(&r2);
+                    sel.recv(&timeout);
+                    loop {
+                        match sel.ready() {
+                            0 => {
+                                if r1.try_recv().is_ok() {
+                                    hits.fetch_add(1, Ordering::SeqCst);
+                                    break;
+                                }
+                            }
+                            1 => {
+                                if r2.try_recv().is_ok() {
+                                    hits.fetch_add(1, Ordering::SeqCst);
+                                    break;
+                                }
+                            }
+                            2 => {
+                                if timeout.try_recv().is_ok() {
+                                    break 'outer;
+                                }
+                            }
+                            _ => unreachable!(),
+                        }
                     }
                 }
             });
