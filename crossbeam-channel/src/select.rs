@@ -521,7 +521,7 @@ impl<'a> Select<'a> {
     ///     }
     /// }
     /// ```
-    pub fn try_select(&mut self) -> Result<SelectedOperation<'_>, TrySelectError> {
+    pub fn try_select(&mut self) -> Result<SelectedOperation<'a>, TrySelectError> {
         match run_select(&mut self.handles, Timeout::Now) {
             None => Err(TrySelectError),
             Some((token, index, ptr)) => Ok(SelectedOperation {
@@ -578,7 +578,7 @@ impl<'a> Select<'a> {
     ///     _ => unreachable!(),
     /// }
     /// ```
-    pub fn select(&mut self) -> SelectedOperation<'_> {
+    pub fn select(&mut self) -> SelectedOperation<'a> {
         if self.handles.is_empty() {
             panic!("no operations have been added to `Select`");
         }
@@ -641,7 +641,7 @@ impl<'a> Select<'a> {
     pub fn select_timeout(
         &mut self,
         timeout: Duration,
-    ) -> Result<SelectedOperation<'_>, SelectTimeoutError> {
+    ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
         let timeout = Timeout::At(Instant::now() + timeout);
 
         match run_select(&mut self.handles, timeout) {
@@ -692,8 +692,8 @@ pub struct SelectedOperation<'a> {
     /// The address of the selected `Sender` or `Receiver`.
     ptr: *const u8,
 
-    /// Indicates that a `Select<'a>` is mutably borrowed.
-    _marker: PhantomData<&'a mut Select<'a>>,
+    /// Indicates that `Sender`s and `Receiver`s are borrowed.
+    _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> SelectedOperation<'a> {
