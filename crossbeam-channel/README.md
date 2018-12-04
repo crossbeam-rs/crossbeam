@@ -8,8 +8,19 @@ https://github.com/crossbeam-rs/crossbeam-channel)
 https://crates.io/crates/crossbeam-channel)
 [![Documentation](https://docs.rs/crossbeam-channel/badge.svg)](
 https://docs.rs/crossbeam-channel)
+[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+https://www.rust-lang.org)
 
-This library is an alternative to [`std::sync::mpsc`] with more features and better performance.
+This crate is an alternative to [`std::sync::mpsc`] with more features and better performance.
+
+Some highlights:
+
+* `Sender`s and `Receiver`s can be cloned and shared among threads.
+* Two main kinds of channels are `unbounded` and `bounded`.
+* Convenient extra channels like `after`, `never`, and `tick`.
+* The `select!` macro can block on multiple channel operations.
+* `Select` can select over a dynamically built list of channel operations.
+* Channels use locks very sparingly for maximum [performance](benchmarks).
 
 [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
 
@@ -29,7 +40,11 @@ Next, add this to your crate:
 extern crate crossbeam_channel;
 ```
 
-The minimum required Rust version is 1.26.
+## Compatibility
+
+The minimum supported Rust version is 1.26.
+
+This crate does not work in `no_std` environments.
 
 ## License
 

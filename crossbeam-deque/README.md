@@ -8,6 +8,11 @@ https://github.com/crossbeam-rs/crossbeam-deque)
 https://crates.io/crates/crossbeam-deque)
 [![Documentation](https://docs.rs/crossbeam-deque/badge.svg)](
 https://docs.rs/crossbeam-deque)
+[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+https://www.rust-lang.org)
+
+This crate provides work-stealing deques, which are primarily intended for
+building task schedulers.
 
 ## Usage
 
@@ -24,7 +29,11 @@ Next, add this to your crate:
 extern crate crossbeam_deque;
 ```
 
-The minimum required Rust version is 1.26.
+## Compatibility
+
+The minimum supported Rust version is 1.26.
+
+This crate does not work in `no_std` environments.
 
 ## License
 
