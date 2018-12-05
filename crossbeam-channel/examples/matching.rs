@@ -64,7 +64,7 @@ fn main() {
     thread::scope(|scope| {
         for name in people {
             let (s, r) = (s.clone(), r.clone());
-            scope.spawn(move || seek(name, s, r));
+            scope.spawn(move |_| seek(name, s, r));
         }
     });
 
