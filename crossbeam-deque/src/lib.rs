@@ -595,7 +595,7 @@ impl<T> Worker<T> {
 
 impl<T> fmt::Debug for Worker<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Worker {{ ... }}")
+        f.pad("Worker { .. }")
     }
 }
 
@@ -874,6 +874,6 @@ impl<T> Clone for Stealer<T> {
 
 impl<T> fmt::Debug for Stealer<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Stealer {{ ... }}")
+        f.pad("Stealer { .. }")
     }
 }

@@ -1,5 +1,7 @@
-// #![warn(missing_docs)] // TODO: Uncomment this.
-// #![warn(missing_debug_implementations)] // TODO: Uncomment this.
+//! TODO
+
+#![warn(missing_docs)]
+#![warn(missing_debug_implementations)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(alloc))]
 
@@ -24,14 +26,17 @@ extern crate crossbeam_utils as utils;
 extern crate scopeguard;
 
 pub mod base;
+#[doc(inline)]
 pub use base::SkipList;
 
 cfg_if! {
     if #[cfg(feature = "std")] {
         pub mod map;
+        #[doc(inline)]
         pub use map::SkipMap;
 
         pub mod set;
+        #[doc(inline)]
         pub use set::SkipSet;
     }
 }

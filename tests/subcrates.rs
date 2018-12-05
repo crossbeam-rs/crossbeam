@@ -1,4 +1,4 @@
-//! Makes sure subcrates are properly reexported.
+//! Makes sure subcrates are properly re-exported.
 
 #[macro_use]
 extern crate crossbeam;

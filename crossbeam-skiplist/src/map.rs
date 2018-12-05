@@ -180,11 +180,7 @@ where
     V: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut m = f.debug_map();
-        for e in self.iter() {
-            m.entry(e.key(), e.value());
-        }
-        m.finish()
+        f.pad("SkipMap { .. }")
     }
 }
 
@@ -332,7 +328,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
 
 impl<K, V> fmt::Debug for IntoIter<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "IntoIter {{ ... }}")
+        f.pad("IntoIter { .. }")
     }
 }
 
@@ -365,7 +361,7 @@ where
 
 impl<'a, K, V> fmt::Debug for Iter<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Iter {{ ... }}")
+        f.pad("Iter { .. }")
     }
 }
 
@@ -376,7 +372,7 @@ where
     Min: Ord + ?Sized + 'k,
     Max: Ord + ?Sized + 'k,
 {
-    inner: base::RefRange<'a, 'k, Min, Max, K, V>,
+    pub(crate) inner: base::RefRange<'a, 'k, Min, Max, K, V>,
 }
 
 impl<'a, 'k, Min, Max, K, V> Iterator for Range<'a, 'k, Min, Max, K, V>
@@ -408,10 +404,13 @@ where
 impl<'a, 'k, Min, Max, K, V> fmt::Debug for Range<'a, 'k, Min, Max, K, V>
 where
     K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    Min: fmt::Debug + Ord + ?Sized + 'k,
+    Max: fmt::Debug + Ord + ?Sized + 'k,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Range {{ ... }}")
+        f.debug_struct("Range")
+            .field("lower_bound", &self.inner.lower_bound)
+            .field("upper_bound", &self.inner.upper_bound)
+            .finish()
     }
 }

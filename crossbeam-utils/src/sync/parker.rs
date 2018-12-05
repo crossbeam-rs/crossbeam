@@ -154,7 +154,7 @@ impl Parker {
 
 impl fmt::Debug for Parker {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Parker")
+        f.pad("Parker { .. }")
     }
 }
 
@@ -203,7 +203,7 @@ impl Unparker {
 
 impl fmt::Debug for Unparker {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "UnParker")
+        f.pad("Unparker { .. }")
     }
 }
 
