@@ -37,7 +37,7 @@ fn use_while_exiting() {
     let (s, r) = unbounded::<()>();
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             // First initialize `FOO`, then the thread-locals related to crossbeam-channel and
             // crossbeam-epoch.
             FOO.with(|_| ());
@@ -46,9 +46,9 @@ fn use_while_exiting() {
             // dropped last.
         });
 
-        scope.spawn(|| {
+        scope.spawn(|_| {
             thread::sleep(ms(100));
             s.send(()).unwrap();
         });
-    });
+    }).unwrap();
 }

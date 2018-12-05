@@ -137,19 +137,19 @@ fn recv_two() {
     let r2 = after(ms(50));
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             select! {
                 recv(r1) -> _ => {}
                 recv(r2) -> _ => {}
             }
         });
-        scope.spawn(|| {
+        scope.spawn(|_| {
             select! {
                 recv(r1) -> _ => {}
                 recv(r2) -> _ => {}
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -197,7 +197,7 @@ fn select() {
 
     scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let v: Vec<&_> = v.iter().collect();
 
                 loop {
@@ -222,7 +222,7 @@ fn select() {
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), COUNT);
 }
@@ -240,7 +240,7 @@ fn ready() {
 
     scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let v: Vec<&_> = v.iter().collect();
 
                 loop {
@@ -264,7 +264,7 @@ fn ready() {
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), COUNT);
 }
@@ -280,7 +280,7 @@ fn stress_clone() {
 
         scope(|scope| {
             for _ in 0..THREADS {
-                scope.spawn(|| {
+                scope.spawn(|_| {
                     let r = r.clone();
                     let _ = r.try_recv();
 
@@ -290,7 +290,7 @@ fn stress_clone() {
                     }
                 });
             }
-        });
+        }).unwrap();
     }
 }
 

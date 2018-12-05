@@ -162,7 +162,7 @@ fn recv_two() {
     let r2 = tick(ms(50));
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for _ in 0..10 {
                 select! {
                     recv(r1) -> _ => {}
@@ -170,7 +170,7 @@ fn recv_two() {
                 }
             }
         });
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for _ in 0..10 {
                 select! {
                     recv(r1) -> _ => {}
@@ -178,7 +178,7 @@ fn recv_two() {
                 }
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -223,7 +223,7 @@ fn select() {
 
     scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let timeout = after(ms(1100));
                 loop {
                     let mut sel = Select::new();
@@ -249,7 +249,7 @@ fn select() {
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), 8);
 }
@@ -264,7 +264,7 @@ fn ready() {
 
     scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let timeout = after(ms(1100));
                 'outer: loop {
                     let mut sel = Select::new();
@@ -296,7 +296,7 @@ fn ready() {
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), 8);
 }

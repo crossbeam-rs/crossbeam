@@ -65,7 +65,7 @@ fn disconnected() {
     let (s2, r2) = unbounded::<i32>();
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             drop(s1);
             thread::sleep(ms(500));
             s2.send(5).unwrap();
@@ -78,7 +78,7 @@ fn disconnected() {
         }
 
         r2.recv().unwrap();
-    });
+    }).unwrap();
 
     select! {
         recv(r1) -> v => assert!(v.is_err()),
@@ -87,7 +87,7 @@ fn disconnected() {
     }
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             thread::sleep(ms(500));
             drop(s2);
         });
@@ -96,7 +96,7 @@ fn disconnected() {
             recv(r2) -> v => assert!(v.is_err()),
             default(ms(1000)) => panic!(),
         }
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn timeout() {
     let (s2, r2) = unbounded::<i32>();
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             thread::sleep(ms(1500));
             s2.send(2).unwrap();
         });
@@ -157,12 +157,12 @@ fn timeout() {
             recv(r2) -> v => assert_eq!(v, Ok(2)),
             default(ms(1000)) => panic!(),
         }
-    });
+    }).unwrap();
 
     scope(|scope| {
         let (s, r) = unbounded::<i32>();
 
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(500));
             drop(s);
         });
@@ -175,7 +175,7 @@ fn timeout() {
                 }
             }
         }
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn unblocks() {
     let (s2, r2) = bounded::<i32>(0);
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             thread::sleep(ms(500));
             s2.send(2).unwrap();
         });
@@ -243,10 +243,10 @@ fn unblocks() {
             recv(r2) -> v => assert_eq!(v, Ok(2)),
             default(ms(1000)) => panic!(),
         }
-    });
+    }).unwrap();
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             thread::sleep(ms(500));
             assert_eq!(r1.recv().unwrap(), 1);
         });
@@ -256,7 +256,7 @@ fn unblocks() {
             send(s2, 2) -> _ => panic!(),
             default(ms(1000)) => panic!(),
         }
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -265,7 +265,7 @@ fn both_ready() {
     let (s2, r2) = bounded(0);
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             thread::sleep(ms(500));
             s1.send(1).unwrap();
             assert_eq!(r2.recv().unwrap(), 2);
@@ -277,7 +277,7 @@ fn both_ready() {
                 send(s2, 2) -> _ => {},
             }
         }
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn loop_try() {
         let (s_end, r_end) = bounded::<()>(0);
 
         scope(|scope| {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 loop {
                     select! {
                         send(s1, 1) -> _ => break,
@@ -304,7 +304,7 @@ fn loop_try() {
                 }
             });
 
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 loop {
                     if let Ok(x) = r2.try_recv() {
                         assert_eq!(x, 2);
@@ -318,7 +318,7 @@ fn loop_try() {
                 }
             });
 
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 thread::sleep(ms(500));
 
                 select! {
@@ -329,7 +329,7 @@ fn loop_try() {
 
                 drop(s_end);
             });
-        });
+        }).unwrap();
     }
 }
 
@@ -340,7 +340,7 @@ fn cloning1() {
         let (_s2, r2) = unbounded::<i32>();
         let (s3, r3) = unbounded::<()>();
 
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             r3.recv().unwrap();
             drop(s1.clone());
             assert_eq!(r3.try_recv(), Err(TryRecvError::Empty));
@@ -356,7 +356,7 @@ fn cloning1() {
         }
 
         s3.send(()).unwrap();
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -366,7 +366,7 @@ fn cloning2() {
     let (_s3, _r3) = unbounded::<()>();
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 recv(r1) -> _ => panic!(),
                 recv(r2) -> _ => {},
@@ -376,7 +376,7 @@ fn cloning2() {
         thread::sleep(ms(500));
         drop(s1.clone());
         s2.send(()).unwrap();
-    })
+    }).unwrap();
 }
 
 #[test]
@@ -490,7 +490,7 @@ fn stress_recv() {
     let (s3, r3) = bounded(100);
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 s1.send(i).unwrap();
                 r3.recv().unwrap();
@@ -510,7 +510,7 @@ fn stress_recv() {
                 s3.send(()).unwrap();
             }
         }
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -522,7 +522,7 @@ fn stress_send() {
     let (s3, r3) = bounded(100);
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 assert_eq!(r1.recv().unwrap(), i);
                 assert_eq!(r2.recv().unwrap(), i);
@@ -539,7 +539,7 @@ fn stress_send() {
             }
             s3.send(()).unwrap();
         }
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -551,7 +551,7 @@ fn stress_mixed() {
     let (s3, r3) = bounded(100);
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 s1.send(i).unwrap();
                 assert_eq!(r2.recv().unwrap(), i);
@@ -568,7 +568,7 @@ fn stress_mixed() {
             }
             s3.send(()).unwrap();
         }
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -578,7 +578,7 @@ fn stress_timeout_two_threads() {
     let (s, r) = bounded(2);
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
                     thread::sleep(ms(500));
@@ -593,7 +593,7 @@ fn stress_timeout_two_threads() {
             }
         });
 
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
                     thread::sleep(ms(500));
@@ -610,7 +610,7 @@ fn stress_timeout_two_threads() {
                 }
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -638,14 +638,14 @@ fn matching() {
 
     scope(|scope| {
         for i in 0..THREADS {
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 select! {
                     recv(r) -> v => assert_ne!(v.unwrap(), i),
                     send(s, i) -> _ => {},
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
@@ -658,7 +658,7 @@ fn matching_with_leftover() {
 
     scope(|scope| {
         for i in 0..THREADS {
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 select! {
                     recv(r) -> v => assert_ne!(v.unwrap(), i),
                     send(s, i) -> _ => {},
@@ -666,7 +666,7 @@ fn matching_with_leftover() {
             });
         }
         s.send(!0).unwrap();
-    });
+    }).unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
@@ -681,7 +681,7 @@ fn channel_through_channel() {
         let (s, r) = bounded::<T>(cap);
 
         scope(|scope| {
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 let mut s = s;
 
                 for _ in 0..COUNT {
@@ -696,7 +696,7 @@ fn channel_through_channel() {
                 }
             });
 
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 let mut r = r;
 
                 for _ in 0..COUNT {
@@ -711,7 +711,7 @@ fn channel_through_channel() {
                     }
                 }
             });
-        });
+        }).unwrap();
     }
 }
 
@@ -730,7 +730,7 @@ fn linearizable_default() {
         };
 
         scope(|scope| {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..COUNT {
                     start_s.send(()).unwrap();
 
@@ -754,7 +754,7 @@ fn linearizable_default() {
 
                 end_r.recv().unwrap();
             }
-        });
+        }).unwrap();
     }
 }
 
@@ -773,7 +773,7 @@ fn linearizable_timeout() {
         };
 
         scope(|scope| {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..COUNT {
                     start_s.send(()).unwrap();
 
@@ -797,7 +797,7 @@ fn linearizable_timeout() {
 
                 end_r.recv().unwrap();
             }
-        });
+        }).unwrap();
     }
 }
 
@@ -834,7 +834,7 @@ fn fairness2() {
     let (s3, r3) = bounded::<()>(0);
 
     scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             let (hole, _r) = bounded(0);
 
             for _ in 0..COUNT {
@@ -858,7 +858,7 @@ fn fairness2() {
             }
         }
         assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 10));
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -1201,7 +1201,7 @@ fn try_recv() {
     let (s, r) = bounded(0);
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 recv(r) -> _ => panic!(),
                 default => {}
@@ -1217,13 +1217,13 @@ fn try_recv() {
                 default => panic!(),
             }
         });
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(1000));
             select! {
                 send(s, 7) -> res => res.unwrap(),
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -1231,7 +1231,7 @@ fn recv() {
     let (s, r) = bounded(0);
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 recv(r) -> v => assert_eq!(v, Ok(7)),
             }
@@ -1247,7 +1247,7 @@ fn recv() {
                 recv(r) -> v => assert_eq!(v, Err(RecvError)),
             }
         });
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(1500));
             select! {
                 send(s, 7) -> res => res.unwrap(),
@@ -1259,7 +1259,7 @@ fn recv() {
                 send(s, 9) -> res => res.unwrap(),
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -1267,7 +1267,7 @@ fn recv_timeout() {
     let (s, r) = bounded::<i32>(0);
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 recv(r) -> _ => panic!(),
                 default(ms(1000)) => {}
@@ -1281,13 +1281,13 @@ fn recv_timeout() {
                 default(ms(1000)) => panic!(),
             }
         });
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(1500));
             select! {
                 send(s, 7) -> res => res.unwrap(),
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -1295,7 +1295,7 @@ fn try_send() {
     let (s, r) = bounded(0);
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 send(s, 7) -> _ => panic!(),
                 default => {}
@@ -1311,13 +1311,13 @@ fn try_send() {
                 default => panic!(),
             }
         });
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(1000));
             select! {
                 recv(r) -> v => assert_eq!(v, Ok(8)),
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -1325,7 +1325,7 @@ fn send() {
     let (s, r) = bounded(0);
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 send(s, 7) -> res => res.unwrap(),
             }
@@ -1338,7 +1338,7 @@ fn send() {
                 send(s, 9) -> res => res.unwrap(),
             }
         });
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(1500));
             select! {
                 recv(r) -> v => assert_eq!(v, Ok(7)),
@@ -1350,7 +1350,7 @@ fn send() {
                 recv(r) -> v => assert_eq!(v, Ok(9)),
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -1358,7 +1358,7 @@ fn send_timeout() {
     let (s, r) = bounded(0);
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 send(s, 7) -> _ => panic!(),
                 default(ms(1000)) => {}
@@ -1372,13 +1372,13 @@ fn send_timeout() {
                 default(ms(1000)) => panic!(),
             }
         });
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(1500));
             select! {
                 recv(r) -> v => assert_eq!(v, Ok(8)),
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -1386,16 +1386,16 @@ fn disconnect_wakes_sender() {
     let (s, r) = bounded(0);
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 send(s, ()) -> res => assert_eq!(res, Err(SendError(()))),
             }
         });
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(1000));
             drop(r);
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -1403,14 +1403,14 @@ fn disconnect_wakes_receiver() {
     let (s, r) = bounded::<()>(0);
 
     scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             select! {
                 recv(r) -> res => assert_eq!(res, Err(RecvError)),
             }
         });
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             thread::sleep(ms(1000));
             drop(s);
         });
-    });
+    }).unwrap();
 }
