@@ -2,14 +2,12 @@
 
 #[macro_use]
 extern crate crossbeam_channel;
-extern crate crossbeam_utils;
 extern crate rand;
 
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{never, tick, unbounded};
-use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
