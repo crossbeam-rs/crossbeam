@@ -6,6 +6,7 @@ set -ex
 export RUSTFLAGS="-D warnings"
 
 cargo check --no-default-features
+cargo check --bins --examples --tests
 cargo test
 
 if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then

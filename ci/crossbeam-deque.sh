@@ -5,4 +5,5 @@ set -ex
 
 export RUSTFLAGS="-D warnings"
 
+cargo check --bins --examples --tests
 cargo test
