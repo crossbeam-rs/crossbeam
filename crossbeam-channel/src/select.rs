@@ -934,7 +934,7 @@ impl<'a> Clone for Select<'a> {
 
 impl<'a> fmt::Debug for Select<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Select").finish()
+        f.pad("Select { .. }")
     }
 }
 
@@ -1070,7 +1070,7 @@ impl<'a> SelectedOperation<'a> {
 
 impl<'a> fmt::Debug for SelectedOperation<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("SelectedOperation").finish()
+        f.pad("SelectedOperation { .. }")
     }
 }
 

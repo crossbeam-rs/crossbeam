@@ -165,11 +165,7 @@ where
     T: Ord + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut m = f.debug_set();
-        for e in self.iter() {
-            m.entry(e.value());
-        }
-        m.finish()
+        f.pad("SkipSet { .. }")
     }
 }
 
@@ -212,6 +208,7 @@ where
     }
 }
 
+/// TODO
 pub struct Entry<'a, T: 'a> {
     inner: map::Entry<'a, T, ()>,
 }
@@ -236,10 +233,12 @@ impl<'a, T> Entry<'a, T>
 where
     T: Ord,
 {
+    /// TODO
     pub fn move_next(&mut self) -> bool {
         self.inner.move_next()
     }
 
+    /// TODO
     pub fn move_prev(&mut self) -> bool {
         self.inner.move_prev()
     }
@@ -280,7 +279,9 @@ where
     T: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_tuple("Entry").field(&self.value()).finish()
+        f.debug_struct("Entry")
+            .field("value", self.value())
+            .finish()
     }
 }
 
@@ -299,7 +300,7 @@ impl<T> Iterator for IntoIter<T> {
 
 impl<T> fmt::Debug for IntoIter<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "IntoIter {{ ... }}")
+        f.pad("IntoIter { .. }")
     }
 }
 
@@ -330,7 +331,7 @@ where
 
 impl<'a, T> fmt::Debug for Iter<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Iter {{ ... }}")
+        f.pad("Iter { .. }")
     }
 }
 
@@ -371,10 +372,13 @@ where
 impl<'a, 'k, Min, Max, T> fmt::Debug for Range<'a, 'k, Min, Max, T>
 where
     T: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    Min: fmt::Debug + Ord + ?Sized + 'k,
+    Max: fmt::Debug + Ord + ?Sized + 'k,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Range {{ ... }}")
+        f.debug_struct("Range")
+            .field("lower_bound", &self.inner.inner.lower_bound)
+            .field("upper_bound", &self.inner.inner.upper_bound)
+            .finish()
     }
 }

@@ -201,7 +201,7 @@ impl<'env> Scope<'env> {
 
 impl<'env> fmt::Debug for Scope<'env> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Scope {{ ... }}")
+        f.pad("Scope { .. }")
     }
 }
 
@@ -342,6 +342,6 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
 
 impl<'scope, T> fmt::Debug for ScopedJoinHandle<'scope, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ScopedJoinHandle {{ ... }}")
+        f.pad("ScopedJoinHandle { .. }")
     }
 }

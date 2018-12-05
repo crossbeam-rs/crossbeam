@@ -1182,6 +1182,16 @@ impl<K, V> Drop for SkipList<K, V> {
     }
 }
 
+impl<K, V> fmt::Debug for SkipList<K, V>
+where
+    K: Ord + fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.pad("SkipList { .. }")
+    }
+}
+
 impl<K, V> IntoIterator for SkipList<K, V> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
@@ -1580,6 +1590,19 @@ where
     }
 }
 
+impl<'a, 'g, K, V> fmt::Debug for Iter<'a, 'g, K, V>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Iter")
+            .field("head", &self.head.map(|n| (&n.key, &n.value)))
+            .field("tail", &self.tail.map(|n| (&n.key, &n.value)))
+            .finish()
+    }
+}
+
 /// An iterator over reference-counted entries of a `SkipList`.
 pub struct RefIter<'a, K: 'a, V: 'a> {
     parent: &'a SkipList<K, V>,
@@ -1587,10 +1610,30 @@ pub struct RefIter<'a, K: 'a, V: 'a> {
     tail: Option<RefEntry<'a, K, V>>,
 }
 
+impl<'a, K, V> fmt::Debug for RefIter<'a, K, V>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut d = f.debug_struct("RefIter");
+        match &self.head {
+            None => d.field("head", &None::<(&K, &V)>),
+            Some(e) => d.field("head", &(e.key(), e.value())),
+        };
+        match &self.tail {
+            None => d.field("tail", &None::<(&K, &V)>),
+            Some(e) => d.field("tail", &(e.key(), e.value())),
+        };
+        d.finish()
+    }
+}
+
 impl<'a, K: 'a, V: 'a> RefIter<'a, K, V>
 where
     K: Ord,
 {
+    /// TODO
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.head = match self.head {
@@ -1610,6 +1653,7 @@ where
         self.head.clone()
     }
 
+    /// TODO
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.tail = match self.tail {
@@ -1712,6 +1756,20 @@ where
     }
 }
 
+impl<'a, 'g, 'k, Min, Max, K, V> fmt::Debug for Range<'a, 'g, 'k, Min, Max, K, V>
+where
+    K: Ord + Borrow<Min> + Borrow<Max>,
+    Min: fmt::Debug + Ord + ?Sized + 'k,
+    Max: fmt::Debug + Ord + ?Sized + 'k,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Range")
+            .field("lower_bound", &self.lower_bound)
+            .field("upper_bound", &self.upper_bound)
+            .finish()
+    }
+}
+
 /// An iterator over reference-counted subset of entries of a `SkipList`.
 pub struct RefRange<'a, 'k, Min, Max, K: 'a, V: 'a>
 where
@@ -1720,10 +1778,24 @@ where
     Max: Ord + ?Sized + 'k,
 {
     parent: &'a SkipList<K, V>,
-    lower_bound: Bound<&'k Min>,
-    upper_bound: Bound<&'k Max>,
+    pub(crate) lower_bound: Bound<&'k Min>,
+    pub(crate) upper_bound: Bound<&'k Max>,
     head: Option<RefEntry<'a, K, V>>,
     tail: Option<RefEntry<'a, K, V>>,
+}
+
+impl<'a, 'k, Min, Max, K, V> fmt::Debug for RefRange<'a, 'k, Min, Max, K, V>
+where
+    K: Ord + Borrow<Min> + Borrow<Max>,
+    Min: fmt::Debug + Ord + ?Sized + 'k,
+    Max: fmt::Debug + Ord + ?Sized + 'k,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("RefRange")
+            .field("lower_bound", &self.lower_bound)
+            .field("upper_bound", &self.upper_bound)
+            .finish()
+    }
 }
 
 impl<'a, 'k, Min, Max, K: 'a, V: 'a> RefRange<'a, 'k, Min, Max, K, V>
@@ -1732,6 +1804,7 @@ where
     Min: Ord + ?Sized + 'k,
     Max: Ord + ?Sized + 'k,
 {
+    /// TODO
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.head = match self.head {

@@ -581,7 +581,7 @@ impl<T> Clone for Sender<T> {
 
 impl<T> fmt::Debug for Sender<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Sender").finish()
+        f.pad("Sender { .. }")
     }
 }
 
@@ -1036,7 +1036,7 @@ impl<T> Clone for Receiver<T> {
 
 impl<T> fmt::Debug for Receiver<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Receiver").finish()
+        f.pad("Receiver { .. }")
     }
 }
 
@@ -1103,7 +1103,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
 impl<'a, T> fmt::Debug for Iter<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Iter").finish()
+        f.pad("Iter { .. }")
     }
 }
 
@@ -1153,7 +1153,7 @@ impl<'a, T> Iterator for TryIter<'a, T> {
 
 impl<'a, T> fmt::Debug for TryIter<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("TryIter").finish()
+        f.pad("TryIter { .. }")
     }
 }
 
@@ -1202,7 +1202,7 @@ impl<T> Iterator for IntoIter<T> {
 
 impl<T> fmt::Debug for IntoIter<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("IntoIter").finish()
+        f.pad("IntoIter { .. }")
     }
 }
 

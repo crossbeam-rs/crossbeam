@@ -6,6 +6,7 @@
 
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
@@ -96,6 +97,17 @@ impl<T> ShardedLock<T> {
     }
 }
 
+impl<T: fmt::Debug> fmt::Debug for ShardedLock<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        f.pad("ShardedLock { .. }")
+        // TODO(stjepang): Format the actual value when we add `try_read()`:
+        // match self.try_read() {
+        //     Some(guard) => f.debug_struct("ShardedLock").field("value", &&*guard).finish(),
+        //     None => f.pad("ShardedLock { <locked> }"),
+        // }
+    }
+}
+
 /// A guard used to release the shared read access of a `ShardedLock` when dropped.
 pub struct ShardedLockReadGuard<'a, T: 'a> {
     parent: &'a ShardedLock<T>,
@@ -110,6 +122,15 @@ impl<'a, T> Deref for ShardedLockReadGuard<'a, T> {
 
     fn deref(&self) -> &T {
         unsafe { &*self.parent.value.get() }
+    }
+}
+
+impl<'a, T: fmt::Debug> fmt::Debug for ShardedLockReadGuard<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let value: &T = &**self;
+        f.debug_struct("ShardedLockReadGuard")
+            .field("value", value)
+            .finish()
     }
 }
 
@@ -129,6 +150,15 @@ impl<'a, T> Drop for ShardedLockWriteGuard<'a, T> {
                 (**shard).force_unlock_write();
             }
         }
+    }
+}
+
+impl<'a, T: fmt::Debug> fmt::Debug for ShardedLockWriteGuard<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let value: &T = &**self;
+        f.debug_struct("ShardedLockWriteGuard")
+            .field("value", value)
+            .finish()
     }
 }
 

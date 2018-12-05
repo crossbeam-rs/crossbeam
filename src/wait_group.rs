@@ -138,7 +138,9 @@ impl Clone for WaitGroup {
 
 impl fmt::Debug for WaitGroup {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let count = self.inner.count.lock();
-        write!(f, "WaitGroup {{ count: {:?} }}", *count)
+        let count: &usize = &*self.inner.count.lock();
+        f.debug_struct("WaitGroup")
+            .field("count", count)
+            .finish()
     }
 }

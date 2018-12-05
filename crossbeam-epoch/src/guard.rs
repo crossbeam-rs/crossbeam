@@ -445,7 +445,7 @@ impl Clone for Guard {
 
 impl fmt::Debug for Guard {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Guard").finish()
+        f.pad("Guard { .. }")
     }
 }
 
