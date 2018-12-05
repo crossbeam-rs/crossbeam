@@ -1,4 +1,4 @@
-# Utilities for concurrent programming
+# Crossbeam Utils
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)
@@ -8,8 +8,14 @@ https://github.com/crossbeam-rs/crossbeam-utils/tree/master/src)
 https://crates.io/crates/crossbeam-utils)
 [![Documentation](https://docs.rs/crossbeam-utils/badge.svg)](
 https://docs.rs/crossbeam-utils)
+[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+https://www.rust-lang.org)
 
-This crate provides utilities for concurrent programming.
+This crate provides miscellaneous utilities for concurrent programming:
+
+* `AtomicConsume` allows reading from primitive atomic types with "consume" ordering.
+* `CachePadded<T>` pads and aligns a value to the length of a cache line.
+* `scope()` can spawn threads that borrow local variables from the stack. 
 
 ## Usage
 
@@ -26,7 +32,14 @@ Next, add this to your crate:
 extern crate crossbeam_utils;
 ```
 
-The minimum required Rust version is 1.26.
+## Compatibility
+
+The minimum supported Rust version is 1.26.
+
+Features available in `no_std` environments:
+
+* `AtomicConsume`
+* `CachePadded<T>`
 
 ## License
 

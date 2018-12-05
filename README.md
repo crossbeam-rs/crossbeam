@@ -1,4 +1,4 @@
-# Crossbeam: support for concurrent programming
+# Crossbeam
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)
@@ -8,39 +8,55 @@ https://github.com/crossbeam-rs/crossbeam)
 https://crates.io/crates/crossbeam)
 [![Documentation](https://docs.rs/crossbeam/badge.svg)](
 https://docs.rs/crossbeam)
+[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+https://www.rust-lang.org)
 
-Crossbeam supports concurrent programming, especially focusing on memory
-management, synchronization, and non-blocking data structures.
+This crate provides a set of tools for concurrent programming:
 
-Crossbeam consists of several submodules:
+* Atomics
+    * `ArcCell<T>` is a shared mutable `Arc<T>` pointer.
+    * `AtomicCell<T>` is equivalent to `Cell<T>`, except it is also thread-safe.
+    * `AtomicConsume` allows reading from primitive atomic types with "consume" ordering.
 
- - `atomic` for **enhancing `std::sync` API**. `AtomicConsume` provides
-   C/C++11-style "consume" atomic operations (re-exported from
-   [`crossbeam-utils`]). `ArcCell` provides atomic storage and retrieval of
-   `Arc`.
+* Data structures
+    * `deque` module contains work-stealing deques for building task schedulers.
+    * `MsQueue<T>` and `SegQueue<T>` are simple concurrent queues.
+    * `TreiberStack<T>` is a lock-free stack.
 
- - `utils` and `thread` for **utilities**, re-exported from [`crossbeam-utils`].
-   The "scoped" thread API in `thread` makes it possible to spawn threads that
-   share stack data with their parents. The `utils::CachePadded` struct inserts
-   padding to align data with the size of a cacheline. This crate also seeks to
-   expand the standard library's few synchronization primitives (locks,
-   barriers, etc) to include advanced/niche primitives, as well as userspace
-   alternatives.
+* Synchronization
+    * `channel` module contains multi-producer multi-consumer channels for message passing.
+    * `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
+    * `WaitGroup` enables threads to synchronize the beginning or end of some computation.
 
- - `epoch` for **memory management**, re-exported from [`crossbeam-epoch`].
-   Because non-blocking data structures avoid global synchronization, it is not
-   easy to tell when internal data can be safely freed. The crate provides
-   generic, easy to use, and high-performance APIs for managing memory in these
-   cases. We plan to support other memory management schemes, e.g. hazard
-   pointers (HP) and quiescent state-based reclamation (QSBR).
+* Memory management
+    * `epoch` module contains epoch-based garbage collection.
 
- - **Concurrent data structures** which are non-blocking and much superior to
-   wrapping sequential ones with a `Mutex`. Crossbeam currently provides
-   channels (re-exported from [`crossbeam-channel`]), deques
-   (re-exported from [`crossbeam-deque`]), queues, and stacks. Ultimately the
-   goal is to also include bags, sets and maps.
+* Utilities
+    * `CachePadded<T>` pads and aligns a value to the length of a cache line.
+    * `scope()` can spawn threads that borrow local variables from the stack. 
 
-# Usage
+## Crates
+
+Some of the tools live in the main `crossbeam` crate, and some are re-exported
+from smaller subcrates:
+
+* [`crossbeam-channel`](crossbeam-channel)
+  provides multi-producer multi-consumer channels for message passing.
+* [`crossbeam-deque`](crossbeam-deque)
+  provides work-stealing deques, which are primarily intended for building task schedulers.
+* [`crossbeam-epoch`](crossbeam-epoch)
+  provides epoch-based garbage collection for building concurrent data structures.
+* [`crossbeam-utils`](crossbeam-utils)
+  provides miscellaneous utilities for concurrent programming:
+
+Take a look at [src/lib.rs](src/lib.rs) to see what goes where.
+
+There is one more experimental subcrate that is not yet included in `crossbeam`:
+
+* [`crossbeam-skiplist`](crossbeam-skiplist)
+  provides concurrent maps and sets based on lock-free skip lists.
+
+## Usage
 
 Add this to your `Cargo.toml`:
 
@@ -55,12 +71,59 @@ Next, add this to your crate:
 extern crate crossbeam;
 ```
 
-The minimum required Rust version is 1.26.
+## Compatibility
 
-[`crossbeam-epoch`]: https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-epoch
-[`crossbeam-utils`]: https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils
-[`crossbeam-channel`]: https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-channel
-[`crossbeam-deque`]: https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-deque
+The minimum supported Rust version is 1.26.
+
+Features available in `no_std` environments:
+
+* `AtomicCell<T>`
+* `AtomicConsume`
+* `CachePadded<T>`
+* `epoch` (nightly Rust only)
+
+## Contributing
+
+Crossbeam welcomes contribution from everyone in the form of suggestions, bug reports,
+pull requests, and feedback. 💛
+
+If you're looking for things to do, there are several easy ways to get started:
+
+* Found a bug or have a feature request?
+  [Tell us](https://github.com/crossbeam-rs/crossbeam/issues/new)!
+* Issues and PRs labeled with
+  [feedback wanted](https://github.com/crossbeam-rs/crossbeam/issues?utf8=%E2%9C%93&q=is%3Aopen+sort%3Aupdated-desc+label%3A%22feedback+wanted%22+)
+  need feedback from users and contributors.
+* Issues labeled with
+  [good first issue](https://github.com/crossbeam-rs/crossbeam/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22good+first+issue%22)
+  are relatively easy starter issues.
+
+#### RFCs
+
+We also have the [RFCs](https://github.com/crossbeam-rs/rfcs) repository for more
+high-level discussion. It is a place where we brainstorm ideas and propose
+substantial changes to Crossbeam.
+
+Feel free to participate in any open 
+[issues](https://github.com/crossbeam-rs/rfcs/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc)
+or
+[pull requests](https://github.com/crossbeam-rs/rfcs/pulls?q=is%3Apr+is%3Aopen+sort%3Aupdated-desc)!
+
+#### Learning resources
+
+If you'd like to learn more about concurrency and non-blocking data structures, there's a
+list of learning resources in our [wiki](https://github.com/crossbeam-rs/rfcs/wiki),
+which includes related blog posts, papers, videos, and other similar projects.
+
+Another good place to visit is [merged RFCs](https://github.com/crossbeam-rs/rfcs/tree/master/text).
+They contain elaborate descriptions and rationale for features we've introduced to
+Crossbeam, but note that some of the written information is now out of date.
+
+#### Conduct
+
+The Crossbeam project adheres to the
+[Rust Code of Conduct](https://github.com/rust-lang/rust/blob/master/CODE_OF_CONDUCT.md).
+This describes the minimum behavior expected from all contributors.
 
 ## License
 
@@ -70,6 +133,9 @@ Licensed under either of
  * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
+
+Some Crossbeam subcrates have additional licensing notices.
+Take a look at other readme files in this repository for more information.
 
 ### Contribution
 

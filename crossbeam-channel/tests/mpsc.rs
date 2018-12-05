@@ -1,6 +1,6 @@
 //! Tests copied from `std::sync::mpsc`.
 //!
-//! This is a copy of tests for the `std::sync::mpsc` channels from the stanard library, but
+//! This is a copy of tests for the `std::sync::mpsc` channels from the standard library, but
 //! modified to work with `crossbeam-channel` instead.
 //!
 //! Minor tweaks were needed to make the tests compile:

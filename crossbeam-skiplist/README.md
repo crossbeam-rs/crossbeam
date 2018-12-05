@@ -1,4 +1,4 @@
-# Concurrent skip list
+# Crossbeam Skiplist
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)
@@ -8,8 +8,10 @@ https://github.com/crossbeam-rs/crossbeam-skiplist)
 https://crates.io/crates/crossbeam-skiplist)
 [![Documentation](https://docs.rs/crossbeam-skiplist/badge.svg)](
 https://docs.rs/crossbeam-skiplist)
+[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+https://www.rust-lang.org)
 
-This crate is still a work in progress.
+**Note:** This crate is still a work in progress.
 
 <!--
 ## Usage
@@ -27,6 +29,12 @@ Next, add this to your crate:
 extern crate crossbeam_skiplist;
 ```
 -->
+
+## Compatibility
+
+The minimum supported Rust version is 1.26.
+
+This crate can be used in `no_std` environments, but only on nightly Rust.
 
 ## License
 

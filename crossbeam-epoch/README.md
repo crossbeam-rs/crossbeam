@@ -1,4 +1,4 @@
-# Epoch-based garbage collection
+# Crossbeam Epoch
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)
@@ -8,12 +8,15 @@ https://github.com/crossbeam-rs/crossbeam-epoch)
 https://crates.io/crates/crossbeam-epoch)
 [![Documentation](https://docs.rs/crossbeam-epoch/badge.svg)](
 https://docs.rs/crossbeam-epoch)
+[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+https://www.rust-lang.org)
 
-This crate provides epoch-based garbage collection for use in concurrent data structures.
+This crate provides epoch-based garbage collection for building concurrent data structures.
 
-If a thread removes a node from a concurrent data structure, other threads
-may still have pointers to that node, so it cannot be immediately destructed.
-Epoch GC allows deferring destruction until it becomes safe to do so.
+When a thread removes an object from a concurrent data structure, other threads
+may be still using pointers to it at the same time, so it cannot be destroyed
+immediately. Epoch-based GC is an efficient mechanism for deferring destruction of
+shared objects until no pointers to them can exist.
 
 ## Usage
 
@@ -30,7 +33,11 @@ Next, add this to your crate:
 extern crate crossbeam_epoch as epoch;
 ```
 
-The minimum required Rust version is 1.26.
+## Compatibility
+
+The minimum supported Rust version is 1.26.
+
+This crate can be used in `no_std` environments, but only on nightly Rust.
 
 ## License
 

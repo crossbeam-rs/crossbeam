@@ -2,7 +2,7 @@
 use core::sync::atomic::compiler_fence;
 use core::sync::atomic::Ordering;
 
-/// Trait which allows reading from an atomic type with "consume" ordering.
+/// Trait which allows reading from primitive atomic types with "consume" ordering.
 pub trait AtomicConsume {
     /// Type returned by `load_consume`.
     type Val;
