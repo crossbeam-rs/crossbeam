@@ -2,19 +2,53 @@
 
 extern crate crossbeam;
 
-use shared::{message, shuffle};
 use std::sync::mpsc;
 
-mod shared;
+mod message;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
+
+pub fn shuffle<T>(v: &mut [T]) {
+    use std::cell::Cell;
+    use std::num::Wrapping;
+
+    let len = v.len();
+    if len <= 1 {
+        return;
+    }
+
+    thread_local! {
+        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
+    }
+
+    RNG.with(|rng| {
+        for i in 1..len {
+            // This is the 32-bit variant of Xorshift.
+            // https://en.wikipedia.org/wiki/Xorshift
+            let mut x = rng.get();
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            rng.set(x);
+
+            let x = x.0;
+            let n = i + 1;
+
+            // This is a fast alternative to `let j = x % n`.
+            // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+            let j = ((x as u64).wrapping_mul(n as u64) >> 32) as u32 as usize;
+
+            v.swap(i, j);
+        }
+    });
+}
 
 fn seq_async() {
     let (tx, rx) = mpsc::channel();
 
     for i in 0..MESSAGES {
-        tx.send(message(i)).unwrap();
+        tx.send(message::new(i)).unwrap();
     }
 
     for _ in 0..MESSAGES {
@@ -26,7 +60,7 @@ fn seq_sync(cap: usize) {
     let (tx, rx) = mpsc::sync_channel(cap);
 
     for i in 0..MESSAGES {
-        tx.send(message(i)).unwrap();
+        tx.send(message::new(i)).unwrap();
     }
 
     for _ in 0..MESSAGES {
@@ -38,32 +72,32 @@ fn spsc_async() {
     let (tx, rx) = mpsc::channel();
 
     crossbeam::scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             for i in 0..MESSAGES {
-                tx.send(message(i)).unwrap();
+                tx.send(message::new(i)).unwrap();
             }
         });
 
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn spsc_sync(cap: usize) {
     let (tx, rx) = mpsc::sync_channel(cap);
 
     crossbeam::scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             for i in 0..MESSAGES {
-                tx.send(message(i)).unwrap();
+                tx.send(message::new(i)).unwrap();
             }
         });
 
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn mpsc_async() {
@@ -72,9 +106,9 @@ fn mpsc_async() {
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
             let tx = tx.clone();
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i)).unwrap();
+                    tx.send(message::new(i)).unwrap();
                 }
             });
         }
@@ -82,7 +116,7 @@ fn mpsc_async() {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn mpsc_sync(cap: usize) {
@@ -91,9 +125,9 @@ fn mpsc_sync(cap: usize) {
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
             let tx = tx.clone();
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i)).unwrap();
+                    tx.send(message::new(i)).unwrap();
                 }
             });
         }
@@ -101,7 +135,7 @@ fn mpsc_sync(cap: usize) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn select_rx_async() {
@@ -111,9 +145,9 @@ fn select_rx_async() {
     crossbeam::scope(|scope| {
         for &(ref tx, _) in &chans {
             let tx = tx.clone();
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i)).unwrap();
+                    tx.send(message::new(i)).unwrap();
                 }
             });
         }
@@ -135,7 +169,7 @@ fn select_rx_async() {
                 }
             }
         }
-    });
+    }).unwrap();
 }
 
 fn select_rx_sync(cap: usize) {
@@ -147,9 +181,9 @@ fn select_rx_sync(cap: usize) {
     crossbeam::scope(|scope| {
         for &(ref tx, _) in &chans {
             let tx = tx.clone();
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i)).unwrap();
+                    tx.send(message::new(i)).unwrap();
                 }
             });
         }
@@ -171,7 +205,7 @@ fn select_rx_sync(cap: usize) {
                 }
             }
         }
-    });
+    }).unwrap();
 }
 
 fn main() {

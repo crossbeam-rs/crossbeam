@@ -6,9 +6,10 @@ version = "0.1.0"
 atomicring = "0.5.3"
 bus = "2.0.0"
 chan = "0.1.19"
-crossbeam = "0.3.0"
+crossbeam = { path = "../.." }
 crossbeam-deque = "0.4.1"
 crossbeam-channel = { path = ".." }
+lockfree = "0.5.1"
 futures-preview = "0.2.2"
 mpmc = "0.1.5"
 
@@ -39,6 +40,10 @@ path = "crossbeam-deque.rs"
 [[bin]]
 name = "futures-channel"
 path = "futures-channel.rs"
+
+[[bin]]
+name = "lockfree"
+path = "lockfree.rs"
 
 [[bin]]
 name = "mpsc"

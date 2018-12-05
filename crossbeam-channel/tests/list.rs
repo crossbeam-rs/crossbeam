@@ -1,8 +1,8 @@
 //! Tests for the list channel flavor.
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 extern crate rand;
 
 use std::sync::atomic::AtomicUsize;
@@ -13,6 +13,7 @@ use std::time::Duration;
 use crossbeam_channel::unbounded;
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
 use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
+use crossbeam_utils::thread::scope;
 use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
@@ -73,7 +74,7 @@ fn len_empty_full() {
 fn try_recv() {
     let (s, r) = unbounded();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
             thread::sleep(ms(1500));
@@ -92,7 +93,7 @@ fn try_recv() {
 fn recv() {
     let (s, r) = unbounded();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(r.recv(), Ok(7));
             thread::sleep(ms(1000));
@@ -114,7 +115,7 @@ fn recv() {
 fn recv_timeout() {
     let (s, r) = unbounded::<i32>();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(r.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
             assert_eq!(r.recv_timeout(ms(1000)), Ok(7));
@@ -225,7 +226,7 @@ fn len() {
 fn disconnect_wakes_receiver() {
     let (s, r) = unbounded::<()>();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(r.recv(), Err(RecvError));
         });
@@ -242,7 +243,7 @@ fn spsc() {
 
     let (s, r) = unbounded();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             for i in 0..COUNT {
                 assert_eq!(r.recv(), Ok(i));
@@ -265,7 +266,7 @@ fn mpmc() {
     let (s, r) = unbounded::<usize>();
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
             scope.spawn(|| {
                 for _ in 0..COUNT {
@@ -296,7 +297,7 @@ fn stress_timeout_two_threads() {
 
     let (s, r) = unbounded();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
@@ -344,7 +345,7 @@ fn drops() {
         DROPS.store(0, Ordering::SeqCst);
         let (s, r) = unbounded::<DropCounter>();
 
-        crossbeam::scope(|scope| {
+        scope(|scope| {
             scope.spawn(|| {
                 for _ in 0..steps {
                     r.recv().unwrap();
@@ -376,7 +377,7 @@ fn linearizable() {
 
     let (s, r) = unbounded();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
             scope.spawn(|| {
                 for _ in 0..COUNT {

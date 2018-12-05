@@ -2,9 +2,7 @@
 extern crate chan;
 extern crate crossbeam;
 
-use shared::message;
-
-mod shared;
+mod message;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -20,7 +18,7 @@ fn seq(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
     for i in 0..MESSAGES {
-        tx.send(message(i));
+        tx.send(message::new(i));
     }
 
     for _ in 0..MESSAGES {
@@ -32,16 +30,16 @@ fn spsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
     crossbeam::scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..MESSAGES {
-                tx.send(message(i));
+                tx.send(message::new(i));
             }
         });
 
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn mpsc(cap: Option<usize>) {
@@ -49,9 +47,9 @@ fn mpsc(cap: Option<usize>) {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i));
+                    tx.send(message::new(i));
                 }
             });
         }
@@ -59,7 +57,7 @@ fn mpsc(cap: Option<usize>) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn mpmc(cap: Option<usize>) {
@@ -67,21 +65,21 @@ fn mpmc(cap: Option<usize>) {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i));
+                    tx.send(message::new(i));
                 }
             });
         }
 
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..MESSAGES / THREADS {
                     rx.recv().unwrap();
                 }
             });
         }
-    });
+    }).unwrap();
 }
 
 fn select_rx(cap: Option<usize>) {
@@ -91,9 +89,9 @@ fn select_rx(cap: Option<usize>) {
     crossbeam::scope(|scope| {
         for (tx, _) in &chans {
             let tx = tx.clone();
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i));
+                    tx.send(message::new(i));
                 }
             });
         }
@@ -110,7 +108,7 @@ fn select_rx(cap: Option<usize>) {
                 rx3.recv() -> m => assert!(m.is_some()),
             }
         }
-    });
+    }).unwrap();
 }
 
 fn select_both(cap: Option<usize>) {
@@ -120,7 +118,7 @@ fn select_both(cap: Option<usize>) {
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
             let chans = chans.clone();
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 let tx0 = &chans[0].0;
                 let tx1 = &chans[1].0;
                 let tx2 = &chans[2].0;
@@ -128,10 +126,10 @@ fn select_both(cap: Option<usize>) {
 
                 for i in 0..MESSAGES / THREADS {
                     chan_select! {
-                        tx0.send(message(i)) => {},
-                        tx1.send(message(i)) => {},
-                        tx2.send(message(i)) => {},
-                        tx3.send(message(i)) => {},
+                        tx0.send(message::new(i)) => {},
+                        tx1.send(message::new(i)) => {},
+                        tx2.send(message::new(i)) => {},
+                        tx3.send(message::new(i)) => {},
                     }
                 }
             });
@@ -139,7 +137,7 @@ fn select_both(cap: Option<usize>) {
 
         for _ in 0..THREADS {
             let chans = chans.clone();
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 let rx0 = &chans[0].1;
                 let rx1 = &chans[1].1;
                 let rx2 = &chans[2].1;
@@ -155,7 +153,7 @@ fn select_both(cap: Option<usize>) {
                 }
             });
         }
-    });
+    }).unwrap();
 }
 
 fn main() {

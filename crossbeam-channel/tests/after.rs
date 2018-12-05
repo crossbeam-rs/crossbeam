@@ -1,8 +1,8 @@
 //! Tests for the after channel flavor.
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 extern crate rand;
 
 use std::sync::atomic::AtomicUsize;
@@ -11,6 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{after, Select, TryRecvError};
+use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -135,7 +136,7 @@ fn recv_two() {
     let r1 = after(ms(50));
     let r2 = after(ms(50));
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             select! {
                 recv(r1) -> _ => {}
@@ -194,7 +195,7 @@ fn select() {
         .collect::<Vec<_>>();
     let hits = AtomicUsize::new(0);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
             scope.spawn(|| {
                 let v: Vec<&_> = v.iter().collect();
@@ -237,7 +238,7 @@ fn ready() {
         .collect::<Vec<_>>();
     let hits = AtomicUsize::new(0);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
             scope.spawn(|| {
                 let v: Vec<&_> = v.iter().collect();
@@ -277,7 +278,7 @@ fn stress_clone() {
     for i in 0..RUNS {
         let r = after(ms(i as u64));
 
-        crossbeam::scope(|scope| {
+        scope(|scope| {
             for _ in 0..THREADS {
                 scope.spawn(|| {
                     let r = r.clone();

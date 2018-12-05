@@ -38,5 +38,4 @@ version = "0.3.0"
 default-features = false
 
 [dev-dependencies]
-crossbeam = "0.4"
 rand = "0.6"

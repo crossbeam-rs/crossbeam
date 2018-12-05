@@ -1,7 +1,7 @@
 //! Tests for channel readiness using the `Select` struct.
 
-extern crate crossbeam;
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 
 use std::any::Any;
 use std::cell::Cell;
@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{after, bounded, tick, unbounded};
 use crossbeam_channel::{Receiver, Select, TryRecvError, TrySendError};
+use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -62,7 +63,7 @@ fn disconnected() {
     let (s1, r1) = unbounded::<i32>();
     let (s2, r2) = unbounded::<i32>();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             drop(s1);
             thread::sleep(ms(500));
@@ -88,7 +89,7 @@ fn disconnected() {
         _ => panic!(),
     }
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             thread::sleep(ms(500));
             drop(s2);
@@ -145,7 +146,7 @@ fn timeout() {
     let (_s1, r1) = unbounded::<i32>();
     let (s2, r2) = unbounded::<i32>();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             thread::sleep(ms(1500));
             s2.send(2).unwrap();
@@ -165,7 +166,7 @@ fn timeout() {
         }
     });
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         let (s, r) = unbounded::<i32>();
 
         scope.spawn(move || {
@@ -246,7 +247,7 @@ fn unblocks() {
     let (s1, r1) = bounded::<i32>(0);
     let (s2, r2) = bounded::<i32>(0);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             thread::sleep(ms(500));
             s2.send(2).unwrap();
@@ -261,7 +262,7 @@ fn unblocks() {
         }
     });
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             thread::sleep(ms(500));
             assert_eq!(r1.recv().unwrap(), 1);
@@ -287,7 +288,7 @@ fn both_ready() {
     let (s1, r1) = bounded(0);
     let (s2, r2) = bounded(0);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             thread::sleep(ms(500));
             s1.send(1).unwrap();
@@ -309,7 +310,7 @@ fn both_ready() {
 
 #[test]
 fn cloning1() {
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         let (s1, r1) = unbounded::<i32>();
         let (_s2, r2) = unbounded::<i32>();
         let (s3, r3) = unbounded::<()>();
@@ -343,7 +344,7 @@ fn cloning2() {
     let (s2, r2) = unbounded::<()>();
     let (_s3, _r3) = unbounded::<()>();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             let mut sel = Select::new();
             sel.recv(&r1);
@@ -489,7 +490,7 @@ fn stress_recv() {
     let (s2, r2) = bounded(5);
     let (s3, r3) = bounded(100);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             for i in 0..COUNT {
                 s1.send(i).unwrap();
@@ -525,7 +526,7 @@ fn stress_send() {
     let (s2, r2) = bounded(0);
     let (s3, r3) = bounded(100);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             for i in 0..COUNT {
                 assert_eq!(r1.recv().unwrap(), i);
@@ -558,7 +559,7 @@ fn stress_mixed() {
     let (s2, r2) = bounded(0);
     let (s3, r3) = bounded(100);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             for i in 0..COUNT {
                 s1.send(i).unwrap();
@@ -589,7 +590,7 @@ fn stress_timeout_two_threads() {
 
     let (s, r) = bounded(2);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
@@ -664,7 +665,7 @@ fn channel_through_channel() {
     for cap in 1..4 {
         let (s, r) = bounded::<T>(cap);
 
-        crossbeam::scope(|scope| {
+        scope(|scope| {
             scope.spawn(move || {
                 let mut s = s;
 
@@ -763,7 +764,7 @@ fn fairness2() {
     let (s2, r2) = bounded::<()>(1);
     let (s3, r3) = bounded::<()>(0);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             for _ in 0..COUNT {
                 let mut sel = Select::new();

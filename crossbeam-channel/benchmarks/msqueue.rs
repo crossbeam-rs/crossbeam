@@ -1,10 +1,9 @@
 extern crate crossbeam;
 
-use crossbeam::sync::MsQueue;
-use shared::message;
+use crossbeam::queue::MsQueue;
 use std::thread;
 
-mod shared;
+mod message;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -13,7 +12,7 @@ fn seq() {
     let q = MsQueue::new();
 
     for i in 0..MESSAGES {
-        q.push(message(i));
+        q.push(message::new(i));
     }
 
     for _ in 0..MESSAGES {
@@ -25,9 +24,9 @@ fn spsc() {
     let q = MsQueue::new();
 
     crossbeam::scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..MESSAGES {
-                q.push(message(i));
+                q.push(message::new(i));
             }
         });
 
@@ -40,7 +39,7 @@ fn spsc() {
                 }
             }
         }
-    });
+    }).unwrap();
 }
 
 fn mpsc() {
@@ -48,9 +47,9 @@ fn mpsc() {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
-                    q.push(message(i));
+                    q.push(message::new(i));
                 }
             });
         }
@@ -64,7 +63,7 @@ fn mpsc() {
                 }
             }
         }
-    });
+    }).unwrap();
 }
 
 fn mpmc() {
@@ -72,15 +71,15 @@ fn mpmc() {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
-                    q.push(message(i));
+                    q.push(message::new(i));
                 }
             });
         }
 
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..MESSAGES / THREADS {
                     loop {
                         if q.try_pop().is_none() {
@@ -92,7 +91,7 @@ fn mpmc() {
                 }
             });
         }
-    });
+    }).unwrap();
 }
 
 fn main() {

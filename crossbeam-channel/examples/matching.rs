@@ -42,11 +42,12 @@
 //! }
 //! ```
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 
 use crossbeam_channel::bounded;
+use crossbeam_utils::thread;
 
 fn main() {
     let people = vec!["Anna", "Bob", "Cody", "Dave", "Eva"];
@@ -60,7 +61,7 @@ fn main() {
         }
     };
 
-    crossbeam::scope(|scope| {
+    thread::scope(|scope| {
         for name in people {
             let (s, r) = (s.clone(), r.clone());
             scope.spawn(move || seek(name, s, r));

@@ -1,8 +1,8 @@
 //! Tests for the array channel flavor.
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 extern crate rand;
 
 use std::sync::atomic::AtomicUsize;
@@ -13,6 +13,7 @@ use std::time::Duration;
 use crossbeam_channel::bounded;
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
 use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
+use crossbeam_utils::thread::scope;
 use rand::{thread_rng, Rng};
 
 fn ms(ms: u64) -> Duration {
@@ -84,7 +85,7 @@ fn len_empty_full() {
 fn try_recv() {
     let (s, r) = bounded(100);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
             thread::sleep(ms(1500));
@@ -103,7 +104,7 @@ fn try_recv() {
 fn recv() {
     let (s, r) = bounded(100);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(r.recv(), Ok(7));
             thread::sleep(ms(1000));
@@ -125,7 +126,7 @@ fn recv() {
 fn recv_timeout() {
     let (s, r) = bounded::<i32>(100);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(r.recv_timeout(ms(1000)), Err(RecvTimeoutError::Timeout));
             assert_eq!(r.recv_timeout(ms(1000)), Ok(7));
@@ -145,7 +146,7 @@ fn recv_timeout() {
 fn try_send() {
     let (s, r) = bounded(1);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(s.try_send(1), Ok(()));
             assert_eq!(s.try_send(2), Err(TrySendError::Full(2)));
@@ -167,7 +168,7 @@ fn try_send() {
 fn send() {
     let (s, r) = bounded(1);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             s.send(7).unwrap();
             thread::sleep(ms(1000));
@@ -190,7 +191,7 @@ fn send() {
 fn send_timeout() {
     let (s, r) = bounded(2);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(s.send_timeout(1, ms(1000)), Ok(()));
             assert_eq!(s.send_timeout(2, ms(1000)), Ok(()));
@@ -284,7 +285,7 @@ fn len() {
     assert_eq!(s.len(), 0);
     assert_eq!(r.len(), 0);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             for i in 0..COUNT {
                 assert_eq!(r.recv(), Ok(i));
@@ -310,7 +311,7 @@ fn len() {
 fn disconnect_wakes_sender() {
     let (s, r) = bounded(1);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(s.send(()), Ok(()));
             assert_eq!(s.send(()), Err(SendError(())));
@@ -326,7 +327,7 @@ fn disconnect_wakes_sender() {
 fn disconnect_wakes_receiver() {
     let (s, r) = bounded::<()>(1);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             assert_eq!(r.recv(), Err(RecvError));
         });
@@ -343,7 +344,7 @@ fn spsc() {
 
     let (s, r) = bounded(3);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(move || {
             for i in 0..COUNT {
                 assert_eq!(r.recv(), Ok(i));
@@ -366,7 +367,7 @@ fn mpmc() {
     let (s, r) = bounded::<usize>(3);
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
             scope.spawn(|| {
                 for _ in 0..COUNT {
@@ -395,7 +396,7 @@ fn stress_timeout_two_threads() {
 
     let (s, r) = bounded(2);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         scope.spawn(|| {
             for i in 0..COUNT {
                 if i % 2 == 0 {
@@ -449,7 +450,7 @@ fn drops() {
         DROPS.store(0, Ordering::SeqCst);
         let (s, r) = bounded::<DropCounter>(50);
 
-        crossbeam::scope(|scope| {
+        scope(|scope| {
             scope.spawn(|| {
                 for _ in 0..steps {
                     r.recv().unwrap();
@@ -481,7 +482,7 @@ fn linearizable() {
 
     let (s, r) = bounded(THREADS);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
             scope.spawn(|| {
                 for _ in 0..COUNT {
