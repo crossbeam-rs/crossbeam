@@ -3,7 +3,7 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::iter::FromIterator;
-use std::ops::Bound;
+use std::ops::{Bound, RangeBounds};
 
 use base::{self, try_pin_loop};
 use epoch;
@@ -109,18 +109,17 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn range<'a, 'k, Min, Max>(
-        &'a self,
-        lower_bound: Bound<&'k Min>,
-        upper_bound: Bound<&'k Max>,
-    ) -> Range<'a, 'k, Min, Max, K, V>
+    pub fn range<T, R>(
+        &self,
+        range: R,
+    ) -> Range<'_, T, R, K, V>
     where
-        K: Ord + Borrow<Min> + Borrow<Max>,
-        Min: Ord + ?Sized + 'k,
-        Max: Ord + ?Sized + 'k,
+        K: Borrow<T>,
+        R: RangeBounds<T>,
+        T: Ord + ?Sized,
     {
         Range {
-            inner: self.inner.ref_range(lower_bound, upper_bound),
+            inner: self.inner.ref_range(range),
         }
     }
 }
@@ -366,20 +365,20 @@ impl<'a, K, V> fmt::Debug for Iter<'a, K, V> {
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Range<'a, 'k, Min, Max, K: 'a, V: 'a>
+pub struct Range<'a, T, R, K: 'a, V: 'a>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    K: Ord + Borrow<T>,
+    R: RangeBounds<T>,
+    T: Ord + ?Sized,
 {
-    pub(crate) inner: base::RefRange<'a, 'k, Min, Max, K, V>,
+    pub(crate) inner: base::RefRange<'a, T, R, K, V>,
 }
 
-impl<'a, 'k, Min, Max, K, V> Iterator for Range<'a, 'k, Min, Max, K, V>
+impl<'a, T, R, K, V> Iterator for Range<'a, T, R, K, V>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    K: Ord + Borrow<T>,
+    R: RangeBounds<T>,
+    T: Ord + ?Sized,
 {
     type Item = Entry<'a, K, V>;
 
@@ -389,11 +388,11 @@ where
     }
 }
 
-impl<'a, 'k, Min, Max, K, V> DoubleEndedIterator for Range<'a, 'k, Min, Max, K, V>
+impl<'a, T, R, K, V> DoubleEndedIterator for Range<'a, T, R, K, V>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    K: Ord + Borrow<T>,
+    R: RangeBounds<T>,
+    T: Ord + ?Sized,
 {
     fn next_back(&mut self) -> Option<Entry<'a, K, V>> {
         let guard = &epoch::pin();
@@ -401,16 +400,18 @@ where
     }
 }
 
-impl<'a, 'k, Min, Max, K, V> fmt::Debug for Range<'a, 'k, Min, Max, K, V>
+impl<'a, T, R, K, V> fmt::Debug for Range<'a, T, R, K, V>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: fmt::Debug + Ord + ?Sized + 'k,
-    Max: fmt::Debug + Ord + ?Sized + 'k,
+    K: fmt::Debug + Ord + Borrow<T>,
+    V: fmt::Debug,
+    R: fmt::Debug + RangeBounds<T>,
+    T: Ord + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Range")
-            .field("lower_bound", &self.inner.lower_bound)
-            .field("upper_bound", &self.inner.upper_bound)
+            .field("range", &self.inner.range)
+            .field("head", &self.inner.head)
+            .field("tail", &self.inner.tail)
             .finish()
     }
 }
