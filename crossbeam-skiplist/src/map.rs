@@ -402,9 +402,9 @@ where
 
 impl<'a, T, R, K, V> fmt::Debug for Range<'a, T, R, K, V>
 where
-    K: fmt::Debug + Ord + Borrow<T>,
+    K: Ord + Borrow<T> + fmt::Debug,
     V: fmt::Debug,
-    R: fmt::Debug + RangeBounds<T>,
+    R: RangeBounds<T> + fmt::Debug,
     T: Ord + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

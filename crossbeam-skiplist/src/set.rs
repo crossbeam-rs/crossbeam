@@ -371,8 +371,8 @@ where
 impl<'a, K, R, T> fmt::Debug for Range<'a, K, R, T>
 where
     K: Ord + ?Sized,
-    R: fmt::Debug + RangeBounds<K>,
-    T: fmt::Debug + Ord + Borrow<K>,
+    R: RangeBounds<K> + fmt::Debug,
+    T: Ord + Borrow<K> + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Range")
