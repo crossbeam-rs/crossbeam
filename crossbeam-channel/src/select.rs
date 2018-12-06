@@ -506,25 +506,39 @@ fn run_ready(
 ///
 /// # Examples
 ///
+/// Receive a message from a list of channels:
+///
 /// ```
 /// use std::thread;
-/// use crossbeam_channel::{unbounded, Select};
+/// use std::time::Duration;
+/// use crossbeam_channel::{unbounded, Receiver, Select, Sender};
 ///
-/// let (s1, r1) = unbounded();
-/// let (s2, r2) = unbounded();
-/// s1.send(10).unwrap();
+/// // Create 10 channels.
+/// let chans: Vec<(Sender<&str>, Receiver<&str>)> = (0..10)
+///     .map(|_| unbounded())
+///     .collect();
 ///
+/// // Spawn a thread that delivers a message to the 5th channel after 1 second.
+/// let s = chans[5].0.clone();
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     s.send("hello").unwrap();
+/// });
+///
+/// // Wait until a message is received from one of the channels.
 /// let mut sel = Select::new();
-/// let oper1 = sel.recv(&r1);
-/// let oper2 = sel.send(&s2);
-///
-/// // Both operations are initially ready, so a random one will be executed.
-/// let oper = sel.select();
-/// match oper.index() {
-///     i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(10)),
-///     i if i == oper2 => assert_eq!(oper.send(&s2, 20), Ok(())),
-///     _ => unreachable!(),
+/// for (_, r) in &chans {
+///     sel.recv(r);
 /// }
+/// let oper = sel.select();
+///
+/// // Complete the selected operation.
+/// let index = oper.index();
+/// let r = &chans[index].1;
+/// let res = oper.recv(r);
+///
+/// assert_eq!(index, 5);
+/// assert_eq!(res, Ok("hello"));
 /// ```
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
