@@ -1068,7 +1068,7 @@ macro_rules! crossbeam_channel_internal {
 ///
 /// # Examples
 ///
-/// Block until a send or a receive operation becomes ready:
+/// Block until a send or a receive operation is selected:
 ///
 /// ```
 /// # #[macro_use]
@@ -1123,7 +1123,7 @@ macro_rules! crossbeam_channel_internal {
 /// # }
 /// ```
 ///
-/// Wait on a set of operations with a timeout:
+/// Select over a set of operations with a timeout:
 ///
 /// ```
 /// # #[macro_use]
@@ -1142,7 +1142,7 @@ macro_rules! crossbeam_channel_internal {
 /// });
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_millis(500));
-///     s2.send(10).unwrap();
+///     s2.send(20).unwrap();
 /// });
 ///
 /// // None of the two operations will become ready within 100 milliseconds.
@@ -1153,6 +1153,41 @@ macro_rules! crossbeam_channel_internal {
 /// }
 /// # }
 /// ```
+///
+/// Optionally add a receive operation to `select!` using [`never`]:
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate crossbeam_channel;
+/// # fn main() {
+/// use std::thread;
+/// use std::time::Duration;
+/// use crossbeam_channel::{never, unbounded};
+///
+/// let (s1, r1) = unbounded();
+/// let (s2, r2) = unbounded();
+///
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_secs(1));
+///     s1.send(10).unwrap();
+/// });
+/// thread::spawn(move || {
+///     thread::sleep(Duration::from_millis(500));
+///     s2.send(20).unwrap();
+/// });
+///
+/// // This receiver can be a `Some` or a `None`.
+/// let r2 = Some(&r2);
+///
+/// // None of the two operations will become ready within 100 milliseconds.
+/// select! {
+///     recv(r1) -> msg => panic!(),
+///     recv(r2.unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(20)),
+/// }
+/// # }
+/// ```
+///
+/// [`never`]: fn.never.html
 #[macro_export(local_inner_macros)]
 macro_rules! select {
     ($($tokens:tt)*) => {
