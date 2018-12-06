@@ -8,8 +8,7 @@ if [[ ! -x "$(command -v cargo-tree)" ]]; then
 fi
 
 cargo tree
-
 cargo tree --duplicate
+cargo tree --duplicate || exit 1
 
-(cargo tree --duplicate | grep "^crossbeam") && exit 1
 exit 0
