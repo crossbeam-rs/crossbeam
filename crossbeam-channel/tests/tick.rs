@@ -1,8 +1,8 @@
 //! Tests for the tick channel flavor.
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 extern crate rand;
 
 use std::sync::atomic::AtomicUsize;
@@ -11,6 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{after, tick, Select, TryRecvError};
+use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -160,8 +161,8 @@ fn recv_two() {
     let r1 = tick(ms(50));
     let r2 = tick(ms(50));
 
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
+    scope(|scope| {
+        scope.spawn(|_| {
             for _ in 0..10 {
                 select! {
                     recv(r1) -> _ => {}
@@ -169,7 +170,7 @@ fn recv_two() {
                 }
             }
         });
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for _ in 0..10 {
                 select! {
                     recv(r1) -> _ => {}
@@ -177,7 +178,7 @@ fn recv_two() {
                 }
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -220,9 +221,9 @@ fn select() {
     let r1 = tick(ms(200));
     let r2 = tick(ms(300));
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let timeout = after(ms(1100));
                 loop {
                     let mut sel = Select::new();
@@ -248,7 +249,7 @@ fn select() {
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), 8);
 }
@@ -261,9 +262,9 @@ fn ready() {
     let r1 = tick(ms(200));
     let r2 = tick(ms(300));
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let timeout = after(ms(1100));
                 'outer: loop {
                     let mut sel = Select::new();
@@ -295,7 +296,7 @@ fn ready() {
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), 8);
 }

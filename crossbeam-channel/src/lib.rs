@@ -133,7 +133,7 @@
 //!
 //! crossbeam::scope(|scope| {
 //!     // Spawn a thread that receives a message and then sends one.
-//!     scope.spawn(|| {
+//!     scope.spawn(|_| {
 //!         r.recv().unwrap();
 //!         s.send(2).unwrap();
 //!     });
@@ -141,7 +141,7 @@
 //!     // Send a message and then receive one.
 //!     s.send(1).unwrap();
 //!     r.recv().unwrap();
-//! });
+//! }).unwrap();
 //! # }
 //! ```
 //!

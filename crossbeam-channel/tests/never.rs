@@ -1,6 +1,5 @@
 //! Tests for the never channel flavor.
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
 extern crate rand;

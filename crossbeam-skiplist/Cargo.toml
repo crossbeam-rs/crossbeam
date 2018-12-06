@@ -17,8 +17,8 @@ categories = ["algorithms", "concurrency", "data-structures"]
 
 [features]
 default = ["std"]
-nightly = ["crossbeam-epoch/nightly"]
-std = ["crossbeam-epoch/std"]
+nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
+std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 
 [dependencies]
 cfg-if = "0.1"
@@ -38,5 +38,4 @@ version = "0.3.0"
 default-features = false
 
 [dev-dependencies]
-crossbeam = "0.4"
 rand = "0.6"

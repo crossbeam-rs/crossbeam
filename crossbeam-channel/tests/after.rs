@@ -1,8 +1,8 @@
 //! Tests for the after channel flavor.
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 extern crate rand;
 
 use std::sync::atomic::AtomicUsize;
@@ -11,6 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{after, Select, TryRecvError};
+use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -135,20 +136,20 @@ fn recv_two() {
     let r1 = after(ms(50));
     let r2 = after(ms(50));
 
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
+    scope(|scope| {
+        scope.spawn(|_| {
             select! {
                 recv(r1) -> _ => {}
                 recv(r2) -> _ => {}
             }
         });
-        scope.spawn(|| {
+        scope.spawn(|_| {
             select! {
                 recv(r1) -> _ => {}
                 recv(r2) -> _ => {}
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -194,9 +195,9 @@ fn select() {
         .collect::<Vec<_>>();
     let hits = AtomicUsize::new(0);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let v: Vec<&_> = v.iter().collect();
 
                 loop {
@@ -221,7 +222,7 @@ fn select() {
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), COUNT);
 }
@@ -237,9 +238,9 @@ fn ready() {
         .collect::<Vec<_>>();
     let hits = AtomicUsize::new(0);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 let v: Vec<&_> = v.iter().collect();
 
                 loop {
@@ -263,7 +264,7 @@ fn ready() {
                 }
             });
         }
-    });
+    }).unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), COUNT);
 }
@@ -277,9 +278,9 @@ fn stress_clone() {
     for i in 0..RUNS {
         let r = after(ms(i as u64));
 
-        crossbeam::scope(|scope| {
+        scope(|scope| {
             for _ in 0..THREADS {
-                scope.spawn(|| {
+                scope.spawn(|_| {
                     let r = r.clone();
                     let _ = r.try_recv();
 
@@ -289,7 +290,7 @@ fn stress_clone() {
                     }
                 });
             }
-        });
+        }).unwrap();
     }
 }
 

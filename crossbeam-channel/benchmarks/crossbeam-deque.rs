@@ -1,9 +1,10 @@
 extern crate crossbeam;
 extern crate crossbeam_deque as deque;
 
+use deque::{Deque, Steal};
 use std::thread;
 
-use deque::{Deque, Steal};
+mod message;
 
 const MESSAGES: usize = 5_000_000;
 
@@ -12,7 +13,7 @@ fn seq() {
     let rx = tx.stealer();
 
     for i in 0..MESSAGES {
-        tx.push(i as i32);
+        tx.push(message::new(i));
     }
 
     for _ in 0..MESSAGES {
@@ -29,13 +30,13 @@ fn spsc() {
     let rx = tx.stealer();
 
     crossbeam::scope(|scope| {
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             for i in 0..MESSAGES {
-                tx.push(i as i32);
+                tx.push(message::new(i));
             }
         });
 
-        scope.spawn(move || {
+        scope.spawn(move |_| {
             for _ in 0..MESSAGES {
                 loop {
                     match rx.steal() {
@@ -45,7 +46,7 @@ fn spsc() {
                 }
             }
         });
-    });
+    }).unwrap();
 }
 
 fn main() {

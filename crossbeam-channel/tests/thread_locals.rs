@@ -1,13 +1,14 @@
 //! Tests that make sure accessing thread-locals while exiting the thread doesn't cause panics.
 
-extern crate crossbeam;
 #[macro_use]
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 
 use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::unbounded;
+use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -35,8 +36,8 @@ fn use_while_exiting() {
 
     let (s, r) = unbounded::<()>();
 
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
+    scope(|scope| {
+        scope.spawn(|_| {
             // First initialize `FOO`, then the thread-locals related to crossbeam-channel and
             // crossbeam-epoch.
             FOO.with(|_| ());
@@ -45,9 +46,9 @@ fn use_while_exiting() {
             // dropped last.
         });
 
-        scope.spawn(|| {
+        scope.spawn(|_| {
             thread::sleep(ms(100));
             s.send(()).unwrap();
         });
-    });
+    }).unwrap();
 }

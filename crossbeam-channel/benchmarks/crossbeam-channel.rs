@@ -2,9 +2,8 @@ extern crate crossbeam;
 extern crate crossbeam_channel;
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
-use shared::message;
 
-mod shared;
+mod message;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -20,7 +19,7 @@ fn seq(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
     for i in 0..MESSAGES {
-        tx.send(message(i)).unwrap();
+        tx.send(message::new(i)).unwrap();
     }
 
     for _ in 0..MESSAGES {
@@ -32,16 +31,16 @@ fn spsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
     crossbeam::scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..MESSAGES {
-                tx.send(message(i)).unwrap();
+                tx.send(message::new(i)).unwrap();
             }
         });
 
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn mpsc(cap: Option<usize>) {
@@ -49,9 +48,9 @@ fn mpsc(cap: Option<usize>) {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i)).unwrap();
+                    tx.send(message::new(i)).unwrap();
                 }
             });
         }
@@ -59,7 +58,7 @@ fn mpsc(cap: Option<usize>) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn mpmc(cap: Option<usize>) {
@@ -67,21 +66,21 @@ fn mpmc(cap: Option<usize>) {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i)).unwrap();
+                    tx.send(message::new(i)).unwrap();
                 }
             });
         }
 
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..MESSAGES / THREADS {
                     rx.recv().unwrap();
                 }
             });
         }
-    });
+    }).unwrap();
 }
 
 fn select_rx(cap: Option<usize>) {
@@ -90,9 +89,9 @@ fn select_rx(cap: Option<usize>) {
     crossbeam::scope(|scope| {
         for (tx, _) in &chans {
             let tx = tx.clone();
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 for i in 0..MESSAGES / THREADS {
-                    tx.send(message(i)).unwrap();
+                    tx.send(message::new(i)).unwrap();
                 }
             });
         }
@@ -106,7 +105,7 @@ fn select_rx(cap: Option<usize>) {
             let index = case.index();
             case.recv(&chans[index].1).unwrap();
         }
-    });
+    }).unwrap();
 }
 
 fn select_both(cap: Option<usize>) {
@@ -114,7 +113,7 @@ fn select_both(cap: Option<usize>) {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
                     let mut sel = Select::new();
                     for (tx, _) in &chans {
@@ -122,13 +121,13 @@ fn select_both(cap: Option<usize>) {
                     }
                     let case = sel.select();
                     let index = case.index();
-                    case.send(&chans[index].0, message(i)).unwrap();
+                    case.send(&chans[index].0, message::new(i)).unwrap();
                 }
             });
         }
 
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..MESSAGES / THREADS {
                     let mut sel = Select::new();
                     for (_, rx) in &chans {
@@ -140,7 +139,7 @@ fn select_both(cap: Option<usize>) {
                 }
             });
         }
-    });
+    }).unwrap();
 }
 
 fn main() {

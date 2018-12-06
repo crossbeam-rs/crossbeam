@@ -1,17 +1,18 @@
 //! Tests for iteration over receivers.
 
-extern crate crossbeam;
 extern crate crossbeam_channel;
+extern crate crossbeam_utils;
 
 use crossbeam_channel::unbounded;
+use crossbeam_utils::thread::scope;
 
 #[test]
 fn nested_recv_iter() {
     let (s, r) = unbounded::<i32>();
     let (total_s, total_r) = unbounded::<i32>();
 
-    crossbeam::scope(|scope| {
-        scope.spawn(move || {
+    scope(|scope| {
+        scope.spawn(move |_| {
             let mut acc = 0;
             for x in r.iter() {
                 acc += x;
@@ -24,7 +25,7 @@ fn nested_recv_iter() {
         s.send(2).unwrap();
         drop(s);
         assert_eq!(total_r.recv().unwrap(), 6);
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -32,8 +33,8 @@ fn recv_iter_break() {
     let (s, r) = unbounded::<i32>();
     let (count_s, count_r) = unbounded();
 
-    crossbeam::scope(|scope| {
-        scope.spawn(move || {
+    scope(|scope| {
+        scope.spawn(move |_| {
             let mut count = 0;
             for x in r.iter() {
                 if count >= 3 {
@@ -51,7 +52,7 @@ fn recv_iter_break() {
         let _ = s.send(2);
         drop(s);
         assert_eq!(count_r.recv().unwrap(), 4);
-    })
+    }).unwrap();
 }
 
 #[test]
@@ -59,8 +60,8 @@ fn recv_try_iter() {
     let (request_s, request_r) = unbounded();
     let (response_s, response_r) = unbounded();
 
-    crossbeam::scope(|scope| {
-        scope.spawn(move || {
+    scope(|scope| {
+        scope.spawn(move |_| {
             let mut count = 0;
             loop {
                 for x in response_r.try_iter() {
@@ -79,7 +80,7 @@ fn recv_try_iter() {
                 break;
             }
         }
-    })
+    }).unwrap();
 }
 
 #[test]

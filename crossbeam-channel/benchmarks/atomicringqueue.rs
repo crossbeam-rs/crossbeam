@@ -2,10 +2,9 @@ extern crate atomicring;
 extern crate crossbeam;
 
 use atomicring::AtomicRingQueue;
-use shared::message;
 use std::thread;
 
-mod shared;
+mod message;
 
 const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
@@ -15,7 +14,7 @@ fn seq(cap: usize) {
 
     for i in 0..MESSAGES {
         loop {
-            if q.try_push(message(i)).is_ok() {
+            if q.try_push(message::new(i)).is_ok() {
                 break;
             } else {
                 thread::yield_now();
@@ -32,10 +31,10 @@ fn spsc(cap: usize) {
     let q = AtomicRingQueue::with_capacity(cap);
 
     crossbeam::scope(|scope| {
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..MESSAGES {
                 loop {
-                    if q.try_push(message(i)).is_ok() {
+                    if q.try_push(message::new(i)).is_ok() {
                         break;
                     } else {
                         thread::yield_now();
@@ -47,7 +46,7 @@ fn spsc(cap: usize) {
         for _ in 0..MESSAGES {
             q.pop();
         }
-    });
+    }).unwrap();
 }
 
 fn mpsc(cap: usize) {
@@ -55,10 +54,10 @@ fn mpsc(cap: usize) {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
-                        if q.try_push(message(i)).is_ok() {
+                        if q.try_push(message::new(i)).is_ok() {
                             break;
                         } else {
                             thread::yield_now();
@@ -71,7 +70,7 @@ fn mpsc(cap: usize) {
         for _ in 0..MESSAGES {
             q.pop();
         }
-    });
+    }).unwrap();
 }
 
 fn mpmc(cap: usize) {
@@ -79,10 +78,10 @@ fn mpmc(cap: usize) {
 
     crossbeam::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..MESSAGES / THREADS {
                     loop {
-                        if q.try_push(message(i)).is_ok() {
+                        if q.try_push(message::new(i)).is_ok() {
                             break;
                         } else {
                             thread::yield_now();
@@ -93,13 +92,13 @@ fn mpmc(cap: usize) {
         }
 
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..MESSAGES / THREADS {
                     q.pop();
                 }
             });
         }
-    });
+    }).unwrap();
 }
 
 fn main() {
