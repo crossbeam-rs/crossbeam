@@ -1698,7 +1698,7 @@ where
     tail: Option<&'g Node<K, V>>,
     range: R,
     guard: &'g Guard,
-    _marker: PhantomData<Q>,
+    _marker: PhantomData<fn(&R) -> Bound<&Q>>,
 }
 
 impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> Iterator for Range<'a, 'g, Q, R, K, V>
@@ -1794,8 +1794,22 @@ where
     pub(crate) head: Option<RefEntry<'a, K, V>>,
     pub(crate) tail: Option<RefEntry<'a, K, V>>,
     pub(crate) range: R,
-    _marker: PhantomData<Q>,
+    _marker: PhantomData<fn(&R) -> Bound<&Q>>,
 }
+
+unsafe impl<'a, Q, R, K, V> Send for RefRange<'a, Q, R, K, V>
+where
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
+{}
+
+unsafe impl<'a, Q, R, K, V> Sync for RefRange<'a, Q, R, K, V>
+where
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
+{}
 
 impl<'a, Q, R, K, V> fmt::Debug for RefRange<'a, Q, R, K, V>
 where
