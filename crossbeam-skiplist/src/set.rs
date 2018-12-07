@@ -101,14 +101,14 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn range<K, R>(
+    pub fn range<Q, R>(
         &self,
         range: R,
-    ) -> Range<'_, K, R, T>
+    ) -> Range<'_, Q, R, T>
     where
-        K: Ord + ?Sized,
-        R: RangeBounds<K>,
-        T: Borrow<K>,
+        T: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
     {
         Range {
             inner: self.inner.range(range),
@@ -335,20 +335,20 @@ impl<'a, T> fmt::Debug for Iter<'a, T> {
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Range<'a, K, R, T: 'a>
+pub struct Range<'a, Q, R, T: 'a>
 where
-    K: Ord + ?Sized,
-    R: RangeBounds<K>,
-    T: Ord + Borrow<K>,
+    T: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
-    inner: map::Range<'a, K, R, T, ()>,
+    inner: map::Range<'a, Q, R, T, ()>,
 }
 
-impl<'a, K, R, T> Iterator for Range<'a, K, R, T>
+impl<'a, Q, R, T> Iterator for Range<'a, Q, R, T>
 where
-    K: Ord + ?Sized,
-    R: RangeBounds<K>,
-    T: Ord + Borrow<K>,
+    T: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     type Item = Entry<'a, T>;
 
@@ -357,22 +357,22 @@ where
     }
 }
 
-impl<'a, K, R, T> DoubleEndedIterator for Range<'a, K, R, T>
+impl<'a, Q, R, T> DoubleEndedIterator for Range<'a, Q, R, T>
 where
-    K: Ord + ?Sized,
-    R: RangeBounds<K>,
-    T: Ord + Borrow<K>,
+    T: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     fn next_back(&mut self) -> Option<Entry<'a, T>> {
         self.inner.next_back().map(Entry::new)
     }
 }
 
-impl<'a, K, R, T> fmt::Debug for Range<'a, K, R, T>
+impl<'a, Q, R, T> fmt::Debug for Range<'a, Q, R, T>
 where
-    K: Ord + ?Sized,
-    R: RangeBounds<K> + fmt::Debug,
-    T: Ord + Borrow<K> + fmt::Debug,
+    T: Ord + Borrow<Q> + fmt::Debug,
+    R: RangeBounds<Q> + fmt::Debug,
+    Q: Ord + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Range")

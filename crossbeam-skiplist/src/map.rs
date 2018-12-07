@@ -109,14 +109,14 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn range<T, R>(
+    pub fn range<Q, R>(
         &self,
         range: R,
-    ) -> Range<'_, T, R, K, V>
+    ) -> Range<'_, Q, R, K, V>
     where
-        K: Borrow<T>,
-        R: RangeBounds<T>,
-        T: Ord + ?Sized,
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
     {
         Range {
             inner: self.inner.ref_range(range),
@@ -365,20 +365,20 @@ impl<'a, K, V> fmt::Debug for Iter<'a, K, V> {
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Range<'a, T, R, K: 'a, V: 'a>
+pub struct Range<'a, Q, R, K: 'a, V: 'a>
 where
-    K: Ord + Borrow<T>,
-    R: RangeBounds<T>,
-    T: Ord + ?Sized,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
-    pub(crate) inner: base::RefRange<'a, T, R, K, V>,
+    pub(crate) inner: base::RefRange<'a, Q, R, K, V>,
 }
 
-impl<'a, T, R, K, V> Iterator for Range<'a, T, R, K, V>
+impl<'a, Q, R, K, V> Iterator for Range<'a, Q, R, K, V>
 where
-    K: Ord + Borrow<T>,
-    R: RangeBounds<T>,
-    T: Ord + ?Sized,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     type Item = Entry<'a, K, V>;
 
@@ -388,11 +388,11 @@ where
     }
 }
 
-impl<'a, T, R, K, V> DoubleEndedIterator for Range<'a, T, R, K, V>
+impl<'a, Q, R, K, V> DoubleEndedIterator for Range<'a, Q, R, K, V>
 where
-    K: Ord + Borrow<T>,
-    R: RangeBounds<T>,
-    T: Ord + ?Sized,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     fn next_back(&mut self) -> Option<Entry<'a, K, V>> {
         let guard = &epoch::pin();
@@ -400,12 +400,12 @@ where
     }
 }
 
-impl<'a, T, R, K, V> fmt::Debug for Range<'a, T, R, K, V>
+impl<'a, Q, R, K, V> fmt::Debug for Range<'a, Q, R, K, V>
 where
-    K: Ord + Borrow<T> + fmt::Debug,
+    K: Ord + Borrow<Q> + fmt::Debug,
     V: fmt::Debug,
-    R: RangeBounds<T> + fmt::Debug,
-    T: Ord + ?Sized,
+    R: RangeBounds<Q> + fmt::Debug,
+    Q: Ord + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Range")

@@ -479,15 +479,15 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn range<'a: 'g, 'g, T, R>(
+    pub fn range<'a: 'g, 'g, Q, R>(
         &'a self,
         range: R,
         guard: &'g Guard,
-    ) -> Range<'a, 'g, T, R, K, V>
+    ) -> Range<'a, 'g, Q, R, K, V>
     where
-        K: Borrow<T>,
-        R: RangeBounds<T>,
-        T: Ord + ?Sized,
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
     {
         self.check_guard(guard);
         Range {
@@ -501,14 +501,14 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn ref_range<'a, 'g, T, R>(
+    pub fn ref_range<'a, 'g, Q, R>(
         &'a self,
         range: R,
-    ) -> RefRange<'a, T, R, K, V>
+    ) -> RefRange<'a, Q, R, K, V>
     where
-        K: Borrow<T>,
-        R: RangeBounds<T>,
-        T: Ord + ?Sized,
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
     {
         RefRange {
             parent: self,
@@ -1687,25 +1687,25 @@ where
 }
 
 /// An iterator over a subset of entries of a `SkipList`.
-pub struct Range<'a: 'g, 'g, T, R, K: 'a, V: 'a>
+pub struct Range<'a: 'g, 'g, Q, R, K: 'a, V: 'a>
 where
-    K: Ord + Borrow<T>,
-    R: RangeBounds<T>,
-    T: Ord + ?Sized,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     parent: &'a SkipList<K, V>,
     head: Option<&'g Node<K, V>>,
     tail: Option<&'g Node<K, V>>,
     range: R,
     guard: &'g Guard,
-    _marker: PhantomData<T>,
+    _marker: PhantomData<Q>,
 }
 
-impl<'a: 'g, 'g, T, R, K: 'a, V: 'a> Iterator for Range<'a, 'g, T, R, K, V>
+impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> Iterator for Range<'a, 'g, Q, R, K, V>
 where
-    K: Ord + Borrow<T>,
-    R: RangeBounds<T>,
-    T: Ord + ?Sized,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     type Item = Entry<'a, 'g, K, V>;
 
@@ -1736,11 +1736,11 @@ where
     }
 }
 
-impl<'a: 'g, 'g, T, R, K: 'a, V: 'a> DoubleEndedIterator for Range<'a, 'g, T, R, K, V>
+impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> DoubleEndedIterator for Range<'a, 'g, Q, R, K, V>
 where
-    K: Ord + Borrow<T>,
-    R: RangeBounds<T>,
-    T: Ord + ?Sized,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V>> {
         self.tail = match self.tail {
@@ -1767,12 +1767,12 @@ where
     }
 }
 
-impl<'a, 'g, T, R, K, V> fmt::Debug for Range<'a, 'g, T, R, K, V>
+impl<'a, 'g, Q, R, K, V> fmt::Debug for Range<'a, 'g, Q, R, K, V>
 where
-    K: Ord + Borrow<T> + fmt::Debug,
+    K: Ord + Borrow<Q> + fmt::Debug,
     V: fmt::Debug,
-    R: RangeBounds<T> + fmt::Debug,
-    T: Ord + ?Sized,
+    R: RangeBounds<Q> + fmt::Debug,
+    Q: Ord + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Range")
@@ -1784,25 +1784,25 @@ where
 }
 
 /// An iterator over reference-counted subset of entries of a `SkipList`.
-pub struct RefRange<'a, T, R, K: 'a, V: 'a>
+pub struct RefRange<'a, Q, R, K: 'a, V: 'a>
 where
-    K: Ord + Borrow<T>,
-    R: RangeBounds<T>,
-    T: Ord + ?Sized,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     parent: &'a SkipList<K, V>,
     pub(crate) head: Option<RefEntry<'a, K, V>>,
     pub(crate) tail: Option<RefEntry<'a, K, V>>,
     pub(crate) range: R,
-    _marker: PhantomData<T>,
+    _marker: PhantomData<Q>,
 }
 
-impl<'a, T, R, K, V> fmt::Debug for RefRange<'a, T, R, K, V>
+impl<'a, Q, R, K, V> fmt::Debug for RefRange<'a, Q, R, K, V>
 where
-    K: Ord + Borrow<T> + fmt::Debug,
+    K: Ord + Borrow<Q> + fmt::Debug,
     V: fmt::Debug,
-    R: RangeBounds<T> + fmt::Debug,
-    T: Ord + ?Sized,
+    R: RangeBounds<Q> + fmt::Debug,
+    Q: Ord + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("RefRange")
@@ -1813,11 +1813,11 @@ where
     }
 }
 
-impl<'a, T, R, K: 'a, V: 'a> RefRange<'a, T, R, K, V>
+impl<'a, Q, R, K: 'a, V: 'a> RefRange<'a, Q, R, K, V>
 where
-    K: Ord + Borrow<T>,
-    R: RangeBounds<T>,
-    T: Ord + ?Sized,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     /// TODO
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
