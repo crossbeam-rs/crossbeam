@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam-skiplist)
 https://crates.io/crates/crossbeam-skiplist)
 [![Documentation](https://docs.rs/crossbeam-skiplist/badge.svg)](
 https://docs.rs/crossbeam-skiplist)
-[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+[![Rust 1.28+](https://img.shields.io/badge/rust-1.28+-lightgray.svg)](
 https://www.rust-lang.org)
 
 **Note:** This crate is still a work in progress.
@@ -32,7 +32,7 @@ extern crate crossbeam_skiplist;
 
 ## Compatibility
 
-The minimum supported Rust version is 1.26.
+The minimum supported Rust version is 1.28.
 
 This crate can be used in `no_std` environments, but only on nightly Rust.
 

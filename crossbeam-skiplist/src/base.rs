@@ -4,8 +4,9 @@ use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::cmp;
 use core::fmt;
+use core::marker::PhantomData;
 use core::mem;
-use core::ops::{Bound, Deref, Index};
+use core::ops::{Bound, Deref, Index, RangeBounds};
 use core::ptr;
 use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
@@ -243,6 +244,19 @@ impl<K, V> Node<K, V> {
     }
 }
 
+impl<K, V> fmt::Debug for Node<K, V>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Node")
+            .field(&self.key)
+            .field(&self.value)
+            .finish()
+    }
+}
+
 /// A search result.
 ///
 /// The result indicates whether the key was found, as well as what were the adjacent nodes to the
@@ -465,45 +479,43 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn range<'a: 'g, 'g, 'k, Min, Max>(
+    pub fn range<'a: 'g, 'g, Q, R>(
         &'a self,
-        lower_bound: Bound<&'k Min>,
-        upper_bound: Bound<&'k Max>,
+        range: R,
         guard: &'g Guard,
-    ) -> Range<'a, 'g, 'k, Min, Max, K, V>
+    ) -> Range<'a, 'g, Q, R, K, V>
     where
-        K: Ord + Borrow<Min> + Borrow<Max>,
-        Min: Ord + ?Sized + 'k,
-        Max: Ord + ?Sized + 'k,
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
     {
         self.check_guard(guard);
         Range {
             parent: self,
             head: None,
             tail: None,
-            lower_bound,
-            upper_bound,
+            range,
             guard,
+            _marker: PhantomData,
         }
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn ref_range<'a, 'k, Min, Max>(
+    pub fn ref_range<'a, 'g, Q, R>(
         &'a self,
-        lower_bound: Bound<&'k Min>,
-        upper_bound: Bound<&'k Max>,
-    ) -> RefRange<'a, 'k, Min, Max, K, V>
+        range: R,
+    ) -> RefRange<'a, Q, R, K, V>
     where
-        K: Ord + Borrow<Min> + Borrow<Max>,
-        Min: Ord + ?Sized + 'k,
-        Max: Ord + ?Sized + 'k,
+        K: Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
     {
         RefRange {
             parent: self,
+            range,
             head: None,
             tail: None,
-            lower_bound,
-            upper_bound,
+            _marker: PhantomData,
         }
     }
 
@@ -1675,25 +1687,25 @@ where
 }
 
 /// An iterator over a subset of entries of a `SkipList`.
-pub struct Range<'a: 'g, 'g, 'k, Min, Max, K: 'a, V: 'a>
+pub struct Range<'a: 'g, 'g, Q, R, K: 'a, V: 'a>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     parent: &'a SkipList<K, V>,
-    lower_bound: Bound<&'k Min>,
-    upper_bound: Bound<&'k Max>,
     head: Option<&'g Node<K, V>>,
     tail: Option<&'g Node<K, V>>,
+    range: R,
     guard: &'g Guard,
+    _marker: PhantomData<fn() -> Q>, // covariant over `Q`
 }
 
-impl<'a: 'g, 'g, 'k, Min, Max, K: 'a, V: 'a> Iterator for Range<'a, 'g, 'k, Min, Max, K, V>
+impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> Iterator for Range<'a, 'g, Q, R, K, V>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     type Item = Entry<'a, 'g, K, V>;
 
@@ -1704,12 +1716,12 @@ where
                 .next_node(&n.tower, Bound::Excluded(&n.key), self.guard),
             None => self
                 .parent
-                .search_bound(self.lower_bound, false, self.guard),
+                .search_bound(self.range.start_bound(), false, self.guard),
         };
         if let Some(h) = self.head {
             let bound = match self.tail {
                 Some(t) => Bound::Excluded(t.key.borrow()),
-                None => self.upper_bound,
+                None => self.range.end_bound(),
             };
             if !below_upper_bound(&bound, h.key.borrow()) {
                 self.head = None;
@@ -1724,24 +1736,23 @@ where
     }
 }
 
-impl<'a: 'g, 'g, 'k, Min, Max, K: 'a, V: 'a> DoubleEndedIterator
-    for Range<'a, 'g, 'k, Min, Max, K, V>
+impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> DoubleEndedIterator for Range<'a, 'g, Q, R, K, V>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V>> {
         self.tail = match self.tail {
             Some(n) => self
                 .parent
-                .search_bound(Bound::Excluded(&n.key), true, self.guard),
-            None => self.parent.search_bound(self.upper_bound, true, self.guard),
+                .search_bound(Bound::Excluded(&n.key.borrow()), true, self.guard),
+            None => self.parent.search_bound(self.range.end_bound(), true, self.guard),
         };
         if let Some(t) = self.tail {
             let bound = match self.head {
                 Some(h) => Bound::Excluded(h.key.borrow()),
-                None => self.lower_bound,
+                None => self.range.start_bound(),
             };
             if !above_lower_bound(&bound, t.key.borrow()) {
                 self.head = None;
@@ -1756,66 +1767,84 @@ where
     }
 }
 
-impl<'a, 'g, 'k, Min, Max, K, V> fmt::Debug for Range<'a, 'g, 'k, Min, Max, K, V>
+impl<'a, 'g, Q, R, K, V> fmt::Debug for Range<'a, 'g, Q, R, K, V>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: fmt::Debug + Ord + ?Sized + 'k,
-    Max: fmt::Debug + Ord + ?Sized + 'k,
+    K: Ord + Borrow<Q> + fmt::Debug,
+    V: fmt::Debug,
+    R: RangeBounds<Q> + fmt::Debug,
+    Q: Ord + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Range")
-            .field("lower_bound", &self.lower_bound)
-            .field("upper_bound", &self.upper_bound)
+            .field("range", &self.range)
+            .field("head", &self.head)
+            .field("tail", &self.tail)
             .finish()
     }
 }
 
 /// An iterator over reference-counted subset of entries of a `SkipList`.
-pub struct RefRange<'a, 'k, Min, Max, K: 'a, V: 'a>
+pub struct RefRange<'a, Q, R, K: 'a, V: 'a>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     parent: &'a SkipList<K, V>,
-    pub(crate) lower_bound: Bound<&'k Min>,
-    pub(crate) upper_bound: Bound<&'k Max>,
-    head: Option<RefEntry<'a, K, V>>,
-    tail: Option<RefEntry<'a, K, V>>,
+    pub(crate) head: Option<RefEntry<'a, K, V>>,
+    pub(crate) tail: Option<RefEntry<'a, K, V>>,
+    pub(crate) range: R,
+    _marker: PhantomData<fn() -> Q>, // covariant over `Q`
 }
 
-impl<'a, 'k, Min, Max, K, V> fmt::Debug for RefRange<'a, 'k, Min, Max, K, V>
+unsafe impl<'a, Q, R, K, V> Send for RefRange<'a, Q, R, K, V>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: fmt::Debug + Ord + ?Sized + 'k,
-    Max: fmt::Debug + Ord + ?Sized + 'k,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
+{}
+
+unsafe impl<'a, Q, R, K, V> Sync for RefRange<'a, Q, R, K, V>
+where
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
+{}
+
+impl<'a, Q, R, K, V> fmt::Debug for RefRange<'a, Q, R, K, V>
+where
+    K: Ord + Borrow<Q> + fmt::Debug,
+    V: fmt::Debug,
+    R: RangeBounds<Q> + fmt::Debug,
+    Q: Ord + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("RefRange")
-            .field("lower_bound", &self.lower_bound)
-            .field("upper_bound", &self.upper_bound)
+            .field("range", &self.range)
+            .field("head", &self.head)
+            .field("tail", &self.tail)
             .finish()
     }
 }
 
-impl<'a, 'k, Min, Max, K: 'a, V: 'a> RefRange<'a, 'k, Min, Max, K, V>
+impl<'a, Q, R, K: 'a, V: 'a> RefRange<'a, Q, R, K, V>
 where
-    K: Ord + Borrow<Min> + Borrow<Max>,
-    Min: Ord + ?Sized + 'k,
-    Max: Ord + ?Sized + 'k,
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
 {
     /// TODO
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.head = match self.head {
             Some(ref e) => e.next(guard),
-            None => try_pin_loop(|| self.parent.lower_bound(self.lower_bound, guard)),
+            None => try_pin_loop(|| self.parent.lower_bound(self.range.start_bound(), guard)),
         };
         let mut finished = false;
         if let Some(ref h) = self.head {
             let bound = match self.tail {
                 Some(ref t) => Bound::Excluded(t.key().borrow()),
-                None => self.upper_bound,
+                None => self.range.end_bound(),
             };
             if !below_upper_bound(&bound, h.key().borrow()) {
                 finished = true;
@@ -1833,13 +1862,13 @@ where
         self.parent.check_guard(guard);
         self.tail = match self.tail {
             Some(ref e) => e.prev(guard),
-            None => try_pin_loop(|| self.parent.upper_bound(self.upper_bound, guard)),
+            None => try_pin_loop(|| self.parent.upper_bound(self.range.start_bound(), guard)),
         };
         let mut finished = false;
         if let Some(ref t) = self.tail {
             let bound = match self.head {
                 Some(ref h) => Bound::Excluded(h.key().borrow()),
-                None => self.lower_bound,
+                None => self.range.end_bound(),
             };
             if !above_lower_bound(&bound, t.key().borrow()) {
                 finished = true;
@@ -1854,7 +1883,6 @@ where
 }
 
 /// An owning iterator over the entries of a `SkipList`.
-#[derive(Debug)] // TODO: write a custom impl
 pub struct IntoIter<K, V> {
     /// The current node.
     ///
@@ -1913,6 +1941,12 @@ impl<K, V> Iterator for IntoIter<K, V> {
                 }
             }
         }
+    }
+}
+
+impl<K, V> fmt::Debug for IntoIter<K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.pad("IntoIter { .. }")
     }
 }
 
