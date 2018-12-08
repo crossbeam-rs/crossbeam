@@ -101,7 +101,7 @@ impl Parker {
     /// // Wakes up immediately and consumes the token.
     /// p.park();
     /// ```
-    pub fn park(&mut self) {
+    pub fn park(&self) {
         self.unparker.inner.park(None);
     }
 
@@ -121,7 +121,7 @@ impl Parker {
     /// // Waits for the token to become available, but will not wait longer than 500 ms.
     /// p.park_timeout(Duration::from_millis(500));
     /// ```
-    pub fn park_timeout(&mut self, timeout: Duration) {
+    pub fn park_timeout(&self, timeout: Duration) {
         self.unparker.inner.park(Some(timeout));
     }
 

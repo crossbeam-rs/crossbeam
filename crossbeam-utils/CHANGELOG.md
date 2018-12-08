@@ -1,3 +1,8 @@
+# Version 0.6.2
+
+- Add `Parker`.
+- Improve documentation.
+
 # Version 0.6.1
 
 - Fix a soundness bug in `Scope::spawn()`.

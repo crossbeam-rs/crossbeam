@@ -9,7 +9,7 @@ use crossbeam_utils::thread;
 
 #[test]
 fn park_timeout_unpark_before() {
-    let mut p = Parker::new();
+    let p = Parker::new();
     for _ in 0..10 {
         p.unparker().unpark();
         p.park_timeout(Duration::from_millis(u32::MAX as u64));
@@ -18,7 +18,7 @@ fn park_timeout_unpark_before() {
 
 #[test]
 fn park_timeout_unpark_not_called() {
-    let mut p = Parker::new();
+    let p = Parker::new();
     for _ in 0..10 {
         p.park_timeout(Duration::from_millis(10));
     }
@@ -27,7 +27,7 @@ fn park_timeout_unpark_not_called() {
 #[test]
 fn park_timeout_unpark_called_other_thread() {
     for _ in 0..10 {
-        let mut p = Parker::new();
+        let p = Parker::new();
         let u = p.unparker().clone();
 
         thread::scope(|scope| {
