@@ -1,3 +1,11 @@
+# Version 0.3.3
+
+- Relax the lifetime in `SelectedOperation<'_>`.
+- Add `Select::try_ready()`, `Select::ready()`, and `Select::ready_timeout()`.
+- Update licensing notices.
+- Improve documentation.
+- Add methods `is_disconnected()`, `is_timeout()`, `is_empty()`, and `is_full()` on error types.
+
 # Version 0.3.2
 
 - More elaborate licensing notices.

@@ -31,7 +31,7 @@ num_cpus = "1.8.0"
 parking_lot = "0.7"
 
 [dependencies.crossbeam-channel]
-version = "0.3.2"
+version = "0.3.3"
 path = "./crossbeam-channel"
 
 [dependencies.crossbeam-deque]
@@ -43,7 +43,7 @@ version = "0.6.1"
 path = "./crossbeam-epoch"
 
 [dependencies.crossbeam-utils]
-version = "0.6.1"
+version = "0.6.2"
 path = "./crossbeam-utils"
 
 [dev-dependencies]
