@@ -1187,7 +1187,10 @@ macro_rules! crossbeam_channel_internal {
 /// # }
 /// ```
 ///
+/// To optionally add a timeout to `select!`, see the [example] for [`never`].
+///
 /// [`never`]: fn.never.html
+/// [example]: fn.never.html#examples
 #[macro_export(local_inner_macros)]
 macro_rules! select {
     ($($tokens:tt)*) => {

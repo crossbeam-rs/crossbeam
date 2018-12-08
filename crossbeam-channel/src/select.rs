@@ -502,44 +502,76 @@ fn run_ready(
 /// The [`select!`] macro is a convenience wrapper around `Select`. However, it cannot select over a
 /// dynamically created list of channel operations.
 ///
-/// [`select!`]: macro.select.html
+/// Once a list of operations has been built with `Select`, there are two different ways of
+/// proceeding:
+///
+/// * Select an operation with [`try_select`], [`select`], or [`select_timeout`]. If successful,
+///   the returned selected operation has already begun and **must** be completed. If we don't
+///   complete it, a panic will occur.
+///
+/// * Wait for an operation to become ready with [`try_ready`], [`ready`], or [`ready_timeout`]. If
+///   successful, we may attempt to execute the operation, but are not obliged to. In fact, it's
+///   possible for another thread to make the operation not ready just before we try executing it,
+///   so it's wise to use a retry loop.
 ///
 /// # Examples
 ///
-/// Receive a message from a list of channels:
+/// Use [`select`] to receive a message from a list of receivers:
 ///
 /// ```
-/// use std::thread;
-/// use std::time::Duration;
-/// use crossbeam_channel::{unbounded, Receiver, Select, Sender};
+/// use crossbeam_channel::{Receiver, RecvError, Select};
 ///
-/// // Create 10 channels.
-/// let chans: Vec<(Sender<&str>, Receiver<&str>)> = (0..10)
-///     .map(|_| unbounded())
-///     .collect();
+/// fn recv_multiple<T>(rs: &[Receiver<T>]) -> Result<T, RecvError> {
+///     // Build a list of operations.
+///     let mut sel = Select::new();
+///     for r in rs {
+///         sel.recv(r);
+///     }
 ///
-/// // Spawn a thread that delivers a message to the 5th channel after 1 second.
-/// let s = chans[5].0.clone();
-/// thread::spawn(move || {
-///     thread::sleep(Duration::from_secs(1));
-///     s.send("hello").unwrap();
-/// });
-///
-/// // Wait until a message is received from one of the channels.
-/// let mut sel = Select::new();
-/// for (_, r) in &chans {
-///     sel.recv(r);
+///     // Complete the selected operation.
+///     let oper = sel.select();
+///     let index = oper.index();
+///     oper.recv(&rs[index])
 /// }
-/// let oper = sel.select();
-///
-/// // Complete the selected operation.
-/// let index = oper.index();
-/// let r = &chans[index].1;
-/// let res = oper.recv(r);
-///
-/// assert_eq!(index, 5);
-/// assert_eq!(res, Ok("hello"));
 /// ```
+///
+/// Use [`ready`] to receive a message from a list of receivers:
+///
+/// ```
+/// use crossbeam_channel::{Receiver, RecvError, Select};
+///
+/// fn recv_multiple<T>(rs: &[Receiver<T>]) -> Result<T, RecvError> {
+///     // Build a list of operations.
+///     let mut sel = Select::new();
+///     for r in rs {
+///         sel.recv(r);
+///     }
+///
+///     loop {
+///         // Wait until a receive operation becomes ready and try executing it.
+///         let index = sel.ready();
+///         let res = rs[index].try_recv();
+///
+///         // If the operation turns out not to be ready, retry.
+///         if let Err(e) = res {
+///             if e.is_empty() {
+///                 continue;
+///             }
+///         }
+///
+///         // Success!
+///         return res.map_err(|_| RecvError);
+///     }
+/// }
+/// ```
+///
+/// [`select!`]: macro.select.html
+/// [`try_select`]: struct.Select.html#method.try_select
+/// [`select`]: struct.Select.html#method.select
+/// [`select_timeout`]: struct.Select.html#method.select_timeout
+/// [`try_ready`]: struct.Select.html#method.try_ready
+/// [`ready`]: struct.Select.html#method.ready
+/// [`ready_timeout`]: struct.Select.html#method.ready_timeout
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
     handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
@@ -577,18 +609,10 @@ impl<'a> Select<'a> {
     /// use std::thread;
     /// use crossbeam_channel::{unbounded, Select};
     ///
-    /// let (s1, r1) = unbounded::<i32>();
-    /// let (s2, r2) = unbounded::<i32>();
-    /// let (s3, r3) = unbounded::<i32>();
+    /// let (s, r) = unbounded::<i32>();
     ///
     /// let mut sel = Select::new();
-    /// let oper1 = sel.send(&s1);
-    /// let oper2 = sel.send(&s2);
-    /// let oper3 = sel.send(&s3);
-    ///
-    /// assert_eq!(oper1, 0);
-    /// assert_eq!(oper2, 1);
-    /// assert_eq!(oper3, 2);
+    /// let index = sel.send(&s);
     /// ```
     pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
         let i = self.handles.len();
@@ -607,18 +631,10 @@ impl<'a> Select<'a> {
     /// use std::thread;
     /// use crossbeam_channel::{unbounded, Select};
     ///
-    /// let (s1, r1) = unbounded::<i32>();
-    /// let (s2, r2) = unbounded::<i32>();
-    /// let (s3, r3) = unbounded::<i32>();
+    /// let (s, r) = unbounded::<i32>();
     ///
     /// let mut sel = Select::new();
-    /// let oper1 = sel.recv(&r1);
-    /// let oper2 = sel.recv(&r2);
-    /// let oper3 = sel.recv(&r3);
-    ///
-    /// assert_eq!(oper1, 0);
-    /// assert_eq!(oper2, 1);
-    /// assert_eq!(oper3, 2);
+    /// let index = sel.recv(&r);
     /// ```
     pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
         let i = self.handles.len();
