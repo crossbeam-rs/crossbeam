@@ -1,6 +1,5 @@
 use core::fmt;
 use core::mem;
-use core::ptr;
 
 use atomic::Shared;
 use collector::Collector;
@@ -63,15 +62,6 @@ use internal::Local;
 /// assert!(epoch::is_pinned());
 /// drop(guard2);
 /// assert!(!epoch::is_pinned());
-/// ```
-///
-/// The same can be achieved by cloning guards:
-///
-/// ```
-/// use crossbeam_epoch as epoch;
-///
-/// let guard1 = epoch::pin();
-/// let guard2 = guard1.clone();
 /// ```
 ///
 /// [`pin`]: fn.pin.html
@@ -429,16 +419,6 @@ impl Drop for Guard {
     fn drop(&mut self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
             local.unpin();
-        }
-    }
-}
-
-impl Clone for Guard {
-    #[inline]
-    fn clone(&self) -> Guard {
-        match unsafe { self.local.as_ref() } {
-            None => Guard { local: ptr::null() },
-            Some(local) => local.pin(),
         }
     }
 }
