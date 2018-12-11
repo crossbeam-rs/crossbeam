@@ -59,14 +59,13 @@ mod _epoch {
 pub use _epoch::crossbeam_epoch as epoch;
 
 mod arc_cell;
-mod atomic_cell;
 
 extern crate crossbeam_utils;
 
 /// Additional utilities for atomics.
 pub mod atomic {
     pub use arc_cell::ArcCell;
-    pub use atomic_cell::AtomicCell;
+    pub use crossbeam_utils::atomic::AtomicCell;
     pub use crossbeam_utils::atomic::AtomicConsume;
 }
 
