@@ -13,6 +13,7 @@ https://www.rust-lang.org)
 
 This crate provides miscellaneous utilities for concurrent programming:
 
+* `AtomicCell<T>` is equivalent to `Cell<T>`, except it is also thread-safe.
 * `AtomicConsume` allows reading from primitive atomic types with "consume" ordering.
 * `CachePadded<T>` pads and aligns a value to the length of a cache line.
 * `scope()` can spawn threads that borrow local variables from the stack. 
@@ -38,6 +39,7 @@ The minimum supported Rust version is 1.26.
 
 Features available in `no_std` environments:
 
+* `AtomicCell<T>`
 * `AtomicConsume`
 * `CachePadded<T>`
 
