@@ -1,9 +1,9 @@
-extern crate crossbeam;
+extern crate crossbeam_utils;
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 
-use crossbeam::atomic::AtomicCell;
+use crossbeam_utils::atomic::AtomicCell;
 
 #[test]
 fn is_lock_free() {
