@@ -936,6 +936,57 @@ impl<'g, T> Shared<'g, T> {
         &*self.as_raw()
     }
 
+    /// Dereferences the pointer.
+    ///
+    /// Returns a mutable reference to the pointee that is valid during the lifetime `'g`.
+    ///
+    /// # Safety
+    ///
+    /// * Dereferencing a pointer is unsafe because it could be pointing to invalid memory.
+    ///
+    /// * Another concern is the possiblity of data races due to lack of proper synchronization.
+    ///   For example, consider the following scenario:
+    ///
+    ///   1. A thread creates a new object: `a.store(Owned::new(10), Relaxed)`
+    ///   2. Another thread reads it: `*a.load(Relaxed, guard).as_ref().unwrap()`
+    ///
+    ///   The problem is that relaxed orderings don't synchronize initialization of the object with
+    ///   the read from the second thread. This is a data race. A possible solution would be to use
+    ///   `Release` and `Acquire` orderings.
+    ///
+    /// * There is no guarantee that there are no more threads attempting to read/write from/to the
+    ///   actual object at the same time.
+    ///
+    ///   The user must be know that there are no concurrent accesses towards the object itself
+    ///   and/or use `crossbeam_utils::atomic::AtomicCell` to wrap the object.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Atomic};
+    /// use std::sync::atomic::Ordering::SeqCst;
+    ///
+    /// let a = Atomic::new(vec![1, 2, 3, 4]);
+    /// let guard = &epoch::pin();
+    ///
+    /// let mut p = a.load(SeqCst, guard);
+    /// unsafe {
+    ///     assert!(!p.is_null());
+    ///     let b = p.deref_mut();
+    ///     assert_eq!(b, &vec![1, 2, 3, 4]);
+    ///     b.push(5);
+    ///     assert_eq!(b, &vec![1, 2, 3, 4, 5]);
+    /// }
+    ///
+    /// let p = a.load(SeqCst, guard);
+    /// unsafe {
+    ///     assert_eq!(p.deref(), &vec![1, 2, 3, 4, 5]);
+    /// }
+    /// ```
+    pub unsafe fn deref_mut(&mut self) -> &'g mut T {
+        &mut *(self.as_raw() as *mut T)
+    }
+
     /// Converts the pointer to a reference.
     ///
     /// Returns `None` if the pointer is null, or else a reference to the object wrapped in `Some`.
