@@ -942,23 +942,12 @@ impl<'g, T> Shared<'g, T> {
     ///
     /// # Safety
     ///
-    /// * Dereferencing a pointer is unsafe because it could be pointing to invalid memory.
-    ///
-    /// * Another concern is the possiblity of data races due to lack of proper synchronization.
-    ///   For example, consider the following scenario:
-    ///
-    ///   1. A thread creates a new object: `a.store(Owned::new(10), Relaxed)`
-    ///   2. Another thread reads it: `*a.load(Relaxed, guard).as_ref().unwrap()`
-    ///
-    ///   The problem is that relaxed orderings don't synchronize initialization of the object with
-    ///   the read from the second thread. This is a data race. A possible solution would be to use
-    ///   `Release` and `Acquire` orderings.
-    ///
     /// * There is no guarantee that there are no more threads attempting to read/write from/to the
     ///   actual object at the same time.
     ///
-    ///   The user must be know that there are no concurrent accesses towards the object itself
-    ///   and/or use `crossbeam_utils::atomic::AtomicCell` to wrap the object.
+    ///   The user must know that there are no concurrent accesses towards the object itself.
+    ///
+    /// * Other than the above, all safety concerns of `deref()` applies here.
     ///
     /// # Examples
     ///
