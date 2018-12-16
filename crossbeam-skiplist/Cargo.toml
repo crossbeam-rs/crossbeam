@@ -24,7 +24,7 @@ std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 cfg-if = "0.1"
 
 [dependencies.crossbeam-epoch]
-version = "0.6"
+version = "0.7"
 path = "../crossbeam-epoch"
 default-features = false
 

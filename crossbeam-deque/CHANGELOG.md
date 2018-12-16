@@ -1,3 +1,7 @@
+# Version 0.6.3
+
+- Bump `crossbeam-epoch` to `0.7`.
+
 # Version 0.6.2
 
 - Update `crosbeam-utils` to `0.6`.
