@@ -1,6 +1,6 @@
 //! TODO: docs
 
-use alloc::vec::Vec;
+use alloc::alloc::{alloc, dealloc, Layout};
 use core::borrow::Borrow;
 use core::cmp;
 use core::fmt;
@@ -99,11 +99,8 @@ impl<K, V> Node<K, V> {
     /// with null pointers. However, the key and the value will be left uninitialized, and that is
     /// why this function is unsafe.
     unsafe fn alloc(height: usize, ref_count: usize) -> *mut Self {
-        // TODO(stjepang): Use the new alloc API instead of this hack once it becomes stable.
-        let cap = Self::size_in_u64s(height);
-        let mut v = Vec::<u64>::with_capacity(cap);
-        let ptr = v.as_mut_ptr() as *mut Self;
-        mem::forget(v);
+        let layout = Self::get_layout(height);
+        let ptr = alloc(layout) as *mut Self;
 
         ptr::write(
             &mut (*ptr).refs_and_height,
@@ -118,22 +115,19 @@ impl<K, V> Node<K, V> {
     /// This function will not run any destructors.
     unsafe fn dealloc(ptr: *mut Self) {
         let height = (*ptr).height();
-        let cap = Self::size_in_u64s(height);
-        drop(Vec::from_raw_parts(ptr as *mut u64, 0, cap));
+        let layout = Self::get_layout(height);
+        dealloc(ptr as *mut u8, layout);
     }
 
-    /// Returns the size of a node with tower of given `height` measured in `u64`s.
-    fn size_in_u64s(height: usize) -> usize {
+    /// Returns the layout of a node with the given `height`.
+    unsafe fn get_layout(height: usize) -> Layout {
         assert!(1 <= height && height <= MAX_HEIGHT);
-        assert!(mem::align_of::<Self>() <= mem::align_of::<u64>());
 
-        let size_base = mem::size_of::<Self>();
-        let size_ptr = mem::size_of::<Atomic<Self>>();
+        let size_self = mem::size_of::<Self>();
+        let align_self = mem::align_of::<Self>();
+        let size_pointer = mem::size_of::<Atomic<Self>>();
 
-        let size_u64 = mem::size_of::<u64>();
-        let size_self = size_base + size_ptr * height;
-
-        (size_self + size_u64 - 1) / size_u64
+        Layout::from_size_align_unchecked(size_self + size_pointer * height, align_self)
     }
 
     /// Returns the height of this node's tower.
