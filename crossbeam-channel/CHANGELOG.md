@@ -1,3 +1,8 @@
+# Version 0.3.4
+
+- Bump `crossbeam-epoch` to `0.7`.
+- Improve documentation.
+
 # Version 0.3.3
 
 - Relax the lifetime in `SelectedOperation<'_>`.

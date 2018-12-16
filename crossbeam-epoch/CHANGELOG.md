@@ -1,3 +1,8 @@
+# Version 0.7.0
+
+- Remove `Guard::clone()`.
+- Bump dependencies.
+
 # Version 0.6.1
 
 - Update `crossbeam-utils` to `0.6`.

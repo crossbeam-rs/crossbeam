@@ -1,3 +1,7 @@
+# Version 0.6.0
+
+- Update dependencies.
+
 # Version 0.5.0
 
 - Update `crossbeam-channel` to 0.3.
