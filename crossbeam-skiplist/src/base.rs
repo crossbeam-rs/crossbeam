@@ -1,6 +1,6 @@
 //! TODO: docs
 
-use alloc::alloc::{alloc, dealloc, Layout};
+use alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
 use core::borrow::Borrow;
 use core::cmp;
 use core::fmt;
@@ -101,6 +101,9 @@ impl<K, V> Node<K, V> {
     unsafe fn alloc(height: usize, ref_count: usize) -> *mut Self {
         let layout = Self::get_layout(height);
         let ptr = alloc(layout) as *mut Self;
+        if ptr.is_null() {
+            handle_alloc_error(layout);
+        }
 
         ptr::write(
             &mut (*ptr).refs_and_height,
