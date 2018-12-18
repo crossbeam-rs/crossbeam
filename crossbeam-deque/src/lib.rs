@@ -50,8 +50,8 @@
 //!
 //! // Create a stealer thread.
 //! thread::spawn(move || {
-//!     assert_eq!(s.steal(), Steal::Data(1));
-//!     assert_eq!(s.steal(), Steal::Data(2));
+//!     assert_eq!(s.steal_one(), Steal::Data(1));
+//!     assert_eq!(s.steal_one(), Steal::Data(2));
 //! }).join().unwrap();
 //! ```
 //!
@@ -81,93 +81,18 @@ use utils::CachePadded;
 /// Minimum buffer capacity for a deque.
 const MIN_CAP: usize = 32;
 
-/// Maximum number of additional elements that can be stolen in `steal_many`.
+/// Maximum number of additional elements that can be stolen in `steal_batch`.
 const MAX_BATCH: usize = 128;
 
 /// If a buffer of at least this size is retired, thread-local garbage is flushed so that it gets
 /// deallocated as soon as possible.
 const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
 
-/// Creates a work-stealing deque with the first-in first-out strategy.
-///
-/// Elements are pushed into the back, popped from the front, and stolen from the front. In other
-/// words, the worker side behaves as a FIFO queue.
-///
-/// # Examples
-///
-/// ```
-/// use crossbeam_deque::{self as deque, Pop, Steal};
-///
-/// let (w, s) = deque::fifo::<i32>();
-/// w.push(1);
-/// w.push(2);
-/// w.push(3);
-///
-/// assert_eq!(s.steal(), Steal::Data(1));
-/// assert_eq!(w.pop(), Pop::Data(2));
-/// assert_eq!(w.pop(), Pop::Data(3));
-/// ```
-pub fn fifo<T>() -> (Worker<T>, Stealer<T>) {
-    let buffer = Buffer::alloc(MIN_CAP);
-
-    let inner = Arc::new(CachePadded::new(Inner {
-        front: AtomicIsize::new(0),
-        back: AtomicIsize::new(0),
-        buffer: Atomic::new(buffer),
-    }));
-
-    let w = Worker {
-        inner: inner.clone(),
-        cached_buffer: Cell::new(buffer),
-        flavor: Flavor::Fifo,
-        _marker: PhantomData,
-    };
-    let s = Stealer {
-        inner,
-        flavor: Flavor::Fifo,
-    };
-    (w, s)
-}
-
-/// Creates a work-stealing deque with the last-in first-out strategy.
-///
-/// Elements are pushed into the back, popped from the back, and stolen from the front. In other
-/// words, the worker side behaves as a LIFO stack.
-///
-/// # Examples
-///
-/// ```
-/// use crossbeam_deque::{self as deque, Pop, Steal};
-///
-/// let (w, s) = deque::lifo::<i32>();
-/// w.push(1);
-/// w.push(2);
-/// w.push(3);
-///
-/// assert_eq!(s.steal(), Steal::Data(1));
-/// assert_eq!(w.pop(), Pop::Data(3));
-/// assert_eq!(w.pop(), Pop::Data(2));
-/// ```
-pub fn lifo<T>() -> (Worker<T>, Stealer<T>) {
-    let buffer = Buffer::alloc(MIN_CAP);
-
-    let inner = Arc::new(CachePadded::new(Inner {
-        front: AtomicIsize::new(0),
-        back: AtomicIsize::new(0),
-        buffer: Atomic::new(buffer),
-    }));
-
-    let w = Worker {
-        inner: inner.clone(),
-        cached_buffer: Cell::new(buffer),
-        flavor: Flavor::Lifo,
-        _marker: PhantomData,
-    };
-    let s = Stealer {
-        inner,
-        flavor: Flavor::Lifo,
-    };
-    (w, s)
+#[must_use]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum Racy<T> {
+    Done(T),
+    Retry,
 }
 
 /// A buffer that holds elements in a deque.
@@ -238,34 +163,6 @@ impl<T> Clone for Buffer<T> {
 }
 
 impl<T> Copy for Buffer<T> {}
-
-/// Possible outcomes of a pop operation.
-#[must_use]
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
-pub enum Pop<T> {
-    /// The deque was empty at the time of popping.
-    Empty,
-
-    /// Some data has been successfully popped.
-    Data(T),
-
-    /// Lost the race for popping data to another concurrent steal operation. Try again.
-    Retry,
-}
-
-/// Possible outcomes of a steal operation.
-#[must_use]
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
-pub enum Steal<T> {
-    /// The deque was empty at the time of stealing.
-    Empty,
-
-    /// Some data has been successfully stolen.
-    Data(T),
-
-    /// Lost the race for stealing data to another concurrent steal or pop operation. Try again.
-    Retry,
-}
 
 /// Internal data that is shared between the worker and stealers.
 ///
@@ -348,6 +245,85 @@ pub struct Worker<T> {
 unsafe impl<T: Send> Send for Worker<T> {}
 
 impl<T> Worker<T> {
+    /// Creates a work-stealing deque with the first-in first-out strategy.
+    ///
+    /// Elements are pushed into the back, popped from the front, and stolen from the front. In other
+    /// words, the worker side behaves as a FIFO queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::{self as deque, Pop, Steal};
+    ///
+    /// let (w, s) = deque::fifo::<i32>();
+    /// w.push(1);
+    /// w.push(2);
+    /// w.push(3);
+    ///
+    /// assert_eq!(s.steal_one(), Steal::Data(1));
+    /// assert_eq!(w.pop(), Pop::Data(2));
+    /// assert_eq!(w.pop(), Pop::Data(3));
+    /// ```
+    pub fn fifo() -> Worker<T> {
+        let buffer = Buffer::alloc(MIN_CAP);
+
+        let inner = Arc::new(CachePadded::new(Inner {
+            front: AtomicIsize::new(0),
+            back: AtomicIsize::new(0),
+            buffer: Atomic::new(buffer),
+        }));
+
+        Worker {
+            inner,
+            cached_buffer: Cell::new(buffer),
+            flavor: Flavor::Fifo,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Creates a work-stealing deque with the last-in first-out strategy.
+    ///
+    /// Elements are pushed into the back, popped from the back, and stolen from the front. In other
+    /// words, the worker side behaves as a LIFO stack.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::{self as deque, Pop, Steal};
+    ///
+    /// let (w, s) = deque::lifo::<i32>();
+    /// w.push(1);
+    /// w.push(2);
+    /// w.push(3);
+    ///
+    /// assert_eq!(s.steal_one(), Steal::Data(1));
+    /// assert_eq!(w.pop(), Pop::Data(3));
+    /// assert_eq!(w.pop(), Pop::Data(2));
+    /// ```
+    pub fn lifo() -> Worker<T> {
+        let buffer = Buffer::alloc(MIN_CAP);
+
+        let inner = Arc::new(CachePadded::new(Inner {
+            front: AtomicIsize::new(0),
+            back: AtomicIsize::new(0),
+            buffer: Atomic::new(buffer),
+        }));
+
+        Worker {
+            inner,
+            cached_buffer: Cell::new(buffer),
+            flavor: Flavor::Lifo,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn stealer(&self) -> Stealer<T> {
+        Stealer {
+            inner: self.inner.clone(),
+            flavor: self.flavor,
+        }
+    }
+
     /// Resizes the internal buffer to the new capacity of `new_cap`.
     #[cold]
     unsafe fn resize(&self, new_cap: usize) {
@@ -492,7 +468,7 @@ impl<T> Worker<T> {
     /// assert_eq!(w.pop(), Pop::Data(2));
     /// assert_eq!(w.pop(), Pop::Empty);
     /// ```
-    pub fn pop(&self) -> Pop<T> {
+    pub fn pop(&self) -> Racy<Option<T>> {
         // Load the back and front index.
         let b = self.inner.back.load(Ordering::Relaxed);
         let f = self.inner.front.load(Ordering::Relaxed);
@@ -502,7 +478,7 @@ impl<T> Worker<T> {
 
         // Is the deque empty?
         if len <= 0 {
-            return Pop::Empty;
+            return Racy::Done(None);
         }
 
         match self.flavor {
@@ -525,11 +501,11 @@ impl<T> Worker<T> {
                             self.resize(buffer.cap / 2);
                         }
 
-                        return Pop::Data(data);
+                        return Racy::Done(Some(data));
                     }
                 }
 
-                Pop::Retry
+                Racy::Retry
             }
 
             // Pop from the back of the deque.
@@ -549,7 +525,7 @@ impl<T> Worker<T> {
                 if len < 0 {
                     // The deque is empty. Restore the back index to the original value.
                     self.inner.back.store(b.wrapping_add(1), Ordering::Relaxed);
-                    Pop::Empty
+                    Racy::Done(None)
                 } else {
                     // Read the value to be popped.
                     let buffer = self.cached_buffer.get();
@@ -583,10 +559,7 @@ impl<T> Worker<T> {
                         }
                     }
 
-                    match value {
-                        None => Pop::Empty,
-                        Some(data) => Pop::Data(data),
-                    }
+                    Racy::Done(value)
                 }
             }
         }
@@ -644,11 +617,11 @@ impl<T> Stealer<T> {
     /// w.push(1);
     /// w.push(2);
     ///
-    /// assert_eq!(s.steal(), Steal::Data(1));
-    /// assert_eq!(s.steal(), Steal::Data(2));
-    /// assert_eq!(s.steal(), Steal::Empty);
+    /// assert_eq!(s.steal_one(), Steal::Data(1));
+    /// assert_eq!(s.steal_one(), Steal::Data(2));
+    /// assert_eq!(s.steal_one(), Steal::Empty);
     /// ```
-    pub fn steal(&self) -> Steal<T> {
+    pub fn steal_one(&self) -> Racy<Option<T>> {
         // Load the front index.
         let f = self.inner.front.load(Ordering::Acquire);
 
@@ -668,7 +641,7 @@ impl<T> Stealer<T> {
 
         // Is the deque empty?
         if b.wrapping_sub(f) <= 0 {
-            return Steal::Empty;
+            return Racy::Done(None);
         }
 
         // Load the buffer and read the value at the front.
@@ -684,11 +657,140 @@ impl<T> Stealer<T> {
         {
             // We didn't steal this value, forget it.
             mem::forget(value);
-            return Steal::Retry;
+            return Racy::Retry;
         }
 
         // Return the stolen value.
-        Steal::Data(value)
+        Racy::Done(Some(value))
+    }
+
+    pub fn steal_batch(&self, dest: &Worker<T>) -> Racy<bool> {
+        // Load the front index.
+        let mut f = self.inner.front.load(Ordering::Acquire);
+
+        // A SeqCst fence is needed here.
+        //
+        // If the current thread is already pinned (reentrantly), we must manually issue the
+        // fence. Otherwise, the following pinning will issue the fence anyway, so we don't
+        // have to.
+        if epoch::is_pinned() {
+            atomic::fence(Ordering::SeqCst);
+        }
+
+        let guard = &epoch::pin();
+
+        // Load the back index.
+        let b = self.inner.back.load(Ordering::Acquire);
+
+        // Is the deque empty?
+        let len = b.wrapping_sub(f);
+        if len <= 0 {
+            return Racy::Done(false);
+        }
+
+        // Reserve capacity for the stolen batch.
+        let batch_size = cmp::min((len as usize + 1) / 2, MAX_BATCH);
+        dest.reserve(batch_size);
+        let batch_size = batch_size as isize;
+
+        // Get the destination buffer and back index.
+        let dest_buffer = dest.cached_buffer.get();
+        let mut dest_b = dest.inner.back.load(Ordering::Relaxed);
+
+        // Load the buffer.
+        let buffer = self.inner.buffer.load(Ordering::Acquire, guard);
+
+        match self.flavor {
+            // Steal a batch of elements from the front at once.
+            Flavor::Fifo => {
+                // Copy the batch from the source to the destination buffer.
+                for i in 0..batch_size {
+                    unsafe {
+                        let value = buffer.deref().read(f.wrapping_add(i));
+                        dest_buffer.write(dest_b.wrapping_add(i), value);
+                    }
+                }
+
+                // Try incrementing the front index to steal the batch.
+                if self
+                    .inner
+                    .front
+                    .compare_exchange(
+                        f,
+                        f.wrapping_add(batch_size),
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                    ).is_err()
+                {
+                    return Racy::Retry;
+                }
+
+                atomic::fence(Ordering::Release);
+
+                // Success! Update the back index in the destination deque.
+                //
+                // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
+                // data races because it doesn't understand fences.
+                dest.inner
+                    .back
+                    .store(dest_b.wrapping_add(batch_size), Ordering::Release);
+
+                // Return with success.
+                Racy::Done(true)
+            }
+
+            // Steal a batch of elements from the front one by one.
+            Flavor::Lifo => {
+                for _ in 0..batch_size {
+                    // We've already got the current front index. Now execute the fence to
+                    // synchronize with other threads.
+                    atomic::fence(Ordering::SeqCst);
+
+                    // Load the back index.
+                    let b = self.inner.back.load(Ordering::Acquire);
+
+                    // Is the deque empty?
+                    if b.wrapping_sub(f) <= 0 {
+                        break;
+                    }
+
+                    // Read the value at the front.
+                    let value = unsafe { buffer.deref().read(f) };
+
+                    // Try incrementing the front index to steal the value.
+                    if self
+                        .inner
+                        .front
+                        .compare_exchange(f, f.wrapping_add(1), Ordering::SeqCst, Ordering::Relaxed)
+                        .is_err()
+                    {
+                        // We didn't steal this value, forget it and break from the loop.
+                        mem::forget(value);
+                        break;
+                    }
+
+                    // Write the stolen value into the destination buffer.
+                    unsafe {
+                        dest_buffer.write(dest_b, value);
+                    }
+
+                    // Move the source front index and the destination back index one step forward.
+                    f = f.wrapping_add(1);
+                    dest_b = dest_b.wrapping_add(1);
+
+                    atomic::fence(Ordering::Release);
+
+                    // Update the destination back index.
+                    //
+                    // This ordering could be `Relaxed`, but then thread sanitizer would falsely
+                    // report data races because it doesn't understand fences.
+                    dest.inner.back.store(dest_b, Ordering::Release);
+                }
+
+                // Return with success.
+                Racy::Done(true)
+            }
+        }
     }
 
     /// Steals elements from the front of the deque.
@@ -711,10 +813,10 @@ impl<T> Stealer<T> {
     /// w1.push(3);
     /// w1.push(4);
     ///
-    /// assert_eq!(s1.steal_many(&w2), Steal::Data(1));
-    /// assert_eq!(s2.steal(), Steal::Data(2));
+    /// assert_eq!(s1.steal_one_and_batch(&w2), Steal::Data(1));
+    /// assert_eq!(s2.steal_one(), Steal::Data(2));
     /// ```
-    pub fn steal_many(&self, dest: &Worker<T>) -> Steal<T> {
+    pub fn steal_one_and_batch(&self, dest: &Worker<T>) -> Racy<Option<T>> {
         // Load the front index.
         let mut f = self.inner.front.load(Ordering::Acquire);
 
@@ -735,13 +837,13 @@ impl<T> Stealer<T> {
         // Is the deque empty?
         let len = b.wrapping_sub(f);
         if len <= 0 {
-            return Steal::Empty;
+            return Racy::Done(None);
         }
 
-        // Reserve capacity for the stolen additional elements.
-        let additional = cmp::min((len as usize - 1) / 2, MAX_BATCH);
-        dest.reserve(additional);
-        let additional = additional as isize;
+        // Reserve capacity for the stolen batch.
+        let batch_size = cmp::min((len as usize - 1) / 2, MAX_BATCH);
+        dest.reserve(batch_size);
+        let batch_size = batch_size as isize;
 
         // Get the destination buffer and back index.
         let dest_buffer = dest.cached_buffer.get();
@@ -754,8 +856,8 @@ impl<T> Stealer<T> {
         match self.flavor {
             // Steal a batch of elements from the front at once.
             Flavor::Fifo => {
-                // Copy the additional elements from the source to the destination buffer.
-                for i in 0..additional {
+                // Copy the batch from the source to the destination buffer.
+                for i in 0..batch_size {
                     unsafe {
                         let value = buffer.deref().read(f.wrapping_add(i + 1));
                         dest_buffer.write(dest_b.wrapping_add(i), value);
@@ -768,14 +870,14 @@ impl<T> Stealer<T> {
                     .front
                     .compare_exchange(
                         f,
-                        f.wrapping_add(additional + 1),
+                        f.wrapping_add(batch_size + 1),
                         Ordering::SeqCst,
                         Ordering::Relaxed,
                     ).is_err()
                 {
                     // We didn't steal this value, forget it.
                     mem::forget(value);
-                    return Steal::Retry;
+                    return Racy::Retry;
                 }
 
                 atomic::fence(Ordering::Release);
@@ -786,10 +888,10 @@ impl<T> Stealer<T> {
                 // data races because it doesn't understand fences.
                 dest.inner
                     .back
-                    .store(dest_b.wrapping_add(additional), Ordering::Release);
+                    .store(dest_b.wrapping_add(batch_size), Ordering::Release);
 
                 // Return the first stolen value.
-                Steal::Data(value)
+                Racy::Done(Some(value))
             }
 
             // Steal a batch of elements from the front one by one.
@@ -803,14 +905,14 @@ impl<T> Stealer<T> {
                 {
                     // We didn't steal this value, forget it.
                     mem::forget(value);
-                    return Steal::Retry;
+                    return Racy::Retry;
                 }
 
                 // Move the front index one step forward.
                 f = f.wrapping_add(1);
 
-                // Repeat the same procedure for the additional steals.
-                for _ in 0..additional {
+                // Repeat the same procedure for the batch steals.
+                for _ in 0..batch_size {
                     // We've already got the current front index. Now execute the fence to
                     // synchronize with other threads.
                     atomic::fence(Ordering::SeqCst);
@@ -857,7 +959,7 @@ impl<T> Stealer<T> {
                 }
 
                 // Return the first stolen value.
-                Steal::Data(value)
+                Racy::Done(Some(value))
             }
         }
     }
