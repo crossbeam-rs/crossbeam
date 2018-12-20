@@ -208,16 +208,4 @@ impl SelectHandle for Channel {
 
     #[inline]
     fn unwatch(&self, _oper: Operation) {}
-
-    #[inline]
-    fn state(&self) -> usize {
-        // Return 1 if the deadline has been reached and 0 otherwise.
-        if self.received.load(Ordering::SeqCst) {
-            1
-        } else if Instant::now() < self.delivery_time {
-            0
-        } else {
-            1
-        }
-    }
 }
