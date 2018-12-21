@@ -114,9 +114,4 @@ impl<T> SelectHandle for Channel<T> {
 
     #[inline]
     fn unwatch(&self, _oper: Operation) {}
-
-    #[inline]
-    fn state(&self) -> usize {
-        0
-    }
 }

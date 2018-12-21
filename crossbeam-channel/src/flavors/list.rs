@@ -565,10 +565,6 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
     fn unwatch(&self, oper: Operation) {
         self.0.receivers.unwatch(oper);
     }
-
-    fn state(&self) -> usize {
-        self.0.tail.index.load(Ordering::SeqCst)
-    }
 }
 
 impl<'a, T> SelectHandle for Sender<'a, T> {
@@ -599,8 +595,4 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
     }
 
     fn unwatch(&self, _oper: Operation) {}
-
-    fn state(&self) -> usize {
-        self.0.head.index.load(Ordering::SeqCst)
-    }
 }

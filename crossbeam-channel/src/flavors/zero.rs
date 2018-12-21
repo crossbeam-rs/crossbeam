@@ -408,10 +408,6 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
         let mut inner = self.0.inner.lock();
         inner.receivers.unwatch(oper);
     }
-
-    fn state(&self) -> usize {
-        self.0.inner.lock().senders.register_count()
-    }
 }
 
 impl<'a, T> SelectHandle for Sender<'a, T> {
@@ -461,9 +457,5 @@ impl<'a, T> SelectHandle for Sender<'a, T> {
     fn unwatch(&self, oper: Operation) {
         let mut inner = self.0.inner.lock();
         inner.senders.unwatch(oper);
-    }
-
-    fn state(&self) -> usize {
-        self.0.inner.lock().receivers.register_count()
     }
 }

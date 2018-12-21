@@ -1,6 +1,5 @@
 //! Waking mechanism for threads blocked on channel operations.
 
-use std::num::Wrapping;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, ThreadId};
 
@@ -31,9 +30,6 @@ pub struct Waker {
 
     /// A list of operations waiting to be ready.
     observers: Vec<Entry>,
-
-    /// The number of calls to `register` and `register_with_packet`.
-    register_count: Wrapping<usize>,
 }
 
 impl Waker {
@@ -43,7 +39,6 @@ impl Waker {
         Waker {
             selectors: Vec::new(),
             observers: Vec::new(),
-            register_count: Wrapping(0),
         }
     }
 
@@ -61,7 +56,6 @@ impl Waker {
             packet,
             cx: cx.clone(),
         });
-        self.register_count += Wrapping(1);
     }
 
     /// Unregisters a select operation.
@@ -168,13 +162,6 @@ impl Waker {
         }
 
         self.notify();
-    }
-
-    /// Returns the number of calls to `register` and `register_with_packet` that have occurred so
-    /// far.
-    #[inline]
-    pub fn register_count(&self) -> usize {
-        self.register_count.0
     }
 }
 

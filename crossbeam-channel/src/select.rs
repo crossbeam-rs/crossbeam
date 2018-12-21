@@ -30,7 +30,7 @@ pub struct Token {
 }
 
 /// Identifier associated with an operation by a specific thread on a specific channel.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Operation(usize);
 
 impl Operation {
@@ -50,7 +50,7 @@ impl Operation {
 }
 
 /// Current state of a select or a blocking operation.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selected {
     /// Still waiting for an operation.
     Waiting,
@@ -117,15 +117,6 @@ pub trait SelectHandle {
 
     /// Unregisters an operation for readiness notification.
     fn unwatch(&self, oper: Operation);
-
-    /// Returns the current state of the opposite side of the channel.
-    ///
-    /// This is typically represented by the current message index at the opposite side of the
-    /// channel.
-    ///
-    /// For example, by calling `state()`, the receiving side can check how much activity the
-    /// sending side has had and viceversa.
-    fn state(&self) -> usize;
 }
 
 impl<'a, T: SelectHandle> SelectHandle for &'a T {
@@ -159,10 +150,6 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
 
     fn unwatch(&self, oper: Operation) {
         (**self).unwatch(oper)
-    }
-
-    fn state(&self) -> usize {
-        (**self).state()
     }
 }
 
@@ -210,66 +197,23 @@ fn run_select(
     // selected operation.
     let mut token = Token::default();
 
-    // Is this is a non-blocking select?
-    if timeout == Timeout::Now {
-        if handles.len() <= 1 {
-            // Try selecting the operations without blocking.
-            for &(handle, i, ptr) in handles.iter() {
-                if handle.try_select(&mut token) {
-                    return Some((token, i, ptr));
-                }
-            }
-
-            return None;
-        }
-
-        let mut states = SmallVec::<[usize; 4]>::with_capacity(handles.len());
-
-        // Snapshot the channel states of all operations.
-        for &(handle, _, _) in handles.iter() {
-            states.push(handle.state());
-        }
-
-        loop {
-            // Try selecting one of the operations.
-            for &(handle, i, ptr) in handles.iter() {
-                if handle.try_select(&mut token) {
-                    return Some((token, i, ptr));
-                }
-            }
-
-            let mut changed = false;
-
-            // Update the channel states and check whether any have been changed.
-            for (&(handle, _, _), state) in handles.iter().zip(states.iter_mut()) {
-                let current = handle.state();
-
-                if *state != current {
-                    *state = current;
-                    changed = true;
-                }
-            }
-
-            // If none of the states have changed, selection failed.
-            if !changed {
-                return None;
-            }
+    // Try selecting one of the operations without blocking.
+    for &(handle, i, ptr) in handles.iter() {
+        if handle.try_select(&mut token) {
+            return Some((token, i, ptr));
         }
     }
 
     loop {
-        // Try selecting one of the operations without blocking.
-        for &(handle, i, ptr) in handles.iter() {
-            if handle.try_select(&mut token) {
-                return Some((token, i, ptr));
-            }
-        }
-
         // Prepare for blocking.
         let res = Context::with(|cx| {
             let mut sel = Selected::Waiting;
             let mut registered_count = 0;
             let mut index_ready = None;
+
+            if let Timeout::Now = timeout {
+                cx.try_select(Selected::Aborted).unwrap();
+            }
 
             // Register all operations.
             for (handle, i, _) in handles.iter_mut() {
@@ -299,7 +243,7 @@ fn run_select(
                 // Check with each operation for how long we're allowed to block, and compute the
                 // earliest deadline.
                 let mut deadline: Option<Instant> = match timeout {
-                    Timeout::Now => unreachable!(),
+                    Timeout::Now => return None,
                     Timeout::Never => None,
                     Timeout::At(when) => Some(when),
                 };
@@ -353,15 +297,19 @@ fn run_select(
             return Some((token, i, ptr));
         }
 
-        // Check for timeout.
+        // Try selecting one of the operations without blocking.
+        for &(handle, i, ptr) in handles.iter() {
+            if handle.try_select(&mut token) {
+                return Some((token, i, ptr));
+            }
+        }
+
         match timeout {
-            Timeout::Now => unreachable!(),
+            Timeout::Now => return None,
             Timeout::Never => {}
             Timeout::At(when) => {
                 if Instant::now() >= when {
-                    // Fall back to one final non-blocking select. This is needed to make the whole
-                    // select invocation appear from the outside as a single operation.
-                    return run_select(handles, Timeout::Now);
+                    return None;
                 }
             }
         }
