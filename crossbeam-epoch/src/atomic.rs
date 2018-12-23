@@ -936,6 +936,46 @@ impl<'g, T> Shared<'g, T> {
         &*self.as_raw()
     }
 
+    /// Dereferences the pointer.
+    ///
+    /// Returns a mutable reference to the pointee that is valid during the lifetime `'g`.
+    ///
+    /// # Safety
+    ///
+    /// * There is no guarantee that there are no more threads attempting to read/write from/to the
+    ///   actual object at the same time.
+    ///
+    ///   The user must know that there are no concurrent accesses towards the object itself.
+    ///
+    /// * Other than the above, all safety concerns of `deref()` applies here.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Atomic};
+    /// use std::sync::atomic::Ordering::SeqCst;
+    ///
+    /// let a = Atomic::new(vec![1, 2, 3, 4]);
+    /// let guard = &epoch::pin();
+    ///
+    /// let mut p = a.load(SeqCst, guard);
+    /// unsafe {
+    ///     assert!(!p.is_null());
+    ///     let b = p.deref_mut();
+    ///     assert_eq!(b, &vec![1, 2, 3, 4]);
+    ///     b.push(5);
+    ///     assert_eq!(b, &vec![1, 2, 3, 4, 5]);
+    /// }
+    ///
+    /// let p = a.load(SeqCst, guard);
+    /// unsafe {
+    ///     assert_eq!(p.deref(), &vec![1, 2, 3, 4, 5]);
+    /// }
+    /// ```
+    pub unsafe fn deref_mut(&mut self) -> &'g mut T {
+        &mut *(self.as_raw() as *mut T)
+    }
+
     /// Converts the pointer to a reference.
     ///
     /// Returns `None` if the pointer is null, or else a reference to the object wrapped in `Some`.
