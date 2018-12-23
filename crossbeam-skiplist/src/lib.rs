@@ -27,16 +27,16 @@ extern crate scopeguard;
 
 pub mod base;
 #[doc(inline)]
-pub use base::SkipList;
+pub use crate::base::SkipList;
 
 cfg_if! {
     if #[cfg(feature = "std")] {
         pub mod map;
         #[doc(inline)]
-        pub use map::SkipMap;
+        pub use crate::map::SkipMap;
 
         pub mod set;
         #[doc(inline)]
-        pub use set::SkipSet;
+        pub use crate::set::SkipSet;
     }
 }

@@ -5,15 +5,15 @@ use std::marker::PhantomData;
 use std::mem;
 use std::time::{Duration, Instant};
 
-use channel::{self, Receiver, Sender};
-use context::Context;
-use err::{ReadyTimeoutError, TryReadyError};
-use err::{RecvError, SendError};
-use err::{SelectTimeoutError, TrySelectError};
+use crate::channel::{self, Receiver, Sender};
+use crate::context::Context;
+use crate::err::{ReadyTimeoutError, TryReadyError};
+use crate::err::{RecvError, SendError};
+use crate::err::{SelectTimeoutError, TrySelectError};
 use smallvec::SmallVec;
-use utils::{self, Backoff};
+use crate::utils::{self, Backoff};
 
-use flavors;
+use crate::flavors;
 
 /// Temporary data that gets initialized during select or a blocking operation, and is consumed by
 /// `read` or `write`.

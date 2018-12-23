@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use deque::{Pop, Steal};
+use crate::deque::{Pop, Steal};
 use rand::Rng;
 
 #[test]

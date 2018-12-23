@@ -6,8 +6,8 @@ use std::sync::Arc;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
-use select::Selected;
-use utils::Backoff;
+use crate::select::Selected;
+use crate::utils::Backoff;
 
 /// Thread-local context used in select.
 #[derive(Clone)]

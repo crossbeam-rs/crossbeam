@@ -35,7 +35,7 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use alloc::boxed::Box;
+use crate::alloc::boxed::Box;
 use core::cell::{Cell, UnsafeCell};
 use core::mem::{self, ManuallyDrop};
 use core::num::Wrapping;
@@ -46,13 +46,13 @@ use core::sync::atomic::Ordering;
 use arrayvec::ArrayVec;
 use crossbeam_utils::CachePadded;
 
-use atomic::Owned;
-use collector::{Collector, LocalHandle};
-use deferred::Deferred;
-use epoch::{AtomicEpoch, Epoch};
-use guard::{unprotected, Guard};
-use sync::list::{Entry, IsElement, IterError, List};
-use sync::queue::Queue;
+use crate::atomic::Owned;
+use crate::collector::{Collector, LocalHandle};
+use crate::deferred::Deferred;
+use crate::epoch::{AtomicEpoch, Epoch};
+use crate::guard::{unprotected, Guard};
+use crate::sync::list::{Entry, IsElement, IterError, List};
+use crate::sync::queue::Queue;
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(feature = "sanitize"))]

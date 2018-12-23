@@ -75,8 +75,8 @@ use std::ptr;
 use std::sync::atomic::{self, AtomicIsize, Ordering};
 use std::sync::Arc;
 
-use epoch::{Atomic, Owned};
-use utils::CachePadded;
+use crate::epoch::{Atomic, Owned};
+use crate::utils::CachePadded;
 
 /// Minimum buffer capacity for a deque.
 const MIN_CAP: usize = 32;

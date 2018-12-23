@@ -1,4 +1,4 @@
-use alloc::sync::Arc;
+use crate::alloc::sync::Arc;
 use core::marker::PhantomData;
 use core::mem;
 use core::sync::atomic::{AtomicUsize, Ordering};

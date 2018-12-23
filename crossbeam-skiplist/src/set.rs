@@ -5,7 +5,7 @@ use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Bound, RangeBounds};
 
-use map;
+use crate::map;
 
 /// A set based on a lock-free skip list.
 pub struct SkipSet<T> {

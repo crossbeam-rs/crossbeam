@@ -26,7 +26,7 @@ cfg_if! {
 pub mod atomic;
 
 mod cache_padded;
-pub use cache_padded::CachePadded;
+pub use crate::cache_padded::CachePadded;
 
 cfg_if! {
     if #[cfg(feature = "std")] {

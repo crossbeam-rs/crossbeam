@@ -362,13 +362,13 @@ mod select_macro;
 mod utils;
 mod waker;
 
-pub use channel::{after, never, tick};
-pub use channel::{bounded, unbounded};
-pub use channel::{IntoIter, Iter, TryIter};
-pub use channel::{Receiver, Sender};
+pub use crate::channel::{after, never, tick};
+pub use crate::channel::{bounded, unbounded};
+pub use crate::channel::{IntoIter, Iter, TryIter};
+pub use crate::channel::{Receiver, Sender};
 
-pub use select::{Select, SelectedOperation};
+pub use crate::select::{Select, SelectedOperation};
 
-pub use err::{RecvError, RecvTimeoutError, TryRecvError};
-pub use err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
-pub use err::{SendError, SendTimeoutError, TrySendError};
+pub use crate::err::{RecvError, RecvTimeoutError, TryRecvError};
+pub use crate::err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
+pub use crate::err::{SendError, SendTimeoutError, TrySendError};

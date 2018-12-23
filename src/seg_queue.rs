@@ -6,7 +6,7 @@ use std::ptr;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 
-use epoch::{self, Atomic, Owned};
+use crate::epoch::{self, Atomic, Owned};
 
 const SEG_SIZE: usize = 32;
 
@@ -176,7 +176,7 @@ mod test {
     const CONC_COUNT: i64 = 1000000;
 
     use super::*;
-    use scope;
+    use crate::scope;
 
     #[test]
     fn push_pop_1() {

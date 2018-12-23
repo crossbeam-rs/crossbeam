@@ -2,7 +2,7 @@ use std::mem::ManuallyDrop;
 use std::ptr;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use epoch::{self, Atomic, Owned};
+use crate::epoch::{self, Atomic, Owned};
 
 /// Treiber's lock-free stack.
 ///
@@ -92,7 +92,7 @@ impl<T> Default for TreiberStack<T> {
 mod test {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use {epoch, thread};
+    use crate::{epoch, thread};
 
     #[test]
     fn is_empty() {

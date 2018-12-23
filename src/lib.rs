@@ -56,7 +56,7 @@ mod _epoch {
     pub extern crate crossbeam_epoch;
 }
 #[doc(inline)]
-pub use _epoch::crossbeam_epoch as epoch;
+pub use crate::_epoch::crossbeam_epoch as epoch;
 
 mod arc_cell;
 
@@ -64,7 +64,7 @@ extern crate crossbeam_utils;
 
 /// Additional utilities for atomics.
 pub mod atomic {
-    pub use arc_cell::ArcCell;
+    pub use crate::arc_cell::ArcCell;
     pub use crossbeam_utils::atomic::AtomicCell;
     pub use crossbeam_utils::atomic::AtomicConsume;
 }
@@ -89,18 +89,18 @@ cfg_if! {
             pub extern crate crossbeam_deque;
         }
         #[doc(inline)]
-        pub use _deque::crossbeam_deque as deque;
+        pub use crate::_deque::crossbeam_deque as deque;
 
         mod _channel {
             pub extern crate crossbeam_channel;
             pub use self::crossbeam_channel::*;
         }
         #[doc(inline)]
-        pub use _channel::crossbeam_channel as channel;
+        pub use crate::_channel::crossbeam_channel as channel;
 
         // HACK(stjepang): This is the only way to reexport `select!` in Rust older than 1.30.0
         #[doc(hidden)]
-        pub use _channel::*;
+        pub use crate::_channel::*;
 
         #[macro_use]
         extern crate lazy_static;
@@ -115,20 +115,20 @@ cfg_if! {
 
         /// Concurrent queues.
         pub mod queue {
-            pub use ms_queue::MsQueue;
-            pub use seg_queue::SegQueue;
+            pub use crate::ms_queue::MsQueue;
+            pub use crate::seg_queue::SegQueue;
         }
 
         /// Concurrent stacks.
         pub mod stack {
-            pub use treiber_stack::TreiberStack;
+            pub use crate::treiber_stack::TreiberStack;
         }
 
         /// Utilities for thread synchronization.
         pub mod sync {
             pub use crossbeam_utils::sync::Parker;
-            pub use sharded_lock::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-            pub use wait_group::WaitGroup;
+            pub use crate::sharded_lock::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
+            pub use crate::wait_group::WaitGroup;
         }
     }
 }

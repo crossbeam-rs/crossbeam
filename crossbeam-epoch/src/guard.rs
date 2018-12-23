@@ -1,10 +1,10 @@
 use core::fmt;
 use core::mem;
 
-use atomic::Shared;
-use collector::Collector;
-use deferred::Deferred;
-use internal::Local;
+use crate::atomic::Shared;
+use crate::collector::Collector;
+use crate::deferred::Deferred;
+use crate::internal::Local;
 
 /// A guard that keeps the current thread pinned.
 ///

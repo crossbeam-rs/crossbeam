@@ -4,8 +4,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use std::thread::{self, Thread};
 
-use epoch::{self, Atomic, Owned, Shared};
-use utils::CachePadded;
+use crate::epoch::{self, Atomic, Owned, Shared};
+use crate::utils::CachePadded;
 
 /// A Michael-Scott lock-free queue, with support for blocking `pop`s.
 ///
@@ -354,7 +354,7 @@ mod test {
     const CONC_COUNT: i64 = 1000000;
 
     use super::*;
-    use scope;
+    use crate::scope;
 
     #[test]
     fn push_try_pop_1() {

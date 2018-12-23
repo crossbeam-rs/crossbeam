@@ -6,7 +6,7 @@
 use core::marker::PhantomData;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use {unprotected, Atomic, Guard, Shared};
+use crate::{unprotected, Atomic, Guard, Shared};
 
 /// An entry in a linked list.
 ///
@@ -67,7 +67,7 @@ pub struct Entry {
 ///
 pub trait IsElement<T> {
     /// Returns a reference to this element's `Entry`.
-    fn entry_of(&T) -> &Entry;
+    fn entry_of(_: &T) -> &Entry;
 
     /// Given a reference to an element's entry, returns that element.
     ///
@@ -80,7 +80,7 @@ pub trait IsElement<T> {
     /// # Safety
     /// The caller has to guarantee that the `Entry` it
     /// is called with was retrieved from an instance of the element type (`T`).
-    unsafe fn element_of(&Entry) -> &T;
+    unsafe fn element_of(_: &Entry) -> &T;
 
     /// Deallocates the whole element given its `Entry`. This is called when the list
     /// is ready to actually free the element.
@@ -88,7 +88,7 @@ pub trait IsElement<T> {
     /// # Safety
     /// The caller has to guarantee that the `Entry` it
     /// is called with was retrieved from an instance of the element type (`T`).
-    unsafe fn finalize(&Entry);
+    unsafe fn finalize(_: &Entry);
 }
 
 /// A lock-free, intrusive linked list of type `T`.
@@ -292,7 +292,7 @@ mod tests {
     use super::*;
     use crossbeam_utils::thread;
     use std::sync::Barrier;
-    use {Collector, Owned};
+    use crate::{Collector, Owned};
 
     impl IsElement<Entry> for Entry {
         fn entry_of(entry: &Entry) -> &Entry {

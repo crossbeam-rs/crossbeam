@@ -12,11 +12,11 @@
 ///
 /// handle.pin().flush();
 /// ```
-use alloc::sync::Arc;
+use crate::alloc::sync::Arc;
 use core::fmt;
 
-use guard::Guard;
-use internal::{Global, Local};
+use crate::guard::Guard;
+use crate::internal::{Global, Local};
 
 /// An epoch-based garbage collector.
 pub struct Collector {
@@ -111,7 +111,7 @@ mod tests {
 
     use crossbeam_utils::thread;
 
-    use {Collector, Owned};
+    use crate::{Collector, Owned};
 
     const NUM_THREADS: usize = 8;
 

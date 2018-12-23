@@ -5,8 +5,8 @@ use std::thread::{self, ThreadId};
 
 use parking_lot::Mutex;
 
-use context::Context;
-use select::{Operation, Selected};
+use crate::context::Context;
+use crate::select::{Operation, Selected};
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {

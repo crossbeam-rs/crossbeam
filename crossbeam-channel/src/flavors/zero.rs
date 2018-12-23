@@ -9,11 +9,11 @@ use std::time::Instant;
 
 use parking_lot::Mutex;
 
-use context::Context;
-use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use select::{Operation, SelectHandle, Selected, Token};
-use utils::Backoff;
-use waker::Waker;
+use crate::context::Context;
+use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::select::{Operation, SelectHandle, Selected, Token};
+use crate::utils::Backoff;
+use crate::waker::Waker;
 
 /// A pointer to a packet.
 pub type ZeroToken = usize;

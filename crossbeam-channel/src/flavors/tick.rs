@@ -8,9 +8,9 @@ use std::time::{Duration, Instant};
 
 use crossbeam_utils::atomic::AtomicCell;
 
-use context::Context;
-use err::{RecvTimeoutError, TryRecvError};
-use select::{Operation, SelectHandle, Token};
+use crate::context::Context;
+use crate::err::{RecvTimeoutError, TryRecvError};
+use crate::select::{Operation, SelectHandle, Token};
 
 /// Result of a receive operation.
 pub type TickToken = Option<Instant>;
@@ -61,7 +61,7 @@ impl Channel {
         loop {
             // Compute the time to sleep until the next message or the deadline.
             let offset = {
-                let mut delivery_time = self.delivery_time.load();
+                let delivery_time = self.delivery_time.load();
                 let now = Instant::now();
 
                 // Check if we can receive the next message.
