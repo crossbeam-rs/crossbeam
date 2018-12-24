@@ -18,7 +18,7 @@ fn seq() {
 
     for _ in 0..MESSAGES {
         match rx.steal() {
-            Steal::Data(_) => break,
+            Steal::Data(_) => {},
             Steal::Retry => panic!(),
             Steal::Empty => panic!(),
         }
