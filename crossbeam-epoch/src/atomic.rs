@@ -253,9 +253,13 @@ impl<T> Pointable for [MaybeUninit<T>] {
     type Init = usize;
 
     unsafe fn init(size: Self::Init) -> usize {
-        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * size;
-        let align = mem::align_of::<Array<T>>();
-        let layout = alloc::Layout::from_size_align(size, align).unwrap();
+        let elt_size = cmp::max(
+            mem::size_of::<MaybeUninit<T>>(),
+            mem::align_of::<MaybeUninit<T>>(),
+        );
+        let struct_size = mem::size_of::<Array<T>>() + elt_size * size;
+        let struct_align = mem::align_of::<Array<T>>();
+        let layout = alloc::Layout::from_size_align(struct_size, struct_align).unwrap();
         let ptr = alloc::alloc(layout) as *mut Array<T>;
         (*ptr).size = size;
         ptr as usize
@@ -273,7 +277,8 @@ impl<T> Pointable for [MaybeUninit<T>] {
 
     unsafe fn drop(ptr: usize) {
         let array = &*(ptr as *mut Array<T>);
-        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * array.size;
+        let size =
+            mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * array.size;
         let align = mem::align_of::<Array<T>>();
         let layout = alloc::Layout::from_size_align(size, align).unwrap();
         alloc::dealloc(ptr as *mut u8, layout);
