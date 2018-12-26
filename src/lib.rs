@@ -104,7 +104,6 @@ cfg_if! {
 
         #[macro_use]
         extern crate lazy_static;
-        extern crate num_cpus;
         extern crate parking_lot;
 
         mod ms_queue;

@@ -13,7 +13,6 @@ use std::ops::{Deref, DerefMut};
 use std::thread::{self, ThreadId};
 
 use crossbeam_utils::CachePadded;
-use num_cpus;
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// A scalable reader-writer lock.
@@ -42,12 +41,15 @@ unsafe impl<T: Send> Send for ShardedLock<T> {}
 unsafe impl<T: Send + Sync> Sync for ShardedLock<T> {}
 
 impl<T> ShardedLock<T> {
-    /// Creates a new `ShardedLock` initialized with `value`.
-    pub fn new(value: T) -> ShardedLock<T> {
+    /// Creates a new `ShardedLock`.
+    ///
+    /// The lock is initialized to `value`. The actual number of shards used might be slightly
+    /// different from `num_shards` because that argument is only considered to be a *hint*. A
+    /// generally good number of shards to use is the number of available CPUs.
+    pub fn new(value: T, num_shards: usize) -> ShardedLock<T> {
         // The number of shards is a power of two so that the modulo operation in `read` becomes a
         // simple bitwise "and".
-        let num_shards = num_cpus::get().next_power_of_two();
-
+        let num_shards = num_shards.max(1).next_power_of_two();
         ShardedLock {
             shards: (0..num_shards)
                 .map(|_| CachePadded::new(RwLock::new(())))
