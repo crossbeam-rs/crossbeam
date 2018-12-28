@@ -34,11 +34,11 @@ const LAP: usize = 32;
 // The maximum number of messages a block can hold.
 const BLOCK_CAP: usize = LAP - 1;
 // How many lower bits are reserved for metadata.
-const SHIFT: usize = 2;
-// Indicates that the block is not the last one.
-const HAS_NEXT: usize = 1;
-// Indicates that the channel is disconnected.
-const DISCONNECTED: usize = 2;
+const SHIFT: usize = 1;
+// Has two different purposes:
+// * If set in head, indicates that the block is not the last one.
+// * If set in tail, indicates that the channel is disconnected.
+const MARK_BIT: usize = 1;
 
 /// A slot in a block.
 struct Slot<T> {
@@ -162,15 +162,13 @@ pub struct Channel<T> {
 impl<T> Channel<T> {
     /// Creates a new unbounded channel.
     pub fn new() -> Self {
-        let block = Box::into_raw(Box::new(Block::<T>::new()));
-
         Channel {
             head: CachePadded::new(Position {
-                block: AtomicPtr::new(block),
+                block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
             }),
             tail: CachePadded::new(Position {
-                block: AtomicPtr::new(block),
+                block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
             }),
             receivers: SyncWaker::new(),
@@ -196,7 +194,7 @@ impl<T> Channel<T> {
 
         loop {
             // Check if the channel is disconnected.
-            if tail & DISCONNECTED != 0 {
+            if tail & MARK_BIT != 0 {
                 token.list.block = ptr::null();
                 return true;
             }
@@ -211,12 +209,27 @@ impl<T> Channel<T> {
                 continue;
             }
 
-            let block = self.tail.block.load(Ordering::Acquire);
+            let mut block = self.tail.block.load(Ordering::Acquire);
 
             // If we're going to have to install the next block, allocate it in advance in order to
             // make the wait for other threads as short as possible.
             if offset + 1 == BLOCK_CAP && next_block.is_none() {
                 next_block = Some(Box::new(Block::<T>::new()));
+            }
+
+            // If this is the first message to be sent into the channel, we need to allocate the
+            // first block and install it.
+            if block.is_null() {
+                let new = Box::into_raw(Box::new(Block::<T>::new()));
+
+                if self.tail.block.compare_and_swap(block, new, Ordering::Release) == block {
+                    self.head.block.store(new, Ordering::Release);
+                    block = new;
+                } else {
+                    next_block = unsafe { Some(Box::from_raw(new)) };
+                    tail = self.tail.index.load(Ordering::Acquire);
+                    continue;
+                }
             }
 
             let new_tail = tail + (1 << SHIFT);
@@ -290,14 +303,14 @@ impl<T> Channel<T> {
 
             let mut new_head = head + (1 << SHIFT);
 
-            if new_head & HAS_NEXT == 0 {
+            if new_head & MARK_BIT == 0 {
                 atomic::fence(Ordering::SeqCst);
                 let tail = self.tail.index.load(Ordering::Relaxed);
 
                 // If the tail equals the head, that means the channel is empty.
                 if head >> SHIFT == tail >> SHIFT {
                     // If the channel is disconnected...
-                    if tail & DISCONNECTED != 0 {
+                    if tail & MARK_BIT != 0 {
                         // ...then receive an error.
                         token.list.block = ptr::null();
                         return true;
@@ -307,13 +320,20 @@ impl<T> Channel<T> {
                     }
                 }
 
-                // If head and tail are not in the same block, set `HAS_NEXT` in head.
+                // If head and tail are not in the same block, set `MARK_BIT` in head.
                 if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
-                    new_head |= HAS_NEXT;
+                    new_head |= MARK_BIT;
                 }
             }
 
             let block = self.head.block.load(Ordering::Acquire);
+
+            // The block can be null here only if the first message is being sent into the channel.
+            // In that case, just wait until it gets initialized.
+            if block.is_null() {
+                backoff.snooze();
+                continue;
+            }
 
             // Try moving the head index forward.
             match self.head.index
@@ -328,9 +348,9 @@ impl<T> Channel<T> {
                     // If we've reached the end of the block, move to the next one.
                     if offset + 1 == BLOCK_CAP {
                         let next = (*block).wait_next();
-                        let mut next_index = (new_head & !HAS_NEXT).wrapping_add(1 << SHIFT);
+                        let mut next_index = (new_head & !MARK_BIT).wrapping_add(1 << SHIFT);
                         if !(*next).next.load(Ordering::Relaxed).is_null() {
-                            next_index |= HAS_NEXT;
+                            next_index |= MARK_BIT;
                         }
 
                         self.head.block.store(next, Ordering::Release);
@@ -497,16 +517,16 @@ impl<T> Channel<T> {
 
     /// Disconnects the channel and wakes up all blocked receivers.
     pub fn disconnect(&self) {
-        let tail = self.tail.index.fetch_or(DISCONNECTED, Ordering::SeqCst);
+        let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
 
-        if tail & DISCONNECTED == 0 {
+        if tail & MARK_BIT == 0 {
             self.receivers.disconnect();
         }
     }
 
     /// Returns `true` if the channel is disconnected.
     pub fn is_disconnected(&self) -> bool {
-        self.tail.index.load(Ordering::SeqCst) & DISCONNECTED != 0
+        self.tail.index.load(Ordering::SeqCst) & MARK_BIT != 0
     }
 
     /// Returns `true` if the channel is empty.
@@ -552,7 +572,9 @@ impl<T> Drop for Channel<T> {
             }
 
             // Deallocate the last remaining block.
-            drop(Box::from_raw(block));
+            if !block.is_null() {
+                drop(Box::from_raw(block));
+            }
         }
     }
 }
