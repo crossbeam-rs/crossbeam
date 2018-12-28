@@ -1,7 +1,9 @@
 use std::fmt;
 
+const LEN: usize = 1;
+
 #[derive(Clone, Copy)]
-pub struct Message(pub i32);
+pub struct Message(pub [usize; LEN]);
 
 impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -11,5 +13,5 @@ impl fmt::Debug for Message {
 
 #[inline]
 pub fn new(num: usize) -> Message {
-    Message(num as i32)
+    Message([num; LEN])
 }

@@ -6,17 +6,13 @@ import "time"
 const MESSAGES = 5 * 1000 * 1000
 const THREADS = 4
 
-type Message = int
-
-func message(msg int) Message {
-    return msg
-}
+type Message = uintptr
 
 func seq(cap int) {
     var c = make(chan Message, cap)
 
     for i := 0; i < MESSAGES; i++ {
-        c <- i
+        c <- Message(i)
     }
 
     for i := 0; i < MESSAGES; i++ {
@@ -30,7 +26,7 @@ func spsc(cap int) {
 
     go func() {
         for i := 0; i < MESSAGES; i++ {
-            c <- i
+            c <- Message(i)
         }
         done <- true
     }()
@@ -49,7 +45,7 @@ func mpsc(cap int) {
     for t := 0; t < THREADS; t++ {
         go func() {
             for i := 0; i < MESSAGES / THREADS; i++ {
-                c <- i
+                c <- Message(i)
             }
             done <- true
         }()
@@ -71,7 +67,7 @@ func mpmc(cap int) {
     for t := 0; t < THREADS; t++ {
         go func() {
             for i := 0; i < MESSAGES / THREADS; i++ {
-                c <- i
+                c <- Message(i)
             }
             done <- true
         }()
@@ -106,7 +102,7 @@ func select_rx(cap int) {
 
     var producer = func(c chan Message) {
         for i := 0; i < MESSAGES / THREADS; i++ {
-            c <- i
+            c <- Message(i)
         }
         done <- true
     }
@@ -142,7 +138,7 @@ func select_both(cap int) {
 
     var producer = func(c chan Message) {
         for i := 0; i < MESSAGES / THREADS; i++ {
-            c <- i
+            c <- Message(i)
         }
         done <- true
     }
