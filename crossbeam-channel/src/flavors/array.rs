@@ -31,14 +31,9 @@ use waker::SyncWaker;
 /// A slot in a channel.
 struct Slot<T> {
     /// The current stamp.
-    ///
-    /// If the stamp equals the tail, this node will be next written to. If it equals the head,
-    /// this node will be next read from.
     stamp: AtomicUsize,
 
     /// The message in this slot.
-    ///
-    /// If the lap in the stamp is odd, this value contains a message. Otherwise, it is empty.
     msg: UnsafeCell<T>,
 }
 
@@ -67,8 +62,7 @@ pub struct Channel<T> {
     ///
     /// This value is a "stamp" consisting of an index into the buffer, a mark bit, and a lap, but
     /// packed into a single `usize`. The lower bits represent the index, while the upper bits
-    /// represent the lap. The mark bit in the head is always zero and the lap is always an odd
-    /// number.
+    /// represent the lap. The mark bit in the head is always zero.
     ///
     /// Messages are popped from the head of the channel.
     head: CachePadded<AtomicUsize>,
@@ -77,8 +71,7 @@ pub struct Channel<T> {
     ///
     /// This value is a "stamp" consisting of an index into the buffer, a mark bit, and a lap, but
     /// packed into a single `usize`. The lower bits represent the index, while the upper bits
-    /// represent the lap. The mark bit indicates that the channel is disconnected. The lap in the
-    /// tail is always an even number.
+    /// represent the lap. The mark bit indicates that the channel is disconnected.
     ///
     /// Messages are pushed into the tail of the channel.
     tail: CachePadded<AtomicUsize>,
@@ -110,14 +103,14 @@ impl<T> Channel<T> {
     ///
     /// # Panics
     ///
-    /// Panics if the capacity is not in the range `1 ..= usize::max_value() / 8`.
+    /// Panics if the capacity is not in the range `1 ..= usize::max_value() / 4`.
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
-        // Make sure there are at least two most significant bits to encode laps and one more for
-        // marking to indicate that the channel is disconnected. If we can't reserve three bits,
-        // then panic. In that case, the buffer is likely too large to allocate anyway.
-        let cap_limit = usize::max_value() / 8;
+        // Make sure there are at least two most significant bits: one to encode laps and one more
+        // to indicate that the channel is disconnected. If we can't reserve two bits, then panic.
+        // In that case, the buffer is likely too large to allocate anyway.
+        let cap_limit = usize::max_value() / 4;
         assert!(
             cap <= cap_limit,
             "channel capacity is too large: {} > {}",
@@ -126,12 +119,12 @@ impl<T> Channel<T> {
         );
 
         // Compute constants `mark_bit` and `one_lap`.
-        let mark_bit = cap.next_power_of_two();
+        let mark_bit = (cap + 1).next_power_of_two();
         let one_lap = mark_bit * 2;
 
-        // Head is initialized to `{ lap: 1, mark: 0, index: 0 }`.
+        // Head is initialized to `{ lap: 0, mark: 0, index: 0 }`.
+        let head = 0;
         // Tail is initialized to `{ lap: 0, mark: 0, index: 0 }`.
-        let head = one_lap;
         let tail = 0;
 
         // Allocate a buffer of `cap` slots.
@@ -145,7 +138,7 @@ impl<T> Channel<T> {
         // Initialize stamps in the slots.
         for i in 0..cap {
             unsafe {
-                // Set the stamp to `{ lap: 0, index: i }`.
+                // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
                 let slot = buffer.add(i);
                 ptr::write(&mut (*slot).stamp, AtomicUsize::new(i));
             }
@@ -199,12 +192,12 @@ impl<T> Channel<T> {
             if tail == stamp {
                 let new_tail = if index + 1 < self.cap {
                     // Same lap, incremented index.
-                    // Set to `{ lap: lap, index: index + 1 }`.
+                    // Set to `{ lap: lap, mark: 0, index: index + 1 }`.
                     tail + 1
                 } else {
-                    // Two laps forward, index wraps around to zero.
-                    // Set to `{ lap: lap.wrapping_add(2), index: 0 }`.
-                    lap.wrapping_add(self.one_lap.wrapping_mul(2))
+                    // One lap forward, index wraps around to zero.
+                    // Set to `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`.
+                    lap.wrapping_add(self.one_lap)
                 };
 
                 // Try moving the tail.
@@ -215,7 +208,7 @@ impl<T> Channel<T> {
                     Ok(_) => {
                         // Prepare the token for the follow-up call to `write`.
                         token.array.slot = slot as *const Slot<T> as *const u8;
-                        token.array.stamp = stamp.wrapping_add(self.one_lap);
+                        token.array.stamp = tail + 1;
                         return true;
                     }
                     Err(t) => {
@@ -223,12 +216,11 @@ impl<T> Channel<T> {
                         backoff.spin();
                     }
                 }
-            // But if the slot lags one lap behind the tail...
-            } else if stamp.wrapping_add(self.one_lap) == tail {
+            } else if stamp.wrapping_add(self.one_lap) == tail + 1 {
                 atomic::fence(Ordering::SeqCst);
                 let head = self.head.load(Ordering::Relaxed);
 
-                // ...and if the head lags one lap behind the tail as well...
+                // If the head lags one lap behind the tail as well...
                 if head.wrapping_add(self.one_lap) == tail {
                     // ...then the channel is full.
                     return false;
@@ -276,16 +268,16 @@ impl<T> Channel<T> {
             let slot = unsafe { &*self.buffer.add(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
-            // If the the head and the stamp match, we may attempt to pop.
-            if head == stamp {
+            // If the the stamp is ahead of the head by 1, we may attempt to pop.
+            if head + 1 == stamp {
                 let new = if index + 1 < self.cap {
                     // Same lap, incremented index.
-                    // Set to `{ lap: lap, index: index + 1 }`.
+                    // Set to `{ lap: lap, mark: 0, index: index + 1 }`.
                     head + 1
                 } else {
-                    // Two laps forward, index wraps around to zero.
-                    // Set to `{ lap: lap.wrapping_add(2), index: 0 }`.
-                    lap.wrapping_add(self.one_lap.wrapping_mul(2))
+                    // One lap forward, index wraps around to zero.
+                    // Set to `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`.
+                    lap.wrapping_add(self.one_lap)
                 };
 
                 // Try moving the head.
@@ -296,7 +288,7 @@ impl<T> Channel<T> {
                     Ok(_) => {
                         // Prepare the token for the follow-up call to `read`.
                         token.array.slot = slot as *const Slot<T> as *const u8;
-                        token.array.stamp = stamp.wrapping_add(self.one_lap);
+                        token.array.stamp = head.wrapping_add(self.one_lap);
                         return true;
                     }
                     Err(h) => {
@@ -304,14 +296,13 @@ impl<T> Channel<T> {
                         backoff.spin();
                     }
                 }
-            // But if the slot lags one lap behind the head...
-            } else if stamp.wrapping_add(self.one_lap) == head {
+            } else if stamp == head {
                 atomic::fence(Ordering::SeqCst);
                 let tail = self.tail.load(Ordering::Relaxed);
 
-                // ...and if the tail lags one lap behind the head as well, that means the channel
-                // is empty.
-                if (tail & !self.mark_bit).wrapping_add(self.one_lap) == head {
+                // If the tail lags one lap behind the head as well, that means the channel is
+                // empty.
+                if (tail & !self.mark_bit) == head {
                     // If the channel is disconnected...
                     if tail & self.mark_bit != 0 {
                         // ...then receive an error.
@@ -483,7 +474,7 @@ impl<T> Channel<T> {
                     tix - hix
                 } else if hix > tix {
                     self.cap - hix + tix
-                } else if (tail & !self.mark_bit).wrapping_add(self.one_lap) == head {
+                } else if (tail & !self.mark_bit) == head {
                     0
                 } else {
                     self.cap
@@ -517,11 +508,11 @@ impl<T> Channel<T> {
         let head = self.head.load(Ordering::SeqCst);
         let tail = self.tail.load(Ordering::SeqCst);
 
-        // Is the tail lagging one lap behind head?
+        // Is the tail equal to the head?
         //
         // Note: If the head changes just before we load the tail, that means there was a moment
         // when the channel was not empty, so it is safe to just return `false`.
-        (tail & !self.mark_bit).wrapping_add(self.one_lap) == head
+        (tail & !self.mark_bit) == head
     }
 
     /// Returns `true` if the channel is full.
