@@ -94,7 +94,8 @@ impl Context {
                 select.into(),
                 Ordering::AcqRel,
                 Ordering::Acquire,
-            ).map(|_| ())
+            )
+            .map(|_| ())
             .map_err(|e| e.into())
     }
 

@@ -488,7 +488,7 @@ fn stress_recv() {
 
     let (s1, r1) = unbounded();
     let (s2, r2) = bounded(5);
-    let (s3, r3) = bounded(100);
+    let (s3, r3) = bounded(0);
 
     scope(|scope| {
         scope.spawn(|_| {
