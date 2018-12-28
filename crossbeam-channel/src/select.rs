@@ -777,6 +777,9 @@ impl<'a> Select<'a> {
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
     /// even when it will simply return an error because the channel is disconnected.
     ///
+    /// Note that this method might return with success spuriously, so it's a good idea to double
+    /// check if the operation is really ready.
+    ///
     /// # Examples
     ///
     /// ```
@@ -815,6 +818,9 @@ impl<'a> Select<'a> {
     ///
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
     /// even when it will simply return an error because the channel is disconnected.
+    ///
+    /// Note that this method might return with success spuriously, so it's a good idea to double
+    /// check if the operation is really ready.
     ///
     /// # Panics
     ///
@@ -863,6 +869,9 @@ impl<'a> Select<'a> {
     ///
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
     /// even when it will simply return an error because the channel is disconnected.
+    ///
+    /// Note that this method might return with success spuriously, so it's a good idea to double
+    /// check if the operation is really ready.
     ///
     /// # Examples
     ///
