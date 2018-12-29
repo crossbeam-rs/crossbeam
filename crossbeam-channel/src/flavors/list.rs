@@ -247,10 +247,8 @@ impl<T> Channel<T> {
                     // If we've reached the end of the block, install the next one.
                     if offset + 1 == BLOCK_CAP {
                         let next_block = Box::into_raw(next_block.unwrap());
-                        let next_index = new_tail.wrapping_add(1 << SHIFT);
-
                         self.tail.block.store(next_block, Ordering::Release);
-                        self.tail.index.store(next_index, Ordering::Release);
+                        self.tail.index.fetch_add(1 << SHIFT, Ordering::Release);
                         (*block).next.store(next_block, Ordering::Release);
                     }
 
