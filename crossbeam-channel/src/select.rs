@@ -460,7 +460,8 @@ fn run_ready(
 /// * Wait for an operation to become ready with [`try_ready`], [`ready`], or [`ready_timeout`]. If
 ///   successful, we may attempt to execute the operation, but are not obliged to. In fact, it's
 ///   possible for another thread to make the operation not ready just before we try executing it,
-///   so it's wise to use a retry loop.
+///   so it's wise to use a retry loop. However, note that these methods might return with success
+///   spuriously, so it's a good idea to always double check if the operation is really ready.
 ///
 /// # Examples
 ///
@@ -777,8 +778,8 @@ impl<'a> Select<'a> {
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
     /// even when it will simply return an error because the channel is disconnected.
     ///
-    /// Note that this method might return with success spuriously, so it's a good idea to double
-    /// check if the operation is really ready.
+    /// Note that this method might return with success spuriously, so it's a good idea to always
+    /// double check if the operation is really ready.
     ///
     /// # Examples
     ///
@@ -819,8 +820,8 @@ impl<'a> Select<'a> {
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
     /// even when it will simply return an error because the channel is disconnected.
     ///
-    /// Note that this method might return with success spuriously, so it's a good idea to double
-    /// check if the operation is really ready.
+    /// Note that this method might return with success spuriously, so it's a good idea to always
+    /// double check if the operation is really ready.
     ///
     /// # Panics
     ///

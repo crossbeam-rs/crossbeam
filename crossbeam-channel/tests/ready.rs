@@ -793,20 +793,28 @@ fn fairness2() {
             sel.recv(&r1);
             sel.recv(&r2);
             sel.recv(&r3);
-            match sel.ready() {
-                0 => {
-                    r1.try_recv().unwrap();
-                    hits[0].set(hits[0].get() + 1);
+            loop {
+                match sel.ready() {
+                    0 => {
+                        if r1.try_recv().is_ok() {
+                            hits[0].set(hits[0].get() + 1);
+                            break;
+                        }
+                    }
+                    1 => {
+                        if r2.try_recv().is_ok() {
+                            hits[1].set(hits[1].get() + 1);
+                            break;
+                        }
+                    }
+                    2 => {
+                        if r3.try_recv().is_ok() {
+                            hits[2].set(hits[2].get() + 1);
+                            break;
+                        }
+                    }
+                    _ => unreachable!(),
                 }
-                1 => {
-                    r2.try_recv().unwrap();
-                    hits[1].set(hits[1].get() + 1);
-                }
-                2 => {
-                    r3.try_recv().unwrap();
-                    hits[2].set(hits[2].get() + 1);
-                }
-                _ => unreachable!(),
             }
         }
         assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 10));
