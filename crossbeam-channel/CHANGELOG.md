@@ -1,3 +1,9 @@
+# Version 0.3.5
+
+- New implementation for unbounded channels.
+- A number of small performance improvements.
+- Remove `crossbeam-epoch` dependency.
+
 # Version 0.3.4
 
 - Bump `crossbeam-epoch` to `0.7`.
