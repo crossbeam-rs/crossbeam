@@ -292,6 +292,20 @@ fn mpmc() {
 }
 
 #[test]
+fn stress_oneshot() {
+    const COUNT: usize = 10_000;
+
+    for _ in 0..COUNT {
+        let (s, r) = unbounded();
+
+        scope(|scope| {
+            scope.spawn(|_| r.recv().unwrap());
+            scope.spawn(|_| s.send(0).unwrap());
+        }).unwrap();
+    }
+}
+
+#[test]
 fn stress_timeout_two_threads() {
     const COUNT: usize = 100;
 
