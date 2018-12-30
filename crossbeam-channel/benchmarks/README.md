@@ -19,7 +19,7 @@ Default configuration:
 Runs benchmarks, stores results into `*.txt` files, and generates `plot.png`:
 
 ```
-./run_all.sh
+./run.sh
 ```
 
 Dependencies:
@@ -34,10 +34,10 @@ Dependencies:
 
 Machine: Intel(R) Core(TM) i7-5600U (2 physical cores, 4 logical cores)
 
-Rust: `rustc 1.30.0-nightly (90d36fb59 2018-09-13)`
+Rust: `rustc 1.33.0-nightly (a7be40c65 2018-12-26)`
 
-Go: `go version go1.10.3 linux/amd64`
+Go: `go version go1.11.1 linux/amd64`
 
-Commit: `6cde88a` (2018-09-17)
+Commit: `779bae9` (2018-12-30)
 
-![Benchmark results](https://i.imgur.com/Kw2dQcy.png)
+![Benchmark results](https://i.imgur.com/KFb9GvV.png)
