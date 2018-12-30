@@ -349,7 +349,6 @@
 
 extern crate crossbeam_utils;
 extern crate parking_lot;
-extern crate rand;
 extern crate smallvec;
 
 mod channel;
