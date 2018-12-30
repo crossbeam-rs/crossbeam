@@ -190,6 +190,7 @@ impl<T> Channel<T> {
     fn start_send(&self, token: &mut Token) -> bool {
         let mut backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
+        let mut block = self.tail.block.load(Ordering::Acquire);
         let mut next_block = None;
 
         loop {
@@ -206,10 +207,9 @@ impl<T> Channel<T> {
             if offset == BLOCK_CAP {
                 backoff.snooze();
                 tail = self.tail.index.load(Ordering::Acquire);
+                block = self.tail.block.load(Ordering::Acquire);
                 continue;
             }
-
-            let mut block = self.tail.block.load(Ordering::Acquire);
 
             // If we're going to have to install the next block, allocate it in advance in order to
             // make the wait for other threads as short as possible.
@@ -228,6 +228,7 @@ impl<T> Channel<T> {
                 } else {
                     next_block = unsafe { Some(Box::from_raw(new)) };
                     tail = self.tail.index.load(Ordering::Acquire);
+                    block = self.tail.block.load(Ordering::Acquire);
                     continue;
                 }
             }
@@ -258,6 +259,7 @@ impl<T> Channel<T> {
                 }
                 Err(t) => {
                     tail = t;
+                    block = self.tail.block.load(Ordering::Acquire);
                     backoff.spin();
                 }
             }
@@ -287,6 +289,7 @@ impl<T> Channel<T> {
     fn start_recv(&self, token: &mut Token) -> bool {
         let mut backoff = Backoff::new();
         let mut head = self.head.index.load(Ordering::Acquire);
+        let mut block = self.head.block.load(Ordering::Acquire);
 
         loop {
             // Calculate the offset of the index into the block.
@@ -296,6 +299,7 @@ impl<T> Channel<T> {
             if offset == BLOCK_CAP {
                 backoff.snooze();
                 head = self.head.index.load(Ordering::Acquire);
+                block = self.head.block.load(Ordering::Acquire);
                 continue;
             }
 
@@ -323,8 +327,6 @@ impl<T> Channel<T> {
                     new_head |= MARK_BIT;
                 }
             }
-
-            let block = self.head.block.load(Ordering::Acquire);
 
             // The block can be null here only if the first message is being sent into the channel.
             // In that case, just wait until it gets initialized.
@@ -360,8 +362,9 @@ impl<T> Channel<T> {
                     return true;
                 }
                 Err(h) => {
-                    backoff.spin();
                     head = h;
+                    block = self.head.block.load(Ordering::Acquire);
+                    backoff.spin();
                 }
             }
         }
