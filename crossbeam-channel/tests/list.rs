@@ -292,6 +292,49 @@ fn mpmc() {
 }
 
 #[test]
+fn stress_oneshot() {
+    const COUNT: usize = 10_000;
+
+    for _ in 0..COUNT {
+        let (s, r) = unbounded();
+
+        scope(|scope| {
+            scope.spawn(|_| r.recv().unwrap());
+            scope.spawn(|_| s.send(0).unwrap());
+        }).unwrap();
+    }
+}
+
+#[test]
+fn stress_iter() {
+    const COUNT: usize = 100_000;
+
+    let (request_s, request_r) = unbounded();
+    let (response_s, response_r) = unbounded();
+
+    scope(|scope| {
+        scope.spawn(move |_| {
+            let mut count = 0;
+            loop {
+                for x in response_r.try_iter() {
+                    count += x;
+                    if count == COUNT {
+                        return;
+                    }
+                }
+                request_s.send(()).unwrap();
+            }
+        });
+
+        for _ in request_r.iter() {
+            if response_s.send(1).is_err() {
+                break;
+            }
+        }
+    }).unwrap();
+}
+
+#[test]
 fn stress_timeout_two_threads() {
     const COUNT: usize = 100;
 
