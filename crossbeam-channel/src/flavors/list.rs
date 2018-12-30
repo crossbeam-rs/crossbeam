@@ -332,6 +332,8 @@ impl<T> Channel<T> {
             // In that case, just wait until it gets initialized.
             if block.is_null() {
                 backoff.snooze();
+                head = self.head.index.load(Ordering::Acquire);
+                block = self.head.block.load(Ordering::Acquire);
                 continue;
             }
 
