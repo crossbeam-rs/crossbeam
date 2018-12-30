@@ -6,8 +6,6 @@ use std::sync::atomic;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use rand;
-
 /// A counter that performs exponential backoff in spin loops.
 pub struct Backoff(u32);
 
@@ -59,10 +57,7 @@ pub fn shuffle<T>(v: &mut [T]) {
     }
 
     thread_local! {
-        static RNG: Cell<Wrapping<u32>> = {
-            let init = rand::random::<u32>() | 1;
-            Cell::new(Wrapping(init))
-        }
+        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1406868647));
     }
 
     let _ = RNG.try_with(|rng| {
