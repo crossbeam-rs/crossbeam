@@ -1,3 +1,7 @@
+# Version 0.3.6
+
+- Fix a bug in initialization of unbounded channels.
+
 # Version 0.3.5
 
 - New implementation for unbounded channels.
