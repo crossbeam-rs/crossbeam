@@ -3,7 +3,6 @@
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -21,7 +20,7 @@ pub struct Channel {
     delivery_time: Instant,
 
     /// `true` if the message has been received.
-    received: Arc<AtomicBool>,
+    received: AtomicBool,
 }
 
 impl Channel {
@@ -30,7 +29,7 @@ impl Channel {
     pub fn new(dur: Duration) -> Self {
         Channel {
             delivery_time: Instant::now() + dur,
-            received: Arc::new(AtomicBool::new(false)),
+            received: AtomicBool::new(false),
         }
     }
 
@@ -144,16 +143,6 @@ impl Channel {
     #[inline]
     pub fn capacity(&self) -> Option<usize> {
         Some(1)
-    }
-}
-
-impl Clone for Channel {
-    #[inline]
-    fn clone(&self) -> Channel {
-        Channel {
-            delivery_time: self.delivery_time,
-            received: self.received.clone(),
-        }
     }
 }
 

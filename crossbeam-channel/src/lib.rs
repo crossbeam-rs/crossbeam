@@ -353,6 +353,7 @@ extern crate smallvec;
 
 mod channel;
 mod context;
+mod counter;
 mod err;
 mod flavors;
 mod select;

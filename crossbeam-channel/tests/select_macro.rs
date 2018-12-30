@@ -857,7 +857,7 @@ fn fairness2() {
                 recv(r3) -> _ => hits[2].set(hits[2].get() + 1),
             }
         }
-        assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 10));
+        assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 50));
     }).unwrap();
 }
 

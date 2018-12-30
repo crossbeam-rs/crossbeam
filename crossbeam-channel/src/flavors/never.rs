@@ -71,13 +71,6 @@ impl<T> Channel<T> {
     }
 }
 
-impl<T> Clone for Channel<T> {
-    #[inline]
-    fn clone(&self) -> Channel<T> {
-        Channel::new()
-    }
-}
-
 impl<T> SelectHandle for Channel<T> {
     #[inline]
     fn try_select(&self, _token: &mut Token) -> bool {
