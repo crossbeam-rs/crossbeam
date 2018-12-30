@@ -67,7 +67,6 @@ fn recv_try_iter() {
                 for x in response_r.try_iter() {
                     count += x;
                     if count == 6 {
-                        assert_eq!(count, 6);
                         return;
                     }
                 }
