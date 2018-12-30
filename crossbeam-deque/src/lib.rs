@@ -88,11 +88,30 @@ const MAX_BATCH: usize = 128;
 /// deallocated as soon as possible.
 const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
 
+/// TODO
 #[must_use]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Racy<T> {
+    /// TODO
     Done(T),
+
+    /// TODO
     Retry,
+}
+
+impl<T> Racy<T> {
+    /// TODO
+    pub fn spin<F>(mut f: F) -> T
+    where
+        F: FnMut() -> Racy<T>,
+    {
+        loop {
+            match f() {
+                Racy::Done(v) => return v,
+                Racy::Retry => {}
+            }
+        }
+    }
 }
 
 /// A buffer that holds elements in a deque.
@@ -317,6 +336,7 @@ impl<T> Worker<T> {
         }
     }
 
+    /// TODO
     pub fn stealer(&self) -> Stealer<T> {
         Stealer {
             inner: self.inner.clone(),
