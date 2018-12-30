@@ -2,7 +2,6 @@
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
-use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -18,7 +17,7 @@ pub type TickToken = Option<Instant>;
 /// Channel that delivers messages periodically.
 pub struct Channel {
     /// The instant at which the next message will be delivered.
-    delivery_time: Arc<AtomicCell<Instant>>,
+    delivery_time: AtomicCell<Instant>,
 
     /// The time interval in which messages get delivered.
     duration: Duration,
@@ -29,7 +28,7 @@ impl Channel {
     #[inline]
     pub fn new(dur: Duration) -> Self {
         Channel {
-            delivery_time: Arc::new(AtomicCell::new(Instant::now() + dur)),
+            delivery_time: AtomicCell::new(Instant::now() + dur),
             duration: dur,
         }
     }
@@ -122,16 +121,6 @@ impl Channel {
     #[inline]
     pub fn capacity(&self) -> Option<usize> {
         Some(1)
-    }
-}
-
-impl Clone for Channel {
-    #[inline]
-    fn clone(&self) -> Channel {
-        Channel {
-            delivery_time: self.delivery_time.clone(),
-            duration: self.duration,
-        }
     }
 }
 

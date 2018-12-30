@@ -1190,7 +1190,7 @@ fn fairness2() {
                 _ => unreachable!(),
             }
         }
-        assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 10));
+        assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 50));
     }).unwrap();
 }
 
