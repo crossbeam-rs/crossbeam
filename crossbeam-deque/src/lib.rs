@@ -33,11 +33,12 @@
 //! # Examples
 //!
 //! ```
-//! use crossbeam_deque::{self as deque, Pop, Steal};
+//! use crossbeam_deque::{Racy, Worker};
 //! use std::thread;
 //!
 //! // Create a LIFO deque.
-//! let (w, s) = deque::lifo();
+//! let w = Worker::new_lifo();
+//! let s = w.stealer();
 //!
 //! // Push several elements into the back.
 //! w.push(1);
@@ -46,12 +47,12 @@
 //!
 //! // This is a LIFO deque, which means an element is popped from the back.
 //! // If it was a FIFO deque, `w.pop()` would return `Some(1)`.
-//! assert_eq!(w.pop(), Pop::Data(3));
+//! assert_eq!(Racy::spin(|| w.pop()), Some(3));
 //!
 //! // Create a stealer thread.
 //! thread::spawn(move || {
-//!     assert_eq!(s.steal_one(), Steal::Data(1));
-//!     assert_eq!(s.steal_one(), Steal::Data(2));
+//!     assert_eq!(Racy::spin(|| s.steal_one()), Some(1));
+//!     assert_eq!(Racy::spin(|| s.steal_one()), Some(2));
 //! }).join().unwrap();
 //! ```
 //!
@@ -66,17 +67,20 @@
 extern crate crossbeam_epoch as epoch;
 extern crate crossbeam_utils as utils;
 
-use std::cell::Cell;
+use std::cell::{Cell, UnsafeCell};
 use std::cmp;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 use std::ptr;
-use std::sync::atomic::{self, AtomicIsize, Ordering};
+use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::thread;
 
 use epoch::{Atomic, Owned};
 use utils::CachePadded;
+
+// TODO: rename `value` to `task`?
 
 /// Minimum buffer capacity for a deque.
 const MIN_CAP: usize = 32;
@@ -105,10 +109,11 @@ impl<T> Racy<T> {
     where
         F: FnMut() -> Racy<T>,
     {
+        let mut backoff = Backoff::new();
         loop {
             match f() {
                 Racy::Done(v) => return v,
-                Racy::Retry => {}
+                Racy::Retry => backoff.spin(),
             }
         }
     }
@@ -272,18 +277,20 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{self as deque, Pop, Steal};
+    /// use crossbeam_deque::{Racy, Worker};
     ///
-    /// let (w, s) = deque::fifo::<i32>();
+    /// let w = Worker::new_fifo();
+    /// let s = w.stealer();
+    ///
     /// w.push(1);
     /// w.push(2);
     /// w.push(3);
     ///
-    /// assert_eq!(s.steal_one(), Steal::Data(1));
-    /// assert_eq!(w.pop(), Pop::Data(2));
-    /// assert_eq!(w.pop(), Pop::Data(3));
+    /// assert_eq!(Racy::spin(|| s.steal_one()), Some(1));
+    /// assert_eq!(Racy::spin(|| w.pop()), Some(2));
+    /// assert_eq!(Racy::spin(|| w.pop()), Some(3));
     /// ```
-    pub fn fifo() -> Worker<T> {
+    pub fn new_fifo() -> Worker<T> {
         let buffer = Buffer::alloc(MIN_CAP);
 
         let inner = Arc::new(CachePadded::new(Inner {
@@ -308,18 +315,20 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{self as deque, Pop, Steal};
+    /// use crossbeam_deque::{Racy, Worker};
     ///
-    /// let (w, s) = deque::lifo::<i32>();
+    /// let w = Worker::new_lifo();
+    /// let s = w.stealer();
+    ///
     /// w.push(1);
     /// w.push(2);
     /// w.push(3);
     ///
-    /// assert_eq!(s.steal_one(), Steal::Data(1));
-    /// assert_eq!(w.pop(), Pop::Data(3));
-    /// assert_eq!(w.pop(), Pop::Data(2));
+    /// assert_eq!(Racy::spin(|| s.steal_one()), Some(1));
+    /// assert_eq!(Racy::spin(|| w.pop()), Some(3));
+    /// assert_eq!(Racy::spin(|| w.pop()), Some(2));
     /// ```
-    pub fn lifo() -> Worker<T> {
+    pub fn new_lifo() -> Worker<T> {
         let buffer = Buffer::alloc(MIN_CAP);
 
         let inner = Arc::new(CachePadded::new(Inner {
@@ -412,9 +421,10 @@ impl<T> Worker<T> {
     /// Returns `true` if the deque is empty.
     ///
     /// ```
-    /// use crossbeam_deque as deque;
+    /// use crossbeam_deque::Worker;
     ///
-    /// let (w, _) = deque::lifo();
+    /// let w = Worker::new_lifo();
+    ///
     /// assert!(w.is_empty());
     /// w.push(1);
     /// assert!(!w.is_empty());
@@ -430,9 +440,10 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque as deque;
+    /// use crossbeam_deque::Worker;
     ///
-    /// let (w, _) = deque::lifo();
+    /// let w = Worker::new_lifo();
+    ///
     /// w.push(1);
     /// w.push(2);
     /// ```
@@ -478,15 +489,17 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{self as deque, Pop};
+    /// use crossbeam_deque::{Racy, Worker};
     ///
-    /// let (w, _) = deque::fifo();
+    /// let w = Worker::new_fifo();
+    /// let s = w.stealer();
+    ///
     /// w.push(1);
     /// w.push(2);
     ///
-    /// assert_eq!(w.pop(), Pop::Data(1));
-    /// assert_eq!(w.pop(), Pop::Data(2));
-    /// assert_eq!(w.pop(), Pop::Empty);
+    /// assert_eq!(Racy::spin(|| w.pop()), Some(1));
+    /// assert_eq!(Racy::spin(|| w.pop()), Some(2));
+    /// assert_eq!(Racy::spin(|| w.pop()), None);
     /// ```
     pub fn pop(&self) -> Racy<Option<T>> {
         // Load the back and front index.
@@ -612,9 +625,11 @@ impl<T> Stealer<T> {
     /// Returns `true` if the deque is empty.
     ///
     /// ```
-    /// use crossbeam_deque as deque;
+    /// use crossbeam_deque::Worker;
     ///
-    /// let (w, s) = deque::lifo();
+    /// let w = Worker::new_lifo();
+    /// let s = w.stealer();
+    ///
     /// assert!(s.is_empty());
     /// w.push(1);
     /// assert!(!s.is_empty());
@@ -631,15 +646,17 @@ impl<T> Stealer<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{self as deque, Steal};
+    /// use crossbeam_deque::{Racy, Worker};
     ///
-    /// let (w, s) = deque::lifo();
+    /// let w = Worker::new_lifo();
+    /// let s = w.stealer();
+    ///
     /// w.push(1);
     /// w.push(2);
     ///
-    /// assert_eq!(s.steal_one(), Steal::Data(1));
-    /// assert_eq!(s.steal_one(), Steal::Data(2));
-    /// assert_eq!(s.steal_one(), Steal::Empty);
+    /// assert_eq!(Racy::spin(|| s.steal_one()), Some(1));
+    /// assert_eq!(Racy::spin(|| s.steal_one()), Some(2));
+    /// assert_eq!(Racy::spin(|| s.steal_one()), None);
     /// ```
     pub fn steal_one(&self) -> Racy<Option<T>> {
         // Load the front index.
@@ -684,6 +701,7 @@ impl<T> Stealer<T> {
         Racy::Done(Some(value))
     }
 
+    /// TODO
     pub fn steal_batch(&self, dest: &Worker<T>) -> Racy<bool> {
         // Load the front index.
         let mut f = self.inner.front.load(Ordering::Acquire);
@@ -823,18 +841,21 @@ impl<T> Stealer<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{self as deque, Steal};
+    /// use crossbeam_deque::{Racy, Worker};
     ///
-    /// let (w1, s1) = deque::fifo();
-    /// let (w2, s2) = deque::fifo();
+    /// let w1 = Worker::new_fifo();
+    /// let s1 = w1.stealer();
     ///
     /// w1.push(1);
     /// w1.push(2);
     /// w1.push(3);
     /// w1.push(4);
     ///
-    /// assert_eq!(s1.steal_one_and_batch(&w2), Steal::Data(1));
-    /// assert_eq!(s2.steal_one(), Steal::Data(2));
+    /// let w2 = Worker::new_fifo();
+    /// let s2 = w2.stealer();
+    ///
+    /// assert_eq!(Racy::spin(|| s1.steal_one_and_batch(&w2)), Some(1));
+    /// assert_eq!(Racy::spin(|| s2.steal_one()), Some(2));
     /// ```
     pub fn steal_one_and_batch(&self, dest: &Worker<T>) -> Racy<Option<T>> {
         // Load the front index.
@@ -997,5 +1018,401 @@ impl<T> Clone for Stealer<T> {
 impl<T> fmt::Debug for Stealer<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.pad("Stealer { .. }")
+    }
+}
+
+// Bits indicating the state of a slot:
+// * If a value has been written into the slot, `WRITE` is set.
+// * If a value has been read from the slot, `READ` is set.
+// * If the block is being destroyed, `DESTROY` is set.
+const WRITE: usize = 1;
+const READ: usize = 2;
+const DESTROY: usize = 4;
+
+// Each block covers one "lap" of indices.
+const LAP: usize = 32;
+// The maximum number of values a block can hold.
+const BLOCK_CAP: usize = LAP - 1;
+// How many lower bits are reserved for metadata.
+const SHIFT: usize = 1;
+// Indicates that the block is not the last one.
+const HAS_NEXT: usize = 1;
+
+/// A slot in a block.
+struct Slot<T> {
+    /// The value.
+    value: UnsafeCell<ManuallyDrop<T>>,
+
+    /// The state of the slot.
+    state: AtomicUsize,
+}
+
+impl<T> Slot<T> {
+    /// Waits until a value is written into the slot.
+    fn wait_write(&self) {
+        let mut backoff = Backoff::new();
+        while self.state.load(Ordering::Acquire) & WRITE == 0 {
+            backoff.snooze();
+        }
+    }
+}
+
+/// A block in a linked list.
+///
+/// Each block in the list can hold up to `BLOCK_CAP` values.
+struct Block<T> {
+    /// The next block in the linked list.
+    next: AtomicPtr<Block<T>>,
+
+    /// Slots for values.
+    slots: [Slot<T>; BLOCK_CAP],
+}
+
+impl<T> Block<T> {
+    /// Creates an empty block that starts at `start_index`.
+    fn new() -> Block<T> {
+        unsafe { mem::zeroed() }
+    }
+
+    /// Waits until the next pointer is set.
+    fn wait_next(&self) -> *mut Block<T> {
+        let mut backoff = Backoff::new();
+        loop {
+            let next = self.next.load(Ordering::Acquire);
+            if !next.is_null() {
+                return next;
+            }
+            backoff.snooze();
+        }
+    }
+
+    /// Sets the `DESTROY` bit in slots starting from `start` and destroys the block.
+    unsafe fn destroy(this: *mut Block<T>, start: usize) {
+        // It is not necessary to set the `DESTROY bit in the last slot because that slot has begun
+        // destruction of the block.
+        for i in start..BLOCK_CAP - 1 {
+            let slot = (*this).slots.get_unchecked(i);
+
+            // Mark the `DESTROY` bit if a thread is still using the slot.
+            if slot.state.load(Ordering::Acquire) & READ == 0
+                && slot.state.fetch_or(DESTROY, Ordering::AcqRel) & READ == 0
+            {
+                // If a thread is still using the slot, it will continue destruction of the block.
+                return;
+            }
+        }
+
+        // No thread is using the block, now it is safe to destroy it.
+        drop(Box::from_raw(this));
+    }
+}
+
+/// A position in a queue.
+#[derive(Debug)]
+struct Position<T> {
+    /// The index in the queue.
+    index: AtomicUsize,
+
+    /// The block in the linked list.
+    block: AtomicPtr<Block<T>>,
+}
+
+/// Unbounded queue implemented as a linked list of blocks.
+///
+/// Each value sent into the queue is assigned a sequence number, i.e. an index. Indices are
+/// represented as numbers of type `usize` and wrap on overflow.
+///
+/// Consecutive values are grouped into blocks in order to put less pressure on the allocator and
+/// improve cache efficiency.
+#[derive(Debug)]
+pub struct Injector<T> {
+    /// The head of the queue.
+    head: CachePadded<Position<T>>,
+
+    /// The tail of the queue.
+    tail: CachePadded<Position<T>>,
+
+    /// Indicates that dropping a `Injector<T>` may drop values of type `T`.
+    _marker: PhantomData<T>,
+}
+
+unsafe impl<T: Send> Send for Injector<T> {}
+unsafe impl<T: Send> Sync for Injector<T> {}
+
+impl<T> Injector<T> {
+    /// Creates a new injector queue.
+    pub fn new() -> Self {
+        let block = Box::into_raw(Box::new(Block::<T>::new()));
+        Injector {
+            head: CachePadded::new(Position {
+                block: AtomicPtr::new(block),
+                index: AtomicUsize::new(0),
+            }),
+            tail: CachePadded::new(Position {
+                block: AtomicPtr::new(block),
+                index: AtomicUsize::new(0),
+            }),
+            _marker: PhantomData,
+        }
+    }
+
+    /// TODO
+    pub fn push(&self, value: T) {
+        let mut backoff = Backoff::new();
+        let mut tail = self.tail.index.load(Ordering::Acquire);
+        let mut block = self.tail.block.load(Ordering::Acquire);
+        let mut next_block = None;
+
+        loop {
+            // Calculate the offset of the index into the block.
+            let offset = (tail >> SHIFT) % LAP;
+
+            // If we reached the end of the block, wait until the next one is installed.
+            if offset == BLOCK_CAP {
+                backoff.snooze();
+                tail = self.tail.index.load(Ordering::Acquire);
+                block = self.tail.block.load(Ordering::Acquire);
+                continue;
+            }
+
+            // If we're going to have to install the next block, allocate it in advance in order to
+            // make the wait for other threads as short as possible.
+            if offset + 1 == BLOCK_CAP && next_block.is_none() {
+                next_block = Some(Box::new(Block::<T>::new()));
+            }
+
+            let new_tail = tail + (1 << SHIFT);
+
+            // Try advancing the tail forward.
+            match self.tail.index
+                .compare_exchange_weak(
+                    tail,
+                    new_tail,
+                    Ordering::SeqCst,
+                    Ordering::Acquire,
+                )
+            {
+                Ok(_) => unsafe {
+                    // If we've reached the end of the block, install the next one.
+                    if offset + 1 == BLOCK_CAP {
+                        let next_block = Box::into_raw(next_block.unwrap());
+                        let next_index = new_tail.wrapping_add(1 << SHIFT);
+
+                        self.tail.block.store(next_block, Ordering::Release);
+                        self.tail.index.store(next_index, Ordering::Release);
+                        (*block).next.store(next_block, Ordering::Release);
+                    }
+
+                    // Write the value into the slot.
+                    let slot = (*block).slots.get_unchecked(offset);
+                    slot.value.get().write(ManuallyDrop::new(value));
+                    slot.state.fetch_or(WRITE, Ordering::Release);
+
+                    return;
+                }
+                Err(t) => {
+                    tail = t;
+                    block = self.tail.block.load(Ordering::Acquire);
+                    backoff.spin();
+                }
+            }
+        }
+    }
+
+    /// TODO
+    pub fn pop(&self) -> Racy<Option<T>> {
+        let head = self.head.index.load(Ordering::Acquire);
+        let block = self.head.block.load(Ordering::Acquire);
+
+        // Calculate the offset of the index into the block.
+        let offset = (head >> SHIFT) % LAP;
+
+        // If we reached the end of the block, wait until the next one is installed.
+        if offset == BLOCK_CAP {
+            return Racy::Retry;
+        }
+
+        let mut new_head = head + (1 << SHIFT);
+
+        if new_head & HAS_NEXT == 0 {
+            atomic::fence(Ordering::SeqCst);
+            let tail = self.tail.index.load(Ordering::Relaxed);
+
+            // If the tail equals the head, that means the queue is empty.
+            if head >> SHIFT == tail >> SHIFT {
+                return Racy::Done(None);
+            }
+
+            // If head and tail are not in the same block, set `HAS_NEXT` in head.
+            if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
+                new_head |= HAS_NEXT;
+            }
+        }
+
+        // Try moving the head index forward.
+        if self.head.index
+            .compare_exchange_weak(
+                head,
+                new_head,
+                Ordering::SeqCst,
+                Ordering::Acquire,
+            )
+            .is_err()
+        {
+            return Racy::Retry;
+        }
+
+        unsafe {
+            // If we've reached the end of the block, move to the next one.
+            if offset + 1 == BLOCK_CAP {
+                let next = (*block).wait_next();
+                let mut next_index = (new_head & !HAS_NEXT).wrapping_add(1 << SHIFT);
+                if !(*next).next.load(Ordering::Relaxed).is_null() {
+                    next_index |= HAS_NEXT;
+                }
+
+                self.head.block.store(next, Ordering::Release);
+                self.head.index.store(next_index, Ordering::Release);
+            }
+
+            // Read the value.
+            let slot = (*block).slots.get_unchecked(offset);
+            slot.wait_write();
+            let m = slot.value.get().read();
+            let value = ManuallyDrop::into_inner(m);
+
+            // Destroy the block if we've reached the end, or if another thread wanted to destroy
+            // but couldn't because we were busy reading from the slot.
+            if offset + 1 == BLOCK_CAP {
+                Block::destroy(block, 0);
+            } else if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
+                Block::destroy(block, offset + 1);
+            }
+
+            Racy::Done(Some(value))
+        }
+    }
+
+    /// Returns `true` if the queue is empty.
+    pub fn is_empty(&self) -> bool {
+        let head = self.head.index.load(Ordering::SeqCst);
+        let tail = self.tail.index.load(Ordering::SeqCst);
+        head >> SHIFT == tail >> SHIFT
+    }
+
+    /// Returns the current number of elements in the queue.
+    pub fn len(&self) -> usize {
+        loop {
+            // Load the tail index, then load the head index.
+            let mut tail = self.tail.index.load(Ordering::SeqCst);
+            let mut head = self.head.index.load(Ordering::SeqCst);
+
+            // If the tail index didn't change, we've got consistent indices to work with.
+            if self.tail.index.load(Ordering::SeqCst) == tail {
+                // Erase the lower bits.
+                tail &= !((1 << SHIFT) - 1);
+                head &= !((1 << SHIFT) - 1);
+
+                // Rotate indices so that head falls into the first block.
+                let lap = (head >> SHIFT) / LAP;
+                tail = tail.wrapping_sub((lap * LAP) << SHIFT);
+                head = head.wrapping_sub((lap * LAP) << SHIFT);
+
+                // Remove the lower bits.
+                tail >>= SHIFT;
+                head >>= SHIFT;
+
+                // Fix up indices if they fall onto block ends.
+                if head == BLOCK_CAP {
+                    head = 0;
+                    tail -= LAP;
+                }
+                if tail == BLOCK_CAP {
+                    tail += 1;
+                }
+
+                // Return the difference minus the number of blocks between tail and head.
+                return tail - head - tail / LAP;
+            }
+        }
+    }
+}
+
+impl<T> Drop for Injector<T> {
+    fn drop(&mut self) {
+        let mut head = self.head.index.load(Ordering::Relaxed);
+        let mut tail = self.tail.index.load(Ordering::Relaxed);
+        let mut block = self.head.block.load(Ordering::Relaxed);
+
+        // Erase the lower bits.
+        head &= !((1 << SHIFT) - 1);
+        tail &= !((1 << SHIFT) - 1);
+
+        unsafe {
+            // Drop all values between `head` and `tail` and deallocate the heap-allocated blocks.
+            while head != tail {
+                let offset = (head >> SHIFT) % LAP;
+
+                if offset < BLOCK_CAP {
+                    // Drop the value in the slot.
+                    let slot = (*block).slots.get_unchecked(offset);
+                    ManuallyDrop::drop(&mut *(*slot).value.get());
+                } else {
+                    // Deallocate the block and move to the next one.
+                    let next = (*block).next.load(Ordering::Relaxed);
+                    drop(Box::from_raw(block));
+                    block = next;
+                }
+
+                head = head.wrapping_add(1 << SHIFT);
+            }
+
+            // Deallocate the last remaining block.
+            if !block.is_null() {
+                drop(Box::from_raw(block));
+            }
+        }
+    }
+}
+
+struct Backoff(u32);
+
+impl Backoff {
+    /// Creates a new `Backoff`.
+    #[inline]
+    pub fn new() -> Self {
+        Backoff(0)
+    }
+
+    /// Backs off in a spin loop.
+    ///
+    /// This method may yield the current processor. Use it in lock-free retry loops.
+    #[inline]
+    pub fn spin(&mut self) {
+        for _ in 0..1 << self.0.min(6) {
+            atomic::spin_loop_hint();
+        }
+        self.0 = self.0.wrapping_add(1);
+    }
+
+    /// Backs off in a wait loop.
+    ///
+    /// Returns `true` if snoozing has reached a threshold where we should consider parking the
+    /// thread instead.
+    ///
+    /// This method may yield the current processor or the current thread. Use it when waiting on a
+    /// resource.
+    #[inline]
+    pub fn snooze(&mut self) -> bool {
+        if self.0 <= 6 {
+            for _ in 0..1 << self.0 {
+                atomic::spin_loop_hint();
+            }
+        } else {
+            thread::yield_now();
+        }
+
+        self.0 = self.0.wrapping_add(1);
+        self.0 <= 10
     }
 }
