@@ -1,7 +1,7 @@
 //! The channel interface.
 
 use std::fmt;
-use std::iter::FusedIterator;
+use std::iter::{FusedIterator, once};
 use std::mem;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
@@ -662,6 +662,76 @@ impl<T> Receiver<T> {
                 }
             }
             ReceiverFlavor::Never(chan) => chan.try_recv(),
+        }
+    }
+
+    /// Attempts to receive multiple messages from the channel without blocking.
+    ///
+    /// This method will either receive multiple messages from the channel immediately, up to `limit`,
+    /// or return an error if the channel is either empty or disconnected.
+    ///
+    /// If called on a zero-capacity channel, this method will receive a message only if there
+    /// happens to be a send operation on the other side of the channel at the same time.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::{unbounded, TryRecvError};
+    ///
+    /// let mut items = Vec::new();
+    ///
+    /// let (s, r) = unbounded();
+    /// assert_eq!(r.try_recv_many(&mut items, 2), Err(TryRecvError::Empty));
+    ///
+    /// s.send(4).unwrap();
+    /// s.send(5).unwrap();
+    /// s.send(6).unwrap();
+    /// s.send(7).unwrap();
+    /// drop(s);
+    ///
+    /// assert_eq!(r.try_recv_many(&mut items, 2), Ok(2));
+    /// assert_eq!(r.try_recv_many(&mut items, 2), Ok(2));
+    /// assert_eq!(r.try_recv_many(&mut items, 2), Err(TryRecvError::Disconnected));
+    /// ```
+    pub fn try_recv_many<E: Extend<T>>(&self, buf: &mut E, limit: usize) -> Result<usize, TryRecvError> {
+        let mut n = 0;
+
+        loop {
+            if n == limit {
+                return Ok(n)
+            }
+
+            let result = match &self.flavor {
+                ReceiverFlavor::Array(chan) => return chan.try_recv_many(buf, limit),
+                ReceiverFlavor::List(chan) => chan.try_recv(),
+                ReceiverFlavor::Zero(chan) => chan.try_recv(),
+                ReceiverFlavor::After(chan) => {
+                    let msg = chan.try_recv();
+                    unsafe {
+                        mem::transmute_copy::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
+                            &msg,
+                        )
+                    }
+                }
+                ReceiverFlavor::Tick(chan) => {
+                    let msg = chan.try_recv();
+                    unsafe {
+                        mem::transmute_copy::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
+                            &msg,
+                        )
+                    }
+                }
+                ReceiverFlavor::Never(chan) => chan.try_recv(),
+            };
+
+            match result {
+                Ok(msg) => {
+                    buf.extend(once(msg));
+                    n += 1;
+                },
+                Err(_) if n != 0 => return Ok(n),
+                Err(err) => return Err(err),
+            }
         }
     }
 

@@ -101,6 +101,44 @@ fn try_recv() {
 }
 
 #[test]
+fn try_recv_many() {
+    let (s, r) = bounded(133);
+    let start = 13;
+    let count = 5820;
+    let batch_size = 21;
+
+    let mut total_expected = 0;
+    for i in start..count {
+        total_expected += i;
+    }
+
+    thread::spawn(move || {
+        for i in start..count {
+            let _ = s.send(i).unwrap();
+        }
+        drop(s);
+    });
+
+    let mut total_actual = 0;
+    let mut items = Vec::with_capacity(batch_size);
+    loop {
+        match r.try_recv_many(&mut items, batch_size) {
+            Ok(_) => {
+                for item in &items {
+                    total_actual += item;
+                }
+
+                items.clear();
+            },
+            Err(TryRecvError::Disconnected) => break,
+            Err(TryRecvError::Empty) => {},
+        }
+    }
+
+    assert_eq!(total_actual, total_expected);
+}
+
+#[test]
 fn recv() {
     let (s, r) = bounded(100);
 

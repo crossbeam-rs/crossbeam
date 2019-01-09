@@ -14,6 +14,8 @@
 //!   - http://www.1024cores.net/home/code-license
 
 use std::cell::UnsafeCell;
+use std::cmp;
+use std::iter::once;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
@@ -268,7 +270,7 @@ impl<T> Channel<T> {
             let slot = unsafe { &*self.buffer.add(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
-            // If the the stamp is ahead of the head by 1, we may attempt to pop.
+            // If the stamp is ahead of the head by 1, we may attempt to pop.
             if head + 1 == stamp {
                 let new = if index + 1 < self.cap {
                     // Same lap, incremented index.
@@ -312,6 +314,113 @@ impl<T> Channel<T> {
                     } else {
                         // Otherwise, the receive operation is not ready.
                         return false;
+                    }
+                }
+
+                backoff.spin();
+                head = self.head.load(Ordering::Relaxed);
+            } else {
+                // Snooze because we need to wait for the stamp to get updated.
+                backoff.snooze();
+                head = self.head.load(Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn recv_many_internal<E: Extend<T>>(&self, buf: &mut E, limit: usize) -> Result<usize, TryRecvError> {
+        let mut backoff = Backoff::new();
+        let mut head = self.head.load(Ordering::Relaxed);
+
+        loop {
+            // Load the head/tail and deconstruct them.
+            let tail = self.tail.load(Ordering::Relaxed);
+            let index = head & (self.mark_bit - 1);
+            let lap = head & !(self.one_lap - 1);
+            let tail_index = tail & (self.mark_bit - 1);
+
+            // Inspect the corresponding head slot.
+            let slot = unsafe { &*self.buffer.add(index) };
+            let stamp = slot.stamp.load(Ordering::Acquire);
+
+            // If the stamp is ahead of the head by 1, we may attempt to pop.
+            if head + 1 == stamp {
+                // See how many messages we have available to read.
+                let msgs_avail = if index < tail_index {
+                    tail_index - index
+                } else {
+                    self.cap - index + tail_index
+                };
+
+                // But respect the configured limit.
+                let msg_count = cmp::min(limit, msgs_avail);
+
+                // Now, to reserve this whole range, we have to update head to be after our range end.
+                let new_head = if index + msg_count < self.cap {
+                    // Same lap, incremented index.
+                    // Set to `{ lap: lap, index: index + msg_count }`.
+                    head + msg_count
+                } else {
+                    // One lap forward, index wraps around to zero, plus the difference after
+                    // crossing the capacity threshold.
+                    // Set to `{ lap: lap.wrapping_add(2), index: (index + msg_count) % capacity }`.
+                    let diff = (index + msg_count) % self.cap;
+                    lap.wrapping_add(self.one_lap + diff)
+                };
+
+                // Try moving the head.
+                match self
+                    .head
+                    .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Relaxed)
+                {
+                    Ok(_) => {
+                        // We've claimed the full range of messages.  Read each one and store it.
+                        let mut rhead = head;
+                        while rhead != new_head {
+                            let rindex = rhead & (self.mark_bit - 1);
+                            let rlap = rhead & !(self.one_lap - 1);
+                            let slot = unsafe { &*self.buffer.add(rindex) };
+
+                            // Even though the tail is in front of us, senders may not yet have filled
+                            // the slot, so we need to wait until the stamp matches.
+                            let stamp = slot.stamp.load(Ordering::Acquire);
+                            if stamp != rhead + 1 {
+                                backoff.spin();
+                                continue;
+                            }
+
+                            // The slot is ready to read.
+                            let msg = unsafe { slot.msg.get().read() };
+                            slot.stamp.store(rhead.wrapping_add(self.one_lap), Ordering::Release);
+                            buf.extend(once(msg));
+
+                            rhead = if rindex + 1 < self.cap {
+                                rhead + 1
+                            } else {
+                                rlap.wrapping_add(self.one_lap)
+                            };
+                        }
+
+                        return Ok(msg_count)
+                    },
+                    Err(h) => {
+                        head = h;
+                        backoff.spin();
+                    }
+                }
+            } else if stamp == head {
+                atomic::fence(Ordering::SeqCst);
+                let tail = self.tail.load(Ordering::Relaxed);
+
+                // If the tail lags one lap behind the head as well, that means the channel is
+                // empty.
+                if (tail & !self.mark_bit) == head {
+                    // If the channel is disconnected...
+                    if tail & self.mark_bit != 0 {
+                        // ...then receive an error.
+                        return Err(TryRecvError::Disconnected);
+                    } else {
+                        // Otherwise, the receive operation is not ready.
+                        return Err(TryRecvError::Empty);
                     }
                 }
 
@@ -408,6 +517,16 @@ impl<T> Channel<T> {
         } else {
             Err(TryRecvError::Empty)
         }
+    }
+
+    /// Attempts to receive messages without blocking.
+    pub fn try_recv_many<E: Extend<T>>(&self, buf: &mut E, limit: usize) -> Result<usize, TryRecvError> {
+        let n = self.recv_many_internal(buf, limit)?;
+        if n > 0 {
+            self.senders.notify();
+        }
+
+        Ok(n)
     }
 
     /// Receives a message from the channel.
