@@ -51,6 +51,7 @@
 //! An implementation of this work-stealing strategy:
 //!
 //! ```
+//! use crossbeam_deque::{Injector, Steal, Stealer, Worker};
 //! use std::iter;
 //!
 //! fn find_task<T>(
@@ -105,122 +106,13 @@ use std::thread;
 use epoch::{Atomic, Owned};
 use utils::CachePadded;
 
-/// Minimum buffer capacity.
+// Minimum buffer capacity.
 const MIN_CAP: usize = 64;
-
-/// Maximum number of tasks that can be stolen in `steal_batch()` and `steal_batch_and_pop()`.
+// Maximum number of tasks that can be stolen in `steal_batch()` and `steal_batch_and_pop()`.
 const MAX_BATCH: usize = 32;
-
-/// If a buffer of at least this size is retired, thread-local garbage is flushed so that it gets
-/// deallocated as soon as possible.
+// If a buffer of at least this size is retired, thread-local garbage is flushed so that it gets
+// deallocated as soon as possible.
 const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
-
-/// Possible outcomes of a steal operation.
-#[must_use]
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub enum Steal<T> {
-    /// The queue was empty at the time of stealing.
-    Empty,
-
-    /// At least one task was successfully stolen.
-    Success(T),
-
-    /// The steal operation needs to be retried.
-    Retry,
-}
-
-impl<T> Steal<T> {
-    /// Returns `true` if the queue was empty at the time of stealing.
-    pub fn is_empty(&self) -> bool {
-        match self {
-            Steal::Empty => true,
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if at least one task was stolen.
-    pub fn is_success(&self) -> bool {
-        match self {
-            Steal::Success(_) => true,
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if the steal operation needs to be retried.
-    pub fn is_retry(&self) -> bool {
-        match self {
-            Steal::Retry => true,
-            _ => false,
-        }
-    }
-
-    /// Returns the result of the operation, if successful.
-    pub fn success(self) -> Option<T> {
-        match self {
-            Steal::Success(res) => Some(res),
-            _ => None,
-        }
-    }
-
-    /// If no task was stolen, attempts another steal operation.
-    ///
-    /// The closure will be invoked only if this `Steal` is not `Success`.
-    ///
-    /// If any of the two steal operations result in `Retry`, then `Retry` is returned. If both
-    /// result in `None`, then `None` is returned.
-    pub fn or_else<F>(self, f: F) -> Steal<T>
-    where
-        F: FnOnce() -> Steal<T>,
-    {
-        match self {
-            Steal::Empty => f(),
-            Steal::Success(_) => self,
-            Steal::Retry => {
-                if let Steal::Success(res) = f() {
-                    Steal::Success(res)
-                } else {
-                    Steal::Retry
-                }
-            }
-        }
-    }
-}
-
-impl<T> From<Option<T>> for Steal<T> {
-    /// Converts `None` into `Empty` and `Some(t)` into `Success(t)`.
-    fn from(val: Option<T>) -> Steal<T> {
-        match val {
-            Some(res) => Steal::Success(res),
-            None => Steal::Empty,
-        }
-    }
-}
-
-impl<T> FromIterator<Steal<T>> for Steal<T> {
-    /// Consumes items until a `Success` is found and returns it.
-    ///
-    /// If no `Success` was found, but there was at least one `Retry`, then returns `Retry`.
-    /// Otherwise, `Empty` is returned.
-    fn from_iter<I>(iter: I) -> Steal<T>
-    where
-        I: IntoIterator<Item = Steal<T>>,
-    {
-        let mut retry = false;
-        for s in iter {
-            match &s {
-                Steal::Empty => {}
-                Steal::Success(_) => return s,
-                Steal::Retry => retry = true,
-            }
-        }
-
-        if retry {
-            Steal::Retry
-        } else {
-            Steal::Empty
-        }
-    }
-}
 
 /// A buffer that holds tasks in a worker queue.
 ///
@@ -357,7 +249,7 @@ enum Flavor {
 /// A FIFO worker:
 ///
 /// ```
-/// use crossbeam_deque::{Racy, Worker};
+/// use crossbeam_deque::{Steal, Worker};
 ///
 /// let w = Worker::new_fifo();
 /// let s = w.stealer();
@@ -366,7 +258,7 @@ enum Flavor {
 /// w.push(2);
 /// w.push(3);
 ///
-/// assert_eq!(s.steal(), Racy::Done(Some(1)));
+/// assert_eq!(s.steal(), Steal::Success(1));
 /// assert_eq!(w.pop(), Some(2));
 /// assert_eq!(w.pop(), Some(3));
 /// ```
@@ -374,7 +266,7 @@ enum Flavor {
 /// A LIFO worker:
 ///
 /// ```
-/// use crossbeam_deque::{Racy, Worker};
+/// use crossbeam_deque::{Steal, Worker};
 ///
 /// let w = Worker::new_lifo();
 /// let s = w.stealer();
@@ -383,7 +275,7 @@ enum Flavor {
 /// w.push(2);
 /// w.push(3);
 ///
-/// assert_eq!(s.steal(), Racy::Done(Some(1)));
+/// assert_eq!(s.steal(), Steal::Success(1));
 /// assert_eq!(w.pop(), Some(3));
 /// assert_eq!(w.pop(), Some(2));
 /// ```
@@ -411,7 +303,7 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{Racy, Worker};
+    /// use crossbeam_deque::Worker;
     ///
     /// let w = Worker::new_fifo();
     /// w.push(1);
@@ -440,7 +332,7 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{Racy, Worker};
+    /// use crossbeam_deque::Worker;
     ///
     /// let w = Worker::new_lifo();
     /// w.push(1);
@@ -469,7 +361,7 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{Racy, Worker};
+    /// use crossbeam_deque::Worker;
     ///
     /// let w = Worker::<i32>::new_lifo();
     /// let s = w.stealer();
@@ -569,7 +461,6 @@ impl<T> Worker<T> {
     /// use crossbeam_deque::Worker;
     ///
     /// let w = Worker::new_lifo();
-    ///
     /// w.push(1);
     /// w.push(2);
     /// ```
@@ -610,11 +501,9 @@ impl<T> Worker<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{Racy, Worker};
+    /// use crossbeam_deque::Worker;
     ///
     /// let w = Worker::new_fifo();
-    /// let s = w.stealer();
-    ///
     /// w.push(1);
     /// w.push(2);
     ///
@@ -766,17 +655,16 @@ impl<T> Stealer<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{Racy, Worker};
+    /// use crossbeam_deque::{Steal, Worker};
     ///
     /// let w = Worker::new_lifo();
-    /// let s = w.stealer();
-    ///
     /// w.push(1);
     /// w.push(2);
     ///
-    /// assert_eq!(s.steal(), Racy::Done(Some(1)));
-    /// assert_eq!(s.steal(), Racy::Done(Some(2)));
-    /// assert_eq!(s.steal(), Racy::Done(None));
+    /// let s = w.stealer();
+    /// assert_eq!(s.steal(), Steal::Success(1));
+    /// assert_eq!(s.steal(), Steal::Success(2));
+    /// assert_eq!(s.steal(), Steal::Empty);
     /// ```
     pub fn steal(&self) -> Steal<T> {
         // Load the front index.
@@ -829,21 +717,20 @@ impl<T> Stealer<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{Steal, Worker};
+    /// use crossbeam_deque::Worker;
     ///
     /// let w1 = Worker::new_fifo();
-    /// let s = w1.stealer();
-    ///
     /// w1.push(1);
     /// w1.push(2);
     /// w1.push(3);
     /// w1.push(4);
     ///
+    /// let s = w1.stealer();
     /// let w2 = Worker::new_fifo();
-    /// s.steal_batch(&w2);
     ///
-    /// assert_eq!(w2.pop(), Steal::Success(1));
-    /// assert_eq!(w2.pop(), Steal::Success(2));
+    /// s.steal_batch(&w2);
+    /// assert_eq!(w2.pop(), Some(1));
+    /// assert_eq!(w2.pop(), Some(2));
     /// ```
     pub fn steal_batch(&self, dest: &Worker<T>) -> Steal<()> {
         // Load the front index.
@@ -989,16 +876,16 @@ impl<T> Stealer<T> {
     /// use crossbeam_deque::{Steal, Worker};
     ///
     /// let w1 = Worker::new_fifo();
-    /// let s = w1.stealer();
-    ///
     /// w1.push(1);
     /// w1.push(2);
     /// w1.push(3);
     /// w1.push(4);
     ///
+    /// let s = w1.stealer();
     /// let w2 = Worker::new_fifo();
+    ///
     /// assert_eq!(s.steal_batch_and_pop(&w2), Steal::Success(1));
-    /// assert_eq!(w2.pop(), Steal::Success(2));
+    /// assert_eq!(w2.pop(), Some(2));
     /// ```
     pub fn steal_batch_and_pop(&self, dest: &Worker<T>) -> Steal<T> {
         // Load the front index.
@@ -1258,7 +1145,6 @@ impl<T> Block<T> {
 }
 
 /// A position in a queue.
-#[derive(Debug)]
 struct Position<T> {
     /// The index in the queue.
     index: AtomicUsize,
@@ -1285,7 +1171,6 @@ struct Position<T> {
 /// assert_eq!(q.steal(), Steal::Success(2));
 /// assert_eq!(q.steal(), Steal::Empty);
 /// ```
-#[derive(Debug)]
 pub struct Injector<T> {
     /// The head of the queue.
     head: CachePadded<Position<T>>,
@@ -1400,9 +1285,9 @@ impl<T> Injector<T> {
     /// q.push(1);
     /// q.push(2);
     ///
-    /// assert_eq!(s.steal(), Steal::Success(1));
-    /// assert_eq!(s.steal(), Steal::Success(2));
-    /// assert_eq!(s.steal(), Steal::Empty);
+    /// assert_eq!(q.steal(), Steal::Success(1));
+    /// assert_eq!(q.steal(), Steal::Success(2));
+    /// assert_eq!(q.steal(), Steal::Empty);
     /// ```
     pub fn steal(&self) -> Steal<T> {
         let head = self.head.index.load(Ordering::Acquire);
@@ -1485,7 +1370,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_deque::{Injector, Steal, Worker};
+    /// use crossbeam_deque::{Injector, Worker};
     ///
     /// let q = Injector::new();
     /// q.push(1);
@@ -1495,9 +1380,8 @@ impl<T> Injector<T> {
     ///
     /// let w = Worker::new_fifo();
     /// q.steal_batch(&w);
-    ///
-    /// assert_eq!(w.pop(), Steal::Success(1));
-    /// assert_eq!(w.pop(), Steal::Success(2));
+    /// assert_eq!(w.pop(), Some(1));
+    /// assert_eq!(w.pop(), Some(2));
     /// ```
     pub fn steal_batch(&self, dest: &Worker<T>) -> Steal<()> {
         let head = self.head.index.load(Ordering::Acquire);
@@ -1512,6 +1396,7 @@ impl<T> Injector<T> {
         }
 
         let mut new_head = head;
+        let batch_size;
         // TODO: Use MAX_BATCH somewhere here
         // TODO: and always load tail
 
@@ -1527,17 +1412,17 @@ impl<T> Injector<T> {
             // If head and tail are not in the same block, set `HAS_NEXT` in head.
             if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                 new_head |= HAS_NEXT;
-                new_head += (BLOCK_CAP - offset) << SHIFT;
+                batch_size = BLOCK_CAP - offset;
             } else {
                 let len = (tail - head) >> SHIFT;
-                let batch_size = (len + 1) / 2;
-                new_head += batch_size << SHIFT;
+                batch_size = (len + 1) / 2;
             }
         } else {
-            new_head += (BLOCK_CAP - offset) << SHIFT;
+            batch_size = BLOCK_CAP - offset;
         }
 
-        let new_offset = (new_head >> SHIFT) % LAP;
+        new_head += batch_size << SHIFT;
+        let new_offset = offset + batch_size;
 
         // Try moving the head index forward.
         if self.head.index
@@ -1631,7 +1516,7 @@ impl<T> Injector<T> {
     ///
     /// let w = Worker::new_fifo();
     /// assert_eq!(q.steal_batch_and_pop(&w), Steal::Success(1));
-    /// assert_eq!(w.pop(), Steal::Success(2));
+    /// assert_eq!(w.pop(), Some(2));
     /// ```
     pub fn steal_batch_and_pop(&self, dest: &Worker<T>) -> Steal<T> {
         let head = self.head.index.load(Ordering::Acquire);
@@ -1646,6 +1531,7 @@ impl<T> Injector<T> {
         }
 
         let mut new_head = head;
+        let batch_size;
         // TODO: Use MAX_BATCH somewhere here
         // TODO: and always load tail
 
@@ -1661,17 +1547,17 @@ impl<T> Injector<T> {
             // If head and tail are not in the same block, set `HAS_NEXT` in head.
             if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                 new_head |= HAS_NEXT;
-                new_head += (BLOCK_CAP - offset) << SHIFT;
+                batch_size = BLOCK_CAP - offset;
             } else {
                 let len = (tail - head) >> SHIFT;
-                let batch_size = (len + 1) / 2;
-                new_head += batch_size << SHIFT;
+                batch_size = (len + 1) / 2;
             }
         } else {
-            new_head += (BLOCK_CAP - offset) << SHIFT;
+            batch_size = BLOCK_CAP - offset;
         }
 
-        let new_offset = (new_head >> SHIFT) % LAP;
+        new_head += batch_size << SHIFT;
+        let new_offset = offset + batch_size;
 
         // Try moving the head index forward.
         if self.head.index
@@ -1806,6 +1692,129 @@ impl<T> Drop for Injector<T> {
             if !block.is_null() {
                 drop(Box::from_raw(block));
             }
+        }
+    }
+}
+
+impl<T> fmt::Debug for Injector<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.pad("Worker { .. }")
+    }
+}
+
+/// Possible outcomes of a steal operation.
+#[must_use]
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum Steal<T> {
+    /// The queue was empty at the time of stealing.
+    Empty,
+
+    /// At least one task was successfully stolen.
+    Success(T),
+
+    /// The steal operation needs to be retried.
+    Retry,
+}
+
+impl<T> Steal<T> {
+    /// Returns `true` if the queue was empty at the time of stealing.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Steal::Empty => true,
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if at least one task was stolen.
+    pub fn is_success(&self) -> bool {
+        match self {
+            Steal::Success(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if the steal operation needs to be retried.
+    pub fn is_retry(&self) -> bool {
+        match self {
+            Steal::Retry => true,
+            _ => false,
+        }
+    }
+
+    /// Returns the result of the operation, if successful.
+    pub fn success(self) -> Option<T> {
+        match self {
+            Steal::Success(res) => Some(res),
+            _ => None,
+        }
+    }
+
+    /// If no task was stolen, attempts another steal operation.
+    ///
+    /// The closure will be invoked only if this `Steal` is not `Success`.
+    ///
+    /// If any of the two steal operations result in `Retry`, then `Retry` is returned. If both
+    /// result in `None`, then `None` is returned.
+    pub fn or_else<F>(self, f: F) -> Steal<T>
+    where
+        F: FnOnce() -> Steal<T>,
+    {
+        match self {
+            Steal::Empty => f(),
+            Steal::Success(_) => self,
+            Steal::Retry => {
+                if let Steal::Success(res) = f() {
+                    Steal::Success(res)
+                } else {
+                    Steal::Retry
+                }
+            }
+        }
+    }
+}
+
+impl<T> fmt::Debug for Steal<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Steal::Empty => f.pad("Empty"),
+            Steal::Success(_) => f.pad("Success(..)"),
+            Steal::Retry => f.pad("Retry"),
+        }
+    }
+}
+
+impl<T> From<Option<T>> for Steal<T> {
+    /// Converts `None` into `Empty` and `Some(t)` into `Success(t)`.
+    fn from(val: Option<T>) -> Steal<T> {
+        match val {
+            Some(res) => Steal::Success(res),
+            None => Steal::Empty,
+        }
+    }
+}
+
+impl<T> FromIterator<Steal<T>> for Steal<T> {
+    /// Consumes items until a `Success` is found and returns it.
+    ///
+    /// If no `Success` was found, but there was at least one `Retry`, then returns `Retry`.
+    /// Otherwise, `Empty` is returned.
+    fn from_iter<I>(iter: I) -> Steal<T>
+    where
+        I: IntoIterator<Item = Steal<T>>,
+    {
+        let mut retry = false;
+        for s in iter {
+            match &s {
+                Steal::Empty => {}
+                Steal::Success(_) => return s,
+                Steal::Retry => retry = true,
+            }
+        }
+
+        if retry {
+            Steal::Retry
+        } else {
+            Steal::Empty
         }
     }
 }
