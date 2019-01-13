@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use deque::Racy::{self, Done};
+use deque::Steal::{Empty, Success};
 use deque::Worker;
 use rand::Rng;
 
@@ -15,36 +15,36 @@ use rand::Rng;
 fn smoke() {
     let w = Worker::new_lifo();
     let s = w.stealer();
-    assert_eq!(w.pop(), Done(None));
-    assert_eq!(s.steal_one(), Done(None));
+    assert_eq!(w.pop(), None);
+    assert_eq!(s.steal(), Empty);
 
     w.push(1);
-    assert_eq!(w.pop(), Done(Some(1)));
-    assert_eq!(w.pop(), Done(None));
-    assert_eq!(s.steal_one(), Done(None));
+    assert_eq!(w.pop(), Some(1));
+    assert_eq!(w.pop(), None);
+    assert_eq!(s.steal(), Empty);
 
     w.push(2);
-    assert_eq!(s.steal_one(), Done(Some(2)));
-    assert_eq!(s.steal_one(), Done(None));
-    assert_eq!(w.pop(), Done(None));
+    assert_eq!(s.steal(), Success(2));
+    assert_eq!(s.steal(), Empty);
+    assert_eq!(w.pop(), None);
 
     w.push(3);
     w.push(4);
     w.push(5);
-    assert_eq!(s.steal_one(), Done(Some(3)));
-    assert_eq!(s.steal_one(), Done(Some(4)));
-    assert_eq!(s.steal_one(), Done(Some(5)));
-    assert_eq!(s.steal_one(), Done(None));
+    assert_eq!(s.steal(), Success(3));
+    assert_eq!(s.steal(), Success(4));
+    assert_eq!(s.steal(), Success(5));
+    assert_eq!(s.steal(), Empty);
 
     w.push(6);
     w.push(7);
     w.push(8);
     w.push(9);
-    assert_eq!(w.pop(), Done(Some(9)));
-    assert_eq!(s.steal_one(), Done(Some(6)));
-    assert_eq!(w.pop(), Done(Some(8)));
-    assert_eq!(w.pop(), Done(Some(7)));
-    assert_eq!(w.pop(), Done(None));
+    assert_eq!(w.pop(), Some(9));
+    assert_eq!(s.steal(), Success(6));
+    assert_eq!(w.pop(), Some(8));
+    assert_eq!(w.pop(), Some(7));
+    assert_eq!(w.pop(), None);
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn steal_push() {
     let t = thread::spawn(move || {
         for i in 0..STEPS {
             loop {
-                if let Done(Some(v)) = s.steal_one() {
+                if let Success(v) = s.steal() {
                     assert_eq!(i, v);
                     break;
                 }
@@ -76,7 +76,6 @@ fn stampede() {
     const COUNT: usize = 50_000;
 
     let w = Worker::new_lifo();
-    let s = w.stealer();
 
     for i in 0..COUNT {
         w.push(Box::new(i + 1));
@@ -85,13 +84,13 @@ fn stampede() {
 
     let threads = (0..THREADS)
         .map(|_| {
-            let s = s.clone();
+            let s = w.stealer();
             let remaining = remaining.clone();
 
             thread::spawn(move || {
                 let mut last = 0;
                 while remaining.load(SeqCst) > 0 {
-                    if let Done(Some(x)) = s.steal_one() {
+                    if let Success(x) = s.steal() {
                         assert!(last < *x);
                         last = *x;
                         remaining.fetch_sub(1, SeqCst);
@@ -102,7 +101,7 @@ fn stampede() {
 
     let mut last = COUNT + 1;
     while remaining.load(SeqCst) > 0 {
-        if let Some(x) = Racy::spin(|| w.pop()) {
+        if let Some(x) = w.pop() {
             assert!(last > *x);
             last = *x;
             remaining.fetch_sub(1, SeqCst);
@@ -119,13 +118,12 @@ fn run_stress() {
     const COUNT: usize = 50_000;
 
     let w = Worker::new_lifo();
-    let s = w.stealer();
     let done = Arc::new(AtomicBool::new(false));
     let hits = Arc::new(AtomicUsize::new(0));
 
     let threads = (0..THREADS)
         .map(|_| {
-            let s = s.clone();
+            let s = w.stealer();
             let done = done.clone();
             let hits = hits.clone();
 
@@ -133,14 +131,14 @@ fn run_stress() {
                 let w2 = Worker::new_lifo();
 
                 while !done.load(SeqCst) {
-                    if let Done(Some(_)) = s.steal_one() {
+                    if let Success(_) = s.steal() {
                         hits.fetch_add(1, SeqCst);
                     }
 
-                    if let Done(Some(_)) = s.steal_one_and_batch(&w2) {
+                    if let Success(_) = s.steal_batch_and_pop(&w2) {
                         hits.fetch_add(1, SeqCst);
 
-                        while let Some(_) = Racy::spin(|| w2.pop()) {
+                        while let Some(_) = w2.pop() {
                             hits.fetch_add(1, SeqCst);
                         }
                     }
@@ -152,7 +150,7 @@ fn run_stress() {
     let mut expected = 0;
     while expected < COUNT {
         if rng.gen_range(0, 3) == 0 {
-            while let Some(_) = Racy::spin(|| w.pop()) {
+            while let Some(_) = w.pop() {
                 hits.fetch_add(1, SeqCst);
             }
         } else {
@@ -162,7 +160,7 @@ fn run_stress() {
     }
 
     while hits.load(SeqCst) < COUNT {
-        while let Some(_) = Racy::spin(|| w.pop()) {
+        while let Some(_) = w.pop() {
             hits.fetch_add(1, SeqCst);
         }
     }
@@ -190,12 +188,11 @@ fn no_starvation() {
     const COUNT: usize = 50_000;
 
     let w = Worker::new_lifo();
-    let s = w.stealer();
     let done = Arc::new(AtomicBool::new(false));
 
     let (threads, hits): (Vec<_>, Vec<_>) = (0..THREADS)
         .map(|_| {
-            let s = s.clone();
+            let s = w.stealer();
             let done = done.clone();
             let hits = Arc::new(AtomicUsize::new(0));
 
@@ -205,14 +202,14 @@ fn no_starvation() {
                     let w2 = Worker::new_lifo();
 
                     while !done.load(SeqCst) {
-                        if let Done(Some(_)) = s.steal_one() {
+                        if let Success(_) = s.steal() {
                             hits.fetch_add(1, SeqCst);
                         }
 
-                        if let Done(Some(_)) = s.steal_one_and_batch(&w2) {
+                        if let Success(_) = s.steal_batch_and_pop(&w2) {
                             hits.fetch_add(1, SeqCst);
 
-                            while let Some(_) = Racy::spin(|| w2.pop()) {
+                            while let Some(_) = w2.pop() {
                                 hits.fetch_add(1, SeqCst);
                             }
                         }
@@ -228,7 +225,7 @@ fn no_starvation() {
     loop {
         for i in 0..rng.gen_range(0, COUNT) {
             if rng.gen_range(0, 3) == 0 && my_hits == 0 {
-                while let Some(_) = Racy::spin(|| w.pop()) {
+                while let Some(_) = w.pop() {
                     my_hits += 1;
                 }
             } else {
@@ -262,10 +259,9 @@ fn destructors() {
     }
 
     let w = Worker::new_lifo();
-    let s = w.stealer();
-
     let dropped = Arc::new(Mutex::new(Vec::new()));
     let remaining = Arc::new(AtomicUsize::new(COUNT));
+
     for i in 0..COUNT {
         w.push(Elem(i, dropped.clone()));
     }
@@ -273,23 +269,23 @@ fn destructors() {
     let threads = (0..THREADS)
         .map(|_| {
             let remaining = remaining.clone();
-            let s = s.clone();
+            let s = w.stealer();
 
             thread::spawn(move || {
                 let w2 = Worker::new_lifo();
                 let mut cnt = 0;
 
                 while cnt < STEPS {
-                    if let Done(Some(_)) = s.steal_one() {
+                    if let Success(_) = s.steal() {
                         cnt += 1;
                         remaining.fetch_sub(1, SeqCst);
                     }
 
-                    if let Done(Some(_)) = s.steal_one_and_batch(&w2) {
+                    if let Success(_) = s.steal_batch_and_pop(&w2) {
                         cnt += 1;
                         remaining.fetch_sub(1, SeqCst);
 
-                        while let Some(_) = Racy::spin(|| w2.pop()) {
+                        while let Some(_) = w2.pop() {
                             cnt += 1;
                             remaining.fetch_sub(1, SeqCst);
                         }
@@ -299,7 +295,7 @@ fn destructors() {
         }).collect::<Vec<_>>();
 
     for _ in 0..STEPS {
-        if let Some(_) = Racy::spin(|| w.pop()) {
+        if let Some(_) = w.pop() {
             remaining.fetch_sub(1, SeqCst);
         }
     }
@@ -317,7 +313,7 @@ fn destructors() {
         v.clear();
     }
 
-    drop((w, s));
+    drop(w);
 
     {
         let mut v = dropped.lock().unwrap();
