@@ -24,17 +24,16 @@
 //! Each [`Worker`] is owned by a single thread and supports only push and pop operations.
 //!
 //! Method [`stealer()`] creates a [`Stealer`] that may be shared among threads and can only steal
-//! tasks from its associated [`Worker`]. Tasks are stolen from the end opposite to where they get
-//! pushed.
+//! tasks from its [`Worker`]. Tasks are stolen from the end opposite to where they get pushed.
 //!
 //! # Stealing
 //!
 //! Steal operations come in three flavors:
 //!
 //! 1. [`steal()`] - Steals one task.
-//! 2. [`steal_batch()`] - Steals a batch of tasks and moves them into a worker queue.
-//! 3. [`steal_batch_and_pop()`] - Steals a batch of tasks, moves them into a worker queue, and
-//!    pops one task from the worker queue.
+//! 2. [`steal_batch()`] - Steals a batch of tasks and moves them into another worker.
+//! 3. [`steal_batch_and_pop()`] - Steals a batch of tasks, moves them into another queue, and pops
+//!    one task from that worker.
 //!
 //! In contrast to push and pop operations, stealing can spuriously fail with [`Steal::Retry`], in
 //! which case the steal operation needs to be retried.
@@ -79,6 +78,7 @@
 //! [`Worker`]: struct.Worker.html
 //! [`Stealer`]: struct.Stealer.html
 //! [`Injector`]: struct.Stealer.html
+//! [`Steal::Retry`]: enum.Steal.html#variant.Retry
 //! [`new_fifo()`]: struct.Worker.html#method.new_fifo
 //! [`new_lifo()`]: struct.Worker.html#method.new_lifo
 //! [`stealer()`]: struct.Worker.html#method.stealer
@@ -305,8 +305,7 @@ impl<T> Worker<T> {
     /// ```
     /// use crossbeam_deque::Worker;
     ///
-    /// let w = Worker::new_fifo();
-    /// w.push(1);
+    /// let w = Worker::<i32>::new_fifo();
     /// ```
     pub fn new_fifo() -> Worker<T> {
         let buffer = Buffer::alloc(MIN_CAP);
@@ -334,8 +333,7 @@ impl<T> Worker<T> {
     /// ```
     /// use crossbeam_deque::Worker;
     ///
-    /// let w = Worker::new_lifo();
-    /// w.push(1);
+    /// let w = Worker::<i32>::new_lifo();
     /// ```
     pub fn new_lifo() -> Worker<T> {
         let buffer = Buffer::alloc(MIN_CAP);
@@ -354,7 +352,7 @@ impl<T> Worker<T> {
         }
     }
 
-    /// Creates a stealer associated with this queue.
+    /// Creates a stealer for this queue.
     ///
     /// The returned stealer can be shared among threads and cloned.
     ///
@@ -614,11 +612,26 @@ impl<T> fmt::Debug for Worker<T> {
     }
 }
 
-/// A stealer associated with a worker queue.
+/// A stealer handle of a worker queue.
 ///
 /// Stealers can be shared among threads.
 ///
 /// Task schedulers typically have a single worker queue per worker thread.
+///
+/// # Examples
+///
+/// ```
+/// use crossbeam_deque::{Steal, Worker};
+///
+/// let w = Worker::new_lifo();
+/// w.push(1);
+/// w.push(2);
+///
+/// let s = w.stealer();
+/// assert_eq!(s.steal(), Steal::Success(1));
+/// assert_eq!(s.steal(), Steal::Success(2));
+/// assert_eq!(s.steal(), Steal::Empty);
+/// ```
 pub struct Stealer<T> {
     /// A reference to the inner representation of the queue.
     inner: Arc<CachePadded<Inner<T>>>,
@@ -664,7 +677,6 @@ impl<T> Stealer<T> {
     /// let s = w.stealer();
     /// assert_eq!(s.steal(), Steal::Success(1));
     /// assert_eq!(s.steal(), Steal::Success(2));
-    /// assert_eq!(s.steal(), Steal::Empty);
     /// ```
     pub fn steal(&self) -> Steal<T> {
         // Load the front index.
@@ -845,24 +857,20 @@ impl<T> Stealer<T> {
                     // Move the source front index and the destination back index one step forward.
                     f = f.wrapping_add(1);
                     dest_b = dest_b.wrapping_add(1);
-
-                    atomic::fence(Ordering::Release);
-
-                    // Update the destination back index.
-                    //
-                    // This ordering could be `Relaxed`, but then thread sanitizer would falsely
-                    // report data races because it doesn't understand fences.
-                    dest.inner.back.store(dest_b, Ordering::Release);
                 }
 
-                // TODO: write dest.inner.back only once?
+                atomic::fence(Ordering::Release);
+
+                // Update the destination back index.
+                //
+                // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
+                // data races because it doesn't understand fences.
+                dest.inner.back.store(dest_b, Ordering::Release);
 
                 // Return with success.
                 Steal::Success(())
             }
         }
-
-        // TODO: Reverse stolen items if Lifo vs Fifo, or Fifo vs Lifo, then store dest.inner.back
     }
 
     /// Steals a batch of tasks, pushes them into another worker, and pops a task from that worker.
@@ -1024,17 +1032,15 @@ impl<T> Stealer<T> {
                     // Move the source front index and the destination back index one step forward.
                     f = f.wrapping_add(1);
                     dest_b = dest_b.wrapping_add(1);
-
-                    atomic::fence(Ordering::Release);
-
-                    // Update the destination back index.
-                    //
-                    // This ordering could be `Relaxed`, but then thread sanitizer would falsely
-                    // report data races because it doesn't understand fences.
-                    dest.inner.back.store(dest_b, Ordering::Release);
                 }
 
-                // TODO: write dest.inner.back only once?
+                atomic::fence(Ordering::Release);
+
+                // Update the destination back index.
+                //
+                // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
+                // data races because it doesn't understand fences.
+                dest.inner.back.store(dest_b, Ordering::Release);
 
                 // Return the first stolen task.
                 Steal::Success(task)
@@ -1193,8 +1199,7 @@ impl<T> Injector<T> {
     /// ```
     /// use crossbeam_deque::Injector;
     ///
-    /// let q = Injector::new();
-    /// q.push(1);
+    /// let q = Injector::<i32>::new();
     /// ```
     pub fn new() -> Injector<T> {
         let block = Box::into_raw(Box::new(Block::<T>::new()));
@@ -1211,7 +1216,17 @@ impl<T> Injector<T> {
         }
     }
 
-    /// TODO
+    /// Pushes a task into the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Injector;
+    ///
+    /// let w = Injector::new();
+    /// w.push(1);
+    /// w.push(2);
+    /// ```
     pub fn push(&self, task: T) {
         let mut backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
@@ -1397,8 +1412,6 @@ impl<T> Injector<T> {
 
         let mut new_head = head;
         let batch_size;
-        // TODO: Use MAX_BATCH somewhere here
-        // TODO: and always load tail
 
         if new_head & HAS_NEXT == 0 {
             atomic::fence(Ordering::SeqCst);
@@ -1412,13 +1425,13 @@ impl<T> Injector<T> {
             // If head and tail are not in the same block, set `HAS_NEXT` in head.
             if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                 new_head |= HAS_NEXT;
-                batch_size = BLOCK_CAP - offset;
+                batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
             } else {
                 let len = (tail - head) >> SHIFT;
-                batch_size = (len + 1) / 2;
+                batch_size = ((len + 1) / 2).min(MAX_BATCH);
             }
         } else {
-            batch_size = BLOCK_CAP - offset;
+            batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
         }
 
         new_head += batch_size << SHIFT;
@@ -1468,7 +1481,6 @@ impl<T> Injector<T> {
 
                 // Write it into the destination queue.
                 dest_buffer.write(dest_b.wrapping_add(i as isize), task);
-                // TODO: Do it in reverse order if Lifo queue
             }
 
             atomic::fence(Ordering::Release);
@@ -1532,8 +1544,6 @@ impl<T> Injector<T> {
 
         let mut new_head = head;
         let batch_size;
-        // TODO: Use MAX_BATCH somewhere here
-        // TODO: and always load tail
 
         if new_head & HAS_NEXT == 0 {
             atomic::fence(Ordering::SeqCst);
@@ -1547,13 +1557,13 @@ impl<T> Injector<T> {
             // If head and tail are not in the same block, set `HAS_NEXT` in head.
             if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                 new_head |= HAS_NEXT;
-                batch_size = BLOCK_CAP - offset;
+                batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
             } else {
                 let len = (tail - head) >> SHIFT;
-                batch_size = (len + 1) / 2;
+                batch_size = ((len + 1) / 2).min(MAX_BATCH);
             }
         } else {
-            batch_size = BLOCK_CAP - offset;
+            batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
         }
 
         new_head += batch_size << SHIFT;
@@ -1609,7 +1619,6 @@ impl<T> Injector<T> {
 
                 // Write it into the destination queue.
                 dest_buffer.write(dest_b.wrapping_add(i as isize), task);
-                // TODO: Do it in reverse order if Lifo queue
             }
 
             atomic::fence(Ordering::Release);
@@ -1779,16 +1788,6 @@ impl<T> fmt::Debug for Steal<T> {
             Steal::Empty => f.pad("Empty"),
             Steal::Success(_) => f.pad("Success(..)"),
             Steal::Retry => f.pad("Retry"),
-        }
-    }
-}
-
-impl<T> From<Option<T>> for Steal<T> {
-    /// Converts `None` into `Empty` and `Some(t)` into `Success(t)`.
-    fn from(val: Option<T>) -> Steal<T> {
-        match val {
-            Some(res) => Steal::Success(res),
-            None => Steal::Empty,
         }
     }
 }
