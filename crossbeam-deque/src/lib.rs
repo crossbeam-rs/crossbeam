@@ -771,7 +771,7 @@ impl<T> Stealer<T> {
         // Reserve capacity for the stolen batch.
         let batch_size = cmp::min((len as usize + 1) / 2, MAX_BATCH);
         dest.reserve(batch_size);
-        let batch_size = batch_size as isize;
+        let mut batch_size = batch_size as isize;
 
         // Get the destination buffer and back index.
         let dest_buffer = dest.buffer.get();
@@ -784,10 +784,22 @@ impl<T> Stealer<T> {
             // Steal a batch of tasks from the front at once.
             Flavor::Fifo => {
                 // Copy the batch from the source to the destination buffer.
-                for i in 0..batch_size {
-                    unsafe {
-                        let task = buffer.deref().read(f.wrapping_add(i));
-                        dest_buffer.write(dest_b.wrapping_add(i), task);
+                match dest.flavor {
+                    Flavor::Fifo => {
+                        for i in 0..batch_size {
+                            unsafe {
+                                let task = buffer.deref().read(f.wrapping_add(i));
+                                dest_buffer.write(dest_b.wrapping_add(i), task);
+                            }
+                        }
+                    }
+                    Flavor::Lifo => {
+                        for i in 0..batch_size {
+                            unsafe {
+                                let task = buffer.deref().read(f.wrapping_add(i));
+                                dest_buffer.write(dest_b.wrapping_add(batch_size - 1 - i), task);
+                            }
+                        }
                     }
                 }
 
@@ -821,7 +833,7 @@ impl<T> Stealer<T> {
 
             // Steal a batch of tasks from the front one by one.
             Flavor::Lifo => {
-                for _ in 0..batch_size {
+                for i in 0..batch_size {
                     // We've already got the current front index. Now execute the fence to
                     // synchronize with other threads.
                     atomic::fence(Ordering::SeqCst);
@@ -846,6 +858,7 @@ impl<T> Stealer<T> {
                     {
                         // We didn't steal this task, forget it and break from the loop.
                         mem::forget(task);
+                        batch_size = i;
                         break;
                     }
 
@@ -857,6 +870,25 @@ impl<T> Stealer<T> {
                     // Move the source front index and the destination back index one step forward.
                     f = f.wrapping_add(1);
                     dest_b = dest_b.wrapping_add(1);
+                }
+
+                // TODO
+                if batch_size == 0 {
+                    return Steal::Empty;
+                }
+
+                // TODO
+                if dest.flavor == Flavor::Fifo {
+                    for i in 0..batch_size / 2 {
+                        unsafe {
+                            let a = dest_b.wrapping_sub(batch_size - i);
+                            let b = dest_b.wrapping_sub(i + 1);
+                            let t1 = buffer.deref().read(a);
+                            let t2 = buffer.deref().read(b);
+                            buffer.deref().write(a, t2);
+                            buffer.deref().write(b, t1);
+                        }
+                    }
                 }
 
                 atomic::fence(Ordering::Release);
@@ -922,7 +954,7 @@ impl<T> Stealer<T> {
         // Reserve capacity for the stolen batch.
         let batch_size = cmp::min((len as usize - 1) / 2, MAX_BATCH - 1);
         dest.reserve(batch_size);
-        let batch_size = batch_size as isize;
+        let mut batch_size = batch_size as isize;
 
         // Get the destination buffer and back index.
         let dest_buffer = dest.buffer.get();
@@ -938,10 +970,22 @@ impl<T> Stealer<T> {
                 let task = unsafe { buffer.deref().read(f) };
 
                 // Copy the batch from the source to the destination buffer.
-                for i in 0..batch_size {
-                    unsafe {
-                        let task = buffer.deref().read(f.wrapping_add(i + 1));
-                        dest_buffer.write(dest_b.wrapping_add(i), task);
+                match dest.flavor {
+                    Flavor::Fifo => {
+                        for i in 0..batch_size {
+                            unsafe {
+                                let task = buffer.deref().read(f.wrapping_add(i + 1));
+                                dest_buffer.write(dest_b.wrapping_add(i), task);
+                            }
+                        }
+                    }
+                    Flavor::Lifo => {
+                        for i in 0..batch_size {
+                            unsafe {
+                                let task = buffer.deref().read(f.wrapping_add(i + 1));
+                                dest_buffer.write(dest_b.wrapping_add(batch_size - 1 - i), task);
+                            }
+                        }
                     }
                 }
 
@@ -996,7 +1040,7 @@ impl<T> Stealer<T> {
                 f = f.wrapping_add(1);
 
                 // Repeat the same procedure for the batch steals.
-                for _ in 0..batch_size {
+                for i in 0..batch_size {
                     // We've already got the current front index. Now execute the fence to
                     // synchronize with other threads.
                     atomic::fence(Ordering::SeqCst);
@@ -1021,6 +1065,7 @@ impl<T> Stealer<T> {
                     {
                         // We didn't steal this task, forget it and break from the loop.
                         mem::forget(tmp);
+                        batch_size = i;
                         break;
                     }
 
@@ -1032,6 +1077,20 @@ impl<T> Stealer<T> {
                     // Move the source front index and the destination back index one step forward.
                     f = f.wrapping_add(1);
                     dest_b = dest_b.wrapping_add(1);
+                }
+
+                // TODO
+                if dest.flavor == Flavor::Fifo {
+                    for i in 0..batch_size / 2 {
+                        unsafe {
+                            let a = dest_b.wrapping_sub(batch_size - i);
+                            let b = dest_b.wrapping_sub(i + 1);
+                            let t1 = buffer.deref().read(a);
+                            let t2 = buffer.deref().read(b);
+                            buffer.deref().write(a, t2);
+                            buffer.deref().write(b, t1);
+                        }
+                    }
                 }
 
                 atomic::fence(Ordering::Release);
@@ -1472,15 +1531,31 @@ impl<T> Injector<T> {
             }
 
             // Copy values from the injector into the destination queue.
-            for i in 0..batch_size {
-                // Read the task.
-                let slot = (*block).slots.get_unchecked(offset + i);
-                slot.wait_write();
-                let m = slot.task.get().read();
-                let task = ManuallyDrop::into_inner(m);
+            match dest.flavor {
+                Flavor::Fifo => {
+                    for i in 0..batch_size {
+                        // Read the task.
+                        let slot = (*block).slots.get_unchecked(offset + i);
+                        slot.wait_write();
+                        let m = slot.task.get().read();
+                        let task = ManuallyDrop::into_inner(m);
 
-                // Write it into the destination queue.
-                dest_buffer.write(dest_b.wrapping_add(i as isize), task);
+                        // Write it into the destination queue.
+                        dest_buffer.write(dest_b.wrapping_add(i as isize), task);
+                    }
+                }
+                Flavor::Lifo => {
+                    for i in 0..batch_size {
+                        // Read the task.
+                        let slot = (*block).slots.get_unchecked(offset + i);
+                        slot.wait_write();
+                        let m = slot.task.get().read();
+                        let task = ManuallyDrop::into_inner(m);
+
+                        // Write it into the destination queue.
+                        dest_buffer.write(dest_b.wrapping_add((batch_size - 1 - i) as isize), task);
+                    }
+                }
             }
 
             atomic::fence(Ordering::Release);
@@ -1603,22 +1678,46 @@ impl<T> Injector<T> {
                 self.head.index.store(next_index, Ordering::Release);
             }
 
-            // Read the task.
-            let slot = (*block).slots.get_unchecked(offset);
-            slot.wait_write();
-            let m = slot.task.get().read();
-            let task = ManuallyDrop::into_inner(m);
+            let task;
+            match dest.flavor {
+                Flavor::Fifo => {
+                    // Read the task.
+                    let slot = (*block).slots.get_unchecked(offset);
+                    slot.wait_write();
+                    let m = slot.task.get().read();
+                    task = ManuallyDrop::into_inner(m);
 
-            // Copy values from the injector into the destination queue.
-            for i in 0..batch_size {
-                // Read the task.
-                let slot = (*block).slots.get_unchecked(offset + i + 1);
-                slot.wait_write();
-                let m = slot.task.get().read();
-                let task = ManuallyDrop::into_inner(m);
+                    // Copy values from the injector into the destination queue.
+                    for i in 0..batch_size {
+                        // Read the task.
+                        let slot = (*block).slots.get_unchecked(offset + i + 1);
+                        slot.wait_write();
+                        let m = slot.task.get().read();
+                        let task = ManuallyDrop::into_inner(m);
 
-                // Write it into the destination queue.
-                dest_buffer.write(dest_b.wrapping_add(i as isize), task);
+                        // Write it into the destination queue.
+                        dest_buffer.write(dest_b.wrapping_add(i as isize), task);
+                    }
+                }
+                Flavor::Lifo => {
+                    // Read the task.
+                    let slot = (*block).slots.get_unchecked(offset + batch_size);
+                    slot.wait_write();
+                    let m = slot.task.get().read();
+                    task = ManuallyDrop::into_inner(m);
+
+                    // Copy values from the injector into the destination queue.
+                    for i in 0..batch_size {
+                        // Read the task.
+                        let slot = (*block).slots.get_unchecked(offset + i);
+                        slot.wait_write();
+                        let m = slot.task.get().read();
+                        let task = ManuallyDrop::into_inner(m);
+
+                        // Write it into the destination queue.
+                        dest_buffer.write(dest_b.wrapping_add((batch_size - 1 - i) as isize), task);
+                    }
+                }
             }
 
             atomic::fence(Ordering::Release);
