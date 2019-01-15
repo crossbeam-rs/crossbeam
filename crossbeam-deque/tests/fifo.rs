@@ -1,5 +1,4 @@
 extern crate crossbeam_deque as deque;
-extern crate crossbeam_epoch as epoch;
 extern crate rand;
 
 use std::sync::atomic::Ordering::SeqCst;
@@ -45,6 +44,32 @@ fn smoke() {
     assert_eq!(w.pop(), Some(8));
     assert_eq!(w.pop(), Some(9));
     assert_eq!(w.pop(), None);
+}
+
+#[test]
+fn is_empty() {
+    let w = Worker::new_fifo();
+    let s = w.stealer();
+
+    assert!(w.is_empty());
+    w.push(1);
+    assert!(!w.is_empty());
+    w.push(2);
+    assert!(!w.is_empty());
+    let _ = w.pop();
+    assert!(!w.is_empty());
+    let _ = w.pop();
+    assert!(w.is_empty());
+
+    assert!(s.is_empty());
+    w.push(1);
+    assert!(!s.is_empty());
+    w.push(2);
+    assert!(!s.is_empty());
+    let _ = s.steal();
+    assert!(!s.is_empty());
+    let _ = s.steal();
+    assert!(s.is_empty());
 }
 
 #[test]
@@ -113,7 +138,8 @@ fn stampede() {
     }
 }
 
-fn run_stress() {
+#[test]
+fn stress() {
     const THREADS: usize = 8;
     const COUNT: usize = 50_000;
 
@@ -135,12 +161,14 @@ fn run_stress() {
                         hits.fetch_add(1, SeqCst);
                     }
 
+                    let _ = s.steal_batch(&w2);
+
                     if let Success(_) = s.steal_batch_and_pop(&w2) {
                         hits.fetch_add(1, SeqCst);
+                    }
 
-                        while let Some(_) = w2.pop() {
-                            hits.fetch_add(1, SeqCst);
-                        }
+                    while let Some(_) = w2.pop() {
+                        hits.fetch_add(1, SeqCst);
                     }
                 }
             })
@@ -172,17 +200,6 @@ fn run_stress() {
 }
 
 #[test]
-fn stress() {
-    run_stress();
-}
-
-#[test]
-fn stress_pinned() {
-    let _guard = epoch::pin();
-    run_stress();
-}
-
-#[test]
 fn no_starvation() {
     const THREADS: usize = 8;
     const COUNT: usize = 50_000;
@@ -206,12 +223,14 @@ fn no_starvation() {
                             hits.fetch_add(1, SeqCst);
                         }
 
+                        let _ = s.steal_batch(&w2);
+
                         if let Success(_) = s.steal_batch_and_pop(&w2) {
                             hits.fetch_add(1, SeqCst);
+                        }
 
-                            while let Some(_) = w2.pop() {
-                                hits.fetch_add(1, SeqCst);
-                            }
+                        while let Some(_) = w2.pop() {
+                            hits.fetch_add(1, SeqCst);
                         }
                     }
                 })
@@ -281,14 +300,16 @@ fn destructors() {
                         remaining.fetch_sub(1, SeqCst);
                     }
 
+                    let _ = s.steal_batch(&w2);
+
                     if let Success(_) = s.steal_batch_and_pop(&w2) {
                         cnt += 1;
                         remaining.fetch_sub(1, SeqCst);
+                    }
 
-                        while let Some(_) = w2.pop() {
-                            cnt += 1;
-                            remaining.fetch_sub(1, SeqCst);
-                        }
+                    while let Some(_) = w2.pop() {
+                        cnt += 1;
+                        remaining.fetch_sub(1, SeqCst);
                     }
                 }
             })
