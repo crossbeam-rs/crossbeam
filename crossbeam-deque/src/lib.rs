@@ -204,7 +204,7 @@ struct Inner<T> {
     back: AtomicIsize,
 
     /// The underlying buffer.
-    buffer: Atomic<Buffer<T>>,
+    buffer: CachePadded<Atomic<Buffer<T>>>,
 }
 
 impl<T> Drop for Inner<T> {
@@ -313,7 +313,7 @@ impl<T> Worker<T> {
         let inner = Arc::new(CachePadded::new(Inner {
             front: AtomicIsize::new(0),
             back: AtomicIsize::new(0),
-            buffer: Atomic::new(buffer),
+            buffer: CachePadded::new(Atomic::new(buffer)),
         }));
 
         Worker {
@@ -341,7 +341,7 @@ impl<T> Worker<T> {
         let inner = Arc::new(CachePadded::new(Inner {
             front: AtomicIsize::new(0),
             back: AtomicIsize::new(0),
-            buffer: Atomic::new(buffer),
+            buffer: CachePadded::new(Atomic::new(buffer)),
         }));
 
         Worker {
@@ -883,10 +883,10 @@ impl<T> Stealer<T> {
                         unsafe {
                             let a = dest_b.wrapping_sub(batch_size - i);
                             let b = dest_b.wrapping_sub(i + 1);
-                            let t1 = buffer.deref().read(a);
-                            let t2 = buffer.deref().read(b);
-                            buffer.deref().write(a, t2);
-                            buffer.deref().write(b, t1);
+                            let t1 = dest_buffer.read(a);
+                            let t2 = dest_buffer.read(b);
+                            dest_buffer.write(a, t2);
+                            dest_buffer.write(b, t1);
                         }
                     }
                 }
@@ -1085,10 +1085,10 @@ impl<T> Stealer<T> {
                         unsafe {
                             let a = dest_b.wrapping_sub(batch_size - i);
                             let b = dest_b.wrapping_sub(i + 1);
-                            let t1 = buffer.deref().read(a);
-                            let t2 = buffer.deref().read(b);
-                            buffer.deref().write(a, t2);
-                            buffer.deref().write(b, t1);
+                            let t1 = dest_buffer.read(a);
+                            let t2 = dest_buffer.read(b);
+                            dest_buffer.write(a, t2);
+                            dest_buffer.write(b, t1);
                         }
                     }
                 }
@@ -1544,6 +1544,7 @@ impl<T> Injector<T> {
                         dest_buffer.write(dest_b.wrapping_add(i as isize), task);
                     }
                 }
+
                 Flavor::Lifo => {
                     for i in 0..batch_size {
                         // Read the task.
@@ -1678,15 +1679,14 @@ impl<T> Injector<T> {
                 self.head.index.store(next_index, Ordering::Release);
             }
 
-            let task;
+            // Read the task.
+            let slot = (*block).slots.get_unchecked(offset);
+            slot.wait_write();
+            let m = slot.task.get().read();
+            let task = ManuallyDrop::into_inner(m);
+
             match dest.flavor {
                 Flavor::Fifo => {
-                    // Read the task.
-                    let slot = (*block).slots.get_unchecked(offset);
-                    slot.wait_write();
-                    let m = slot.task.get().read();
-                    task = ManuallyDrop::into_inner(m);
-
                     // Copy values from the injector into the destination queue.
                     for i in 0..batch_size {
                         // Read the task.
@@ -1699,17 +1699,12 @@ impl<T> Injector<T> {
                         dest_buffer.write(dest_b.wrapping_add(i as isize), task);
                     }
                 }
-                Flavor::Lifo => {
-                    // Read the task.
-                    let slot = (*block).slots.get_unchecked(offset + batch_size);
-                    slot.wait_write();
-                    let m = slot.task.get().read();
-                    task = ManuallyDrop::into_inner(m);
 
+                Flavor::Lifo => {
                     // Copy values from the injector into the destination queue.
                     for i in 0..batch_size {
                         // Read the task.
-                        let slot = (*block).slots.get_unchecked(offset + i);
+                        let slot = (*block).slots.get_unchecked(offset + i + 1);
                         slot.wait_write();
                         let m = slot.task.get().read();
                         let task = ManuallyDrop::into_inner(m);
