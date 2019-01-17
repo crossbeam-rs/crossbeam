@@ -1472,7 +1472,7 @@ impl<T> Injector<T> {
         }
 
         let mut new_head = head;
-        let batch_size;
+        let advance;
 
         if new_head & HAS_NEXT == 0 {
             atomic::fence(Ordering::SeqCst);
@@ -1488,19 +1488,19 @@ impl<T> Injector<T> {
             if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                 new_head |= HAS_NEXT;
                 // We can steal all tasks till the end of the block.
-                batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
+                advance = (BLOCK_CAP - offset).min(MAX_BATCH);
             } else {
                 let len = (tail - head) >> SHIFT;
                 // Steal half of the available tasks.
-                batch_size = ((len + 1) / 2).min(MAX_BATCH);
+                advance = ((len + 1) / 2).min(MAX_BATCH);
             }
         } else {
             // We can steal all tasks till the end of the block.
-            batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
+            advance = (BLOCK_CAP - offset).min(MAX_BATCH);
         }
 
-        new_head += batch_size << SHIFT;
-        let new_offset = offset + batch_size;
+        new_head += advance << SHIFT;
+        let new_offset = offset + advance;
 
         // Try moving the head index forward.
         if self.head.index
@@ -1636,7 +1636,7 @@ impl<T> Injector<T> {
         }
 
         let mut new_head = head;
-        let batch_size;
+        let advance;
 
         if new_head & HAS_NEXT == 0 {
             atomic::fence(Ordering::SeqCst);
@@ -1651,19 +1651,19 @@ impl<T> Injector<T> {
             if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                 new_head |= HAS_NEXT;
                 // We can steal all tasks till the end of the block.
-                batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
+                advance = (BLOCK_CAP - offset).min(MAX_BATCH + 1);
             } else {
                 let len = (tail - head) >> SHIFT;
                 // Steal half of the available tasks.
-                batch_size = ((len + 1) / 2).min(MAX_BATCH);
+                advance = ((len + 1) / 2).min(MAX_BATCH + 1);
             }
         } else {
             // We can steal all tasks till the end of the block.
-            batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
+            advance = (BLOCK_CAP - offset).min(MAX_BATCH + 1);
         }
 
-        new_head += batch_size << SHIFT;
-        let new_offset = offset + batch_size;
+        new_head += advance << SHIFT;
+        let new_offset = offset + advance;
 
         // Try moving the head index forward.
         if self.head.index
