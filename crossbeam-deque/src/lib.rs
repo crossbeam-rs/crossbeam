@@ -817,33 +817,26 @@ impl<T> Stealer<T> {
                     return Steal::Retry;
                 }
 
-                atomic::fence(Ordering::Release);
-
-                // Success! Update the back index in the destination queue.
-                //
-                // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
-                // data races because it doesn't understand fences.
-                dest.inner
-                    .back
-                    .store(dest_b.wrapping_add(batch_size), Ordering::Release);
-
-                // Return with success.
-                Steal::Success(())
+                dest_b = dest_b.wrapping_add(batch_size);
             }
 
             // Steal a batch of tasks from the front one by one.
             Flavor::Lifo => {
                 for i in 0..batch_size {
-                    // We've already got the current front index. Now execute the fence to
-                    // synchronize with other threads.
-                    atomic::fence(Ordering::SeqCst);
+                    // If this is not the first steal, check whether the queue is empty.
+                    if i > 0 {
+                        // We've already got the current front index. Now execute the fence to
+                        // synchronize with other threads.
+                        atomic::fence(Ordering::SeqCst);
 
-                    // Load the back index.
-                    let b = self.inner.back.load(Ordering::Acquire);
+                        // Load the back index.
+                        let b = self.inner.back.load(Ordering::Acquire);
 
-                    // Is the queue empty?
-                    if b.wrapping_sub(f) <= 0 {
-                        break;
+                        // Is the queue empty?
+                        if b.wrapping_sub(f) <= 0 {
+                            batch_size = i;
+                            break;
+                        }
                     }
 
                     // Read the task at the front.
@@ -872,37 +865,39 @@ impl<T> Stealer<T> {
                     dest_b = dest_b.wrapping_add(1);
                 }
 
-                // TODO
+                // If we didn't steal anything, the operation needs to be retried.
                 if batch_size == 0 {
-                    return Steal::Empty;
+                    return Steal::Retry;
                 }
 
-                // TODO
+                // If stealing into a FIFO queue, stolen tasks need to be reversed.
                 if dest.flavor == Flavor::Fifo {
                     for i in 0..batch_size / 2 {
                         unsafe {
-                            let a = dest_b.wrapping_sub(batch_size - i);
-                            let b = dest_b.wrapping_sub(i + 1);
-                            let t1 = dest_buffer.read(a);
-                            let t2 = dest_buffer.read(b);
-                            dest_buffer.write(a, t2);
-                            dest_buffer.write(b, t1);
+                            let i1 = dest_b.wrapping_sub(batch_size - i);
+                            let i2 = dest_b.wrapping_sub(i + 1);
+                            let t1 = dest_buffer.read(i1);
+                            let t2 = dest_buffer.read(i2);
+                            dest_buffer.write(i1, t2);
+                            dest_buffer.write(i2, t1);
                         }
                     }
                 }
-
-                atomic::fence(Ordering::Release);
-
-                // Update the destination back index.
-                //
-                // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
-                // data races because it doesn't understand fences.
-                dest.inner.back.store(dest_b, Ordering::Release);
-
-                // Return with success.
-                Steal::Success(())
             }
         }
+
+        atomic::fence(Ordering::Release);
+
+        // Update the back index in the destination queue.
+        //
+        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
+        // races because it doesn't understand fences.
+        dest.inner
+            .back
+            .store(dest_b, Ordering::Release);
+
+        // Return with success.
+        Steal::Success(())
     }
 
     /// Steals a batch of tasks, pushes them into another worker, and pops a task from that worker.
@@ -963,12 +958,12 @@ impl<T> Stealer<T> {
         // Load the buffer
         let buffer = self.inner.buffer.load(Ordering::Acquire, guard);
 
+        // Read the task at the front.
+        let mut task = unsafe { buffer.deref().read(f) };
+
         match self.flavor {
             // Steal a batch of tasks from the front at once.
             Flavor::Fifo => {
-                // Read the task at the front.
-                let task = unsafe { buffer.deref().read(f) };
-
                 // Copy the batch from the source to the destination buffer.
                 match dest.flavor {
                     Flavor::Fifo => {
@@ -1005,25 +1000,11 @@ impl<T> Stealer<T> {
                     return Steal::Retry;
                 }
 
-                atomic::fence(Ordering::Release);
-
-                // Success! Update the back index in the destination queue.
-                //
-                // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
-                // data races because it doesn't understand fences.
-                dest.inner
-                    .back
-                    .store(dest_b.wrapping_add(batch_size), Ordering::Release);
-
-                // Return the first stolen task.
-                Steal::Success(task)
+                dest_b = dest_b.wrapping_add(batch_size);
             }
 
             // Steal a batch of tasks from the front one by one.
             Flavor::Lifo => {
-                // Read the task at the front.
-                let mut task = unsafe { buffer.deref().read(f) };
-
                 // Try incrementing the front index to steal the task.
                 if self
                     .inner
@@ -1050,6 +1031,7 @@ impl<T> Stealer<T> {
 
                     // Is the queue empty?
                     if b.wrapping_sub(f) <= 0 {
+                        batch_size = i;
                         break;
                     }
 
@@ -1079,32 +1061,34 @@ impl<T> Stealer<T> {
                     dest_b = dest_b.wrapping_add(1);
                 }
 
-                // TODO
+                // If stealing into a FIFO queue, stolen tasks need to be reversed.
                 if dest.flavor == Flavor::Fifo {
                     for i in 0..batch_size / 2 {
                         unsafe {
-                            let a = dest_b.wrapping_sub(batch_size - i);
-                            let b = dest_b.wrapping_sub(i + 1);
-                            let t1 = dest_buffer.read(a);
-                            let t2 = dest_buffer.read(b);
-                            dest_buffer.write(a, t2);
-                            dest_buffer.write(b, t1);
+                            let i1 = dest_b.wrapping_sub(batch_size - i);
+                            let i2 = dest_b.wrapping_sub(i + 1);
+                            let t1 = dest_buffer.read(i1);
+                            let t2 = dest_buffer.read(i2);
+                            dest_buffer.write(i1, t2);
+                            dest_buffer.write(i2, t1);
                         }
                     }
                 }
-
-                atomic::fence(Ordering::Release);
-
-                // Update the destination back index.
-                //
-                // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
-                // data races because it doesn't understand fences.
-                dest.inner.back.store(dest_b, Ordering::Release);
-
-                // Return the first stolen task.
-                Steal::Success(task)
             }
         }
+
+        atomic::fence(Ordering::Release);
+
+        // Update the back index in the destination queue.
+        //
+        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
+        // races because it doesn't understand fences.
+        dest.inner
+            .back
+            .store(dest_b, Ordering::Release);
+
+        // Return with success.
+        Steal::Success(task)
     }
 }
 
@@ -1364,15 +1348,24 @@ impl<T> Injector<T> {
     /// assert_eq!(q.steal(), Steal::Empty);
     /// ```
     pub fn steal(&self) -> Steal<T> {
-        let head = self.head.index.load(Ordering::Acquire);
-        let block = self.head.block.load(Ordering::Acquire);
+        let mut head;
+        let mut block;
+        let mut offset;
 
-        // Calculate the offset of the index into the block.
-        let offset = (head >> SHIFT) % LAP;
+        let mut backoff = Backoff::new();
+        loop {
+            head = self.head.index.load(Ordering::Acquire);
+            block = self.head.block.load(Ordering::Acquire);
 
-        // If we reached the end of the block, wait until the next one is installed.
-        if offset == BLOCK_CAP {
-            return Steal::Retry;
+            // Calculate the offset of the index into the block.
+            offset = (head >> SHIFT) % LAP;
+
+            // If we reached the end of the block, wait until the next one is installed.
+            if offset == BLOCK_CAP {
+                backoff.snooze();
+            } else {
+                break;
+            }
         }
 
         let mut new_head = head + (1 << SHIFT);
@@ -1458,15 +1451,24 @@ impl<T> Injector<T> {
     /// assert_eq!(w.pop(), Some(2));
     /// ```
     pub fn steal_batch(&self, dest: &Worker<T>) -> Steal<()> {
-        let head = self.head.index.load(Ordering::Acquire);
-        let block = self.head.block.load(Ordering::Acquire);
+        let mut head;
+        let mut block;
+        let mut offset;
 
-        // Calculate the offset of the index into the block.
-        let offset = (head >> SHIFT) % LAP;
+        let mut backoff = Backoff::new();
+        loop {
+            head = self.head.index.load(Ordering::Acquire);
+            block = self.head.block.load(Ordering::Acquire);
 
-        // If we reached the end of the block, wait until the next one is installed.
-        if offset == BLOCK_CAP {
-            return Steal::Retry;
+            // Calculate the offset of the index into the block.
+            offset = (head >> SHIFT) % LAP;
+
+            // If we reached the end of the block, wait until the next one is installed.
+            if offset == BLOCK_CAP {
+                backoff.snooze();
+            } else {
+                break;
+            }
         }
 
         let mut new_head = head;
@@ -1481,15 +1483,19 @@ impl<T> Injector<T> {
                 return Steal::Empty;
             }
 
-            // If head and tail are not in the same block, set `HAS_NEXT` in head.
+            // If head and tail are not in the same block, set `HAS_NEXT` in head. Also, calculate
+            // the right batch size to steal.
             if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                 new_head |= HAS_NEXT;
+                // We can steal all tasks till the end of the block.
                 batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
             } else {
                 let len = (tail - head) >> SHIFT;
+                // Steal half of the available tasks.
                 batch_size = ((len + 1) / 2).min(MAX_BATCH);
             }
         } else {
+            // We can steal all tasks till the end of the block.
             batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
         }
 
@@ -1569,6 +1575,8 @@ impl<T> Injector<T> {
                 .back
                 .store(dest_b.wrapping_add(batch_size as isize), Ordering::Release);
 
+            // Destroy the block if we've reached the end, or if another thread wanted to destroy
+            // but couldn't because we were busy reading from the slot.
             if new_offset == BLOCK_CAP {
                 Block::destroy(block, offset);
             } else {
@@ -1607,15 +1615,24 @@ impl<T> Injector<T> {
     /// assert_eq!(w.pop(), Some(2));
     /// ```
     pub fn steal_batch_and_pop(&self, dest: &Worker<T>) -> Steal<T> {
-        let head = self.head.index.load(Ordering::Acquire);
-        let block = self.head.block.load(Ordering::Acquire);
+        let mut head;
+        let mut block;
+        let mut offset;
 
-        // Calculate the offset of the index into the block.
-        let offset = (head >> SHIFT) % LAP;
+        let mut backoff = Backoff::new();
+        loop {
+            head = self.head.index.load(Ordering::Acquire);
+            block = self.head.block.load(Ordering::Acquire);
 
-        // If we reached the end of the block, wait until the next one is installed.
-        if offset == BLOCK_CAP {
-            return Steal::Retry;
+            // Calculate the offset of the index into the block.
+            offset = (head >> SHIFT) % LAP;
+
+            // If we reached the end of the block, wait until the next one is installed.
+            if offset == BLOCK_CAP {
+                backoff.snooze();
+            } else {
+                break;
+            }
         }
 
         let mut new_head = head;
@@ -1633,12 +1650,15 @@ impl<T> Injector<T> {
             // If head and tail are not in the same block, set `HAS_NEXT` in head.
             if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                 new_head |= HAS_NEXT;
+                // We can steal all tasks till the end of the block.
                 batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
             } else {
                 let len = (tail - head) >> SHIFT;
+                // Steal half of the available tasks.
                 batch_size = ((len + 1) / 2).min(MAX_BATCH);
             }
         } else {
+            // We can steal all tasks till the end of the block.
             batch_size = (BLOCK_CAP - offset).min(MAX_BATCH);
         }
 
@@ -1725,6 +1745,8 @@ impl<T> Injector<T> {
                 .back
                 .store(dest_b.wrapping_add(batch_size as isize), Ordering::Release);
 
+            // Destroy the block if we've reached the end, or if another thread wanted to destroy
+            // but couldn't because we were busy reading from the slot.
             if new_offset == BLOCK_CAP {
                 Block::destroy(block, offset);
             } else {
@@ -1792,9 +1814,7 @@ impl<T> Drop for Injector<T> {
             }
 
             // Deallocate the last remaining block.
-            if !block.is_null() {
-                drop(Box::from_raw(block));
-            }
+            drop(Box::from_raw(block));
         }
     }
 }
