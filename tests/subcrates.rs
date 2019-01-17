@@ -15,10 +15,9 @@ fn channel() {
 
 #[test]
 fn deque() {
-    let (w, s) = crossbeam::deque::fifo();
+    let w = crossbeam::deque::Worker::new_fifo();
     w.push(1);
     let _ = w.pop();
-    let _ = s.steal();
 }
 
 #[test]
