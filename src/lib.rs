@@ -106,17 +106,12 @@ cfg_if! {
         extern crate lazy_static;
         extern crate parking_lot;
 
-        mod ms_queue;
-        mod seg_queue;
         mod sharded_lock;
         mod treiber_stack;
         mod wait_group;
 
         /// Concurrent queues.
-        pub mod queue {
-            pub use ms_queue::MsQueue;
-            pub use seg_queue::SegQueue;
-        }
+        pub mod queue;
 
         /// Concurrent stacks.
         pub mod stack {
