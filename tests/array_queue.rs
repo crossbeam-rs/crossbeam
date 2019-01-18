@@ -4,6 +4,7 @@ extern crate rand;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam::queue::ArrayQueue;
+use crossbeam::scope;
 use rand::{thread_rng, Rng};
 
 #[test]
@@ -84,8 +85,8 @@ fn len() {
     }
     assert_eq!(q.len(), 0);
 
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
+    scope(|scope| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 loop {
                     if let Ok(x) = q.pop() {
@@ -98,14 +99,14 @@ fn len() {
             }
         });
 
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 while q.push(i).is_err() {}
                 let len = q.len();
                 assert!(len <= CAP);
             }
         });
-    });
+    }).unwrap();
     assert_eq!(q.len(), 0);
 }
 
@@ -115,8 +116,8 @@ fn spsc() {
 
     let q = ArrayQueue::new(3);
 
-    crossbeam::scope(|scope| {
-        scope.spawn(|| {
+    scope(|scope| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 loop {
                     if let Ok(x) = q.pop() {
@@ -128,12 +129,12 @@ fn spsc() {
             assert!(q.pop().is_err());
         });
 
-        scope.spawn(|| {
+        scope.spawn(|_| {
             for i in 0..COUNT {
                 while q.push(i).is_err() {}
             }
         });
-    });
+    }).unwrap();
 }
 
 #[test]
@@ -144,9 +145,9 @@ fn mpmc() {
     let q = ArrayQueue::<usize>::new(3);
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..COUNT {
                     let n = loop {
                         if let Ok(x) = q.pop() {
@@ -158,13 +159,13 @@ fn mpmc() {
             });
         }
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for i in 0..COUNT {
                     while q.push(i).is_err() {}
                 }
             });
         }
-    });
+    }).unwrap();
 
     for c in v {
         assert_eq!(c.load(Ordering::SeqCst), THREADS);
@@ -195,21 +196,21 @@ fn drops() {
         DROPS.store(0, Ordering::SeqCst);
         let q = ArrayQueue::new(50);
 
-        crossbeam::scope(|scope| {
-            scope.spawn(|| {
+        scope(|scope| {
+            scope.spawn(|_| {
                 for _ in 0..steps {
                     while q.pop().is_err() {}
                 }
             });
 
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..steps {
                     while q.push(DropCounter).is_err() {
                         DROPS.fetch_sub(1, Ordering::SeqCst);
                     }
                 }
             });
-        });
+        }).unwrap();
 
         for _ in 0..additional {
             q.push(DropCounter).unwrap();
@@ -228,14 +229,14 @@ fn linearizable() {
 
     let q = ArrayQueue::new(THREADS);
 
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|| {
+            scope.spawn(|_| {
                 for _ in 0..COUNT {
                     while q.push(0).is_err() {}
                     q.pop().unwrap();
                 }
             });
         }
-    });
+    }).unwrap();
 }
