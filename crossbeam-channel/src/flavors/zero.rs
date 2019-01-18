@@ -7,12 +7,10 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use parking_lot::Mutex;
-
 use context::Context;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use select::{Operation, SelectHandle, Selected, Token};
-use utils::Backoff;
+use utils::{Backoff, Mutex};
 use waker::Waker;
 
 /// A pointer to a packet.

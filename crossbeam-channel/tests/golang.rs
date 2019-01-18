@@ -11,16 +11,14 @@
 
 #[macro_use]
 extern crate crossbeam_channel;
-extern crate parking_lot;
 
 use std::any::Any;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::{bounded, Receiver, Select, Sender};
-use parking_lot::{Condvar, Mutex};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -48,6 +46,7 @@ impl<T> Chan<T> {
         let s = self
             .inner
             .lock()
+            .unwrap()
             .s
             .as_ref()
             .expect("sending into closed channel")
@@ -56,25 +55,50 @@ impl<T> Chan<T> {
     }
 
     fn try_recv(&self) -> Option<T> {
-        let r = self.inner.lock().r.clone();
+        let r = self
+            .inner
+            .lock()
+            .unwrap()
+            .r
+            .clone();
         r.try_recv().ok()
     }
 
     fn recv(&self) -> Option<T> {
-        let r = self.inner.lock().r.clone();
+        let r = self
+            .inner
+            .lock()
+            .unwrap()
+            .r
+            .clone();
         r.recv().ok()
     }
 
     fn close(&self) {
-        self.inner.lock().s.take().expect("channel already closed");
+        self.inner
+            .lock()
+            .unwrap()
+            .s
+            .take()
+            .expect("channel already closed");
     }
 
     fn rx(&self) -> Receiver<T> {
-        self.inner.lock().r.clone()
+        self.inner
+            .lock()
+            .unwrap()
+            .r
+            .clone()
     }
 
     fn tx(&self) -> Sender<T> {
-        match self.inner.lock().s.as_ref() {
+        match self
+            .inner
+            .lock()
+            .unwrap()
+            .s
+            .as_ref()
+        {
             None => {
                 let (s, r) = bounded(0);
                 std::mem::forget(r);
@@ -126,7 +150,7 @@ impl WaitGroup {
     }
 
     fn add(&self, delta: i32) {
-        let mut count = self.0.count.lock();
+        let mut count = self.0.count.lock().unwrap();
         *count += delta;
         assert!(*count >= 0);
         self.0.cond.notify_all();
@@ -137,9 +161,9 @@ impl WaitGroup {
     }
 
     fn wait(&self) {
-        let mut count = self.0.count.lock();
+        let mut count = self.0.count.lock().unwrap();
         while *count > 0 {
-            self.0.cond.wait(&mut count);
+            count = self.0.cond.wait(count).unwrap();
         }
     }
 }
@@ -413,18 +437,18 @@ mod chan_test {
                 let recv1 = Arc::new(Mutex::new(false));
                 go!(c, recv1, {
                     c.recv();
-                    *recv1.lock() = true;
+                    *recv1.lock().unwrap() = true;
                 });
 
                 let recv2 = Arc::new(Mutex::new(false));
                 go!(c, recv2, {
                     c.recv();
-                    *recv2.lock() = true;
+                    *recv2.lock().unwrap() = true;
                 });
 
                 thread::sleep(ms(1));
 
-                if *recv1.lock() || *recv2.lock() {
+                if *recv1.lock().unwrap() || *recv2.lock().unwrap() {
                     panic!();
                 }
 
@@ -452,12 +476,12 @@ mod chan_test {
                 let sent = Arc::new(Mutex::new(0));
                 go!(sent, c, {
                     c.send(0);
-                    *sent.lock() = 1;
+                    *sent.lock().unwrap() = 1;
                 });
 
                 thread::sleep(ms(1));
 
-                if *sent.lock() != 0 {
+                if *sent.lock().unwrap() != 0 {
                     panic!();
                 }
 
@@ -867,7 +891,7 @@ mod chan_test {
             let done = make::<bool>(0);
 
             go!(c, done, l, {
-                let mut l = l.lock();
+                let mut l = l.lock().unwrap();
                 for i in 0..N {
                     thread::yield_now();
                     l[i] = c.recv().unwrap();
@@ -885,7 +909,7 @@ mod chan_test {
 
             let mut n0 = 0;
             let mut n1 = 0;
-            for &i in l.lock().iter() {
+            for &i in l.lock().unwrap().iter() {
                 n0 += (i + 1) % 2;
                 n1 += i;
             }
@@ -928,7 +952,7 @@ mod chan_test {
         go!(q, r, expect, wg, pn, {
             for i in 0..NITER {
                 let v = pn[i % pn.len()];
-                *expect.lock() += v;
+                *expect.lock().unwrap() += v;
                 q.send(v);
             }
             q.close();
@@ -943,7 +967,7 @@ mod chan_test {
             s += v;
         }
 
-        if n != NITER || s != *expect.lock() {
+        if n != NITER || s != *expect.lock().unwrap() {
             panic!();
         }
     }

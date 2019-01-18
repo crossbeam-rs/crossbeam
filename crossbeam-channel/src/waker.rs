@@ -3,10 +3,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, ThreadId};
 
-use parking_lot::Mutex;
-
 use context::Context;
 use select::{Operation, Selected};
+use utils::Mutex;
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {
