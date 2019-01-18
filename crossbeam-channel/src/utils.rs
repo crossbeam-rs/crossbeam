@@ -130,7 +130,7 @@ impl<T> Mutex<T> {
 }
 
 /// A guard holding a mutex locked.
-pub struct MutexGuard<'a, T> {
+pub struct MutexGuard<'a, T: 'a> {
     parent: &'a Mutex<T>,
 }
 
