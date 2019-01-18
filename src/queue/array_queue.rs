@@ -1,16 +1,23 @@
-/// A bounded multi-producer multi-consumer queue.
-///
-/// The implementation is based on Dmitry Vyukov's bounded MPMC queue:
-///
-/// * http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
-/// * https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
+//! Bounded multi-producer multi-consumer queue.
+//!
+//! The implementation is based on Dmitry Vyukov's bounded MPMC queue.
+//!
+//! Source:
+//!   - http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
+//!   - https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
+//!
+//! Copyright & License:
+//!   - Copyright (c) 2010-2011 Dmitry Vyukov
+//!   - Simplified BSD License and Apache License, Version 2.0
+//!   - http://www.1024cores.net/home/code-license
 
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{self, AtomicUsize, Ordering};
+use std::thread;
 
 use queue::{PopError, PushError};
 use utils::CachePadded;
@@ -23,9 +30,7 @@ struct Slot<T> {
     /// this node will be next read from.
     stamp: AtomicUsize,
 
-    /// The element in this slot.
-    ///
-    /// If the lap in the stamp is odd, this value contains a element. Otherwise, it is empty.
+    /// The value in this slot.
     value: UnsafeCell<T>,
 }
 
@@ -35,18 +40,16 @@ pub struct ArrayQueue<T> {
     ///
     /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
     /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
-    /// The lap in the head is always an odd number.
     ///
-    /// Elements are popped from the head of the queue.
+    /// Values are popped from the head of the queue.
     head: CachePadded<AtomicUsize>,
 
     /// The tail of the queue.
     ///
     /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
     /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
-    /// The lap in the tail is always an even number.
     ///
-    /// Elements are pushed into the tail of the queue.
+    /// Values are pushed into the tail of the queue.
     tail: CachePadded<AtomicUsize>,
 
     /// The buffer holding slots.
@@ -67,13 +70,14 @@ unsafe impl<T: Send> Send for ArrayQueue<T> {}
 
 impl<T> ArrayQueue<T> {
     /// Creates a new queue of capacity `cap`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the capacity is zero.
     pub fn new(cap: usize) -> ArrayQueue<T> {
-        // One lap is the smallest power of two greater than or equal to `cap`.
-        let one_lap = cap.next_power_of_two();
-
-        // Head is initialized to `{ lap: 1, index: 0 }`.
+        // Head is initialized to `{ lap: 0, index: 0 }`.
         // Tail is initialized to `{ lap: 0, index: 0 }`.
-        let head = one_lap;
+        let head = 0;
         let tail = 0;
 
         // Allocate a buffer of `cap` slots.
@@ -93,6 +97,9 @@ impl<T> ArrayQueue<T> {
             }
         }
 
+        // One lap is the smallest power of two greater than `cap`.
+        let one_lap = (cap + 1).next_power_of_two();
+
         ArrayQueue {
             buffer,
             cap,
@@ -105,9 +112,11 @@ impl<T> ArrayQueue<T> {
 
     /// Attempts to push `value` into the queue.
     pub fn push(&self, value: T) -> Result<(), PushError<T>> {
+        let mut backoff = Backoff::new();
+        let mut tail = self.tail.load(Ordering::Relaxed);
+
         loop {
-            // Load the tail and deconstruct it.
-            let tail = self.tail.load(Ordering::SeqCst);
+            // Deconstruct the tail.
             let index = tail & (self.one_lap - 1);
             let lap = tail & !(self.one_lap - 1);
 
@@ -122,42 +131,54 @@ impl<T> ArrayQueue<T> {
                     // Set to `{ lap: lap, index: index + 1 }`.
                     tail + 1
                 } else {
-                    // Two laps forward, index wraps around to zero.
-                    // Set to `{ lap: lap.wrapping_add(2), index: 0 }`.
-                    lap.wrapping_add(self.one_lap.wrapping_mul(2))
+                    // One lap forward, index wraps around to zero.
+                    // Set to `{ lap: lap.wrapping_add(1), index: 0 }`.
+                    lap.wrapping_add(self.one_lap)
                 };
 
                 // Try moving the tail.
-                if self
+                match self
                     .tail
                     .compare_exchange_weak(tail, new_tail, Ordering::SeqCst, Ordering::Relaxed)
-                    .is_ok()
                 {
-                    // Write the value into the slot and update the stamp.
-                    unsafe {
-                        slot.value.get().write(value);
+                    Ok(_) => {
+                        // Write the value into the slot and update the stamp.
+                        unsafe { slot.value.get().write(value); }
+                        slot.stamp.store(tail + 1, Ordering::Release);
+                        return Ok(());
                     }
-                    slot.stamp.store(stamp.wrapping_add(self.one_lap), Ordering::Release);
-                    return Ok(());
+                    Err(t) => {
+                        tail = t;
+                        backoff.spin();
+                    }
                 }
-            // But if the slot lags one lap behind the tail...
-            } else if stamp.wrapping_add(self.one_lap) == tail {
-                let head = self.head.load(Ordering::SeqCst);
+            } else if stamp.wrapping_add(self.one_lap) == tail + 1 {
+                atomic::fence(Ordering::SeqCst);
+                let head = self.head.load(Ordering::Relaxed);
 
-                // ...and if the head lags one lap behind the tail as well...
+                // If the head lags one lap behind the tail as well...
                 if head.wrapping_add(self.one_lap) == tail {
                     // ...then the queue is full.
                     return Err(PushError(value));
                 }
+
+                backoff.spin();
+                tail = self.tail.load(Ordering::Relaxed);
+            } else {
+                // Snooze because we need to wait for the stamp to get updated.
+                backoff.snooze();
+                tail = self.tail.load(Ordering::Relaxed);
             }
         }
     }
 
     /// Attempts to pop a value from the queue.
     pub fn pop(&self) -> Result<T, PopError> {
+        let mut backoff = Backoff::new();
+        let mut head = self.head.load(Ordering::Relaxed);
+
         loop {
-            // Load the head and deconstruct it.
-            let head = self.head.load(Ordering::SeqCst);
+            // Deconstruct the head.
             let index = head & (self.one_lap - 1);
             let lap = head & !(self.one_lap - 1);
 
@@ -165,38 +186,49 @@ impl<T> ArrayQueue<T> {
             let slot = unsafe { &*self.buffer.add(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
-            // If the the head and the stamp match, we may attempt to pop.
-            if head == stamp {
+            // If the the stamp is ahead of the head by 1, we may attempt to pop.
+            if head + 1 == stamp {
                 let new = if index + 1 < self.cap {
                     // Same lap, incremented index.
                     // Set to `{ lap: lap, index: index + 1 }`.
                     head + 1
                 } else {
-                    // Two laps forward, index wraps around to zero.
-                    // Set to `{ lap: lap.wrapping_add(2), index: 0 }`.
-                    lap.wrapping_add(self.one_lap.wrapping_mul(2))
+                    // One lap forward, index wraps around to zero.
+                    // Set to `{ lap: lap.wrapping_add(1), index: 0 }`.
+                    lap.wrapping_add(self.one_lap)
                 };
 
                 // Try moving the head.
-                if self
+                match self
                     .head
                     .compare_exchange_weak(head, new, Ordering::SeqCst, Ordering::Relaxed)
-                    .is_ok()
                 {
-                    // Read the value from the slot and update the stamp.
-                    let msg = unsafe { slot.value.get().read() };
-                    slot.stamp.store(stamp.wrapping_add(self.one_lap), Ordering::Release);
-                    return Ok(msg);
+                    Ok(_) => {
+                        // Read the value from the slot and update the stamp.
+                        let msg = unsafe { slot.value.get().read() };
+                        slot.stamp.store(head.wrapping_add(self.one_lap), Ordering::Release);
+                        return Ok(msg);
+                    }
+                    Err(h) => {
+                        head = h;
+                        backoff.spin();
+                    }
                 }
-            // But if the slot lags one lap behind the head...
-            } else if stamp.wrapping_add(self.one_lap) == head {
-                let tail = self.tail.load(Ordering::SeqCst);
+            } else if stamp == head {
+                atomic::fence(Ordering::SeqCst);
+                let tail = self.tail.load(Ordering::Relaxed);
 
-                // ...and if the tail lags one lap behind the head as well, that means the queue
-                // is empty.
-                if tail.wrapping_add(self.one_lap) == head {
+                // If the tail equals the head, that means the channel is empty.
+                if tail == head {
                     return Err(PopError);
                 }
+
+                backoff.spin();
+                head = self.head.load(Ordering::Relaxed);
+            } else {
+                // Snooze because we need to wait for the stamp to get updated.
+                backoff.snooze();
+                head = self.head.load(Ordering::Relaxed);
             }
         }
     }
@@ -212,10 +244,11 @@ impl<T> ArrayQueue<T> {
         let tail = self.tail.load(Ordering::SeqCst);
 
         // Is the tail lagging one lap behind head?
+        // Is the tail equal to the head?
         //
         // Note: If the head changes just before we load the tail, that means there was a moment
-        // when the queue was not empty, so it is safe to just return `false`.
-        tail.wrapping_add(self.one_lap) == head
+        // when the channel was not empty, so it is safe to just return `false`.
+        tail == head
     }
 
     /// Returns `true` if the queue is full.
@@ -230,7 +263,7 @@ impl<T> ArrayQueue<T> {
         head.wrapping_add(self.one_lap) == tail
     }
 
-    /// Returns the current number of elements inside the queue.
+    /// Returns the current number of values in the queue.
     pub fn len(&self) -> usize {
         loop {
             // Load the tail, then load the head.
@@ -246,7 +279,7 @@ impl<T> ArrayQueue<T> {
                     tix - hix
                 } else if hix > tix {
                     self.cap - hix + tix
-                } else if tail.wrapping_add(self.one_lap) == head {
+                } else if tail == head {
                     0
                 } else {
                     self.cap
@@ -284,6 +317,49 @@ impl<T> Drop for ArrayQueue<T> {
 
 impl<T> fmt::Debug for ArrayQueue<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ArrayQueue {{ ... }}")
+        f.pad("ArrayQueue { .. }")
+    }
+}
+
+/// A counter that performs exponential backoff in spin loops.
+struct Backoff(u32);
+
+impl Backoff {
+    /// Creates a new `Backoff`.
+    #[inline]
+    pub fn new() -> Backoff {
+        Backoff(0)
+    }
+
+    /// Backs off in a spin loop.
+    ///
+    /// This method may yield the current processor. Use it in lock-free retry loops.
+    #[inline]
+    pub fn spin(&mut self) {
+        for _ in 0..1 << self.0.min(6) {
+            atomic::spin_loop_hint();
+        }
+        self.0 = self.0.wrapping_add(1);
+    }
+
+    /// Backs off in a wait loop.
+    ///
+    /// Returns `true` if snoozing has reached a threshold where we should consider parking the
+    /// thread instead.
+    ///
+    /// This method may yield the current processor or the current thread. Use it when waiting on a
+    /// resource.
+    #[inline]
+    pub fn snooze(&mut self) -> bool {
+        if self.0 <= 6 {
+            for _ in 0..1 << self.0 {
+                atomic::spin_loop_hint();
+            }
+        } else {
+            thread::yield_now();
+        }
+
+        self.0 = self.0.wrapping_add(1);
+        self.0 <= 10
     }
 }
