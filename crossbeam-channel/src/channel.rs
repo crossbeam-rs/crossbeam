@@ -702,6 +702,7 @@ impl<T> Receiver<T> {
             }
 
             let result = match &self.flavor {
+                //ReceiverFlavor::Array(chan) => chan.try_recv(),
                 ReceiverFlavor::Array(chan) => return chan.try_recv_many(buf, limit),
                 ReceiverFlavor::List(chan) => chan.try_recv(),
                 ReceiverFlavor::Zero(chan) => chan.try_recv(),
