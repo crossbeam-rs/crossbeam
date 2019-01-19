@@ -333,10 +333,8 @@ impl<T> Channel<T> {
 
         loop {
             // Load the head/tail and deconstruct them.
-            let tail = self.tail.load(Ordering::Relaxed);
             let index = head & (self.mark_bit - 1);
             let lap = head & !(self.one_lap - 1);
-            let tail_index = tail & (self.mark_bit - 1);
 
             // Inspect the corresponding head slot.
             let slot = unsafe { &*self.buffer.add(index) };
@@ -344,6 +342,9 @@ impl<T> Channel<T> {
 
             // If the stamp is ahead of the head by 1, we may attempt to pop.
             if head + 1 == stamp {
+                let tail = self.tail.load(Ordering::Relaxed);
+                let tail_index = tail & (self.mark_bit - 1);
+
                 // See how many messages we have available to read.
                 let msgs_avail = if index < tail_index {
                     tail_index - index
