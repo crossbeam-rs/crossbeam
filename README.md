@@ -23,7 +23,7 @@ This crate provides a set of tools for concurrent programming:
     * `MsQueue<T>` and `SegQueue<T>` are simple concurrent queues.
     * `TreiberStack<T>` is a lock-free stack.
 
-* Synchronization
+* Thread synchronization
     * `channel` module contains multi-producer multi-consumer channels for message passing.
     * `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
     * `WaitGroup` enables threads to synchronize the beginning or end of some computation.
