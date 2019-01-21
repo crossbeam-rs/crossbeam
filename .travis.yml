@@ -13,14 +13,14 @@ matrix:
   include:
 
   # Test crates on their minimum Rust versions.
-  - rust: 1.26.0
-    name: "crossbeam on 1.26.0"
+  - rust: 1.28.0
+    name: "crossbeam on 1.28.0"
     script: ./ci/crossbeam.sh
   - rust: 1.26.0
     name: "crossbeam-channel on 1.26.0"
     script: ./ci/crossbeam-channel.sh
-  - rust: 1.26.0
-    name: "crossbeam-deque on 1.26.0"
+  - rust: 1.28.0
+    name: "crossbeam-deque on 1.28.0"
     script: ./ci/crossbeam-deque.sh
   - rust: 1.26.0
     name: "crossbeam-epoch on 1.26.0"
