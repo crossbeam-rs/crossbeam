@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam)
 https://crates.io/crates/crossbeam)
 [![Documentation](https://docs.rs/crossbeam/badge.svg)](
 https://docs.rs/crossbeam)
-[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+[![Rust 1.28+](https://img.shields.io/badge/rust-1.28+-lightgray.svg)](
 https://www.rust-lang.org)
 
 This crate provides a set of tools for concurrent programming:
@@ -23,7 +23,7 @@ This crate provides a set of tools for concurrent programming:
     * `MsQueue<T>` and `SegQueue<T>` are simple concurrent queues.
     * `TreiberStack<T>` is a lock-free stack.
 
-* Synchronization
+* Thread synchronization
     * `channel` module contains multi-producer multi-consumer channels for message passing.
     * `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
     * `WaitGroup` enables threads to synchronize the beginning or end of some computation.
@@ -73,7 +73,7 @@ extern crate crossbeam;
 
 ## Compatibility
 
-The minimum supported Rust version is 1.26.
+The minimum supported Rust version is 1.28.
 
 Features available in `no_std` environments:
 

@@ -11,9 +11,9 @@
 //!     "Carol".to_string(),
 //! ];
 //!
-//! thread::scope(|scope| {
+//! thread::scope(|s| {
 //!     for person in &people {
-//!         scope.spawn(move |_| {
+//!         s.spawn(move |_| {
 //!             println!("Hello, {}!", person);
 //!         });
 //!     }
@@ -74,9 +74,42 @@
 //! `'static` lifetime because the borrow checker cannot be sure when the thread will complete.
 //!
 //! A scope creates a clear boundary between variables outside the scope and threads inside the
-//! scope. Whenever a scope spawns a thread, it promises to join the thread before the scope ends.
+//! scope. Whenever a s.spawns a thread, it promises to join the thread before the scope ends.
 //! This way we guarantee to the borrow checker that scoped threads only live within the scope and
 //! can safely access variables outside it.
+//!
+//! # Nesting scoped threads
+//!
+//! Sometimes scoped threads need to spawn more threads within the same scope. This is a little
+//! tricky because argument `s` lives *inside* the invocation of `thread::scope()` and as such
+//! cannot be borrowed by scoped threads:
+//!
+//! ```ignore
+//! use crossbeam_utils::thread;
+//!
+//! thread::scope(|s| {
+//!     s.spawn(|_| {
+//!         // Not going to compile because we're trying to borrow `s`,
+//!         // which lives *inside* the scope! :(
+//!         s.spawn(|_| println!("nested thread"));
+//!     }});
+//! });
+//! ```
+//!
+//! Fortunately, there is a solution. Every scoped thread is passed a reference to its scope as an
+//! argument, which can be used for spawning nested threads:
+//!
+//! ```ignore
+//! use crossbeam_utils::thread;
+//!
+//! thread::scope(|s| {
+//!     // Note the `|s|` here.
+//!     s.spawn(|s| {
+//!         // Yay, this works because we're using a fresh argument `s`! :)
+//!         s.spawn(|_| println!("nested thread"));
+//!     }});
+//! });
+//! ```
 //!
 //! [`std::thread::spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
 
@@ -91,23 +124,24 @@ use std::thread;
 type SharedVec<T> = Arc<Mutex<Vec<T>>>;
 type SharedOption<T> = Arc<Mutex<Option<T>>>;
 
-/// Creates a new `Scope` for [*scoped thread spawning*](struct.Scope.html#method.spawn).
+/// Creates a new scope for spawning threads.
 ///
-/// No matter what happens, before the `Scope` is dropped, it is guaranteed that all the unjoined
-/// spawned scoped threads are joined.
-///
-/// `thread::scope()` returns `Ok(())` if all the unjoined spawned threads did not panic. It returns
-/// `Err(e)` if one of them panics with `e`. If many of them panic, it is still guaranteed that all
-/// the threads are joined, and `thread::scope()` returns `Err(e)` with `e` from a panicking thread.
+/// All child threads that haven't been manually joined will be automatically joined just before
+/// this function invocation ends. If all joined threads have successfully completed, `Ok` is
+/// returned with the return value of `f`. If any of the joined threads has panicked, an `Err` is
+/// returned containing errors from panicked threads.
 ///
 /// # Examples
 ///
-/// Creating and using a scope:
-///
 /// ```
-/// crossbeam_utils::thread::scope(|scope| {
-///     scope.spawn(|_| println!("Exiting scope"));
-///     scope.spawn(|_| println!("Running child thread in scope"));
+/// use crossbeam_utils::thread;
+///
+/// let var = vec![1, 2, 3];
+///
+/// thread::scope(|s| {
+///     s.spawn(|_| {
+///         println!("A child thread borrowing `var`: {:?}", var);
+///     });
 /// }).unwrap();
 /// ```
 pub fn scope<'env, F, R>(f: F) -> thread::Result<R>
@@ -172,14 +206,35 @@ pub struct Scope<'env> {
 unsafe impl<'env> Sync for Scope<'env> {}
 
 impl<'env> Scope<'env> {
-    /// Create a scoped thread.
+    /// Spawns a scoped thread.
     ///
-    /// `spawn` is similar to the [`spawn`] function in Rust's standard library. The difference is
-    /// that this thread is scoped, meaning that it's guaranteed to terminate before the current
-    /// stack frame goes away, allowing you to reference the parent stack frame directly. This is
-    /// ensured by having the parent thread join on the child thread before the scope exits.
+    /// This method is similar to the [`spawn`] function in Rust's standard library. The difference
+    /// is that this thread is scoped, meaning it's guaranteed to terminate before the scope exits,
+    /// allowing it to reference variables outside the scope.
+    ///
+    /// The scoped thread is passed a reference to this scope as an argument, which can be used for
+    /// spawning nested threads.
+    ///
+    /// The returned handle can be used to manually join the thread before the scope exits.
     ///
     /// [`spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::thread;
+    ///
+    /// thread::scope(|s| {
+    ///     let handle = s.spawn(|_| {
+    ///         println!("A child thread is running");
+    ///         42
+    ///     });
+    ///
+    ///     // Join the thread and retrieve its result.
+    ///     let res = handle.join().unwrap();
+    ///     assert_eq!(res, 42);
+    /// }).unwrap();
+    /// ```
     pub fn spawn<'scope, F, T>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
     where
         F: FnOnce(&Scope<'env>) -> T,
@@ -189,8 +244,20 @@ impl<'env> Scope<'env> {
         self.builder().spawn(f).unwrap()
     }
 
-    /// Generates the base configuration for spawning a scoped thread, from which configuration
-    /// methods can be chained.
+    /// Creates a builder that can configure a thread before spawning.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::thread;
+    /// use std::thread::current;
+    ///
+    /// thread::scope(|s| {
+    ///     s.builder()
+    ///         .spawn(|_| println!("A child thread is running"))
+    ///         .unwrap();
+    /// }).unwrap();
+    /// ```
     pub fn builder<'scope>(&'scope self) -> ScopedThreadBuilder<'scope, 'env> {
         ScopedThreadBuilder {
             scope: self,
@@ -205,8 +272,39 @@ impl<'env> fmt::Debug for Scope<'env> {
     }
 }
 
-/// Scoped thread configuration. Provides detailed control over the properties and behavior of new
-/// scoped threads.
+/// Configures the properties of a new thread.
+///
+/// The two configurable properties are:
+///
+/// - [`name`]: Specifies an [associated name for the thread][naming-threads].
+/// - [`stack_size`]: Specifies the [desired stack size for the thread][stack-size].
+///
+/// The [`spawn`] method will take ownership of the builder and return an [`io::Result`] of the
+/// thread handle with the given configuration.
+///
+/// The [`Scope::spawn`] method uses a builder with default configuration and unwraps its return
+/// value. You may want to use this builder when you want to recover from a failure to launch a
+/// thread.
+///
+/// # Examples
+///
+/// ```
+/// use crossbeam_utils::thread;
+///
+/// thread::scope(|s| {
+///     s.builder()
+///         .spawn(|_| println!("Running a child thread"))
+///         .unwrap();
+/// }).unwrap();
+/// ```
+///
+/// [`name`]: struct.ScopedThreadBuilder.html#method.name
+/// [`stack_size`]: struct.ScopedThreadBuilder.html#method.stack_size
+/// [`spawn`]: struct.ScopedThreadBuilder.html#method.spawn
+/// [`Scope::spawn`]: struct.Scope.html#method.spawn
+/// [`io::Result`]: https://doc.rust-lang.org/std/io/type.Result.html
+/// [naming-threads]: https://doc.rust-lang.org/std/thread/index.html#naming-threads
+/// [stack-size]: https://doc.rust-lang.org/std/thread/index.html#stack-size
 #[derive(Debug)]
 pub struct ScopedThreadBuilder<'scope, 'env: 'scope> {
     scope: &'scope Scope<'env>,
@@ -214,20 +312,77 @@ pub struct ScopedThreadBuilder<'scope, 'env: 'scope> {
 }
 
 impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
-    /// Names the thread-to-be. Currently the name is used for identification only in panic
-    /// messages.
+    /// Sets the name for the new thread.
+    ///
+    /// The name must not contain null bytes. For more information about named threads, see
+    /// [here][naming-threads].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::thread;
+    /// use std::thread::current;
+    ///
+    /// thread::scope(|s| {
+    ///     s.builder()
+    ///         .name("my thread".to_string())
+    ///         .spawn(|_| assert_eq!(current().name(), Some("my thread")))
+    ///         .unwrap();
+    /// }).unwrap();
+    /// ```
+    ///
+    /// [naming-threads]: https://doc.rust-lang.org/std/thread/index.html#naming-threads
     pub fn name(mut self, name: String) -> ScopedThreadBuilder<'scope, 'env> {
         self.builder = self.builder.name(name);
         self
     }
 
     /// Sets the size of the stack for the new thread.
+    ///
+    /// The stack size is measured in bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::thread;
+    ///
+    /// thread::scope(|s| {
+    ///     s.builder()
+    ///         .stack_size(32 * 1024)
+    ///         .spawn(|_| println!("Running a child thread"))
+    ///         .unwrap();
+    /// }).unwrap();
+    /// ```
     pub fn stack_size(mut self, size: usize) -> ScopedThreadBuilder<'scope, 'env> {
         self.builder = self.builder.stack_size(size);
         self
     }
 
-    /// Spawns a new thread, and returns a join handle for it.
+    /// Spawns a scoped thread with this configuration.
+    ///
+    /// The scoped thread is passed a reference to this scope as an argument, which can be used for
+    /// spawning nested threads.
+    ///
+    /// The returned handle can be used to manually join the thread before the scope exits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::thread;
+    ///
+    /// thread::scope(|s| {
+    ///     let handle = s.builder()
+    ///         .spawn(|_| {
+    ///             println!("A child thread is running");
+    ///             42
+    ///         })
+    ///         .unwrap();
+    ///
+    ///     // Join the thread and retrieve its result.
+    ///     let res = handle.join().unwrap();
+    ///     assert_eq!(res, 42);
+    /// }).unwrap();
+    /// ```
     pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'scope, T>>
     where
         F: FnOnce(&Scope<'env>) -> T,
@@ -294,7 +449,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
 unsafe impl<'scope, T> Send for ScopedJoinHandle<'scope, T> {}
 unsafe impl<'scope, T> Sync for ScopedJoinHandle<'scope, T> {}
 
-/// A handle to a scoped thread
+/// A handle that can be used to join its scoped thread.
 pub struct ScopedJoinHandle<'scope, T> {
     /// A join handle to the spawned thread.
     handle: SharedOption<thread::JoinHandle<()>>,
@@ -310,17 +465,33 @@ pub struct ScopedJoinHandle<'scope, T> {
 }
 
 impl<'scope, T> ScopedJoinHandle<'scope, T> {
-    /// Waits for the associated thread to finish.
+    /// Waits for the thread to finish and returns its result.
     ///
-    /// If the child thread panics, [`Err`] is returned with the parameter given to [`panic`].
-    ///
-    /// [`Err`]: https://doc.rust-lang.org/std/result/enum.Result.html#variant.Err
-    /// [`panic`]: https://doc.rust-lang.org/std/macro.panic.html
+    /// If the child thread panics, an error is returned.
     ///
     /// # Panics
     ///
     /// This function may panic on some platforms if a thread attempts to join itself or otherwise
     /// may create a deadlock with joining threads.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::thread;
+    ///
+    /// thread::scope(|s| {
+    ///     let handle1 = s.spawn(|_| println!("I'm a happy thread :)"));
+    ///     let handle2 = s.spawn(|_| panic!("I'm a sad thread :("));
+    ///
+    ///     // Join the first thread and verify that it succeeded.
+    ///     let res = handle1.join();
+    ///     assert!(res.is_ok());
+    ///
+    ///     // Join the second thread and verify that it panicked.
+    ///     let res = handle2.join();
+    ///     assert!(res.is_err());
+    /// }).unwrap();
+    /// ```
     pub fn join(self) -> thread::Result<T> {
         // Take out the handle. The handle will surely be available because the root scope waits
         // for nested scopes before joining remaining threads.
@@ -332,9 +503,18 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
             .map(|()| self.result.lock().unwrap().take().unwrap())
     }
 
-    /// Gets the underlying [`std::thread::Thread`] handle.
+    /// Returns a handle to the underlying thread.
     ///
-    /// [`std::thread::Thread`]: https://doc.rust-lang.org/std/thread/struct.Thread.html
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::thread;
+    ///
+    /// thread::scope(|s| {
+    ///     let handle = s.spawn(|_| println!("A child thread is running"));
+    ///     println!("The child thread ID: {:?}", handle.thread().id());
+    /// }).unwrap();
+    /// ```
     pub fn thread(&self) -> &thread::Thread {
         &self.thread
     }

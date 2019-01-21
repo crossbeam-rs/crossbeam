@@ -1,4 +1,4 @@
-//! Synchronization tools.
+//! Thread synchronization primitives.
 
 mod parker;
 
