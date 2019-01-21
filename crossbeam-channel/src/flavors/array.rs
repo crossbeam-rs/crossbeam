@@ -300,8 +300,7 @@ impl<T> Channel<T> {
                 atomic::fence(Ordering::SeqCst);
                 let tail = self.tail.load(Ordering::Relaxed);
 
-                // If the tail lags one lap behind the head as well, that means the channel is
-                // empty.
+                // If the tail equals the head, that means the channel is empty.
                 if (tail & !self.mark_bit) == head {
                     // If the channel is disconnected...
                     if tail & self.mark_bit != 0 {
