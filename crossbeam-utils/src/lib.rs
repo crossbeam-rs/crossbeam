@@ -30,6 +30,9 @@ pub use cache_padded::CachePadded;
 
 cfg_if! {
     if #[cfg(feature = "std")] {
+        #[macro_use]
+        extern crate lazy_static;
+
         pub mod sync;
         pub mod thread;
     }

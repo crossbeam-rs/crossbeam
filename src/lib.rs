@@ -109,13 +109,7 @@ cfg_if! {
         #[doc(hidden)]
         pub use _channel::*;
 
-        #[macro_use]
-        extern crate lazy_static;
-        extern crate parking_lot;
-
-        mod sharded_lock;
         mod treiber_stack;
-        mod wait_group;
 
         /// Concurrent queues.
         pub mod queue;
@@ -125,11 +119,6 @@ cfg_if! {
             pub use treiber_stack::TreiberStack;
         }
 
-        /// Thread synchronization primitives.
-        pub mod sync {
-            pub use crossbeam_utils::sync::Parker;
-            pub use sharded_lock::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-            pub use wait_group::WaitGroup;
-        }
+        pub use crossbeam_utils::sync;
     }
 }
