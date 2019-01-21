@@ -1,8 +1,9 @@
 //! Miscellaneous utilities.
 
-use std::cell::Cell;
+use std::cell::{Cell, UnsafeCell};
 use std::num::Wrapping;
-use std::sync::atomic;
+use std::ops::{Deref, DerefMut};
+use std::sync::atomic::{self, AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -97,6 +98,62 @@ pub fn sleep_until(deadline: Option<Instant>) {
                 }
                 thread::sleep(d - now);
             }
+        }
+    }
+}
+
+/// A simple spinlock-based mutex.
+pub struct Mutex<T> {
+    flag: AtomicBool,
+    value: UnsafeCell<T>,
+}
+
+impl<T> Mutex<T> {
+    /// Returns a new mutex initialized with `value`.
+    pub fn new(value: T) -> Mutex<T> {
+        Mutex {
+            flag: AtomicBool::new(false),
+            value: UnsafeCell::new(value),
+        }
+    }
+
+    /// Locks the mutex.
+    pub fn lock(&self) -> MutexGuard<'_, T> {
+        let mut backoff = Backoff::new();
+        while self.flag.swap(true, Ordering::Acquire) {
+            backoff.snooze();
+        }
+        MutexGuard {
+            parent: self,
+        }
+    }
+}
+
+/// A guard holding a mutex locked.
+pub struct MutexGuard<'a, T: 'a> {
+    parent: &'a Mutex<T>,
+}
+
+impl<'a, T> Drop for MutexGuard<'a, T> {
+    fn drop(&mut self) {
+        self.parent.flag.store(false, Ordering::Release);
+    }
+}
+
+impl<'a, T> Deref for MutexGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe {
+            &*self.parent.value.get()
+        }
+    }
+}
+
+impl<'a, T> DerefMut for MutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe {
+            &mut *self.parent.value.get()
         }
     }
 }
