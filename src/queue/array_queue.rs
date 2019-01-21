@@ -75,6 +75,8 @@ impl<T> ArrayQueue<T> {
     ///
     /// Panics if the capacity is zero.
     pub fn new(cap: usize) -> ArrayQueue<T> {
+        assert!(cap > 0, "capacity must be positive");
+
         // Head is initialized to `{ lap: 0, index: 0 }`.
         // Tail is initialized to `{ lap: 0, index: 0 }`.
         let head = 0;
