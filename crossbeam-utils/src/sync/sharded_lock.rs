@@ -103,7 +103,8 @@ impl<T> ShardedLock<T> {
                     lock: RwLock::new(()),
                     write_guard: UnsafeCell::new(None),
                 }))
-                .collect(),
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
             value: UnsafeCell::new(value),
         }
     }
@@ -367,7 +368,7 @@ impl<T: ?Sized> ShardedLock<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::sync::ShardedLock;
+    /// use crossbeam_utils::sync::ShardedLock;
     ///
     /// let lock = ShardedLock::new(1);
     ///
