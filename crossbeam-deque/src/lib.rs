@@ -101,10 +101,9 @@ use std::mem::{self, ManuallyDrop};
 use std::ptr;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread;
 
 use epoch::{Atomic, Owned};
-use utils::CachePadded;
+use utils::{Backoff, CachePadded};
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;
@@ -1136,7 +1135,7 @@ struct Slot<T> {
 impl<T> Slot<T> {
     /// Waits until a task is written into the slot.
     fn wait_write(&self) {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         while self.state.load(Ordering::Acquire) & WRITE == 0 {
             backoff.snooze();
         }
@@ -1162,7 +1161,7 @@ impl<T> Block<T> {
 
     /// Waits until the next pointer is set.
     fn wait_next(&self) -> *mut Block<T> {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         loop {
             let next = self.next.load(Ordering::Acquire);
             if !next.is_null() {
@@ -1271,7 +1270,7 @@ impl<T> Injector<T> {
     /// w.push(2);
     /// ```
     pub fn push(&self, task: T) {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
         let mut block = self.tail.block.load(Ordering::Acquire);
         let mut next_block = None;
@@ -1352,7 +1351,7 @@ impl<T> Injector<T> {
         let mut block;
         let mut offset;
 
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         loop {
             head = self.head.index.load(Ordering::Acquire);
             block = self.head.block.load(Ordering::Acquire);
@@ -1455,7 +1454,7 @@ impl<T> Injector<T> {
         let mut block;
         let mut offset;
 
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         loop {
             head = self.head.index.load(Ordering::Acquire);
             block = self.head.block.load(Ordering::Acquire);
@@ -1619,7 +1618,7 @@ impl<T> Injector<T> {
         let mut block;
         let mut offset;
 
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         loop {
             head = self.head.index.load(Ordering::Acquire);
             block = self.head.block.load(Ordering::Acquire);
@@ -1929,48 +1928,5 @@ impl<T> FromIterator<Steal<T>> for Steal<T> {
         } else {
             Steal::Empty
         }
-    }
-}
-
-/// A counter that performs exponential backoff in spin loops.
-struct Backoff(u32);
-
-impl Backoff {
-    /// Creates a new `Backoff`.
-    #[inline]
-    fn new() -> Backoff {
-        Backoff(0)
-    }
-
-    /// Backs off in a spin loop.
-    ///
-    /// This method may yield the current processor. Use it in lock-free retry loops.
-    #[inline]
-    fn spin(&mut self) {
-        for _ in 0..1 << self.0.min(6) {
-            atomic::spin_loop_hint();
-        }
-        self.0 = self.0.wrapping_add(1);
-    }
-
-    /// Backs off in a wait loop.
-    ///
-    /// Returns `true` if snoozing has reached a threshold where we should consider parking the
-    /// thread instead.
-    ///
-    /// This method may yield the current processor or the current thread. Use it when waiting on a
-    /// resource.
-    #[inline]
-    fn snooze(&mut self) -> bool {
-        if self.0 <= 6 {
-            for _ in 0..1 << self.0 {
-                atomic::spin_loop_hint();
-            }
-        } else {
-            thread::yield_now();
-        }
-
-        self.0 = self.0.wrapping_add(1);
-        self.0 <= 10
     }
 }

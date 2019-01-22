@@ -28,6 +28,9 @@ pub mod atomic;
 mod cache_padded;
 pub use cache_padded::CachePadded;
 
+mod backoff;
+pub use backoff::Backoff;
+
 cfg_if! {
     if #[cfg(feature = "std")] {
         pub mod sync;

@@ -19,6 +19,7 @@
 //!     * [`epoch`] module contains epoch-based garbage collection.
 //!
 //! * Utilities
+//!     * [`Backoff`] performs exponential backoff in spin loops.
 //!     * [`CachePadded<T>`] pads and aligns a value to the length of a cache line.
 //!     * [`scope()`] can spawn threads that borrow local variables from the stack.
 //!
@@ -36,6 +37,7 @@
 //! [`RwLock<T>`]: https://doc.rust-lang.org/std/sync/struct.RwLock.html
 //! [`WaitGroup`]: sync/struct.WaitGroup.html
 //! [`epoch`]: epoch/index.html
+//! [`Backoff`]: utils/struct.CachePadded.html
 //! [`CachePadded<T>`]: utils/struct.CachePadded.html
 //! [`scope()`]: fn.scope.html
 
@@ -81,6 +83,7 @@ pub mod atomic {
 
 /// Miscellaneous utilities.
 pub mod utils {
+    pub use crossbeam_utils::Backoff;
     pub use crossbeam_utils::CachePadded;
 }
 

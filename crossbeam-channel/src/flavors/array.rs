@@ -20,12 +20,11 @@ use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, Ordering};
 use std::time::Instant;
 
-use crossbeam_utils::CachePadded;
+use crossbeam_utils::{Backoff, CachePadded};
 
 use context::Context;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use select::{Operation, SelectHandle, Selected, Token};
-use utils::Backoff;
 use waker::SyncWaker;
 
 /// A slot in a channel.
@@ -169,7 +168,7 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token) -> bool {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
 
         loop {
@@ -256,7 +255,7 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for receiving a message.
     fn start_recv(&self, token: &mut Token) -> bool {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         let mut head = self.head.load(Ordering::Relaxed);
 
         loop {
@@ -357,14 +356,17 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         loop {
             // Try sending a message several times.
-            let mut backoff = Backoff::new();
+            let backoff = Backoff::new();
             loop {
                 if self.start_send(token) {
                     let res = unsafe { self.write(token, msg) };
                     return res.map_err(SendTimeoutError::Disconnected);
                 }
-                if !backoff.snooze() {
+
+                if backoff.is_complete() {
                     break;
+                } else {
+                    backoff.snooze();
                 }
             }
 
@@ -414,14 +416,17 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         loop {
             // Try receiving a message several times.
-            let mut backoff = Backoff::new();
+            let backoff = Backoff::new();
             loop {
                 if self.start_recv(token) {
                     let res = unsafe { self.read(token) };
                     return res.map_err(|_| RecvTimeoutError::Disconnected);
                 }
-                if !backoff.snooze() {
+
+                if backoff.is_complete() {
                     break;
+                } else {
+                    backoff.snooze();
                 }
             }
 
