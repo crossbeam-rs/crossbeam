@@ -7,15 +7,20 @@ const YIELD_LIMIT: u32 = 10;
 
 /// A counter for exponential backoff in spin loops.
 ///
-/// Exponential backoff reduces contention and improves performance in spin loops.
+/// Backing off in spin loops reduces contention and improves overall performance.
+///
+/// This primitive can execute "YIELD" and "PAUSE" instructions, yield the current thread to the OS
+/// scheduler, and tell when is a good time to block the thread using a different synchronization
+/// mechanism. Each step of the back off procedure takes roughly twice as long as the previous
+/// step.
 ///
 /// # Examples
 ///
-/// TODO a classic sketch with spin, snooze, block
+/// Backing off in a lock-free loop:
 ///
 /// ```
 /// use crossbeam_utils::Backoff;
-/// use std::sync::atomic::{AtomicBool, AtomicUsize};
+/// use std::sync::atomic::AtomicUsize;
 /// use std::sync::atomic::Ordering::SeqCst;
 ///
 /// fn fetch_mul(a: &AtomicUsize, b: usize) -> usize {
@@ -28,6 +33,14 @@ const YIELD_LIMIT: u32 = 10;
 ///         backoff.spin();
 ///     }
 /// }
+/// ```
+///
+/// Waiting for an [`AtomicBool`] to become `true`:
+///
+/// ```
+/// use crossbeam_utils::Backoff;
+/// use std::sync::atomic::AtomicBool;
+/// use std::sync::atomic::Ordering::SeqCst;
 ///
 /// fn spin_wait(ready: &AtomicBool) {
 ///     let backoff = Backoff::new();
@@ -35,6 +48,17 @@ const YIELD_LIMIT: u32 = 10;
 ///         backoff.snooze();
 ///     }
 /// }
+/// ```
+///
+/// Waiting for an [`AtomicBool`] to become `true` and parking the thread after a long wait.
+/// Note that whoever sets the atomic variable to `true` must notify the parked thread by calling
+/// [`unpark()`]:
+///
+/// ```
+/// use crossbeam_utils::Backoff;
+/// use std::sync::atomic::AtomicBool;
+/// use std::sync::atomic::Ordering::SeqCst;
+/// use std::thread;
 ///
 /// fn blocking_wait(ready: &AtomicBool) {
 ///     let backoff = Backoff::new();
@@ -47,6 +71,12 @@ const YIELD_LIMIT: u32 = 10;
 ///     }
 /// }
 /// ```
+///
+/// [`is_complete`]: struct.Backoff.html#method.is_complete
+/// [`std::thread::park()`]: https://doc.rust-lang.org/std/thread/fn.park.html
+/// [`Condvar`]: https://doc.rust-lang.org/std/sync/struct.Condvar.html
+/// [`AtomicBool`]: https://doc.rust-lang.org/std/sync/atomic/struct.AtomicBool.html
+/// [`unpark()`]: https://doc.rust-lang.org/std/thread/struct.Thread.html#method.unpark
 pub struct Backoff {
     step: Cell<u32>,
 }
@@ -92,6 +122,8 @@ impl Backoff {
     ///
     /// # Examples
     ///
+    /// Backing off in a lock-free loop:
+    ///
     /// ```
     /// use crossbeam_utils::Backoff;
     /// use std::sync::atomic::AtomicUsize;
@@ -135,7 +167,12 @@ impl Backoff {
     /// If possible, use [`is_complete`] to check when it is advised to stop using backoff and
     /// block the current thread using a different synchronization mechanism instead.
     ///
+    /// [`spin`]: struct.Backoff.html#method.spin
+    /// [`is_complete`]: struct.Backoff.html#method.is_complete
+    ///
     /// # Examples
+    ///
+    /// Waiting for an [`AtomicBool`] to become `true`:
     ///
     /// ```
     /// use crossbeam_utils::Backoff;
@@ -145,7 +182,7 @@ impl Backoff {
     /// use std::thread;
     /// use std::time::Duration;
     ///
-    /// fn wait(ready: &AtomicBool) {
+    /// fn spin_wait(ready: &AtomicBool) {
     ///     let backoff = Backoff::new();
     ///     while !ready.load(SeqCst) {
     ///         backoff.snooze();
@@ -161,9 +198,11 @@ impl Backoff {
     /// });
     ///
     /// assert_eq!(ready.load(SeqCst), false);
-    /// wait(&ready);
+    /// spin_wait(&ready);
     /// assert_eq!(ready.load(SeqCst), true);
     /// ```
+    ///
+    /// [`AtomicBool`]: https://doc.rust-lang.org/std/sync/atomic/struct.AtomicBool.html
     #[inline]
     pub fn snooze(&self) {
         if self.step.get() <= SPIN_LIMIT {
@@ -185,11 +224,11 @@ impl Backoff {
         }
     }
 
-    /// Returns `true` if backoff is complete and blocking the thread is advised.
-    ///
-    /// TODO
+    /// Returns `true` if exponential backoff is complete and blocking the thread is advised.
     ///
     /// # Examples
+    ///
+    /// Waiting for an [`AtomicBool`] to become `true` and parking the thread after a long wait:
     ///
     /// ```
     /// use crossbeam_utils::Backoff;
@@ -199,7 +238,7 @@ impl Backoff {
     /// use std::thread;
     /// use std::time::Duration;
     ///
-    /// fn wait(ready: &AtomicBool) {
+    /// fn blocking_wait(ready: &AtomicBool) {
     ///     let backoff = Backoff::new();
     ///     while !ready.load(SeqCst) {
     ///         if backoff.is_complete() {
@@ -221,9 +260,11 @@ impl Backoff {
     /// });
     ///
     /// assert_eq!(ready.load(SeqCst), false);
-    /// wait(&ready);
+    /// blocking_wait(&ready);
     /// assert_eq!(ready.load(SeqCst), true);
     /// ```
+    ///
+    /// [`AtomicBool`]: https://doc.rust-lang.org/std/sync/atomic/struct.AtomicBool.html
     #[inline]
     pub fn is_complete(&self) -> bool {
         self.step.get() > YIELD_LIMIT
