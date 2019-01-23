@@ -464,7 +464,7 @@ macro_rules! impl_arithmetic {
             }
         }
     };
-    ($t:ty, $size:literal, $atomic:ty, $example:tt) => {
+    ($t:ty, $size:tt, $atomic:ty, $example:tt) => {
         #[cfg(target_has_atomic = $size)]
         impl_arithmetic!($t, $atomic, $example);
     };
