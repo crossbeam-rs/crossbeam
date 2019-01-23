@@ -5,11 +5,11 @@ use core::sync::atomic;
 const SPIN_LIMIT: u32 = 6;
 const YIELD_LIMIT: u32 = 10;
 
-/// A counter for exponential backoff in spin loops.
+/// Performs exponential backoff in spin loops.
 ///
 /// Backing off in spin loops reduces contention and improves overall performance.
 ///
-/// This primitive can execute "YIELD" and "PAUSE" instructions, yield the current thread to the OS
+/// This primitive can execute *YIELD* and *PAUSE* instructions, yield the current thread to the OS
 /// scheduler, and tell when is a good time to block the thread using a different synchronization
 /// mechanism. Each step of the back off procedure takes roughly twice as long as the previous
 /// step.
@@ -118,7 +118,7 @@ impl Backoff {
     /// This method should be used when we need to retry an operation because another thread made
     /// progress.
     ///
-    /// The processor may yield using the "YIELD" or "PAUSE" instruction.
+    /// The processor may yield using the *YIELD* or *PAUSE* instruction.
     ///
     /// # Examples
     ///
@@ -159,7 +159,7 @@ impl Backoff {
     ///
     /// This method should be used when we need to wait for another thread to make progress.
     ///
-    /// The processor may yield using the "YIELD" or "PAUSE" instruction and the current thread
+    /// The processor may yield using the *YIELD* or *PAUSE* instruction and the current thread
     /// may yield by giving up a timeslice to the OS scheduler.
     ///
     /// In `#[no_std]` environments, this method is equivalent to [`spin`].
