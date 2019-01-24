@@ -5,6 +5,8 @@ use core::ptr;
 use core::slice;
 use core::sync::atomic::{self, AtomicBool, AtomicUsize, Ordering};
 
+use Backoff;
+
 /// A thread-safe mutable memory location.
 ///
 /// This type is equivalent to [`Cell`], except it can also be shared among multiple threads.
@@ -633,8 +635,7 @@ impl Lock {
     /// Grabs the lock for writing.
     #[inline]
     fn write(&'static self) -> WriteGuard {
-        let mut step = 0usize;
-
+        let backoff = Backoff::new();
         loop {
             let previous = self.state.swap(1, Ordering::Acquire);
 
@@ -647,17 +648,7 @@ impl Lock {
                 };
             }
 
-            if step < 10 {
-                atomic::spin_loop_hint();
-            } else {
-                #[cfg(not(feature = "std"))]
-                atomic::spin_loop_hint();
-
-                #[cfg(feature = "std")]
-                ::std::thread::yield_now();
-            }
-
-            step = step.wrapping_add(1);
+            backoff.snooze();
         }
     }
 }

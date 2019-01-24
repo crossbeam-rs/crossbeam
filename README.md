@@ -32,6 +32,7 @@ This crate provides a set of tools for concurrent programming:
     * `epoch` module contains epoch-based garbage collection.
 
 * Utilities
+    * `Backoff` performs exponential backoff in spin loops.
     * `CachePadded<T>` pads and aligns a value to the length of a cache line.
     * `scope()` can spawn threads that borrow local variables from the stack. 
 
@@ -79,6 +80,7 @@ Features available in `no_std` environments:
 
 * `AtomicCell<T>`
 * `AtomicConsume`
+* `Backoff`
 * `CachePadded<T>`
 * `epoch` (nightly Rust only)
 

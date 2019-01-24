@@ -7,12 +7,11 @@ use std::ptr;
 use std::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 use std::time::Instant;
 
-use crossbeam_utils::CachePadded;
+use crossbeam_utils::{Backoff, CachePadded};
 
 use context::Context;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use select::{Operation, SelectHandle, Selected, Token};
-use utils::Backoff;
 use waker::SyncWaker;
 
 // TODO(stjepang): Once we bump the minimum required Rust version to 1.28 or newer, re-apply the
@@ -52,7 +51,7 @@ struct Slot<T> {
 impl<T> Slot<T> {
     /// Waits until a message is written into the slot.
     fn wait_write(&self) {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         while self.state.load(Ordering::Acquire) & WRITE == 0 {
             backoff.snooze();
         }
@@ -78,7 +77,7 @@ impl<T> Block<T> {
 
     /// Waits until the next pointer is set.
     fn wait_next(&self) -> *mut Block<T> {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         loop {
             let next = self.next.load(Ordering::Acquire);
             if !next.is_null() {
@@ -188,7 +187,7 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token) -> bool {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
         let mut block = self.tail.block.load(Ordering::Acquire);
         let mut next_block = None;
@@ -287,7 +286,7 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for receiving a message.
     fn start_recv(&self, token: &mut Token) -> bool {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         let mut head = self.head.index.load(Ordering::Acquire);
         let mut block = self.head.block.load(Ordering::Acquire);
 
@@ -432,15 +431,18 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         loop {
             // Try receiving a message several times.
-            let mut backoff = Backoff::new();
+            let backoff = Backoff::new();
             loop {
                 if self.start_recv(token) {
                     unsafe {
                         return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
                     }
                 }
-                if !backoff.snooze() {
+
+                if backoff.is_complete() {
                     break;
+                } else {
+                    backoff.snooze();
                 }
             }
 
