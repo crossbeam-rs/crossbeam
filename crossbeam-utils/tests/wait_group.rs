@@ -1,10 +1,10 @@
-extern crate crossbeam;
+extern crate crossbeam_utils;
 
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam::sync::WaitGroup;
+use crossbeam_utils::sync::WaitGroup;
 
 const THREADS: usize = 10;
 

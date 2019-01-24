@@ -33,6 +33,9 @@ pub use backoff::Backoff;
 
 cfg_if! {
     if #[cfg(feature = "std")] {
+        #[macro_use]
+        extern crate lazy_static;
+
         pub mod sync;
         pub mod thread;
     }
