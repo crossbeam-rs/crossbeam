@@ -2,11 +2,9 @@ use std::error;
 use std::fmt;
 
 mod array_queue;
-mod ms_queue;
 mod seg_queue;
 
 pub use self::array_queue::ArrayQueue;
-pub use self::ms_queue::MsQueue;
 pub use self::seg_queue::SegQueue;
 
 /// Error which occurs when popping from an empty queue.

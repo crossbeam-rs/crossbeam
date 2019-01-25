@@ -50,10 +50,6 @@ name = "mpsc"
 path = "mpsc.rs"
 
 [[bin]]
-name = "msqueue"
-path = "msqueue.rs"
-
-[[bin]]
 name = "segqueue"
 path = "segqueue.rs"
 

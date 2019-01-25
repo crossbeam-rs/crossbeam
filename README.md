@@ -14,22 +14,21 @@ https://www.rust-lang.org)
 This crate provides a set of tools for concurrent programming:
 
 * Atomics
-    * `ArcCell<T>` is a shared mutable `Arc<T>` pointer.
     * `AtomicCell<T>` is equivalent to `Cell<T>`, except it is also thread-safe.
     * `AtomicConsume` allows reading from primitive atomic types with "consume" ordering.
 
 * Data structures
     * `deque` module contains work-stealing deques for building task schedulers.
-    * `MsQueue<T>` and `SegQueue<T>` are simple concurrent queues.
-    * `TreiberStack<T>` is a lock-free stack.
+    * `ArrayQueue<T>` is a bounded MPMC queue.
+    * `SegQueue<T>` is an unbounded MPMC queue.
+
+* Memory management
+    * `epoch` module contains epoch-based garbage collection.
 
 * Thread synchronization
     * `channel` module contains multi-producer multi-consumer channels for message passing.
     * `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
     * `WaitGroup` enables threads to synchronize the beginning or end of some computation.
-
-* Memory management
-    * `epoch` module contains epoch-based garbage collection.
 
 * Utilities
     * `Backoff` performs exponential backoff in spin loops.
