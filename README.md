@@ -22,15 +22,16 @@ This crate provides a set of tools for concurrent programming:
     * `ArrayQueue<T>` is a bounded MPMC queue.
     * `SegQueue<T>` is an unbounded MPMC queue.
 
+* Memory management
+    * `epoch` module contains epoch-based garbage collection.
+
 * Thread synchronization
     * `channel` module contains multi-producer multi-consumer channels for message passing.
     * `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
     * `WaitGroup` enables threads to synchronize the beginning or end of some computation.
 
-* Memory management
-    * `epoch` module contains epoch-based garbage collection.
-
 * Utilities
+    * `Backoff` performs exponential backoff in spin loops.
     * `CachePadded<T>` pads and aligns a value to the length of a cache line.
     * `scope()` can spawn threads that borrow local variables from the stack. 
 
@@ -78,6 +79,7 @@ Features available in `no_std` environments:
 
 * `AtomicCell<T>`
 * `AtomicConsume`
+* `Backoff`
 * `CachePadded<T>`
 * `epoch` (nightly Rust only)
 

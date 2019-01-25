@@ -1,8 +1,6 @@
 use std::fmt;
 use std::process;
-use std::sync::Arc;
-
-use parking_lot::{Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 /// Enables multiple threads to synchronize the beginning or end of some computation.
 ///
@@ -22,7 +20,7 @@ use parking_lot::{Condvar, Mutex};
 /// # Examples
 ///
 /// ```
-/// use crossbeam::sync::WaitGroup;
+/// use crossbeam_utils::sync::WaitGroup;
 /// use std::thread;
 ///
 /// // Create a new wait group.
@@ -61,7 +59,7 @@ impl WaitGroup {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam::sync::WaitGroup;
+    /// use crossbeam_utils::sync::WaitGroup;
     ///
     /// let wg = WaitGroup::new();
     /// ```
@@ -79,7 +77,7 @@ impl WaitGroup {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam::sync::WaitGroup;
+    /// use crossbeam_utils::sync::WaitGroup;
     /// use std::thread;
     ///
     /// let wg = WaitGroup::new();
@@ -96,23 +94,23 @@ impl WaitGroup {
     /// wg.wait();
     /// ```
     pub fn wait(self) {
-        if *self.inner.count.lock() == 1 {
+        if *self.inner.count.lock().unwrap() == 1 {
             return;
         }
 
         let inner = self.inner.clone();
         drop(self);
 
-        let mut count = inner.count.lock();
+        let mut count = inner.count.lock().unwrap();
         while *count > 0 {
-            inner.cvar.wait(&mut count);
+            count = inner.cvar.wait(count).unwrap();
         }
     }
 }
 
 impl Drop for WaitGroup {
     fn drop(&mut self) {
-        let mut count = self.inner.count.lock();
+        let mut count = self.inner.count.lock().unwrap();
         *count -= 1;
 
         if *count == 0 {
@@ -123,7 +121,7 @@ impl Drop for WaitGroup {
 
 impl Clone for WaitGroup {
     fn clone(&self) -> WaitGroup {
-        let mut count = self.inner.count.lock();
+        let mut count = self.inner.count.lock().unwrap();
         *count += 1;
 
         if *count > isize::max_value() as usize {
@@ -138,7 +136,7 @@ impl Clone for WaitGroup {
 
 impl fmt::Debug for WaitGroup {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let count: &usize = &*self.inner.count.lock();
+        let count: &usize = &*self.inner.count.lock().unwrap();
         f.debug_struct("WaitGroup")
             .field("count", count)
             .finish()

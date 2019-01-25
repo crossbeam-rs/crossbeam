@@ -5,15 +5,16 @@ use std::marker::PhantomData;
 use std::mem;
 use std::time::{Duration, Instant};
 
+use crossbeam_utils::Backoff;
+use smallvec::SmallVec;
+
 use channel::{self, Receiver, Sender};
 use context::Context;
 use err::{ReadyTimeoutError, TryReadyError};
 use err::{RecvError, SendError};
 use err::{SelectTimeoutError, TrySelectError};
-use smallvec::SmallVec;
-use utils::{self, Backoff};
-
 use flavors;
+use utils;
 
 /// Temporary data that gets initialized during select or a blocking operation, and is consumed by
 /// `read` or `write`.
@@ -340,7 +341,7 @@ fn run_ready(
     utils::shuffle(handles);
 
     loop {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         loop {
             // Check operations for readiness.
             for &(handle, i, _) in handles.iter() {
@@ -349,8 +350,10 @@ fn run_ready(
                 }
             }
 
-            if !backoff.snooze() {
+            if backoff.is_complete() {
                 break;
+            } else {
+                backoff.snooze();
             }
         }
 

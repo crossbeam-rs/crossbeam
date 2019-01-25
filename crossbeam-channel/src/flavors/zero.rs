@@ -7,10 +7,12 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use crossbeam_utils::Backoff;
+
 use context::Context;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use select::{Operation, SelectHandle, Selected, Token};
-use utils::{Backoff, Mutex};
+use utils::Mutex;
 use waker::Waker;
 
 /// A pointer to a packet.
@@ -58,7 +60,7 @@ impl<T> Packet<T> {
 
     /// Waits until the packet becomes ready for reading or writing.
     fn wait_ready(&self) {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         while !self.ready.load(Ordering::Acquire) {
             backoff.snooze();
         }

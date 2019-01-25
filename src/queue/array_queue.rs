@@ -17,10 +17,9 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, Ordering};
-use std::thread;
 
 use queue::{PopError, PushError};
-use utils::CachePadded;
+use utils::{Backoff, CachePadded};
 
 /// A slot in a queue.
 struct Slot<T> {
@@ -114,7 +113,7 @@ impl<T> ArrayQueue<T> {
 
     /// Attempts to push `value` into the queue.
     pub fn push(&self, value: T) -> Result<(), PushError<T>> {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
 
         loop {
@@ -176,7 +175,7 @@ impl<T> ArrayQueue<T> {
 
     /// Attempts to pop a value from the queue.
     pub fn pop(&self) -> Result<T, PopError> {
-        let mut backoff = Backoff::new();
+        let backoff = Backoff::new();
         let mut head = self.head.load(Ordering::Relaxed);
 
         loop {
@@ -320,48 +319,5 @@ impl<T> Drop for ArrayQueue<T> {
 impl<T> fmt::Debug for ArrayQueue<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.pad("ArrayQueue { .. }")
-    }
-}
-
-/// A counter that performs exponential backoff in spin loops.
-struct Backoff(u32);
-
-impl Backoff {
-    /// Creates a new `Backoff`.
-    #[inline]
-    pub fn new() -> Backoff {
-        Backoff(0)
-    }
-
-    /// Backs off in a spin loop.
-    ///
-    /// This method may yield the current processor. Use it in lock-free retry loops.
-    #[inline]
-    pub fn spin(&mut self) {
-        for _ in 0..1 << self.0.min(6) {
-            atomic::spin_loop_hint();
-        }
-        self.0 = self.0.wrapping_add(1);
-    }
-
-    /// Backs off in a wait loop.
-    ///
-    /// Returns `true` if snoozing has reached a threshold where we should consider parking the
-    /// thread instead.
-    ///
-    /// This method may yield the current processor or the current thread. Use it when waiting on a
-    /// resource.
-    #[inline]
-    pub fn snooze(&mut self) -> bool {
-        if self.0 <= 6 {
-            for _ in 0..1 << self.0 {
-                atomic::spin_loop_hint();
-            }
-        } else {
-            thread::yield_now();
-        }
-
-        self.0 = self.0.wrapping_add(1);
-        self.0 <= 10
     }
 }

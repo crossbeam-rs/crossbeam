@@ -15,8 +15,11 @@ This crate provides miscellaneous utilities for concurrent programming:
 
 * `AtomicCell<T>` is equivalent to `Cell<T>`, except it is also thread-safe.
 * `AtomicConsume` allows reading from primitive atomic types with "consume" ordering.
+* `Backoff` performs exponential backoff in spin loops.
 * `CachePadded<T>` pads and aligns a value to the length of a cache line.
 * `scope()` can spawn threads that borrow local variables from the stack. 
+* `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
+* `WaitGroup` enables threads to synchronize the beginning or end of some computation.
 
 ## Usage
 
@@ -41,6 +44,7 @@ Features available in `no_std` environments:
 
 * `AtomicCell<T>`
 * `AtomicConsume`
+* `Backoff`
 * `CachePadded<T>`
 
 ## License

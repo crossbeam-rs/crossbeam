@@ -18,7 +18,11 @@ categories = ["algorithms", "concurrency", "data-structures"]
 [features]
 default = ["std"]
 nightly = []
-std = []
+std = ["lazy_static"]
 
 [dependencies]
 cfg-if = "0.1"
+lazy_static = { version = "1.1.0", optional = true }
+
+[dev-dependencies]
+rand = "0.6"

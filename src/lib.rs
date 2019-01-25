@@ -9,15 +9,16 @@
 //!     * [`ArrayQueue<T>`] is a bounded MPMC queue.
 //!     * [`SegQueue<T>`] is an unbounded MPMC queue.
 //!
+//! * Memory management
+//!     * [`epoch`] module contains epoch-based garbage collection.
+//!
 //! * Thread synchronization
 //!     * [`channel`] module contains multi-producer multi-consumer channels for message passing.
 //!     * [`ShardedLock<T>`] is like [`RwLock<T>`], but sharded for faster concurrent reads.
 //!     * [`WaitGroup`] enables threads to synchronize the beginning or end of some computation.
 //!
-//! * Memory management
-//!     * [`epoch`] module contains epoch-based garbage collection.
-//!
 //! * Utilities
+//!     * [`Backoff`] performs exponential backoff in spin loops.
 //!     * [`CachePadded<T>`] pads and aligns a value to the length of a cache line.
 //!     * [`scope()`] can spawn threads that borrow local variables from the stack.
 //!
@@ -33,6 +34,7 @@
 //! [`RwLock<T>`]: https://doc.rust-lang.org/std/sync/struct.RwLock.html
 //! [`WaitGroup`]: sync/struct.WaitGroup.html
 //! [`epoch`]: epoch/index.html
+//! [`Backoff`]: utils/struct.CachePadded.html
 //! [`CachePadded<T>`]: utils/struct.CachePadded.html
 //! [`scope()`]: fn.scope.html
 
@@ -75,17 +77,12 @@ pub mod atomic {
 
 /// Miscellaneous utilities.
 pub mod utils {
+    pub use crossbeam_utils::Backoff;
     pub use crossbeam_utils::CachePadded;
 }
 
 cfg_if! {
     if #[cfg(feature = "std")] {
-        pub use crossbeam_utils::thread;
-
-        // Export `crossbeam_utils::thread::scope` into the crate root because it's become an
-        // established pattern.
-        pub use crossbeam_utils::thread::scope;
-
         mod _deque {
             pub extern crate crossbeam_deque;
         }
@@ -103,21 +100,11 @@ cfg_if! {
         #[doc(hidden)]
         pub use _channel::*;
 
-        #[macro_use]
-        extern crate lazy_static;
-        extern crate parking_lot;
-
-        mod sharded_lock;
-        mod wait_group;
-
         /// Concurrent queues.
         pub mod queue;
 
-        /// Thread synchronization primitives.
-        pub mod sync {
-            pub use crossbeam_utils::sync::Parker;
-            pub use sharded_lock::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-            pub use wait_group::WaitGroup;
-        }
+        pub use crossbeam_utils::sync;
+        pub use crossbeam_utils::thread;
+        pub use crossbeam_utils::thread::scope;
     }
 }

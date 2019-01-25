@@ -28,8 +28,14 @@ pub mod atomic;
 mod cache_padded;
 pub use cache_padded::CachePadded;
 
+mod backoff;
+pub use backoff::Backoff;
+
 cfg_if! {
     if #[cfg(feature = "std")] {
+        #[macro_use]
+        extern crate lazy_static;
+
         pub mod sync;
         pub mod thread;
     }

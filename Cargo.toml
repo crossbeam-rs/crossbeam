@@ -26,8 +26,6 @@ std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 
 [dependencies]
 cfg-if = "0.1"
-lazy_static = "1.1.0"
-parking_lot = "0.7"
 
 [dependencies.crossbeam-channel]
 version = "0.3.4"
