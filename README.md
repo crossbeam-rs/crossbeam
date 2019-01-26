@@ -15,8 +15,8 @@ This crate provides a set of tools for concurrent programming:
 
 #### Atomics
 
-* [`AtomicCell`], a thread-safe mutable memory location.
-* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.
+* [`AtomicCell`], a thread-safe mutable memory location.<sup>(*)</sup>
+* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(*)</sup>
 
 #### Data structures
 
@@ -26,7 +26,7 @@ This crate provides a set of tools for concurrent programming:
 
 #### Memory management
 
-* [`epoch`], an epoch-based garbage collector.
+* [`epoch`], an epoch-based garbage collector.<sup>(**)</sup>
 
 #### Thread synchronization
 
@@ -37,9 +37,27 @@ This crate provides a set of tools for concurrent programming:
 
 #### Utilities
 
-* [`Backoff`], to perform exponential backoff in spin loops.
-* [`CachePadded`], for padding and aligning a value to the length of a cache line.
+* [`Backoff`], to perform exponential backoff in spin loops.<sup>(*)</sup>
+* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(*)</sup>
 * [`scope`], for spawning threads that borrow local variables from the stack.
+
+*Features marked with (\*) can be used in `no_std` environments.*<br/>
+*Features marked with (\*\*) can be used in `no_std` + `alloc` environments.*
+
+[`AtomicCell`]: https://docs.rs/crossbeam/*/crossbeam/atomic/struct.AtomicCell.html
+[`AtomicConsume`]: https://docs.rs/crossbeam/*/crossbeam/atomic/trait.AtomicConsume.html
+[`deque`]: https://docs.rs/crossbeam/*/crossbeam/deque/index.html
+[`ArrayQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.ArrayQueue.html
+[`SegQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.SegQueue.html
+[`channel`]: https://docs.rs/crossbeam/*/crossbeam/channel/index.html
+[`Parker`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.Parker.html
+[`ShardedLock`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.ShardedLock.html
+[`WaitGroup`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.WaitGroup.html
+[`epoch`]: https://docs.rs/crossbeam/*/crossbeam/epoch/index.html
+[`Backoff`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.Backoff.html
+[`CachePadded`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.CachePadded.html
+[`scope`]: https://docs.rs/crossbeam/*/crossbeam/fn.scope.html
+
 
 ## Crates
 
@@ -76,32 +94,6 @@ Next, add this to your crate:
 ```rust
 extern crate crossbeam;
 ```
-
-## Compatibility
-
-The minimum supported Rust version is 1.28.
-
-Features available in `no_std` environments:
-
-* [`AtomicCell`]
-* [`AtomicConsume`]
-* [`Backoff`]
-* [`CachePadded`]
-* [`epoch`] (nightly Rust only)
-
-[`AtomicCell`]: https://docs.rs/crossbeam/*/crossbeam/atomic/struct.AtomicCell.html
-[`AtomicConsume`]: https://docs.rs/crossbeam/*/crossbeam/atomic/trait.AtomicConsume.html
-[`deque`]: https://docs.rs/crossbeam/*/crossbeam/deque/index.html
-[`ArrayQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.ArrayQueue.html
-[`SegQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.SegQueue.html
-[`channel`]: https://docs.rs/crossbeam/*/crossbeam/channel/index.html
-[`Parker`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.Parker.html
-[`ShardedLock`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.ShardedLock.html
-[`WaitGroup`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.WaitGroup.html
-[`epoch`]: https://docs.rs/crossbeam/*/crossbeam/epoch/index.html
-[`Backoff`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.Backoff.html
-[`CachePadded`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.CachePadded.html
-[`scope`]: https://docs.rs/crossbeam/*/crossbeam/fn.scope.html
 
 ## Contributing
 

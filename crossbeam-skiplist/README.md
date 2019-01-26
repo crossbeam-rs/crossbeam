@@ -13,6 +13,8 @@ https://www.rust-lang.org)
 
 **Note:** This crate is still a work in progress.
 
+This crate can be used in `no_std` + `alloc` environments.
+
 <!--
 ## Usage
 
@@ -29,12 +31,6 @@ Next, add this to your crate:
 extern crate crossbeam_skiplist;
 ```
 -->
-
-## Compatibility
-
-The minimum supported Rust version is 1.28.
-
-This crate can be used in `no_std` environments, but only on nightly Rust.
 
 ## License
 

@@ -18,6 +18,8 @@ may be still using pointers to it at the same time, so it cannot be destroyed
 immediately. Epoch-based GC is an efficient mechanism for deferring destruction of
 shared objects until no pointers to them can exist.
 
+This crate can be used in `no_std` + `alloc` environments.
+
 ## Usage
 
 Add this to your `Cargo.toml`:
@@ -32,12 +34,6 @@ Next, add this to your crate:
 ```rust
 extern crate crossbeam_epoch as epoch;
 ```
-
-## Compatibility
-
-The minimum supported Rust version is 1.26.
-
-This crate can be used in `no_std` environments, but only on nightly Rust.
 
 ## License
 

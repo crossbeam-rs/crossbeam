@@ -1,4 +1,4 @@
-//! Utilities for concurrent programming.
+//! Miscellaneous tools for concurrent programming.
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
