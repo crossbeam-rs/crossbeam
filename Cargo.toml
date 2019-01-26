@@ -39,6 +39,10 @@ path = "./crossbeam-deque"
 version = "0.7.0"
 path = "./crossbeam-epoch"
 
+[dependencies.crossbeam-queue]
+version = "0.0.0"
+path = "./crossbeam-queue"
+
 [dependencies.crossbeam-utils]
 version = "0.6.3"
 path = "./crossbeam-utils"
@@ -53,14 +57,7 @@ members = [
   "crossbeam-channel/benchmarks",
   "crossbeam-deque",
   "crossbeam-epoch",
+  "crossbeam-queue",
   "crossbeam-skiplist",
   "crossbeam-utils",
 ]
-
-# [patch.crates-io]
-# crossbeam = { path = "." }
-# crossbeam-channel = { path = "./crossbeam-channel" }
-# crossbeam-deque = { path = "./crossbeam-deque" }
-# crossbeam-epoch = { path = "./crossbeam-epoch" }
-# crossbeam-skiplist = { path = "./crossbeam-skiplist" }
-# crossbeam-utils = { path = "./crossbeam-utils" }

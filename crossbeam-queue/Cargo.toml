@@ -1,0 +1,25 @@
+[package]
+name = "crossbeam-queue"
+# When publishing a new version:
+# - Update CHANGELOG.md
+# - Update README.md
+# - Create "crossbeam-queue-X.Y.Z" git tag
+version = "0.0.0"
+authors = ["The Crossbeam Project Developers"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/crossbeam-rs/crossbeam"
+homepage = "https://github.com/crossbeam-rs/crossbeam"
+documentation = "https://docs.rs/crossbeam-queue"
+description = "Concurrent queues"
+keywords = ["queue", "mpmc", "lock-free", "producer", "consumer"]
+categories = ["concurrency", "data-structures"]
+
+[dependencies]
+
+[dependencies.crossbeam-utils]
+version = "0.6"
+path = "../crossbeam-utils"
+
+[dev-dependencies]
+rand = "0.6"

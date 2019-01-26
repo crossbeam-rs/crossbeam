@@ -1,7 +1,8 @@
-extern crate crossbeam;
+extern crate crossbeam_queue;
+extern crate crossbeam_utils;
 
-use crossbeam::queue::SegQueue;
-use crossbeam::scope;
+use crossbeam_queue::SegQueue;
+use crossbeam_utils::thread::scope;
 
 const CONC_COUNT: i64 = 1000000;
 
@@ -9,7 +10,7 @@ const CONC_COUNT: i64 = 1000000;
 fn push_pop_1() {
     let q: SegQueue<i64> = SegQueue::new();
     q.push(37);
-    assert_eq!(q.try_pop(), Some(37));
+    assert_eq!(q.pop(), Ok(37));
 }
 
 #[test]
@@ -17,8 +18,8 @@ fn push_pop_2() {
     let q: SegQueue<i64> = SegQueue::new();
     q.push(37);
     q.push(48);
-    assert_eq!(q.try_pop(), Some(37));
-    assert_eq!(q.try_pop(), Some(48));
+    assert_eq!(q.pop(), Ok(37));
+    assert_eq!(q.pop(), Ok(48));
 }
 
 #[test]
@@ -27,7 +28,7 @@ fn push_pop_empty_check() {
     assert_eq!(q.is_empty(), true);
     q.push(42);
     assert_eq!(q.is_empty(), false);
-    assert_eq!(q.try_pop(), Some(42));
+    assert_eq!(q.pop(), Ok(42));
     assert_eq!(q.is_empty(), true);
 }
 
@@ -38,7 +39,7 @@ fn push_pop_many_seq() {
         q.push(i)
     }
     for i in 0..200 {
-        assert_eq!(q.try_pop(), Some(i));
+        assert_eq!(q.pop(), Ok(i));
     }
 }
 
@@ -51,7 +52,7 @@ fn push_pop_many_spsc() {
             let mut next = 0;
 
             while next < CONC_COUNT {
-                if let Some(elem) = q.try_pop() {
+                if let Ok(elem) = q.pop() {
                     assert_eq!(elem, next);
                     next += 1;
                 }
@@ -69,7 +70,7 @@ fn push_pop_many_spmc() {
     fn recv(_t: i32, q: &SegQueue<i64>) {
         let mut cur = -1;
         for _i in 0..CONC_COUNT {
-            if let Some(elem) = q.try_pop() {
+            if let Ok(elem) = q.pop() {
                 assert!(elem > cur);
                 cur = elem;
 
@@ -120,9 +121,9 @@ fn push_pop_many_mpmc() {
                 let mut vl = vec![];
                 let mut vr = vec![];
                 for _i in 0..CONC_COUNT {
-                    match q.try_pop() {
-                        Some(LR::Left(x)) => vl.push(x),
-                        Some(LR::Right(x)) => vr.push(x),
+                    match q.pop() {
+                        Ok(LR::Left(x)) => vl.push(x),
+                        Ok(LR::Right(x)) => vr.push(x),
                         _ => {}
                     }
                 }

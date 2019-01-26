@@ -1,12 +1,6 @@
 use std::error;
 use std::fmt;
 
-mod array_queue;
-mod seg_queue;
-
-pub use self::array_queue::ArrayQueue;
-pub use self::seg_queue::SegQueue;
-
 /// Error which occurs when popping from an empty queue.
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct PopError;

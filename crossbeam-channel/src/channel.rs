@@ -205,7 +205,7 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 ///     s.send(1).unwrap();
 /// });
 ///
-/// // This duration can be a `Some` or a `None`.
+/// // Suppose this duration can be a `Some` or a `None`.
 /// let duration = Some(Duration::from_millis(100));
 ///
 /// // Create a channel that times out after the specified duration.

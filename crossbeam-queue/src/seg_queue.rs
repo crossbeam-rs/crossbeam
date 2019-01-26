@@ -5,7 +5,9 @@ use std::mem::{self, ManuallyDrop};
 use std::ptr;
 use std::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 
-use utils::{Backoff, CachePadded};
+use crossbeam_utils::{Backoff, CachePadded};
+
+use err::PopError;
 
 // Bits indicating the state of a slot:
 // * If a value has been written into the slot, `WRITE` is set.
@@ -102,9 +104,10 @@ struct Position<T> {
     block: AtomicPtr<Block<T>>,
 }
 
-/// Unbounded queue that allocates segments of values.
+/// An ubounded multi-producer multi-consumer queue.
 ///
-/// This queue can be shared among threads and used with any number of producers or consumers.
+/// This queue allocates segments big enough to store a handful of pushed values. These segments
+/// are then connected into a linked list.
 pub struct SegQueue<T> {
     /// The head of the queue.
     head: CachePadded<Position<T>>,
@@ -214,7 +217,7 @@ impl<T> SegQueue<T> {
     }
 
     /// Pops a value from the queue.
-    pub fn try_pop(&self) -> Option<T> {
+    pub fn pop(&self) -> Result<T, PopError> {
         let backoff = Backoff::new();
         let mut head = self.head.index.load(Ordering::Acquire);
         let mut block = self.head.block.load(Ordering::Acquire);
@@ -239,7 +242,7 @@ impl<T> SegQueue<T> {
 
                 // If the tail equals the head, that means the queue is empty.
                 if head >> SHIFT == tail >> SHIFT {
-                    return None;
+                    return Err(PopError);
                 }
 
                 // If head and tail are not in the same block, set `HAS_NEXT` in head.
@@ -293,7 +296,7 @@ impl<T> SegQueue<T> {
                         Block::destroy(block, offset + 1);
                     }
 
-                    return Some(value);
+                    return Ok(value);
                 }
                 Err(h) => {
                     head = h;

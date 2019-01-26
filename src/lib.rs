@@ -100,8 +100,11 @@ cfg_if! {
         #[doc(hidden)]
         pub use _channel::*;
 
-        /// Concurrent queues.
-        pub mod queue;
+        mod _queue {
+            pub extern crate crossbeam_queue;
+        }
+        #[doc(inline)]
+        pub use _queue::crossbeam_queue as queue;
 
         pub use crossbeam_utils::sync;
         pub use crossbeam_utils::thread;

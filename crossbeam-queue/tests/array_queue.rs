@@ -1,10 +1,11 @@
-extern crate crossbeam;
+extern crate crossbeam_queue;
+extern crate crossbeam_utils;
 extern crate rand;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crossbeam::queue::ArrayQueue;
-use crossbeam::scope;
+use crossbeam_queue::ArrayQueue;
+use crossbeam_utils::thread::scope;
 use rand::{thread_rng, Rng};
 
 #[test]

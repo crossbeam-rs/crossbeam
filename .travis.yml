@@ -25,6 +25,9 @@ matrix:
   - rust: 1.26.0
     name: "crossbeam-epoch on 1.26.0"
     script: ./ci/crossbeam-epoch.sh
+  - rust: 1.26.0
+    name: "crossbeam-queue on 1.26.0"
+    script: ./ci/crossbeam-queue.sh
   - rust: 1.28.0
     name: "crossbeam-skiplist on 1.28.0"
     script: ./ci/crossbeam-skiplist.sh
@@ -56,6 +59,9 @@ matrix:
           - llvm-3.8-dev
           - clang-3.8
           - clang-3.8-dev
+  - rust: nightly
+    name: "crossbeam-queue on nightly"
+    script: ./ci/crossbeam-queue.sh
   - rust: nightly
     name: "crossbeam-skiplist on nightly"
     script: ./ci/crossbeam-skiplist.sh

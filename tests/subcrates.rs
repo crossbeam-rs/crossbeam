@@ -26,6 +26,13 @@ fn epoch() {
 }
 
 #[test]
+fn queue() {
+    let a = crossbeam::queue::ArrayQueue::new(10);
+    let _ = a.push(1);
+    let _ = a.pop();
+}
+
+#[test]
 fn utils() {
     crossbeam::utils::CachePadded::new(7);
 

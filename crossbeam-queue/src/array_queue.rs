@@ -18,8 +18,9 @@ use std::mem;
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, Ordering};
 
-use queue::{PopError, PushError};
-use utils::{Backoff, CachePadded};
+use crossbeam_utils::{Backoff, CachePadded};
+
+use err::{PopError, PushError};
 
 /// A slot in a queue.
 struct Slot<T> {
@@ -34,6 +35,8 @@ struct Slot<T> {
 }
 
 /// A bounded multi-producer multi-consumer queue.
+///
+/// This queue uses a fixed-capacity buffer to store pushed values.
 pub struct ArrayQueue<T> {
     /// The head of the queue.
     ///
