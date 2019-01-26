@@ -11,10 +11,14 @@ https://docs.rs/crossbeam-queue)
 [![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
 https://www.rust-lang.org)
 
-This crate provides concurrent queues:
+This crate provides concurrent queues that can be shared among threads:
 
-* TODO
-* TODO
+* [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
+* [`SegQueue`], an unbounded MPMC queue that allocates segments on demand. Segments are small
+  buffers that can hold a handful of elements.
+
+[`ArrayQueue`]: https://docs.rs/crossbeam-queue/*/crossbeam_queue/struct.ArrayQueue.html
+[`SegQueue`]: https://docs.rs/crossbeam-queue/*/crossbeam_queue/struct.SegQueue.html
 
 ## Usage
 
@@ -44,13 +48,13 @@ Licensed under either of
 
 at your option.
 
-### Contribution
+#### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
 
-### Third party software
+#### Third party software
 
 This product includes copies and modifications of software developed by third parties:
 
