@@ -16,7 +16,7 @@ fn seq() {
     }
 
     for _ in 0..MESSAGES {
-        q.try_pop().unwrap();
+        q.pop().unwrap();
     }
 }
 
@@ -32,7 +32,7 @@ fn spsc() {
 
         for _ in 0..MESSAGES {
             loop {
-                if q.try_pop().is_none() {
+                if q.pop().is_err() {
                     thread::yield_now();
                 } else {
                     break;
@@ -56,7 +56,7 @@ fn mpsc() {
 
         for _ in 0..MESSAGES {
             loop {
-                if q.try_pop().is_none() {
+                if q.pop().is_err() {
                     thread::yield_now();
                 } else {
                     break;
@@ -82,7 +82,7 @@ fn mpmc() {
             scope.spawn(|_| {
                 for _ in 0..MESSAGES / THREADS {
                     loop {
-                        if q.try_pop().is_none() {
+                        if q.pop().is_err() {
                             thread::yield_now();
                         } else {
                             break;
