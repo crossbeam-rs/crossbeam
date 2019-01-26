@@ -1,42 +1,46 @@
 //! Tools for concurrent programming.
 //!
-//! * Atomics
-//!     * [`AtomicCell<T>`] is equivalent to [`Cell<T>`], except it is also thread-safe.
-//!     * [`AtomicConsume`] allows reading from primitive atomic types with "consume" ordering.
+//! ## Atomics
 //!
-//! * Data structures
-//!     * [`deque`] module contains work-stealing deques for building task schedulers.
-//!     * [`ArrayQueue<T>`] is a bounded MPMC queue.
-//!     * [`SegQueue<T>`] is an unbounded MPMC queue.
+//! * [`AtomicCell`], a thread-safe mutable memory location.
+//! * [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.
 //!
-//! * Memory management
-//!     * [`epoch`] module contains epoch-based garbage collection.
+//! ## Data structures
 //!
-//! * Thread synchronization
-//!     * [`channel`] module contains multi-producer multi-consumer channels for message passing.
-//!     * [`ShardedLock<T>`] is like [`RwLock<T>`], but sharded for faster concurrent reads.
-//!     * [`WaitGroup`] enables threads to synchronize the beginning or end of some computation.
+//! * [`deque`], work-stealing deques for building task schedulers.
+//! * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
+//! * [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
 //!
-//! * Utilities
-//!     * [`Backoff`] performs exponential backoff in spin loops.
-//!     * [`CachePadded<T>`] pads and aligns a value to the length of a cache line.
-//!     * [`scope()`] can spawn threads that borrow local variables from the stack.
+//! ## Memory management
 //!
-//! [`Arc<T>`]: https://doc.rust-lang.org/std/sync/struct.Arc.html
-//! [`AtomicCell<T>`]: atomic/struct.AtomicCell.html
-//! [`Cell<T>`]: https://doc.rust-lang.org/std/cell/struct.Cell.html
+//! * [`epoch`], an epoch-based garbage collector.
+//!
+//! ## Thread synchronization
+//!
+//! * [`channel`], multi-producer multi-consumer channels for message passing.
+//! * [`Parker`], a thread parking primitive.
+//! * [`ShardedLock`], a sharded reader-writer lock with fast concurrent reads.
+//! * [`WaitGroup`], for synchronizing the beginning or end of some computation.
+//!
+//! ## Utilities
+//!
+//! * [`Backoff`], to perform exponential backoff in spin loops.
+//! * [`CachePadded`], for padding and aligning a value to the length of a cache line.
+//! * [`scope`], for spawning threads that borrow local variables from the stack.
+//!
+//! [`AtomicCell`]: atomic/struct.AtomicCell.html
 //! [`AtomicConsume`]: atomic/trait.AtomicConsume.html
 //! [`deque`]: deque/index.html
-//! [`ArrayQueue<T>`]: queue/struct.ArrayQueue.html
-//! [`SegQueue<T>`]: queue/struct.SegQueue.html
+//! [`ArrayQueue`]: queue/struct.ArrayQueue.html
+//! [`SegQueue`]: queue/struct.SegQueue.html
 //! [`channel`]: channel/index.html
-//! [`ShardedLock<T>`]: sync/struct.ShardedLock.html
-//! [`RwLock<T>`]: https://doc.rust-lang.org/std/sync/struct.RwLock.html
+//! [`Parker`]: sync/struct.Parker.html
+//! [`ShardedLock`]: sync/struct.ShardedLock.html
 //! [`WaitGroup`]: sync/struct.WaitGroup.html
 //! [`epoch`]: epoch/index.html
-//! [`Backoff`]: utils/struct.CachePadded.html
-//! [`CachePadded<T>`]: utils/struct.CachePadded.html
-//! [`scope()`]: fn.scope.html
+//! [`Backoff`]: utils/struct.Backoff.html
+//! [`CachePadded`]: utils/struct.CachePadded.html
+//! [`scope`]: fn.scope.html
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]

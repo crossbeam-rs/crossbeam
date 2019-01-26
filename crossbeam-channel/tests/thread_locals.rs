@@ -38,12 +38,11 @@ fn use_while_exiting() {
 
     scope(|scope| {
         scope.spawn(|_| {
-            // First initialize `FOO`, then the thread-locals related to crossbeam-channel and
-            // crossbeam-epoch.
+            // First initialize `FOO`, then the thread-locals related to crossbeam-channel.
             FOO.with(|_| ());
             r.recv().unwrap();
-            // At thread exit, the crossbeam-related thread-locals get dropped first and `FOO` is
-            // dropped last.
+            // At thread exit, thread-locals related to crossbeam-channel get dropped first and
+            // `FOO` is dropped last.
         });
 
         scope.spawn(|_| {

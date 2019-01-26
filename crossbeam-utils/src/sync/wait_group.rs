@@ -1,8 +1,7 @@
 use std::fmt;
-use std::process;
 use std::sync::{Arc, Condvar, Mutex};
 
-/// Enables multiple threads to synchronize the beginning or end of some computation.
+/// Enables threads to synchronize the beginning or end of some computation.
 ///
 /// # Wait groups vs barriers
 ///
@@ -123,10 +122,6 @@ impl Clone for WaitGroup {
     fn clone(&self) -> WaitGroup {
         let mut count = self.inner.count.lock().unwrap();
         *count += 1;
-
-        if *count > isize::max_value() as usize {
-            process::abort();
-        }
 
         WaitGroup {
             inner: self.inner.clone(),
