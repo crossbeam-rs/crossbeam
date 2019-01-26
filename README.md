@@ -15,8 +15,8 @@ This crate provides a set of tools for concurrent programming:
 
 #### Atomics
 
-* [`AtomicCell`], a thread-safe mutable memory location.<sup>(*)</sup>
-* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(*)</sup>
+* [`AtomicCell`], a thread-safe mutable memory location.<sup>(\*)</sup>
+* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(\*)</sup>
 
 #### Data structures
 
@@ -26,7 +26,7 @@ This crate provides a set of tools for concurrent programming:
 
 #### Memory management
 
-* [`epoch`], an epoch-based garbage collector.<sup>(**)</sup>
+* [`epoch`], an epoch-based garbage collector.<sup>(\*\*)</sup>
 
 #### Thread synchronization
 
@@ -37,12 +37,12 @@ This crate provides a set of tools for concurrent programming:
 
 #### Utilities
 
-* [`Backoff`], to perform exponential backoff in spin loops.<sup>(*)</sup>
-* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(*)</sup>
+* [`Backoff`], to perform exponential backoff in spin loops.<sup>(\*)</sup>
+* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(\*)</sup>
 * [`scope`], for spawning threads that borrow local variables from the stack.
 
-*Features marked with (\*) can be used in `no_std` environments.*<br/>
-*Features marked with (\*\*) can be used in `no_std` + `alloc` environments.*
+*Features marked with <sup>(\*)</sup> can be used in `no_std` environments.*<br/>
+*Features marked with <sup>(\*\*)</sup> can be used in `no_std` + `alloc` environments.*
 
 [`AtomicCell`]: https://docs.rs/crossbeam/*/crossbeam/atomic/struct.AtomicCell.html
 [`AtomicConsume`]: https://docs.rs/crossbeam/*/crossbeam/atomic/trait.AtomicConsume.html

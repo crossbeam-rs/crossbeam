@@ -15,8 +15,8 @@ This crate provides miscellaneous tools for concurrent programming:
 
 #### Atomics
 
-* [`AtomicCell`], a thread-safe mutable memory location.<sup>(*)</sup>
-* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(*)</sup>
+* [`AtomicCell`], a thread-safe mutable memory location.<sup>(\*)</sup>
+* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(\*)</sup>
 
 #### Thread synchronization
 
@@ -26,11 +26,11 @@ This crate provides miscellaneous tools for concurrent programming:
 
 #### Utilities
 
-* [`Backoff`], to perform exponential backoff in spin loops.<sup>(*)</sup>
-* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(*)</sup>
+* [`Backoff`], to perform exponential backoff in spin loops.<sup>(\*)</sup>
+* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(\*)</sup>
 * [`scope`], for spawning threads that borrow local variables from the stack.
 
-*Features marked with (\*) are available in `no_std` environments.*
+*Features marked with <sup>(\*)</sup> are available in `no_std` environments.*
 
 [`AtomicCell`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/atomic/struct.AtomicCell.html
 [`AtomicConsume`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/atomic/trait.AtomicConsume.html
