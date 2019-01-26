@@ -32,7 +32,7 @@ Some highlights:
 [`never`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.never.html
 [`tick`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.tick.html
 [`select!`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/macro.select.html
-[`Select`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Sender.html
+[`Select`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Select.html
 
 ## Usage
 
