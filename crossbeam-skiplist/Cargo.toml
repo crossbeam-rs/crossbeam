@@ -13,7 +13,7 @@ homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-skip
 documentation = "https://docs.rs/crossbeam-skiplist"
 description = "A concurrent skip list"
 keywords = ["map", "set", "skiplist", "lock-free"]
-categories = ["algorithms", "concurrency", "data-structures"]
+categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 
 [features]
 default = ["std"]

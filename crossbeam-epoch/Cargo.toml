@@ -13,7 +13,7 @@ homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-epoc
 documentation = "https://docs.rs/crossbeam-epoch"
 description = "Epoch-based garbage collection"
 keywords = ["lock-free", "rcu", "atomic", "garbage"]
-categories = ["concurrency", "memory-management"]
+categories = ["concurrency", "memory-management", "no-std"]
 
 [features]
 default = ["std"]

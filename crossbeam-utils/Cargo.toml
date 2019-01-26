@@ -13,7 +13,7 @@ homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-util
 documentation = "https://docs.rs/crossbeam-utils"
 description = "Utilities for concurrent programming"
 keywords = ["scoped", "thread", "atomic", "cache"]
-categories = ["algorithms", "concurrency", "data-structures"]
+categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 
 [features]
 default = ["std"]
