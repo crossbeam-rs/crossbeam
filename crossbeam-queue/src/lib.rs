@@ -1,6 +1,13 @@
 //! Concurrent queues.
 //!
-//! TODO
+//! This crate provides concurrent queues that can be shared among threads:
+//!
+//! * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
+//! * [`SegQueue`], an unbounded MPMC queue that allocates segments on demand. Segments are small
+//!   buffers that can hold a handful of elements.
+//!
+//! [`ArrayQueue`]: struct.ArrayQueue.html
+//! [`SegQueue`]: struct.SegQueue.html
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]

@@ -104,10 +104,29 @@ struct Position<T> {
     block: AtomicPtr<Block<T>>,
 }
 
-/// An ubounded multi-producer multi-consumer queue.
+/// An unbounded multi-producer multi-consumer queue.
 ///
-/// This queue allocates segments big enough to store a handful of pushed values. These segments
-/// are then connected into a linked list.
+/// This queue is implemented as a linked list of segments, where each segment is a small buffer
+/// that can hold a handful of elements. There is no limit to how many elements can be in the queue
+/// at a time. However, since segments need to be dynamically allocated as elements get pushed,
+/// this queue is somewhat slower than [`ArrayQueue`].
+///
+/// [`ArrayQueue`]: struct.ArrayQueue.html
+///
+/// # Examples
+///
+/// ```
+/// use crossbeam_queue::{PopError, SegQueue};
+///
+/// let q = SegQueue::new();
+///
+/// q.push('a');
+/// q.push('b');
+///
+/// assert_eq!(q.pop(), Ok('a'));
+/// assert_eq!(q.pop(), Ok('b'));
+/// assert_eq!(q.pop(), Err(PopError));
+/// ```
 pub struct SegQueue<T> {
     /// The head of the queue.
     head: CachePadded<Position<T>>,
@@ -124,6 +143,14 @@ unsafe impl<T: Send> Sync for SegQueue<T> {}
 
 impl<T> SegQueue<T> {
     /// Creates a new unbounded queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::SegQueue;
+    ///
+    /// let q = SegQueue::<i32>::new();
+    /// ```
     pub fn new() -> SegQueue<T> {
         SegQueue {
             head: CachePadded::new(Position {
@@ -138,7 +165,18 @@ impl<T> SegQueue<T> {
         }
     }
 
-    /// Pushes a value into the queue.
+    /// Pushes an element into the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::SegQueue;
+    ///
+    /// let q = SegQueue::new();
+    ///
+    /// q.push(10);
+    /// q.push(20);
+    /// ```
     pub fn push(&self, value: T) {
         let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
@@ -216,7 +254,21 @@ impl<T> SegQueue<T> {
         }
     }
 
-    /// Pops a value from the queue.
+    /// Pops an element from the queue.
+    ///
+    /// If the queue is empty, an error is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::{PopError, SegQueue};
+    ///
+    /// let q = SegQueue::new();
+    ///
+    /// q.push(10);
+    /// assert_eq!(q.pop(), Ok(10));
+    /// assert_eq!(q.pop(), Err(PopError));
+    /// ```
     pub fn pop(&self) -> Result<T, PopError> {
         let backoff = Backoff::new();
         let mut head = self.head.index.load(Ordering::Acquire);
@@ -308,13 +360,40 @@ impl<T> SegQueue<T> {
     }
 
     /// Returns `true` if the queue is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::SegQueue;
+    ///
+    /// let q = SegQueue::new();
+    ///
+    /// assert!(q.is_empty());
+    /// q.push(1);
+    /// assert!(!q.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         let head = self.head.index.load(Ordering::SeqCst);
         let tail = self.tail.index.load(Ordering::SeqCst);
         head >> SHIFT == tail >> SHIFT
     }
 
-    /// Returns the current number of values in the queue.
+    /// Returns the number of elements in the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::{SegQueue, PopError};
+    ///
+    /// let q = SegQueue::new();
+    /// assert_eq!(q.len(), 0);
+    ///
+    /// q.push(10);
+    /// assert_eq!(q.len(), 1);
+    ///
+    /// q.push(20);
+    /// assert_eq!(q.len(), 2);
+    /// ```
     pub fn len(&self) -> usize {
         loop {
             // Load the tail index, then load the head index.

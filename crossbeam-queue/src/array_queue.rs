@@ -33,14 +33,32 @@ struct Slot<T> {
 
 /// A bounded multi-producer multi-consumer queue.
 ///
-/// This queue uses a fixed-capacity buffer to store pushed values.
+/// This queue allocates a fixed-capacity buffer on construction, which is used to store pushed
+/// elements. The queue cannot hold more elements that the buffer allows. Attempting to push an
+/// element into a full queue will fail. Having a buffer allocated upfront makes this queue a bit
+/// faster than [`SegQueue`].
+///
+/// [`SegQueue`]: struct.SegQueue.html
+///
+/// # Examples
+///
+/// ```
+/// use crossbeam_queue::{ArrayQueue, PushError};
+///
+/// let q = ArrayQueue::new(2);
+///
+/// assert_eq!(q.push('a'), Ok(()));
+/// assert_eq!(q.push('b'), Ok(()));
+/// assert_eq!(q.push('c'), Err(PushError('c')));
+/// assert_eq!(q.pop(), Ok('a'));
+/// ```
 pub struct ArrayQueue<T> {
     /// The head of the queue.
     ///
     /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
     /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
     ///
-    /// Values are popped from the head of the queue.
+    /// Elements are popped from the head of the queue.
     head: CachePadded<AtomicUsize>,
 
     /// The tail of the queue.
@@ -48,7 +66,7 @@ pub struct ArrayQueue<T> {
     /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
     /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
     ///
-    /// Values are pushed into the tail of the queue.
+    /// Elements are pushed into the tail of the queue.
     tail: CachePadded<AtomicUsize>,
 
     /// The buffer holding slots.
@@ -60,7 +78,7 @@ pub struct ArrayQueue<T> {
     /// A stamp with the value of `{ lap: 1, index: 0 }`.
     one_lap: usize,
 
-    /// Indicates that dropping an `ArrayQueue<T>` may drop values of type `T`.
+    /// Indicates that dropping an `ArrayQueue<T>` may drop elements of type `T`.
     _marker: PhantomData<T>,
 }
 
@@ -68,11 +86,19 @@ unsafe impl<T: Send> Sync for ArrayQueue<T> {}
 unsafe impl<T: Send> Send for ArrayQueue<T> {}
 
 impl<T> ArrayQueue<T> {
-    /// Creates a new queue of capacity `cap`.
+    /// Creates a new bounded queue with the given capacity.
     ///
     /// # Panics
     ///
     /// Panics if the capacity is zero.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::ArrayQueue;
+    ///
+    /// let q = ArrayQueue::<i32>::new(100);
+    /// ```
     pub fn new(cap: usize) -> ArrayQueue<T> {
         assert!(cap > 0, "capacity must be non-zero");
 
@@ -111,7 +137,20 @@ impl<T> ArrayQueue<T> {
         }
     }
 
-    /// Attempts to push `value` into the queue.
+    /// Attempts to push an element into the queue.
+    ///
+    /// If the queue is full, the element is returned back as an error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::{ArrayQueue, PushError};
+    ///
+    /// let q = ArrayQueue::new(1);
+    ///
+    /// assert_eq!(q.push(10), Ok(()));
+    /// assert_eq!(q.push(20), Err(PushError(20)));
+    /// ```
     pub fn push(&self, value: T) -> Result<(), PushError<T>> {
         let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
@@ -173,7 +212,21 @@ impl<T> ArrayQueue<T> {
         }
     }
 
-    /// Attempts to pop a value from the queue.
+    /// Attempts to pop an element from the queue.
+    ///
+    /// If the queue is empty, an error is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::{ArrayQueue, PopError};
+    ///
+    /// let q = ArrayQueue::new(1);
+    /// assert_eq!(q.push(10), Ok(()));
+    ///
+    /// assert_eq!(q.pop(), Ok(10));
+    /// assert_eq!(q.pop(), Err(PopError));
+    /// ```
     pub fn pop(&self) -> Result<T, PopError> {
         let backoff = Backoff::new();
         let mut head = self.head.load(Ordering::Relaxed);
@@ -235,11 +288,33 @@ impl<T> ArrayQueue<T> {
     }
 
     /// Returns the capacity of the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::{ArrayQueue, PopError};
+    ///
+    /// let q = ArrayQueue::<i32>::new(100);
+    ///
+    /// assert_eq!(q.capacity(), 100);
+    /// ```
     pub fn capacity(&self) -> usize {
         self.cap
     }
 
     /// Returns `true` if the queue is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::{ArrayQueue, PopError};
+    ///
+    /// let q = ArrayQueue::new(100);
+    ///
+    /// assert!(q.is_empty());
+    /// q.push(1).unwrap();
+    /// assert!(!q.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         let head = self.head.load(Ordering::SeqCst);
         let tail = self.tail.load(Ordering::SeqCst);
@@ -253,6 +328,18 @@ impl<T> ArrayQueue<T> {
     }
 
     /// Returns `true` if the queue is full.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::{ArrayQueue, PopError};
+    ///
+    /// let q = ArrayQueue::new(1);
+    ///
+    /// assert!(!q.is_full());
+    /// q.push(1).unwrap();
+    /// assert!(q.is_full());
+    /// ```
     pub fn is_full(&self) -> bool {
         let tail = self.tail.load(Ordering::SeqCst);
         let head = self.head.load(Ordering::SeqCst);
@@ -264,7 +351,22 @@ impl<T> ArrayQueue<T> {
         head.wrapping_add(self.one_lap) == tail
     }
 
-    /// Returns the current number of values in the queue.
+    /// Returns the number of elements in the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::{ArrayQueue, PopError};
+    ///
+    /// let q = ArrayQueue::new(100);
+    /// assert_eq!(q.len(), 0);
+    ///
+    /// q.push(10).unwrap();
+    /// assert_eq!(q.len(), 1);
+    ///
+    /// q.push(20).unwrap();
+    /// assert_eq!(q.len(), 2);
+    /// ```
     pub fn len(&self) -> usize {
         loop {
             // Load the tail, then load the head.
