@@ -1,25 +1,20 @@
-# Crossbeam Utils
+# Crossbeam Queue
 
 [![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
 https://travis-ci.org/crossbeam-rs/crossbeam)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](
-https://github.com/crossbeam-rs/crossbeam-utils/tree/master/src)
-[![Cargo](https://img.shields.io/crates/v/crossbeam-utils.svg)](
-https://crates.io/crates/crossbeam-utils)
-[![Documentation](https://docs.rs/crossbeam-utils/badge.svg)](
-https://docs.rs/crossbeam-utils)
+https://github.com/crossbeam-rs/crossbeam-queue/tree/master/src)
+[![Cargo](https://img.shields.io/crates/v/crossbeam-queue.svg)](
+https://crates.io/crates/crossbeam-queue)
+[![Documentation](https://docs.rs/crossbeam-queue/badge.svg)](
+https://docs.rs/crossbeam-queue)
 [![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
 https://www.rust-lang.org)
 
-This crate provides miscellaneous utilities for concurrent programming:
+This crate provides concurrent queues:
 
-* `AtomicCell<T>` is equivalent to `Cell<T>`, except it is also thread-safe.
-* `AtomicConsume` allows reading from primitive atomic types with "consume" ordering.
-* `Backoff` performs exponential backoff in spin loops.
-* `CachePadded<T>` pads and aligns a value to the length of a cache line.
-* `scope()` can spawn threads that borrow local variables from the stack. 
-* `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
-* `WaitGroup` enables threads to synchronize the beginning or end of some computation.
+* TODO
+* TODO
 
 ## Usage
 
@@ -27,25 +22,18 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-utils = "0.6"
+crossbeam-queue = "0.1"
 ```
 
 Next, add this to your crate:
 
 ```rust
-extern crate crossbeam_utils;
+extern crate crossbeam_queue;
 ```
 
 ## Compatibility
 
 The minimum supported Rust version is 1.26.
-
-Features available in `no_std` environments:
-
-* `AtomicCell<T>`
-* `AtomicConsume`
-* `Backoff`
-* `CachePadded<T>`
 
 ## License
 
@@ -61,3 +49,15 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
+
+### Third party software
+
+This product includes copies and modifications of software developed by third parties:
+
+* [src/array_queue.rs](src/array_queue.rs) is based on
+  [Bounded MPMC queue](http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue)
+  by Dmitry Vyukov, licensed under the Simplified BSD License and the Apache License, Version 2.0.
+
+See the source code files for more details.
+
+Copies of third party licenses can be found in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY).
