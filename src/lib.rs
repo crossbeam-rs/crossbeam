@@ -73,11 +73,7 @@ pub use _epoch::crossbeam_epoch as epoch;
 
 extern crate crossbeam_utils;
 
-/// Atomic types.
-pub mod atomic {
-    pub use crossbeam_utils::atomic::AtomicCell;
-    pub use crossbeam_utils::atomic::AtomicConsume;
-}
+pub use crossbeam_utils::atomic;
 
 /// Miscellaneous utilities.
 pub mod utils {
