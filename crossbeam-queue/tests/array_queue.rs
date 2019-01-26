@@ -29,6 +29,12 @@ fn capacity() {
 }
 
 #[test]
+#[should_panic(expected = "capacity must be non-zero")]
+fn zero_capacity() {
+    let _ = ArrayQueue::<i32>::new(0);
+}
+
+#[test]
 fn len_empty_full() {
     let q = ArrayQueue::new(2);
 
