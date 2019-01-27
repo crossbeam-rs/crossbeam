@@ -37,7 +37,7 @@ This crate provides a set of tools for concurrent programming:
 
 #### Utilities
 
-* [`Backoff`], to perform exponential backoff in spin loops.<sup>(\*)</sup>
+* [`Backoff`], for exponential backoff in spin loops.<sup>(\*)</sup>
 * [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(\*)</sup>
 * [`scope`], for spawning threads that borrow local variables from the stack.
 
@@ -117,10 +117,10 @@ We also have the [RFCs](https://github.com/crossbeam-rs/rfcs) repository for mor
 high-level discussion, which is the place where we brainstorm ideas and propose
 substantial changes to Crossbeam.
 
-Feel free to participate in any open 
+You are welcome to participate in any open
 [issues](https://github.com/crossbeam-rs/rfcs/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc)
 or
-[pull requests](https://github.com/crossbeam-rs/rfcs/pulls?q=is%3Apr+is%3Aopen+sort%3Aupdated-desc)!
+[pull requests](https://github.com/crossbeam-rs/rfcs/pulls?q=is%3Apr+is%3Aopen+sort%3Aupdated-desc).
 
 #### Learning resources
 

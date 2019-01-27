@@ -24,7 +24,7 @@
 //!
 //! ## Utilities
 //!
-//! * [`Backoff`], to perform exponential backoff in spin loops.
+//! * [`Backoff`], for exponential backoff in spin loops.
 //! * [`CachePadded`], for padding and aligning a value to the length of a cache line.
 //! * [`scope`], for spawning threads that borrow local variables from the stack.
 //!
