@@ -482,6 +482,8 @@ cfg_if! {
         impl_arithmetic!(i32, "32", atomic::AtomicI32, "let a = AtomicCell::new(7i32);");
         impl_arithmetic!(u64, "64", atomic::AtomicU64, "let a = AtomicCell::new(7u64);");
         impl_arithmetic!(i64, "64", atomic::AtomicI64, "let a = AtomicCell::new(7i64);");
+        impl_arithmetic!(u128, "let a = AtomicCell::new(7u128);");
+        impl_arithmetic!(i128, "let a = AtomicCell::new(7i128);");
     } else {
         impl_arithmetic!(u8, "let a = AtomicCell::new(7u8);");
         impl_arithmetic!(i8, "let a = AtomicCell::new(7i8);");
@@ -491,6 +493,8 @@ cfg_if! {
         impl_arithmetic!(i32, "let a = AtomicCell::new(7i32);");
         impl_arithmetic!(u64, "let a = AtomicCell::new(7u64);");
         impl_arithmetic!(i64, "let a = AtomicCell::new(7i64);");
+        impl_arithmetic!(u128, "let a = AtomicCell::new(7u128);");
+        impl_arithmetic!(i128, "let a = AtomicCell::new(7i128);");
     }
 }
 
