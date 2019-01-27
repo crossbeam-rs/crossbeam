@@ -1825,6 +1825,23 @@ impl<T> fmt::Debug for Injector<T> {
 }
 
 /// Possible outcomes of a steal operation.
+///
+/// # Examples
+///
+/// There are lots of ways to chain results of steal operations together:
+///
+/// ```
+/// use crossbeam_deque::Steal::{self, Empty, Retry, Success};
+///
+/// let collect = |v: Vec<Steal<i32>>| v.into_iter().collect::<Steal<i32>>();
+///
+/// assert_eq!(collect(vec![Empty, Empty, Empty]), Empty);
+/// assert_eq!(collect(vec![Empty, Retry, Empty]), Retry);
+/// assert_eq!(collect(vec![Retry, Success(1), Empty]), Success(1));
+///
+/// assert_eq!(collect(vec![Empty, Empty]).or_else(|| Retry), Retry);
+/// assert_eq!(collect(vec![Retry, Empty]).or_else(|| Success(1)), Success(1));
+/// ```
 #[must_use]
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum Steal<T> {
@@ -1840,6 +1857,17 @@ pub enum Steal<T> {
 
 impl<T> Steal<T> {
     /// Returns `true` if the queue was empty at the time of stealing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Steal::{Empty, Retry, Success};
+    ///
+    /// assert!(!Success(7).is_empty());
+    /// assert!(!Retry::<i32>.is_empty());
+    ///
+    /// assert!(Empty::<i32>.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         match self {
             Steal::Empty => true,
@@ -1848,6 +1876,17 @@ impl<T> Steal<T> {
     }
 
     /// Returns `true` if at least one task was stolen.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Steal::{Empty, Retry, Success};
+    ///
+    /// assert!(!Empty::<i32>.is_success());
+    /// assert!(!Retry::<i32>.is_success());
+    ///
+    /// assert!(Success(7).is_success());
+    /// ```
     pub fn is_success(&self) -> bool {
         match self {
             Steal::Success(_) => true,
@@ -1856,6 +1895,17 @@ impl<T> Steal<T> {
     }
 
     /// Returns `true` if the steal operation needs to be retried.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Steal::{Empty, Retry, Success};
+    ///
+    /// assert!(!Empty::<i32>.is_retry());
+    /// assert!(!Success(7).is_retry());
+    ///
+    /// assert!(Retry::<i32>.is_retry());
+    /// ```
     pub fn is_retry(&self) -> bool {
         match self {
             Steal::Retry => true,
@@ -1864,6 +1914,17 @@ impl<T> Steal<T> {
     }
 
     /// Returns the result of the operation, if successful.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Steal::{Empty, Retry, Success};
+    ///
+    /// assert_eq!(Empty::<i32>.success(), None);
+    /// assert_eq!(Retry::<i32>.success(), None);
+    ///
+    /// assert_eq!(Success(7).success(), Some(7));
+    /// ```
     pub fn success(self) -> Option<T> {
         match self {
             Steal::Success(res) => Some(res),
@@ -1873,10 +1934,25 @@ impl<T> Steal<T> {
 
     /// If no task was stolen, attempts another steal operation.
     ///
-    /// The closure will be invoked only if this `Steal` is not `Success`.
+    /// Returns this steal result if it is `Success`. Otherwise, closure `f` is invoked and then:
     ///
-    /// If any of the two steal operations result in `Retry`, then `Retry` is returned. If both
-    /// result in `None`, then `None` is returned.
+    /// * If the second steal resulted in `Success`, it is returned.
+    /// * If both steals were unsuccessful but any resulted in `Retry`, then `Retry` is returned.
+    /// * If both resulted in `None`, then `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Steal::{Empty, Retry, Success};
+    ///
+    /// assert_eq!(Success(1).or_else(|| Success(2)), Success(1));
+    /// assert_eq!(Retry.or_else(|| Success(2)), Success(2));
+    ///
+    /// assert_eq!(Retry.or_else(|| Empty), Retry::<i32>);
+    /// assert_eq!(Empty.or_else(|| Retry), Retry::<i32>);
+    ///
+    /// assert_eq!(Empty.or_else(|| Empty), Empty::<i32>);
+    /// ```
     pub fn or_else<F>(self, f: F) -> Steal<T>
     where
         F: FnOnce() -> Steal<T>,
