@@ -1,95 +1,81 @@
 extern crate crossbeam_queue;
 extern crate crossbeam_utils;
+extern crate rand;
+
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::thread::scope;
-
-const CONC_COUNT: i64 = 1000000;
+use rand::{thread_rng, Rng};
 
 #[test]
-fn push_pop_1() {
-    let q: SegQueue<i64> = SegQueue::new();
-    q.push(37);
-    assert_eq!(q.pop(), Ok(37));
+fn smoke() {
+    let q = SegQueue::new();
+    q.push(7);
+    assert_eq!(q.pop(), Ok(7));
+
+    q.push(8);
+    assert_eq!(q.pop(), Ok(8));
+    assert!(q.pop().is_err());
 }
 
 #[test]
-fn push_pop_2() {
-    let q: SegQueue<i64> = SegQueue::new();
-    q.push(37);
-    q.push(48);
-    assert_eq!(q.pop(), Ok(37));
-    assert_eq!(q.pop(), Ok(48));
-}
+fn len_empty_full() {
+    let q = SegQueue::new();
 
-#[test]
-fn push_pop_empty_check() {
-    let q: SegQueue<i64> = SegQueue::new();
+    assert_eq!(q.len(), 0);
     assert_eq!(q.is_empty(), true);
-    q.push(42);
+
+    q.push(());
+
+    assert_eq!(q.len(), 1);
     assert_eq!(q.is_empty(), false);
-    assert_eq!(q.pop(), Ok(42));
+
+    q.pop().unwrap();
+
+    assert_eq!(q.len(), 0);
     assert_eq!(q.is_empty(), true);
 }
 
 #[test]
-fn push_pop_many_seq() {
-    let q: SegQueue<i64> = SegQueue::new();
-    for i in 0..200 {
-        q.push(i)
+fn len() {
+    let q = SegQueue::new();
+
+    assert_eq!(q.len(), 0);
+
+    for i in 0..50 {
+        q.push(i);
+        assert_eq!(q.len(), i + 1);
     }
-    for i in 0..200 {
-        assert_eq!(q.pop(), Ok(i));
+
+    for i in 0..50 {
+        q.pop().unwrap();
+        assert_eq!(q.len(), 50 - i - 1);
     }
+
+    assert_eq!(q.len(), 0);
 }
 
 #[test]
-fn push_pop_many_spsc() {
-    let q: SegQueue<i64> = SegQueue::new();
+fn spsc() {
+    const COUNT: usize = 100_000;
+
+    let q = SegQueue::new();
 
     scope(|scope| {
         scope.spawn(|_| {
-            let mut next = 0;
-
-            while next < CONC_COUNT {
-                if let Ok(elem) = q.pop() {
-                    assert_eq!(elem, next);
-                    next += 1;
+            for i in 0..COUNT {
+                loop {
+                    if let Ok(x) = q.pop() {
+                        assert_eq!(x, i);
+                        break;
+                    }
                 }
             }
+            assert!(q.pop().is_err());
         });
-
-        for i in 0..CONC_COUNT {
-            q.push(i)
-        }
-    }).unwrap();
-}
-
-#[test]
-fn push_pop_many_spmc() {
-    fn recv(_t: i32, q: &SegQueue<i64>) {
-        let mut cur = -1;
-        for _i in 0..CONC_COUNT {
-            if let Ok(elem) = q.pop() {
-                assert!(elem > cur);
-                cur = elem;
-
-                if cur == CONC_COUNT - 1 {
-                    break;
-                }
-            }
-        }
-    }
-
-    let q: SegQueue<i64> = SegQueue::new();
-    scope(|scope| {
-        for i in 0..3 {
-            let q = &q;
-            scope.spawn(move |_| recv(i, q));
-        }
-
         scope.spawn(|_| {
-            for i in 0..CONC_COUNT {
+            for i in 0..COUNT {
                 q.push(i);
             }
         });
@@ -97,45 +83,82 @@ fn push_pop_many_spmc() {
 }
 
 #[test]
-fn push_pop_many_mpmc() {
-    enum LR {
-        Left(i64),
-        Right(i64),
-    }
+fn mpmc() {
+    const COUNT: usize = 25_000;
+    const THREADS: usize = 4;
 
-    let q: SegQueue<LR> = SegQueue::new();
+    let q = SegQueue::<usize>::new();
+    let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
     scope(|scope| {
-        for _t in 0..2 {
+        for _ in 0..THREADS {
             scope.spawn(|_| {
-                for i in CONC_COUNT - 1..CONC_COUNT {
-                    q.push(LR::Left(i))
+                for _ in 0..COUNT {
+                    let n = loop {
+                        if let Ok(x) = q.pop() {
+                            break x;
+                        }
+                    };
+                    v[n].fetch_add(1, Ordering::SeqCst);
                 }
             });
+        }
+        for _ in 0..THREADS {
             scope.spawn(|_| {
-                for i in CONC_COUNT - 1..CONC_COUNT {
-                    q.push(LR::Right(i))
+                for i in 0..COUNT {
+                    q.push(i);
                 }
-            });
-            scope.spawn(|_| {
-                let mut vl = vec![];
-                let mut vr = vec![];
-                for _i in 0..CONC_COUNT {
-                    match q.pop() {
-                        Ok(LR::Left(x)) => vl.push(x),
-                        Ok(LR::Right(x)) => vr.push(x),
-                        _ => {}
-                    }
-                }
-
-                let mut vl2 = vl.clone();
-                let mut vr2 = vr.clone();
-                vl2.sort();
-                vr2.sort();
-
-                assert_eq!(vl, vl2);
-                assert_eq!(vr, vr2);
             });
         }
     }).unwrap();
+
+    for c in v {
+        assert_eq!(c.load(Ordering::SeqCst), THREADS);
+    }
+}
+
+#[test]
+fn drops() {
+    static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+    #[derive(Debug, PartialEq)]
+    struct DropCounter;
+
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            DROPS.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let mut rng = thread_rng();
+
+    for _ in 0..100 {
+        let steps = rng.gen_range(0, 10_000);
+        let additional = rng.gen_range(0, 1000);
+
+        DROPS.store(0, Ordering::SeqCst);
+        let q = SegQueue::new();
+
+        scope(|scope| {
+            scope.spawn(|_| {
+                for _ in 0..steps {
+                    while q.pop().is_err() {}
+                }
+            });
+
+            scope.spawn(|_| {
+                for _ in 0..steps {
+                    q.push(DropCounter);
+                }
+            });
+        }).unwrap();
+
+        for _ in 0..additional {
+            q.push(DropCounter);
+        }
+
+        assert_eq!(DROPS.load(Ordering::SeqCst), steps);
+        drop(q);
+        assert_eq!(DROPS.load(Ordering::SeqCst), steps + additional);
+    }
 }
