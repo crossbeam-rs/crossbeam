@@ -923,6 +923,12 @@ impl<'a> Clone for Select<'a> {
     }
 }
 
+impl<'a> Default for Select<'a> {
+    fn default() -> Select<'a> {
+        Select::new()
+    }
+}
+
 impl<'a> fmt::Debug for Select<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.pad("Select { .. }")
