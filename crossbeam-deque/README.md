@@ -29,12 +29,6 @@ Next, add this to your crate:
 extern crate crossbeam_deque;
 ```
 
-## Compatibility
-
-The minimum supported Rust version is 1.28.
-
-This crate does not work in `no_std` environments.
-
 ## License
 
 Licensed under either of
@@ -44,7 +38,7 @@ Licensed under either of
 
 at your option.
 
-### Contribution
+#### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be

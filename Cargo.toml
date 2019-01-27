@@ -13,7 +13,7 @@ homepage = "https://github.com/crossbeam-rs/crossbeam"
 documentation = "https://docs.rs/crossbeam"
 description = "Tools for concurrent programming"
 keywords = ["atomic", "garbage", "non-blocking", "lock-free", "rcu"]
-categories = ["concurrency", "memory-management", "data-structures"]
+categories = ["concurrency", "memory-management", "data-structures", "no-std"]
 exclude = ["/ci/*", "/.travis.yml", "/bors.toml"]
 
 [badges]

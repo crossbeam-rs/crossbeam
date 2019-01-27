@@ -142,7 +142,7 @@ impl<T> SendError<T> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```
     /// use crossbeam_channel::unbounded;
     ///
     /// let (s, r) = unbounded();
@@ -201,7 +201,7 @@ impl<T> TrySendError<T> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```
     /// use crossbeam_channel::bounded;
     ///
     /// let (s, r) = bounded(0);
@@ -272,7 +272,7 @@ impl<T> SendTimeoutError<T> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```
     /// use std::time::Duration;
     /// use crossbeam_channel::unbounded;
     ///

@@ -1,4 +1,4 @@
-//! Additional utilities for atomics.
+//! Atomic types.
 
 mod atomic_cell;
 mod consume;

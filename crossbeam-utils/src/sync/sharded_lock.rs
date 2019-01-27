@@ -28,8 +28,8 @@ struct Shard {
 
 /// A sharded reader-writer lock.
 ///
-/// This lock is same as [`RwLock`], except read operations are faster and write operations are
-/// slower.
+/// This lock is equivalent to [`RwLock`], except read operations are faster and write operations
+/// are slower.
 ///
 /// A `ShardedLock` is internally made of a list of *shards*, each being a [`RwLock`] occupying a
 /// single cache line. Read operations will pick one of the shards depending on the current thread

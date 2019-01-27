@@ -16,14 +16,23 @@ It is an alternative to [`std::sync::mpsc`] with more features and better perfor
 
 Some highlights:
 
-* `Sender`s and `Receiver`s can be cloned and shared among threads.
-* Two main kinds of channels are `unbounded` and `bounded`.
-* Convenient extra channels like `after`, `never`, and `tick`.
-* The `select!` macro can block on multiple channel operations.
-* `Select` can select over a dynamically built list of channel operations.
+* [`Sender`]s and [`Receiver`]s can be cloned and shared among threads.
+* Two main kinds of channels are [`bounded`] and [`unbounded`].
+* Convenient extra channels like [`after`], [`never`], and [`tick`].
+* The [`select!`] macro can block on multiple channel operations.
+* [`Select`] can select over a dynamically built list of channel operations.
 * Channels use locks very sparingly for maximum [performance](benchmarks).
 
 [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
+[`Sender`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Sender.html
+[`Receiver`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Receiver.html
+[`bounded`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.bounded.html
+[`unbounded`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.unbounded.html
+[`after`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.after.html
+[`never`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.never.html
+[`tick`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.tick.html
+[`select!`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/macro.select.html
+[`Select`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Select.html
 
 ## Usage
 
@@ -41,12 +50,6 @@ Next, add this to your crate:
 extern crate crossbeam_channel;
 ```
 
-## Compatibility
-
-The minimum supported Rust version is 1.26.
-
-This crate does not work in `no_std` environments.
-
 ## License
 
 Licensed under either of
@@ -56,13 +59,13 @@ Licensed under either of
 
 at your option.
 
-### Contribution
+#### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
 
-### Third party software
+#### Third party software
 
 This product includes copies and modifications of software developed by third parties:
 

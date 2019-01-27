@@ -11,15 +11,35 @@ https://docs.rs/crossbeam-utils)
 [![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
 https://www.rust-lang.org)
 
-This crate provides miscellaneous utilities for concurrent programming:
+This crate provides miscellaneous tools for concurrent programming:
 
-* `AtomicCell<T>` is equivalent to `Cell<T>`, except it is also thread-safe.
-* `AtomicConsume` allows reading from primitive atomic types with "consume" ordering.
-* `Backoff` performs exponential backoff in spin loops.
-* `CachePadded<T>` pads and aligns a value to the length of a cache line.
-* `scope()` can spawn threads that borrow local variables from the stack. 
-* `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
-* `WaitGroup` enables threads to synchronize the beginning or end of some computation.
+#### Atomics
+
+* [`AtomicCell`], a thread-safe mutable memory location.<sup>(\*)</sup>
+* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(\*)</sup>
+
+#### Thread synchronization
+
+* [`Parker`], a thread parking primitive.
+* [`ShardedLock`], a sharded reader-writer lock with fast concurrent reads.
+* [`WaitGroup`], for synchronizing the beginning or end of some computation.
+
+#### Utilities
+
+* [`Backoff`], to perform exponential backoff in spin loops.<sup>(\*)</sup>
+* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(\*)</sup>
+* [`scope`], for spawning threads that borrow local variables from the stack.
+
+*Features marked with <sup>(\*)</sup> are available in `no_std` environments.*
+
+[`AtomicCell`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/atomic/struct.AtomicCell.html
+[`AtomicConsume`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/atomic/trait.AtomicConsume.html
+[`Parker`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/sync/struct.Parker.html
+[`ShardedLock`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/sync/struct.ShardedLock.html
+[`WaitGroup`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/sync/struct.WaitGroup.html
+[`Backoff`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/struct.Backoff.html
+[`CachePadded`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/struct.CachePadded.html
+[`scope`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/thread/fn.scope.html
 
 ## Usage
 
@@ -36,17 +56,6 @@ Next, add this to your crate:
 extern crate crossbeam_utils;
 ```
 
-## Compatibility
-
-The minimum supported Rust version is 1.26.
-
-Features available in `no_std` environments:
-
-* `AtomicCell<T>`
-* `AtomicConsume`
-* `Backoff`
-* `CachePadded<T>`
-
 ## License
 
 Licensed under either of
@@ -56,7 +65,7 @@ Licensed under either of
 
 at your option.
 
-### Contribution
+#### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be

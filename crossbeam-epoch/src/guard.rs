@@ -156,7 +156,7 @@ impl Guard {
     /// get dropped. This method can defer deallocation until all those threads get unpinned and
     /// consequently drop all their references on the stack.
     ///
-    /// ```rust
+    /// ```
     /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
@@ -241,7 +241,7 @@ impl Guard {
     /// get dropped. This method can defer deallocation until all those threads get unpinned and
     /// consequently drop all their references on the stack.
     ///
-    /// ```rust
+    /// ```
     /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///

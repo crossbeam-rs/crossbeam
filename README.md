@@ -13,32 +13,56 @@ https://www.rust-lang.org)
 
 This crate provides a set of tools for concurrent programming:
 
-* Atomics
-    * `AtomicCell<T>` is equivalent to `Cell<T>`, except it is also thread-safe.
-    * `AtomicConsume` allows reading from primitive atomic types with "consume" ordering.
+#### Atomics
 
-* Data structures
-    * `deque` module contains work-stealing deques for building task schedulers.
-    * `ArrayQueue<T>` is a bounded MPMC queue.
-    * `SegQueue<T>` is an unbounded MPMC queue.
+* [`AtomicCell`], a thread-safe mutable memory location.<sup>(\*)</sup>
+* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(\*)</sup>
 
-* Memory management
-    * `epoch` module contains epoch-based garbage collection.
+#### Data structures
 
-* Thread synchronization
-    * `channel` module contains multi-producer multi-consumer channels for message passing.
-    * `ShardedLock<T>` is like `RwLock<T>`, but sharded for faster concurrent reads.
-    * `WaitGroup` enables threads to synchronize the beginning or end of some computation.
+* [`deque`], work-stealing deques for building task schedulers.
+* [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
+* [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
 
-* Utilities
-    * `Backoff` performs exponential backoff in spin loops.
-    * `CachePadded<T>` pads and aligns a value to the length of a cache line.
-    * `scope()` can spawn threads that borrow local variables from the stack. 
+#### Memory management
+
+* [`epoch`], an epoch-based garbage collector.<sup>(\*\*)</sup>
+
+#### Thread synchronization
+
+* [`channel`], multi-producer multi-consumer channels for message passing.
+* [`Parker`], a thread parking primitive.
+* [`ShardedLock`], a sharded reader-writer lock with fast concurrent reads.
+* [`WaitGroup`], for synchronizing the beginning or end of some computation.
+
+#### Utilities
+
+* [`Backoff`], to perform exponential backoff in spin loops.<sup>(\*)</sup>
+* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(\*)</sup>
+* [`scope`], for spawning threads that borrow local variables from the stack.
+
+*Features marked with <sup>(\*)</sup> can be used in `no_std` environments.*<br/>
+*Features marked with <sup>(\*\*)</sup> can be used in `no_std` + `alloc` environments.*
+
+[`AtomicCell`]: https://docs.rs/crossbeam/*/crossbeam/atomic/struct.AtomicCell.html
+[`AtomicConsume`]: https://docs.rs/crossbeam/*/crossbeam/atomic/trait.AtomicConsume.html
+[`deque`]: https://docs.rs/crossbeam/*/crossbeam/deque/index.html
+[`ArrayQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.ArrayQueue.html
+[`SegQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.SegQueue.html
+[`channel`]: https://docs.rs/crossbeam/*/crossbeam/channel/index.html
+[`Parker`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.Parker.html
+[`ShardedLock`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.ShardedLock.html
+[`WaitGroup`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.WaitGroup.html
+[`epoch`]: https://docs.rs/crossbeam/*/crossbeam/epoch/index.html
+[`Backoff`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.Backoff.html
+[`CachePadded`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.CachePadded.html
+[`scope`]: https://docs.rs/crossbeam/*/crossbeam/fn.scope.html
+
 
 ## Crates
 
-Some of the tools live in the main `crossbeam` crate, and some are re-exported
-from smaller subcrates:
+The main `crossbeam` crate just [re-exports](src/lib.rs) tools from
+smaller subcrates:
 
 * [`crossbeam-channel`](crossbeam-channel)
   provides multi-producer multi-consumer channels for message passing.
@@ -46,10 +70,10 @@ from smaller subcrates:
   provides work-stealing deques, which are primarily intended for building task schedulers.
 * [`crossbeam-epoch`](crossbeam-epoch)
   provides epoch-based garbage collection for building concurrent data structures.
+* [`crossbeam-queue`](crossbeam-queue)
+  provides concurrent queues that can be shared among threads.
 * [`crossbeam-utils`](crossbeam-utils)
-  provides miscellaneous utilities for concurrent programming:
-
-Take a look at [src/lib.rs](src/lib.rs) to see what goes where.
+  provides atomics, synchronization primitives, scoped threads, and other utilities.
 
 There is one more experimental subcrate that is not yet included in `crossbeam`:
 
@@ -71,27 +95,15 @@ Next, add this to your crate:
 extern crate crossbeam;
 ```
 
-## Compatibility
-
-The minimum supported Rust version is 1.28.
-
-Features available in `no_std` environments:
-
-* `AtomicCell<T>`
-* `AtomicConsume`
-* `Backoff`
-* `CachePadded<T>`
-* `epoch` (nightly Rust only)
-
 ## Contributing
 
 Crossbeam welcomes contribution from everyone in the form of suggestions, bug reports,
 pull requests, and feedback. 💛
 
-If you're looking for things to do, there are several easy ways to get started:
+If you need ideas for contribution, there are several ways to get started:
 
 * Found a bug or have a feature request?
-  [Tell us](https://github.com/crossbeam-rs/crossbeam/issues/new)!
+  [Submit an issue](https://github.com/crossbeam-rs/crossbeam/issues/new)!
 * Issues and PRs labeled with
   [feedback wanted](https://github.com/crossbeam-rs/crossbeam/issues?utf8=%E2%9C%93&q=is%3Aopen+sort%3Aupdated-desc+label%3A%22feedback+wanted%22+)
   need feedback from users and contributors.
@@ -102,7 +114,7 @@ If you're looking for things to do, there are several easy ways to get started:
 #### RFCs
 
 We also have the [RFCs](https://github.com/crossbeam-rs/rfcs) repository for more
-high-level discussion. It is a place where we brainstorm ideas and propose
+high-level discussion, which is the place where we brainstorm ideas and propose
 substantial changes to Crossbeam.
 
 Feel free to participate in any open 
@@ -114,11 +126,11 @@ or
 
 If you'd like to learn more about concurrency and non-blocking data structures, there's a
 list of learning resources in our [wiki](https://github.com/crossbeam-rs/rfcs/wiki),
-which includes related blog posts, papers, videos, and other similar projects.
+which includes relevant blog posts, papers, videos, and other similar projects.
 
 Another good place to visit is [merged RFCs](https://github.com/crossbeam-rs/rfcs/tree/master/text).
 They contain elaborate descriptions and rationale for features we've introduced to
-Crossbeam, but note that some of the written information is now out of date.
+Crossbeam, but keep in mind that some of the written information is now out of date.
 
 #### Conduct
 
@@ -138,7 +150,7 @@ at your option.
 Some Crossbeam subcrates have additional licensing notices.
 Take a look at other readme files in this repository for more information.
 
-### Contribution
+#### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
