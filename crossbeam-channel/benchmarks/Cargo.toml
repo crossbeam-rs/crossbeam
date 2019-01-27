@@ -3,11 +3,11 @@ name = "benchmarks"
 version = "0.1.0"
 
 [dependencies]
-atomicring = "0.5.3"
-bus = "2.0.0"
-chan = "0.1.19"
+atomicring = "1.1.1"
+bus = "2.0.1"
+chan = "0.1.23"
 crossbeam = { path = "../.." }
-crossbeam-deque = "0.4.1"
+crossbeam-deque = { path = "../../crossbeam-deque" }
 crossbeam-channel = { path = ".." }
 lockfree = "0.5.1"
 futures-preview = "0.2.2"

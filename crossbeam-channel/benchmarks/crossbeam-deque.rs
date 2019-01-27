@@ -1,7 +1,7 @@
 extern crate crossbeam;
 extern crate crossbeam_deque as deque;
 
-use deque::{Deque, Steal};
+use deque::{Worker, Steal};
 use std::thread;
 
 mod message;
@@ -9,7 +9,7 @@ mod message;
 const MESSAGES: usize = 5_000_000;
 
 fn seq() {
-    let tx = Deque::new();
+    let tx = Worker::new_lifo();
     let rx = tx.stealer();
 
     for i in 0..MESSAGES {
@@ -18,7 +18,7 @@ fn seq() {
 
     for _ in 0..MESSAGES {
         match rx.steal() {
-            Steal::Data(_) => {},
+            Steal::Success(_) => {},
             Steal::Retry => panic!(),
             Steal::Empty => panic!(),
         }
@@ -26,7 +26,7 @@ fn seq() {
 }
 
 fn spsc() {
-    let tx = Deque::new();
+    let tx = Worker::new_lifo();
     let rx = tx.stealer();
 
     crossbeam::scope(|scope| {
@@ -40,7 +40,7 @@ fn spsc() {
             for _ in 0..MESSAGES {
                 loop {
                     match rx.steal() {
-                        Steal::Data(_) => break,
+                        Steal::Success(_) => break,
                         Steal::Retry | Steal::Empty => thread::yield_now(),
                     }
                 }
