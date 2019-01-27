@@ -25,3 +25,7 @@ path = "../crossbeam-utils"
 [dev-dependencies]
 rand = "0.6"
 signal-hook = "0.1.5"
+
+[dev-dependencies.crossbeam]
+version = "0.6"
+path = ".."
