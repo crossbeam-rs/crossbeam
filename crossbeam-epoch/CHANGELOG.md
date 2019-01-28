@@ -1,3 +1,8 @@
+# Version 0.7.1
+
+- Add `Shared::deref_mut()`.
+- Add a Treiber stack to examples.
+
 # Version 0.7.0
 
 - Remove `Guard::clone()`.

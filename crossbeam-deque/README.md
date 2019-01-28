@@ -20,7 +20,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-deque = "0.6"
+crossbeam-deque = "0.7"
 ```
 
 Next, add this to your crate:

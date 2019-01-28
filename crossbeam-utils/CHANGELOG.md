@@ -1,3 +1,9 @@
+# Version 0.7.0
+
+- Add `WaitGroup`, `ShardedLock`, and `Backoff`.
+- Add `fetch_*` methods for `AtomicCell<i128>` and `AtomicCell<u128>`.
+- Expand documentation.
+
 # Version 0.6.3
 
 - Add `AtomicCell`.

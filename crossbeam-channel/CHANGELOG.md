@@ -1,3 +1,12 @@
+# Version 0.3.7
+
+- Remove `parking_lot` and `rand` dependencies.
+- Expand documentation.
+- Implement `Default` for `Select`.
+- Make `size_of::<Receiver<T>>()` smaller.
+- Several minor optimizations.
+- Add more tests.
+
 # Version 0.3.6
 
 - Fix a bug in initialization of unbounded channels.
