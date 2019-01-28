@@ -482,6 +482,8 @@ cfg_if! {
         impl_arithmetic!(i32, "32", atomic::AtomicI32, "let a = AtomicCell::new(7i32);");
         impl_arithmetic!(u64, "64", atomic::AtomicU64, "let a = AtomicCell::new(7u64);");
         impl_arithmetic!(i64, "64", atomic::AtomicI64, "let a = AtomicCell::new(7i64);");
+        impl_arithmetic!(u128, "let a = AtomicCell::new(7u128);");
+        impl_arithmetic!(i128, "let a = AtomicCell::new(7i128);");
     } else {
         impl_arithmetic!(u8, "let a = AtomicCell::new(7u8);");
         impl_arithmetic!(i8, "let a = AtomicCell::new(7i8);");
@@ -491,6 +493,8 @@ cfg_if! {
         impl_arithmetic!(i32, "let a = AtomicCell::new(7i32);");
         impl_arithmetic!(u64, "let a = AtomicCell::new(7u64);");
         impl_arithmetic!(i64, "let a = AtomicCell::new(7i64);");
+        impl_arithmetic!(u128, "let a = AtomicCell::new(7u128);");
+        impl_arithmetic!(i128, "let a = AtomicCell::new(7i128);");
     }
 }
 
@@ -691,7 +695,28 @@ impl Drop for WriteGuard {
 #[inline]
 #[must_use]
 fn lock(addr: usize) -> &'static Lock {
-    // The number of locks is prime.
+    // The number of locks is a prime number because we want to make sure `addr % LEN` gets
+    // dispersed across all locks.
+    //
+    // Note that addresses are always aligned to some power of 2, depending on type `T` in
+    // `AtomicCell<T>`. If `LEN` was an even number, then `addr % LEN` would be an even number,
+    // too, which means only half of the locks would get utilized!
+    //
+    // It is also possible for addresses to accidentally get aligned to a number that is not a
+    // power of 2. Consider this example:
+    //
+    // ```
+    // #[repr(C)]
+    // struct Foo {
+    //     a: AtomicCell<u8>,
+    //     b: u8,
+    //     c: u8,
+    // }
+    // ```
+    //
+    // Now, if we have a slice of type `&[Foo]`, it is possible that field `a` in all items gets
+    // stored at addresses that are multiples of 3. It'd be too bad if `LEN` was divisible by 3.
+    // In order to protect from such cases, we simply choose a large prime number for `LEN`.
     const LEN: usize = 97;
 
     const L: Lock = Lock {
