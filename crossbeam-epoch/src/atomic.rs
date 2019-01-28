@@ -6,8 +6,7 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Deref, DerefMut};
 use core::ptr;
-use core::sync::atomic::Ordering;
-use core::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_utils::atomic::AtomicConsume;
 use guard::Guard;
@@ -154,7 +153,7 @@ impl<T> Atomic<T> {
     #[cfg(not(feature = "nightly"))]
     pub fn null() -> Atomic<T> {
         Self {
-            data: ATOMIC_USIZE_INIT,
+            data: AtomicUsize::new(0),
             _marker: PhantomData,
         }
     }
@@ -171,7 +170,7 @@ impl<T> Atomic<T> {
     #[cfg(feature = "nightly")]
     pub const fn null() -> Atomic<T> {
         Self {
-            data: ATOMIC_USIZE_INIT,
+            data: AtomicUsize::new(0),
             _marker: PhantomData,
         }
     }
