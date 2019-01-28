@@ -16,7 +16,7 @@ keywords = ["queue", "mpmc", "lock-free", "producer", "consumer"]
 categories = ["concurrency", "data-structures"]
 
 [dependencies.crossbeam-utils]
-version = "0.6"
+version = "0.6.4"
 path = "../crossbeam-utils"
 
 [dev-dependencies]
