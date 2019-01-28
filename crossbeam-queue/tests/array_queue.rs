@@ -1,10 +1,11 @@
-extern crate crossbeam;
+extern crate crossbeam_queue;
+extern crate crossbeam_utils;
 extern crate rand;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crossbeam::queue::ArrayQueue;
-use crossbeam::scope;
+use crossbeam_queue::ArrayQueue;
+use crossbeam_utils::thread::scope;
 use rand::{thread_rng, Rng};
 
 #[test]
@@ -25,6 +26,12 @@ fn capacity() {
         let q = ArrayQueue::<i32>::new(i);
         assert_eq!(q.capacity(), i);
     }
+}
+
+#[test]
+#[should_panic(expected = "capacity must be non-zero")]
+fn zero_capacity() {
+    let _ = ArrayQueue::<i32>::new(0);
 }
 
 #[test]
