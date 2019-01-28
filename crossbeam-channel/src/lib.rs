@@ -122,16 +122,16 @@
 //! It's also possible to share senders and receivers by reference:
 //!
 //! ```
-//! # extern crate crossbeam;
 //! # extern crate crossbeam_channel;
+//! # extern crate crossbeam_utils;
 //! # fn main() {
 //! use std::thread;
-//! use crossbeam;
 //! use crossbeam_channel::bounded;
+//! use crossbeam_utils::thread::scope;
 //!
 //! let (s, r) = bounded(0);
 //!
-//! crossbeam::scope(|scope| {
+//! scope(|scope| {
 //!     // Spawn a thread that receives a message and then sends one.
 //!     scope.spawn(|_| {
 //!         r.recv().unwrap();
