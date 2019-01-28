@@ -509,14 +509,13 @@ impl IsElement<Local> for Local {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
-    use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
 
     #[test]
     fn check_defer() {
-        static FLAG: AtomicUsize = ATOMIC_USIZE_INIT;
+        static FLAG: AtomicUsize = AtomicUsize::new(0);
         fn set() {
             FLAG.store(42, Ordering::Relaxed);
         }
@@ -529,7 +528,7 @@ mod tests {
 
     #[test]
     fn check_bag() {
-        static FLAG: AtomicUsize = ATOMIC_USIZE_INIT;
+        static FLAG: AtomicUsize = AtomicUsize::new(0);
         fn incr() {
             FLAG.fetch_add(1, Ordering::Relaxed);
         }

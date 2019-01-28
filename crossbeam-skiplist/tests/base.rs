@@ -2,7 +2,7 @@ extern crate crossbeam_epoch as epoch;
 extern crate crossbeam_skiplist as skiplist;
 
 use std::ops::Bound;
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use skiplist::SkipList;
 
@@ -770,8 +770,8 @@ fn clear() {
 
 #[test]
 fn drops() {
-    static KEYS: AtomicUsize = ATOMIC_USIZE_INIT;
-    static VALUES: AtomicUsize = ATOMIC_USIZE_INIT;
+    static KEYS: AtomicUsize = AtomicUsize::new(0);
+    static VALUES: AtomicUsize = AtomicUsize::new(0);
 
     let collector = epoch::Collector::new();
     let handle = collector.register();

@@ -106,8 +106,7 @@ impl fmt::Debug for LocalHandle {
 #[cfg(test)]
 mod tests {
     use std::mem;
-    use std::sync::atomic::Ordering;
-    use std::sync::atomic::{AtomicUsize, ATOMIC_USIZE_INIT};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crossbeam_utils::thread;
 
@@ -196,7 +195,7 @@ mod tests {
     #[test]
     fn incremental() {
         const COUNT: usize = 100_000;
-        static DESTROYS: AtomicUsize = ATOMIC_USIZE_INIT;
+        static DESTROYS: AtomicUsize = AtomicUsize::new(0);
 
         let collector = Collector::new();
         let handle = collector.register();
@@ -229,7 +228,7 @@ mod tests {
     #[test]
     fn buffering() {
         const COUNT: usize = 10;
-        static DESTROYS: AtomicUsize = ATOMIC_USIZE_INIT;
+        static DESTROYS: AtomicUsize = AtomicUsize::new(0);
 
         let collector = Collector::new();
         let handle = collector.register();
@@ -262,7 +261,7 @@ mod tests {
     #[test]
     fn count_drops() {
         const COUNT: usize = 100_000;
-        static DROPS: AtomicUsize = ATOMIC_USIZE_INIT;
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
 
         struct Elem(i32);
 
@@ -295,7 +294,7 @@ mod tests {
     #[test]
     fn count_destroy() {
         const COUNT: usize = 100_000;
-        static DESTROYS: AtomicUsize = ATOMIC_USIZE_INIT;
+        static DESTROYS: AtomicUsize = AtomicUsize::new(0);
 
         let collector = Collector::new();
         let handle = collector.register();
@@ -323,7 +322,7 @@ mod tests {
     #[test]
     fn drop_array() {
         const COUNT: usize = 700;
-        static DROPS: AtomicUsize = ATOMIC_USIZE_INIT;
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
 
         struct Elem(i32);
 
@@ -361,7 +360,7 @@ mod tests {
     #[test]
     fn destroy_array() {
         const COUNT: usize = 100_000;
-        static DESTROYS: AtomicUsize = ATOMIC_USIZE_INIT;
+        static DESTROYS: AtomicUsize = AtomicUsize::new(0);
 
         let collector = Collector::new();
         let handle = collector.register();
@@ -396,7 +395,7 @@ mod tests {
     fn stress() {
         const THREADS: usize = 8;
         const COUNT: usize = 100_000;
-        static DROPS: AtomicUsize = ATOMIC_USIZE_INIT;
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
 
         struct Elem(i32);
 
