@@ -1,3 +1,13 @@
+# Version 0.7.0
+
+- Remove `ArcCell`, `MsQueue`, and `TreiberStack`.
+- Change the interface of `ShardedLock` to match `RwLock`.
+- Add `SegQueue::len()`.
+- Rename `SegQueue::try_pop()` to `SegQueue::pop()`.
+- Change the return type of `SegQueue::pop()` to `Result`.
+- Introduce `ArrayQueue`.
+- Update dependencies.
+
 # Version 0.6.0
 
 - Update dependencies.

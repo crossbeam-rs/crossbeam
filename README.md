@@ -58,7 +58,6 @@ This crate provides a set of tools for concurrent programming:
 [`CachePadded`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.CachePadded.html
 [`scope`]: https://docs.rs/crossbeam/*/crossbeam/fn.scope.html
 
-
 ## Crates
 
 The main `crossbeam` crate just [re-exports](src/lib.rs) tools from
@@ -86,7 +85,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam = "0.6"
+crossbeam = "0.7"
 ```
 
 Next, add this to your crate:

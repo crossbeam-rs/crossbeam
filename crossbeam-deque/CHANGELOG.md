@@ -1,3 +1,13 @@
+# Version 0.7.0
+
+- Make `Worker::pop()` faster in the FIFO case.
+- Replace `fifo()` nad `lifo()` with `Worker::new_fifo()` and `Worker::new_lifo()`.
+- Add more batched steal methods.
+- Introduce `Injector<T>`, a MPMC queue.
+- Rename `Steal::Data` to `Steal::Success`.
+- Add `Steal::or_else()` and implement `FromIterator` for `Steal`.
+- Add `#[must_use]` to `Steal`.
+
 # Version 0.6.3
 
 - Bump `crossbeam-epoch` to `0.7`.
