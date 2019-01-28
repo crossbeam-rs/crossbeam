@@ -19,7 +19,7 @@ categories = ["algorithms", "concurrency", "data-structures"]
 smallvec = "0.6.2"
 
 [dependencies.crossbeam-utils]
-version = "0.7"
+version = "0.6"
 path = "../crossbeam-utils"
 
 [dev-dependencies]
