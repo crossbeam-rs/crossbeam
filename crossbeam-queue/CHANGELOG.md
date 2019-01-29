@@ -1,6 +1,10 @@
+# Version 0.1.2
+
+- Update `crossbeam-utils` to `0.6.5`.
+
 # Version 0.1.1
 
-- Bump the minimum required version of `crossbeam-utils`.
+- Update `crossbeam-utils` to `0.6.4`.
 
 # Version 0.1.0
 
