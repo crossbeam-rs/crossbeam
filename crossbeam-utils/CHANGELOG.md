@@ -1,3 +1,7 @@
+# Version 0.6.5
+
+- Rename `Backoff::is_complete()` to `Backoff::is_completed()`.
+
 # Version 0.6.4
 
 - Add `WaitGroup`, `ShardedLock`, and `Backoff`.
