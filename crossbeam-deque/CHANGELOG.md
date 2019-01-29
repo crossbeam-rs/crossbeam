@@ -1,3 +1,7 @@
+# Version 0.7.1
+
+- Bump the minimum required version of `crossbeam-utils`.
+
 # Version 0.7.0
 
 - Make `Worker::pop()` faster in the FIFO case.

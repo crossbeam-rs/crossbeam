@@ -1,3 +1,7 @@
+# Version 0.3.8
+
+- Bump the minimum required version of `crossbeam-utils`.
+
 # Version 0.3.7
 
 - Remove `parking_lot` and `rand` dependencies.
