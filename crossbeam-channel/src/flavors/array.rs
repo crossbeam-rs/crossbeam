@@ -363,7 +363,7 @@ impl<T> Channel<T> {
                     return res.map_err(SendTimeoutError::Disconnected);
                 }
 
-                if backoff.is_complete() {
+                if backoff.is_completed() {
                     break;
                 } else {
                     backoff.snooze();
@@ -423,7 +423,7 @@ impl<T> Channel<T> {
                     return res.map_err(|_| RecvTimeoutError::Disconnected);
                 }
 
-                if backoff.is_complete() {
+                if backoff.is_completed() {
                     break;
                 } else {
                     backoff.snooze();

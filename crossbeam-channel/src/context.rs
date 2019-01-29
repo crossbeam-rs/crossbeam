@@ -142,7 +142,7 @@ impl Context {
                 return sel;
             }
 
-            if backoff.is_complete() {
+            if backoff.is_completed() {
                 break;
             } else {
                 backoff.snooze();

@@ -350,7 +350,7 @@ fn run_ready(
                 }
             }
 
-            if backoff.is_complete() {
+            if backoff.is_completed() {
                 break;
             } else {
                 backoff.snooze();

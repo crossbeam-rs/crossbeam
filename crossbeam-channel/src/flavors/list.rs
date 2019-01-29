@@ -439,7 +439,7 @@ impl<T> Channel<T> {
                     }
                 }
 
-                if backoff.is_complete() {
+                if backoff.is_completed() {
                     break;
                 } else {
                     backoff.snooze();

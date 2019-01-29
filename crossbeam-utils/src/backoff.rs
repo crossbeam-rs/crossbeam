@@ -63,7 +63,7 @@ const YIELD_LIMIT: u32 = 10;
 /// fn blocking_wait(ready: &AtomicBool) {
 ///     let backoff = Backoff::new();
 ///     while !ready.load(SeqCst) {
-///         if backoff.is_complete() {
+///         if backoff.is_completed() {
 ///             thread::park();
 ///         } else {
 ///             backoff.snooze();
@@ -72,7 +72,7 @@ const YIELD_LIMIT: u32 = 10;
 /// }
 /// ```
 ///
-/// [`is_complete`]: struct.Backoff.html#method.is_complete
+/// [`is_completed`]: struct.Backoff.html#method.is_completed
 /// [`std::thread::park()`]: https://doc.rust-lang.org/std/thread/fn.park.html
 /// [`Condvar`]: https://doc.rust-lang.org/std/sync/struct.Condvar.html
 /// [`AtomicBool`]: https://doc.rust-lang.org/std/sync/atomic/struct.AtomicBool.html
@@ -164,11 +164,11 @@ impl Backoff {
     ///
     /// In `#[no_std]` environments, this method is equivalent to [`spin`].
     ///
-    /// If possible, use [`is_complete`] to check when it is advised to stop using backoff and
+    /// If possible, use [`is_completed`] to check when it is advised to stop using backoff and
     /// block the current thread using a different synchronization mechanism instead.
     ///
     /// [`spin`]: struct.Backoff.html#method.spin
-    /// [`is_complete`]: struct.Backoff.html#method.is_complete
+    /// [`is_completed`]: struct.Backoff.html#method.is_completed
     ///
     /// # Examples
     ///
@@ -224,7 +224,7 @@ impl Backoff {
         }
     }
 
-    /// Returns `true` if exponential backoff is complete and blocking the thread is advised.
+    /// Returns `true` if exponential backoff has completed and blocking the thread is advised.
     ///
     /// # Examples
     ///
@@ -241,7 +241,7 @@ impl Backoff {
     /// fn blocking_wait(ready: &AtomicBool) {
     ///     let backoff = Backoff::new();
     ///     while !ready.load(SeqCst) {
-    ///         if backoff.is_complete() {
+    ///         if backoff.is_completed() {
     ///             thread::park();
     ///         } else {
     ///             backoff.snooze();
@@ -266,8 +266,15 @@ impl Backoff {
     ///
     /// [`AtomicBool`]: https://doc.rust-lang.org/std/sync/atomic/struct.AtomicBool.html
     #[inline]
-    pub fn is_complete(&self) -> bool {
+    pub fn is_completed(&self) -> bool {
         self.step.get() > YIELD_LIMIT
+    }
+
+    #[inline]
+    #[doc(hidden)]
+    #[deprecated(note = "use `is_completed` instead")]
+    pub fn is_complete(&self) -> bool {
+        self.is_completed()
     }
 }
 
@@ -275,7 +282,7 @@ impl fmt::Debug for Backoff {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Backoff")
             .field("step", &self.step)
-            .field("is_complete", &self.is_complete())
+            .field("is_completed", &self.is_completed())
             .finish()
     }
 }
