@@ -1,3 +1,7 @@
+# Version 0.7.1
+
+- Bump `crossbeam-utils` to `0.6.5`.
+
 # Version 0.7.0
 
 - Remove `ArcCell`, `MsQueue`, and `TreiberStack`.
