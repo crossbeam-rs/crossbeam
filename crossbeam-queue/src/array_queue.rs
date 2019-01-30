@@ -34,7 +34,7 @@ struct Slot<T> {
 /// A bounded multi-producer multi-consumer queue.
 ///
 /// This queue allocates a fixed-capacity buffer on construction, which is used to store pushed
-/// elements. The queue cannot hold more elements that the buffer allows. Attempting to push an
+/// elements. The queue cannot hold more elements than the buffer allows. Attempting to push an
 /// element into a full queue will fail. Having a buffer allocated upfront makes this queue a bit
 /// faster than [`SegQueue`].
 ///
