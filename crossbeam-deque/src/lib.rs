@@ -77,7 +77,7 @@
 //!
 //! [`Worker`]: struct.Worker.html
 //! [`Stealer`]: struct.Stealer.html
-//! [`Injector`]: struct.Stealer.html
+//! [`Injector`]: struct.Injector.html
 //! [`Steal::Retry`]: enum.Steal.html#variant.Retry
 //! [`new_fifo()`]: struct.Worker.html#method.new_fifo
 //! [`new_lifo()`]: struct.Worker.html#method.new_lifo
