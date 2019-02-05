@@ -433,14 +433,9 @@ mod channel_tests {
 
     #[test]
     fn oneshot_single_thread_recv_chan_close() {
-        // Receiving on a closed chan will panic
-        let res = thread::spawn(move || {
-            let (tx, rx) = channel::<i32>();
-            drop(tx);
-            rx.recv().unwrap();
-        }).join();
-        // What is our res?
-        assert!(res.is_err());
+        let (tx, rx) = channel::<i32>();
+        drop(tx);
+        assert_eq!(rx.recv(), Err(RecvError));
     }
 
     #[test]
@@ -517,10 +512,9 @@ mod channel_tests {
         let t = thread::spawn(move || {
             drop(tx);
         });
-        let res = thread::spawn(move || {
-            assert!(*rx.recv().unwrap() == 10);
-        }).join();
-        assert!(res.is_err());
+        thread::spawn(move || {
+            assert_eq!(rx.recv(), Err(RecvError));
+        }).join().unwrap();
         t.join().unwrap();
     }
 
@@ -552,7 +546,7 @@ mod channel_tests {
             });
             ts.push(t);
             thread::spawn(move || {
-                tx.send(1).unwrap();
+                assert_eq!(tx.send(1), Err(SendError(1)));
             }).join().unwrap();
         }
         for t in ts {
@@ -567,10 +561,9 @@ mod channel_tests {
         for _ in 0..stress_factor {
             let (tx, rx) = channel::<i32>();
             let t = thread::spawn(move || {
-                let res = thread::spawn(move || {
-                    rx.recv().unwrap();
-                }).join();
-                assert!(res.is_err());
+                thread::spawn(move || {
+                    assert_eq!(rx.recv(), Err(RecvError));
+                }).join().unwrap();
             });
             ts.push(t);
             let t2 = thread::spawn(move || {
@@ -1224,14 +1217,9 @@ mod sync_channel_tests {
 
     #[test]
     fn oneshot_single_thread_recv_chan_close() {
-        // Receiving on a closed chan will panic
-        let res = thread::spawn(move || {
-            let (tx, rx) = sync_channel::<i32>(0);
-            drop(tx);
-            rx.recv().unwrap();
-        }).join();
-        // What is our res?
-        assert!(res.is_err());
+        let (tx, rx) = sync_channel::<i32>(0);
+        drop(tx);
+        assert_eq!(rx.recv(), Err(RecvError));
     }
 
     #[test]
@@ -1323,10 +1311,9 @@ mod sync_channel_tests {
         let t = thread::spawn(move || {
             drop(tx);
         });
-        let res = thread::spawn(move || {
-            assert!(*rx.recv().unwrap() == 10);
-        }).join();
-        assert!(res.is_err());
+        thread::spawn(move || {
+            assert_eq!(rx.recv(), Err(RecvError));
+        }).join().unwrap();
         t.join().unwrap();
     }
 
@@ -1357,9 +1344,9 @@ mod sync_channel_tests {
                 drop(rx);
             });
             ts.push(t);
-            let _ = thread::spawn(move || {
-                tx.send(1).unwrap();
-            }).join();
+            thread::spawn(move || {
+                assert_eq!(tx.send(1), Err(SendError(1)));
+            }).join().unwrap();
         }
         for t in ts {
             t.join().unwrap();
@@ -1373,10 +1360,9 @@ mod sync_channel_tests {
         for _ in 0..stress_factor {
             let (tx, rx) = sync_channel::<i32>(0);
             let t = thread::spawn(move || {
-                let res = thread::spawn(move || {
-                    rx.recv().unwrap();
-                }).join();
-                assert!(res.is_err());
+                thread::spawn(move || {
+                    assert_eq!(rx.recv(), Err(RecvError));
+                }).join().unwrap();
             });
             ts.push(t);
             let t2 = thread::spawn(move || {
