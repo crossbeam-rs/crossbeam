@@ -34,6 +34,11 @@ matrix:
   - rust: 1.26.0
     name: "crossbeam-utils on 1.26.0"
     script: ./ci/crossbeam-utils.sh
+  # Run all test with the highest minimum Rust version on macOS.
+  - rust: 1.28.0
+    os: osx
+    name: "all of crossbeam on 1.28.0 on macOS"
+    script: ./ci/all.sh
 
   # Test crates on nightly Rust.
   - rust: nightly
@@ -68,6 +73,11 @@ matrix:
   - rust: nightly
     name: "crossbeam-utils on nightly"
     script: ./ci/crossbeam-utils.sh
+  # Run all test on macOS.
+  - rust: nightly
+    os: osx
+    name: "all of crossbeam on nightly on macOS"
+    script: ./ci/all.sh
 
   # Check for duplicate dependencies.
   - rust: stable
