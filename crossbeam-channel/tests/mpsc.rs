@@ -8,6 +8,7 @@
 //! - Replace `box` syntax with `Box::new`.
 //! - Replace all uses of `Select` with `select!`.
 //! - Change the imports.
+//! - Join all spawned threads.
 //!
 //! Source:
 //!   - https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
