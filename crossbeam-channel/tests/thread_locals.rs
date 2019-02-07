@@ -15,6 +15,7 @@ fn ms(ms: u64) -> Duration {
 }
 
 #[test]
+#[cfg_attr(target_os = "macos", ignore = "TLS is destroyed too early on macOS")]
 fn use_while_exiting() {
     struct Foo;
 
