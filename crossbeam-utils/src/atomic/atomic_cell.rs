@@ -180,10 +180,10 @@ impl<T: Copy + Eq> AtomicCell<T> {
     ///
     /// let a = AtomicCell::new(1);
     ///
-    /// assert_eq!(a.compare_exchange(2, 3), Err(1));
+    /// assert_eq!(a.compare_and_swap(2, 3), 1);
     /// assert_eq!(a.load(), 1);
     ///
-    /// assert_eq!(a.compare_exchange(1, 2), Ok(1));
+    /// assert_eq!(a.compare_and_swap(1, 2), 1);
     /// assert_eq!(a.load(), 2);
     /// ```
     pub fn compare_and_swap(&self, current: T, new: T) -> T {
