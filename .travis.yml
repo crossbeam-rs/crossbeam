@@ -38,7 +38,7 @@ matrix:
   - rust: 1.28.0
     os: osx
     name: "all of crossbeam on 1.28.0 on macOS"
-    script: ./ci/all.sh
+    script: ./ci/all.sh --test-threads=1
 
   # Test crates on nightly Rust.
   - rust: nightly
@@ -77,7 +77,7 @@ matrix:
   - rust: nightly
     os: osx
     name: "all of crossbeam on nightly on macOS"
-    script: ./ci/all.sh
+    script: ./ci/all.sh --test-threads=1
 
   # Check for duplicate dependencies.
   - rust: stable
