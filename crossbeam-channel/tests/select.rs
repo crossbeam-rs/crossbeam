@@ -327,7 +327,7 @@ fn default_only() {
     assert!(oper.is_err());
     let now = Instant::now();
     assert!(now - start >= ms(450));
-    assert!(now - start <= ms(550));
+    assert!(now - start <= ms(650));
 }
 
 #[test]
