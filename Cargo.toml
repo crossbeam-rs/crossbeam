@@ -54,7 +54,6 @@ rand = "0.6"
 members = [
   ".",
   "crossbeam-channel",
-  "crossbeam-channel/benchmarks",
   "crossbeam-deque",
   "crossbeam-epoch",
   "crossbeam-queue",
