@@ -11,10 +11,15 @@ use core::ops::{Deref, DerefMut};
 ///
 /// # Size and alignment
 ///
-/// Cache lines are assumed to be of N bytes, depending on the architecture:
+/// Cache lines are assumed to be N bytes long, depending on the architecture:
 ///
 /// * On x86-64, N = 128.
 /// * On all others, N = 64.
+///
+/// Note that N is just a reasonable guess and is not guaranteed to match the actual cache line
+/// length of the machine the program is running on. On modern Intel architectures, spatial
+/// prefetcher is pulling pairs of 64-byte cache lines at a time, so we pessimistically assume that
+/// cache lines are 128 bytes long.
 ///
 /// The size of `CachePadded<T>` is the smallest multiple of N bytes large enough to accommodate
 /// a value of type `T`.
