@@ -9,14 +9,22 @@ use core::ops::{Deref, DerefMut};
 /// CPU cores. Use `CachePadded` to ensure updating one piece of data doesn't invalidate other
 /// cached data.
 ///
-/// Cache lines are assumed to be 64 bytes on all architectures.
-///
 /// # Size and alignment
 ///
-/// The size of `CachePadded<T>` is the smallest multiple of 64 bytes large enough to accommodate
+/// Cache lines are assumed to be N bytes long, depending on the architecture:
+///
+/// * On x86-64, N = 128.
+/// * On all others, N = 64.
+///
+/// Note that N is just a reasonable guess and is not guaranteed to match the actual cache line
+/// length of the machine the program is running on. On modern Intel architectures, spatial
+/// prefetcher is pulling pairs of 64-byte cache lines at a time, so we pessimistically assume that
+/// cache lines are 128 bytes long.
+///
+/// The size of `CachePadded<T>` is the smallest multiple of N bytes large enough to accommodate
 /// a value of type `T`.
 ///
-/// The alignment of `CachePadded<T>` is the maximum of 64 bytes and the alignment of `T`.
+/// The alignment of `CachePadded<T>` is the maximum of N bytes and the alignment of `T`.
 ///
 /// # Examples
 ///
@@ -25,11 +33,11 @@ use core::ops::{Deref, DerefMut};
 /// ```
 /// use crossbeam_utils::CachePadded;
 ///
-/// let array = [CachePadded::new(1i32), CachePadded::new(2i32)];
-/// let addr1 = &*array[0] as *const i32 as usize;
-/// let addr2 = &*array[1] as *const i32 as usize;
+/// let array = [CachePadded::new(1i8), CachePadded::new(2i8)];
+/// let addr1 = &*array[0] as *const i8 as usize;
+/// let addr2 = &*array[1] as *const i8 as usize;
 ///
-/// assert_eq!(addr2 - addr1, 64);
+/// assert!(addr2 - addr1 >= 64);
 /// assert_eq!(addr1 % 64, 0);
 /// assert_eq!(addr2 % 64, 0);
 /// ```
@@ -49,7 +57,14 @@ use core::ops::{Deref, DerefMut};
 /// }
 /// ```
 #[derive(Clone, Copy, Default, Hash, PartialEq, Eq)]
-#[repr(align(64))]
+// Starting from Intel's Sandy Bridge, spatial prefetcher is now pulling pairs of 64-byte cache
+// lines at a time, so we have to align to 128 bytes rather than 64.
+//
+// Sources:
+// - https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-optimization-manual.pdf
+// - https://github.com/facebook/folly/blob/1b5288e6eea6df074758f877c849b6e73bbb9fbb/folly/lang/Align.h#L107
+#[cfg_attr(target_arch = "x86_64", repr(align(128)))]
+#[cfg_attr(not(target_arch = "x86_64"), repr(align(64)))]
 pub struct CachePadded<T> {
     value: T,
 }
