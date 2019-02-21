@@ -420,7 +420,8 @@ mod tests {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
 
         let handle = collector.register();
         let guard = handle.pin();
@@ -466,7 +467,8 @@ mod tests {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
 
         let handle = collector.register();
         let guard = handle.pin();

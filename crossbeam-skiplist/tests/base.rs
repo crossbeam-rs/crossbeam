@@ -526,9 +526,7 @@ fn iter_range() {
         vec![90, 80, 70, 60, 50, 40, 30, 20, 10, 0]
     );
     assert_eq!(
-        s.range(.., guard)
-            .map(|x| *x.value())
-            .collect::<Vec<_>>(),
+        s.range(.., guard).map(|x| *x.value()).collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     );
 

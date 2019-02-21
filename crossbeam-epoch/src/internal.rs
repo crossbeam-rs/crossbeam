@@ -287,7 +287,8 @@ impl Local {
                 guard_count: Cell::new(0),
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
-            }).into_shared(&unprotected());
+            })
+            .into_shared(&unprotected());
             collector.global.locals.insert(local, &unprotected());
             LocalHandle {
                 local: local.as_raw(),

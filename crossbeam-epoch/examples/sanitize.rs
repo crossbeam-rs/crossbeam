@@ -54,7 +54,8 @@ fn main() {
                 let a = a.clone();
                 let c = collector.clone();
                 thread::spawn(move || worker(a, c.register()))
-            }).collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
 
         for t in threads {
             t.join().unwrap();

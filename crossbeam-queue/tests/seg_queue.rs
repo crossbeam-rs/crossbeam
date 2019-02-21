@@ -79,7 +79,8 @@ fn spsc() {
                 q.push(i);
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -110,7 +111,8 @@ fn mpmc() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     for c in v {
         assert_eq!(c.load(Ordering::SeqCst), THREADS);
@@ -151,7 +153,8 @@ fn drops() {
                     q.push(DropCounter);
                 }
             });
-        }).unwrap();
+        })
+        .unwrap();
 
         for _ in 0..additional {
             q.push(DropCounter);

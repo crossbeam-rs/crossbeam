@@ -1,7 +1,7 @@
 extern crate crossbeam;
 extern crate crossbeam_deque as deque;
 
-use deque::{Worker, Steal};
+use deque::{Steal, Worker};
 use std::thread;
 
 mod message;
@@ -18,7 +18,7 @@ fn seq() {
 
     for _ in 0..MESSAGES {
         match rx.steal() {
-            Steal::Success(_) => {},
+            Steal::Success(_) => {}
             Steal::Retry => panic!(),
             Steal::Empty => panic!(),
         }
@@ -46,7 +46,8 @@ fn spsc() {
                 }
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn main() {

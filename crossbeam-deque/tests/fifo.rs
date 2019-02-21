@@ -97,7 +97,8 @@ fn spsc() {
         for i in 0..STEPS {
             w.push(i);
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -137,7 +138,8 @@ fn stampede() {
                 remaining.fetch_sub(1, SeqCst);
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -195,7 +197,8 @@ fn stress() {
             }
         }
         done.store(true, SeqCst);
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -253,7 +256,8 @@ fn no_starvation() {
             }
         }
         done.store(true, SeqCst);
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -313,7 +317,8 @@ fn destructors() {
                 remaining.fetch_sub(1, SeqCst);
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     let rem = remaining.load(SeqCst);
     assert!(rem > 0);

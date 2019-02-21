@@ -98,7 +98,8 @@ fn disconnected() {
         }
 
         r2.recv().unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 
     let mut sel = Select::new();
     let oper1 = sel.recv(&r1);
@@ -129,7 +130,8 @@ fn disconnected() {
                 _ => unreachable!(),
             },
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -226,7 +228,8 @@ fn timeout() {
                 _ => unreachable!(),
             },
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     scope(|scope| {
         let (s, r) = unbounded::<i32>();
@@ -253,7 +256,8 @@ fn timeout() {
             }
             Ok(_) => unreachable!(),
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -353,7 +357,8 @@ fn unblocks() {
                 _ => unreachable!(),
             },
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     scope(|scope| {
         scope.spawn(|_| {
@@ -373,7 +378,8 @@ fn unblocks() {
                 _ => unreachable!(),
             },
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -399,7 +405,8 @@ fn both_ready() {
                 _ => unreachable!(),
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -412,70 +419,66 @@ fn loop_try() {
         let (s_end, r_end) = bounded::<()>(0);
 
         scope(|scope| {
-            scope.spawn(|_| {
-                loop {
-                    let mut done = false;
+            scope.spawn(|_| loop {
+                let mut done = false;
 
-                    let mut sel = Select::new();
-                    let oper1 = sel.send(&s1);
-                    let oper = sel.try_select();
-                    match oper {
-                        Err(_) => {}
-                        Ok(oper) => match oper.index() {
-                            i if i == oper1 => {
-                                let _ = oper.send(&s1, 1);
-                                done = true;
-                            }
-                            _ => unreachable!(),
-                        },
-                    }
-                    if done {
-                        break;
-                    }
+                let mut sel = Select::new();
+                let oper1 = sel.send(&s1);
+                let oper = sel.try_select();
+                match oper {
+                    Err(_) => {}
+                    Ok(oper) => match oper.index() {
+                        i if i == oper1 => {
+                            let _ = oper.send(&s1, 1);
+                            done = true;
+                        }
+                        _ => unreachable!(),
+                    },
+                }
+                if done {
+                    break;
+                }
 
-                    let mut sel = Select::new();
-                    let oper1 = sel.recv(&r_end);
-                    let oper = sel.try_select();
-                    match oper {
-                        Err(_) => {}
-                        Ok(oper) => match oper.index() {
-                            i if i == oper1 => {
-                                let _ = oper.recv(&r_end);
-                                done = true;
-                            }
-                            _ => unreachable!(),
-                        },
-                    }
-                    if done {
-                        break;
-                    }
+                let mut sel = Select::new();
+                let oper1 = sel.recv(&r_end);
+                let oper = sel.try_select();
+                match oper {
+                    Err(_) => {}
+                    Ok(oper) => match oper.index() {
+                        i if i == oper1 => {
+                            let _ = oper.recv(&r_end);
+                            done = true;
+                        }
+                        _ => unreachable!(),
+                    },
+                }
+                if done {
+                    break;
                 }
             });
 
-            scope.spawn(|_| {
-                loop {
-                    if let Ok(x) = r2.try_recv() {
-                        assert_eq!(x, 2);
-                        break;
-                    }
+            scope.spawn(|_| loop {
+                if let Ok(x) = r2.try_recv() {
+                    assert_eq!(x, 2);
+                    break;
+                }
 
-                    let mut done = false;
-                    let mut sel = Select::new();
-                    let oper1 = sel.recv(&r_end);
-                    let oper = sel.try_select();
-                    match oper {
-                        Err(_) => {}
-                        Ok(oper) => match oper.index() {
-                            i if i == oper1 => {
-                                let _ = oper.recv(&r_end);
-                                done = true;
-                            }
-                            _ => unreachable!(),
-                        },
-                    }
-                    if done {
-                        break;
-                    }
+                let mut done = false;
+                let mut sel = Select::new();
+                let oper1 = sel.recv(&r_end);
+                let oper = sel.try_select();
+                match oper {
+                    Err(_) => {}
+                    Ok(oper) => match oper.index() {
+                        i if i == oper1 => {
+                            let _ = oper.recv(&r_end);
+                            done = true;
+                        }
+                        _ => unreachable!(),
+                    },
+                }
+                if done {
+                    break;
                 }
             });
 
@@ -497,7 +500,8 @@ fn loop_try() {
 
                 drop(s_end);
             });
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -529,7 +533,8 @@ fn cloning1() {
         }
 
         s3.send(()).unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -554,7 +559,8 @@ fn cloning2() {
         thread::sleep(ms(500));
         drop(s1.clone());
         s2.send(()).unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -719,7 +725,8 @@ fn stress_recv() {
                 s3.send(()).unwrap();
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -753,7 +760,8 @@ fn stress_send() {
             }
             s3.send(()).unwrap();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -787,7 +795,8 @@ fn stress_mixed() {
             }
             s3.send(()).unwrap();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -846,7 +855,8 @@ fn stress_timeout_two_threads() {
                 }
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -900,7 +910,8 @@ fn matching() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
@@ -926,7 +937,8 @@ fn matching_with_leftover() {
             });
         }
         s.send(!0).unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
@@ -984,7 +996,8 @@ fn channel_through_channel() {
                     r = new;
                 }
             });
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -1035,7 +1048,8 @@ fn linearizable_try() {
 
                 end_r.recv().unwrap();
             }
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -1086,7 +1100,8 @@ fn linearizable_timeout() {
 
                 end_r.recv().unwrap();
             }
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -1191,7 +1206,8 @@ fn fairness2() {
             }
         }
         assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 50));
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1217,7 +1233,8 @@ fn sync_and_clone() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
@@ -1244,7 +1261,8 @@ fn send_and_clone() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
@@ -1281,5 +1299,6 @@ fn reuse() {
             }
             s3.send(()).unwrap();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }

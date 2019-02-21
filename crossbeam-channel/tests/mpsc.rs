@@ -515,7 +515,9 @@ mod channel_tests {
         });
         thread::spawn(move || {
             assert_eq!(rx.recv(), Err(RecvError));
-        }).join().unwrap();
+        })
+        .join()
+        .unwrap();
         t.join().unwrap();
     }
 
@@ -548,7 +550,9 @@ mod channel_tests {
             ts.push(t);
             thread::spawn(move || {
                 let _ = tx.send(1);
-            }).join().unwrap();
+            })
+            .join()
+            .unwrap();
         }
         for t in ts {
             t.join().unwrap();
@@ -564,7 +568,9 @@ mod channel_tests {
             let t = thread::spawn(move || {
                 thread::spawn(move || {
                     assert_eq!(rx.recv(), Err(RecvError));
-                }).join().unwrap();
+                })
+                .join()
+                .unwrap();
             });
             ts.push(t);
             let t2 = thread::spawn(move || {
@@ -622,7 +628,7 @@ mod channel_tests {
                 }))
             }
 
-            fn recv(rx: Receiver<Box<i32>>, i: i32)  -> Option<JoinHandle<()>> {
+            fn recv(rx: Receiver<Box<i32>>, i: i32) -> Option<JoinHandle<()>> {
                 if i == 10 {
                     return None;
                 }
@@ -1314,7 +1320,9 @@ mod sync_channel_tests {
         });
         thread::spawn(move || {
             assert_eq!(rx.recv(), Err(RecvError));
-        }).join().unwrap();
+        })
+        .join()
+        .unwrap();
         t.join().unwrap();
     }
 
@@ -1347,7 +1355,9 @@ mod sync_channel_tests {
             ts.push(t);
             thread::spawn(move || {
                 let _ = tx.send(1);
-            }).join().unwrap();
+            })
+            .join()
+            .unwrap();
         }
         for t in ts {
             t.join().unwrap();
@@ -1363,7 +1373,9 @@ mod sync_channel_tests {
             let t = thread::spawn(move || {
                 thread::spawn(move || {
                     assert_eq!(rx.recv(), Err(RecvError));
-                }).join().unwrap();
+                })
+                .join()
+                .unwrap();
             });
             ts.push(t);
             let t2 = thread::spawn(move || {

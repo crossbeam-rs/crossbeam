@@ -318,10 +318,7 @@ fn run_select(
 }
 
 /// Runs until one of the operations becomes ready, potentially blocking the current thread.
-fn run_ready(
-    handles: &mut [(&SelectHandle, usize, *const u8)],
-    timeout: Timeout,
-) -> Option<usize> {
+fn run_ready(handles: &mut [(&SelectHandle, usize, *const u8)], timeout: Timeout) -> Option<usize> {
     if handles.is_empty() {
         // Wait until the timeout and return.
         match timeout {

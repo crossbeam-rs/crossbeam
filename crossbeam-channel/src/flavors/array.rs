@@ -200,10 +200,12 @@ impl<T> Channel<T> {
                 };
 
                 // Try moving the tail.
-                match self
-                    .tail
-                    .compare_exchange_weak(tail, new_tail, Ordering::SeqCst, Ordering::Relaxed)
-                {
+                match self.tail.compare_exchange_weak(
+                    tail,
+                    new_tail,
+                    Ordering::SeqCst,
+                    Ordering::Relaxed,
+                ) {
                     Ok(_) => {
                         // Prepare the token for the follow-up call to `write`.
                         token.array.slot = slot as *const Slot<T> as *const u8;
@@ -280,10 +282,12 @@ impl<T> Channel<T> {
                 };
 
                 // Try moving the head.
-                match self
-                    .head
-                    .compare_exchange_weak(head, new, Ordering::SeqCst, Ordering::Relaxed)
-                {
+                match self.head.compare_exchange_weak(
+                    head,
+                    new,
+                    Ordering::SeqCst,
+                    Ordering::Relaxed,
+                ) {
                     Ok(_) => {
                         // Prepare the token for the follow-up call to `read`.
                         token.array.slot = slot as *const Slot<T> as *const u8;

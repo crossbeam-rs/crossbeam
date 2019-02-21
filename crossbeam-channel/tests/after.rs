@@ -149,7 +149,8 @@ fn recv_two() {
                 recv(r2) -> _ => {}
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -222,7 +223,8 @@ fn select() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), COUNT);
 }
@@ -264,7 +266,8 @@ fn ready() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), COUNT);
 }
@@ -290,7 +293,8 @@ fn stress_clone() {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 

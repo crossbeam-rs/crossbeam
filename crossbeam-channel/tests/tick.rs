@@ -178,7 +178,8 @@ fn recv_two() {
                 }
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -249,7 +250,8 @@ fn select() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), 8);
 }
@@ -296,7 +298,8 @@ fn ready() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), 8);
 }

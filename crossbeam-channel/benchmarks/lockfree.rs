@@ -39,7 +39,8 @@ fn spsc() {
                 thread::yield_now();
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn mpsc() {
@@ -59,7 +60,8 @@ fn mpsc() {
                 thread::yield_now();
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn mpmc() {
@@ -83,7 +85,8 @@ fn mpmc() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn main() {

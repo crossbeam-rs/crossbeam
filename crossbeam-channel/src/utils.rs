@@ -82,9 +82,7 @@ impl<T> Mutex<T> {
         while self.flag.swap(true, Ordering::Acquire) {
             backoff.snooze();
         }
-        MutexGuard {
-            parent: self,
-        }
+        MutexGuard { parent: self }
     }
 }
 
@@ -103,16 +101,12 @@ impl<'a, T> Deref for MutexGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe {
-            &*self.parent.value.get()
-        }
+        unsafe { &*self.parent.value.get() }
     }
 }
 
 impl<'a, T> DerefMut for MutexGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe {
-            &mut *self.parent.value.get()
-        }
+        unsafe { &mut *self.parent.value.get() }
     }
 }

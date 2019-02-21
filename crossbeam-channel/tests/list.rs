@@ -86,7 +86,8 @@ fn try_recv() {
             thread::sleep(ms(1000));
             s.send(7).unwrap();
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -108,7 +109,8 @@ fn recv() {
             s.send(8).unwrap();
             s.send(9).unwrap();
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -128,7 +130,8 @@ fn recv_timeout() {
             thread::sleep(ms(1500));
             s.send(7).unwrap();
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -234,7 +237,8 @@ fn disconnect_wakes_receiver() {
             thread::sleep(ms(1000));
             drop(s);
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -255,7 +259,8 @@ fn spsc() {
                 s.send(i).unwrap();
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -282,7 +287,8 @@ fn mpmc() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 
@@ -301,7 +307,8 @@ fn stress_oneshot() {
         scope(|scope| {
             scope.spawn(|_| r.recv().unwrap());
             scope.spawn(|_| s.send(0).unwrap());
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -331,7 +338,8 @@ fn stress_iter() {
                 break;
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -363,7 +371,8 @@ fn stress_timeout_two_threads() {
                 }
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -400,7 +409,8 @@ fn drops() {
                     s.send(DropCounter).unwrap();
                 }
             });
-        }).unwrap();
+        })
+        .unwrap();
 
         for _ in 0..additional {
             s.try_send(DropCounter).unwrap();
@@ -429,7 +439,8 @@ fn linearizable() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]

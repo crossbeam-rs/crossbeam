@@ -40,7 +40,8 @@ fn spsc(cap: Option<usize>) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn mpsc(cap: Option<usize>) {
@@ -58,7 +59,8 @@ fn mpsc(cap: Option<usize>) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn mpmc(cap: Option<usize>) {
@@ -80,7 +82,8 @@ fn mpmc(cap: Option<usize>) {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn select_rx(cap: Option<usize>) {
@@ -105,7 +108,8 @@ fn select_rx(cap: Option<usize>) {
             let index = case.index();
             case.recv(&chans[index].1).unwrap();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn select_both(cap: Option<usize>) {
@@ -139,7 +143,8 @@ fn select_both(cap: Option<usize>) {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn main() {
