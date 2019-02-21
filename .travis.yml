@@ -73,3 +73,8 @@ matrix:
   - rust: stable
     name: "dependency tree check"
     script: ./ci/dependencies.sh
+
+  # Check formatting.
+  - rust: stable
+    name: "rustfmt"
+    script: ./ci/rustfmt.sh
