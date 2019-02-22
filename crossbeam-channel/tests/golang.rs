@@ -370,7 +370,7 @@ mod nonblock {
 
     #[test]
     fn main() {
-        let ticker = tick(Duration::from_micros(10));
+        let ticker = tick(Duration::new(0, 10_000)); // 10 us
         let sleep = || {
             ticker.recv().unwrap();
             ticker.recv().unwrap();
