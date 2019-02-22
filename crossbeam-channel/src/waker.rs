@@ -5,7 +5,7 @@ use std::thread::{self, ThreadId};
 
 use context::Context;
 use select::{Operation, Selected};
-use utils::Mutex;
+use utils::Spinlock;
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {
@@ -177,7 +177,7 @@ impl Drop for Waker {
 /// This is a simple wrapper around `Waker` that internally uses a mutex for synchronization.
 pub struct SyncWaker {
     /// The inner `Waker`.
-    inner: Mutex<Waker>,
+    inner: Spinlock<Waker>,
 
     /// `true` if the waker is empty.
     is_empty: AtomicBool,
@@ -188,7 +188,7 @@ impl SyncWaker {
     #[inline]
     pub fn new() -> Self {
         SyncWaker {
-            inner: Mutex::new(Waker::new()),
+            inner: Spinlock::new(Waker::new()),
             is_empty: AtomicBool::new(false),
         }
     }

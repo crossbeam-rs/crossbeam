@@ -12,7 +12,7 @@ use crossbeam_utils::Backoff;
 use context::Context;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use select::{Operation, SelectHandle, Selected, Token};
-use utils::Mutex;
+use utils::Spinlock;
 use waker::Waker;
 
 /// A pointer to a packet.
@@ -82,7 +82,7 @@ struct Inner {
 /// Zero-capacity channel.
 pub struct Channel<T> {
     /// Inner representation of the channel.
-    inner: Mutex<Inner>,
+    inner: Spinlock<Inner>,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -92,7 +92,7 @@ impl<T> Channel<T> {
     /// Constructs a new zero-capacity channel.
     pub fn new() -> Self {
         Channel {
-            inner: Mutex::new(Inner {
+            inner: Spinlock::new(Inner {
                 senders: Waker::new(),
                 receivers: Waker::new(),
                 is_disconnected: false,

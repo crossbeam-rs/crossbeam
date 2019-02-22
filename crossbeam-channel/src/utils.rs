@@ -61,43 +61,43 @@ pub fn sleep_until(deadline: Option<Instant>) {
     }
 }
 
-/// A simple spinlock-based mutex.
-pub struct Mutex<T> {
+/// A simple spinlock.
+pub struct Spinlock<T> {
     flag: AtomicBool,
     value: UnsafeCell<T>,
 }
 
-impl<T> Mutex<T> {
-    /// Returns a new mutex initialized with `value`.
-    pub fn new(value: T) -> Mutex<T> {
-        Mutex {
+impl<T> Spinlock<T> {
+    /// Returns a new spinlock initialized with `value`.
+    pub fn new(value: T) -> Spinlock<T> {
+        Spinlock {
             flag: AtomicBool::new(false),
             value: UnsafeCell::new(value),
         }
     }
 
-    /// Locks the mutex.
-    pub fn lock(&self) -> MutexGuard<'_, T> {
+    /// Locks the spinlock.
+    pub fn lock(&self) -> SpinlockGuard<'_, T> {
         let backoff = Backoff::new();
         while self.flag.swap(true, Ordering::Acquire) {
             backoff.snooze();
         }
-        MutexGuard { parent: self }
+        SpinlockGuard { parent: self }
     }
 }
 
-/// A guard holding a mutex locked.
-pub struct MutexGuard<'a, T: 'a> {
-    parent: &'a Mutex<T>,
+/// A guard holding a spinlock locked.
+pub struct SpinlockGuard<'a, T: 'a> {
+    parent: &'a Spinlock<T>,
 }
 
-impl<'a, T> Drop for MutexGuard<'a, T> {
+impl<'a, T> Drop for SpinlockGuard<'a, T> {
     fn drop(&mut self) {
         self.parent.flag.store(false, Ordering::Release);
     }
 }
 
-impl<'a, T> Deref for MutexGuard<'a, T> {
+impl<'a, T> Deref for SpinlockGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -105,7 +105,7 @@ impl<'a, T> Deref for MutexGuard<'a, T> {
     }
 }
 
-impl<'a, T> DerefMut for MutexGuard<'a, T> {
+impl<'a, T> DerefMut for SpinlockGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { &mut *self.parent.value.get() }
     }
