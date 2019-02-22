@@ -390,7 +390,8 @@ impl<T> Sender<T> {
             SenderFlavor::Array(chan) => chan.send(msg, None),
             SenderFlavor::List(chan) => chan.send(msg, None),
             SenderFlavor::Zero(chan) => chan.send(msg, None),
-        }.map_err(|err| match err {
+        }
+        .map_err(|err| match err {
             SendTimeoutError::Disconnected(msg) => SendError(msg),
             SendTimeoutError::Timeout(_) => unreachable!(),
         })
@@ -717,7 +718,8 @@ impl<T> Receiver<T> {
                 }
             }
             ReceiverFlavor::Never(chan) => chan.recv(None),
-        }.map_err(|_| RecvError)
+        }
+        .map_err(|_| RecvError)
     }
 
     /// Waits for a message to be received from the channel, but only for a limited time.
@@ -967,9 +969,9 @@ impl<T> Drop for Receiver<T> {
                 ReceiverFlavor::Array(chan) => chan.release(|c| c.disconnect()),
                 ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect()),
                 ReceiverFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
-                ReceiverFlavor::After(_) => {},
-                ReceiverFlavor::Tick(_) => {},
-                ReceiverFlavor::Never(_) => {},
+                ReceiverFlavor::After(_) => {}
+                ReceiverFlavor::Tick(_) => {}
+                ReceiverFlavor::Never(_) => {}
             }
         }
     }

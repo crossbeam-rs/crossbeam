@@ -1,10 +1,10 @@
 extern crate crossbeam_utils;
 extern crate rand;
 
-use std::sync::mpsc::channel;
-use std::thread;
-use std::sync::{Arc, TryLockError};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::channel;
+use std::sync::{Arc, TryLockError};
+use std::thread;
 
 use crossbeam_utils::sync::ShardedLock;
 use rand::Rng;
@@ -55,7 +55,8 @@ fn arc_poison_wr() {
     let _: Result<(), _> = thread::spawn(move || {
         let _lock = arc2.write().unwrap();
         panic!();
-    }).join();
+    })
+    .join();
     assert!(arc.read().is_err());
 }
 
@@ -67,7 +68,8 @@ fn arc_poison_ww() {
     let _: Result<(), _> = thread::spawn(move || {
         let _lock = arc2.write().unwrap();
         panic!();
-    }).join();
+    })
+    .join();
     assert!(arc.write().is_err());
     assert!(arc.is_poisoned());
 }
@@ -79,7 +81,8 @@ fn arc_no_poison_rr() {
     let _: Result<(), _> = thread::spawn(move || {
         let _lock = arc2.read().unwrap();
         panic!();
-    }).join();
+    })
+    .join();
     let lock = arc.read().unwrap();
     assert_eq!(*lock, 1);
 }
@@ -90,7 +93,8 @@ fn arc_no_poison_sl() {
     let _: Result<(), _> = thread::spawn(move || {
         let _lock = arc2.read().unwrap();
         panic!()
-    }).join();
+    })
+    .join();
     let lock = arc.write().unwrap();
     assert_eq!(*lock, 1);
 }
@@ -149,7 +153,8 @@ fn arc_access_in_unwind() {
         }
         let _u = Unwinder { i: arc2 };
         panic!();
-    }).join();
+    })
+    .join();
     let lock = arc.read().unwrap();
     assert_eq!(*lock, 2);
 }
@@ -174,7 +179,10 @@ fn try_write() {
     let write_result = lock.try_write();
     match write_result {
         Err(TryLockError::WouldBlock) => (),
-        Ok(_) => assert!(false, "try_write should not succeed while read_guard is in scope"),
+        Ok(_) => assert!(
+            false,
+            "try_write should not succeed while read_guard is in scope"
+        ),
         Err(_) => assert!(false, "unexpected error"),
     }
 
@@ -212,7 +220,8 @@ fn test_into_inner_poison() {
     let _ = thread::spawn(move || {
         let _lock = m2.write().unwrap();
         panic!("test panic in inner thread to poison ShardedLock");
-    }).join();
+    })
+    .join();
 
     assert!(m.is_poisoned());
     match Arc::try_unwrap(m).unwrap().into_inner() {
@@ -235,7 +244,8 @@ fn test_get_mut_poison() {
     let _ = thread::spawn(move || {
         let _lock = m2.write().unwrap();
         panic!("test panic in inner thread to poison ShardedLock");
-    }).join();
+    })
+    .join();
 
     assert!(m.is_poisoned());
     match Arc::try_unwrap(m).unwrap().get_mut() {

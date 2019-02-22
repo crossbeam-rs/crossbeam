@@ -55,22 +55,12 @@ impl<T> Chan<T> {
     }
 
     fn try_recv(&self) -> Option<T> {
-        let r = self
-            .inner
-            .lock()
-            .unwrap()
-            .r
-            .clone();
+        let r = self.inner.lock().unwrap().r.clone();
         r.try_recv().ok()
     }
 
     fn recv(&self) -> Option<T> {
-        let r = self
-            .inner
-            .lock()
-            .unwrap()
-            .r
-            .clone();
+        let r = self.inner.lock().unwrap().r.clone();
         r.recv().ok()
     }
 
@@ -84,21 +74,11 @@ impl<T> Chan<T> {
     }
 
     fn rx(&self) -> Receiver<T> {
-        self.inner
-            .lock()
-            .unwrap()
-            .r
-            .clone()
+        self.inner.lock().unwrap().r.clone()
     }
 
     fn tx(&self) -> Sender<T> {
-        match self
-            .inner
-            .lock()
-            .unwrap()
-            .s
-            .as_ref()
-        {
+        match self.inner.lock().unwrap().s.as_ref() {
             None => {
                 let (s, r) = bounded(0);
                 std::mem::forget(r);

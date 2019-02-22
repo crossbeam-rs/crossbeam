@@ -28,7 +28,8 @@ fn single_flush(b: &mut Bencher) {
         start.wait();
         b.iter(|| epoch::pin().flush());
         end.wait();
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[bench]
@@ -46,6 +47,7 @@ fn multi_flush(b: &mut Bencher) {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
     });
 }

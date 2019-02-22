@@ -205,7 +205,12 @@ impl<T> SegQueue<T> {
             if block.is_null() {
                 let new = Box::into_raw(Box::new(Block::<T>::new()));
 
-                if self.tail.block.compare_and_swap(block, new, Ordering::Release) == block {
+                if self
+                    .tail
+                    .block
+                    .compare_and_swap(block, new, Ordering::Release)
+                    == block
+                {
                     self.head.block.store(new, Ordering::Release);
                     block = new;
                 } else {
@@ -219,14 +224,12 @@ impl<T> SegQueue<T> {
             let new_tail = tail + (1 << SHIFT);
 
             // Try advancing the tail forward.
-            match self.tail.index
-                .compare_exchange_weak(
-                    tail,
-                    new_tail,
-                    Ordering::SeqCst,
-                    Ordering::Acquire,
-                )
-            {
+            match self.tail.index.compare_exchange_weak(
+                tail,
+                new_tail,
+                Ordering::SeqCst,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => unsafe {
                     // If we've reached the end of the block, install the next one.
                     if offset + 1 == BLOCK_CAP {
@@ -244,7 +247,7 @@ impl<T> SegQueue<T> {
                     slot.state.fetch_or(WRITE, Ordering::Release);
 
                     return;
-                }
+                },
                 Err(t) => {
                     tail = t;
                     block = self.tail.block.load(Ordering::Acquire);
@@ -313,14 +316,12 @@ impl<T> SegQueue<T> {
             }
 
             // Try moving the head index forward.
-            match self.head.index
-                .compare_exchange_weak(
-                    head,
-                    new_head,
-                    Ordering::SeqCst,
-                    Ordering::Acquire,
-                )
-            {
+            match self.head.index.compare_exchange_weak(
+                head,
+                new_head,
+                Ordering::SeqCst,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => unsafe {
                     // If we've reached the end of the block, move to the next one.
                     if offset + 1 == BLOCK_CAP {
@@ -349,7 +350,7 @@ impl<T> SegQueue<T> {
                     }
 
                     return Ok(value);
-                }
+                },
                 Err(h) => {
                     head = h;
                     block = self.head.block.load(Ordering::Acquire);

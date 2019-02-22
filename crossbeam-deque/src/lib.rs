@@ -581,7 +581,8 @@ impl<T> Worker<T> {
                                 f.wrapping_add(1),
                                 Ordering::SeqCst,
                                 Ordering::Relaxed,
-                            ).is_err()
+                            )
+                            .is_err()
                         {
                             // Failed. We didn't pop anything.
                             mem::forget(task.take());
@@ -811,7 +812,8 @@ impl<T> Stealer<T> {
                         f.wrapping_add(batch_size),
                         Ordering::SeqCst,
                         Ordering::Relaxed,
-                    ).is_err()
+                    )
+                    .is_err()
                 {
                     return Steal::Retry;
                 }
@@ -891,9 +893,7 @@ impl<T> Stealer<T> {
         //
         // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
         // races because it doesn't understand fences.
-        dest.inner
-            .back
-            .store(dest_b, Ordering::Release);
+        dest.inner.back.store(dest_b, Ordering::Release);
 
         // Return with success.
         Steal::Success(())
@@ -992,7 +992,8 @@ impl<T> Stealer<T> {
                         f.wrapping_add(batch_size + 1),
                         Ordering::SeqCst,
                         Ordering::Relaxed,
-                    ).is_err()
+                    )
+                    .is_err()
                 {
                     // We didn't steal this task, forget it.
                     mem::forget(task);
@@ -1082,9 +1083,7 @@ impl<T> Stealer<T> {
         //
         // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
         // races because it doesn't understand fences.
-        dest.inner
-            .back
-            .store(dest_b, Ordering::Release);
+        dest.inner.back.store(dest_b, Ordering::Release);
 
         // Return with success.
         Steal::Success(task)
@@ -1296,14 +1295,12 @@ impl<T> Injector<T> {
             let new_tail = tail + (1 << SHIFT);
 
             // Try advancing the tail forward.
-            match self.tail.index
-                .compare_exchange_weak(
-                    tail,
-                    new_tail,
-                    Ordering::SeqCst,
-                    Ordering::Acquire,
-                )
-            {
+            match self.tail.index.compare_exchange_weak(
+                tail,
+                new_tail,
+                Ordering::SeqCst,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => unsafe {
                     // If we've reached the end of the block, install the next one.
                     if offset + 1 == BLOCK_CAP {
@@ -1321,7 +1318,7 @@ impl<T> Injector<T> {
                     slot.state.fetch_or(WRITE, Ordering::Release);
 
                     return;
-                }
+                },
                 Err(t) => {
                     tail = t;
                     block = self.tail.block.load(Ordering::Acquire);
@@ -1385,13 +1382,10 @@ impl<T> Injector<T> {
         }
 
         // Try moving the head index forward.
-        if self.head.index
-            .compare_exchange_weak(
-                head,
-                new_head,
-                Ordering::SeqCst,
-                Ordering::Acquire,
-            )
+        if self
+            .head
+            .index
+            .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Acquire)
             .is_err()
         {
             return Steal::Retry;
@@ -1502,13 +1496,10 @@ impl<T> Injector<T> {
         let new_offset = offset + advance;
 
         // Try moving the head index forward.
-        if self.head.index
-            .compare_exchange_weak(
-                head,
-                new_head,
-                Ordering::SeqCst,
-                Ordering::Acquire,
-            )
+        if self
+            .head
+            .index
+            .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Acquire)
             .is_err()
         {
             return Steal::Retry;
@@ -1665,13 +1656,10 @@ impl<T> Injector<T> {
         let new_offset = offset + advance;
 
         // Try moving the head index forward.
-        if self.head.index
-            .compare_exchange_weak(
-                head,
-                new_head,
-                Ordering::SeqCst,
-                Ordering::Acquire,
-            )
+        if self
+            .head
+            .index
+            .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Acquire)
             .is_err()
         {
             return Steal::Retry;

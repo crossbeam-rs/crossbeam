@@ -58,7 +58,8 @@ impl Context {
                     cell.set(Some(cx));
                     res
                 }
-            }).unwrap_or_else(|_| f(&Context::new()))
+            })
+            .unwrap_or_else(|_| f(&Context::new()))
     }
 
     /// Creates a new `Context`.

@@ -26,6 +26,7 @@ fn multi_pin(b: &mut Bencher) {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
     });
 }

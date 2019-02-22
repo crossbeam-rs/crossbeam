@@ -22,7 +22,8 @@ fn seq_unbounded() {
             drop(tx);
 
             rx.for_each(|_| future::ok(()))
-        })).unwrap();
+        }))
+        .unwrap();
 }
 
 fn seq_bounded(cap: usize) {
@@ -36,7 +37,8 @@ fn seq_bounded(cap: usize) {
             drop(tx);
 
             rx.for_each(|_| future::ok(()))
-        })).unwrap();
+        }))
+        .unwrap();
 }
 
 fn spsc_unbounded() {
@@ -52,7 +54,8 @@ fn spsc_unbounded() {
             }));
 
             rx.for_each(|_| future::ok(()))
-        })).unwrap();
+        }))
+        .unwrap();
 }
 
 fn spsc_bounded(cap: usize) {
@@ -68,7 +71,8 @@ fn spsc_bounded(cap: usize) {
             }));
 
             rx.for_each(|_| future::ok(()))
-        })).unwrap();
+        }))
+        .unwrap();
 }
 
 fn mpsc_unbounded() {
@@ -80,15 +84,18 @@ fn mpsc_unbounded() {
             for _ in 0..THREADS {
                 let tx = tx.clone();
                 cx.spawn(future::lazy(move |_| {
-                    tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| message::new(i))))
-                        .map_err(|_| panic!())
-                        .and_then(|_| future::ok(()))
+                    tx.send_all(stream::iter_ok(
+                        (0..MESSAGES / THREADS).map(|i| message::new(i)),
+                    ))
+                    .map_err(|_| panic!())
+                    .and_then(|_| future::ok(()))
                 }));
             }
             drop(tx);
 
             rx.for_each(|_| future::ok(()))
-        })).unwrap();
+        }))
+        .unwrap();
 }
 
 fn mpsc_bounded(cap: usize) {
@@ -100,15 +107,18 @@ fn mpsc_bounded(cap: usize) {
             for _ in 0..THREADS {
                 let tx = tx.clone();
                 cx.spawn(future::lazy(move |_| {
-                    tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| message::new(i))))
-                        .map_err(|_| panic!())
-                        .and_then(|_| future::ok(()))
+                    tx.send_all(stream::iter_ok(
+                        (0..MESSAGES / THREADS).map(|i| message::new(i)),
+                    ))
+                    .map_err(|_| panic!())
+                    .and_then(|_| future::ok(()))
                 }));
             }
             drop(tx);
 
             rx.for_each(|_| future::ok(()))
-        })).unwrap();
+        }))
+        .unwrap();
 }
 
 fn select_rx_unbounded() {
@@ -130,7 +140,8 @@ fn select_rx_unbounded() {
             stream::select_all(chans.into_iter().map(|(_, rx)| rx))
                 .for_each(|_| future::ok(()))
                 .and_then(|_| future::ok(()))
-        })).unwrap();
+        }))
+        .unwrap();
 }
 
 fn select_rx_bounded(cap: usize) {
@@ -142,16 +153,19 @@ fn select_rx_bounded(cap: usize) {
             for (tx, _) in &chans {
                 let tx = tx.clone();
                 cx.spawn(future::lazy(move |_| {
-                    tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(|i| message::new(i))))
-                        .map_err(|_| panic!())
-                        .and_then(|_| future::ok(()))
+                    tx.send_all(stream::iter_ok(
+                        (0..MESSAGES / THREADS).map(|i| message::new(i)),
+                    ))
+                    .map_err(|_| panic!())
+                    .and_then(|_| future::ok(()))
                 }));
             }
 
             stream::select_all(chans.into_iter().map(|(_, rx)| rx))
                 .for_each(|_| future::ok(()))
                 .and_then(|_| future::ok(()))
-        })).unwrap();
+        }))
+        .unwrap();
 }
 
 fn main() {

@@ -498,10 +498,7 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn ref_range<'a, 'g, Q, R>(
-        &'a self,
-        range: R,
-    ) -> RefRange<'a, Q, R, K, V>
+    pub fn ref_range<'a, 'g, Q, R>(&'a self, range: R) -> RefRange<'a, Q, R, K, V>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
@@ -535,9 +532,10 @@ where
             //
             // Note that we're loading the pointer only to check whether it is null, so it's okay
             // to use `epoch::unprotected()` in this situation.
-            while height >= 4 && self.head[height - 2]
-                .load(Ordering::Relaxed, epoch::unprotected())
-                .is_null()
+            while height >= 4
+                && self.head[height - 2]
+                    .load(Ordering::Relaxed, epoch::unprotected())
+                    .is_null()
             {
                 height -= 1;
             }
@@ -654,9 +652,10 @@ where
                 let mut level = self.hot_data.max_height.load(Ordering::Relaxed);
 
                 // Fast loop to skip empty tower levels.
-                while level >= 1 && self.head[level - 1]
-                    .load(Ordering::Relaxed, guard)
-                    .is_null()
+                while level >= 1
+                    && self.head[level - 1]
+                        .load(Ordering::Relaxed, guard)
+                        .is_null()
                 {
                     level -= 1;
                 }
@@ -744,9 +743,10 @@ where
                 let mut level = self.hot_data.max_height.load(Ordering::Relaxed);
 
                 // Fast loop to skip empty tower levels.
-                while level >= 1 && self.head[level - 1]
-                    .load(Ordering::Relaxed, guard)
-                    .is_null()
+                while level >= 1
+                    && self.head[level - 1]
+                        .load(Ordering::Relaxed, guard)
+                        .is_null()
                 {
                     level -= 1;
                 }
@@ -1080,7 +1080,8 @@ where
                                 succ,
                                 Ordering::SeqCst,
                                 guard,
-                            ).is_ok()
+                            )
+                            .is_ok()
                         {
                             // Success! Decrement the reference count.
                             n.decrement(guard);
@@ -1744,7 +1745,9 @@ where
             Some(n) => self
                 .parent
                 .search_bound(Bound::Excluded(&n.key.borrow()), true, self.guard),
-            None => self.parent.search_bound(self.range.end_bound(), true, self.guard),
+            None => self
+                .parent
+                .search_bound(self.range.end_bound(), true, self.guard),
         };
         if let Some(t) = self.tail {
             let bound = match self.head {
@@ -1799,14 +1802,16 @@ where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized,
-{}
+{
+}
 
 unsafe impl<'a, Q, R, K, V> Sync for RefRange<'a, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized,
-{}
+{
+}
 
 impl<'a, Q, R, K, V> fmt::Debug for RefRange<'a, Q, R, K, V>
 where

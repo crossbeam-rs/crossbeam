@@ -66,7 +66,8 @@ fn main() {
             let (s, r) = (s.clone(), r.clone());
             scope.spawn(move |_| seek(name, s, r));
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     // Check if there is a pending send operation.
     if let Ok(name) = r.try_recv() {

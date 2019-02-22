@@ -1,5 +1,4 @@
 ///! Reference counter for channels.
-
 use std::isize;
 use std::ops;
 use std::process;

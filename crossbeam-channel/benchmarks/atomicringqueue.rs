@@ -46,7 +46,8 @@ fn spsc(cap: usize) {
         for _ in 0..MESSAGES {
             q.pop();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn mpsc(cap: usize) {
@@ -70,7 +71,8 @@ fn mpsc(cap: usize) {
         for _ in 0..MESSAGES {
             q.pop();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn mpmc(cap: usize) {
@@ -98,7 +100,8 @@ fn mpmc(cap: usize) {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn main() {

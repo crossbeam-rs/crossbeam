@@ -51,7 +51,8 @@ fn spsc(cap: usize) {
                 }
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn mpsc(cap: usize) {
@@ -81,7 +82,8 @@ fn mpsc(cap: usize) {
                 }
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn mpmc(cap: usize) {
@@ -115,7 +117,8 @@ fn mpmc(cap: usize) {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 fn main() {

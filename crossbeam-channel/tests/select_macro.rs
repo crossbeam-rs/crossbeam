@@ -78,7 +78,8 @@ fn disconnected() {
         }
 
         r2.recv().unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 
     select! {
         recv(r1) -> v => assert!(v.is_err()),
@@ -96,7 +97,8 @@ fn disconnected() {
             recv(r2) -> v => assert!(v.is_err()),
             default(ms(1000)) => panic!(),
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -157,7 +159,8 @@ fn timeout() {
             recv(r2) -> v => assert_eq!(v, Ok(2)),
             default(ms(1000)) => panic!(),
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     scope(|scope| {
         let (s, r) = unbounded::<i32>();
@@ -175,7 +178,8 @@ fn timeout() {
                 }
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -243,7 +247,8 @@ fn unblocks() {
             recv(r2) -> v => assert_eq!(v, Ok(2)),
             default(ms(1000)) => panic!(),
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     scope(|scope| {
         scope.spawn(|_| {
@@ -256,7 +261,8 @@ fn unblocks() {
             send(s2, 2) -> _ => panic!(),
             default(ms(1000)) => panic!(),
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -277,7 +283,8 @@ fn both_ready() {
                 send(s2, 2) -> _ => {},
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -290,31 +297,27 @@ fn loop_try() {
         let (s_end, r_end) = bounded::<()>(0);
 
         scope(|scope| {
-            scope.spawn(|_| {
-                loop {
-                    select! {
-                        send(s1, 1) -> _ => break,
-                        default => {}
-                    }
+            scope.spawn(|_| loop {
+                select! {
+                    send(s1, 1) -> _ => break,
+                    default => {}
+                }
 
-                    select! {
-                        recv(r_end) -> _ => break,
-                        default => {}
-                    }
+                select! {
+                    recv(r_end) -> _ => break,
+                    default => {}
                 }
             });
 
-            scope.spawn(|_| {
-                loop {
-                    if let Ok(x) = r2.try_recv() {
-                        assert_eq!(x, 2);
-                        break;
-                    }
+            scope.spawn(|_| loop {
+                if let Ok(x) = r2.try_recv() {
+                    assert_eq!(x, 2);
+                    break;
+                }
 
-                    select! {
-                        recv(r_end) -> _ => break,
-                        default => {}
-                    }
+                select! {
+                    recv(r_end) -> _ => break,
+                    default => {}
                 }
             });
 
@@ -329,7 +332,8 @@ fn loop_try() {
 
                 drop(s_end);
             });
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -356,7 +360,8 @@ fn cloning1() {
         }
 
         s3.send(()).unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -376,7 +381,8 @@ fn cloning2() {
         thread::sleep(ms(500));
         drop(s1.clone());
         s2.send(()).unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -510,7 +516,8 @@ fn stress_recv() {
                 s3.send(()).unwrap();
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -539,7 +546,8 @@ fn stress_send() {
             }
             s3.send(()).unwrap();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -568,7 +576,8 @@ fn stress_mixed() {
             }
             s3.send(()).unwrap();
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -610,7 +619,8 @@ fn stress_timeout_two_threads() {
                 }
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -645,7 +655,8 @@ fn matching() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
@@ -666,7 +677,8 @@ fn matching_with_leftover() {
             });
         }
         s.send(!0).unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
@@ -711,7 +723,8 @@ fn channel_through_channel() {
                     }
                 }
             });
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -754,7 +767,8 @@ fn linearizable_default() {
 
                 end_r.recv().unwrap();
             }
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -797,7 +811,8 @@ fn linearizable_timeout() {
 
                 end_r.recv().unwrap();
             }
-        }).unwrap();
+        })
+        .unwrap();
     }
 }
 
@@ -858,7 +873,8 @@ fn fairness2() {
             }
         }
         assert!(hits.iter().all(|x| x.get() >= COUNT / hits.len() / 50));
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1223,7 +1239,8 @@ fn try_recv() {
                 send(s, 7) -> res => res.unwrap(),
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1259,7 +1276,8 @@ fn recv() {
                 send(s, 9) -> res => res.unwrap(),
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1287,7 +1305,8 @@ fn recv_timeout() {
                 send(s, 7) -> res => res.unwrap(),
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1317,7 +1336,8 @@ fn try_send() {
                 recv(r) -> v => assert_eq!(v, Ok(8)),
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1350,7 +1370,8 @@ fn send() {
                 recv(r) -> v => assert_eq!(v, Ok(9)),
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1378,7 +1399,8 @@ fn send_timeout() {
                 recv(r) -> v => assert_eq!(v, Ok(8)),
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1395,7 +1417,8 @@ fn disconnect_wakes_sender() {
             thread::sleep(ms(1000));
             drop(r);
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 #[test]
@@ -1412,5 +1435,6 @@ fn disconnect_wakes_receiver() {
             thread::sleep(ms(1000));
             drop(s);
         });
-    }).unwrap();
+    })
+    .unwrap();
 }

@@ -103,7 +103,8 @@ fn main() {
                 }
             });
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     assert!(stack.pop().is_none());
 }

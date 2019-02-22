@@ -45,7 +45,8 @@ fn multi_alloc_defer_free(b: &mut Bencher) {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
     });
 }
 
@@ -64,6 +65,7 @@ fn multi_defer(b: &mut Bencher) {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
     });
 }

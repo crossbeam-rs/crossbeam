@@ -177,13 +177,17 @@ impl<T> ArrayQueue<T> {
                 };
 
                 // Try moving the tail.
-                match self
-                    .tail
-                    .compare_exchange_weak(tail, new_tail, Ordering::SeqCst, Ordering::Relaxed)
-                {
+                match self.tail.compare_exchange_weak(
+                    tail,
+                    new_tail,
+                    Ordering::SeqCst,
+                    Ordering::Relaxed,
+                ) {
                     Ok(_) => {
                         // Write the value into the slot and update the stamp.
-                        unsafe { slot.value.get().write(value); }
+                        unsafe {
+                            slot.value.get().write(value);
+                        }
                         slot.stamp.store(tail + 1, Ordering::Release);
                         return Ok(());
                     }
@@ -253,14 +257,17 @@ impl<T> ArrayQueue<T> {
                 };
 
                 // Try moving the head.
-                match self
-                    .head
-                    .compare_exchange_weak(head, new, Ordering::SeqCst, Ordering::Relaxed)
-                {
+                match self.head.compare_exchange_weak(
+                    head,
+                    new,
+                    Ordering::SeqCst,
+                    Ordering::Relaxed,
+                ) {
                     Ok(_) => {
                         // Read the value from the slot and update the stamp.
                         let msg = unsafe { slot.value.get().read() };
-                        slot.stamp.store(head.wrapping_add(self.one_lap), Ordering::Release);
+                        slot.stamp
+                            .store(head.wrapping_add(self.one_lap), Ordering::Release);
                         return Ok(msg);
                     }
                     Err(h) => {

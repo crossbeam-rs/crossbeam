@@ -93,9 +93,7 @@ impl Backoff {
     /// ```
     #[inline]
     pub fn new() -> Self {
-        Backoff {
-            step: Cell::new(0),
-        }
+        Backoff { step: Cell::new(0) }
     }
 
     /// Resets the `Backoff`.

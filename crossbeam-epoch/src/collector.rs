@@ -189,7 +189,8 @@ mod tests {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
     }
 
     #[test]
@@ -420,7 +421,8 @@ mod tests {
                     }
                 });
             }
-        }).unwrap();
+        })
+        .unwrap();
 
         let handle = collector.register();
         while DROPS.load(Ordering::Relaxed) < COUNT * THREADS {
