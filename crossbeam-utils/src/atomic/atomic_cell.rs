@@ -57,6 +57,8 @@ impl<T> AtomicCell<T> {
     ///
     /// assert_eq!(a.load(), 8);
     /// ```
+    #[doc(hidden)]
+    #[deprecated(note = "this method is unsound and will be removed in the next release")]
     pub fn get_mut(&mut self) -> &mut T {
         unsafe { &mut *self.value.get() }
     }
