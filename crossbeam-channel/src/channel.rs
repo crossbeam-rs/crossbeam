@@ -58,10 +58,6 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// A special case is zero-capacity channel, which cannot hold any messages. Instead, send and
 /// receive operations must appear at the same time in order to pair up and pass the message over.
 ///
-/// # Panics
-///
-/// Panics if the capacity is greater than `usize::max_value() / 4`.
-///
 /// # Examples
 ///
 /// A channel of capacity 1:

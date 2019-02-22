@@ -99,23 +99,8 @@ pub struct Channel<T> {
 
 impl<T> Channel<T> {
     /// Creates a bounded channel of capacity `cap`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the capacity is not in the range `1 ..= usize::max_value() / 4`.
     pub fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
-
-        // Make sure there are at least two most significant bits: one to encode laps and one more
-        // to indicate that the channel is disconnected. If we can't reserve two bits, then panic.
-        // In that case, the buffer is likely too large to allocate anyway.
-        let cap_limit = usize::max_value() / 4;
-        assert!(
-            cap <= cap_limit,
-            "channel capacity is too large: {} > {}",
-            cap,
-            cap_limit
-        );
 
         // Compute constants `mark_bit` and `one_lap`.
         let mark_bit = (cap + 1).next_power_of_two();
