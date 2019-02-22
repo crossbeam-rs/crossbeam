@@ -86,7 +86,7 @@ impl<T> CachePadded<T> {
         CachePadded::<T> { value: t }
     }
 
-    /// Returns the value value.
+    /// Returns the inner value.
     ///
     /// # Examples
     ///
