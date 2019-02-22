@@ -5,12 +5,13 @@ extern crate crossbeam_channel;
 extern crate crossbeam_utils;
 extern crate rand;
 
+use std::any::Any;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{unbounded, Receiver};
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
 use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
 use crossbeam_utils::thread::scope;
@@ -496,4 +497,42 @@ fn recv_in_send() {
     select! {
         send(s, assert_eq!(r.recv(), Ok(()))) -> _ => {}
     }
+}
+
+#[test]
+fn channel_through_channel() {
+    const COUNT: usize = 1000;
+
+    type T = Box<Any + Send>;
+
+    let (s, r) = unbounded::<T>();
+
+    scope(|scope| {
+        scope.spawn(move |_| {
+            let mut s = s;
+
+            for _ in 0..COUNT {
+                let (new_s, new_r) = unbounded();
+                let mut new_r: T = Box::new(Some(new_r));
+
+                s.send(new_r).unwrap();
+                s = new_s;
+            }
+        });
+
+        scope.spawn(move |_| {
+            let mut r = r;
+
+            for _ in 0..COUNT {
+                r = r
+                    .recv()
+                    .unwrap()
+                    .downcast_mut::<Option<Receiver<T>>>()
+                    .unwrap()
+                    .take()
+                    .unwrap()
+            }
+        });
+    })
+    .unwrap();
 }

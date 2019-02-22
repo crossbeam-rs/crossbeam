@@ -481,13 +481,18 @@ impl<T> Channel<T> {
         Some(self.cap)
     }
 
-    /// Disconnects the channel and wakes up all blocked receivers.
-    pub fn disconnect(&self) {
+    /// Disconnects the channel and wakes up all blocked senders and receivers.
+    ///
+    /// Returns `true` if this call disconnected the channel.
+    pub fn disconnect(&self) -> bool {
         let tail = self.tail.fetch_or(self.mark_bit, Ordering::SeqCst);
 
         if tail & self.mark_bit == 0 {
             self.senders.disconnect();
             self.receivers.disconnect();
+            true
+        } else {
+            false
         }
     }
 

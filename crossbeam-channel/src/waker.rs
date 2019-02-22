@@ -189,7 +189,7 @@ impl SyncWaker {
     pub fn new() -> Self {
         SyncWaker {
             inner: Spinlock::new(Waker::new()),
-            is_empty: AtomicBool::new(false),
+            is_empty: AtomicBool::new(true),
         }
     }
 
