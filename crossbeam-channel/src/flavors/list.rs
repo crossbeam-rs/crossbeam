@@ -522,11 +522,16 @@ impl<T> Channel<T> {
     }
 
     /// Disconnects the channel and wakes up all blocked receivers.
-    pub fn disconnect(&self) {
+    ///
+    /// Returns `true` if this call disconnected the channel.
+    pub fn disconnect(&self) -> bool {
         let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
 
         if tail & MARK_BIT == 0 {
             self.receivers.disconnect();
+            true
+        } else {
+            false
         }
     }
 

@@ -322,14 +322,19 @@ impl<T> Channel<T> {
         })
     }
 
-    /// Disconnects the channel and wakes up all blocked receivers.
-    pub fn disconnect(&self) {
+    /// Disconnects the channel and wakes up all blocked senders and receivers.
+    ///
+    /// Returns `true` if this call disconnected the channel.
+    pub fn disconnect(&self) -> bool {
         let mut inner = self.inner.lock();
 
         if !inner.is_disconnected {
             inner.is_disconnected = true;
             inner.senders.disconnect();
             inner.receivers.disconnect();
+            true
+        } else {
+            false
         }
     }
 
