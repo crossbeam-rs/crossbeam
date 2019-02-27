@@ -1401,6 +1401,12 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
         self.parent
     }
 
+    /// Releases the reference on the entry.
+    pub fn release(self, guard: &Guard) {
+        self.parent.check_guard(guard);
+        unsafe { self.node.decrement(guard) }
+    }
+
     /// Tries to create a new `RefEntry` by incrementing the reference count of
     /// a node.
     unsafe fn try_acquire(
@@ -1529,12 +1535,6 @@ where
                 }
             }
         }
-    }
-
-    /// Releases the reference on the entry.
-    pub fn release(self, guard: &Guard) {
-        self.parent.check_guard(guard);
-        unsafe { self.node.decrement(guard) }
     }
 }
 
