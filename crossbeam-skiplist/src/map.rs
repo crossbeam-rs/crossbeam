@@ -3,6 +3,7 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::iter::FromIterator;
+use std::mem;
 use std::ops::{Bound, RangeBounds};
 
 use base::{self, try_pin_loop};
@@ -245,6 +246,20 @@ impl<'a, K, V> Entry<'a, K, V> {
     /// Returns `true` if the entry is removed from the map.
     pub fn is_removed(&self) -> bool {
         self.inner.is_removed()
+    }
+}
+
+impl<'a, K, V> Drop for Entry<'a, K, V>
+{
+    fn drop(&mut self) {
+        let guard = &epoch::pin();
+        let dummy: [usize; 2] = [1; 2]; // 1 because a refrence to 0 will crash :)
+        unsafe {
+            // Safe because the size of `RefEntry` is same as two pointers,
+            // which in turn is equal to two `usize`s.
+            let transmuted = mem::transmute::<[usize; 2], base::RefEntry<K, V>>(dummy);
+            mem::replace(&mut self.inner, transmuted).release(guard);
+        }
     }
 }
 
