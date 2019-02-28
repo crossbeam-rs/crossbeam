@@ -1647,7 +1647,13 @@ where
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.head = match self.head {
-            Some(ref e) => e.next(guard),
+            Some(ref e) => {
+                let next_head = e.next(guard);
+                unsafe {
+                    e.node.decrement(guard);
+                }
+                next_head
+            }
             None => try_pin_loop(|| self.parent.front(guard)),
         };
         let mut finished = false;
@@ -1667,7 +1673,13 @@ where
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.tail = match self.tail {
-            Some(ref e) => e.prev(guard),
+            Some(ref e) => {
+                let next_tail = e.prev(guard);
+                unsafe {
+                    e.node.decrement(guard);
+                }
+                next_tail
+            }
             None => try_pin_loop(|| self.parent.back(guard)),
         };
         let mut finished = false;
