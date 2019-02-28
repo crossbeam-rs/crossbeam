@@ -227,6 +227,24 @@ impl<K, V> Node<K, V> {
         }
     }
 
+    /// Decrements the reference count of a node, pinning the thread and destoying the node
+    /// if the count become zero.
+    #[inline]
+    unsafe fn decremnt_with_pin<F>(&self, pin: F)
+    where
+        F: FnOnce() -> Guard,
+    {
+        if self
+            .refs_and_height
+            .fetch_sub(1 << HEIGHT_BITS, Ordering::Release)
+            >> HEIGHT_BITS
+            == 1
+        {
+            fence(Ordering::Acquire);
+            pin().defer_unchecked(move || Self::finalize(self));
+        }
+    }
+
     /// Drops the key and value of a node, then deallocates it.
     #[cold]
     unsafe fn finalize(ptr: *const Self) {
@@ -1405,6 +1423,15 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
     pub fn release(self, guard: &Guard) {
         self.parent.check_guard(guard);
         unsafe { self.node.decrement(guard) }
+    }
+
+    /// Releases the reference of the entry, pinning the thread only when
+    /// the reference count of the node becomes 0.
+    pub fn release_with_pin<F>(self, pin: F)
+    where
+        F: FnOnce() -> Guard,
+    {
+        unsafe { self.node.decremnt_with_pin(pin) }
     }
 
     /// Tries to create a new `RefEntry` by incrementing the reference count of
