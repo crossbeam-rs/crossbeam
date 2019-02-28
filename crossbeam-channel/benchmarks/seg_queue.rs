@@ -106,7 +106,7 @@ fn main() {
             println!(
                 "{:25} {:15} {:7.3} sec",
                 $name,
-                "Rust segqueue",
+                "Rust SegQueue",
                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1e9
             );
         };
