@@ -150,7 +150,7 @@ pub fn spsc<T>(cap: usize) -> (Producer<T>, Consumer<T>) {
     (p, c)
 }
 
-/// The producer side of a single-producer single-consumer queue.
+/// The producer side of a bounded single-producer single-consumer queue.
 ///
 /// # Examples
 ///
@@ -296,7 +296,7 @@ impl<T> fmt::Debug for Producer<T> {
     }
 }
 
-/// The consumer side of a single-producer single-consumer queue.
+/// The consumer side of a bounded single-producer single-consumer queue.
 ///
 /// # Examples
 ///
