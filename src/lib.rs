@@ -10,6 +10,7 @@
 //! * [`deque`], work-stealing deques for building task schedulers.
 //! * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
 //! * [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
+//! * [`spsc`], a bounded SPSC queue that allocates a fixed-capacity buffer on construction.
 //!
 //! ## Memory management
 //!
@@ -33,6 +34,7 @@
 //! [`deque`]: deque/index.html
 //! [`ArrayQueue`]: queue/struct.ArrayQueue.html
 //! [`SegQueue`]: queue/struct.SegQueue.html
+//! [`spsc`]: queue/fn.spsc.html
 //! [`channel`]: channel/index.html
 //! [`Parker`]: sync/struct.Parker.html
 //! [`ShardedLock`]: sync/struct.ShardedLock.html

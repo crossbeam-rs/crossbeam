@@ -46,6 +46,10 @@ name = "lockfree"
 path = "lockfree.rs"
 
 [[bin]]
+name = "mpmc"
+path = "mpmc.rs"
+
+[[bin]]
 name = "mpsc"
 path = "mpsc.rs"
 
@@ -54,5 +58,5 @@ name = "segqueue"
 path = "segqueue.rs"
 
 [[bin]]
-name = "mpmc"
-path = "mpmc.rs"
+name = "spsc"
+path = "spsc.rs"
