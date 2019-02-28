@@ -57,6 +57,6 @@ fn main() {
         };
     }
 
-    run!("unbounded_seq", seq());
-    run!("unbounded_spsc", spsc());
+    run!("bounded_seq", seq());
+    run!("bounded_spsc", spsc());
 }
