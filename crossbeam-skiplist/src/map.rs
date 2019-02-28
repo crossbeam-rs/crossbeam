@@ -3,7 +3,7 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::iter::FromIterator;
-use std::mem;
+use std::mem::ManuallyDrop;
 use std::ops::{Bound, RangeBounds};
 
 use base::{self, try_pin_loop};
@@ -225,12 +225,12 @@ where
 
 /// A reference-counted entry in a map.
 pub struct Entry<'a, K: 'a, V: 'a> {
-    inner: base::RefEntry<'a, K, V>,
+    inner: ManuallyDrop<base::RefEntry<'a, K, V>>,
 }
 
 impl<'a, K, V> Entry<'a, K, V> {
     fn new(inner: base::RefEntry<'a, K, V>) -> Entry<'a, K, V> {
-        Entry { inner }
+        Entry { inner: ManuallyDrop::new(inner) }
     }
 
     /// Returns a reference to the key.
@@ -253,12 +253,8 @@ impl<'a, K, V> Drop for Entry<'a, K, V>
 {
     fn drop(&mut self) {
         let guard = &epoch::pin();
-        let dummy: [usize; 2] = [1; 2]; // 1 because a refrence to 0 will crash :)
         unsafe {
-            // Safe because the size of `RefEntry` is same as two pointers,
-            // which in turn is equal to two `usize`s.
-            let transmuted = mem::transmute::<[usize; 2], base::RefEntry<K, V>>(dummy);
-            mem::replace(&mut self.inner, transmuted).release(guard);
+            ManuallyDrop::take(&mut self.inner).release(guard);
         }
     }
 }

@@ -4,6 +4,7 @@
 #![warn(missing_debug_implementations)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(alloc))]
+#![feature(manually_drop_take)]
 
 #[macro_use]
 extern crate cfg_if;
