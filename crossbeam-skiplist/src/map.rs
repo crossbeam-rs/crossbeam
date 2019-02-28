@@ -5,6 +5,7 @@ use std::fmt;
 use std::iter::FromIterator;
 use std::mem::ManuallyDrop;
 use std::ops::{Bound, RangeBounds};
+use std::ptr;
 
 use base::{self, try_pin_loop};
 use epoch;
@@ -254,7 +255,7 @@ impl<'a, K, V> Drop for Entry<'a, K, V>
     fn drop(&mut self) {
         let guard = &epoch::pin();
         unsafe {
-            ManuallyDrop::take(&mut self.inner).release(guard);
+            ManuallyDrop::into_inner(ptr::read(&mut self.inner)).release(guard);
         }
     }
 }
