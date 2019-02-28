@@ -128,7 +128,9 @@ fn len() {
                 assert!(len <= CAP);
             }
             p
-        }).join().unwrap()
+        })
+        .join()
+        .unwrap()
     })
     .unwrap();
     assert_eq!(p.len(), 0);
