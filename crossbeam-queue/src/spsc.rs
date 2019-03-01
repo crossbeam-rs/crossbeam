@@ -13,18 +13,12 @@ use err::{PopError, PushError};
 struct Inner<T> {
     /// The head of the queue.
     ///
-    /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
-    /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
-    ///
-    /// Elements are popped from the head of the queue.
+    /// This integer is in range `0 .. 2 * cap`.
     head: CachePadded<AtomicUsize>,
 
     /// The tail of the queue.
     ///
-    /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
-    /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
-    ///
-    /// Elements are pushed into the tail of the queue.
+    /// This integer is in range `0 .. 2 * cap`.
     tail: CachePadded<AtomicUsize>,
 
     /// The buffer holding slots.
@@ -33,9 +27,6 @@ struct Inner<T> {
     /// The queue capacity.
     cap: usize,
 
-    /// A stamp with the value of `{ lap: 1, index: 0 }`.
-    one_lap: usize,
-
     /// Indicates that dropping a `Buffer<T>` may drop elements of type `T`.
     _marker: PhantomData<T>,
 }
@@ -43,39 +34,37 @@ struct Inner<T> {
 impl<T> Inner<T> {
     /// Returns a pointer to the slot at position `pos`.
     ///
-    /// The position is a stamp containing an index and a lap.
+    /// The position must be in range `0 .. 2 * cap`.
+    #[inline]
     unsafe fn slot(&self, pos: usize) -> *mut T {
-        self.buffer.add(pos & (self.one_lap - 1))
+        if pos < self.cap {
+            self.buffer.add(pos)
+        } else {
+            self.buffer.add(pos - self.cap)
+        }
     }
 
     /// Increments a position by going one slot forward.
     ///
-    /// The position is a stamp containing an index and a lap.
+    /// The position must be in range `0 .. 2 * cap`.
+    #[inline]
     fn increment(&self, pos: usize) -> usize {
-        let index = pos & (self.one_lap - 1);
-        let lap = pos & !(self.one_lap - 1);
-
-        if index < self.cap - 1 {
+        if pos < 2 * self.cap - 1 {
             pos + 1
         } else {
-            lap.wrapping_add(self.one_lap)
+            0
         }
     }
 
     /// Returns the distance between two positions.
     ///
-    /// The positions are stamps containing an index and a lap.
+    /// Positions must be in range `0 .. 2 * cap`.
+    #[inline]
     fn distance(&self, a: usize, b: usize) -> usize {
-        let index_a = a & (self.one_lap - 1);
-        let lap_a = a & !(self.one_lap - 1);
-
-        let index_b = b & (self.one_lap - 1);
-        let lap_b = b & !(self.one_lap - 1);
-
-        if lap_a == lap_b {
-            index_b - index_a
+        if a <= b {
+            b - a
         } else {
-            self.cap - index_a + index_b
+            2 * self.cap - a + b
         }
     }
 }
@@ -131,7 +120,6 @@ pub fn spsc<T>(cap: usize) -> (Producer<T>, Consumer<T>) {
         tail: CachePadded::new(AtomicUsize::new(0)),
         buffer,
         cap,
-        one_lap: cap.next_power_of_two(),
         _marker: PhantomData,
     });
 
