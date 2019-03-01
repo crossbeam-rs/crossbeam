@@ -227,6 +227,26 @@ impl<K, V> Node<K, V> {
         }
     }
 
+    /// Decrements the reference count of a node, pinning the thread and destoying the node
+    /// if the count become zero.
+    #[inline]
+    unsafe fn decrement_with_pin<F>(&self, parent: &SkipList<K, V>, pin: F)
+    where
+        F: FnOnce() -> Guard,
+    {
+        if self
+            .refs_and_height
+            .fetch_sub(1 << HEIGHT_BITS, Ordering::Release)
+            >> HEIGHT_BITS
+            == 1
+        {
+            fence(Ordering::Acquire);
+            let guard = &pin();
+            parent.check_guard(guard);
+            guard.defer_unchecked(move || Self::finalize(self));
+        }
+    }
+
     /// Drops the key and value of a node, then deallocates it.
     #[cold]
     unsafe fn finalize(ptr: *const Self) {
@@ -1401,6 +1421,21 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
         self.parent
     }
 
+    /// Releases the reference on the entry.
+    pub fn release(self, guard: &Guard) {
+        self.parent.check_guard(guard);
+        unsafe { self.node.decrement(guard) }
+    }
+
+    /// Releases the reference of the entry, pinning the thread only when
+    /// the reference count of the node becomes 0.
+    pub fn release_with_pin<F>(self, pin: F)
+    where
+        F: FnOnce() -> Guard,
+    {
+        unsafe { self.node.decrement_with_pin(self.parent, pin) }
+    }
+
     /// Tries to create a new `RefEntry` by incrementing the reference count of
     /// a node.
     unsafe fn try_acquire(
@@ -1530,12 +1565,6 @@ where
             }
         }
     }
-
-    /// Releases the reference on the entry.
-    pub fn release(self, guard: &Guard) {
-        self.parent.check_guard(guard);
-        unsafe { self.node.decrement(guard) }
-    }
 }
 
 /// An iterator over the entries of a `SkipList`.
@@ -1647,7 +1676,13 @@ where
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.head = match self.head {
-            Some(ref e) => e.next(guard),
+            Some(ref e) => {
+                let next_head = e.next(guard);
+                unsafe {
+                    e.node.decrement(guard);
+                }
+                next_head
+            }
             None => try_pin_loop(|| self.parent.front(guard)),
         };
         let mut finished = false;
@@ -1667,7 +1702,13 @@ where
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.tail = match self.tail {
-            Some(ref e) => e.prev(guard),
+            Some(ref e) => {
+                let next_tail = e.prev(guard);
+                unsafe {
+                    e.node.decrement(guard);
+                }
+                next_tail
+            }
             None => try_pin_loop(|| self.parent.back(guard)),
         };
         let mut finished = false;
