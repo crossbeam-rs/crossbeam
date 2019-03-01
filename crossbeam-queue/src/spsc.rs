@@ -154,8 +154,17 @@ pub fn spsc<T>(cap: usize) -> (Producer<T>, Consumer<T>) {
 /// assert!(p.is_full());
 /// ```
 pub struct Producer<T> {
+    /// The inner representation of the queue.
     inner: Arc<Inner<T>>,
+
+    /// A copy of `inner.head` for quick access.
+    ///
+    /// This value can be stale and sometimes needs to be resynchronized with `inner.head`.
     head: Cell<usize>,
+
+    /// A copy of `inner.tail` for quick access.
+    ///
+    /// This value is always in sync with `inner.tail`.
     tail: Cell<usize>,
 }
 
@@ -301,8 +310,17 @@ impl<T> fmt::Debug for Producer<T> {
 /// assert!(!c.is_full());
 /// ```
 pub struct Consumer<T> {
+    /// The inner representation of the queue.
     inner: Arc<Inner<T>>,
+
+    /// A copy of `inner.head` for quick access.
+    ///
+    /// This value is always in sync with `inner.head`.
     head: Cell<usize>,
+
+    /// A copy of `inner.tail` for quick access.
+    ///
+    /// This value can be stale and sometimes needs to be resynchronized with `inner.tail`.
     tail: Cell<usize>,
 }
 
