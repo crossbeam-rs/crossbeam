@@ -230,7 +230,7 @@ impl<K, V> Node<K, V> {
     /// Decrements the reference count of a node, pinning the thread and destoying the node
     /// if the count become zero.
     #[inline]
-    unsafe fn decremnt_with_pin<F>(&self, pin: F)
+    unsafe fn decrement_with_pin<F>(&self, pin: F)
     where
         F: FnOnce() -> Guard,
     {
@@ -1431,7 +1431,7 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
     where
         F: FnOnce() -> Guard,
     {
-        unsafe { self.node.decremnt_with_pin(pin) }
+        unsafe { self.node.decrement_with_pin(pin) }
     }
 
     /// Tries to create a new `RefEntry` by incrementing the reference count of
