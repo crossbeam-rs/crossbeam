@@ -92,14 +92,14 @@
 //!         // Not going to compile because we're trying to borrow `s`,
 //!         // which lives *inside* the scope! :(
 //!         s.spawn(|_| println!("nested thread"));
-//!     }});
+//!     });
 //! });
 //! ```
 //!
 //! Fortunately, there is a solution. Every scoped thread is passed a reference to its scope as an
 //! argument, which can be used for spawning nested threads:
 //!
-//! ```ignore
+//! ```
 //! use crossbeam_utils::thread;
 //!
 //! thread::scope(|s| {
@@ -107,7 +107,7 @@
 //!     s.spawn(|s| {
 //!         // Yay, this works because we're using a fresh argument `s`! :)
 //!         s.spawn(|_| println!("nested thread"));
-//!     }});
+//!     });
 //! });
 //! ```
 //!
