@@ -217,24 +217,6 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// ```
 ///
 /// [`select!`]: macro.select.html
-///
-/// # Notes
-///
-/// Never channels are always equal to one another.
-///
-/// ```
-/// # fn main() {
-/// use crossbeam_channel::never;
-///
-/// let r = never::<usize>();
-///
-/// let r2 = r.clone();
-/// assert!(r.same_channel(&r2));
-///
-/// let r3 = never::<usize>();
-/// assert!(r.same_channel(&r3));
-/// # }
-/// ```
 pub fn never<T>() -> Receiver<T> {
     Receiver {
         flavor: ReceiverFlavor::Never(flavors::never::Channel::new()),
@@ -1024,6 +1006,24 @@ impl<T> Receiver<T> {
     ///
     /// let (_, r3) = unbounded();
     /// assert!(!r.same_channel(&r3));
+    /// # }
+    /// ```
+    ///
+    /// # Notes
+    ///
+    /// Never channels always return true when using `same_channel`.
+    ///
+    /// ```
+    /// # fn main() {
+    /// use crossbeam_channel::never;
+    ///
+    /// let r = never::<usize>();
+    ///
+    /// let r2 = r.clone();
+    /// assert!(r.same_channel(&r2));
+    ///
+    /// let r3 = never::<usize>();
+    /// assert!(r.same_channel(&r3));
     /// # }
     /// ```
     pub fn same_channel(&self, other: &Receiver<T>) -> bool {
