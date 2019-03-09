@@ -217,6 +217,24 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// ```
 ///
 /// [`select!`]: macro.select.html
+///
+/// # Notes
+///
+/// Never channels are always equal to one another.
+///
+/// ```
+/// # fn main() {
+/// use crossbeam_channel::never;
+///
+/// let r = never::<usize>();
+///
+/// let r2 = r.clone();
+/// assert!(r.same_channel(&r2));
+///
+/// let r3 = never::<usize>();
+/// assert!(r.same_channel(&r3));
+/// # }
+/// ```
 pub fn never<T>() -> Receiver<T> {
     Receiver {
         flavor: ReceiverFlavor::Never(flavors::never::Channel::new()),
@@ -529,6 +547,40 @@ impl<T> Sender<T> {
             SenderFlavor::Array(chan) => chan.capacity(),
             SenderFlavor::List(chan) => chan.capacity(),
             SenderFlavor::Zero(chan) => chan.capacity(),
+        }
+    }
+
+    /// Returns true if senders send to the same channel.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # fn main() {
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (s, _) = unbounded::<usize>();
+    ///
+    /// let s2 = s.clone();
+    /// assert!(s.same_channel(&s2));
+    ///
+    /// let (s3, _) = unbounded();
+    /// assert!(!s.same_channel(&s3));
+    /// # }
+    /// ```
+    pub fn same_channel(&self, other: &Sender<T>) -> bool {
+        use self::SenderFlavor::*;
+        match (&self.flavor, &other.flavor) {
+            (Array(ref self_counter), Array(ref other_counter)) => {
+                self_counter == other_counter
+            },
+            (List(ref self_counter), List(ref other_counter)) => {
+                self_counter == other_counter
+            },
+            (Zero(ref self_counter), Zero(ref other_counter)) => {
+                self_counter == other_counter
+            },
+            // Channels of different flavours are never equal.
+            _ => false,
         }
     }
 }
@@ -955,6 +1007,47 @@ impl<T> Receiver<T> {
     /// ```
     pub fn try_iter(&self) -> TryIter<T> {
         TryIter { receiver: self }
+    }
+
+    /// Returns true if the receiver receive from the same channel.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # fn main() {
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (_, r) = unbounded::<usize>();
+    ///
+    /// let r2 = r.clone();
+    /// assert!(r.same_channel(&r2));
+    ///
+    /// let (_, r3) = unbounded();
+    /// assert!(!r.same_channel(&r3));
+    /// # }
+    /// ```
+    pub fn same_channel(&self, other: &Receiver<T>) -> bool {
+        use self::ReceiverFlavor::*;
+        match (&self.flavor, &other.flavor) {
+            (Array(ref self_counter), Array(ref other_counter)) => {
+                self_counter == other_counter
+            },
+            (List(ref self_counter), List(ref other_counter)) => {
+                self_counter == other_counter
+            },
+            (Zero(ref self_counter), Zero(ref other_counter)) => {
+                self_counter == other_counter
+            },
+            (After(ref self_channel), After(ref other_channel)) => {
+                Arc::ptr_eq(self_channel, other_channel)
+            },
+            (Tick(ref self_channel), Tick(ref other_channel)) => {
+                Arc::ptr_eq(self_channel, other_channel)
+            },
+            (Never(_), Never(_)) => true,
+            // Channels of different flavours are never equal.
+            _ => false,
+        }
     }
 }
 

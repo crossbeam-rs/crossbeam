@@ -657,3 +657,20 @@ fn channel_through_channel() {
     })
     .unwrap();
 }
+
+#[test]
+fn same_channel() {
+    let (s, r) = bounded::<usize>(1);
+
+    let s2 = s.clone();
+    assert!(s.same_channel(&s2));
+
+    let r2 = r.clone();
+    assert!(r.same_channel(&r2));
+
+    let (s3, r3) = bounded::<usize>(1);
+    assert!(!s.same_channel(&s3));
+    assert!(!s2.same_channel(&s3));
+    assert!(!r.same_channel(&r3));
+    assert!(!r2.same_channel(&r3));
+}

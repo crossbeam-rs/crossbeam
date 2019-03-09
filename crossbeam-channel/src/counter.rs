@@ -75,6 +75,12 @@ impl<C> ops::Deref for Sender<C> {
     }
 }
 
+impl<C> PartialEq for Sender<C> {
+    fn eq(&self, other: &Sender<C>) -> bool {
+        self.counter == other.counter
+    }
+}
+
 /// The receiving side.
 pub struct Receiver<C> {
     counter: *mut Counter<C>,
@@ -119,5 +125,11 @@ impl<C> ops::Deref for Receiver<C> {
 
     fn deref(&self) -> &C {
         &self.counter().chan
+    }
+}
+
+impl<C> PartialEq for Receiver<C> {
+    fn eq(&self, other: &Receiver<C>) -> bool {
+        self.counter == other.counter
     }
 }
