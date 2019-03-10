@@ -23,7 +23,7 @@ use err::{PopError, PushError};
 struct Slot<T> {
     /// The current stamp.
     ///
-    /// If the stamp equals the tail, this node will be next written to. If it equals the head,
+    /// If the stamp equals the tail, this node will be next written to. If it equals head + 1,
     /// this node will be next read from.
     stamp: AtomicUsize,
 
