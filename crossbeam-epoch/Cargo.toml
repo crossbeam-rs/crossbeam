@@ -22,7 +22,7 @@ std = ["crossbeam-utils/std", "lazy_static"]
 sanitize = [] # Makes it more likely to trigger any potential data races.
 
 [dependencies]
-cfg-if = "0.1"
+cfg-if = "0.1.2"
 memoffset = "0.2"
 
 [dependencies.arrayvec]
