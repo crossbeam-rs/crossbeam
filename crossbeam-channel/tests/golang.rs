@@ -693,7 +693,54 @@ mod select7 {
 
 // https://github.com/golang/go/blob/master/test/chan/sieve1.go
 mod sieve1 {
-    // TODO
+    use super::*;
+
+    fn generate(ch: Chan<i32>) {
+        let mut i = 2;
+        loop {
+            ch.send(i);
+            i += 1;
+        }
+    }
+
+    fn filter(in_ch: Chan<i32>, out_ch: Chan<i32>, prime: i32) {
+        for i in in_ch {
+            if i % prime != 0 {
+                out_ch.send(i);
+            }
+        }
+    }
+
+    fn sieve(primes: Chan<i32>) {
+        let mut ch = make::<i32>(1);
+        go!(ch, generate(ch));
+        loop {
+            let prime = ch.recv().unwrap();
+            primes.send(prime);
+
+            let ch1 = make::<i32>(1);
+            go!(ch, ch1, prime, filter(ch, ch1, prime));
+            ch = ch1;
+        }
+    }
+
+    #[test]
+    fn main() {
+        let primes = make::<i32>(1);
+        go!(primes, sieve(primes));
+
+        let a = [
+            2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83,
+            89, 97,
+        ];
+        for item in a.iter() {
+            let x = primes.recv().unwrap();
+            if x != *item {
+                println!("{} != {}", x, item);
+                panic!("fail");
+            }
+        }
+    }
 }
 
 // https://github.com/golang/go/blob/master/test/chan/zerosize.go
