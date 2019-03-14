@@ -699,7 +699,7 @@ mod sieve1 {
         let mut i = 2;
         loop {
             ch.send(i);
-            i+=1;
+            i += 1;
         }
     }
 
@@ -729,7 +729,10 @@ mod sieve1 {
         let primes = make::<i32>(1);
         go!(primes, sieve(primes));
 
-        let a = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97];
+        let a = [
+            2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83,
+            89, 97,
+        ];
         for item in a.iter() {
             let x = primes.recv().unwrap();
             if x != *item {
