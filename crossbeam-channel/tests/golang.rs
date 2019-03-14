@@ -636,6 +636,7 @@ mod select {
 
 // https://github.com/golang/go/blob/master/test/chan/select2.go
 mod select2 {
+    // TODO
 }
 
 // https://github.com/golang/go/blob/master/test/chan/select3.go
