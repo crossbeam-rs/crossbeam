@@ -552,15 +552,9 @@ impl<T> Sender<T> {
     pub fn same_channel(&self, other: &Sender<T>) -> bool {
         use self::SenderFlavor::*;
         match (&self.flavor, &other.flavor) {
-            (Array(ref self_counter), Array(ref other_counter)) => {
-                self_counter == other_counter
-            },
-            (List(ref self_counter), List(ref other_counter)) => {
-                self_counter == other_counter
-            },
-            (Zero(ref self_counter), Zero(ref other_counter)) => {
-                self_counter == other_counter
-            },
+            (Array(ref self_counter), Array(ref other_counter)) => self_counter == other_counter,
+            (List(ref self_counter), List(ref other_counter)) => self_counter == other_counter,
+            (Zero(ref self_counter), Zero(ref other_counter)) => self_counter == other_counter,
             // Channels of different flavours are never equal.
             _ => false,
         }
@@ -1029,21 +1023,15 @@ impl<T> Receiver<T> {
     pub fn same_channel(&self, other: &Receiver<T>) -> bool {
         use self::ReceiverFlavor::*;
         match (&self.flavor, &other.flavor) {
-            (Array(ref self_counter), Array(ref other_counter)) => {
-                self_counter == other_counter
-            },
-            (List(ref self_counter), List(ref other_counter)) => {
-                self_counter == other_counter
-            },
-            (Zero(ref self_counter), Zero(ref other_counter)) => {
-                self_counter == other_counter
-            },
+            (Array(ref self_counter), Array(ref other_counter)) => self_counter == other_counter,
+            (List(ref self_counter), List(ref other_counter)) => self_counter == other_counter,
+            (Zero(ref self_counter), Zero(ref other_counter)) => self_counter == other_counter,
             (After(ref self_channel), After(ref other_channel)) => {
                 Arc::ptr_eq(self_channel, other_channel)
-            },
+            }
             (Tick(ref self_channel), Tick(ref other_channel)) => {
                 Arc::ptr_eq(self_channel, other_channel)
-            },
+            }
             (Never(_), Never(_)) => true,
             // Channels of different flavours are never equal.
             _ => false,
