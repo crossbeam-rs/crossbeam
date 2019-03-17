@@ -103,3 +103,11 @@ fn zero_same_channel() {
     assert!(!r.same_channel(&r3));
     assert!(!r2.same_channel(&r3));
 }
+
+#[test]
+fn different_flavours_same_channel() {
+    let (s1, r1) = bounded::<usize>(0);
+    let (s2, r2) = unbounded::<usize>();
+    assert!(!s1.same_channel(&s2));
+    assert!(!r1.same_channel(&r2));
+}
