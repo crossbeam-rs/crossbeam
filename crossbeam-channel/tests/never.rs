@@ -97,16 +97,3 @@ fn recv_timeout() {
     assert!(now - start >= ms(200));
     assert!(now - start <= ms(250));
 }
-
-#[test]
-fn same_channel() {
-    let r = never::<usize>();
-
-    let r2 = r.clone();
-    assert!(r.same_channel(&r2));
-
-    // Never channel are always equal to one another.
-    let r3 = never::<usize>();
-    assert!(r.same_channel(&r3));
-    assert!(r2.same_channel(&r3));
-}

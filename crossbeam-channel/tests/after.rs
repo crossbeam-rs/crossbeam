@@ -337,19 +337,3 @@ fn fairness_duplicates() {
         assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
     }
 }
-
-#[test]
-fn same_channel() {
-    let r = after(ms(50));
-
-    let r2 = r.clone();
-    assert!(r.same_channel(&r2));
-
-    let r3 = after(ms(50));
-    assert!(!r.same_channel(&r3));
-    assert!(!r2.same_channel(&r3));
-
-    let r4 = after(ms(100));
-    assert!(!r.same_channel(&r4));
-    assert!(!r2.same_channel(&r4));
-}
