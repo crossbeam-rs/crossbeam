@@ -688,7 +688,65 @@ mod select6 {
 
 // https://github.com/golang/go/blob/master/test/chan/select7.go
 mod select7 {
-    // TODO
+    use super::*;
+
+    fn recv1(c: Chan<i32>) {
+        c.recv().unwrap();
+    }
+
+    fn recv2(c: Chan<i32>) {
+        select! {
+            recv(c.rx()) -> _ => ()
+        }
+    }
+
+    fn recv3(c: Chan<i32>) {
+        let c2 = make::<i32>(1);
+        select! {
+            recv(c.rx()) -> _ => (),
+            recv(c2.rx()) -> _ => ()
+        }
+    }
+
+    fn send1(recv: fn(Chan<i32>)) {
+        let c = make::<i32>(1);
+        go!(c, recv(c));
+        thread::yield_now();
+        c.send(1);
+    }
+
+    fn send2(recv: fn(Chan<i32>)) {
+        let c = make::<i32>(1);
+        go!(c, recv(c));
+        thread::yield_now();
+        select! {
+            send(c.tx(), 1) -> _ => ()
+        }
+    }
+
+    fn send3(recv: fn(Chan<i32>)) {
+        let c = make::<i32>(1);
+        go!(c, recv(c));
+        thread::yield_now();
+        let c2 = make::<i32>(1);
+        select! {
+            send(c.tx(), 1) -> _ => (),
+            send(c2.tx(), 1) -> _ => ()
+        }
+    }
+
+    #[test]
+    fn main() {
+        send1(recv1);
+        send2(recv1);
+        send3(recv1);
+        send1(recv2);
+        send2(recv2);
+        send3(recv2);
+        send1(recv3);
+        send2(recv3);
+        send3(recv3);
+    }
 }
 
 // https://github.com/golang/go/blob/master/test/chan/sieve1.go
