@@ -537,7 +537,6 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```rust
-    /// # fn main() {
     /// use crossbeam_channel::unbounded;
     ///
     /// let (s, _) = unbounded::<usize>();
@@ -547,7 +546,6 @@ impl<T> Sender<T> {
     ///
     /// let (s3, _) = unbounded();
     /// assert!(!s.same_channel(&s3));
-    /// # }
     /// ```
     pub fn same_channel(&self, other: &Sender<T>) -> bool {
         use self::SenderFlavor::*;
@@ -990,7 +988,6 @@ impl<T> Receiver<T> {
     /// # Examples
     ///
     /// ```rust
-    /// # fn main() {
     /// use crossbeam_channel::unbounded;
     ///
     /// let (_, r) = unbounded::<usize>();
@@ -1000,7 +997,6 @@ impl<T> Receiver<T> {
     ///
     /// let (_, r3) = unbounded();
     /// assert!(!r.same_channel(&r3));
-    /// # }
     /// ```
     ///
     /// # Notes
@@ -1008,7 +1004,6 @@ impl<T> Receiver<T> {
     /// Never channels always return true when using `same_channel`.
     ///
     /// ```
-    /// # fn main() {
     /// use crossbeam_channel::never;
     ///
     /// let r = never::<usize>();
@@ -1018,7 +1013,6 @@ impl<T> Receiver<T> {
     ///
     /// let r3 = never::<usize>();
     /// assert!(r.same_channel(&r3));
-    /// # }
     /// ```
     pub fn same_channel(&self, other: &Receiver<T>) -> bool {
         use self::ReceiverFlavor::*;
