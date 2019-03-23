@@ -56,6 +56,12 @@ pub use cache_padded::CachePadded;
 mod backoff;
 pub use backoff::Backoff;
 
+mod timestamp;
+pub use timestamp::Timestamp;
+
+mod cyclic_timestamp;
+pub use cyclic_timestamp::CyclicTimestamp;
+
 cfg_if! {
     if #[cfg(feature = "std")] {
         #[macro_use]
