@@ -6,7 +6,6 @@ use std::mem;
 use std::time::{Duration, Instant};
 
 use crossbeam_utils::Backoff;
-use smallvec::SmallVec;
 
 use channel::{self, Receiver, Sender};
 use context::Context;
@@ -523,7 +522,7 @@ fn run_ready(handles: &mut [(&SelectHandle, usize, *const u8)], timeout: Timeout
 /// [`ready_timeout`]: struct.Select.html#method.ready_timeout
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
-    handles: SmallVec<[(&'a SelectHandle, usize, *const u8); 4]>,
+    handles: Vec<(&'a SelectHandle, usize, *const u8)>,
 }
 
 unsafe impl<'a> Send for Select<'a> {}
@@ -544,7 +543,7 @@ impl<'a> Select<'a> {
     /// ```
     pub fn new() -> Select<'a> {
         Select {
-            handles: SmallVec::new(),
+            handles: Vec::with_capacity(4),
         }
     }
 

@@ -15,9 +15,6 @@ description = "Multi-producer multi-consumer channels for message passing"
 keywords = ["channel", "mpmc", "select", "golang", "message"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
-[dependencies]
-smallvec = "0.6.9"
-
 [dependencies.crossbeam-utils]
 version = "0.6.5"
 path = "../crossbeam-utils"
