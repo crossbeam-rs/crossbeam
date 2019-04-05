@@ -531,6 +531,32 @@ impl<T> Sender<T> {
             SenderFlavor::Zero(chan) => chan.capacity(),
         }
     }
+
+    /// Returns true if senders send to the same channel.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (s, _) = unbounded::<usize>();
+    ///
+    /// let s2 = s.clone();
+    /// assert!(s.identical_to(&s2));
+    ///
+    /// let (s3, _) = unbounded();
+    /// assert!(!s.identical_to(&s3));
+    /// ```
+    pub fn identical_to(&self, other: &Sender<T>) -> bool {
+        use self::SenderFlavor::*;
+        match (&self.flavor, &other.flavor) {
+            (Array(ref self_counter), Array(ref other_counter)) => self_counter == other_counter,
+            (List(ref self_counter), List(ref other_counter)) => self_counter == other_counter,
+            (Zero(ref self_counter), Zero(ref other_counter)) => self_counter == other_counter,
+            // Channels of different flavours are never equal.
+            _ => false,
+        }
+    }
 }
 
 impl<T> Drop for Sender<T> {
@@ -955,6 +981,55 @@ impl<T> Receiver<T> {
     /// ```
     pub fn try_iter(&self) -> TryIter<T> {
         TryIter { receiver: self }
+    }
+
+    /// Returns true if the receiver receive from the same channel.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use crossbeam_channel::unbounded;
+    ///
+    /// let (_, r) = unbounded::<usize>();
+    ///
+    /// let r2 = r.clone();
+    /// assert!(r.identical_to(&r2));
+    ///
+    /// let (_, r3) = unbounded();
+    /// assert!(!r.identical_to(&r3));
+    /// ```
+    ///
+    /// # Notes
+    ///
+    /// Never channels always return true when using `identical_to`.
+    ///
+    /// ```
+    /// use crossbeam_channel::never;
+    ///
+    /// let r = never::<usize>();
+    ///
+    /// let r2 = r.clone();
+    /// assert!(r.identical_to(&r2));
+    ///
+    /// let r3 = never::<usize>();
+    /// assert!(r.identical_to(&r3));
+    /// ```
+    pub fn identical_to(&self, other: &Receiver<T>) -> bool {
+        use self::ReceiverFlavor::*;
+        match (&self.flavor, &other.flavor) {
+            (Array(ref self_counter), Array(ref other_counter)) => self_counter == other_counter,
+            (List(ref self_counter), List(ref other_counter)) => self_counter == other_counter,
+            (Zero(ref self_counter), Zero(ref other_counter)) => self_counter == other_counter,
+            (After(ref self_channel), After(ref other_channel)) => {
+                Arc::ptr_eq(self_channel, other_channel)
+            }
+            (Tick(ref self_channel), Tick(ref other_channel)) => {
+                Arc::ptr_eq(self_channel, other_channel)
+            }
+            (Never(_), Never(_)) => true,
+            // Channels of different flavours are never equal.
+            _ => false,
+        }
     }
 }
 
