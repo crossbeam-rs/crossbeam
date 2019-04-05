@@ -542,12 +542,12 @@ impl<T> Sender<T> {
     /// let (s, _) = unbounded::<usize>();
     ///
     /// let s2 = s.clone();
-    /// assert!(s.same_channel(&s2));
+    /// assert!(s.identical_to(&s2));
     ///
     /// let (s3, _) = unbounded();
-    /// assert!(!s.same_channel(&s3));
+    /// assert!(!s.identical_to(&s3));
     /// ```
-    pub fn same_channel(&self, other: &Sender<T>) -> bool {
+    pub fn identical_to(&self, other: &Sender<T>) -> bool {
         use self::SenderFlavor::*;
         match (&self.flavor, &other.flavor) {
             (Array(ref self_counter), Array(ref other_counter)) => self_counter == other_counter,
@@ -993,15 +993,15 @@ impl<T> Receiver<T> {
     /// let (_, r) = unbounded::<usize>();
     ///
     /// let r2 = r.clone();
-    /// assert!(r.same_channel(&r2));
+    /// assert!(r.identical_to(&r2));
     ///
     /// let (_, r3) = unbounded();
-    /// assert!(!r.same_channel(&r3));
+    /// assert!(!r.identical_to(&r3));
     /// ```
     ///
     /// # Notes
     ///
-    /// Never channels always return true when using `same_channel`.
+    /// Never channels always return true when using `identical_to`.
     ///
     /// ```
     /// use crossbeam_channel::never;
@@ -1009,12 +1009,12 @@ impl<T> Receiver<T> {
     /// let r = never::<usize>();
     ///
     /// let r2 = r.clone();
-    /// assert!(r.same_channel(&r2));
+    /// assert!(r.identical_to(&r2));
     ///
     /// let r3 = never::<usize>();
-    /// assert!(r.same_channel(&r3));
+    /// assert!(r.identical_to(&r3));
     /// ```
-    pub fn same_channel(&self, other: &Receiver<T>) -> bool {
+    pub fn identical_to(&self, other: &Receiver<T>) -> bool {
         use self::ReceiverFlavor::*;
         match (&self.flavor, &other.flavor) {
             (Array(ref self_counter), Array(ref other_counter)) => self_counter == other_counter,
