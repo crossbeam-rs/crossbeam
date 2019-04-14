@@ -785,7 +785,7 @@ macro_rules! crossbeam_channel_internal {
                 (15usize _oper15)
                 (16usize _oper16)
                 (17usize _oper17)
-                (20usize _oper18)
+                (18usize _oper18)
                 (19usize _oper19)
                 (20usize _oper20)
                 (21usize _oper21)
