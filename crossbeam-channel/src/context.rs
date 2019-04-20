@@ -11,12 +11,13 @@ use crossbeam_utils::Backoff;
 use select::Selected;
 
 /// Thread-local context used in select.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Context {
     inner: Arc<Inner>,
 }
 
 /// Inner representation of `Context`.
+#[derive(Debug)]
 struct Inner {
     /// Selected operation.
     select: AtomicUsize,

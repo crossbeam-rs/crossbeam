@@ -19,14 +19,14 @@ use utils;
 /// `read` or `write`.
 ///
 /// Each field contains data associated with a specific channel flavor.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Token {
-    pub after: flavors::after::AfterToken,
-    pub array: flavors::array::ArrayToken,
-    pub list: flavors::list::ListToken,
-    pub never: flavors::never::NeverToken,
-    pub tick: flavors::tick::TickToken,
-    pub zero: flavors::zero::ZeroToken,
+    pub(crate) after: flavors::after::AfterToken,
+    pub(crate) array: flavors::array::ArrayToken,
+    pub(crate) list: flavors::list::ListToken,
+    pub(crate) never: flavors::never::NeverToken,
+    pub(crate) tick: flavors::tick::TickToken,
+    pub(crate) zero: flavors::zero::ZeroToken,
 }
 
 /// Identifier associated with an operation by a specific thread on a specific channel.
@@ -154,7 +154,7 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
 }
 
 /// Determines when a select operation should time out.
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum Timeout {
     /// No blocking.
     Now,
@@ -437,6 +437,57 @@ fn run_ready(handles: &mut [(&SelectHandle, usize, *const u8)], timeout: Timeout
     }
 }
 
+/// Attempts to select one of the operations without blocking.
+#[inline]
+pub fn try_select<'a>(
+    handles: &mut [(&'a SelectHandle, usize, *const u8)],
+) -> Result<SelectedOperation<'a>, TrySelectError> {
+    match run_select(handles, Timeout::Now) {
+        None => Err(TrySelectError),
+        Some((token, index, ptr)) => Ok(SelectedOperation {
+            token,
+            index,
+            ptr,
+            _marker: PhantomData,
+        }),
+    }
+}
+
+/// Blocks until one of the operations becomes ready and selects it.
+#[inline]
+pub fn select<'a>(handles: &mut [(&'a SelectHandle, usize, *const u8)]) -> SelectedOperation<'a> {
+    if handles.is_empty() {
+        panic!("no operations have been added to `Select`");
+    }
+
+    let (token, index, ptr) = run_select(handles, Timeout::Never).unwrap();
+    SelectedOperation {
+        token,
+        index,
+        ptr,
+        _marker: PhantomData,
+    }
+}
+
+/// Blocks for a limited time until one of the operations becomes ready and selects it.
+#[inline]
+pub fn select_timeout<'a>(
+    handles: &mut [(&'a SelectHandle, usize, *const u8)],
+    timeout: Duration,
+) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
+    let timeout = Timeout::At(Instant::now() + timeout);
+
+    match run_select(handles, timeout) {
+        None => Err(SelectTimeoutError),
+        Some((token, index, ptr)) => Ok(SelectedOperation {
+            token,
+            index,
+            ptr,
+            _marker: PhantomData,
+        }),
+    }
+}
+
 /// Selects from a set of channel operations.
 ///
 /// `Select` allows you to define a set of channel operations, wait until any one of them becomes
@@ -634,15 +685,7 @@ impl<'a> Select<'a> {
     /// }
     /// ```
     pub fn try_select(&mut self) -> Result<SelectedOperation<'a>, TrySelectError> {
-        match run_select(&mut self.handles, Timeout::Now) {
-            None => Err(TrySelectError),
-            Some((token, index, ptr)) => Ok(SelectedOperation {
-                token,
-                index,
-                ptr,
-                _marker: PhantomData,
-            }),
-        }
+        try_select(&mut self.handles)
     }
 
     /// Blocks until one of the operations becomes ready and selects it.
@@ -692,17 +735,7 @@ impl<'a> Select<'a> {
     /// }
     /// ```
     pub fn select(&mut self) -> SelectedOperation<'a> {
-        if self.handles.is_empty() {
-            panic!("no operations have been added to `Select`");
-        }
-
-        let (token, index, ptr) = run_select(&mut self.handles, Timeout::Never).unwrap();
-        SelectedOperation {
-            token,
-            index,
-            ptr,
-            _marker: PhantomData,
-        }
+        select(&mut self.handles)
     }
 
     /// Blocks for a limited time until one of the operations becomes ready and selects it.
@@ -755,17 +788,7 @@ impl<'a> Select<'a> {
         &mut self,
         timeout: Duration,
     ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
-        let timeout = Timeout::At(Instant::now() + timeout);
-
-        match run_select(&mut self.handles, timeout) {
-            None => Err(SelectTimeoutError),
-            Some((token, index, ptr)) => Ok(SelectedOperation {
-                token,
-                index,
-                ptr,
-                _marker: PhantomData,
-            }),
-        }
+        select_timeout(&mut self.handles, timeout)
     }
 
     /// Attempts to find a ready operation without blocking.

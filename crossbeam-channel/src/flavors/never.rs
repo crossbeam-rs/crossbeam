@@ -21,7 +21,7 @@ pub struct Channel<T> {
 impl<T> Channel<T> {
     /// Creates a channel that never delivers messages.
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Channel {
             _marker: PhantomData,
         }
