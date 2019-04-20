@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam)
 https://crates.io/crates/crossbeam)
 [![Documentation](https://docs.rs/crossbeam/badge.svg)](
 https://docs.rs/crossbeam)
-[![Rust 1.28+](https://img.shields.io/badge/rust-1.28+-lightgray.svg)](
+[![Rust 1.31+](https://img.shields.io/badge/rust-1.31+-lightgray.svg)](
 https://www.rust-lang.org)
 
 This crate provides a set of tools for concurrent programming:

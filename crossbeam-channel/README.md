@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam-channel)
 https://crates.io/crates/crossbeam-channel)
 [![Documentation](https://docs.rs/crossbeam-channel/badge.svg)](
 https://docs.rs/crossbeam-channel)
-[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
+[![Rust 1.31+](https://img.shields.io/badge/rust-1.31+-lightgray.svg)](
 https://www.rust-lang.org)
 
 This crate provides multi-producer multi-consumer channels for message passing.
