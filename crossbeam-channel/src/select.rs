@@ -19,14 +19,14 @@ use utils;
 /// `read` or `write`.
 ///
 /// Each field contains data associated with a specific channel flavor.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Token {
-    pub(crate) after: flavors::after::AfterToken,
-    pub(crate) array: flavors::array::ArrayToken,
-    pub(crate) list: flavors::list::ListToken,
-    pub(crate) never: flavors::never::NeverToken,
-    pub(crate) tick: flavors::tick::TickToken,
-    pub(crate) zero: flavors::zero::ZeroToken,
+    pub after: flavors::after::AfterToken,
+    pub array: flavors::array::ArrayToken,
+    pub list: flavors::list::ListToken,
+    pub never: flavors::never::NeverToken,
+    pub tick: flavors::tick::TickToken,
+    pub zero: flavors::zero::ZeroToken,
 }
 
 /// Identifier associated with an operation by a specific thread on a specific channel.
