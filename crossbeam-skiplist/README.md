@@ -10,6 +10,7 @@ https://crates.io/crates/crossbeam-skiplist)
 https://docs.rs/crossbeam-skiplist)
 [![Rust 1.28+](https://img.shields.io/badge/rust-1.28+-lightgray.svg)](
 https://www.rust-lang.org)
+[![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.gg/BBYwKq)
 
 **Note:** This crate is still a work in progress.
 
