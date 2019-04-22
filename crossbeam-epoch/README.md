@@ -10,6 +10,7 @@ https://crates.io/crates/crossbeam-epoch)
 https://docs.rs/crossbeam-epoch)
 [![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
 https://www.rust-lang.org)
+[![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.gg/BBYwKq)
 
 This crate provides epoch-based garbage collection for building concurrent data structures.
 
