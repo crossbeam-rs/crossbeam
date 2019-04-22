@@ -217,7 +217,7 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// ```
 ///
 /// [`select!`]: macro.select.html
-pub const fn never<T>() -> Receiver<T> {
+pub fn never<T>() -> Receiver<T> {
     Receiver {
         flavor: ReceiverFlavor::Never(flavors::never::Channel::new()),
     }

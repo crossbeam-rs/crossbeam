@@ -19,7 +19,7 @@ use utils;
 /// `read` or `write`.
 ///
 /// Each field contains data associated with a specific channel flavor.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Token {
     pub(crate) after: flavors::after::AfterToken,
     pub(crate) array: flavors::array::ArrayToken,
@@ -154,7 +154,7 @@ impl<'a, T: SelectHandle> SelectHandle for &'a T {
 }
 
 /// Determines when a select operation should time out.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum Timeout {
     /// No blocking.
     Now,
