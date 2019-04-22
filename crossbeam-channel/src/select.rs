@@ -574,6 +574,9 @@ pub fn select_timeout<'a>(
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
     handles: Vec<(&'a SelectHandle, usize, *const u8)>,
+
+    /// The next index to assign to an operation.
+    next_index: usize,
 }
 
 unsafe impl<'a> Send for Select<'a> {}
@@ -595,6 +598,7 @@ impl<'a> Select<'a> {
     pub fn new() -> Select<'a> {
         Select {
             handles: Vec::with_capacity(4),
+            next_index: 0,
         }
     }
 
@@ -614,9 +618,10 @@ impl<'a> Select<'a> {
     /// let index = sel.send(&s);
     /// ```
     pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
-        let i = self.handles.len();
+        let i = self.next_index;
         let ptr = s as *const Sender<_> as *const u8;
         self.handles.push((s, i, ptr));
+        self.next_index += 1;
         i
     }
 
@@ -636,10 +641,86 @@ impl<'a> Select<'a> {
     /// let index = sel.recv(&r);
     /// ```
     pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
-        let i = self.handles.len();
+        let i = self.next_index;
         let ptr = r as *const Receiver<_> as *const u8;
         self.handles.push((r, i, ptr));
+        self.next_index += 1;
         i
+    }
+
+    /// Clears the list of operations.
+    ///
+    /// Newly added operations will be assigned indices as usual, starting with 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s, r) = unbounded::<i32>();
+    ///
+    /// let mut sel = Select::new();
+    /// let index = sel.recv(&r);
+    /// assert_eq!(index, 0);
+    ///
+    /// sel.clear();
+    ///
+    /// let index = sel.send(&s);
+    /// assert_eq!(index, 0);
+    /// ```
+    pub fn clear(&mut self) {
+        self.handles.clear();
+        self.next_index = 0;
+    }
+
+    /// Disables an operation, preventing it from being selected.
+    ///
+    /// This is useful when an operation is selected because the channel got disconnected and we
+    /// want to try again to select a different operation instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded::<i32>();
+    /// let (_, r2) = unbounded::<i32>();
+    ///
+    /// let mut sel = Select::new();
+    /// let oper1 = sel.recv(&r1);
+    /// let oper2 = sel.recv(&r2);
+    ///
+    /// // Both operations are initially ready, so a random one will be executed.
+    /// let oper = sel.select();
+    /// assert_eq!(oper.index(), oper2);
+    /// assert!(oper.recv(&r2).is_err());
+    /// sel.disable(oper2);
+    ///
+    /// s1.send(10).unwrap();
+    ///
+    /// let oper = sel.select();
+    /// assert_eq!(oper.index(), oper1);
+    /// assert_eq!(oper.recv(&r1), Ok(10));
+    /// ```
+    pub fn disable(&mut self, index: usize) {
+        assert!(
+            index < self.next_index,
+            "index out of bounds; {} >= {}",
+            index,
+            self.next_index,
+        );
+
+        let i = self
+            .handles
+            .iter()
+            .enumerate()
+            .find(|(_, (_, i, _))| *i == index)
+            .unwrap()
+            .0;
+
+        self.handles.swap_remove(i);
     }
 
     /// Attempts to select one of the operations without blocking.
@@ -938,6 +1019,7 @@ impl<'a> Clone for Select<'a> {
     fn clone(&self) -> Select<'a> {
         Select {
             handles: self.handles.clone(),
+            next_index: self.next_index,
         }
     }
 }
