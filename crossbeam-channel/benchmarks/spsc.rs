@@ -8,7 +8,7 @@ mod message;
 const MESSAGES: usize = 5_000_000;
 
 fn seq() {
-    let (p, c) = queue::spsc(MESSAGES);
+    let (p, c) = queue::spsc::new(MESSAGES);
 
     for i in 0..MESSAGES {
         p.push(message::new(i)).unwrap();
@@ -20,7 +20,7 @@ fn seq() {
 }
 
 fn spsc() {
-    let (p, c) = queue::spsc(MESSAGES);
+    let (p, c) = queue::spsc::new(MESSAGES);
 
     crossbeam::scope(|scope| {
         scope.spawn(move |_| {
