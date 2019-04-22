@@ -359,6 +359,13 @@ mod select_macro;
 mod utils;
 mod waker;
 
+/// Crate internals used by the `select!` macro.
+#[doc(hidden)]
+pub mod internal {
+    pub use select::SelectHandle;
+    pub use select::{select, select_timeout, try_select};
+}
+
 pub use channel::{after, never, tick};
 pub use channel::{bounded, unbounded};
 pub use channel::{IntoIter, Iter, TryIter};

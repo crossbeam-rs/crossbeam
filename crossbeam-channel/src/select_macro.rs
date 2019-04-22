@@ -38,9 +38,10 @@ macro_rules! crossbeam_channel_delegate {
 /// 3. `@case`: Parses a single case and verifies its argument list.
 ///
 /// The codegen stage consists of these subparts:
-/// 1. `@init`: Attempts to optimize `select!` away and initializes a `Select`.
-/// 2. `@add`: Adds send/receive operations to the `Select` and starts selection.
-/// 3. `@complete`: Completes the selected send/receive operation.
+/// 1. `@init`: Attempts to optimize `select!` away and initializes the list of handles.
+/// 1. `@count`: Counts the listed cases.
+/// 3. `@add`: Adds send/receive operations to the list of handles and starts selection.
+/// 4. `@complete`: Completes the selected send/receive operation.
 ///
 /// If the parsing stage encounters a syntax error or the codegen stage ends up with too many
 /// cases to process, the macro fails with a compile-time error.
@@ -754,13 +755,17 @@ macro_rules! crossbeam_channel_internal {
     //     }
     // }};
 
-    // Create a `Select` and add operations to it.
+    // Create the list of handles and add operations to it.
     (@init
         ($($cases:tt)*)
         $default:tt
     ) => {{
+        const _LEN: usize = crossbeam_channel_internal!(@count ($($cases)*));
+        let _handle: &$crate::internal::SelectHandle = &$crate::never::<()>();
+
         #[allow(unused_mut)]
-        let mut _sel = $crate::Select::new();
+        let mut _sel = [(_handle, 0, 0 as *const u8); _LEN];
+
         crossbeam_channel_internal!(
             @add
             _sel
@@ -804,6 +809,14 @@ macro_rules! crossbeam_channel_internal {
         )
     }};
 
+    // Count the listed cases.
+    (@count ()) => {
+        0
+    };
+    (@count ($oper:ident $args:tt -> $res:pat => $body:tt, $($cases:tt)*)) => {
+        1 + crossbeam_channel_internal!(@count ($($cases)*))
+    };
+
     // Run blocking selection.
     (@add
         $sel:ident
@@ -813,7 +826,7 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
     ) => {{
         let _oper: $crate::SelectedOperation<'_> = {
-            let _oper = $sel.select();
+            let _oper = $crate::internal::select(&mut $sel);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             #[allow(unsafe_code)]
@@ -836,7 +849,7 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
     ) => {{
         let _oper: ::std::option::Option<$crate::SelectedOperation<'_>> = {
-            let _oper = $sel.try_select();
+            let _oper = $crate::internal::try_select(&mut $sel);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             #[allow(unsafe_code)]
@@ -867,7 +880,7 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
     ) => {{
         let _oper: ::std::option::Option<$crate::SelectedOperation<'_>> = {
-            let _oper = $sel.select_timeout($timeout);
+            let _oper = $crate::internal::select_timeout(&mut $sel, $timeout);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             #[allow(unsafe_code)]
@@ -919,7 +932,7 @@ macro_rules! crossbeam_channel_internal {
                     }
                     unbind(_r)
                 };
-                $sel.recv($var);
+                $sel[$i] = ($var, $i, $var as *const $crate::Receiver<_> as *const u8);
 
                 crossbeam_channel_internal!(
                     @add
@@ -952,7 +965,7 @@ macro_rules! crossbeam_channel_internal {
                     }
                     unbind(_s)
                 };
-                $sel.send($var);
+                $sel[$i] = ($var, $i, $var as *const $crate::Sender<_> as *const u8);
 
                 crossbeam_channel_internal!(
                     @add
