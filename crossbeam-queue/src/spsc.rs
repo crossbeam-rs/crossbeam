@@ -1,3 +1,21 @@
+//! A bounded single-producer single-consumer queue.
+//!
+//! # Examples
+//!
+//! ```
+//! use crossbeam_queue::spsc;
+//!
+//! let (p, c) = spsc::new(2);
+//!
+//! assert!(p.push(1).is_ok());
+//! assert!(p.push(2).is_ok());
+//! assert!(p.push(3).is_err());
+//!
+//! assert_eq!(c.pop(), Ok(1));
+//! assert_eq!(c.pop(), Ok(2));
+//! assert!(c.pop().is_err());
+//! ```
+
 use std::cell::Cell;
 use std::fmt;
 use std::marker::PhantomData;
@@ -102,9 +120,9 @@ impl<T> Drop for Inner<T> {
 /// ```
 /// use crossbeam_queue::spsc;
 ///
-/// let (p, c) = spsc::<i32>(100);
+/// let (p, c) = spsc::new::<i32>(100);
 /// ```
-pub fn spsc<T>(cap: usize) -> (Producer<T>, Consumer<T>) {
+pub fn new<T>(cap: usize) -> (Producer<T>, Consumer<T>) {
     assert!(cap > 0, "capacity must be non-zero");
 
     // Allocate a buffer of length `cap`.
@@ -145,7 +163,7 @@ pub fn spsc<T>(cap: usize) -> (Producer<T>, Consumer<T>) {
 /// ```
 /// use crossbeam_queue::{spsc, PushError};
 ///
-/// let (p, c) = spsc::<i32>(1);
+/// let (p, c) = spsc::new::<i32>(1);
 ///
 /// assert_eq!(p.push(10), Ok(()));
 /// assert_eq!(p.push(20), Err(PushError(20)));
@@ -180,7 +198,7 @@ impl<T> Producer<T> {
     /// ```
     /// use crossbeam_queue::{spsc, PushError};
     ///
-    /// let (p, c) = spsc(1);
+    /// let (p, c) = spsc::new(1);
     ///
     /// assert_eq!(p.push(10), Ok(()));
     /// assert_eq!(p.push(20), Err(PushError(20)));
@@ -221,7 +239,7 @@ impl<T> Producer<T> {
     /// ```
     /// use crossbeam_queue::spsc;
     ///
-    /// let (p, c) = spsc::<i32>(100);
+    /// let (p, c) = spsc::new::<i32>(100);
     ///
     /// assert_eq!(p.capacity(), 100);
     /// ```
@@ -236,7 +254,7 @@ impl<T> Producer<T> {
     /// ```
     /// use crossbeam_queue::spsc;
     ///
-    /// let (p, c) = spsc(100);
+    /// let (p, c) = spsc::new(100);
     ///
     /// assert!(p.is_empty());
     /// p.push(1).unwrap();
@@ -253,7 +271,7 @@ impl<T> Producer<T> {
     /// ```
     /// use crossbeam_queue::spsc;
     ///
-    /// let (p, c) = spsc(1);
+    /// let (p, c) = spsc::new(1);
     ///
     /// assert!(!p.is_full());
     /// p.push(1).unwrap();
@@ -270,7 +288,7 @@ impl<T> Producer<T> {
     /// ```
     /// use crossbeam_queue::spsc;
     ///
-    /// let (p, c) = spsc(100);
+    /// let (p, c) = spsc::new(100);
     /// assert_eq!(p.len(), 0);
     ///
     /// p.push(10).unwrap();
@@ -300,7 +318,7 @@ impl<T> fmt::Debug for Producer<T> {
 /// ```
 /// use crossbeam_queue::{spsc, PopError};
 ///
-/// let (p, c) = spsc(1);
+/// let (p, c) = spsc::new(1);
 /// assert_eq!(p.push(10), Ok(()));
 ///
 /// assert_eq!(c.pop(), Ok(10));
@@ -336,7 +354,7 @@ impl<T> Consumer<T> {
     /// ```
     /// use crossbeam_queue::{spsc, PopError};
     ///
-    /// let (p, c) = spsc(1);
+    /// let (p, c) = spsc::new(1);
     /// assert_eq!(p.push(10), Ok(()));
     ///
     /// assert_eq!(c.pop(), Ok(10));
@@ -376,7 +394,7 @@ impl<T> Consumer<T> {
     /// ```
     /// use crossbeam_queue::spsc;
     ///
-    /// let (p, c) = spsc::<i32>(100);
+    /// let (p, c) = spsc::new::<i32>(100);
     ///
     /// assert_eq!(c.capacity(), 100);
     /// ```
@@ -391,7 +409,7 @@ impl<T> Consumer<T> {
     /// ```
     /// use crossbeam_queue::spsc;
     ///
-    /// let (p, c) = spsc(100);
+    /// let (p, c) = spsc::new(100);
     ///
     /// assert!(c.is_empty());
     /// p.push(1).unwrap();
@@ -408,7 +426,7 @@ impl<T> Consumer<T> {
     /// ```
     /// use crossbeam_queue::spsc;
     ///
-    /// let (p, c) = spsc(1);
+    /// let (p, c) = spsc::new(1);
     ///
     /// assert!(!c.is_full());
     /// p.push(1).unwrap();
@@ -425,7 +443,7 @@ impl<T> Consumer<T> {
     /// ```
     /// use crossbeam_queue::spsc;
     ///
-    /// let (p, c) = spsc(100);
+    /// let (p, c) = spsc::new(100);
     /// assert_eq!(c.len(), 0);
     ///
     /// p.push(10).unwrap();

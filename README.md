@@ -50,7 +50,7 @@ This crate provides a set of tools for concurrent programming:
 [`deque`]: https://docs.rs/crossbeam/*/crossbeam/deque/index.html
 [`ArrayQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.ArrayQueue.html
 [`SegQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.SegQueue.html
-[`spsc`]: https://docs.rs/crossbeam-queue/*/crossbeam_queue/fn.spsc.html
+[`spsc`]: https://docs.rs/crossbeam-queue/*/crossbeam_queue/spsc/index.html
 [`channel`]: https://docs.rs/crossbeam/*/crossbeam/channel/index.html
 [`Parker`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.Parker.html
 [`ShardedLock`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.ShardedLock.html

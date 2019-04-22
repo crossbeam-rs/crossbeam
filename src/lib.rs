@@ -34,7 +34,7 @@
 //! [`deque`]: deque/index.html
 //! [`ArrayQueue`]: queue/struct.ArrayQueue.html
 //! [`SegQueue`]: queue/struct.SegQueue.html
-//! [`spsc`]: queue/fn.spsc.html
+//! [`spsc`]: queue/spsc/index.html
 //! [`channel`]: channel/index.html
 //! [`Parker`]: sync/struct.Parker.html
 //! [`ShardedLock`]: sync/struct.ShardedLock.html

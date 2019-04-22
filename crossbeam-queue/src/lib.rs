@@ -8,7 +8,7 @@
 //!
 //! [`ArrayQueue`]: struct.ArrayQueue.html
 //! [`SegQueue`]: struct.SegQueue.html
-//! [`spsc`]: fn.spsc.html
+//! [`spsc`]: spsc/index.html
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
@@ -18,9 +18,8 @@ extern crate crossbeam_utils;
 mod array_queue;
 mod err;
 mod seg_queue;
-mod spsc;
 
 pub use self::array_queue::ArrayQueue;
 pub use self::err::{PopError, PushError};
 pub use self::seg_queue::SegQueue;
-pub use self::spsc::{spsc, Consumer, Producer};
+pub mod spsc;
