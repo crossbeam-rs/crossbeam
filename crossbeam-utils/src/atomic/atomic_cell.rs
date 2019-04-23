@@ -184,10 +184,10 @@ impl<T: Default> AtomicCell<T> {
     /// use crossbeam_utils::atomic::AtomicCell;
     ///
     /// let a = AtomicCell::new(5);
-    /// let five = c.take();
+    /// let five = a.take();
     ///
     /// assert_eq!(five, 5);
-    /// assert_eq!(c.into_inner(), 0);
+    /// assert_eq!(a.into_inner(), 0);
     /// ```
     pub fn take(&self) -> T {
         self.swap(Default::default())
