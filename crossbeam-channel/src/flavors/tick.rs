@@ -60,7 +60,7 @@ impl Channel {
         loop {
             // Compute the time to sleep until the next message or the deadline.
             let offset = {
-                let mut delivery_time = self.delivery_time.load();
+                let delivery_time = self.delivery_time.load();
                 let now = Instant::now();
 
                 // Check if we can receive the next message.
