@@ -698,7 +698,7 @@ fn channel_through_channel() {
 
                 for _ in 0..COUNT {
                     let (new_s, new_r) = bounded(cap);
-                    let mut new_r: T = Box::new(Some(new_r));
+                    let new_r: T = Box::new(Some(new_r));
 
                     select! {
                         send(s, new_r) -> _ => {}
@@ -713,7 +713,7 @@ fn channel_through_channel() {
 
                 for _ in 0..COUNT {
                     r = select! {
-                        recv(r) -> mut msg => {
+                        recv(r) -> msg => {
                             msg.unwrap()
                                 .downcast_mut::<Option<Receiver<T>>>()
                                 .unwrap()
