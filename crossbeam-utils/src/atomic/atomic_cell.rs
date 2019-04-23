@@ -21,7 +21,8 @@ use Backoff;
 /// [`AtomicCell::<T>::is_lock_free()`]: struct.AtomicCell.html#method.is_lock_free
 /// [`Acquire`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html#variant.Acquire
 /// [`Release`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html#variant.Release
-pub struct AtomicCell<T> {
+#[repr(transparent)]
+pub struct AtomicCell<T: ?Sized> {
     /// The inner value.
     ///
     /// If this value can be transmuted into a primitive atomic type, it will be treated as such.
@@ -47,24 +48,6 @@ impl<T> AtomicCell<T> {
         AtomicCell {
             value: UnsafeCell::new(val),
         }
-    }
-
-    /// Returns a mutable reference to the inner value.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_utils::atomic::AtomicCell;
-    ///
-    /// let mut a = AtomicCell::new(7);
-    /// *a.get_mut() += 1;
-    ///
-    /// assert_eq!(a.load(), 8);
-    /// ```
-    #[doc(hidden)]
-    #[deprecated(note = "this method is unsound and will be removed in the next release")]
-    pub fn get_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.value.get() }
     }
 
     /// Unwraps the atomic cell and returns its inner value.
@@ -153,6 +136,61 @@ impl<T> AtomicCell<T> {
     /// ```
     pub fn swap(&self, val: T) -> T {
         unsafe { atomic_swap(self.value.get(), val) }
+    }
+}
+
+impl<T: ?Sized> AtomicCell<T> {
+    /// Returns a raw pointer to the underlying data in this atomic cell.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::atomic::AtomicCell;
+    ///
+    /// let mut a = AtomicCell::new(5);
+    ///
+    /// let ptr = a.as_ptr();
+    /// ```
+    #[inline]
+    pub fn as_ptr(&self) -> *mut T {
+        self.value.get()
+    }
+
+    /// Returns a mutable reference to the inner value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::atomic::AtomicCell;
+    ///
+    /// let mut a = AtomicCell::new(7);
+    /// *a.get_mut() += 1;
+    ///
+    /// assert_eq!(a.load(), 8);
+    /// ```
+    #[doc(hidden)]
+    #[deprecated(note = "this method is unsound and will be removed in the next release")]
+    pub fn get_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.value.get() }
+    }
+}
+
+impl<T: Default> AtomicCell<T> {
+    /// Takes the value of the atomic cell, leaving `Default::default()` in its place.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::atomic::AtomicCell;
+    ///
+    /// let a = AtomicCell::new(5);
+    /// let five = c.take();
+    ///
+    /// assert_eq!(five, 5);
+    /// assert_eq!(c.into_inner(), 0);
+    /// ```
+    pub fn take(&self) -> T {
+        self.swap(Default::default())
     }
 }
 
