@@ -609,7 +609,7 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(500));
                 }
 
-                let mut done = false;
+                let done = false;
                 while !done {
                     let mut sel = Select::new();
                     sel.send(&s);
@@ -684,7 +684,7 @@ fn channel_through_channel() {
 
                 for _ in 0..COUNT {
                     let (new_s, new_r) = bounded(cap);
-                    let mut new_r: T = Box::new(Some(new_r));
+                    let new_r: T = Box::new(Some(new_r));
 
                     {
                         let mut sel = Select::new();
