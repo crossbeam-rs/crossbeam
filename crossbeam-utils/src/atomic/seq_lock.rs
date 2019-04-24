@@ -12,11 +12,9 @@ pub struct SeqLock {
 }
 
 impl SeqLock {
-    pub const fn new() -> Self {
-        Self {
-            state: AtomicUsize::new(0),
-        }
-    }
+    pub const INIT: Self = Self {
+        state: AtomicUsize::new(0),
+    };
 
     /// If not locked, returns the current stamp.
     ///
@@ -62,7 +60,7 @@ impl SeqLock {
     }
 }
 
-/// A RAII guard that releases the lock and increments the stamp when dropped.
+/// An RAII guard that releases the lock and increments the stamp when dropped.
 pub struct SeqLockWriteGuard {
     /// The parent lock.
     lock: &'static SeqLock,

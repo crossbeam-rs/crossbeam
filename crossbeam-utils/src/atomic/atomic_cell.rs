@@ -666,7 +666,7 @@ fn lock(addr: usize) -> &'static SeqLock {
     // In order to protect from such cases, we simply choose a large prime number for `LEN`.
     const LEN: usize = 97;
 
-    const L: SeqLock = SeqLock::new();
+    const L: SeqLock = SeqLock::INIT;
 
     static LOCKS: [SeqLock; LEN] = [
         L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
