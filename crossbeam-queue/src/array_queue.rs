@@ -441,10 +441,10 @@ impl<T> ArrayQueue<T> {
                     return Err(PopError);
                 }
 
-                return Err(PushError(value));
+                return Err(PopError);
             } else {
                 // We need to wait for the stamp to get updated, but we cannot lock, so return
-                return Err(PushError(value));
+                return Err(PopError);
             }
         }
     }
