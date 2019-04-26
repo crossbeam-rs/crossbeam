@@ -19,8 +19,8 @@ matrix:
   - rust: 1.28.0
     name: "crossbeam-channel on 1.28.0"
     script: ./ci/crossbeam-channel.sh
-  - rust: 1.28.0
-    name: "crossbeam-deque on 1.28.0"
+  - rust: 1.26.0
+    name: "crossbeam-deque on 1.26.0"
     script: ./ci/crossbeam-deque.sh
   - rust: 1.28.0
     name: "crossbeam-epoch on 1.28.0"
@@ -31,8 +31,8 @@ matrix:
   - rust: 1.28.0
     name: "crossbeam-skiplist on 1.28.0"
     script: ./ci/crossbeam-skiplist.sh
-  - rust: 1.28.0
-    name: "crossbeam-utils on 1.28.0"
+  - rust: 1.26.0
+    name: "crossbeam-utils on 1.26.0"
     script: ./ci/crossbeam-utils.sh
 
   # Test crates on nightly Rust.

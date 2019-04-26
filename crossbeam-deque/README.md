@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam-deque)
 https://crates.io/crates/crossbeam-deque)
 [![Documentation](https://docs.rs/crossbeam-deque/badge.svg)](
 https://docs.rs/crossbeam-deque)
-[![Rust 1.28+](https://img.shields.io/badge/rust-1.28+-lightgray.svg)](
+[![Rust 1.26+](https://img.shields.io/badge/rust-1.26+-lightgray.svg)](
 https://www.rust-lang.org)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.gg/BBYwKq)
 
