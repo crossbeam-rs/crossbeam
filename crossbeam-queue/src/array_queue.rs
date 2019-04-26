@@ -8,12 +8,12 @@
 //!   - Simplified BSD License and Apache License, Version 2.0
 //!   - http://www.1024cores.net/home/code-license
 
-use std::cell::UnsafeCell;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem;
-use std::ptr;
-use std::sync::atomic::{self, AtomicUsize, Ordering};
+use core::cell::UnsafeCell;
+use core::fmt;
+use core::marker::PhantomData;
+use core::mem;
+use core::ptr;
+use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 

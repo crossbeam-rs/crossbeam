@@ -15,6 +15,14 @@ description = "Concurrent queues"
 keywords = ["queue", "mpmc", "lock-free", "producer", "consumer"]
 categories = ["concurrency", "data-structures"]
 
+[features]
+default = ["std"]
+nightly = ["crossbeam-utils/nightly"]
+std = ["crossbeam-utils/std"]
+
+[dependencies]
+cfg-if = "0.1.2"
+
 [dependencies.crossbeam-utils]
 version = "0.6.5"
 path = "../crossbeam-utils"
