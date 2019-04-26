@@ -21,8 +21,8 @@ travis-ci = { repository = "crossbeam-rs/crossbeam" }
 
 [features]
 default = ["std"]
-nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
-std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
+nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
+std = ["crossbeam-epoch/std", "crossbeam-utils/std", "crossbeam-queue/std"]
 
 [dependencies]
 cfg-if = "0.1.2"
