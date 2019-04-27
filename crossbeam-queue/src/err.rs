@@ -1,5 +1,5 @@
 use core::fmt;
-#[cfg(feature = "std")]
+#[cfg(not(feature = "no_std"))]
 use std::error;
 
 /// Error which occurs when popping from an empty queue.
@@ -18,7 +18,7 @@ impl fmt::Display for PopError {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(not(feature = "no_std"))]
 impl error::Error for PopError {
     fn description(&self) -> &str {
         "popping from an empty queue"
@@ -41,7 +41,7 @@ impl<T> fmt::Display for PushError<T> {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(not(feature = "no_std"))]
 impl<T: Send> error::Error for PushError<T> {
     fn description(&self) -> &str {
         "pushing into a full queue"

@@ -56,16 +56,16 @@
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(feature = "no_std", no_std)]
 #![cfg_attr(feature = "nightly", feature(const_fn))]
 
 #[macro_use]
 extern crate cfg_if;
-#[cfg(feature = "std")]
+#[cfg(not(feature = "no_std"))]
 extern crate core;
 
 cfg_if! {
-    if #[cfg(feature = "nightly")] {
+    if #[cfg(feature = "no_std")] {
         extern crate alloc;
     } else {
         mod alloc {
@@ -81,6 +81,8 @@ extern crate crossbeam_utils;
 extern crate memoffset;
 #[macro_use]
 extern crate scopeguard;
+#[macro_use]
+extern crate lazy_static;
 
 mod atomic;
 mod collector;
@@ -95,10 +97,7 @@ pub use self::collector::{Collector, LocalHandle};
 pub use self::guard::{unprotected, Guard};
 
 cfg_if! {
-    if #[cfg(feature = "std")] {
-        #[macro_use]
-        extern crate lazy_static;
-
+    if #[cfg(not(feature = "no_std"))] {
         mod default;
         pub use self::default::{default_collector, is_pinned, pin};
     }

@@ -15,6 +15,12 @@ description = "Concurrent work-stealing deque"
 keywords = ["chase-lev", "lock-free", "scheduler", "scheduling"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
+[features]
+no_std = []
+
+[dependencies]
+cfg-if = "0.1.2"
+
 [dependencies.crossbeam-epoch]
 version = "0.7"
 path = "../crossbeam-epoch"

@@ -16,9 +16,9 @@ keywords = ["queue", "mpmc", "lock-free", "producer", "consumer"]
 categories = ["concurrency", "data-structures"]
 
 [features]
-default = ["std"]
+default = []
 nightly = ["crossbeam-utils/nightly"]
-std = ["crossbeam-utils/std"]
+no_std = ["crossbeam-utils/no_std"]
 
 [dependencies]
 cfg-if = "0.1.2"

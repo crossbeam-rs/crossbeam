@@ -517,7 +517,7 @@ macro_rules! impl_arithmetic {
 }
 
 cfg_if! {
-    if #[cfg(feature = "nightly")] {
+    if #[cfg(feature = "no_std")] {
         impl_arithmetic!(u8, "8", atomic::AtomicU8, "let a = AtomicCell::new(7u8);");
         impl_arithmetic!(i8, "8", atomic::AtomicI8, "let a = AtomicCell::new(7i8);");
         impl_arithmetic!(u16, "16", atomic::AtomicU16, "let a = AtomicCell::new(7u16);");

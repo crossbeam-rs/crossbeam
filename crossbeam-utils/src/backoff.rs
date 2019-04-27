@@ -208,12 +208,12 @@ impl Backoff {
                 atomic::spin_loop_hint();
             }
         } else {
-            #[cfg(not(feature = "std"))]
+            #[cfg(not(not(feature = "no_std")))]
             for _ in 0..1 << self.step.get() {
                 atomic::spin_loop_hint();
             }
 
-            #[cfg(feature = "std")]
+            #[cfg(not(feature = "no_std"))]
             ::std::thread::yield_now();
         }
 

@@ -20,9 +20,20 @@ exclude = ["/ci/*", "/.travis.yml", "/bors.toml"]
 travis-ci = { repository = "crossbeam-rs/crossbeam" }
 
 [features]
-default = ["std"]
-nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
-std = ["crossbeam-epoch/std", "crossbeam-utils/std", "crossbeam-queue/std"]
+default = []
+nightly = [
+    "crossbeam-channel/nightly",
+    "crossbeam-epoch/nightly",
+    "crossbeam-utils/nightly",
+    "crossbeam-queue/nightly",
+]
+no_std = [
+    "crossbeam-channel/no_std",
+    "crossbeam-epoch/no_std",
+    "crossbeam-utils/no_std",
+    "crossbeam-queue/no_std",
+    "crossbeam-deque/no_std"
+]
 
 [dependencies]
 cfg-if = "0.1.2"

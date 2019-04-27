@@ -16,9 +16,9 @@ keywords = ["map", "set", "skiplist", "lock-free"]
 categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 
 [features]
-default = ["std"]
+default = []
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
-std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
+no_std = ["crossbeam-epoch/no_std", "crossbeam-utils/no_std"]
 
 [dependencies]
 cfg-if = "0.1.2"

@@ -44,16 +44,16 @@
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(feature = "no_std", no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
 #[macro_use]
 extern crate cfg_if;
-#[cfg(feature = "std")]
+#[cfg(not(feature = "no_std"))]
 extern crate core;
 
 cfg_if! {
-    if #[cfg(feature = "nightly")] {
+    if #[cfg(feature = "no_std")] {
         extern crate alloc;
     } else {
         mod alloc {
@@ -80,7 +80,7 @@ pub mod utils {
 }
 
 cfg_if! {
-    if #[cfg(feature = "std")] {
+    if #[cfg(not(feature = "no_std"))] {
         mod _deque {
             pub extern crate crossbeam_deque;
         }
