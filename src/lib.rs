@@ -71,6 +71,12 @@ pub use _epoch::crossbeam_epoch as epoch;
 
 extern crate crossbeam_utils;
 
+mod _queue {
+    pub extern crate crossbeam_queue;
+}
+#[doc(inline)]
+pub use _queue::crossbeam_queue as queue;
+
 pub use crossbeam_utils::atomic;
 
 /// Miscellaneous utilities.
@@ -97,12 +103,6 @@ cfg_if! {
         // HACK(stjepang): This is the only way to reexport `select!` in Rust older than 1.30.0
         #[doc(hidden)]
         pub use _channel::*;
-
-        mod _queue {
-            pub extern crate crossbeam_queue;
-        }
-        #[doc(inline)]
-        pub use _queue::crossbeam_queue as queue;
 
         pub use crossbeam_utils::sync;
         pub use crossbeam_utils::thread;
