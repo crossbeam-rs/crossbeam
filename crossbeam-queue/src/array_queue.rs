@@ -8,13 +8,13 @@
 //!   - Simplified BSD License and Apache License, Version 2.0
 //!   - http://www.1024cores.net/home/code-license
 
+use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
 use core::mem;
 use core::ptr;
 use core::sync::atomic::{self, AtomicUsize, Ordering};
-use alloc::vec::Vec;
 
 use crossbeam_utils::{Backoff, CachePadded};
 

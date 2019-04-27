@@ -1,10 +1,10 @@
+use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
 use core::mem::{self, ManuallyDrop};
 use core::ptr;
 use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
-use alloc::boxed::Box;
 
 use crossbeam_utils::{Backoff, CachePadded};
 

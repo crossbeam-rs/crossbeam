@@ -87,7 +87,6 @@
 //! [`steal_batch_and_pop()`]: struct.Stealer.html#method.steal_batch_and_pop
 
 #![cfg_attr(feature = "no_std", no_std)]
-
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 
