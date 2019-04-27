@@ -167,9 +167,6 @@ pub fn new<T>(cap: usize) -> (Producer<T>, Consumer<T>) {
 ///
 /// assert_eq!(p.push(10), Ok(()));
 /// assert_eq!(p.push(20), Err(PushError(20)));
-///
-/// assert!(!p.is_empty());
-/// assert!(p.is_full());
 /// ```
 pub struct Producer<T> {
     /// The inner representation of the queue.
@@ -246,63 +243,6 @@ impl<T> Producer<T> {
     pub fn capacity(&self) -> usize {
         self.inner.cap
     }
-
-    /// Returns `true` if the queue is empty.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_queue::spsc;
-    ///
-    /// let (p, c) = spsc::new(100);
-    ///
-    /// assert!(p.is_empty());
-    /// p.push(1).unwrap();
-    /// assert!(!p.is_empty());
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns `true` if the queue is full.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_queue::spsc;
-    ///
-    /// let (p, c) = spsc::new(1);
-    ///
-    /// assert!(!p.is_full());
-    /// p.push(1).unwrap();
-    /// assert!(p.is_full());
-    /// ```
-    pub fn is_full(&self) -> bool {
-        self.len() == self.inner.cap
-    }
-
-    /// Returns the number of elements in the queue.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_queue::spsc;
-    ///
-    /// let (p, c) = spsc::new(100);
-    /// assert_eq!(p.len(), 0);
-    ///
-    /// p.push(10).unwrap();
-    /// assert_eq!(p.len(), 1);
-    ///
-    /// p.push(20).unwrap();
-    /// assert_eq!(p.len(), 2);
-    /// ```
-    pub fn len(&self) -> usize {
-        let head = self.inner.head.load(Ordering::Acquire);
-        let tail = self.tail.get();
-        self.head.set(head);
-        self.inner.distance(head, tail)
-    }
 }
 
 impl<T> fmt::Debug for Producer<T> {
@@ -323,9 +263,6 @@ impl<T> fmt::Debug for Producer<T> {
 ///
 /// assert_eq!(c.pop(), Ok(10));
 /// assert_eq!(c.pop(), Err(PopError));
-///
-/// assert!(c.is_empty());
-/// assert!(!c.is_full());
 /// ```
 pub struct Consumer<T> {
     /// The inner representation of the queue.
@@ -400,63 +337,6 @@ impl<T> Consumer<T> {
     /// ```
     pub fn capacity(&self) -> usize {
         self.inner.cap
-    }
-
-    /// Returns `true` if the queue is empty.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_queue::spsc;
-    ///
-    /// let (p, c) = spsc::new(100);
-    ///
-    /// assert!(c.is_empty());
-    /// p.push(1).unwrap();
-    /// assert!(!c.is_empty());
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns `true` if the queue is full.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_queue::spsc;
-    ///
-    /// let (p, c) = spsc::new(1);
-    ///
-    /// assert!(!c.is_full());
-    /// p.push(1).unwrap();
-    /// assert!(c.is_full());
-    /// ```
-    pub fn is_full(&self) -> bool {
-        self.len() == self.inner.cap
-    }
-
-    /// Returns the number of elements in the queue.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_queue::spsc;
-    ///
-    /// let (p, c) = spsc::new(100);
-    /// assert_eq!(c.len(), 0);
-    ///
-    /// p.push(10).unwrap();
-    /// assert_eq!(c.len(), 1);
-    ///
-    /// p.push(20).unwrap();
-    /// assert_eq!(c.len(), 2);
-    /// ```
-    pub fn len(&self) -> usize {
-        let head = self.head.get();
-        let tail = self.inner.tail.load(Ordering::Acquire);
-        self.tail.set(tail);
-        self.inner.distance(head, tail)
     }
 }
 
