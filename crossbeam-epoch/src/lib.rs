@@ -68,31 +68,33 @@ cfg_if! {
     if #[cfg(feature = "nightly")] {
         extern crate alloc;
     } else {
-        mod alloc {
-            extern crate std;
-            pub use self::std::*;
-        }
+        #[cfg(feature = "std")]
+        extern crate std as alloc;
     }
 }
 
-extern crate arrayvec;
-extern crate crossbeam_utils;
-#[macro_use]
-extern crate memoffset;
-#[macro_use]
-extern crate scopeguard;
+cfg_if! {
+    if #[cfg(any(feature = "std", feature = "nightly"))] {
+        extern crate arrayvec;
+        extern crate crossbeam_utils;
+        #[macro_use]
+        extern crate memoffset;
+        #[macro_use]
+        extern crate scopeguard;
 
-mod atomic;
-mod collector;
-mod deferred;
-mod epoch;
-mod guard;
-mod internal;
-mod sync;
+        mod atomic;
+        mod collector;
+        mod deferred;
+        mod epoch;
+        mod guard;
+        mod internal;
+        mod sync;
 
-pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
-pub use self::collector::{Collector, LocalHandle};
-pub use self::guard::{unprotected, Guard};
+        pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
+        pub use self::collector::{Collector, LocalHandle};
+        pub use self::guard::{unprotected, Guard};
+    }
+}
 
 cfg_if! {
     if #[cfg(feature = "std")] {

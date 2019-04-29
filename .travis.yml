@@ -39,6 +39,8 @@ matrix:
   - rust: nightly
     name: "crossbeam on nightly"
     script: ./ci/crossbeam.sh
+    install:
+      - rustup target add thumbv7m-none-eabi
   - rust: nightly
     name: "crossbeam-channel on nightly"
     script: ./ci/crossbeam-channel.sh
@@ -48,6 +50,8 @@ matrix:
   - rust: nightly
     name: "crossbeam-epoch on nightly"
     script: ./ci/crossbeam-epoch.sh
+    install:
+      - rustup target add thumbv7m-none-eabi
     addons:
       apt:
         sources:
@@ -65,9 +69,13 @@ matrix:
   - rust: nightly
     name: "crossbeam-skiplist on nightly"
     script: ./ci/crossbeam-skiplist.sh
+    install:
+      - rustup target add thumbv7m-none-eabi
   - rust: nightly
     name: "crossbeam-utils on nightly"
     script: ./ci/crossbeam-utils.sh
+    install:
+      - rustup target add thumbv7m-none-eabi
 
   # Check for duplicate dependencies.
   - rust: nightly

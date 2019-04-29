@@ -22,7 +22,13 @@ travis-ci = { repository = "crossbeam-rs/crossbeam" }
 [features]
 default = ["std"]
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
-std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
+std = [
+  "crossbeam-channel",
+  "crossbeam-deque",
+  "crossbeam-epoch/std",
+  "crossbeam-queue",
+  "crossbeam-utils/std",
+]
 
 [dependencies]
 cfg-if = "0.1.2"
@@ -30,22 +36,27 @@ cfg-if = "0.1.2"
 [dependencies.crossbeam-channel]
 version = "0.3.7"
 path = "./crossbeam-channel"
+optional = true
 
 [dependencies.crossbeam-deque]
 version = "0.7.0"
 path = "./crossbeam-deque"
+optional = true
 
 [dependencies.crossbeam-epoch]
 version = "0.7.1"
 path = "./crossbeam-epoch"
+default-features = false
 
 [dependencies.crossbeam-queue]
 version = "0.1.0"
 path = "./crossbeam-queue"
+optional = true
 
 [dependencies.crossbeam-utils]
 version = "0.6.5"
 path = "./crossbeam-utils"
+default-features = false
 
 [dev-dependencies]
 rand = "0.6"

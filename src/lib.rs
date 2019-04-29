@@ -56,10 +56,8 @@ cfg_if! {
     if #[cfg(feature = "nightly")] {
         extern crate alloc;
     } else {
-        mod alloc {
-            extern crate std;
-            pub use self::std::*;
-        }
+        #[cfg(feature = "std")]
+        extern crate std as alloc;
     }
 }
 

@@ -13,20 +13,22 @@ cfg_if! {
     if #[cfg(feature = "nightly")] {
         extern crate alloc;
     } else {
-        mod alloc {
-            extern crate std;
-            pub use self::std::*;
-        }
+        #[cfg(feature = "std")]
+        extern crate std as alloc;
     }
 }
 
-extern crate crossbeam_epoch as epoch;
-extern crate crossbeam_utils as utils;
-extern crate scopeguard;
+cfg_if! {
+    if #[cfg(any(feature = "std", feature = "nightly"))] {
+        extern crate crossbeam_epoch as epoch;
+        extern crate crossbeam_utils as utils;
+        extern crate scopeguard;
 
-pub mod base;
-#[doc(inline)]
-pub use base::SkipList;
+        pub mod base;
+        #[doc(inline)]
+        pub use base::SkipList;
+    }
+}
 
 cfg_if! {
     if #[cfg(feature = "std")] {
