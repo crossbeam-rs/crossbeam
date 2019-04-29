@@ -14,7 +14,6 @@ if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
     cargo test --features nightly
 
     # Check for no_std environment.
-    cargo run --manifest-path ci/Cargo.toml --bin remove-dev-dependencies */Cargo.toml
     cargo check --target thumbv7m-none-eabi --no-default-features
     cargo check --target thumbv7m-none-eabi --no-default-features --features nightly
 fi
