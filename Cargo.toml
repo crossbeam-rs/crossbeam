@@ -29,6 +29,7 @@ std = [
   "crossbeam-queue",
   "crossbeam-utils/std",
 ]
+alloc = ["crossbeam-epoch/alloc", "crossbeam-utils/alloc"]
 
 [dependencies]
 cfg-if = "0.1.2"

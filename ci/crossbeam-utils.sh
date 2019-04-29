@@ -15,5 +15,6 @@ if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
 
     # Check for no_std environment.
     cargo check --target thumbv7m-none-eabi --no-default-features
-    cargo check --target thumbv7m-none-eabi --no-default-features --features nightly
+    cargo check --target thumbv7m-none-eabi --no-default-features --features alloc
+    cargo check --target thumbv7m-none-eabi --no-default-features --features alloc,nightly
 fi

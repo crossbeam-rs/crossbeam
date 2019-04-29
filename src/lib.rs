@@ -53,10 +53,9 @@ extern crate cfg_if;
 extern crate core;
 
 cfg_if! {
-    if #[cfg(feature = "nightly")] {
+    if #[cfg(feature = "alloc")] {
         extern crate alloc;
-    } else {
-        #[cfg(feature = "std")]
+    } else if #[cfg(feature = "std")] {
         extern crate std as alloc;
     }
 }

@@ -10,16 +10,15 @@ extern crate cfg_if;
 extern crate core;
 
 cfg_if! {
-    if #[cfg(feature = "nightly")] {
+    if #[cfg(feature = "alloc")] {
         extern crate alloc;
-    } else {
-        #[cfg(feature = "std")]
+    } else if #[cfg(feature = "std")] {
         extern crate std as alloc;
     }
 }
 
 cfg_if! {
-    if #[cfg(any(feature = "std", feature = "nightly"))] {
+    if #[cfg(any(feature = "alloc", feature = "std"))] {
         extern crate crossbeam_epoch as epoch;
         extern crate crossbeam_utils as utils;
         extern crate scopeguard;
