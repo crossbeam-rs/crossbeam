@@ -44,6 +44,10 @@ cfg_if! {
     }
 }
 
+#[cfg_attr(
+    feature = "nightly",
+    cfg(all(target_has_atomic = "cas", target_has_atomic = "ptr"))
+)]
 pub mod atomic;
 
 mod cache_padded;
