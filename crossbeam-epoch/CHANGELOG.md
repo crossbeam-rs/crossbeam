@@ -1,3 +1,5 @@
+- Add `Atomic::into_owned()`.
+
 # Version 0.7.1
 
 - Add `Shared::deref_mut()`.
