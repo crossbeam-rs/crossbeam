@@ -16,8 +16,8 @@ This crate provides miscellaneous tools for concurrent programming:
 
 #### Atomics
 
-* [`AtomicCell`], a thread-safe mutable memory location.<sup>(alloc)</sup>
-* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(alloc)</sup>
+* [`AtomicCell`], a thread-safe mutable memory location.<sup>(no_std)</sup>
+* [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.<sup>(no_std)</sup>
 
 #### Thread synchronization
 
@@ -27,8 +27,8 @@ This crate provides miscellaneous tools for concurrent programming:
 
 #### Utilities
 
-* [`Backoff`], for exponential backoff in spin loops.<sup>(alloc)</sup>
-* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(alloc)</sup>
+* [`Backoff`], for exponential backoff in spin loops.<sup>(no_std)</sup>
+* [`CachePadded`], for padding and aligning a value to the length of a cache line.<sup>(no_std)</sup>
 * [`scope`], for spawning threads that borrow local variables from the stack.
 
 *Features marked with <sup>(no_std)</sup> can be used in `no_std` environments.*<br/>

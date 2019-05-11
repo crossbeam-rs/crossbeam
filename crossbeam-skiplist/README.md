@@ -14,7 +14,7 @@ https://www.rust-lang.org)
 
 **Note:** This crate is still a work in progress.
 
-This crate can be used in `no_std` environments that implement `alloc`.
+This crate can be used in `no_std` environments that implement `alloc`. The `alloc` feature of this crate needs to be enabled in `no_std` environments.
 
 <!--
 ## Usage

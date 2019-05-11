@@ -19,6 +19,7 @@ categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 default = ["std"]
 nightly = []
 std = ["lazy_static"]
+alloc = []
 
 [dependencies]
 cfg-if = "0.1.2"

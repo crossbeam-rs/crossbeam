@@ -37,16 +37,17 @@ extern crate cfg_if;
 extern crate core;
 
 cfg_if! {
-    if #[cfg(feature = "nightly")] {
+    if #[cfg(feature = "alloc")] {
         extern crate alloc;
-    } else {
-        mod alloc {
-            extern crate std;
-            pub use self::std::*;
-        }
+    } else if #[cfg(feature = "std")] {
+        extern crate std as alloc;
     }
 }
 
+#[cfg_attr(
+    feature = "nightly",
+    cfg(all(target_has_atomic = "cas", target_has_atomic = "ptr"))
+)]
 pub mod atomic;
 
 mod cache_padded;

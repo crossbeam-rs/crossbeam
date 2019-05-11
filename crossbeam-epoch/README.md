@@ -20,7 +20,7 @@ immediately. Epoch-based GC is an efficient mechanism for deferring destruction 
 shared objects until no pointers to them can exist.
 
 Everything in this crate except the global GC can be used in `no_std` environments that implement
-`alloc`.
+`alloc`. The `alloc` feature of this crate needs to be enabled in `no_std` environments.
 
 ## Usage
 
