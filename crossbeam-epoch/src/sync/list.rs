@@ -247,31 +247,38 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                 // node leaves the list in an invalid state.
                 debug_assert!(self.curr.tag() == 0);
 
-                match self
+                // Try to unlink `curr` from the list, and get the new value of `self.pred`.
+                let succ = self
                     .pred
                     .compare_and_set(self.curr, succ, Acquire, self.guard)
-                {
-                    Ok(_) => {
-                        // We succeeded in unlinking this element from the list, so we have to
-                        // schedule deallocation. Deferred drop is okay, because `list.delete()`
-                        // can only be called if `T: 'static`.
+                    .map(|_| {
+                        // We succeeded in unlinking `curr`, so we have to schedule
+                        // deallocation. Deferred drop is okay, because `list.delete()` can only be
+                        // called if `T: 'static`.
                         unsafe {
                             C::finalize(self.curr.deref(), self.guard);
                         }
 
-                        // Move over the removed by only advancing `curr`, not `pred`.
-                        self.curr = succ;
-                        continue;
-                    }
-                    Err(_) => {
-                        // A concurrent thread modified the predecessor node. Since it might've
-                        // been deleted, we need to restart from `head`.
-                        self.pred = self.head;
-                        self.curr = self.head.load(Acquire, self.guard);
+                        // `succ` is the new value of `self.pred`.
+                        succ
+                    })
+                    .unwrap_or_else(|e| {
+                        // `e.current` is the current value of `self.pred`.
+                        e.current
+                    });
 
-                        return Some(Err(IterError::Stalled));
-                    }
+                // If the predecessor node is already marked as deleted, we need to restart from
+                // `head`.
+                if succ.tag() != 0 {
+                    self.pred = self.head;
+                    self.curr = self.head.load(Acquire, self.guard);
+
+                    return Some(Err(IterError::Stalled));
                 }
+
+                // Move over the removed by only advancing `curr`, not `pred`.
+                self.curr = succ;
+                continue;
             }
 
             // Move one step forward.
