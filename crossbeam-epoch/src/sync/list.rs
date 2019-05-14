@@ -44,7 +44,7 @@ pub struct Entry {
 ///
 ///     unsafe fn finalize(entry: &Entry) {
 ///         let elem = Self::element_of(entry);
-///         drop(Box::from_raw(elem as *const A as *mut A));
+///         drop(Owned::from_raw(elem as *const A as *mut A));
 ///     }
 /// }
 /// ```
@@ -166,7 +166,7 @@ impl<T, C: IsElement<T>> List<T, C> {
     /// You should guarantee that:
     ///
     /// - `container` is not null
-    /// - `container` is immovable, e.g. inside a `Box`
+    /// - `container` is immovable, e.g. inside an `Owned`
     /// - the same `Entry` is not inserted more than once
     /// - the inserted object will be removed before the list is dropped
     pub unsafe fn insert<'g>(&'g self, container: Shared<'g, T>, guard: &'g Guard) {
@@ -304,7 +304,7 @@ mod tests {
         }
 
         unsafe fn finalize(entry: &Entry) {
-            drop(Box::from_raw(entry as *const Entry as *mut Entry));
+            drop(Owned::from_raw(entry as *const Entry as *mut Entry));
         }
     }
 

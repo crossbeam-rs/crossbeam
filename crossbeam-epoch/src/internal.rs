@@ -35,7 +35,6 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use alloc::boxed::Box;
 use core::cell::{Cell, UnsafeCell};
 use core::mem::{self, ManuallyDrop};
 use core::num::Wrapping;
@@ -504,7 +503,7 @@ impl IsElement<Local> for Local {
 
     unsafe fn finalize(entry: &Entry) {
         let local = Self::element_of(entry);
-        drop(Box::from_raw(local as *const Local as *mut Local));
+        drop(Owned::from_raw(local as *const Local as *mut Local));
     }
 }
 
