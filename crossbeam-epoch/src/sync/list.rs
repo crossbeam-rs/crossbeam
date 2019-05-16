@@ -42,9 +42,8 @@ pub struct Entry {
 ///         &*elem_ptr
 ///     }
 ///
-///     unsafe fn finalize(entry: &Entry) {
-///         let elem = Self::element_of(entry);
-///         drop(Owned::from_raw(elem as *const A as *mut A));
+///     unsafe fn finalize(entry: &Entry, guard: &Guard) {
+///         guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _));
 ///     }
 /// }
 /// ```
@@ -78,17 +77,18 @@ pub trait IsElement<T> {
     /// ```
     ///
     /// # Safety
-    /// The caller has to guarantee that the `Entry` it
-    /// is called with was retrieved from an instance of the element type (`T`).
+    ///
+    /// The caller has to guarantee that the `Entry` is called with was retrieved from an instance
+    /// of the element type (`T`).
     unsafe fn element_of(&Entry) -> &T;
 
-    /// Deallocates the whole element given its `Entry`. This is called when the list
-    /// is ready to actually free the element.
+    /// The function that is called when an entry is unlinked from list.
     ///
     /// # Safety
-    /// The caller has to guarantee that the `Entry` it
-    /// is called with was retrieved from an instance of the element type (`T`).
-    unsafe fn finalize(&Entry);
+    ///
+    /// The caller has to guarantee that the `Entry` is called with was retrieved from an instance
+    /// of the element type (`T`).
+    unsafe fn finalize(&Entry, &Guard);
 }
 
 /// A lock-free, intrusive linked list of type `T`.
@@ -225,7 +225,7 @@ impl<T, C: IsElement<T>> Drop for List<T, C> {
                 // Verify that all elements have been removed from the list.
                 assert_eq!(succ.tag(), 1);
 
-                C::finalize(curr.deref());
+                C::finalize(curr.deref(), guard);
                 curr = succ;
             }
         }
@@ -256,8 +256,7 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                         // schedule deallocation. Deferred drop is okay, because `list.delete()`
                         // can only be called if `T: 'static`.
                         unsafe {
-                            let p = self.curr;
-                            self.guard.defer_unchecked(move || C::finalize(p.deref()));
+                            C::finalize(self.curr.deref(), self.guard);
                         }
 
                         // Move over the removed by only advancing `curr`, not `pred`.
@@ -303,8 +302,8 @@ mod tests {
             entry
         }
 
-        unsafe fn finalize(entry: &Entry) {
-            drop(Owned::from_raw(entry as *const Entry as *mut Entry));
+        unsafe fn finalize(entry: &Entry, guard: &Guard) {
+            guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _));
         }
     }
 
