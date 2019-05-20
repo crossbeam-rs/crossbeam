@@ -12,3 +12,5 @@ if [[ "$TRAVIS_RUST_VERSION" == "nightly" ]]; then
     cd benchmarks
     cargo check --bins
 fi
+
+//666666
