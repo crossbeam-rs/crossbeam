@@ -1,8 +1,9 @@
 ///! Reference counter for channels.
+
 use std::isize;
 use std::ops;
 use std::process;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// Reference counter internals.
 struct Counter<C> {
@@ -11,6 +12,9 @@ struct Counter<C> {
 
     /// The number of receivers associated with the channel.
     receivers: AtomicUsize,
+
+    /// Set to `true` if the last sender or the last receiver reference deallocates the channel.
+    destroy: AtomicBool,
 
     /// The internal channel.
     chan: C,
@@ -21,6 +25,7 @@ pub fn new<C>(chan: C) -> (Sender<C>, Receiver<C>) {
     let counter = Box::into_raw(Box::new(Counter {
         senders: AtomicUsize::new(1),
         receivers: AtomicUsize::new(1),
+        destroy: AtomicBool::new(false),
         chan,
     }));
     let s = Sender { counter };
@@ -60,7 +65,9 @@ impl<C> Sender<C> {
     /// Function `disconnect` will be called if this is the last sender reference.
     pub unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
         if self.counter().senders.fetch_sub(1, Ordering::AcqRel) == 1 {
-            if !disconnect(&self.counter().chan) {
+            disconnect(&self.counter().chan);
+
+            if self.counter().destroy.swap(true, Ordering::AcqRel) {
                 drop(Box::from_raw(self.counter));
             }
         }
@@ -113,7 +120,9 @@ impl<C> Receiver<C> {
     /// Function `disconnect` will be called if this is the last receiver reference.
     pub unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
         if self.counter().receivers.fetch_sub(1, Ordering::AcqRel) == 1 {
-            if !disconnect(&self.counter().chan) {
+            disconnect(&self.counter().chan);
+
+            if self.counter().destroy.swap(true, Ordering::AcqRel) {
                 drop(Box::from_raw(self.counter));
             }
         }
