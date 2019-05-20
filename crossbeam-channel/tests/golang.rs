@@ -324,16 +324,7 @@ mod goroutines {
 
     #[test]
     fn main() {
-        let mut n = 10_000i32;
-        if ::std::env::args().count() > 1 {
-            n = match i32::from_str_radix(::std::env::args().nth(1).unwrap().as_ref(), 10) {
-                Ok(n) => n,
-                Err(_) => {
-                    println!("bad arg");
-                    ::std::process::exit(1);
-                }
-            };
-        }
+        let n = 10_000i32;
 
         let leftmost = make::<i32>(0);
         let mut right = leftmost.clone();
