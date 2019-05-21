@@ -6,7 +6,7 @@ name = "crossbeam-queue"
 # - Create "crossbeam-queue-X.Y.Z" git tag
 version = "0.1.2"
 authors = ["The Crossbeam Project Developers"]
-license = "MIT/Apache-2.0"
+license = "MIT/Apache-2.0 AND BSD-2-Clause"
 readme = "README.md"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils"
