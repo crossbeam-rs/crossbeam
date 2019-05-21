@@ -1,4 +1,4 @@
-///! Reference counter for channels.
+//! Reference counter for channels.
 
 use std::isize;
 use std::ops;
