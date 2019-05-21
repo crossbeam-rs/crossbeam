@@ -74,7 +74,7 @@
 //! `'static` lifetime because the borrow checker cannot be sure when the thread will complete.
 //!
 //! A scope creates a clear boundary between variables outside the scope and threads inside the
-//! scope. Whenever a s.spawns a thread, it promises to join the thread before the scope ends.
+//! scope. Whenever a scope spawns a thread, it promises to join the thread before the scope ends.
 //! This way we guarantee to the borrow checker that scoped threads only live within the scope and
 //! can safely access variables outside it.
 //!
