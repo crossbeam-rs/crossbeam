@@ -1,5 +1,3 @@
-#![feature(mpsc_select)]
-
 extern crate crossbeam;
 
 use std::sync::mpsc;
@@ -142,78 +140,6 @@ fn mpsc_sync(cap: usize) {
     .unwrap();
 }
 
-fn select_rx_async() {
-    assert_eq!(THREADS, 4);
-    let mut chans = (0..THREADS).map(|_| mpsc::channel()).collect::<Vec<_>>();
-
-    crossbeam::scope(|scope| {
-        for &(ref tx, _) in &chans {
-            let tx = tx.clone();
-            scope.spawn(move |_| {
-                for i in 0..MESSAGES / THREADS {
-                    tx.send(message::new(i)).unwrap();
-                }
-            });
-        }
-
-        for _ in 0..MESSAGES {
-            shuffle(&mut chans);
-            let rx0 = &chans[0].1;
-            let rx1 = &chans[1].1;
-            let rx2 = &chans[2].1;
-            let rx3 = &chans[3].1;
-
-            #[allow(deprecated)]
-            {
-                select! {
-                    m = rx0.recv() => assert!(m.is_ok()),
-                    m = rx1.recv() => assert!(m.is_ok()),
-                    m = rx2.recv() => assert!(m.is_ok()),
-                    m = rx3.recv() => assert!(m.is_ok())
-                }
-            }
-        }
-    })
-    .unwrap();
-}
-
-fn select_rx_sync(cap: usize) {
-    assert_eq!(THREADS, 4);
-    let mut chans = (0..THREADS)
-        .map(|_| mpsc::sync_channel(cap))
-        .collect::<Vec<_>>();
-
-    crossbeam::scope(|scope| {
-        for &(ref tx, _) in &chans {
-            let tx = tx.clone();
-            scope.spawn(move |_| {
-                for i in 0..MESSAGES / THREADS {
-                    tx.send(message::new(i)).unwrap();
-                }
-            });
-        }
-
-        for _ in 0..MESSAGES {
-            shuffle(&mut chans);
-            let rx0 = &chans[0].1;
-            let rx1 = &chans[1].1;
-            let rx2 = &chans[2].1;
-            let rx3 = &chans[3].1;
-
-            #[allow(deprecated)]
-            {
-                select! {
-                    m = rx0.recv() => assert!(m.is_ok()),
-                    m = rx1.recv() => assert!(m.is_ok()),
-                    m = rx2.recv() => assert!(m.is_ok()),
-                    m = rx3.recv() => assert!(m.is_ok())
-                }
-            }
-        }
-    })
-    .unwrap();
-}
-
 fn main() {
     macro_rules! run {
         ($name:expr, $f:expr) => {
@@ -230,20 +156,16 @@ fn main() {
     }
 
     run!("bounded0_mpsc", mpsc_sync(0));
-    run!("bounded0_select_rx", select_rx_sync(0));
     run!("bounded0_spsc", spsc_sync(0));
 
     run!("bounded1_mpsc", mpsc_sync(1));
-    run!("bounded1_select_rx", select_rx_sync(1));
     run!("bounded1_spsc", spsc_sync(1));
 
     run!("bounded_mpsc", mpsc_sync(MESSAGES));
-    run!("bounded_select_rx", select_rx_sync(MESSAGES));
     run!("bounded_seq", seq_sync(MESSAGES));
     run!("bounded_spsc", spsc_sync(MESSAGES));
 
     run!("unbounded_mpsc", mpsc_async());
-    run!("unbounded_select_rx", select_rx_async());
     run!("unbounded_seq", seq_async());
     run!("unbounded_spsc", spsc_async());
 }
