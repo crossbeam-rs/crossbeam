@@ -314,6 +314,33 @@ mod fifo {
     }
 }
 
+// https://github.com/golang/go/blob/master/test/chan/goroutines.go
+mod goroutines {
+    use super::*;
+
+    fn f(left: Chan<i32>, right: Chan<i32>) {
+        left.send(right.recv().unwrap());
+    }
+
+    #[test]
+    fn main() {
+        let n = 10_000i32;
+
+        let leftmost = make::<i32>(0);
+        let mut right = leftmost.clone();
+        let mut left = leftmost.clone();
+
+        for _ in 0..n {
+            right = make::<i32>(0);
+            go!(left, right, f(left, right));
+            left = right.clone();
+        }
+
+        go!(right, right.send(1));
+        leftmost.recv().unwrap();
+    }
+}
+
 // https://github.com/golang/go/blob/master/test/chan/nonblock.go
 mod nonblock {
     use super::*;
