@@ -243,7 +243,7 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                 // This entry was removed. Try unlinking it from the list.
                 let succ = succ.with_tag(0);
 
-                // The tag should never be zero, because removing a node after a logically deleted
+                // The tag should always be zero, because removing a node after a logically deleted
                 // node leaves the list in an invalid state.
                 debug_assert!(self.curr.tag() == 0);
 
