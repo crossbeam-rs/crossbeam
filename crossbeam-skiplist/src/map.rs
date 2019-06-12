@@ -225,7 +225,7 @@ where
 }
 
 /// A reference-counted entry in a map.
-pub struct Entry<'a, K: 'a, V: 'a> {
+pub struct Entry<'a, K, V> {
     inner: ManuallyDrop<base::RefEntry<'a, K, V>>,
 }
 
@@ -344,7 +344,7 @@ impl<K, V> fmt::Debug for IntoIter<K, V> {
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Iter<'a, K: 'a, V: 'a> {
+pub struct Iter<'a, K, V> {
     inner: base::RefIter<'a, K, V>,
 }
 
@@ -377,7 +377,7 @@ impl<'a, K, V> fmt::Debug for Iter<'a, K, V> {
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Range<'a, Q, R, K: 'a, V: 'a>
+pub struct Range<'a, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,

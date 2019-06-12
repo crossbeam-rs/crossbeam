@@ -278,7 +278,7 @@ where
 ///
 /// The result indicates whether the key was found, as well as what were the adjacent nodes to the
 /// key on each level of the skip list.
-struct Position<'a, K: 'a, V: 'a> {
+struct Position<'a, K, V> {
     /// Reference to a node with the given key, if found.
     ///
     /// If this is `Some` then it will point to the same node as `right[0]`.
@@ -1253,13 +1253,13 @@ impl<K, V> IntoIterator for SkipList<K, V> {
 /// The lifetimes of the key and value are the same as that of the `Guard`
 /// used when creating the `Entry` (`'g`). This lifetime is also constrained to
 /// not outlive the `SkipList`.
-pub struct Entry<'a: 'g, 'g, K: 'a, V: 'a> {
+pub struct Entry<'a: 'g, 'g, K, V> {
     parent: &'a SkipList<K, V>,
     node: &'g Node<K, V>,
     guard: &'g Guard,
 }
 
-impl<'a: 'g, 'g, K: 'a, V: 'a> Entry<'a, 'g, K, V> {
+impl<'a: 'g, 'g, K, V> Entry<'a, 'g, K, V> {
     /// Returns `true` if the entry is removed from the skip list.
     pub fn is_removed(&self) -> bool {
         self.node.is_removed()
@@ -1395,12 +1395,12 @@ where
 ///
 /// You *must* call `release` to free this type, otherwise the node will be
 /// leaked. This is because releasing the entry requires a `Guard`.
-pub struct RefEntry<'a, K: 'a, V: 'a> {
+pub struct RefEntry<'a, K, V> {
     parent: &'a SkipList<K, V>,
     node: &'a Node<K, V>,
 }
 
-impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
+impl<'a, K, V> RefEntry<'a, K, V> {
     /// Returns `true` if the entry is removed from the skip list.
     pub fn is_removed(&self) -> bool {
         self.node.is_removed()
@@ -1568,14 +1568,14 @@ where
 }
 
 /// An iterator over the entries of a `SkipList`.
-pub struct Iter<'a: 'g, 'g, K: 'a, V: 'a> {
+pub struct Iter<'a: 'g, 'g, K, V> {
     parent: &'a SkipList<K, V>,
     head: Option<&'g Node<K, V>>,
     tail: Option<&'g Node<K, V>>,
     guard: &'g Guard,
 }
 
-impl<'a: 'g, 'g, K: 'a, V: 'a> Iterator for Iter<'a, 'g, K, V>
+impl<'a: 'g, 'g, K, V> Iterator for Iter<'a, 'g, K, V>
 where
     K: Ord,
 {
@@ -1604,7 +1604,7 @@ where
     }
 }
 
-impl<'a: 'g, 'g, K: 'a, V: 'a> DoubleEndedIterator for Iter<'a, 'g, K, V>
+impl<'a: 'g, 'g, K, V> DoubleEndedIterator for Iter<'a, 'g, K, V>
 where
     K: Ord,
 {
@@ -1643,7 +1643,7 @@ where
 }
 
 /// An iterator over reference-counted entries of a `SkipList`.
-pub struct RefIter<'a, K: 'a, V: 'a> {
+pub struct RefIter<'a, K, V> {
     parent: &'a SkipList<K, V>,
     head: Option<RefEntry<'a, K, V>>,
     tail: Option<RefEntry<'a, K, V>>,
@@ -1668,7 +1668,7 @@ where
     }
 }
 
-impl<'a, K: 'a, V: 'a> RefIter<'a, K, V>
+impl<'a, K, V> RefIter<'a, K, V>
 where
     K: Ord,
 {
@@ -1726,7 +1726,7 @@ where
 }
 
 /// An iterator over a subset of entries of a `SkipList`.
-pub struct Range<'a: 'g, 'g, Q, R, K: 'a, V: 'a>
+pub struct Range<'a: 'g, 'g, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -1740,7 +1740,7 @@ where
     _marker: PhantomData<fn() -> Q>, // covariant over `Q`
 }
 
-impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> Iterator for Range<'a, 'g, Q, R, K, V>
+impl<'a: 'g, 'g, Q, R, K, V> Iterator for Range<'a, 'g, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -1775,7 +1775,7 @@ where
     }
 }
 
-impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> DoubleEndedIterator for Range<'a, 'g, Q, R, K, V>
+impl<'a: 'g, 'g, Q, R, K, V> DoubleEndedIterator for Range<'a, 'g, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -1825,7 +1825,7 @@ where
 }
 
 /// An iterator over reference-counted subset of entries of a `SkipList`.
-pub struct RefRange<'a, Q, R, K: 'a, V: 'a>
+pub struct RefRange<'a, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -1870,7 +1870,7 @@ where
     }
 }
 
-impl<'a, Q, R, K: 'a, V: 'a> RefRange<'a, Q, R, K, V>
+impl<'a, Q, R, K, V> RefRange<'a, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
