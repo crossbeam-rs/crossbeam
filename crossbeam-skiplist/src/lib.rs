@@ -15,7 +15,13 @@ extern crate cfg_if;
 )]
 cfg_if! {
     if #[cfg(any(feature = "alloc", feature = "std"))] {
-        extern crate alloc;
+        cfg_if! {
+            if #[cfg(feature = "nightly")] {
+                extern crate alloc;
+            } else {
+                extern crate std as alloc;
+            }
+        }
 
         pub mod base;
         #[doc(inline)]
