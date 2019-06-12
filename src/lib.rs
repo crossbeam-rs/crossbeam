@@ -57,10 +57,6 @@ mod _epoch {
 #[doc(inline)]
 pub use crate::_epoch::crossbeam_epoch as epoch;
 
-#[cfg_attr(
-    feature = "nightly",
-    cfg(all(target_has_atomic = "cas", target_has_atomic = "ptr"))
-)]
 pub use crossbeam_utils::atomic;
 
 /// Miscellaneous utilities.

@@ -9,20 +9,16 @@
 #[macro_use]
 extern crate cfg_if;
 
-#[cfg_attr(
-    feature = "nightly",
-    cfg(all(target_has_atomic = "cas", target_has_atomic = "ptr"))
-)]
 cfg_if! {
-    if #[cfg(any(feature = "alloc", feature = "std"))] {
-        cfg_if! {
-            if #[cfg(feature = "nightly")] {
-                extern crate alloc;
-            } else {
-                extern crate std as alloc;
-            }
-        }
+    if #[cfg(all(feature = "alloc", feature = "nightly"))] {
+        extern crate alloc;
+    } else if #[cfg(feature = "std")] {
+        extern crate std as alloc;
+    }
+}
 
+cfg_if! {
+    if #[cfg(any(all(feature = "alloc", feature = "nightly"), feature = "std"))] {
         pub mod base;
         #[doc(inline)]
         pub use crate::base::SkipList;
