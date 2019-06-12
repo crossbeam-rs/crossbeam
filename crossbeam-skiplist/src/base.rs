@@ -1,6 +1,6 @@
 //! TODO: docs
 
-use crate::alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+use alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
 use core::borrow::Borrow;
 use core::cmp;
 use core::fmt;

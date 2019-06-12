@@ -50,14 +50,6 @@
 
 use cfg_if::cfg_if;
 
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
-    } else if #[cfg(feature = "std")] {
-        extern crate std as alloc;
-    }
-}
-
 mod _epoch {
     pub use crossbeam_epoch;
 }

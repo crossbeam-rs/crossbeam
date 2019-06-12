@@ -1,9 +1,8 @@
+use alloc::boxed::Box;
 use core::fmt;
 use core::marker::PhantomData;
 use core::mem;
 use core::ptr;
-
-use crate::alloc::boxed::Box;
 
 /// Number of words a piece of `Data` can hold.
 ///

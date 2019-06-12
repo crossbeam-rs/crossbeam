@@ -8,13 +8,8 @@
 
 use cfg_if::cfg_if;
 
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
-    } else if #[cfg(feature = "std")] {
-        extern crate std as alloc;
-    }
-}
+#[cfg(any(feature = "alloc", feature = "std"))]
+extern crate alloc;
 
 #[cfg_attr(
     feature = "nightly",

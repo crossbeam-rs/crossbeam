@@ -34,14 +34,6 @@
 
 use cfg_if::cfg_if;
 
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
-    } else if #[cfg(feature = "std")] {
-        extern crate std as alloc;
-    }
-}
-
 #[cfg_attr(
     feature = "nightly",
     cfg(all(target_has_atomic = "cas", target_has_atomic = "ptr"))
