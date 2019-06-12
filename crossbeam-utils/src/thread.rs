@@ -121,7 +121,7 @@ use std::panic;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use sync::WaitGroup;
+use crate::sync::WaitGroup;
 
 type SharedVec<T> = Arc<Mutex<Vec<T>>>;
 type SharedOption<T> = Arc<Mutex<Option<T>>>;
@@ -269,7 +269,7 @@ impl<'env> Scope<'env> {
 }
 
 impl<'env> fmt::Debug for Scope<'env> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Scope { .. }")
     }
 }
@@ -423,8 +423,8 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
                 let closure = move || closure.take().unwrap()();
 
                 // Allocate `clsoure` on the heap and erase the `'env` bound.
-                let closure: Box<FnMut() + Send + 'env> = Box::new(closure);
-                let closure: Box<FnMut() + Send + 'static> = unsafe { mem::transmute(closure) };
+                let closure: Box<dyn FnMut() + Send + 'env> = Box::new(closure);
+                let closure: Box<dyn FnMut() + Send + 'static> = unsafe { mem::transmute(closure) };
 
                 // Finally, spawn the closure.
                 let mut closure = closure;
@@ -523,7 +523,7 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
 }
 
 impl<'scope, T> fmt::Debug for ScopedJoinHandle<'scope, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("ScopedJoinHandle { .. }")
     }
 }

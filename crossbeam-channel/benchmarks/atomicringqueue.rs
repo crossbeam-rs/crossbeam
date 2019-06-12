@@ -1,5 +1,4 @@
-extern crate atomicring;
-extern crate crossbeam;
+use crossbeam;
 
 use atomicring::AtomicRingQueue;
 use std::thread;

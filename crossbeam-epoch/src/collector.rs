@@ -12,11 +12,11 @@
 ///
 /// handle.pin().flush();
 /// ```
-use alloc::sync::Arc;
+use crate::alloc::sync::Arc;
 use core::fmt;
 
-use guard::Guard;
-use internal::{Global, Local};
+use crate::guard::Guard;
+use crate::internal::{Global, Local};
 
 /// An epoch-based garbage collector.
 pub struct Collector {
@@ -50,7 +50,7 @@ impl Clone for Collector {
 }
 
 impl fmt::Debug for Collector {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Collector { .. }")
     }
 }
@@ -98,7 +98,7 @@ impl Drop for LocalHandle {
 }
 
 impl fmt::Debug for LocalHandle {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("LocalHandle { .. }")
     }
 }
@@ -110,7 +110,7 @@ mod tests {
 
     use crossbeam_utils::thread;
 
-    use {Collector, Owned};
+    use crate::{Collector, Owned};
 
     const NUM_THREADS: usize = 8;
 

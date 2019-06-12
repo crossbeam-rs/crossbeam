@@ -1,5 +1,4 @@
-extern crate crossbeam;
-extern crate crossbeam_channel;
+use crossbeam;
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 

@@ -11,7 +11,7 @@ use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 use crossbeam_utils::CachePadded;
 
-use {unprotected, Atomic, Guard, Owned, Shared};
+use crate::{unprotected, Atomic, Guard, Owned, Shared};
 
 // The representation here is a singly-linked list, with a sentinel node at the front. In general
 // the `tail` pointer may lag behind the actual tail. Non-sentinel nodes are either all `Data` or
@@ -62,7 +62,7 @@ impl<T> Queue<T> {
     /// Attempts to atomically place `n` into the `next` pointer of `onto`, and returns `true` on
     /// success. The queue's `tail` pointer may be updated.
     #[inline(always)]
-    fn push_internal(&self, onto: Shared<Node<T>>, new: Shared<Node<T>>, guard: &Guard) -> bool {
+    fn push_internal(&self, onto: Shared<'_, Node<T>>, new: Shared<'_, Node<T>>, guard: &Guard) -> bool {
         // is `onto` the actual tail?
         let o = unsafe { onto.deref() };
         let next = o.next.load(Acquire, guard);
@@ -194,7 +194,7 @@ impl<T> Drop for Queue<T> {
 mod test {
     use super::*;
     use crossbeam_utils::thread;
-    use pin;
+    use crate::pin;
 
     struct Queue<T> {
         queue: super::Queue<T>,

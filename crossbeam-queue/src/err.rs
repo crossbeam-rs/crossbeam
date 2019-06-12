@@ -6,13 +6,13 @@ use std::fmt;
 pub struct PopError;
 
 impl fmt::Debug for PopError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "PopError".fmt(f)
     }
 }
 
 impl fmt::Display for PopError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "popping from an empty queue".fmt(f)
     }
 }
@@ -28,13 +28,13 @@ impl error::Error for PopError {
 pub struct PushError<T>(pub T);
 
 impl<T> fmt::Debug for PushError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "PushError(..)".fmt(f)
     }
 }
 
 impl<T> fmt::Display for PushError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "pushing into a full queue".fmt(f)
     }
 }

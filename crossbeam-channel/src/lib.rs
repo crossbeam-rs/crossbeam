@@ -346,8 +346,7 @@
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
-
-extern crate crossbeam_utils;
+#![warn(rust_2018_idioms)]
 
 mod channel;
 mod context;
@@ -362,17 +361,17 @@ mod waker;
 /// Crate internals used by the `select!` macro.
 #[doc(hidden)]
 pub mod internal {
-    pub use select::SelectHandle;
-    pub use select::{select, select_timeout, try_select};
+    pub use crate::select::SelectHandle;
+    pub use crate::select::{select, select_timeout, try_select};
 }
 
-pub use channel::{after, never, tick};
-pub use channel::{bounded, unbounded};
-pub use channel::{IntoIter, Iter, TryIter};
-pub use channel::{Receiver, Sender};
+pub use crate::channel::{after, never, tick};
+pub use crate::channel::{bounded, unbounded};
+pub use crate::channel::{IntoIter, Iter, TryIter};
+pub use crate::channel::{Receiver, Sender};
 
-pub use select::{Select, SelectedOperation};
+pub use crate::select::{Select, SelectedOperation};
 
-pub use err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
-pub use err::{RecvError, RecvTimeoutError, TryRecvError};
-pub use err::{SendError, SendTimeoutError, TrySendError};
+pub use crate::err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
+pub use crate::err::{RecvError, RecvTimeoutError, TryRecvError};
+pub use crate::err::{SendError, SendTimeoutError, TrySendError};

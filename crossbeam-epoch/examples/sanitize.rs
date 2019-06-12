@@ -1,5 +1,5 @@
 extern crate crossbeam_epoch as epoch;
-extern crate rand;
+use rand;
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use epoch::{Atomic, Collector, LocalHandle, Owned, Shared};
+use crate::epoch::{Atomic, Collector, LocalHandle, Owned, Shared};
 use rand::Rng;
 
 fn worker(a: Arc<Atomic<AtomicUsize>>, handle: LocalHandle) -> usize {

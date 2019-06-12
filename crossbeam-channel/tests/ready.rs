@@ -1,8 +1,5 @@
 //! Tests for channel readiness using the `Select` struct.
 
-extern crate crossbeam_channel;
-extern crate crossbeam_utils;
-
 use std::any::Any;
 use std::cell::Cell;
 use std::thread;
@@ -673,7 +670,7 @@ fn send_recv_same_channel() {
 fn channel_through_channel() {
     const COUNT: usize = 1000;
 
-    type T = Box<Any + Send>;
+    type T = Box<dyn Any + Send>;
 
     for cap in 1..4 {
         let (s, r) = bounded::<T>(cap);

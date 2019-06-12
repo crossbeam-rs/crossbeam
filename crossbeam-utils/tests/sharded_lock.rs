@@ -1,5 +1,4 @@
-extern crate crossbeam_utils;
-extern crate rand;
+use rand;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::channel;

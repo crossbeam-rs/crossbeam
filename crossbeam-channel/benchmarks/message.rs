@@ -6,7 +6,7 @@ const LEN: usize = 1;
 pub struct Message(pub [usize; LEN]);
 
 impl fmt::Debug for Message {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Message")
     }
 }

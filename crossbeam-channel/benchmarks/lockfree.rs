@@ -1,5 +1,4 @@
-extern crate crossbeam;
-extern crate lockfree;
+use crossbeam;
 
 use lockfree::channel;
 

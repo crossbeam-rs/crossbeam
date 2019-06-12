@@ -1,5 +1,3 @@
-extern crate crossbeam_channel;
-
 use std::time::Duration;
 
 use crossbeam_channel::{after, bounded, never, tick, unbounded};

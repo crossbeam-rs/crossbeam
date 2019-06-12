@@ -116,13 +116,13 @@ pub struct TryReadyError;
 pub struct ReadyTimeoutError;
 
 impl<T> fmt::Debug for SendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "SendError(..)".fmt(f)
     }
 }
 
 impl<T> fmt::Display for SendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "sending on a disconnected channel".fmt(f)
     }
 }
@@ -132,7 +132,7 @@ impl<T: Send> error::Error for SendError<T> {
         "sending on a disconnected channel"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -158,7 +158,7 @@ impl<T> SendError<T> {
 }
 
 impl<T> fmt::Debug for TrySendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             TrySendError::Full(..) => "Full(..)".fmt(f),
             TrySendError::Disconnected(..) => "Disconnected(..)".fmt(f),
@@ -167,7 +167,7 @@ impl<T> fmt::Debug for TrySendError<T> {
 }
 
 impl<T> fmt::Display for TrySendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             TrySendError::Full(..) => "sending on a full channel".fmt(f),
             TrySendError::Disconnected(..) => "sending on a disconnected channel".fmt(f),
@@ -183,7 +183,7 @@ impl<T: Send> error::Error for TrySendError<T> {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -235,13 +235,13 @@ impl<T> TrySendError<T> {
 }
 
 impl<T> fmt::Debug for SendTimeoutError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "SendTimeoutError(..)".fmt(f)
     }
 }
 
 impl<T> fmt::Display for SendTimeoutError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             SendTimeoutError::Timeout(..) => "timed out waiting on send operation".fmt(f),
             SendTimeoutError::Disconnected(..) => "sending on a disconnected channel".fmt(f),
@@ -254,7 +254,7 @@ impl<T: Send> error::Error for SendTimeoutError<T> {
         "sending on an empty and disconnected channel"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -307,7 +307,7 @@ impl<T> SendTimeoutError<T> {
 }
 
 impl fmt::Display for RecvError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "receiving on an empty and disconnected channel".fmt(f)
     }
 }
@@ -317,13 +317,13 @@ impl error::Error for RecvError {
         "receiving on an empty and disconnected channel"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
 
 impl fmt::Display for TryRecvError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             TryRecvError::Empty => "receiving on an empty channel".fmt(f),
             TryRecvError::Disconnected => "receiving on an empty and disconnected channel".fmt(f),
@@ -339,7 +339,7 @@ impl error::Error for TryRecvError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -371,7 +371,7 @@ impl TryRecvError {
 }
 
 impl fmt::Display for RecvTimeoutError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             RecvTimeoutError::Timeout => "timed out waiting on receive operation".fmt(f),
             RecvTimeoutError::Disconnected => "channel is empty and disconnected".fmt(f),
@@ -387,7 +387,7 @@ impl error::Error for RecvTimeoutError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -419,7 +419,7 @@ impl RecvTimeoutError {
 }
 
 impl fmt::Display for TrySelectError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "all operations in select would block".fmt(f)
     }
 }
@@ -429,13 +429,13 @@ impl error::Error for TrySelectError {
         "all operations in select would block"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
 
 impl fmt::Display for SelectTimeoutError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "timed out waiting on select".fmt(f)
     }
 }
@@ -445,7 +445,7 @@ impl error::Error for SelectTimeoutError {
         "timed out waiting on select"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }

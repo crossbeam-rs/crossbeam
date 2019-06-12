@@ -1,5 +1,3 @@
-extern crate crossbeam_utils;
-
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 

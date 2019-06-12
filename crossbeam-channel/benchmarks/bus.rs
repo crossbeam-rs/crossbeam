@@ -1,5 +1,4 @@
-extern crate bus;
-extern crate crossbeam;
+use crossbeam;
 
 use bus::Bus;
 

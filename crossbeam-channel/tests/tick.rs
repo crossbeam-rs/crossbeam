@@ -2,8 +2,6 @@
 
 #[macro_use]
 extern crate crossbeam_channel;
-extern crate crossbeam_utils;
-extern crate rand;
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;

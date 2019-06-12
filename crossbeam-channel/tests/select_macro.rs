@@ -4,7 +4,6 @@
 
 #[macro_use]
 extern crate crossbeam_channel;
-extern crate crossbeam_utils;
 
 use std::any::Any;
 use std::cell::Cell;
@@ -687,7 +686,7 @@ fn matching_with_leftover() {
 fn channel_through_channel() {
     const COUNT: usize = 1000;
 
-    type T = Box<Any + Send>;
+    type T = Box<dyn Any + Send>;
 
     for cap in 0..3 {
         let (s, r) = bounded::<T>(cap);

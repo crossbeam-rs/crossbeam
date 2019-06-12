@@ -277,7 +277,7 @@ impl Backoff {
 }
 
 impl fmt::Debug for Backoff {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Backoff")
             .field("step", &self.step)
             .field("is_completed", &self.is_completed())

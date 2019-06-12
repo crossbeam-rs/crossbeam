@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use crossbeam_utils::Backoff;
 
-use select::Selected;
+use crate::select::Selected;
 
 /// Thread-local context used in select.
 #[derive(Debug, Clone)]

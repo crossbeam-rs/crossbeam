@@ -87,7 +87,7 @@ impl<T> Spinlock<T> {
 }
 
 /// A guard holding a spinlock locked.
-pub struct SpinlockGuard<'a, T: 'a> {
+pub struct SpinlockGuard<'a, T> {
     parent: &'a Spinlock<T>,
 }
 

@@ -7,11 +7,13 @@ use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use context::Context;
-use counter;
-use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use flavors;
-use select::{Operation, SelectHandle, Token};
+use crate::context::Context;
+use crate::counter;
+use crate::err::{
+    RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError,
+};
+use crate::flavors;
+use crate::select::{Operation, SelectHandle, Token};
 
 /// Creates a channel of unbounded capacity.
 ///
@@ -584,7 +586,7 @@ impl<T> Clone for Sender<T> {
 }
 
 impl<T> fmt::Debug for Sender<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Sender { .. }")
     }
 }
@@ -943,7 +945,7 @@ impl<T> Receiver<T> {
     ///
     /// assert_eq!(v, [1, 2, 3]);
     /// ```
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter { receiver: self }
     }
 
@@ -979,7 +981,7 @@ impl<T> Receiver<T> {
     ///
     /// assert_eq!(v, [1, 2]);
     /// ```
-    pub fn try_iter(&self) -> TryIter<T> {
+    pub fn try_iter(&self) -> TryIter<'_, T> {
         TryIter { receiver: self }
     }
 
@@ -1064,7 +1066,7 @@ impl<T> Clone for Receiver<T> {
 }
 
 impl<T> fmt::Debug for Receiver<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Receiver { .. }")
     }
 }
@@ -1116,7 +1118,7 @@ impl<T> IntoIterator for Receiver<T> {
 ///
 /// assert_eq!(v, [1, 2, 3]);
 /// ```
-pub struct Iter<'a, T: 'a> {
+pub struct Iter<'a, T> {
     receiver: &'a Receiver<T>,
 }
 
@@ -1131,7 +1133,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 }
 
 impl<'a, T> fmt::Debug for Iter<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Iter { .. }")
     }
 }
@@ -1168,7 +1170,7 @@ impl<'a, T> fmt::Debug for Iter<'a, T> {
 ///
 /// assert_eq!(v, [1, 2]);
 /// ```
-pub struct TryIter<'a, T: 'a> {
+pub struct TryIter<'a, T> {
     receiver: &'a Receiver<T>,
 }
 
@@ -1181,7 +1183,7 @@ impl<'a, T> Iterator for TryIter<'a, T> {
 }
 
 impl<'a, T> fmt::Debug for TryIter<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("TryIter { .. }")
     }
 }
@@ -1230,7 +1232,7 @@ impl<T> Iterator for IntoIter<T> {
 }
 
 impl<T> fmt::Debug for IntoIter<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("IntoIter { .. }")
     }
 }

@@ -9,7 +9,7 @@ use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 use std::thread::{self, ThreadId};
 
-use CachePadded;
+use crate::CachePadded;
 
 /// The number of shards per sharded lock. Must be a power of two.
 const NUM_SHARDS: usize = 8;
@@ -213,7 +213,7 @@ impl<T: ?Sized> ShardedLock<T> {
     ///     Err(_) => unreachable!(),
     /// };
     /// ```
-    pub fn try_read(&self) -> TryLockResult<ShardedLockReadGuard<T>> {
+    pub fn try_read(&self) -> TryLockResult<ShardedLockReadGuard<'_, T>> {
         // Take the current thread index and map it to a shard index. Thread indices will tend to
         // distribute shards among threads equally, thus reducing contention due to read-locking.
         let current_index = current_index().unwrap_or(0);
@@ -264,7 +264,7 @@ impl<T: ?Sized> ShardedLock<T> {
     ///     assert!(r.is_ok());
     /// }).join().unwrap();
     /// ```
-    pub fn read(&self) -> LockResult<ShardedLockReadGuard<T>> {
+    pub fn read(&self) -> LockResult<ShardedLockReadGuard<'_, T>> {
         // Take the current thread index and map it to a shard index. Thread indices will tend to
         // distribute shards among threads equally, thus reducing contention due to read-locking.
         let current_index = current_index().unwrap_or(0);
@@ -306,7 +306,7 @@ impl<T: ?Sized> ShardedLock<T> {
     ///
     /// assert!(lock.try_write().is_err());
     /// ```
-    pub fn try_write(&self) -> TryLockResult<ShardedLockWriteGuard<T>> {
+    pub fn try_write(&self) -> TryLockResult<ShardedLockWriteGuard<'_, T>> {
         let mut poisoned = false;
         let mut blocked = None;
 
@@ -377,7 +377,7 @@ impl<T: ?Sized> ShardedLock<T> {
     ///
     /// assert!(lock.try_read().is_err());
     /// ```
-    pub fn write(&self) -> LockResult<ShardedLockWriteGuard<T>> {
+    pub fn write(&self) -> LockResult<ShardedLockWriteGuard<'_, T>> {
         let mut poisoned = false;
 
         // Write-lock each shard in succession.
@@ -414,7 +414,7 @@ impl<T: ?Sized> ShardedLock<T> {
 }
 
 impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLock<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.try_read() {
             Ok(guard) => f.debug_struct("ShardedLock").field("data", &&*guard).finish(),
             Err(TryLockError::Poisoned(err)) => {
@@ -423,7 +423,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLock<T> {
             Err(TryLockError::WouldBlock) => {
                 struct LockedPlaceholder;
                 impl fmt::Debug for LockedPlaceholder {
-                    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                         f.write_str("<locked>")
                     }
                 }
@@ -448,7 +448,7 @@ impl<T> From<T> for ShardedLock<T> {
 /// A guard used to release the shared read access of a [`ShardedLock`] when dropped.
 ///
 /// [`ShardedLock`]: struct.ShardedLock.html
-pub struct ShardedLockReadGuard<'a, T: ?Sized + 'a> {
+pub struct ShardedLockReadGuard<'a, T: ?Sized> {
     lock: &'a ShardedLock<T>,
     _guard: RwLockReadGuard<'a, ()>,
     _marker: PhantomData<RwLockReadGuard<'a, T>>,
@@ -465,7 +465,7 @@ impl<'a, T: ?Sized> Deref for ShardedLockReadGuard<'a, T> {
 }
 
 impl<'a, T: fmt::Debug> fmt::Debug for ShardedLockReadGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ShardedLockReadGuard")
             .field("lock", &self.lock)
             .finish()
@@ -473,7 +473,7 @@ impl<'a, T: fmt::Debug> fmt::Debug for ShardedLockReadGuard<'a, T> {
 }
 
 impl<'a, T: ?Sized + fmt::Display> fmt::Display for ShardedLockReadGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
     }
 }
@@ -481,7 +481,7 @@ impl<'a, T: ?Sized + fmt::Display> fmt::Display for ShardedLockReadGuard<'a, T> 
 /// A guard used to release the exclusive write access of a [`ShardedLock`] when dropped.
 ///
 /// [`ShardedLock`]: struct.ShardedLock.html
-pub struct ShardedLockWriteGuard<'a, T: ?Sized + 'a> {
+pub struct ShardedLockWriteGuard<'a, T: ?Sized> {
     lock: &'a ShardedLock<T>,
     _marker: PhantomData<RwLockWriteGuard<'a, T>>,
 }
@@ -502,7 +502,7 @@ impl<'a, T: ?Sized> Drop for ShardedLockWriteGuard<'a, T> {
 }
 
 impl<'a, T: fmt::Debug> fmt::Debug for ShardedLockWriteGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ShardedLockWriteGuard")
             .field("lock", &self.lock)
             .finish()
@@ -510,7 +510,7 @@ impl<'a, T: fmt::Debug> fmt::Debug for ShardedLockWriteGuard<'a, T> {
 }
 
 impl<'a, T: ?Sized + fmt::Display> fmt::Display for ShardedLockWriteGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         (**self).fmt(f)
     }
 }

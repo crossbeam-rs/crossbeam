@@ -5,7 +5,7 @@ use core::ptr;
 use core::slice;
 use core::sync::atomic::{self, AtomicBool, AtomicUsize, Ordering};
 
-use Backoff;
+use crate::Backoff;
 
 /// A thread-safe mutable memory location.
 ///
@@ -629,7 +629,7 @@ impl<T: Default> Default for AtomicCell<T> {
 }
 
 impl<T: Copy + fmt::Debug> fmt::Debug for AtomicCell<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AtomicCell")
             .field("value", &self.load())
             .finish()

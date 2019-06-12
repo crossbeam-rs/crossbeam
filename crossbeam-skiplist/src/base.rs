@@ -1,6 +1,6 @@
 //! TODO: docs
 
-use alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+use crate::alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
 use core::borrow::Borrow;
 use core::cmp;
 use core::fmt;
@@ -10,9 +10,9 @@ use core::ops::{Bound, Deref, Index, RangeBounds};
 use core::ptr;
 use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
-use epoch::{self, Atomic, Collector, Guard, Shared};
+use crate::epoch::{self, Atomic, Collector, Guard, Shared};
 use scopeguard;
-use utils::CachePadded;
+use crate::utils::CachePadded;
 
 /// Number of bits needed to store height.
 const HEIGHT_BITS: usize = 5;
@@ -266,7 +266,7 @@ where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Node")
             .field(&self.key)
             .field(&self.value)
@@ -471,7 +471,7 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
-    pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<K, V> {
+    pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
         self.insert_internal(key, value, false, guard)
     }
 
@@ -487,7 +487,7 @@ where
     }
 
     /// Returns an iterator over all entries in the skip list.
-    pub fn ref_iter(&self) -> RefIter<K, V> {
+    pub fn ref_iter(&self) -> RefIter<'_, K, V> {
         RefIter {
             parent: self,
             head: None,
@@ -832,7 +832,7 @@ where
     /// Inserts an entry with the specified `key` and `value`.
     ///
     /// If `replace` is `true`, then any existing entry with this key will first be removed.
-    fn insert_internal(&self, key: K, value: V, replace: bool, guard: &Guard) -> RefEntry<K, V> {
+    fn insert_internal(&self, key: K, value: V, replace: bool, guard: &Guard) -> RefEntry<'_, K, V> {
         self.check_guard(guard);
 
         unsafe {
@@ -1049,12 +1049,12 @@ where
     ///
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
-    pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<K, V> {
+    pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
         self.insert_internal(key, value, true, guard)
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
-    pub fn remove<Q>(&self, key: &Q, guard: &Guard) -> Option<RefEntry<K, V>>
+    pub fn remove<Q>(&self, key: &Q, guard: &Guard) -> Option<RefEntry<'_, K, V>>
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
@@ -1119,7 +1119,7 @@ where
     }
 
     /// Removes an entry from the front of the skip list.
-    pub fn pop_front(&self, guard: &Guard) -> Option<RefEntry<K, V>> {
+    pub fn pop_front(&self, guard: &Guard) -> Option<RefEntry<'_, K, V>> {
         self.check_guard(guard);
         loop {
             let e = self.front(guard)?;
@@ -1132,7 +1132,7 @@ where
     }
 
     /// Removes an entry from the back of the skip list.
-    pub fn pop_back(&self, guard: &Guard) -> Option<RefEntry<K, V>> {
+    pub fn pop_back(&self, guard: &Guard) -> Option<RefEntry<'_, K, V>> {
         self.check_guard(guard);
         loop {
             let e = self.back(guard)?;
@@ -1217,7 +1217,7 @@ where
     K: Ord + fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("SkipList { .. }")
     }
 }
@@ -1330,7 +1330,7 @@ where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Entry")
             .field(self.key())
             .field(self.value())
@@ -1501,7 +1501,7 @@ where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("RefEntry")
             .field(self.key())
             .field(self.value())
@@ -1634,7 +1634,7 @@ where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Iter")
             .field("head", &self.head.map(|n| (&n.key, &n.value)))
             .field("tail", &self.tail.map(|n| (&n.key, &n.value)))
@@ -1654,7 +1654,7 @@ where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_struct("RefIter");
         match &self.head {
             None => d.field("head", &None::<(&K, &V)>),
@@ -1815,7 +1815,7 @@ where
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Range")
             .field("range", &self.range)
             .field("head", &self.head)
@@ -1861,7 +1861,7 @@ where
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RefRange")
             .field("range", &self.range)
             .field("head", &self.head)
@@ -1988,7 +1988,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
 }
 
 impl<K, V> fmt::Debug for IntoIter<K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("IntoIter { .. }")
     }
 }

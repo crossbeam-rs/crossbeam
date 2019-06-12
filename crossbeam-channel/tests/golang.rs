@@ -435,13 +435,13 @@ mod nonblock {
             }
 
             go!(c32, sync, i32receiver(c32, sync));
-            let mut try = 0;
+            let mut r#try = 0;
             loop {
                 select! {
                     send(c32.tx(), 123) -> _ => break,
                     default => {
-                        try += 1;
-                        if try > MAX_TRIES {
+                        r#try += 1;
+                        if r#try > MAX_TRIES {
                             println!("i32receiver buffer={}", buffer);
                             panic!("fail")
                         }
@@ -454,7 +454,7 @@ mod nonblock {
             if buffer > 0 {
                 sync.recv();
             }
-            let mut try = 0;
+            let mut r#try = 0;
             loop {
                 select! {
                     recv(c32.rx()) -> v => {
@@ -464,8 +464,8 @@ mod nonblock {
                         break;
                     }
                     default => {
-                        try += 1;
-                        if try > MAX_TRIES {
+                        r#try += 1;
+                        if r#try > MAX_TRIES {
                             println!("i32sender buffer={}", buffer);
                             panic!("fail");
                         }
@@ -478,13 +478,13 @@ mod nonblock {
             }
 
             go!(c64, sync, i64receiver(c64, sync));
-            let mut try = 0;
+            let mut r#try = 0;
             loop {
                 select! {
                     send(c64.tx(), 123456) -> _ => break,
                     default => {
-                        try += 1;
-                        if try > MAX_TRIES {
+                        r#try += 1;
+                        if r#try > MAX_TRIES {
                             println!("i64receiver buffer={}", buffer);
                             panic!("fail")
                         }
@@ -497,7 +497,7 @@ mod nonblock {
             if buffer > 0 {
                 sync.recv();
             }
-            let mut try = 0;
+            let mut r#try = 0;
             loop {
                 select! {
                     recv(c64.rx()) -> v => {
@@ -507,8 +507,8 @@ mod nonblock {
                         break;
                     }
                     default => {
-                        try += 1;
-                        if try > MAX_TRIES {
+                        r#try += 1;
+                        if r#try > MAX_TRIES {
                             println!("i64sender buffer={}", buffer);
                             panic!("fail");
                         }
@@ -521,13 +521,13 @@ mod nonblock {
             }
 
             go!(cb, sync, breceiver(cb, sync));
-            let mut try = 0;
+            let mut r#try = 0;
             loop {
                 select! {
                     send(cb.tx(), true) -> _ => break,
                     default => {
-                        try += 1;
-                        if try > MAX_TRIES {
+                        r#try += 1;
+                        if r#try > MAX_TRIES {
                             println!("breceiver buffer={}", buffer);
                             panic!("fail")
                         }
@@ -540,7 +540,7 @@ mod nonblock {
             if buffer > 0 {
                 sync.recv();
             }
-            let mut try = 0;
+            let mut r#try = 0;
             loop {
                 select! {
                     recv(cb.rx()) -> v => {
@@ -550,8 +550,8 @@ mod nonblock {
                         break;
                     }
                     default => {
-                        try += 1;
-                        if try > MAX_TRIES {
+                        r#try += 1;
+                        if r#try > MAX_TRIES {
                             println!("bsender buffer={}", buffer);
                             panic!("fail");
                         }
@@ -564,13 +564,13 @@ mod nonblock {
             }
 
             go!(cs, sync, sreceiver(cs, sync));
-            let mut try = 0;
+            let mut r#try = 0;
             loop {
                 select! {
                     send(cs.tx(), "hello".to_string()) -> _ => break,
                     default => {
-                        try += 1;
-                        if try > MAX_TRIES {
+                        r#try += 1;
+                        if r#try > MAX_TRIES {
                             println!("sreceiver buffer={}", buffer);
                             panic!("fail")
                         }
@@ -583,7 +583,7 @@ mod nonblock {
             if buffer > 0 {
                 sync.recv();
             }
-            let mut try = 0;
+            let mut r#try = 0;
             loop {
                 select! {
                     recv(cs.rx()) -> v => {
@@ -593,8 +593,8 @@ mod nonblock {
                         break;
                     }
                     default => {
-                        try += 1;
-                        if try > MAX_TRIES {
+                        r#try += 1;
+                        if r#try > MAX_TRIES {
                             println!("ssender buffer={}", buffer);
                             panic!("fail");
                         }
@@ -1289,7 +1289,7 @@ mod chan_test {
     fn test_chan_send_interface() {
         struct Mt;
 
-        let c = make::<Box<Any>>(1);
+        let c = make::<Box<dyn Any>>(1);
         c.send(Box::new(Mt));
 
         select! {

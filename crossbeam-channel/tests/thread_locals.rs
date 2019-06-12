@@ -2,7 +2,6 @@
 
 #[macro_use]
 extern crate crossbeam_channel;
-extern crate crossbeam_utils;
 
 use std::thread;
 use std::time::Duration;

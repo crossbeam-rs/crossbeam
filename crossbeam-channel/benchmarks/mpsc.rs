@@ -1,4 +1,4 @@
-extern crate crossbeam;
+use crossbeam;
 
 use std::sync::mpsc;
 

@@ -56,14 +56,13 @@
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
+#![warn(rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(const_fn))]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
 #[macro_use]
 extern crate cfg_if;
-#[cfg(feature = "std")]
-extern crate core;
 
 cfg_if! {
     if #[cfg(feature = "alloc")] {

@@ -2,8 +2,6 @@
 
 #[macro_use]
 extern crate crossbeam_channel;
-extern crate crossbeam_utils;
-extern crate rand;
 
 use std::any::Any;
 use std::sync::atomic::AtomicUsize;
@@ -524,7 +522,7 @@ fn recv_in_send() {
 fn channel_through_channel() {
     const COUNT: usize = 1000;
 
-    type T = Box<Any + Send>;
+    type T = Box<dyn Any + Send>;
 
     let (s, r) = bounded::<T>(0);
 

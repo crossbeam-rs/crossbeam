@@ -2,7 +2,6 @@
 
 #[macro_use]
 extern crate crossbeam_channel;
-extern crate signal_hook;
 
 use std::io;
 use std::thread;

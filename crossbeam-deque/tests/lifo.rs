@@ -1,15 +1,15 @@
 extern crate crossbeam_deque as deque;
 extern crate crossbeam_utils as utils;
-extern crate rand;
+use rand;
 
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, Mutex};
 
-use deque::Steal::{Empty, Success};
-use deque::Worker;
+use crate::deque::Steal::{Empty, Success};
+use crate::deque::Worker;
+use crate::utils::thread::scope;
 use rand::Rng;
-use utils::thread::scope;
 
 #[test]
 fn smoke() {
