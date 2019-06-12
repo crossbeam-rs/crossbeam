@@ -8,15 +8,14 @@
 
 use cfg_if::cfg_if;
 
-#[cfg(any(feature = "alloc", feature = "std"))]
-extern crate alloc;
-
 #[cfg_attr(
     feature = "nightly",
     cfg(all(target_has_atomic = "cas", target_has_atomic = "ptr"))
 )]
 cfg_if! {
     if #[cfg(any(feature = "alloc", feature = "std"))] {
+        extern crate alloc;
+
         pub mod base;
         #[doc(inline)]
         pub use crate::base::SkipList;
