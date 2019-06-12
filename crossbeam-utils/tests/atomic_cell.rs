@@ -221,5 +221,5 @@ fn garbage_padding() {
 
     let prev = cell.load();
     assert!(cell.compare_exchange(prev, next).is_ok());
-    dbg!();
+    println!();
 }
