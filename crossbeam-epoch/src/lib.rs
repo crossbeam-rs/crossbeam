@@ -61,7 +61,8 @@
 #![cfg_attr(feature = "nightly", feature(const_fn))]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
-use cfg_if::cfg_if;
+#[macro_use]
+extern crate cfg_if;
 
 #[cfg_attr(
     feature = "nightly",
