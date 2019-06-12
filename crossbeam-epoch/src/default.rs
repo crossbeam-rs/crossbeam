@@ -4,6 +4,8 @@
 //! is registered in the default collector.  If initialized, the thread's participant will get
 //! destructed on thread exit, which in turn unregisters the thread.
 
+use lazy_static::lazy_static;
+
 use crate::collector::{Collector, LocalHandle};
 use crate::guard::Guard;
 

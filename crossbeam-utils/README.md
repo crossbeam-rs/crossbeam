@@ -51,12 +51,6 @@ Add this to your `Cargo.toml`:
 crossbeam-utils = "0.6"
 ```
 
-Next, add this to your crate:
-
-```rust
-extern crate crossbeam_utils;
-```
-
 ## License
 
 Licensed under either of

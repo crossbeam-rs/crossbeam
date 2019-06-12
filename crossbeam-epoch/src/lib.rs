@@ -61,8 +61,7 @@
 #![cfg_attr(feature = "nightly", feature(const_fn))]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
-#[macro_use]
-extern crate cfg_if;
+use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(feature = "alloc")] {
@@ -78,11 +77,6 @@ cfg_if! {
 )]
 cfg_if! {
     if #[cfg(any(feature = "alloc", feature = "std"))] {
-        #[macro_use]
-        extern crate memoffset;
-        #[macro_use]
-        extern crate scopeguard;
-
         mod atomic;
         mod collector;
         mod deferred;
@@ -101,9 +95,6 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(feature = "std")] {
-        #[macro_use]
-        extern crate lazy_static;
-
         mod default;
         pub use self::default::{default_collector, is_pinned, pin};
     }

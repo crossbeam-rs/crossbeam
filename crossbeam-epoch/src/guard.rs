@@ -1,6 +1,8 @@
 use core::fmt;
 use core::mem;
 
+use scopeguard::defer;
+
 use crate::atomic::Shared;
 use crate::collector::Collector;
 use crate::deferred::Deferred;

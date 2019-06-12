@@ -5,6 +5,8 @@ use core::ptr;
 use core::slice;
 use core::sync::atomic::{self, AtomicBool, AtomicUsize, Ordering};
 
+use cfg_if::cfg_if;
+
 use crate::Backoff;
 
 /// A thread-safe mutable memory location.

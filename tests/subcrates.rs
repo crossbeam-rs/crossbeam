@@ -1,13 +1,10 @@
 //! Makes sure subcrates are properly re-exported.
 
-#[macro_use]
-extern crate crossbeam;
-
 #[test]
 fn channel() {
     let (s, r) = crossbeam::channel::bounded(1);
 
-    select! {
+    crossbeam::channel::select! {
         send(s, 0) -> res => res.unwrap(),
         recv(r) -> res => assert!(res.is_ok()),
     }

@@ -44,13 +44,6 @@ Add this to your `Cargo.toml`:
 crossbeam-channel = "0.3"
 ```
 
-Next, add this to your crate:
-
-```rust
-#[macro_use]
-extern crate crossbeam_channel;
-```
-
 ## License
 
 Licensed under either of

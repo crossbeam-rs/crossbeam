@@ -31,12 +31,6 @@ Add this to your `Cargo.toml`:
 crossbeam-epoch = "0.7"
 ```
 
-Next, add this to your crate:
-
-```rust
-extern crate crossbeam_epoch as epoch;
-```
-
 ## License
 
 Licensed under either of

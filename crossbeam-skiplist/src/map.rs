@@ -7,8 +7,9 @@ use std::mem::ManuallyDrop;
 use std::ops::{Bound, RangeBounds};
 use std::ptr;
 
+use crossbeam_epoch as epoch;
+
 use crate::base::{self, try_pin_loop};
-use crate::epoch;
 
 /// A map based on a lock-free skip list.
 pub struct SkipMap<K, V> {

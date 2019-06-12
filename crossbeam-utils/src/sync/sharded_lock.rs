@@ -9,6 +9,8 @@ use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread::{self, ThreadId};
 
+use lazy_static::lazy_static;
+
 use crate::CachePadded;
 
 /// The number of shards per sharded lock. Must be a power of two.

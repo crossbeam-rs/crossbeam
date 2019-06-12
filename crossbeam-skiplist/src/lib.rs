@@ -6,8 +6,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
-#[macro_use]
-extern crate cfg_if;
+use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(feature = "alloc")] {
@@ -23,9 +22,6 @@ cfg_if! {
 )]
 cfg_if! {
     if #[cfg(any(feature = "alloc", feature = "std"))] {
-        extern crate crossbeam_epoch as epoch;
-        extern crate crossbeam_utils as utils;
-
         pub mod base;
         #[doc(inline)]
         pub use crate::base::SkipList;

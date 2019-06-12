@@ -44,6 +44,7 @@ use core::sync::atomic::Ordering;
 
 use arrayvec::ArrayVec;
 use crossbeam_utils::CachePadded;
+use memoffset::offset_of;
 
 use crate::atomic::Owned;
 use crate::collector::{Collector, LocalHandle};

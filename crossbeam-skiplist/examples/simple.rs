@@ -1,5 +1,3 @@
-// extern crate crossbeam_skiplist;
-
 // use std::time::Instant;
 
 fn main() {

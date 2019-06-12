@@ -89,12 +89,6 @@ Add this to your `Cargo.toml`:
 crossbeam = "0.7"
 ```
 
-Next, add this to your crate:
-
-```rust
-extern crate crossbeam;
-```
-
 ## Contributing
 
 Crossbeam welcomes contribution from everyone in the form of suggestions, bug reports,

@@ -29,12 +29,6 @@ Add this to your `Cargo.toml`:
 crossbeam-queue = "0.1"
 ```
 
-Next, add this to your crate:
-
-```rust
-extern crate crossbeam_queue;
-```
-
 ## Compatibility
 
 The minimum supported Rust version is 1.26.

@@ -1084,11 +1084,8 @@ macro_rules! crossbeam_channel_internal {
 /// Block until a send or a receive operation is selected:
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
 /// use std::thread;
-/// use crossbeam_channel::unbounded;
+/// use crossbeam_channel::{select, unbounded};
 ///
 /// let (s1, r1) = unbounded();
 /// let (s2, r2) = unbounded();
@@ -1102,18 +1099,14 @@ macro_rules! crossbeam_channel_internal {
 ///         assert_eq!(r2.recv(), Ok(20));
 ///     }
 /// }
-/// # }
 /// ```
 ///
 /// Select from a set of operations without blocking:
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel::unbounded;
+/// use crossbeam_channel::{select, unbounded};
 ///
 /// let (s1, r1) = unbounded();
 /// let (s2, r2) = unbounded();
@@ -1133,18 +1126,14 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r2) -> msg => panic!(),
 ///     default => println!("not ready"),
 /// }
-/// # }
 /// ```
 ///
 /// Select over a set of operations with a timeout:
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel::unbounded;
+/// use crossbeam_channel::{select, unbounded};
 ///
 /// let (s1, r1) = unbounded();
 /// let (s2, r2) = unbounded();
@@ -1164,18 +1153,14 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r2) -> msg => panic!(),
 ///     default(Duration::from_millis(100)) => println!("timed out"),
 /// }
-/// # }
 /// ```
 ///
 /// Optionally add a receive operation to `select!` using [`never`]:
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
-/// # fn main() {
 /// use std::thread;
 /// use std::time::Duration;
-/// use crossbeam_channel::{never, unbounded};
+/// use crossbeam_channel::{never, select, unbounded};
 ///
 /// let (s1, r1) = unbounded();
 /// let (s2, r2) = unbounded();
@@ -1197,7 +1182,6 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r1) -> msg => panic!(),
 ///     recv(r2.unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(20)),
 /// }
-/// # }
 /// ```
 ///
 /// To optionally add a timeout to `select!`, see the [example] for [`never`].
