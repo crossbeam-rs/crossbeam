@@ -1,6 +1,4 @@
-#[macro_use]
-extern crate chan;
-use crossbeam;
+use chan::chan_select;
 
 mod message;
 

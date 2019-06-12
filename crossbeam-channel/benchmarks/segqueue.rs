@@ -1,5 +1,3 @@
-use crossbeam;
-
 use crossbeam::queue::SegQueue;
 use std::thread;
 

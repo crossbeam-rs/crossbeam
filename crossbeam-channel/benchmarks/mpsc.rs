@@ -1,5 +1,3 @@
-use crossbeam;
-
 use std::sync::mpsc;
 
 mod message;

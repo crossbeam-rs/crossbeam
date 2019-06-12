@@ -1,5 +1,3 @@
-use crossbeam;
-
 use lockfree::channel;
 
 mod message;

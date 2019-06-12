@@ -1,5 +1,3 @@
-use rand;
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, TryLockError};

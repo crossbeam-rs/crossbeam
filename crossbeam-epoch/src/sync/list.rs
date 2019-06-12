@@ -290,9 +290,9 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Collector, Owned};
     use crossbeam_utils::thread;
     use std::sync::Barrier;
-    use crate::{Collector, Owned};
 
     impl IsElement<Entry> for Entry {
         fn entry_of(entry: &Entry) -> &Entry {

@@ -1,4 +1,3 @@
-use crate::alloc::boxed::Box;
 use core::borrow::{Borrow, BorrowMut};
 use core::cmp;
 use core::fmt;
@@ -9,6 +8,8 @@ use core::ptr;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_utils::atomic::AtomicConsume;
+
+use crate::alloc::boxed::Box;
 use crate::guard::Guard;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest

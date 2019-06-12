@@ -1,5 +1,3 @@
-use crossbeam;
-
 use atomicring::AtomicRingBuffer;
 use std::thread;
 

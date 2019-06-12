@@ -20,13 +20,12 @@
 //!   - https://github.com/rust-lang/rust/blob/master/COPYRIGHT
 //!   - https://www.rust-lang.org/en-US/legal.html
 
-#[macro_use]
-extern crate crossbeam_channel as cc;
-
 use std::sync::mpsc::{RecvError, RecvTimeoutError, TryRecvError};
 use std::sync::mpsc::{SendError, TrySendError};
 use std::thread::JoinHandle;
 use std::time::Duration;
+
+use crossbeam_channel as cc;
 
 pub struct Sender<T> {
     pub inner: cc::Sender<T>,
@@ -175,7 +174,7 @@ macro_rules! select {
     (
         $($name:pat = $rx:ident.$meth:ident() => $code:expr),+
     ) => ({
-        crossbeam_channel_internal! {
+        crossbeam_channel::crossbeam_channel_internal! {
             $(
                 recv(($rx).inner) -> res => {
                     let $name = res.map_err(|_| ::std::sync::mpsc::RecvError);

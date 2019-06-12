@@ -9,9 +9,6 @@
 //!   - https://golang.org/LICENSE
 //!   - https://golang.org/PATENTS
 
-#[macro_use]
-extern crate crossbeam_channel;
-
 use std::any::Any;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -215,7 +212,7 @@ mod doubleselect {
         defer! { c4.close() }
 
         for i in 0..n {
-            select! {
+            crossbeam_channel::select! {
                 send(c1.tx(), i) -> _ => {}
                 send(c2.tx(), i) -> _ => {}
                 send(c3.tx(), i) -> _ => {}
@@ -414,22 +411,22 @@ mod nonblock {
             let cb = make::<bool>(buffer);
             let cs = make::<String>(buffer);
 
-            select! {
+            crossbeam_channel::select! {
                 recv(c32.rx()) -> _ => panic!("blocked i32sender"),
                 default => {}
             }
 
-            select! {
+            crossbeam_channel::select! {
                 recv(c64.rx()) -> _ => panic!("blocked i64sender"),
                 default => {}
             }
 
-            select! {
+            crossbeam_channel::select! {
                 recv(cb.rx()) -> _ => panic!("blocked bsender"),
                 default => {}
             }
 
-            select! {
+            crossbeam_channel::select! {
                 recv(cs.rx()) -> _ => panic!("blocked ssender"),
                 default => {}
             }
@@ -437,7 +434,7 @@ mod nonblock {
             go!(c32, sync, i32receiver(c32, sync));
             let mut r#try = 0;
             loop {
-                select! {
+                crossbeam_channel::select! {
                     send(c32.tx(), 123) -> _ => break,
                     default => {
                         r#try += 1;
@@ -456,7 +453,7 @@ mod nonblock {
             }
             let mut r#try = 0;
             loop {
-                select! {
+                crossbeam_channel::select! {
                     recv(c32.rx()) -> v => {
                         if v != Ok(234) {
                             panic!("i32sender value");
@@ -480,7 +477,7 @@ mod nonblock {
             go!(c64, sync, i64receiver(c64, sync));
             let mut r#try = 0;
             loop {
-                select! {
+                crossbeam_channel::select! {
                     send(c64.tx(), 123456) -> _ => break,
                     default => {
                         r#try += 1;
@@ -499,7 +496,7 @@ mod nonblock {
             }
             let mut r#try = 0;
             loop {
-                select! {
+                crossbeam_channel::select! {
                     recv(c64.rx()) -> v => {
                         if v != Ok(234567) {
                             panic!("i64sender value");
@@ -523,7 +520,7 @@ mod nonblock {
             go!(cb, sync, breceiver(cb, sync));
             let mut r#try = 0;
             loop {
-                select! {
+                crossbeam_channel::select! {
                     send(cb.tx(), true) -> _ => break,
                     default => {
                         r#try += 1;
@@ -542,7 +539,7 @@ mod nonblock {
             }
             let mut r#try = 0;
             loop {
-                select! {
+                crossbeam_channel::select! {
                     recv(cb.rx()) -> v => {
                         if v != Ok(true) {
                             panic!("bsender value");
@@ -566,7 +563,7 @@ mod nonblock {
             go!(cs, sync, sreceiver(cs, sync));
             let mut r#try = 0;
             loop {
-                select! {
+                crossbeam_channel::select! {
                     send(cs.tx(), "hello".to_string()) -> _ => break,
                     default => {
                         r#try += 1;
@@ -585,7 +582,7 @@ mod nonblock {
             }
             let mut r#try = 0;
             loop {
-                select! {
+                crossbeam_channel::select! {
                     recv(cs.rx()) -> v => {
                         if v != Ok("hello again".to_string()) {
                             panic!("ssender value");
@@ -631,7 +628,7 @@ mod select {
                 let nil2 = never.tx();
                 let v1 = get_value();
                 let v2 = get_value();
-                select! {
+                crossbeam_channel::select! {
                     send(a.map(|c| c.tx()).unwrap_or(nil1), v1) -> _ => {
                         i += 1;
                         a = None;
@@ -680,7 +677,7 @@ mod select4 {
         let c = make::<i32>(1);
         let c1 = make::<i32>(0);
         c.send(42);
-        select! {
+        crossbeam_channel::select! {
             recv(c1.rx()) -> _ => panic!("BUG"),
             recv(c.rx()) -> v => assert_eq!(v, Ok(42)),
         }
@@ -699,7 +696,7 @@ mod select6 {
 
         go!(c1, c1.recv());
         go!(c1, c2, c3, {
-            select! {
+            crossbeam_channel::select! {
                 recv(c1.rx()) -> _ => panic!("dummy"),
                 recv(c2.rx()) -> _ => c3.send(true),
             }
@@ -722,14 +719,14 @@ mod select7 {
     }
 
     fn recv2(c: Chan<i32>) {
-        select! {
+        crossbeam_channel::select! {
             recv(c.rx()) -> _ => ()
         }
     }
 
     fn recv3(c: Chan<i32>) {
         let c2 = make::<i32>(1);
-        select! {
+        crossbeam_channel::select! {
             recv(c.rx()) -> _ => (),
             recv(c2.rx()) -> _ => ()
         }
@@ -746,7 +743,7 @@ mod select7 {
         let c = make::<i32>(1);
         go!(c, recv(c));
         thread::yield_now();
-        select! {
+        crossbeam_channel::select! {
             send(c.tx(), 1) -> _ => ()
         }
     }
@@ -756,7 +753,7 @@ mod select7 {
         go!(c, recv(c));
         thread::yield_now();
         let c2 = make::<i32>(1);
-        select! {
+        crossbeam_channel::select! {
             send(c.tx(), 1) -> _ => (),
             send(c2.tx(), 1) -> _ => ()
         }
@@ -876,11 +873,11 @@ mod chan_test {
                 }
 
                 // Ensure that non-blocking receive does not block.
-                select! {
+                crossbeam_channel::select! {
                     recv(c.rx()) -> _ => panic!(),
                     default => {}
                 }
-                select! {
+                crossbeam_channel::select! {
                     recv(c.rx()) -> _ => panic!(),
                     default => {}
                 }
@@ -909,7 +906,7 @@ mod chan_test {
                 }
 
                 // Ensure that non-blocking send does not block.
-                select! {
+                crossbeam_channel::select! {
                     send(c.tx(), 0) -> _ => panic!(),
                     default => {}
                 }
@@ -996,7 +993,7 @@ mod chan_test {
             c.send(1);
 
             let t = go!(c, {
-                select! {
+                crossbeam_channel::select! {
                     recv(c.rx()) -> _ => {}
                     default => panic!("chan is not ready"),
                 }
@@ -1019,7 +1016,7 @@ mod chan_test {
             c1.send(1);
 
             go!(c1, c2, done, {
-                select! {
+                crossbeam_channel::select! {
                     recv(c1.rx()) -> _ => {}
                     recv(c2.rx()) -> _ => {}
                     default => {
@@ -1031,7 +1028,7 @@ mod chan_test {
             });
 
             c2.send(1);
-            select! {
+            crossbeam_channel::select! {
                 recv(c1.rx()) -> _ => {}
                 default => {}
             }
@@ -1052,7 +1049,7 @@ mod chan_test {
             c1.send(1);
 
             go!(c1, c2, done, {
-                select! {
+                crossbeam_channel::select! {
                     recv(c1.rx()) -> _ => {}
                     recv(c2.rx()) -> _ => {}
                     default => {
@@ -1064,7 +1061,7 @@ mod chan_test {
             });
 
             c2.close();
-            select! {
+            crossbeam_channel::select! {
                 recv(c1.rx()) -> _ => {}
                 default => {}
             }
@@ -1090,7 +1087,7 @@ mod chan_test {
                     defer! { wg.done() }
                     for i in 0..1000 {
                         if p == 0 || i % 2 == 0 {
-                            select! {
+                            crossbeam_channel::select! {
                                 send(c.tx(), p) -> _ => {}
                                 recv(c.rx()) -> v => {
                                     if cap == 0 && v.ok() == Some(p) {
@@ -1099,7 +1096,7 @@ mod chan_test {
                                 }
                             }
                         } else {
-                            select! {
+                            crossbeam_channel::select! {
                                 recv(c.rx()) -> v => {
                                     if cap == 0 && v.ok() == Some(p) {
                                         panic!("self receive");
@@ -1244,13 +1241,13 @@ mod chan_test {
             defer! { wg.done() };
             loop {
                 let b;
-                select! {
+                crossbeam_channel::select! {
                     recv(c3.rx()) -> m => b = m.unwrap(),
                     recv(c4.rx()) -> m => b = m.unwrap(),
                     recv(c1.rx()) -> m => b = m.unwrap(),
                     recv(c2.rx()) -> m => b = m.unwrap(),
                 }
-                select! {
+                crossbeam_channel::select! {
                     send(out.tx(), b) -> _ => {}
                     recv(done.rx()) -> _ => return,
                 }
@@ -1292,12 +1289,12 @@ mod chan_test {
         let c = make::<Box<dyn Any>>(1);
         c.send(Box::new(Mt));
 
-        select! {
+        crossbeam_channel::select! {
             send(c.tx(), Box::new(Mt)) -> _ => {}
             default => {}
         }
 
-        select! {
+        crossbeam_channel::select! {
             send(c.tx(), Box::new(Mt)) -> _ => {}
             send(c.tx(), Box::new(Mt)) -> _ => {}
             default => {}
@@ -1323,7 +1320,7 @@ mod chan_test {
             });
 
             for _ in 0..N {
-                select! {
+                crossbeam_channel::select! {
                     send(c.tx(), 1) -> _ => {}
                     send(c.tx(), 0) -> _ => {}
                 }
@@ -1404,7 +1401,7 @@ mod chan_test {
         let e = make::<i32>(0);
 
         go!(c, d, e, {
-            select! {
+            crossbeam_channel::select! {
                 recv(c.rx()) -> _ => {}
                 recv(d.rx()) -> _ => {}
                 recv(e.rx()) -> _ => {}

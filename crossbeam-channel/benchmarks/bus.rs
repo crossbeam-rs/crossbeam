@@ -1,5 +1,3 @@
-use crossbeam;
-
 use bus::Bus;
 
 mod message;

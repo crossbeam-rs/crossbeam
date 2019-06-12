@@ -1,7 +1,5 @@
-extern crate crossbeam_deque as deque;
-
-use crate::deque::Steal::Success;
-use crate::deque::{Injector, Worker};
+use crossbeam_deque::Steal::Success;
+use crossbeam_deque::{Injector, Worker};
 
 #[test]
 fn steal_fifo() {

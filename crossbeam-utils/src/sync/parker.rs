@@ -1,8 +1,8 @@
 use std::fmt;
 use std::marker::PhantomData;
-use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 /// A thread parking primitive.
@@ -228,7 +228,11 @@ struct Inner {
 impl Inner {
     fn park(&self, timeout: Option<Duration>) {
         // If we were previously notified then we consume this notification and return quickly.
-        if self.state.compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst).is_ok() {
+        if self
+            .state
+            .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst)
+            .is_ok()
+        {
             return;
         }
 
@@ -266,7 +270,7 @@ impl Inner {
 
                     match self.state.compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst) {
                         Ok(_) => return, // got a notification
-                        Err(_) => {} // spurious wakeup, go back to sleep
+                        Err(_) => {}     // spurious wakeup, go back to sleep
                     }
                 }
             }
@@ -278,7 +282,7 @@ impl Inner {
 
                 match self.state.swap(EMPTY, SeqCst) {
                     NOTIFIED => {} // got a notification
-                    PARKED => {} // no notification
+                    PARKED => {}   // no notification
                     n => panic!("inconsistent park_timeout state: {}", n),
                 }
             }
@@ -291,9 +295,9 @@ impl Inner {
         // `NOTIFIED` even if `state` is already `NOTIFIED`. That is why this must be a swap rather
         // than a compare-and-swap that returns if it reads `NOTIFIED` on failure.
         match self.state.swap(NOTIFIED, SeqCst) {
-            EMPTY => return, // no one was waiting
+            EMPTY => return,    // no one was waiting
             NOTIFIED => return, // already unparked
-            PARKED => {} // gotta go wake someone up
+            PARKED => {}        // gotta go wake someone up
             _ => panic!("inconsistent state in unpark"),
         }
 

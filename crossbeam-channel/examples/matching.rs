@@ -42,10 +42,7 @@
 //! }
 //! ```
 
-#[macro_use]
-extern crate crossbeam_channel;
-
-use crossbeam_channel::bounded;
+use crossbeam_channel::{bounded, select};
 use crossbeam_utils::thread;
 
 fn main() {

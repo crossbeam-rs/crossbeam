@@ -11,7 +11,6 @@ use core::ptr;
 use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
 use crate::epoch::{self, Atomic, Collector, Guard, Shared};
-use scopeguard;
 use crate::utils::CachePadded;
 
 /// Number of bits needed to store height.
@@ -832,7 +831,13 @@ where
     /// Inserts an entry with the specified `key` and `value`.
     ///
     /// If `replace` is `true`, then any existing entry with this key will first be removed.
-    fn insert_internal(&self, key: K, value: V, replace: bool, guard: &Guard) -> RefEntry<'_, K, V> {
+    fn insert_internal(
+        &self,
+        key: K,
+        value: V,
+        replace: bool,
+        guard: &Guard,
+    ) -> RefEntry<'_, K, V> {
         self.check_guard(guard);
 
         unsafe {

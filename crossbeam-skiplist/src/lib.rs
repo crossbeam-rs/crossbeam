@@ -25,7 +25,6 @@ cfg_if! {
     if #[cfg(any(feature = "alloc", feature = "std"))] {
         extern crate crossbeam_epoch as epoch;
         extern crate crossbeam_utils as utils;
-        extern crate scopeguard;
 
         pub mod base;
         #[doc(inline)]
