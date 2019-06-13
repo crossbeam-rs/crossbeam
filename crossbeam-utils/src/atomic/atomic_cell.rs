@@ -2,7 +2,6 @@ use core::cell::UnsafeCell;
 use core::fmt;
 use core::mem;
 use core::ptr;
-use core::slice;
 use core::sync::atomic::{self, AtomicBool, AtomicUsize, Ordering};
 
 use Backoff;
@@ -259,23 +258,8 @@ impl<T: Copy + Eq> AtomicCell<T> {
     /// assert_eq!(a.compare_exchange(1, 2), Ok(1));
     /// assert_eq!(a.load(), 2);
     /// ```
-    pub fn compare_exchange(&self, mut current: T, new: T) -> Result<T, T> {
-        loop {
-            match unsafe { atomic_compare_exchange_weak(self.value.get(), current, new) } {
-                Ok(_) => return Ok(current),
-                Err(previous) => {
-                    if previous != current {
-                        return Err(previous);
-                    }
-
-                    // The compare-exchange operation has failed and didn't store `new`. The
-                    // failure is either spurious, or `previous` was semantically equal to
-                    // `current` but not byte-equal. Let's retry with `previous` as the new
-                    // `current`.
-                    current = previous;
-                }
-            }
-        }
+    pub fn compare_exchange(&self, current: T, new: T) -> Result<T, T> {
+        unsafe { atomic_compare_exchange_weak(self.value.get(), current, new) }
     }
 }
 
@@ -636,15 +620,6 @@ impl<T: Copy + fmt::Debug> fmt::Debug for AtomicCell<T> {
     }
 }
 
-/// Returns `true` if the two values are equal byte-for-byte.
-fn byte_eq<T>(a: &T, b: &T) -> bool {
-    unsafe {
-        let a = slice::from_raw_parts(a as *const _ as *const u8, mem::size_of::<T>());
-        let b = slice::from_raw_parts(b as *const _ as *const u8, mem::size_of::<T>());
-        a == b
-    }
-}
-
 /// Returns `true` if values of type `A` can be transmuted into values of type `B`.
 fn can_transmute<A, B>() -> bool {
     // Sizes must be equal, but alignment of `A` must be greater or equal than that of `B`.
@@ -899,13 +874,12 @@ unsafe fn atomic_store<T>(dst: *mut T, val: T) {
         T, a,
         {
             a = &*(dst as *const _ as *const _);
-            let res = a.store(mem::transmute_copy(&val), Ordering::Release);
+            a.store(mem::transmute_copy(&val), Ordering::Release);
             mem::forget(val);
-            res
         },
         {
             let _guard = lock(dst as usize).write();
-            ptr::write(dst, val)
+            ptr::write(dst, val);
         }
     }
 }
@@ -937,29 +911,46 @@ unsafe fn atomic_swap<T>(dst: *mut T, val: T) -> T {
 ///
 /// This operation uses the `AcqRel` ordering. If possible, an atomic instructions is used, and a
 /// global lock otherwise.
-unsafe fn atomic_compare_exchange_weak<T>(dst: *mut T, current: T, new: T) -> Result<T, T>
+unsafe fn atomic_compare_exchange_weak<T>(dst: *mut T, mut current: T, new: T) -> Result<T, T>
 where
-    T: Copy,
+    T: Copy + Eq,
 {
     atomic! {
         T, a,
         {
             a = &*(dst as *const _ as *const _);
-            let res = a.compare_exchange_weak(
-                mem::transmute_copy(&current),
-                mem::transmute_copy(&new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            );
-            match res {
-                Ok(v) => Ok(mem::transmute_copy(&v)),
-                Err(v) => Err(mem::transmute_copy(&v)),
+            let mut current_raw = mem::transmute_copy(&current);
+            let new_raw = mem::transmute_copy(&new);
+
+            loop {
+                match a.compare_exchange_weak(
+                    current_raw,
+                    new_raw,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => break Ok(current),
+                    Err(previous_raw) => {
+                        let previous = mem::transmute_copy(&previous_raw);
+
+                        if !T::eq(&previous, &current) {
+                            break Err(previous);
+                        }
+
+                        // The compare-exchange operation has failed and didn't store `new`. The
+                        // failure is either spurious, or `previous` was semantically equal to
+                        // `current` but not byte-equal. Let's retry with `previous` as the new
+                        // `current`.
+                        current = previous;
+                        current_raw = previous_raw;
+                    }
+                }
             }
         },
         {
             let guard = lock(dst as usize).write();
 
-            if byte_eq(&*dst, &current) {
+            if T::eq(&*dst, &current) {
                 Ok(ptr::replace(dst, new))
             } else {
                 let val = ptr::read(dst);
