@@ -43,7 +43,8 @@ This crate provides a set of tools for concurrent programming:
 * [`scope`], for spawning threads that borrow local variables from the stack.
 
 *Features marked with <sup>(no_std)</sup> can be used in `no_std` environments.*<br/>
-*Features marked with <sup>(alloc)</sup> can be used in `no_std` environments that implement `alloc`. It needs to enable the `alloc` feature of this crate to use these features, in the `no_std` environments.*
+*Features marked with <sup>(alloc)</sup> can be used in `no_std` environments, but only if `alloc`
+and `nightly` are enabled.*
 
 [`AtomicCell`]: https://docs.rs/crossbeam/*/crossbeam/atomic/struct.AtomicCell.html
 [`AtomicConsume`]: https://docs.rs/crossbeam/*/crossbeam/atomic/trait.AtomicConsume.html

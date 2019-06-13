@@ -648,36 +648,17 @@ impl<'a> Select<'a> {
         i
     }
 
-    /// Clears the list of operations.
-    ///
-    /// Newly added operations will be assigned indices as usual, starting with 0.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::thread;
-    /// use crossbeam_channel::{unbounded, Select};
-    ///
-    /// let (s, r) = unbounded::<i32>();
-    ///
-    /// let mut sel = Select::new();
-    /// let index = sel.recv(&r);
-    /// assert_eq!(index, 0);
-    ///
-    /// sel.clear();
-    ///
-    /// let index = sel.send(&s);
-    /// assert_eq!(index, 0);
-    /// ```
-    pub fn clear(&mut self) {
-        self.handles.clear();
-        self.next_index = 0;
-    }
-
-    /// Disables an operation, preventing it from being selected.
+    /// Removes a previously added operation.
     ///
     /// This is useful when an operation is selected because the channel got disconnected and we
     /// want to try again to select a different operation instead.
+    ///
+    /// If new operations are added after removing some, the indices of removed operations will not
+    /// be reused.
+    ///
+    /// # Panics
+    ///
+    /// An attempt to remove a non-existing or already removed operation will panic.
     ///
     /// # Examples
     ///
@@ -696,7 +677,7 @@ impl<'a> Select<'a> {
     /// let oper = sel.select();
     /// assert_eq!(oper.index(), oper2);
     /// assert!(oper.recv(&r2).is_err());
-    /// sel.disable(oper2);
+    /// sel.remove(oper2);
     ///
     /// s1.send(10).unwrap();
     ///
@@ -704,7 +685,7 @@ impl<'a> Select<'a> {
     /// assert_eq!(oper.index(), oper1);
     /// assert_eq!(oper.recv(&r1), Ok(10));
     /// ```
-    pub fn disable(&mut self, index: usize) {
+    pub fn remove(&mut self, index: usize) {
         assert!(
             index < self.next_index,
             "index out of bounds; {} >= {}",
@@ -717,7 +698,7 @@ impl<'a> Select<'a> {
             .iter()
             .enumerate()
             .find(|(_, (_, i, _))| *i == index)
-            .unwrap()
+            .expect("no operation with this index")
             .0;
 
         self.handles.swap_remove(i);

@@ -532,7 +532,7 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns true if senders send to the same channel.
+    /// Returns `true` if senders belong to the same channel.
     ///
     /// # Examples
     ///
@@ -542,18 +542,16 @@ impl<T> Sender<T> {
     /// let (s, _) = unbounded::<usize>();
     ///
     /// let s2 = s.clone();
-    /// assert!(s.identical_to(&s2));
+    /// assert!(s.same_channel(&s2));
     ///
     /// let (s3, _) = unbounded();
-    /// assert!(!s.identical_to(&s3));
+    /// assert!(!s.same_channel(&s3));
     /// ```
-    pub fn identical_to(&self, other: &Sender<T>) -> bool {
-        use self::SenderFlavor::*;
+    pub fn same_channel(&self, other: &Sender<T>) -> bool {
         match (&self.flavor, &other.flavor) {
-            (Array(ref self_counter), Array(ref other_counter)) => self_counter == other_counter,
-            (List(ref self_counter), List(ref other_counter)) => self_counter == other_counter,
-            (Zero(ref self_counter), Zero(ref other_counter)) => self_counter == other_counter,
-            // Channels of different flavours are never equal.
+            (SenderFlavor::Array(ref a), SenderFlavor::Array(ref b)) => a == b,
+            (SenderFlavor::List(ref a), SenderFlavor::List(ref b)) => a == b,
+            (SenderFlavor::Zero(ref a), SenderFlavor::Zero(ref b)) => a == b,
             _ => false,
         }
     }
@@ -983,7 +981,7 @@ impl<T> Receiver<T> {
         TryIter { receiver: self }
     }
 
-    /// Returns true if the receiver receive from the same channel.
+    /// Returns `true` if receivers belong to the same channel.
     ///
     /// # Examples
     ///
@@ -993,41 +991,19 @@ impl<T> Receiver<T> {
     /// let (_, r) = unbounded::<usize>();
     ///
     /// let r2 = r.clone();
-    /// assert!(r.identical_to(&r2));
+    /// assert!(r.same_channel(&r2));
     ///
     /// let (_, r3) = unbounded();
-    /// assert!(!r.identical_to(&r3));
+    /// assert!(!r.same_channel(&r3));
     /// ```
-    ///
-    /// # Notes
-    ///
-    /// Never channels always return true when using `identical_to`.
-    ///
-    /// ```
-    /// use crossbeam_channel::never;
-    ///
-    /// let r = never::<usize>();
-    ///
-    /// let r2 = r.clone();
-    /// assert!(r.identical_to(&r2));
-    ///
-    /// let r3 = never::<usize>();
-    /// assert!(r.identical_to(&r3));
-    /// ```
-    pub fn identical_to(&self, other: &Receiver<T>) -> bool {
-        use self::ReceiverFlavor::*;
+    pub fn same_channel(&self, other: &Receiver<T>) -> bool {
         match (&self.flavor, &other.flavor) {
-            (Array(ref self_counter), Array(ref other_counter)) => self_counter == other_counter,
-            (List(ref self_counter), List(ref other_counter)) => self_counter == other_counter,
-            (Zero(ref self_counter), Zero(ref other_counter)) => self_counter == other_counter,
-            (After(ref self_channel), After(ref other_channel)) => {
-                Arc::ptr_eq(self_channel, other_channel)
-            }
-            (Tick(ref self_channel), Tick(ref other_channel)) => {
-                Arc::ptr_eq(self_channel, other_channel)
-            }
-            (Never(_), Never(_)) => true,
-            // Channels of different flavours are never equal.
+            (ReceiverFlavor::Array(a), ReceiverFlavor::Array(b)) => a == b,
+            (ReceiverFlavor::List(a), ReceiverFlavor::List(b)) => a == b,
+            (ReceiverFlavor::Zero(a), ReceiverFlavor::Zero(b)) => a == b,
+            (ReceiverFlavor::After(a), ReceiverFlavor::After(b)) => Arc::ptr_eq(a, b),
+            (ReceiverFlavor::Tick(a), ReceiverFlavor::Tick(b)) => Arc::ptr_eq(a, b),
+            (ReceiverFlavor::Never(_), ReceiverFlavor::Never(_)) => true,
             _ => false,
         }
     }
