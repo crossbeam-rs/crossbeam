@@ -248,10 +248,11 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                 debug_assert!(self.curr.tag() == 0);
 
                 // Try to unlink `curr` from the list, and get the new value of `self.pred`.
-                let succ = self
+                let succ = match self
                     .pred
                     .compare_and_set(self.curr, succ, Acquire, self.guard)
-                    .map(|_| {
+                {
+                    Ok(_) => {
                         // We succeeded in unlinking `curr`, so we have to schedule
                         // deallocation. Deferred drop is okay, because `list.delete()` can only be
                         // called if `T: 'static`.
@@ -261,11 +262,12 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
 
                         // `succ` is the new value of `self.pred`.
                         succ
-                    })
-                    .unwrap_or_else(|e| {
+                    }
+                    Err(e) => {
                         // `e.current` is the current value of `self.pred`.
                         e.current
-                    });
+                    }
+                };
 
                 // If the predecessor node is already marked as deleted, we need to restart from
                 // `head`.
