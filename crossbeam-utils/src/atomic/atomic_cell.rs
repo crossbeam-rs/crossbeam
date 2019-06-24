@@ -4,6 +4,9 @@ use core::mem;
 use core::ptr;
 use core::sync::atomic::{self, AtomicBool, AtomicUsize, Ordering};
 
+#[cfg(feature = "std")]
+use std::panic::{RefUnwindSafe, UnwindSafe};
+
 use Backoff;
 
 /// A thread-safe mutable memory location.
@@ -33,6 +36,11 @@ pub struct AtomicCell<T: ?Sized> {
 
 unsafe impl<T: Send> Send for AtomicCell<T> {}
 unsafe impl<T: Send> Sync for AtomicCell<T> {}
+
+#[cfg(feature = "std")]
+impl<T> UnwindSafe for AtomicCell<T> {}
+#[cfg(feature = "std")]
+impl<T> RefUnwindSafe for AtomicCell<T> {}
 
 impl<T> AtomicCell<T> {
     /// Creates a new atomic cell initialized with `val`.
