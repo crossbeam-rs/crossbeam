@@ -45,7 +45,7 @@ use core::sync::atomic::Ordering;
 use arrayvec::ArrayVec;
 use crossbeam_utils::CachePadded;
 
-use atomic::Owned;
+use atomic::{Shared, Owned};
 use collector::{Collector, LocalHandle};
 use deferred::Deferred;
 use epoch::{AtomicEpoch, Epoch};
@@ -501,9 +501,8 @@ impl IsElement<Local> for Local {
         &*local_ptr
     }
 
-    unsafe fn finalize(entry: &Entry) {
-        let local = Self::element_of(entry);
-        drop(Owned::from_raw(local as *const Local as *mut Local));
+    unsafe fn finalize(entry: &Entry, guard: &Guard) {
+        guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _));
     }
 }
 
