@@ -572,7 +572,7 @@ macro_rules! crossbeam_channel_internal {
     };
     // Print an error if there is an unexpected token after `default`.
     (@case
-        (default $($tail:tt)*)
+        (default $t:tt $($tail:tt)*)
         $cases:tt
         $default:tt
     ) => {
