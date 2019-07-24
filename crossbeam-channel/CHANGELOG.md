@@ -1,3 +1,10 @@
+# Version 0.3.9
+
+- Fix a bug in reference counting.
+- Optimize `recv_timeout()`.
+- Add `Select::remove()`.
+- Various small improvements, code cleanup, more tests.
+
 # Version 0.3.8
 
 - Bump the minimum required version of `crossbeam-utils`.

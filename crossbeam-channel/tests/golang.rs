@@ -324,7 +324,7 @@ mod goroutines {
 
     #[test]
     fn main() {
-        let n = 10_000i32;
+        let n = 100i32;
 
         let leftmost = make::<i32>(0);
         let mut right = leftmost.clone();
