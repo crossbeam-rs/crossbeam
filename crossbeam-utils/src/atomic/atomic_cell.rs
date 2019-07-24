@@ -176,11 +176,8 @@ impl<T: ?Sized> AtomicCell<T> {
     ///
     /// assert_eq!(a.load(), 8);
     /// ```
-    ///
-    /// # Caveat
-    ///
-    /// This method might be unsound and removed in a future release, but we haven't decided
-    /// yet. See [#315](https://github.com/crossbeam-rs/crossbeam/issues/315) for more details.
+    #[doc(hidden)]
+    #[deprecated(note = "this method is unsound and will be removed in the next release")]
     pub fn get_mut(&mut self) -> &mut T {
         unsafe { &mut *self.value.get() }
     }
