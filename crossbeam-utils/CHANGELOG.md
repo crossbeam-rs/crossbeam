@@ -1,3 +1,11 @@
+# Version 0.6.6
+
+- Add `UnwindSafe` and `RefUnwindSafe` impls for `AtomicCell`.
+- Add `AtomicCell::as_ptr()`.
+- Add `AtomicCell::take()`.
+- Fix a bug in `AtomicCell::compare_exchange()` and `AtomicCell::compare_and_swap()`.
+- Various documentation improvements.
+
 # Version 0.6.5
 
 - Rename `Backoff::is_complete()` to `Backoff::is_completed()`.
