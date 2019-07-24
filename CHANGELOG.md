@@ -1,3 +1,9 @@
+# Version 0.7.2
+
+- Bump `crossbeam-channel` to `0.3.9`.
+- Bump `crossbeam-epoch` to `0.7.2`.
+- Bump `crossbeam-utils` to `0.6.6`.
+
 # Version 0.7.1
 
 - Bump `crossbeam-utils` to `0.6.5`.
