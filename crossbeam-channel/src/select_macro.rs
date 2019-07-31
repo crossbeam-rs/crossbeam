@@ -764,7 +764,7 @@ macro_rules! crossbeam_channel_internal {
         let _handle: &$crate::internal::SelectHandle = &$crate::never::<()>();
 
         #[allow(unused_mut)]
-        let mut _sel = [(_handle, 0, 0 as *const u8); _LEN];
+        let mut _sel = [(_handle, 0, ::std::ptr::null()); _LEN];
 
         crossbeam_channel_internal!(
             @add
@@ -858,7 +858,7 @@ macro_rules! crossbeam_channel_internal {
 
         match _oper {
             None => {
-                ::std::mem::drop($sel);
+                { $sel };
                 $body
             }
             Some(_oper) => {
@@ -889,7 +889,7 @@ macro_rules! crossbeam_channel_internal {
 
         match _oper {
             ::std::option::Option::None => {
-                ::std::mem::drop($sel);
+                { $sel };
                 $body
             }
             ::std::option::Option::Some(_oper) => {
@@ -987,7 +987,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         if $oper.index() == $i {
             let _res = $oper.recv($r);
-            ::std::mem::drop($sel);
+            { $sel };
 
             let $res = _res;
             $body
@@ -1008,7 +1008,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         if $oper.index() == $i {
             let _res = $oper.send($s, $m);
-            ::std::mem::drop($sel);
+            { $sel };
 
             let $res = _res;
             $body
