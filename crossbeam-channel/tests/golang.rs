@@ -53,7 +53,7 @@ impl<T> Chan<T> {
             .expect("sending into closed channel")
             .clone();
         let _ = s.send(msg);
-        
+
         // FIXME
         // let guard = self
         //     .inner
@@ -72,15 +72,10 @@ impl<T> Chan<T> {
     }
 
     fn try_send(&self, msg: T) -> bool {
-        let guard = self
-            .inner
-            .lock()
-            .unwrap();
+        let guard = self.inner.lock().unwrap();
 
         match guard.s.as_ref() {
-            Some(ss) => {
-                ss.clone().try_send(msg).is_ok()
-            },
+            Some(ss) => ss.clone().try_send(msg).is_ok(),
             None => {
                 std::mem::drop(guard);
                 panic!("sending into closed channel")
@@ -1584,8 +1579,8 @@ mod closedchan {
             }
 
             // send should work with ,ok too: sent a value without blocking, so ok == true.
-            if let Ok(_) =
-                ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {})) // FIXME c.nbsend(1)
+            if let Ok(_) = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {}))
+            // FIXME c.nbsend(1)
             {
                 //panic!("test1: no panic on nb send on closed channel");
             }
@@ -1602,7 +1597,8 @@ mod closedchan {
 
             // similarly Send.
             //c.send(1);
-            if let Ok(_) = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {})) // FIXME c.send(1)
+            if let Ok(_) = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {}))
+            // FIXME c.send(1)
             {
                 //panic!("test1: no panic on send to closed channel");
             }
@@ -1621,15 +1617,15 @@ mod closedchan {
     fn testasync2(c: &GoChan) -> bool {
         let mut failed = false;
         match c.recv() {
-            Some(1) => {},
+            Some(1) => {}
             Some(x) => {
                 println!("testasync1: recv did not get 1: {} {}", x, c.get_impl());
-		        failed = true
-            },
+                failed = true
+            }
             None => {
                 println!("testasync1: recv got nothing: {}", c.get_impl());
-		        failed = true
-            },
+                failed = true
+            }
         }
 
         // prevent short-circuit
@@ -1640,15 +1636,15 @@ mod closedchan {
     fn testasync4(c: &GoChan) -> bool {
         let mut failed = false;
         match c.nbrecv() {
-            Some(1) => {},
+            Some(1) => {}
             Some(x) => {
                 println!("testasync1: try_recv did not get 1: {} {}", x, c.get_impl());
-		        failed = true
-            },
+                failed = true
+            }
             None => {
                 println!("testasync1: try_recv got nothing: {}", c.get_impl());
-		        failed = true
-            },
+                failed = true
+            }
         }
 
         // prevent short-circuit
@@ -1671,9 +1667,12 @@ mod closedchan {
 
     #[test]
     fn main() {
-        let mk_x = |c: Chan<i32>| { XChan {inner: c}};
-        let mk_s = |c: Chan<i32>| { SChan {inner: c}};
-        let mk_ss = |c: Chan<i32>| { SSChan {inner: c, dummy: make::<i32>(0)}};
+        let mk_x = |c: Chan<i32>| XChan { inner: c };
+        let mk_s = |c: Chan<i32>| SChan { inner: c };
+        let mk_ss = |c: Chan<i32>| SSChan {
+            inner: c,
+            dummy: make::<i32>(0),
+        };
 
         let mut failed = false;
 
