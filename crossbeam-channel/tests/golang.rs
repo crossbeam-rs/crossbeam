@@ -72,15 +72,15 @@ impl<T> Chan<T> {
     }
 
     fn try_send(&self, msg: T) -> bool {
-        let guard = self.inner.lock().unwrap();
-
-        match guard.s.as_ref() {
-            Some(ss) => ss.clone().try_send(msg).is_ok(),
-            None => {
-                std::mem::drop(guard);
-                panic!("sending into closed channel")
-            }
-        }
+        let s = self
+            .inner
+            .lock()
+            .unwrap()
+            .s
+            .as_ref()
+            .expect("sending into closed channel")
+            .clone();
+        s.try_send(msg).is_ok()
     }
 
     fn try_recv(&self) -> Option<T> {
