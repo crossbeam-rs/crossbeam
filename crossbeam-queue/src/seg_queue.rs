@@ -403,30 +403,12 @@ impl<T> SegQueue<T> {
 
             // If the tail index didn't change, we've got consistent indices to work with.
             if self.tail.index.load(Ordering::SeqCst) == tail {
-                // Erase the lower bits.
-                tail &= !((1 << SHIFT) - 1);
-                head &= !((1 << SHIFT) - 1);
-
-                // Rotate indices so that head falls into the first block.
-                let lap = (head >> SHIFT) / LAP;
-                tail = tail.wrapping_sub((lap * LAP) << SHIFT);
-                head = head.wrapping_sub((lap * LAP) << SHIFT);
-
                 // Remove the lower bits.
                 tail >>= SHIFT;
                 head >>= SHIFT;
 
-                // Fix up indices if they fall onto block ends.
-                if head == BLOCK_CAP {
-                    head = 0;
-                    tail -= LAP;
-                }
-                if tail == BLOCK_CAP {
-                    tail += 1;
-                }
-
                 // Return the difference minus the number of blocks between tail and head.
-                return tail - head - tail / LAP;
+                return tail - head + head / LAP - tail / LAP;
             }
         }
     }
