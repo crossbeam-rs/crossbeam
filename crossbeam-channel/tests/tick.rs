@@ -23,7 +23,7 @@ fn fire() {
     let r = tick(ms(50));
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
-    thread::sleep(ms(100));
+    thread::sleep(ms(80));
 
     let fired = r.try_recv().unwrap();
     assert!(start < fired);
@@ -31,7 +31,7 @@ fn fire() {
 
     let now = Instant::now();
     assert!(fired < now);
-    assert!(now - fired >= ms(50));
+    assert!(now - fired >= ms(30));
 
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 
@@ -60,6 +60,9 @@ fn intervals() {
     assert!(start + ms(100) <= t2);
     assert!(start + ms(150) > t2);
 
+    for _ in 0..5 {
+        r.try_recv().unwrap();
+    }
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
     let t3 = r.recv().unwrap();
     assert!(start + ms(400) <= t3);
@@ -86,7 +89,7 @@ fn len_empty_full() {
     assert_eq!(r.is_empty(), true);
     assert_eq!(r.is_full(), false);
 
-    thread::sleep(ms(100));
+    thread::sleep(ms(50));
 
     assert_eq!(r.len(), 1);
     assert_eq!(r.is_empty(), false);

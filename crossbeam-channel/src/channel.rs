@@ -272,9 +272,9 @@ pub fn never<T>() -> Receiver<T> {
 /// assert!(eq(r.recv().unwrap(), start + ms(200)));
 /// assert!(eq(Instant::now(), start + ms(600)));
 ///
-/// // This message was sent 700 ms from the start and received 700 ms from the start.
-/// assert!(eq(r.recv().unwrap(), start + ms(700)));
-/// assert!(eq(Instant::now(), start + ms(700)));
+/// // This message was sent 300 ms from the start and received 600 ms from the start.
+/// assert!(eq(r.recv().unwrap(), start + ms(300)));
+/// assert!(eq(Instant::now(), start + ms(600)));
 /// ```
 pub fn tick(duration: Duration) -> Receiver<Instant> {
     Receiver {
