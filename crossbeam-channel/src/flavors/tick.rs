@@ -46,7 +46,7 @@ impl Channel {
 
             if self
                 .delivery_time
-                .compare_exchange(delivery_time, now + self.duration)
+                .compare_exchange(delivery_time, delivery_time + self.duration)
                 .is_ok()
             {
                 return Ok(delivery_time);
@@ -67,7 +67,7 @@ impl Channel {
                 if now >= delivery_time
                     && self
                         .delivery_time
-                        .compare_exchange(delivery_time, now + self.duration)
+                        .compare_exchange(delivery_time, delivery_time + self.duration)
                         .is_ok()
                 {
                     return Ok(delivery_time);
