@@ -59,7 +59,6 @@ const MAX_OBJECTS: usize = 64;
 const MAX_OBJECTS: usize = 4;
 
 /// A bag of deferred functions.
-// can't #[derive(Debug)] because Debug is not implemented for arrays 64 items long
 pub struct Bag {
     /// Stashed objects.
     deferreds: [Deferred; MAX_OBJECTS],
@@ -142,10 +141,25 @@ impl Drop for Bag {
     }
 }
 
+// can't #[derive(Debug)] because Debug is not implemented for arrays 64 items long
+impl core::fmt::Debug for Bag {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "Bag {{ deferreds: [")?;
+        if ! self.is_empty() {
+            write!(f, "{:?}", self.deferreds[0])?;
+        }
+        for i in 1..self.len {
+            write!(f, ", {:?}", self.deferreds[i])?;
+        }
+        write!(f, "] }}")?;
+        Ok(())
+    }
+}
+
 fn no_op_func() {}
 
 /// A pair of an epoch and a bag.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct SealedBag {
     epoch: Epoch,
     bag: Bag,
