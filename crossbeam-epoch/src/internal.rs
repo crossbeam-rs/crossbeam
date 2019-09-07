@@ -144,15 +144,7 @@ impl Drop for Bag {
 // can't #[derive(Debug)] because Debug is not implemented for arrays 64 items long
 impl core::fmt::Debug for Bag {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "Bag {{ deferreds: [")?;
-        if ! self.is_empty() {
-            write!(f, "{:?}", self.deferreds[0])?;
-        }
-        for i in 1..self.len {
-            write!(f, ", {:?}", self.deferreds[i])?;
-        }
-        write!(f, "] }}")?;
-        Ok(())
+        f.debug_struct("Bag").field("deferreds", &&self.deferreds[..self.len]).finish()
     }
 }
 
