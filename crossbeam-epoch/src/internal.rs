@@ -105,7 +105,7 @@ impl Bag {
 
 impl Default for Bag {
     fn default() -> Self {
-        // [no_op; MAX_OBJECTS] blocked by https://github.com/rust-lang/rust/issues/49147
+        // TODO: [no_op; MAX_OBJECTS] syntax blocked by https://github.com/rust-lang/rust/issues/49147
         #[cfg(not(feature = "sanitize"))]
         return Bag { len: 0, deferreds:
             [Deferred::new(no_op_func), Deferred::new(no_op_func), Deferred::new(no_op_func), Deferred::new(no_op_func),
