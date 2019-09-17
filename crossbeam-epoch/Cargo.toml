@@ -17,7 +17,7 @@ categories = ["concurrency", "memory-management", "no-std"]
 
 [features]
 default = ["std"]
-nightly = ["crossbeam-utils/nightly", "arrayvec/use_union"]
+nightly = ["crossbeam-utils/nightly"]
 std = ["crossbeam-utils/std", "lazy_static"]
 alloc = ["crossbeam-utils/alloc"]
 sanitize = [] # Makes it more likely to trigger any potential data races.
@@ -25,10 +25,6 @@ sanitize = [] # Makes it more likely to trigger any potential data races.
 [dependencies]
 cfg-if = "0.1.2"
 memoffset = "0.5"
-
-[dependencies.arrayvec]
-version = "0.4"
-default-features = false
 
 [dependencies.crossbeam-utils]
 version = "0.6"

@@ -79,7 +79,6 @@ cfg_if! {
 )]
 cfg_if! {
     if #[cfg(any(feature = "alloc", feature = "std"))] {
-        extern crate arrayvec;
         extern crate crossbeam_utils;
         #[macro_use]
         extern crate memoffset;
