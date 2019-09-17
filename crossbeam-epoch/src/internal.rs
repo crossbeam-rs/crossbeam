@@ -38,7 +38,7 @@
 use core::cell::{Cell, UnsafeCell};
 use core::mem::{self, ManuallyDrop};
 use core::num::Wrapping;
-use core::ptr;
+use core::{ptr, fmt};
 use core::sync::atomic;
 use core::sync::atomic::Ordering;
 
@@ -142,8 +142,8 @@ impl Drop for Bag {
 }
 
 // can't #[derive(Debug)] because Debug is not implemented for arrays 64 items long
-impl core::fmt::Debug for Bag {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Debug for Bag {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Bag").field("deferreds", &&self.deferreds[..self.len]).finish()
     }
 }
