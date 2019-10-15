@@ -23,7 +23,7 @@ alloc = ["crossbeam-utils/alloc"]
 sanitize = [] # Makes it more likely to trigger any potential data races.
 
 [dependencies]
-cfg-if = "0.1.2"
+cfg-if = "~0.1.9"
 memoffset = "0.5"
 
 [dependencies.crossbeam-utils]

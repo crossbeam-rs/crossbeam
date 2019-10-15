@@ -32,7 +32,7 @@ std = [
 alloc = ["crossbeam-epoch/alloc", "crossbeam-utils/alloc"]
 
 [dependencies]
-cfg-if = "0.1.2"
+cfg-if = "~0.1.9"
 
 [dependencies.crossbeam-channel]
 version = "0.3.9"
