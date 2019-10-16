@@ -46,6 +46,9 @@ impl<T> Queue<T> {
             head: CachePadded::new(Atomic::null()),
             tail: CachePadded::new(Atomic::null()),
         };
+        // TODO(taiki-e): when the minimum supported Rust version is bumped to 1.36+,
+        // replace this with `mem::MaybeUninit`.
+        #[allow(deprecated)]
         let sentinel = Owned::new(Node {
             data: unsafe { mem::uninitialized() },
             next: Atomic::null(),
