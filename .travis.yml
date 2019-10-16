@@ -16,23 +16,23 @@ matrix:
   - rust: 1.28.0
     name: "crossbeam on 1.28.0"
     script: ./ci/crossbeam.sh
-  - rust: 1.26.0
-    name: "crossbeam-channel on 1.26.0"
+  - rust: 1.28.0
+    name: "crossbeam-channel on 1.28.0"
     script: ./ci/crossbeam-channel.sh
   - rust: 1.28.0
     name: "crossbeam-deque on 1.28.0"
     script: ./ci/crossbeam-deque.sh
-  - rust: 1.26.0
-    name: "crossbeam-epoch on 1.26.0"
+  - rust: 1.28.0
+    name: "crossbeam-epoch on 1.28.0"
     script: ./ci/crossbeam-epoch.sh
-  - rust: 1.26.0
-    name: "crossbeam-queue on 1.26.0"
+  - rust: 1.28.0
+    name: "crossbeam-queue on 1.28.0"
     script: ./ci/crossbeam-queue.sh
   - rust: 1.28.0
     name: "crossbeam-skiplist on 1.28.0"
     script: ./ci/crossbeam-skiplist.sh
-  - rust: 1.26.0
-    name: "crossbeam-utils on 1.26.0"
+  - rust: 1.28.0
+    name: "crossbeam-utils on 1.28.0"
     script: ./ci/crossbeam-utils.sh
 
   # Test crates on nightly Rust.
@@ -90,3 +90,11 @@ matrix:
   - rust: stable
     name: "rustfmt"
     script: ./ci/rustfmt.sh
+
+before_script:
+  # cfg-if 0.1.10 requires Rust 1.31+ so downgrade it.
+  - |
+    if [[ "$TRAVIS_RUST_VERSION" == "1.28.0" ]]; then
+      cargo generate-lockfile
+      cargo update -p cfg-if --precise 0.1.9
+    fi

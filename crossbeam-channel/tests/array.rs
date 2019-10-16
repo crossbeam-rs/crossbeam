@@ -624,7 +624,7 @@ fn recv_in_send() {
 fn channel_through_channel() {
     const COUNT: usize = 1000;
 
-    type T = Box<Any + Send>;
+    type T = Box<dyn Any + Send>;
 
     let (s, r) = bounded::<T>(1);
 

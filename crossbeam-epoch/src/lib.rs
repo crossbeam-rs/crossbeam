@@ -73,13 +73,9 @@ cfg_if! {
     }
 }
 
-#[cfg_attr(
-    feature = "nightly",
-    cfg(all(target_has_atomic = "cas", target_has_atomic = "ptr"))
-)]
+#[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
 cfg_if! {
     if #[cfg(any(feature = "alloc", feature = "std"))] {
-        extern crate arrayvec;
         extern crate crossbeam_utils;
         #[macro_use]
         extern crate memoffset;

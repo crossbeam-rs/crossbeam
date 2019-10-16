@@ -132,7 +132,7 @@ impl<T: Send> error::Error for SendError<T> {
         "sending on a disconnected channel"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -183,7 +183,7 @@ impl<T: Send> error::Error for TrySendError<T> {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -254,7 +254,7 @@ impl<T: Send> error::Error for SendTimeoutError<T> {
         "sending on an empty and disconnected channel"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -317,7 +317,7 @@ impl error::Error for RecvError {
         "receiving on an empty and disconnected channel"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -339,7 +339,7 @@ impl error::Error for TryRecvError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -387,7 +387,7 @@ impl error::Error for RecvTimeoutError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -429,7 +429,7 @@ impl error::Error for TrySelectError {
         "all operations in select would block"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
@@ -445,7 +445,7 @@ impl error::Error for SelectTimeoutError {
         "timed out waiting on select"
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         None
     }
 }
