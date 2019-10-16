@@ -364,6 +364,7 @@ mod waker;
 pub mod internal {
     pub use select::SelectHandle;
     pub use select::{select, select_timeout, try_select};
+    pub use select_macro::unsafe_transmute;
 }
 
 pub use channel::{after, never, tick};

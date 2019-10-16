@@ -829,8 +829,7 @@ macro_rules! crossbeam_channel_internal {
             let _oper = $crate::internal::select(&mut $sel);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            #[allow(unsafe_code)]
-            unsafe { ::std::mem::transmute(_oper) }
+            $crate::internal::unsafe_transmute(_oper)
         };
 
         crossbeam_channel_internal! {
@@ -852,8 +851,7 @@ macro_rules! crossbeam_channel_internal {
             let _oper = $crate::internal::try_select(&mut $sel);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            #[allow(unsafe_code)]
-            unsafe { ::std::mem::transmute(_oper) }
+            $crate::internal::unsafe_transmute(_oper)
         };
 
         match _oper {
@@ -883,8 +881,7 @@ macro_rules! crossbeam_channel_internal {
             let _oper = $crate::internal::select_timeout(&mut $sel, $timeout);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            #[allow(unsafe_code)]
-            unsafe { ::std::mem::transmute(_oper) }
+            $crate::internal::unsafe_transmute(_oper)
         };
 
         match _oper {
@@ -922,13 +919,12 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         match $r {
             ref _r => {
-                #[allow(unsafe_code)]
-                let $var: &$crate::Receiver<_> = unsafe {
+                let $var: &$crate::Receiver<_> = {
                     let _r: &$crate::Receiver<_> = _r;
 
                     // Erase the lifetime so that `sel` can be dropped early even without NLL.
-                    unsafe fn unbind<'a, T>(x: &T) -> &'a T {
-                        ::std::mem::transmute(x)
+                    fn unbind<'a, T>(x: &T) -> &'a T {
+                        $crate::internal::unsafe_transmute(x)
                     }
                     unbind(_r)
                 };
@@ -955,13 +951,12 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         match $s {
             ref _s => {
-                #[allow(unsafe_code)]
-                let $var: &$crate::Sender<_> = unsafe {
+                let $var: &$crate::Sender<_> = {
                     let _s: &$crate::Sender<_> = _s;
 
                     // Erase the lifetime so that `sel` can be dropped early even without NLL.
-                    unsafe fn unbind<'a, T>(x: &T) -> &'a T {
-                        ::std::mem::transmute(x)
+                    fn unbind<'a, T>(x: &T) -> &'a T {
+                        $crate::internal::unsafe_transmute(x)
                     }
                     unbind(_s)
                 };
@@ -1211,4 +1206,15 @@ macro_rules! select {
             $($tokens)*
         )
     };
+}
+
+/// Same as `std::mem::transmute`, except the function is not marked with `unsafe`.
+///
+/// If the user crate contains `#![forbid(unsafe_code)]`, we must make sure the `select!` macro
+/// does not emit any unsafe code or else it won't be usable. Since the macro does have some unsafe
+/// code, we need to cheat around the lint by using this "safe" transmute function.
+pub fn unsafe_transmute<T, U>(t: T) -> U {
+    let u = unsafe { std::mem::transmute_copy(&t) };
+    std::mem::forget(t);
+    u
 }
