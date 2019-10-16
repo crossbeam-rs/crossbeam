@@ -171,7 +171,7 @@ enum Timeout {
 /// Successful receive operations will have to be followed up by `channel::read()` and successful
 /// send operations by `channel::write()`.
 fn run_select(
-    handles: &mut [(&SelectHandle, usize, *const u8)],
+    handles: &mut [(&dyn SelectHandle, usize, *const u8)],
     timeout: Timeout,
 ) -> Option<(Token, usize, *const u8)> {
     if handles.is_empty() {
@@ -220,7 +220,7 @@ fn run_select(
                 registered_count += 1;
 
                 // If registration returns `false`, that means the operation has just become ready.
-                if handle.register(Operation::hook::<&SelectHandle>(handle), cx) {
+                if handle.register(Operation::hook::<&dyn SelectHandle>(handle), cx) {
                     // Try aborting select.
                     sel = match cx.try_select(Selected::Aborted) {
                         Ok(()) => {
@@ -259,7 +259,7 @@ fn run_select(
 
             // Unregister all registered operations.
             for (handle, _, _) in handles.iter_mut().take(registered_count) {
-                handle.unregister(Operation::hook::<&SelectHandle>(handle));
+                handle.unregister(Operation::hook::<&dyn SelectHandle>(handle));
             }
 
             match sel {
@@ -279,7 +279,7 @@ fn run_select(
                     // Find the selected operation.
                     for (handle, i, ptr) in handles.iter_mut() {
                         // Is this the selected operation?
-                        if sel == Selected::Operation(Operation::hook::<&SelectHandle>(handle)) {
+                        if sel == Selected::Operation(Operation::hook::<&dyn SelectHandle>(handle)) {
                             // Try selecting this operation.
                             if handle.accept(&mut token, cx) {
                                 return Some((*i, *ptr));
@@ -317,7 +317,7 @@ fn run_select(
 }
 
 /// Runs until one of the operations becomes ready, potentially blocking the current thread.
-fn run_ready(handles: &mut [(&SelectHandle, usize, *const u8)], timeout: Timeout) -> Option<usize> {
+fn run_ready(handles: &mut [(&dyn SelectHandle, usize, *const u8)], timeout: Timeout) -> Option<usize> {
     if handles.is_empty() {
         // Wait until the timeout and return.
         match timeout {
@@ -372,7 +372,7 @@ fn run_ready(handles: &mut [(&SelectHandle, usize, *const u8)], timeout: Timeout
             // Begin watching all operations.
             for (handle, _, _) in handles.iter_mut() {
                 registered_count += 1;
-                let oper = Operation::hook::<&SelectHandle>(handle);
+                let oper = Operation::hook::<&dyn SelectHandle>(handle);
 
                 // If registration returns `false`, that means the operation has just become ready.
                 if handle.watch(oper, cx) {
@@ -410,7 +410,7 @@ fn run_ready(handles: &mut [(&SelectHandle, usize, *const u8)], timeout: Timeout
 
             // Unwatch all operations.
             for (handle, _, _) in handles.iter_mut().take(registered_count) {
-                handle.unwatch(Operation::hook::<&SelectHandle>(handle));
+                handle.unwatch(Operation::hook::<&dyn SelectHandle>(handle));
             }
 
             match sel {
@@ -419,7 +419,7 @@ fn run_ready(handles: &mut [(&SelectHandle, usize, *const u8)], timeout: Timeout
                 Selected::Disconnected => {}
                 Selected::Operation(_) => {
                     for (handle, i, _) in handles.iter_mut() {
-                        let oper = Operation::hook::<&SelectHandle>(handle);
+                        let oper = Operation::hook::<&dyn SelectHandle>(handle);
                         if sel == Selected::Operation(oper) {
                             return Some(*i);
                         }
@@ -440,7 +440,7 @@ fn run_ready(handles: &mut [(&SelectHandle, usize, *const u8)], timeout: Timeout
 /// Attempts to select one of the operations without blocking.
 #[inline]
 pub fn try_select<'a>(
-    handles: &mut [(&'a SelectHandle, usize, *const u8)],
+    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
 ) -> Result<SelectedOperation<'a>, TrySelectError> {
     match run_select(handles, Timeout::Now) {
         None => Err(TrySelectError),
@@ -455,7 +455,7 @@ pub fn try_select<'a>(
 
 /// Blocks until one of the operations becomes ready and selects it.
 #[inline]
-pub fn select<'a>(handles: &mut [(&'a SelectHandle, usize, *const u8)]) -> SelectedOperation<'a> {
+pub fn select<'a>(handles: &mut [(&'a dyn SelectHandle, usize, *const u8)]) -> SelectedOperation<'a> {
     if handles.is_empty() {
         panic!("no operations have been added to `Select`");
     }
@@ -472,7 +472,7 @@ pub fn select<'a>(handles: &mut [(&'a SelectHandle, usize, *const u8)]) -> Selec
 /// Blocks for a limited time until one of the operations becomes ready and selects it.
 #[inline]
 pub fn select_timeout<'a>(
-    handles: &mut [(&'a SelectHandle, usize, *const u8)],
+    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
     timeout: Duration,
 ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
     let timeout = Timeout::At(Instant::now() + timeout);
@@ -573,7 +573,7 @@ pub fn select_timeout<'a>(
 /// [`ready_timeout`]: struct.Select.html#method.ready_timeout
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
-    handles: Vec<(&'a SelectHandle, usize, *const u8)>,
+    handles: Vec<(&'a dyn SelectHandle, usize, *const u8)>,
 
     /// The next index to assign to an operation.
     next_index: usize,
