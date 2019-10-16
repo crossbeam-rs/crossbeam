@@ -279,7 +279,8 @@ fn run_select(
                     // Find the selected operation.
                     for (handle, i, ptr) in handles.iter_mut() {
                         // Is this the selected operation?
-                        if sel == Selected::Operation(Operation::hook::<&dyn SelectHandle>(handle)) {
+                        if sel == Selected::Operation(Operation::hook::<&dyn SelectHandle>(handle))
+                        {
                             // Try selecting this operation.
                             if handle.accept(&mut token, cx) {
                                 return Some((*i, *ptr));
@@ -317,7 +318,10 @@ fn run_select(
 }
 
 /// Runs until one of the operations becomes ready, potentially blocking the current thread.
-fn run_ready(handles: &mut [(&dyn SelectHandle, usize, *const u8)], timeout: Timeout) -> Option<usize> {
+fn run_ready(
+    handles: &mut [(&dyn SelectHandle, usize, *const u8)],
+    timeout: Timeout,
+) -> Option<usize> {
     if handles.is_empty() {
         // Wait until the timeout and return.
         match timeout {
@@ -455,7 +459,9 @@ pub fn try_select<'a>(
 
 /// Blocks until one of the operations becomes ready and selects it.
 #[inline]
-pub fn select<'a>(handles: &mut [(&'a dyn SelectHandle, usize, *const u8)]) -> SelectedOperation<'a> {
+pub fn select<'a>(
+    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+) -> SelectedOperation<'a> {
     if handles.is_empty() {
         panic!("no operations have been added to `Select`");
     }
