@@ -1,6 +1,6 @@
 //! Tests for the `select!` macro.
 
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)] // select! is safe.
 
 #[macro_use]
 extern crate crossbeam_channel;
