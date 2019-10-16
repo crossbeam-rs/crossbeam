@@ -2,12 +2,12 @@ use core::cell::UnsafeCell;
 use core::fmt;
 use core::mem;
 use core::ptr;
-use core::sync::atomic::{self, AtomicBool, AtomicUsize, Ordering};
+use core::sync::atomic::{self, AtomicBool, Ordering};
 
 #[cfg(feature = "std")]
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
-use Backoff;
+use super::seq_lock::SeqLock;
 
 /// A thread-safe mutable memory location.
 ///
@@ -631,87 +631,6 @@ fn can_transmute<A, B>() -> bool {
     mem::size_of::<A>() == mem::size_of::<B>() && mem::align_of::<A>() >= mem::align_of::<B>()
 }
 
-/// A simple stamped lock.
-struct Lock {
-    /// The current state of the lock.
-    ///
-    /// All bits except the least significant one hold the current stamp. When locked, the state
-    /// equals 1 and doesn't contain a valid stamp.
-    state: AtomicUsize,
-}
-
-impl Lock {
-    /// If not locked, returns the current stamp.
-    ///
-    /// This method should be called before optimistic reads.
-    #[inline]
-    fn optimistic_read(&self) -> Option<usize> {
-        let state = self.state.load(Ordering::Acquire);
-        if state == 1 {
-            None
-        } else {
-            Some(state)
-        }
-    }
-
-    /// Returns `true` if the current stamp is equal to `stamp`.
-    ///
-    /// This method should be called after optimistic reads to check whether they are valid. The
-    /// argument `stamp` should correspond to the one returned by method `optimistic_read`.
-    #[inline]
-    fn validate_read(&self, stamp: usize) -> bool {
-        atomic::fence(Ordering::Acquire);
-        self.state.load(Ordering::Relaxed) == stamp
-    }
-
-    /// Grabs the lock for writing.
-    #[inline]
-    fn write(&'static self) -> WriteGuard {
-        let backoff = Backoff::new();
-        loop {
-            let previous = self.state.swap(1, Ordering::Acquire);
-
-            if previous != 1 {
-                atomic::fence(Ordering::Release);
-
-                return WriteGuard {
-                    lock: self,
-                    state: previous,
-                };
-            }
-
-            backoff.snooze();
-        }
-    }
-}
-
-/// A RAII guard that releases the lock and increments the stamp when dropped.
-struct WriteGuard {
-    /// The parent lock.
-    lock: &'static Lock,
-
-    /// The stamp before locking.
-    state: usize,
-}
-
-impl WriteGuard {
-    /// Releases the lock without incrementing the stamp.
-    #[inline]
-    fn abort(self) {
-        self.lock.state.store(self.state, Ordering::Release);
-    }
-}
-
-impl Drop for WriteGuard {
-    #[inline]
-    fn drop(&mut self) {
-        // Release the lock and increment the stamp.
-        self.lock
-            .state
-            .store(self.state.wrapping_add(2), Ordering::Release);
-    }
-}
-
 /// Returns a reference to the global lock associated with the `AtomicCell` at address `addr`.
 ///
 /// This function is used to protect atomic data which doesn't fit into any of the primitive atomic
@@ -722,7 +641,7 @@ impl Drop for WriteGuard {
 /// scalability.
 #[inline]
 #[must_use]
-fn lock(addr: usize) -> &'static Lock {
+fn lock(addr: usize) -> &'static SeqLock {
     // The number of locks is a prime number because we want to make sure `addr % LEN` gets
     // dispersed across all locks.
     //
@@ -747,10 +666,9 @@ fn lock(addr: usize) -> &'static Lock {
     // In order to protect from such cases, we simply choose a large prime number for `LEN`.
     const LEN: usize = 97;
 
-    const L: Lock = Lock {
-        state: AtomicUsize::new(0),
-    };
-    static LOCKS: [Lock; LEN] = [
+    const L: SeqLock = SeqLock::INIT;
+
+    static LOCKS: [SeqLock; LEN] = [
         L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
         L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
         L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
