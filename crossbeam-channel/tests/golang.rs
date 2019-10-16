@@ -946,14 +946,14 @@ mod chan_test {
 
                 go!(c, done, {
                     let v = c.try_recv();
-                    done.send(v.is_some());
+                    done.send(v.is_none());
                 });
 
                 thread::sleep(ms(1));
                 c.close();
 
                 if !done.recv().unwrap() {
-                    // panic!();
+                    panic!();
                 }
             }
 
