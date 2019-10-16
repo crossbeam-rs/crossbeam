@@ -3,9 +3,7 @@
 cd "$(dirname "$0")"/..
 set -ex
 
-if [[ "$TRAVIS_RUST_VERSION" != "nightly" ]]; then
-    export RUSTFLAGS="-D warnings"
-fi
+export RUSTFLAGS="-D warnings"
 
 cargo check --no-default-features
 cargo check --bins --examples --tests

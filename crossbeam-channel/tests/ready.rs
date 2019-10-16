@@ -673,7 +673,7 @@ fn send_recv_same_channel() {
 fn channel_through_channel() {
     const COUNT: usize = 1000;
 
-    type T = Box<Any + Send>;
+    type T = Box<dyn Any + Send>;
 
     for cap in 1..4 {
         let (s, r) = bounded::<T>(cap);

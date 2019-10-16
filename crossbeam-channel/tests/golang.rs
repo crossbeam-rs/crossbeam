@@ -1289,7 +1289,7 @@ mod chan_test {
     fn test_chan_send_interface() {
         struct Mt;
 
-        let c = make::<Box<Any>>(1);
+        let c = make::<Box<dyn Any>>(1);
         c.send(Box::new(Mt));
 
         select! {

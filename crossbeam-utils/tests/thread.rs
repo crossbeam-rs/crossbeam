@@ -99,7 +99,7 @@ fn panic_twice() {
 
     let err = result.unwrap_err();
     let vec = err
-        .downcast_ref::<Vec<Box<Any + Send + 'static>>>()
+        .downcast_ref::<Vec<Box<dyn Any + Send + 'static>>>()
         .unwrap();
     assert_eq!(2, vec.len());
 
@@ -119,7 +119,7 @@ fn panic_many() {
 
     let err = result.unwrap_err();
     let vec = err
-        .downcast_ref::<Vec<Box<Any + Send + 'static>>>()
+        .downcast_ref::<Vec<Box<dyn Any + Send + 'static>>>()
         .unwrap();
     assert_eq!(3, vec.len());
 
