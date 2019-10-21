@@ -23,8 +23,7 @@ use super::seq_lock::SeqLock;
 /// [`AtomicCell::<T>::is_lock_free()`]: struct.AtomicCell.html#method.is_lock_free
 /// [`Acquire`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html#variant.Acquire
 /// [`Release`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html#variant.Release
-// TODO(@jeehoonkang): when the minimum supported Rust version is bumped to 1.28+, apply the
-// attribute `#[repr(transparent)]`.
+#[repr(transparent)]
 pub struct AtomicCell<T: ?Sized> {
     /// The inner value.
     ///
