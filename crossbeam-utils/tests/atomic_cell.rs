@@ -223,3 +223,12 @@ fn garbage_padding() {
     assert!(cell.compare_exchange(prev, next).is_ok());
     println!();
 }
+
+#[cfg(has_min_const_fn)]
+#[test]
+fn const_atomic_cell_new() {
+    static CELL: AtomicCell<usize> = AtomicCell::new(0);
+
+    CELL.store(1);
+    assert_eq!(CELL.load(), 1);
+}

@@ -52,7 +52,24 @@ impl<T> AtomicCell<T> {
     ///
     /// let a = AtomicCell::new(7);
     /// ```
+    #[cfg(not(has_min_const_fn))]
     pub fn new(val: T) -> AtomicCell<T> {
+        AtomicCell {
+            value: UnsafeCell::new(val),
+        }
+    }
+
+    /// Creates a new atomic cell initialized with `val`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::atomic::AtomicCell;
+    ///
+    /// let a = AtomicCell::new(7);
+    /// ```
+    #[cfg(has_min_const_fn)]
+    pub const fn new(val: T) -> AtomicCell<T> {
         AtomicCell {
             value: UnsafeCell::new(val),
         }

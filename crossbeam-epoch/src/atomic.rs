@@ -150,7 +150,7 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(not(feature = "nightly"))]
+    #[cfg(not(has_min_const_fn))]
     pub fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
@@ -167,7 +167,7 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(feature = "nightly")]
+    #[cfg(has_min_const_fn)]
     pub const fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
