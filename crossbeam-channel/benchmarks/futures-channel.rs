@@ -48,7 +48,7 @@ fn spsc_unbounded() {
             let (tx, rx) = mpsc::unbounded();
 
             cx.spawn(future::lazy(move |_| {
-                tx.send_all(stream::iter_ok((0..MESSAGES).map(|i| message::new(i))))
+                tx.send_all(stream::iter_ok((0..MESSAGES).map(message::new)))
                     .map_err(|_| panic!())
                     .and_then(|_| future::ok(()))
             }));
@@ -65,7 +65,7 @@ fn spsc_bounded(cap: usize) {
             let (tx, rx) = mpsc::channel(cap);
 
             cx.spawn(future::lazy(move |_| {
-                tx.send_all(stream::iter_ok((0..MESSAGES).map(|i| message::new(i))))
+                tx.send_all(stream::iter_ok((0..MESSAGES).map(message::new)))
                     .map_err(|_| panic!())
                     .and_then(|_| future::ok(()))
             }));
@@ -84,11 +84,9 @@ fn mpsc_unbounded() {
             for _ in 0..THREADS {
                 let tx = tx.clone();
                 cx.spawn(future::lazy(move |_| {
-                    tx.send_all(stream::iter_ok(
-                        (0..MESSAGES / THREADS).map(|i| message::new(i)),
-                    ))
-                    .map_err(|_| panic!())
-                    .and_then(|_| future::ok(()))
+                    tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(message::new)))
+                        .map_err(|_| panic!())
+                        .and_then(|_| future::ok(()))
                 }));
             }
             drop(tx);
@@ -107,11 +105,9 @@ fn mpsc_bounded(cap: usize) {
             for _ in 0..THREADS {
                 let tx = tx.clone();
                 cx.spawn(future::lazy(move |_| {
-                    tx.send_all(stream::iter_ok(
-                        (0..MESSAGES / THREADS).map(|i| message::new(i)),
-                    ))
-                    .map_err(|_| panic!())
-                    .and_then(|_| future::ok(()))
+                    tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(message::new)))
+                        .map_err(|_| panic!())
+                        .and_then(|_| future::ok(()))
                 }));
             }
             drop(tx);
@@ -153,11 +149,9 @@ fn select_rx_bounded(cap: usize) {
             for (tx, _) in &chans {
                 let tx = tx.clone();
                 cx.spawn(future::lazy(move |_| {
-                    tx.send_all(stream::iter_ok(
-                        (0..MESSAGES / THREADS).map(|i| message::new(i)),
-                    ))
-                    .map_err(|_| panic!())
-                    .and_then(|_| future::ok(()))
+                    tx.send_all(stream::iter_ok((0..MESSAGES / THREADS).map(message::new)))
+                        .map_err(|_| panic!())
+                        .and_then(|_| future::ok(()))
                 }));
             }
 
