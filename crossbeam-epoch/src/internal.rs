@@ -133,10 +133,10 @@ impl Default for Bag {
 impl Drop for Bag {
     fn drop(&mut self) {
         // Call all deferred functions.
-        for i in 0..self.len {
+        for deferred in &mut self.deferreds[..self.len] {
             let no_op = Deferred::new(no_op_func);
-            let deferred = mem::replace(&mut self.deferreds[i], no_op);
-            deferred.call();
+            let owned_deferred = mem::replace(deferred, no_op);
+            owned_deferred.call();
         }
     }
 }
