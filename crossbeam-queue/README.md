@@ -37,7 +37,7 @@ extern crate crossbeam_queue;
 
 ## Compatibility
 
-The minimum supported Rust version is 1.28.
+The minimum supported Rust version is 1.28. Any change to this is considered a breaking change.
 
 ## License
 
