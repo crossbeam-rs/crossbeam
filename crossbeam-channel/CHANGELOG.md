@@ -1,3 +1,8 @@
+# Version 0.4.0
+
+- Bump the minimum required version to 1.28.
+- Bump `crossbeam-utils` to `0.7`.
+
 # Version 0.3.9
 
 - Fix a bug in reference counting.

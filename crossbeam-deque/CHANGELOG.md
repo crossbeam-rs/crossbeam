@@ -1,3 +1,8 @@
+# Version 0.7.2
+
+- Bump `crossbeam-epoch` to `0.8`.
+- Bump `crossbeam-utils` to `0.7`.
+
 # Version 0.7.1
 
 - Bump the minimum required version of `crossbeam-utils`.

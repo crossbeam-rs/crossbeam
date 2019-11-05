@@ -4,7 +4,7 @@ name = "crossbeam-channel"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-channel-X.Y.Z" git tag
-version = "0.3.9"
+version = "0.4.0"
 authors = ["The Crossbeam Project Developers"]
 license = "MIT/Apache-2.0 AND BSD-2-Clause"
 readme = "README.md"
@@ -16,7 +16,7 @@ keywords = ["channel", "mpmc", "select", "golang", "message"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
 [dependencies.crossbeam-utils]
-version = "0.6.5"
+version = "0.7"
 path = "../crossbeam-utils"
 
 [dev-dependencies]

@@ -1,3 +1,11 @@
+# Version 0.7.3
+
+- Fix breakage with nightly feature due to rust-lang/rust#65214.
+- Bump `crossbeam-channel` to `0.4`.
+- Bump `crossbeam-epoch` to `0.8`.
+- Bump `crossbeam-queue` to `0.2`.
+- Bump `crossbeam-utils` to `0.7`.
+
 # Version 0.7.2
 
 - Bump `crossbeam-channel` to `0.3.9`.

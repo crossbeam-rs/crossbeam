@@ -1,3 +1,10 @@
+# Version 0.8.0
+
+- Bump the minimum required version to 1.28.
+- Fix breakage with nightly feature due to rust-lang/rust#65214.
+- Make `Atomic::null()` const function at 1.31+.
+- Bump `crossbeam-utils` to `0.7`.
+
 # Version 0.7.2
 
 - Add `Atomic::into_owned()`.
