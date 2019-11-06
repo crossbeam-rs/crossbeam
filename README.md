@@ -96,6 +96,10 @@ Next, add this to your crate:
 extern crate crossbeam;
 ```
 
+## Compatibility
+
+The minimum supported Rust version is 1.28. Any change to this is considered a breaking change.
+
 ## Contributing
 
 Crossbeam welcomes contribution from everyone in the form of suggestions, bug reports,

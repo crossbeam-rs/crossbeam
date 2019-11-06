@@ -1,3 +1,10 @@
+# Version 0.7.0
+
+- Bump the minimum required version to 1.28.
+- Fix breakage with nightly feature due to rust-lang/rust#65214.
+- Apply `#[repr(transparent)]` to `AtomicCell`.
+- Make `AtomicCell::new()` const function at 1.31+.
+
 # Version 0.6.6
 
 - Add `UnwindSafe` and `RefUnwindSafe` impls for `AtomicCell`.
@@ -30,7 +37,7 @@
 
 - Fix a soundness bug in `Scope::spawn()`.
 - Remove the `T: 'scope` bound on `ScopedJoinHandle`.
- 
+
 # Version 0.6.0
 
 - Move `AtomicConsume` to `atomic` module.

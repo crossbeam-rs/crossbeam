@@ -25,12 +25,12 @@ alloc = ["crossbeam-epoch/alloc", "crossbeam-utils/alloc"]
 cfg-if = "0.1.2"
 
 [dependencies.crossbeam-epoch]
-version = "0.7"
+version = "0.8"
 path = "../crossbeam-epoch"
 default-features = false
 
 [dependencies.crossbeam-utils]
-version = "0.6"
+version = "0.7"
 path = "../crossbeam-utils"
 default-features = false
 

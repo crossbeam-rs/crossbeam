@@ -33,6 +33,10 @@ extern crate crossbeam_skiplist;
 ```
 -->
 
+## Compatibility
+
+The minimum supported Rust version is 1.28. Any change to this is considered a breaking change.
+
 ## License
 
 Licensed under either of
