@@ -50,11 +50,8 @@ struct Slot<T> {
 
 impl<T> Slot<T> {
     /// Waits until a message is written into the slot.
-    fn wait_write(&self) {
-        let backoff = Backoff::new();
-        while self.state.load(Ordering::Acquire) & WRITE == 0 {
-            backoff.snooze();
-        }
+    fn has_been_writen(&self) -> bool {
+        self.state.load(Ordering::Acquire) & WRITE != 0
     }
 }
 
@@ -384,7 +381,55 @@ impl<T> Channel<T> {
         let block = token.list.block as *mut Block<T>;
         let offset = token.list.offset;
         let slot = (*block).slots.get_unchecked(offset);
-        slot.wait_write();
+
+        loop {
+            if slot.has_been_writen() {
+                break;
+            }
+
+            // Try reading a message several times.
+            let backoff = Backoff::new();
+            let is_ready = loop {
+                if backoff.is_completed() {
+                    break false;
+                } else {
+                    backoff.snooze();
+                }
+                if slot.has_been_writen() {
+                    break true;
+                }
+            };
+
+            if is_ready {
+                break;
+            }
+
+            // Prepare for blocking until a sender wakes us up.
+            Context::with(|cx| {
+                let oper = Operation::hook(token);
+                self.receivers.register(oper, cx);
+
+                // Has the channel become ready just now?
+                if !self.is_empty() || self.is_disconnected() {
+                    let _ = cx.try_select(Selected::Aborted);
+                }
+
+                // Block the current thread.
+                let sel = cx.wait_until(None);
+
+                match sel {
+                    Selected::Waiting => unreachable!(),
+                    Selected::Aborted | Selected::Disconnected => {
+                        self.receivers.unregister(oper).unwrap();
+                        // If the channel was disconnected, we still have to check for remaining
+                        // messages.
+                    }
+                    Selected::Operation(_) => {}
+                }
+            });
+        }
+
+
         let m = slot.msg.get().read();
         let msg = ManuallyDrop::into_inner(m);
 
