@@ -745,6 +745,14 @@ impl<T> Stealer<T> {
     /// assert_eq!(w2.pop(), Some(2));
     /// ```
     pub fn steal_batch(&self, dest: &Worker<T>) -> Steal<()> {
+        if Arc::ptr_eq(&self.inner, &dest.inner) {
+            if dest.is_empty() {
+                return Steal::Empty;
+            } else {
+                return Steal::Success(());
+            }
+        }
+
         // Load the front index.
         let mut f = self.inner.front.load(Ordering::Acquire);
 
@@ -922,6 +930,13 @@ impl<T> Stealer<T> {
     /// assert_eq!(w2.pop(), Some(2));
     /// ```
     pub fn steal_batch_and_pop(&self, dest: &Worker<T>) -> Steal<T> {
+        if Arc::ptr_eq(&self.inner, &dest.inner) {
+            match dest.pop() {
+                None => return Steal::Empty,
+                Some(task) => return Steal::Success(task),
+            }
+        }
+
         // Load the front index.
         let mut f = self.inner.front.load(Ordering::Acquire);
 
