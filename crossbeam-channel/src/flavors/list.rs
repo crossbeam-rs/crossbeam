@@ -49,7 +49,7 @@ struct Slot<T> {
 }
 
 impl<T> Slot<T> {
-    /// Waits until a message is written into the slot.
+    /// Has a message been written into the slot?
     fn has_been_writen(&self) -> bool {
         self.state.load(Ordering::Acquire) & WRITE != 0
     }
@@ -387,7 +387,9 @@ impl<T> Channel<T> {
                 break;
             }
 
-            // Try reading a message several times.
+            // If "blocking" is true,
+            // block the thread when the backoff completes,
+            // otherwise keep snoozing until the slot can be read from.
             let backoff = Backoff::new();
             let is_ready = loop {
                 if backoff.is_completed() && blocking {
