@@ -371,7 +371,7 @@ impl<T> Channel<T> {
     }
 
     /// Reads a message from the channel.
-    pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
+    pub unsafe fn read(&self, token: &mut Token, blocking: bool) -> Result<T, ()> {
         if token.list.block.is_null() {
             // The channel is disconnected.
             return Err(());
@@ -390,7 +390,7 @@ impl<T> Channel<T> {
             // Try reading a message several times.
             let backoff = Backoff::new();
             let is_ready = loop {
-                if backoff.is_completed() {
+                if backoff.is_completed() && blocking {
                     break false;
                 } else {
                     backoff.snooze();
@@ -467,7 +467,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
 
         if self.start_recv(token) {
-            unsafe { self.read(token).map_err(|_| TryRecvError::Disconnected) }
+            unsafe { self.read(token, false).map_err(|_| TryRecvError::Disconnected) }
         } else {
             Err(TryRecvError::Empty)
         }
@@ -482,7 +482,7 @@ impl<T> Channel<T> {
             loop {
                 if self.start_recv(token) {
                     unsafe {
-                        return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
+                        return self.read(token, true).map_err(|_| RecvTimeoutError::Disconnected);
                     }
                 }
 

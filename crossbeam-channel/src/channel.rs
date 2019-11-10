@@ -1376,7 +1376,7 @@ pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Result<(), T
 pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()> {
     match &r.flavor {
         ReceiverFlavor::Array(chan) => chan.read(token),
-        ReceiverFlavor::List(chan) => chan.read(token),
+        ReceiverFlavor::List(chan) => chan.read(token, false),
         ReceiverFlavor::Zero(chan) => chan.read(token),
         ReceiverFlavor::After(chan) => {
             mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
