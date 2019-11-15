@@ -4,6 +4,9 @@
 //!
 //! Michael and Scott.  Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue
 //! Algorithms.  PODC 1996.  http://dl.acm.org/citation.cfm?id=248106
+//!
+//! Simon Doherty, Lindsay Groves, Victor Luchangco, and Mark Moir. 2004b. Formal Verification of a
+//! Practical Lock-Free Queue Algorithm. https://doi.org/10.1007/978-3-540-30232-2_7
 
 use core::mem::{self, ManuallyDrop};
 use core::ptr;
@@ -117,6 +120,11 @@ impl<T> Queue<T> {
                 self.head
                     .compare_and_set(head, next, Release, guard)
                     .map(|_| {
+                        let tail = self.tail.load(Relaxed, guard);
+                        // Advance the tail so that we don't retire a pointer to a reachable node.
+                        if head == tail {
+                            let _ = self.tail.compare_and_set(tail, next, Release, guard);
+                        }
                         guard.defer_destroy(head);
                         Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
                     })
@@ -142,6 +150,11 @@ impl<T> Queue<T> {
                 self.head
                     .compare_and_set(head, next, Release, guard)
                     .map(|_| {
+                        let tail = self.tail.load(Relaxed, guard);
+                        // Advance the tail so that we don't retire a pointer to a reachable node.
+                        if head == tail {
+                            let _ = self.tail.compare_and_set(tail, next, Release, guard);
+                        }
                         guard.defer_destroy(head);
                         Some(ManuallyDrop::into_inner(ptr::read(&n.data)))
                     })
