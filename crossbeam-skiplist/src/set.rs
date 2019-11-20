@@ -101,10 +101,7 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn range<Q, R>(
-        &self,
-        range: R,
-    ) -> Range<'_, Q, R, T>
+    pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, T>
     where
         T: Borrow<Q>,
         R: RangeBounds<Q>,
