@@ -52,7 +52,7 @@
 //! [`Collector`]: struct.Collector.html
 //! [`Shared`]: struct.Shared.html
 //! [`pin`]: fn.pin.html
-//! [`defer`]: fn.defer.html
+//! [`defer`]: struct.Guard.html#method.defer
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
