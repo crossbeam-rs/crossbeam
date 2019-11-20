@@ -111,10 +111,7 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn range<Q, R>(
-        &self,
-        range: R,
-    ) -> Range<'_, Q, R, K, V>
+    pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, K, V>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
@@ -231,7 +228,9 @@ pub struct Entry<'a, K: 'a, V: 'a> {
 
 impl<'a, K, V> Entry<'a, K, V> {
     fn new(inner: base::RefEntry<'a, K, V>) -> Entry<'a, K, V> {
-        Entry { inner: ManuallyDrop::new(inner) }
+        Entry {
+            inner: ManuallyDrop::new(inner),
+        }
     }
 
     /// Returns a reference to the key.
@@ -250,8 +249,7 @@ impl<'a, K, V> Entry<'a, K, V> {
     }
 }
 
-impl<'a, K, V> Drop for Entry<'a, K, V>
-{
+impl<'a, K, V> Drop for Entry<'a, K, V> {
     fn drop(&mut self) {
         unsafe {
             ManuallyDrop::into_inner(ptr::read(&mut self.inner)).release_with_pin(epoch::pin);

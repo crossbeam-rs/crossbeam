@@ -121,7 +121,9 @@ impl Drop for SeqLockWriteGuard {
         // Release ordering for synchronizing with `optimistic_read`.
         if state_lo == 0 {
             let state_hi = self.lock.state_hi.load(Ordering::Relaxed);
-            self.lock.state_hi.store(state_hi.wrapping_add(1), Ordering::Release);
+            self.lock
+                .state_hi
+                .store(state_hi.wrapping_add(1), Ordering::Release);
         }
 
         // Release the lock and increment the stamp.
