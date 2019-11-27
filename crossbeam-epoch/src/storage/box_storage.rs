@@ -1,27 +1,27 @@
 use alloc::boxed::Box;
 
-use {AtomicTmpl, OwnedTmpl, SharedTmpl, Storage};
+use atomic::{self, Storage};
 
 /// An atomic pointer that can be safely shared between threads.
 ///
-/// See [`AtomicTmpl`] for more details.
+/// See [`Atomic`] for more details.
 ///
-/// [`AtomicTmpl`]: struct.AtomicTmpl.html
-pub type Atomic<T> = AtomicTmpl<Box<T>>;
+/// [`Atomic`]: atomic/struct.Atomic.html
+pub type Atomic<T> = atomic::Atomic<Box<T>>;
 
 /// An owned heap-allocated object.
 ///
-/// This type is very similar to `Box<T>`.  See [`OwnedTmpl`] for more details.
+/// This type is very similar to `Box<T>`.  See [`Owned`] for more details.
 ///
-/// [`OwnedTmpl`]: struct.OwnedTmpl.html
-pub type Owned<T> = OwnedTmpl<Box<T>>;
+/// [`Owned`]: atomic/struct.Owned.html
+pub type Owned<T> = atomic::Owned<Box<T>>;
 
 /// A pointer to an object protected by the epoch GC.
 ///
-/// See [`SharedTmpl`] for more details.
+/// See [`Shared`] for more details.
 ///
-/// [`SharedTmpl`]: struct.SharedTmpl.html
-pub type Shared<'g, T> = SharedTmpl<'g, Box<T>>;
+/// [`Shared`]: atomic/struct.Shared.html
+pub type Shared<'g, T> = atomic::Shared<'g, Box<T>>;
 
 unsafe impl<T> Storage for Box<T> {
     const ALIGN_OF: usize = ::core::mem::align_of::<T>();

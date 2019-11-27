@@ -1,3 +1,5 @@
+//! Atomic pointers.
+
 use core::cmp;
 use core::fmt;
 use core::marker::PhantomData;

@@ -81,7 +81,7 @@ cfg_if! {
         #[macro_use]
         extern crate scopeguard;
 
-        mod atomic;
+        pub mod atomic;
         mod collector;
         mod deferred;
         mod epoch;
@@ -90,10 +90,7 @@ cfg_if! {
         mod storage;
         mod sync;
 
-        pub use self::atomic::{
-            decompose_data, Atomic as AtomicTmpl, CompareAndSetError, CompareAndSetOrdering,
-            Owned as OwnedTmpl, Pointer, Shared as SharedTmpl, Storage,
-        };
+        pub use self::atomic::{decompose_data, CompareAndSetError, CompareAndSetOrdering, Pointer, Storage};
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard};
         pub use self::storage::array_storage::{Array, ArrayBox, AtomicArray, OwnedArray, SharedArray};

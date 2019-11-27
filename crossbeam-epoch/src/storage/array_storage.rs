@@ -4,28 +4,28 @@ use core::mem;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 
-use {AtomicTmpl, OwnedTmpl, SharedTmpl, Storage};
+use atomic::{self, Storage};
 
 /// An atomic pointer to an array that can be safely shared between threads.
 ///
-/// See [`AtomicTmpl`] for more details.
+/// See [`Atomic`] for more details.
 ///
-/// [`AtomicTmpl`]: struct.AtomicTmpl.html
-pub type AtomicArray<T> = AtomicTmpl<ArrayBox<T>>;
+/// [`Atomic`]: atomic/struct.Atomic.html
+pub type AtomicArray<T> = atomic::Atomic<ArrayBox<T>>;
 
 /// An owned heap-allocated array.
 ///
-/// See [`OwnedTmpl`] for more details.
+/// See [`Owned`] for more details.
 ///
-/// [`OwnedTmpl`]: struct.OwnedTmpl.html
-pub type OwnedArray<T> = OwnedTmpl<ArrayBox<T>>;
+/// [`Owned`]: atomic/struct.Owned.html
+pub type OwnedArray<T> = atomic::Owned<ArrayBox<T>>;
 
 /// A pointer to an array protected by the epoch GC.
 ///
-/// See [`SharedTmpl`] for more details.
+/// See [`Shared`] for more details.
 ///
-/// [`SharedTmpl`]: struct.SharedTmpl.html
-pub type SharedArray<'g, T> = SharedTmpl<'g, ArrayBox<T>>;
+/// [`Shared`]: atomic/struct.Shared.html
+pub type SharedArray<'g, T> = atomic::Shared<'g, ArrayBox<T>>;
 
 /// An array consisting of its size and elements.
 ///
