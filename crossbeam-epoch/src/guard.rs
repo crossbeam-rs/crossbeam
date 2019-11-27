@@ -268,7 +268,7 @@ impl Guard {
     /// ```
     ///
     /// [`unprotected`]: fn.unprotected.html
-    pub unsafe fn defer_destroy<T, S: Storage<T>>(&self, ptr: Shared<T, S>) {
+    pub unsafe fn defer_destroy<T, S: Storage<Target = T>>(&self, ptr: Shared<S>) {
         self.defer_unchecked(move || ptr.into_owned());
     }
 

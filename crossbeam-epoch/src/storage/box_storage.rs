@@ -1,37 +1,37 @@
 use alloc::boxed::Box;
 
-use atomic::decompose_data;
-
-use {AtomicTmpl, OwnedTmpl, Pointer, SharedTmpl, Storage};
+use {AtomicTmpl, OwnedTmpl, SharedTmpl, Storage};
 
 /// An atomic pointer that can be safely shared between threads.
 ///
 /// See [`AtomicTmpl`] for more details.
 ///
 /// [`AtomicTmpl`]: struct.AtomicTmpl.html
-pub type Atomic<T> = AtomicTmpl<T, Box<T>>;
+pub type Atomic<T> = AtomicTmpl<Box<T>>;
 
 /// An owned heap-allocated object.
 ///
 /// This type is very similar to `Box<T>`.  See [`OwnedTmpl`] for more details.
 ///
 /// [`OwnedTmpl`]: struct.OwnedTmpl.html
-pub type Owned<T> = OwnedTmpl<T, Box<T>>;
+pub type Owned<T> = OwnedTmpl<Box<T>>;
 
 /// A pointer to an object protected by the epoch GC.
 ///
 /// See [`SharedTmpl`] for more details.
 ///
 /// [`SharedTmpl`]: struct.SharedTmpl.html
-pub type Shared<'g, T> = SharedTmpl<'g, T, Box<T>>;
+pub type Shared<'g, T> = SharedTmpl<'g, Box<T>>;
 
-unsafe impl<T> Storage<T> for Box<T> {
-    fn into_raw(self) -> *mut T {
-        Self::into_raw(self)
+unsafe impl<T> Storage for Box<T> {
+    const ALIGN_OF: usize = ::core::mem::align_of::<T>();
+
+    fn into_raw(self) -> usize {
+        Self::into_raw(self) as usize
     }
 
-    unsafe fn from_raw(data: *mut T) -> Self {
-        Self::from_raw(data)
+    unsafe fn from_raw(data: usize) -> Self {
+        Self::from_raw(data as *mut _)
     }
 }
 
@@ -68,22 +68,6 @@ impl<T> Owned<T> {
     /// ```
     pub fn new(value: T) -> Owned<T> {
         Self::from(Box::new(value))
-    }
-
-    /// Converts the owned pointer into a `Box`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{self as epoch, Owned};
-    ///
-    /// let o = Owned::new(1234);
-    /// let b: Box<i32> = o.into_box();
-    /// assert_eq!(*b, 1234);
-    /// ```
-    pub fn into_box(self) -> Box<T> {
-        let (raw, _) = decompose_data::<T>(self.into_usize());
-        unsafe { Box::from_raw(raw) }
     }
 }
 

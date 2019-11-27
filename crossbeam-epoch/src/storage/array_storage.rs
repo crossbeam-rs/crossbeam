@@ -11,21 +11,21 @@ use {AtomicTmpl, OwnedTmpl, SharedTmpl, Storage};
 /// See [`AtomicTmpl`] for more details.
 ///
 /// [`AtomicTmpl`]: struct.AtomicTmpl.html
-pub type AtomicArray<T> = AtomicTmpl<Array<T>, ArrayBox<T>>;
+pub type AtomicArray<T> = AtomicTmpl<ArrayBox<T>>;
 
 /// An owned heap-allocated array.
 ///
 /// See [`OwnedTmpl`] for more details.
 ///
 /// [`OwnedTmpl`]: struct.OwnedTmpl.html
-pub type OwnedArray<T> = OwnedTmpl<Array<T>, ArrayBox<T>>;
+pub type OwnedArray<T> = OwnedTmpl<ArrayBox<T>>;
 
 /// A pointer to an array protected by the epoch GC.
 ///
 /// See [`SharedTmpl`] for more details.
 ///
 /// [`SharedTmpl`]: struct.SharedTmpl.html
-pub type SharedArray<'g, T> = SharedTmpl<'g, Array<T>, ArrayBox<T>>;
+pub type SharedArray<'g, T> = SharedTmpl<'g, ArrayBox<T>>;
 
 /// An array consisting of its size and elements.
 ///
@@ -147,21 +147,6 @@ impl<T> Drop for ArrayBox<T> {
     }
 }
 
-unsafe impl<T> Storage<Array<T>> for ArrayBox<T> {
-    fn into_raw(self) -> *mut Array<T> {
-        let ptr = self.ptr;
-        mem::forget(self);
-        ptr
-    }
-
-    unsafe fn from_raw(ptr: *mut Array<T>) -> Self {
-        Self {
-            ptr,
-            _marker: PhantomData,
-        }
-    }
-}
-
 impl<T> Deref for ArrayBox<T> {
     type Target = Array<T>;
 
@@ -173,5 +158,22 @@ impl<T> Deref for ArrayBox<T> {
 impl<T> DerefMut for ArrayBox<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.ptr }
+    }
+}
+
+unsafe impl<T> Storage for ArrayBox<T> {
+    const ALIGN_OF: usize = mem::align_of::<T>();
+
+    fn into_raw(self) -> usize {
+        let ptr = self.ptr as usize;
+        mem::forget(self);
+        ptr
+    }
+
+    unsafe fn from_raw(ptr: usize) -> Self {
+        Self {
+            ptr: ptr as *mut _,
+            _marker: PhantomData,
+        }
     }
 }
