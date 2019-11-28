@@ -1,4 +1,4 @@
-use alloc::boxed::Box;
+use core::mem;
 
 use atomic::{self, Handle};
 
@@ -24,7 +24,7 @@ pub type Owned<T> = atomic::Owned<Box<T>>;
 pub type Shared<'g, T> = atomic::Shared<'g, Box<T>>;
 
 unsafe impl<T> Handle for Box<T> {
-    const ALIGN_OF: usize = ::core::mem::align_of::<T>();
+    const ALIGN: usize = mem::align_of::<T>();
 
     fn into_usize(self) -> usize {
         Self::into_raw(self) as usize

@@ -11,7 +11,7 @@ use crossbeam_utils::atomic::AtomicConsume;
 
 use guard::Guard;
 
-/// Qualifies word-sized storage types that own `T`.
+/// Qualifies word-sized handle types that own `T`.
 ///
 /// DST is very useful in the construction of concurrent data structures.  Consider a node in a
 /// skiplist.  It consists of: key, value, tower. The tower is an array of atomic pointers.  To save
@@ -22,34 +22,35 @@ use guard::Guard;
 /// dynamically sized so it might make sense to lay out the length together with array's elements.
 /// B-tree nodes may likewise be dynamically sized.
 ///
-/// However, Crossbeam had not supported DST because it used `Box<H::Target>` as the underlying storage for
-/// atomic pointers.  When `T` is a DST, `Box<H::Target>` becomes a fat pointer (consisting of the
-/// underlying pointer and an integer representing the size), which doesn't support atomic
-/// operations (such as compare-and-swap or fetch-and-add) in stable Rust.  There are also other
-/// reasons why one might want thin pointers with length stored within the object, like performance
-/// (cache locality) and memory consumption.
+/// However, Crossbeam had not supported DST because it used `Box` as the representation of atomic
+/// pointers.  When `T` is a DST, `Box<T>` becomes a fat pointer (consisting of the underlying
+/// pointer and an integer representing the size), which doesn't support atomic operations (such as
+/// compare-and-swap or fetch-and-add) in stable Rust.  There are also other reasons why one might
+/// want thin pointers with length stored within the object, like performance (cache locality) and
+/// memory consumption.
 ///
-/// This trait was introduced to support DST by generalizing `Box<H::Target>`: roughly speaking, what we
-/// require for a storage type is that (1) it is represented as a word, and (2) it owns a value of
-/// type `T`.  `Box<H::Target>` indeed satisfies these conditions and it implements `Handle<Target=T>`.  For an
-/// example of DST, see [`Array`] and [`ArrayBox`].
+/// This trait was introduced to support DST by generalizing `Box<T>`: roughly speaking, what we
+/// require for a handle type is that (1) it is represented as a word, and (2) it owns a value of
+/// type `T`.  `Box<T>` indeed satisfies these conditions and it implements `Handle<Target=T>`.  For
+/// an example of DST, see [`Array`] and [`ArrayBox`].
 ///
 /// [`Array`]: struct.Array.html
 /// [`ArrayBox`]: struct.ArrayBox.html
 ///
 /// # Safety
 ///
-/// When `S` implements `Handle<Target=T>`, it should satisfy the following conditions:
+/// When `H` implements `Handle<Target=T>`, it should satisfy the following conditions:
 ///
-/// - When an storage object is converted to `*mut T` and then back, it should be the same
-///   storage object.
-///
+/// - When an storage object is converted to `usize` and then back, it should be the same storage
+///   object.
 /// - The result of `into_raw()` should be properly aligned as a pointer to `T`.
 pub unsafe trait Handle: DerefMut {
-    /// Alignment for the storage type.
-    const ALIGN_OF: usize;
+    /// Alignment of the data.
+    const ALIGN: usize;
 
     /// Converts the storage type to `usize`.
+    ///
+    /// The result shall be a multiple of `ALIGN`.
     fn into_usize(self) -> usize;
 
     /// Converts back `usize` to the storage type.
@@ -146,7 +147,7 @@ impl CompareAndSetOrdering for (Ordering, Ordering) {
 /// Returns a bitmask containing the unused least significant bits of an aligned pointer to `T`.
 #[inline]
 fn low_bits<H: Handle>() -> usize {
-    (1 << H::ALIGN_OF.trailing_zeros()) - 1
+    (1 << H::ALIGN.trailing_zeros()) - 1
 }
 
 /// Panics if the pointer is not properly unaligned.
@@ -159,14 +160,13 @@ fn ensure_aligned<H: Handle>(raw: usize) {
 ///
 /// `tag` is truncated to fit into the unused bits of the pointer to `T`.
 #[inline]
-fn data_with_tag<H: Handle>(data: usize, tag: usize) -> usize {
+fn compose_tag<H: Handle>(data: usize, tag: usize) -> usize {
     (data & !low_bits::<H>()) | (tag & low_bits::<H>())
 }
 
 /// Decomposes a tagged pointer `data` into the pointer and the tag.
-// TODO(@jeehoonkang)
 #[inline]
-pub fn decompose_data<H: Handle>(data: usize) -> (usize, usize) {
+fn decompose_tag<H: Handle>(data: usize) -> (usize, usize) {
     let raw = data & !low_bits::<H>();
     let tag = data & low_bits::<H>();
     (raw, tag)
@@ -177,6 +177,7 @@ pub fn decompose_data<H: Handle>(data: usize) -> (usize, usize) {
 /// The pointer must be properly aligned. Since it is aligned, a tag can be stored into the unused
 /// least significant bits of the address.  More precisely, a tag should be less than `(1 <<
 /// mem::align_of::<H::Target>().trailing_zeros())`.
+// PR(@jeehoonkang): how to deal with alignment?
 ///
 /// Any method that loads the pointer must be passed a reference to a [`Guard`].
 ///
@@ -187,8 +188,33 @@ pub struct Atomic<H: Handle> {
 }
 
 unsafe impl<H: Handle> Send for Atomic<H> where H::Target: Send + Sync {}
-
 unsafe impl<H: Handle> Sync for Atomic<H> where H::Target: Send + Sync {}
+
+impl<H: Handle> Atomic<H>
+where
+    H::Target: Sized,
+{
+    // PR(@jeehoonkang): `from_raw` should require more things.
+    /// Returns a new atomic pointer pointing to `raw`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `raw` is not properly aligned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::ptr;
+    /// use crossbeam_epoch::Atomic;
+    ///
+    /// let a = Atomic::<i32>::from_raw(ptr::null::<i32>());
+    /// ```
+    pub fn from_raw(raw: *const H::Target) -> Self {
+        let raw = raw as usize;
+        ensure_aligned::<H>(raw);
+        Self::from_usize(raw)
+    }
+}
 
 impl<H: Handle> Atomic<H> {
     /// Returns a new atomic pointer pointing to the tagged pointer `data`.
@@ -198,25 +224,6 @@ impl<H: Handle> Atomic<H> {
             _marker: PhantomData,
         }
     }
-
-    // TODO(@jeehoonkang)
-    // /// Returns a new atomic pointer pointing to `raw`.
-    // ///
-    // /// # Panics
-    // ///
-    // /// Panics if `raw` is not properly aligned.
-    // ///
-    // /// # Examples
-    // ///
-    // /// ```
-    // /// use std::ptr;
-    // /// use crossbeam_epoch::Atomic;
-    // ///
-    // /// let a = Atomic::<i32>::from_raw(ptr::null::<i32>());
-    // /// ```
-    // pub fn from_raw(raw: *const H::Target) -> Self {
-    //     Self::from_usize(raw as usize)
-    // }
 
     /// Returns a new null atomic pointer.
     ///
@@ -577,7 +584,7 @@ impl<H: Handle> Atomic<H> {
 impl<H: Handle> fmt::Debug for Atomic<H> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
-        let (raw, tag) = decompose_data::<H>(data);
+        let (raw, tag) = decompose_tag::<H>(data);
 
         f.debug_struct("Atomic")
             .field("raw", &raw)
@@ -649,7 +656,6 @@ impl<'g, H: Handle> From<Shared<'g, H>> for Atomic<H> {
 }
 
 /// A trait for either `Owned` or `Shared` pointers.
-// TODO(@jeehoonkang): ?
 pub trait Pointer<H: Handle> {
     /// Returns the machine representation of the pointer.
     fn into_usize(self) -> usize;
@@ -745,27 +751,12 @@ impl<H: Handle> Owned<H> {
     /// ```
     /// use crossbeam_epoch::{self as epoch, Owned};
     ///
-    /// let b = Box::new(1234);
-    /// let o: Owned<i32> = Owned::from_handle(b);
-    /// assert_eq!(*o, 1234);
-    /// ```
-    pub fn from_handle(handle: H) -> Self {
-        unsafe { Self::from_usize(handle.into_usize()) }
-    }
-
-    /// Converts the owned pointer into the underlying storage.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::{self as epoch, Owned};
-    ///
     /// let o = Owned::new(1234);
     /// let b: Box<i32> = o.into_handle();
     /// assert_eq!(*b, 1234);
     /// ```
     pub fn into_handle(self) -> H {
-        let (raw, _) = decompose_data::<H>(self.into_usize());
+        let (raw, _) = decompose_tag::<H>(self.into_usize());
         unsafe { H::from_usize(raw) }
     }
 
@@ -779,7 +770,7 @@ impl<H: Handle> Owned<H> {
     /// assert_eq!(Owned::new(1234).tag(), 0);
     /// ```
     pub fn tag(&self) -> usize {
-        let (_, tag) = decompose_data::<H>(self.data);
+        let (_, tag) = decompose_tag::<H>(self.data);
         tag
     }
 
@@ -798,13 +789,13 @@ impl<H: Handle> Owned<H> {
     /// ```
     pub fn with_tag(self, tag: usize) -> Owned<H> {
         let data = self.into_usize();
-        unsafe { Self::from_usize(data_with_tag::<H>(data, tag)) }
+        unsafe { Self::from_usize(compose_tag::<H>(data, tag)) }
     }
 }
 
 impl<H: Handle> Drop for Owned<H> {
     fn drop(&mut self) {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         unsafe {
             drop(H::from_usize(raw as usize));
         }
@@ -813,7 +804,7 @@ impl<H: Handle> Drop for Owned<H> {
 
 impl<H: Handle> fmt::Debug for Owned<H> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let (raw, tag) = decompose_data::<H>(self.data);
+        let (raw, tag) = decompose_tag::<H>(self.data);
 
         f.debug_struct("Owned")
             .field("raw", &raw)
@@ -826,17 +817,17 @@ impl<H: Handle> Deref for Owned<H> {
     type Target = H::Target;
 
     fn deref(&self) -> &H::Target {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         let raw = ManuallyDrop::new(unsafe { H::from_usize(raw) })
             .deref()
-            .deref() as *const H::Target;
+            .deref() as *const _;
         unsafe { &*raw }
     }
 }
 
 impl<H: Handle> DerefMut for Owned<H> {
     fn deref_mut(&mut self) -> &mut H::Target {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         let raw = ManuallyDrop::new(unsafe { H::from_usize(raw) })
             .deref_mut()
             .deref_mut() as *mut _;
@@ -955,7 +946,7 @@ where
     /// assert_eq!(p.as_raw(), raw);
     /// ```
     pub fn as_raw(&self) -> *const H::Target {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         raw as *const _
     }
 }
@@ -993,7 +984,7 @@ impl<'g, H: Handle> Shared<'g, H> {
     /// assert!(!a.load(SeqCst, guard).is_null());
     /// ```
     pub fn is_null(&self) -> bool {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         raw == 0
     }
 
@@ -1029,7 +1020,7 @@ impl<'g, H: Handle> Shared<'g, H> {
     /// }
     /// ```
     pub unsafe fn deref(&self) -> &'g H::Target {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         let raw = ManuallyDrop::new(H::from_usize(raw)).deref().deref() as *const H::Target;
         &*raw
     }
@@ -1071,7 +1062,7 @@ impl<'g, H: Handle> Shared<'g, H> {
     /// }
     /// ```
     pub unsafe fn deref_mut(&mut self) -> &'g mut H::Target {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         let raw = ManuallyDrop::new(H::from_usize(raw)).deref_mut().deref_mut() as *mut _;
         &mut *raw
     }
@@ -1108,7 +1099,7 @@ impl<'g, H: Handle> Shared<'g, H> {
     /// }
     /// ```
     pub unsafe fn as_ref(&self) -> Option<&'g H::Target> {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         if raw == 0 {
             None
         } else {
@@ -1142,7 +1133,7 @@ impl<'g, H: Handle> Shared<'g, H> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<H> {
-        let (raw, _) = decompose_data::<H>(self.data);
+        let (raw, _) = decompose_tag::<H>(self.data);
         debug_assert!(raw != 0, "converting a null `Shared` into `Owned`");
         Owned::from_usize(self.data)
     }
@@ -1161,7 +1152,7 @@ impl<'g, H: Handle> Shared<'g, H> {
     /// assert_eq!(p.tag(), 2);
     /// ```
     pub fn tag(&self) -> usize {
-        let (_, tag) = decompose_data::<H>(self.data);
+        let (_, tag) = decompose_tag::<H>(self.data);
         tag
     }
 
@@ -1184,7 +1175,7 @@ impl<'g, H: Handle> Shared<'g, H> {
     /// assert_eq!(p1.as_raw(), p2.as_raw());
     /// ```
     pub fn with_tag(&self, tag: usize) -> Shared<'g, H> {
-        unsafe { Self::from_usize(data_with_tag::<H>(self.data, tag)) }
+        unsafe { Self::from_usize(compose_tag::<H>(self.data, tag)) }
     }
 }
 
@@ -1210,7 +1201,7 @@ impl<'g, H: Handle> Ord for Shared<'g, H> {
 
 impl<'g, H: Handle> fmt::Debug for Shared<'g, H> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let (raw, tag) = decompose_data::<H>(self.data);
+        let (raw, tag) = decompose_tag::<H>(self.data);
 
         f.debug_struct("Shared")
             .field("raw", &raw)

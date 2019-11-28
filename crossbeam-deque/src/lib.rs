@@ -223,7 +223,7 @@ impl<T> Drop for Inner<T> {
             }
 
             // Free the memory allocated by the buffer.
-            buffer.into_owned().into_storage().dealloc();
+            buffer.into_owned().into_handle().dealloc();
         }
     }
 }
@@ -396,7 +396,7 @@ impl<T> Worker<T> {
                 .swap(Owned::new(new).into_shared(guard), Ordering::Release, guard);
 
         // Destroy the old buffer later.
-        guard.defer_unchecked(move || old.into_owned().into_storage().dealloc());
+        guard.defer_unchecked(move || old.into_owned().into_handle().dealloc());
 
         // If the buffer is very large, then flush the thread-local garbage in order to deallocate
         // it as soon as possible.
