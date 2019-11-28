@@ -4,7 +4,7 @@ use core::mem;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 
-use atomic::{self, Storage};
+use atomic::{self, Handle};
 
 /// An atomic pointer to an array that can be safely shared between threads.
 ///
@@ -161,16 +161,16 @@ impl<T> DerefMut for ArrayBox<T> {
     }
 }
 
-unsafe impl<T> Storage for ArrayBox<T> {
+unsafe impl<T> Handle for ArrayBox<T> {
     const ALIGN_OF: usize = mem::align_of::<T>();
 
-    fn into_raw(self) -> usize {
+    fn into_usize(self) -> usize {
         let ptr = self.ptr as usize;
         mem::forget(self);
         ptr
     }
 
-    unsafe fn from_raw(ptr: usize) -> Self {
+    unsafe fn from_usize(ptr: usize) -> Self {
         Self {
             ptr: ptr as *mut _,
             _marker: PhantomData,

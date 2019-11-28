@@ -90,7 +90,7 @@ cfg_if! {
         mod storage;
         mod sync;
 
-        pub use self::atomic::{decompose_data, CompareAndSetError, CompareAndSetOrdering, Pointer, Storage};
+        pub use self::atomic::{decompose_data, CompareAndSetError, CompareAndSetOrdering, Pointer, Handle};
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard};
         pub use self::storage::array_storage::{Array, ArrayBox, AtomicArray, OwnedArray, SharedArray};

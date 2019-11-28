@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use atomic::{self, Storage};
+use atomic::{self, Handle};
 
 /// An atomic pointer that can be safely shared between threads.
 ///
@@ -23,14 +23,14 @@ pub type Owned<T> = atomic::Owned<Box<T>>;
 /// [`Shared`]: atomic/struct.Shared.html
 pub type Shared<'g, T> = atomic::Shared<'g, Box<T>>;
 
-unsafe impl<T> Storage for Box<T> {
+unsafe impl<T> Handle for Box<T> {
     const ALIGN_OF: usize = ::core::mem::align_of::<T>();
 
-    fn into_raw(self) -> usize {
+    fn into_usize(self) -> usize {
         Self::into_raw(self) as usize
     }
 
-    unsafe fn from_raw(data: usize) -> Self {
+    unsafe fn from_usize(data: usize) -> Self {
         Self::from_raw(data as *mut _)
     }
 }
