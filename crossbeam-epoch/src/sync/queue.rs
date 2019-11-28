@@ -52,7 +52,7 @@ impl<T> Queue<T> {
             next: Atomic::null(),
         });
         unsafe {
-            let guard = &unprotected();
+            let guard = unprotected();
             let sentinel = sentinel.into_shared(guard);
             q.head.store(sentinel, Relaxed);
             q.tail.store(sentinel, Relaxed);
@@ -196,7 +196,7 @@ impl<T> Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         unsafe {
-            let guard = &unprotected();
+            let guard = unprotected();
 
             while let Some(_) = self.try_pop(guard) {}
 

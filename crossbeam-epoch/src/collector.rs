@@ -12,9 +12,9 @@
 ///
 /// handle.pin().flush();
 /// ```
-use alloc::sync::Arc;
 use core::fmt;
 
+use crate::alloc::sync::Arc;
 use crate::guard::Guard;
 use crate::internal::{Global, Local};
 
