@@ -1,4 +1,4 @@
-//! Tools for concurrent programming.
+//! Crossbeam is a library of rust types that are essential for writing functions that are safe to execute on several CPUs at the same time, called "thread safe" functions.
 //!
 //! ## Atomics
 //!
