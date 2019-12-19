@@ -519,37 +519,28 @@ macro_rules! impl_arithmetic {
             }
         }
     };
-    ($t:ty, $size:tt, $atomic:ty, $example:tt) => {
-        #[cfg(target_has_atomic = $size)]
-        impl_arithmetic!($t, $atomic, $example);
-    };
 }
 
-cfg_if! {
-    if #[cfg(feature = "nightly")] {
-        impl_arithmetic!(u8, "8", atomic::AtomicU8, "let a = AtomicCell::new(7u8);");
-        impl_arithmetic!(i8, "8", atomic::AtomicI8, "let a = AtomicCell::new(7i8);");
-        impl_arithmetic!(u16, "16", atomic::AtomicU16, "let a = AtomicCell::new(7u16);");
-        impl_arithmetic!(i16, "16", atomic::AtomicI16, "let a = AtomicCell::new(7i16);");
-        impl_arithmetic!(u32, "32", atomic::AtomicU32, "let a = AtomicCell::new(7u32);");
-        impl_arithmetic!(i32, "32", atomic::AtomicI32, "let a = AtomicCell::new(7i32);");
-        impl_arithmetic!(u64, "64", atomic::AtomicU64, "let a = AtomicCell::new(7u64);");
-        impl_arithmetic!(i64, "64", atomic::AtomicI64, "let a = AtomicCell::new(7i64);");
-        impl_arithmetic!(u128, "let a = AtomicCell::new(7u128);");
-        impl_arithmetic!(i128, "let a = AtomicCell::new(7i128);");
-    } else {
-        impl_arithmetic!(u8, "let a = AtomicCell::new(7u8);");
-        impl_arithmetic!(i8, "let a = AtomicCell::new(7i8);");
-        impl_arithmetic!(u16, "let a = AtomicCell::new(7u16);");
-        impl_arithmetic!(i16, "let a = AtomicCell::new(7i16);");
-        impl_arithmetic!(u32, "let a = AtomicCell::new(7u32);");
-        impl_arithmetic!(i32, "let a = AtomicCell::new(7i32);");
-        impl_arithmetic!(u64, "let a = AtomicCell::new(7u64);");
-        impl_arithmetic!(i64, "let a = AtomicCell::new(7i64);");
-        impl_arithmetic!(u128, "let a = AtomicCell::new(7u128);");
-        impl_arithmetic!(i128, "let a = AtomicCell::new(7i128);");
-    }
-}
+#[cfg(has_atomic_u8)]
+impl_arithmetic!(u8, atomic::AtomicU8, "let a = AtomicCell::new(7u8);");
+#[cfg(has_atomic_u8)]
+impl_arithmetic!(i8, atomic::AtomicI8, "let a = AtomicCell::new(7i8);");
+#[cfg(has_atomic_u16)]
+impl_arithmetic!(u16, atomic::AtomicU16, "let a = AtomicCell::new(7u16);");
+#[cfg(has_atomic_u16)]
+impl_arithmetic!(i16, atomic::AtomicI16, "let a = AtomicCell::new(7i16);");
+#[cfg(has_atomic_u32)]
+impl_arithmetic!(u32, atomic::AtomicU32, "let a = AtomicCell::new(7u32);");
+#[cfg(has_atomic_u32)]
+impl_arithmetic!(i32, atomic::AtomicI32, "let a = AtomicCell::new(7i32);");
+#[cfg(has_atomic_u64)]
+impl_arithmetic!(u64, atomic::AtomicU64, "let a = AtomicCell::new(7u64);");
+#[cfg(has_atomic_u64)]
+impl_arithmetic!(i64, atomic::AtomicI64, "let a = AtomicCell::new(7i64);");
+#[cfg(has_atomic_u128)]
+impl_arithmetic!(u128, atomic::AtomicU128, "let a = AtomicCell::new(7u128);");
+#[cfg(has_atomic_u128)]
+impl_arithmetic!(i128, atomic::AtomicI128, "let  a = AtomicCell::new(7i128);");
 
 impl_arithmetic!(
     usize,
@@ -741,17 +732,14 @@ macro_rules! atomic {
             atomic!(@check, $t, AtomicUnit, $a, $atomic_op);
             atomic!(@check, $t, atomic::AtomicUsize, $a, $atomic_op);
 
-            #[cfg(feature = "nightly")]
-            {
-                #[cfg(target_has_atomic = "8")]
-                atomic!(@check, $t, atomic::AtomicU8, $a, $atomic_op);
-                #[cfg(target_has_atomic = "16")]
-                atomic!(@check, $t, atomic::AtomicU16, $a, $atomic_op);
-                #[cfg(target_has_atomic = "32")]
-                atomic!(@check, $t, atomic::AtomicU32, $a, $atomic_op);
-                #[cfg(target_has_atomic = "64")]
-                atomic!(@check, $t, atomic::AtomicU64, $a, $atomic_op);
-            }
+            #[cfg(has_atomic_u8)]
+            atomic!(@check, $t, atomic::AtomicU8, $a, $atomic_op);
+            #[cfg(has_atomic_u16)]
+            atomic!(@check, $t, atomic::AtomicU16, $a, $atomic_op);
+            #[cfg(has_atomic_u32)]
+            atomic!(@check, $t, atomic::AtomicU32, $a, $atomic_op);
+            #[cfg(has_atomic_u64)]
+            atomic!(@check, $t, atomic::AtomicU64, $a, $atomic_op);
 
             break $fallback_op;
         }

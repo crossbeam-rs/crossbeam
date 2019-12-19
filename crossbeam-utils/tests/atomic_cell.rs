@@ -9,20 +9,19 @@ use crossbeam_utils::atomic::AtomicCell;
 fn is_lock_free() {
     struct UsizeWrap(usize);
     struct U8Wrap(bool);
+    struct I16Wrap(i16);
 
     assert_eq!(AtomicCell::<usize>::is_lock_free(), true);
     assert_eq!(AtomicCell::<isize>::is_lock_free(), true);
     assert_eq!(AtomicCell::<UsizeWrap>::is_lock_free(), true);
 
-    assert_eq!(AtomicCell::<u8>::is_lock_free(), cfg!(feature = "nightly"));
-    assert_eq!(
-        AtomicCell::<bool>::is_lock_free(),
-        cfg!(feature = "nightly")
-    );
-    assert_eq!(
-        AtomicCell::<U8Wrap>::is_lock_free(),
-        cfg!(feature = "nightly")
-    );
+    assert_eq!(AtomicCell::<u8>::is_lock_free(), cfg!(has_atomic_u8));
+    assert_eq!(AtomicCell::<bool>::is_lock_free(), cfg!(has_atomic_u8));
+    assert_eq!(AtomicCell::<U8Wrap>::is_lock_free(), cfg!(has_atomic_u8));
+
+    assert_eq!(AtomicCell::<I16Wrap>::is_lock_free(), cfg!(has_atomic_u16));
+
+    assert_eq!(AtomicCell::<u128>::is_lock_free(), cfg!(has_atomic_u128));
 }
 
 #[test]
