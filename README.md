@@ -24,6 +24,7 @@ This crate provides a set of tools for concurrent programming:
 * [`deque`], work-stealing deques for building task schedulers.
 * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
 * [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
+* [`spsc`], a bounded SPSC queue that allocates a fixed-capacity buffer on construction.
 
 #### Memory management
 
@@ -51,6 +52,7 @@ and `nightly` are enabled.*
 [`deque`]: https://docs.rs/crossbeam/*/crossbeam/deque/index.html
 [`ArrayQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.ArrayQueue.html
 [`SegQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.SegQueue.html
+[`spsc`]: https://docs.rs/crossbeam-queue/*/crossbeam_queue/spsc/index.html
 [`channel`]: https://docs.rs/crossbeam/*/crossbeam/channel/index.html
 [`Parker`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.Parker.html
 [`ShardedLock`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.ShardedLock.html

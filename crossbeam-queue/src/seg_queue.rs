@@ -142,7 +142,7 @@ unsafe impl<T: Send> Send for SegQueue<T> {}
 unsafe impl<T: Send> Sync for SegQueue<T> {}
 
 impl<T> SegQueue<T> {
-    /// Creates a new unbounded queue.
+    /// Creates a unbounded queue.
     ///
     /// # Examples
     ///
