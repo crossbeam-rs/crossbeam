@@ -1,3 +1,7 @@
+# Version 0.2.1
+
+- Add `no_std` support.
+
 # Version 0.2.0
 
 - Bump the minimum required version to 1.28.
