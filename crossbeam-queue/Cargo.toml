@@ -15,9 +15,18 @@ description = "Concurrent queues"
 keywords = ["queue", "mpmc", "lock-free", "producer", "consumer"]
 categories = ["concurrency", "data-structures"]
 
+[features]
+default = ["std"]
+std = ["crossbeam-utils/std"]
+alloc = ["crossbeam-utils/alloc"]
+
+[dependencies]
+cfg-if = "0.1.2"
+
 [dependencies.crossbeam-utils]
 version = "0.7"
 path = "../crossbeam-utils"
+default-features = false
 
 [dev-dependencies]
 rand = "0.6"

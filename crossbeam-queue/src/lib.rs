@@ -10,13 +10,31 @@
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[macro_use]
+extern crate cfg_if;
+#[cfg(feature = "std")]
+extern crate core;
+
+cfg_if! {
+    if #[cfg(feature = "alloc")] {
+        extern crate alloc;
+    } else if #[cfg(feature = "std")] {
+        extern crate std as alloc;
+    }
+}
 
 extern crate crossbeam_utils;
 
-mod array_queue;
-mod err;
-mod seg_queue;
+cfg_if! {
+    if #[cfg(any(feature = "alloc", feature = "std"))] {
+        mod array_queue;
+        mod err;
+        mod seg_queue;
 
-pub use self::array_queue::ArrayQueue;
-pub use self::err::{PopError, PushError};
-pub use self::seg_queue::SegQueue;
+        pub use self::array_queue::ArrayQueue;
+        pub use self::err::{PopError, PushError};
+        pub use self::seg_queue::SegQueue;
+    }
+}
