@@ -58,34 +58,28 @@ impl Channel {
     #[inline]
     pub fn recv(&self, deadline: Option<Instant>) -> Result<Instant, RecvTimeoutError> {
         loop {
-            // Compute the time to sleep until the next message or the deadline.
-            let offset = {
-                let delivery_time = self.delivery_time.load();
-                let now = Instant::now();
+            let delivery_time = self.delivery_time.load();
+            let now = Instant::now();
 
-                // Check if we can receive the next message.
-                if now >= delivery_time
-                    && self
-                        .delivery_time
-                        .compare_exchange(delivery_time, now + self.duration)
-                        .is_ok()
-                {
-                    return Ok(delivery_time);
-                }
-
-                // Check if the operation deadline has been reached.
-                if let Some(d) = deadline {
-                    if now >= d {
-                        return Err(RecvTimeoutError::Timeout);
+            if let Some(d) = deadline {
+                if d < delivery_time {
+                    if now < d {
+                        thread::sleep(d - now);
                     }
-
-                    delivery_time.min(d) - now
-                } else {
-                    delivery_time - now
+                    return Err(RecvTimeoutError::Timeout);
                 }
-            };
+            }
 
-            thread::sleep(offset);
+            if self
+                .delivery_time
+                .compare_exchange(delivery_time, delivery_time.max(now) + self.duration)
+                .is_ok()
+            {
+                if now < delivery_time {
+                    thread::sleep(delivery_time - now);
+                }
+                return Ok(delivery_time);
+            }
         }
     }
 
