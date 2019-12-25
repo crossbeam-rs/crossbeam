@@ -78,7 +78,7 @@ impl Channel {
                 if now < delivery_time {
                     thread::sleep(delivery_time - now);
                 }
-                return Ok(delivery_time.max(now));
+                return Ok(delivery_time);
             }
         }
     }
