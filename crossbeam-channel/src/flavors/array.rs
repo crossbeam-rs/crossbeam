@@ -542,7 +542,17 @@ impl<T> Drop for Channel<T> {
             };
 
             unsafe {
-                self.buffer.add(index).drop_in_place();
+                let ptr = self.buffer.add(index);
+                {
+                    // This requires an extra scope because when we drop the Slot,
+                    // reference to it should not exist.
+                    let slot = &mut *ptr;
+                    let msg = &mut *slot.msg.get();
+                    // Drop the message (MaybeUninit<T>).
+                    msg.as_mut_ptr().drop_in_place();
+                }
+                // Drop slot (This should be a no-op).
+                ptr.drop_in_place();
             }
         }
 
