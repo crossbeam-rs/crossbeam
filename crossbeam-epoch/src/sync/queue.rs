@@ -24,7 +24,6 @@ pub struct Queue<T> {
     tail: CachePadded<Atomic<Node<T>>>,
 }
 
-#[derive(Debug)]
 struct Node<T> {
     /// The slot in which a value of type `T` can be stored.
     ///
