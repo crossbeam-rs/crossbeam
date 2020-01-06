@@ -413,7 +413,17 @@ impl<T> Drop for ArrayQueue<T> {
             };
 
             unsafe {
-                self.buffer.add(index).drop_in_place();
+                let ptr = self.buffer.add(index);
+                {
+                    // This requires an extra scope because when we drop the Slot,
+                    // reference to it should not exist.
+                    let slot = &mut *ptr;
+                    let value = &mut *slot.value.get();
+                    // Drop the message (MaybeUninit<T>).
+                    value.as_mut_ptr().drop_in_place();
+                }
+                // Drop slot (This should be a no-op).
+                ptr.drop_in_place();
             }
         }
 
