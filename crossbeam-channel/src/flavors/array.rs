@@ -15,7 +15,7 @@
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, MaybeUninit};
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, Ordering};
 use std::time::Instant;
@@ -33,7 +33,7 @@ struct Slot<T> {
     stamp: AtomicUsize,
 
     /// The message in this slot.
-    msg: UnsafeCell<T>,
+    msg: UnsafeCell<MaybeUninit<T>>,
 }
 
 /// The token type for the array flavor.
@@ -233,7 +233,7 @@ impl<T> Channel<T> {
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
         // Write the message into the slot and update the stamp.
-        slot.msg.get().write(msg);
+        slot.msg.get().write(MaybeUninit::new(msg));
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping receiver.
@@ -323,7 +323,7 @@ impl<T> Channel<T> {
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
         // Read the message from the slot and update the stamp.
-        let msg = slot.msg.get().read();
+        let msg = slot.msg.get().read().assume_init();
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping sender.
