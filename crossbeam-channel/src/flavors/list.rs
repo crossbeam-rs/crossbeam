@@ -578,7 +578,7 @@ impl<T> Drop for Channel<T> {
                     // Drop the message in the slot.
                     let slot = (*block).slots.get_unchecked(offset);
                     let p = &mut *slot.msg.get();
-                    ptr::drop_in_place(p.as_mut_ptr());
+                    p.as_mut_ptr().drop_in_place();
                 } else {
                     // Deallocate the block and move to the next one.
                     let next = (*block).next.load(Ordering::Relaxed);

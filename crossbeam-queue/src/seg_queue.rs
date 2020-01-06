@@ -457,7 +457,7 @@ impl<T> Drop for SegQueue<T> {
                     // Drop the value in the slot.
                     let slot = (*block).slots.get_unchecked(offset);
                     let p = &mut *slot.value.get();
-                    ptr::drop_in_place(p.as_mut_ptr());
+                    p.as_mut_ptr().drop_in_place();
                 } else {
                     // Deallocate the block and move to the next one.
                     let next = (*block).next.load(Ordering::Relaxed);

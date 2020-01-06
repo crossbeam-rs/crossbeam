@@ -218,7 +218,7 @@ impl<T> Drop for Inner<T> {
             // Go through the buffer from front to back and drop all tasks in the queue.
             let mut i = f;
             while i != b {
-                ptr::drop_in_place(buffer.deref().at(i));
+                buffer.deref().at(i).drop_in_place();
                 i = i.wrapping_add(1);
             }
 
@@ -1805,7 +1805,7 @@ impl<T> Drop for Injector<T> {
                     // Drop the task in the slot.
                     let slot = (*block).slots.get_unchecked(offset);
                     let p = &mut *slot.task.get();
-                    ptr::drop_in_place(p.as_mut_ptr());
+                    p.as_mut_ptr().drop_in_place();
                 } else {
                     // Deallocate the block and move to the next one.
                     let next = (*block).next.load(Ordering::Relaxed);
