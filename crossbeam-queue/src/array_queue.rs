@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
-use core::mem;
+use core::mem::{self, MaybeUninit};
 use core::ptr;
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
@@ -29,7 +29,7 @@ struct Slot<T> {
     stamp: AtomicUsize,
 
     /// The value in this slot.
-    value: UnsafeCell<T>,
+    value: UnsafeCell<MaybeUninit<T>>,
 }
 
 /// A bounded multi-producer multi-consumer queue.
@@ -186,9 +186,7 @@ impl<T> ArrayQueue<T> {
                 ) {
                     Ok(_) => {
                         // Write the value into the slot and update the stamp.
-                        unsafe {
-                            slot.value.get().write(value);
-                        }
+                        unsafe { slot.value.get().write(MaybeUninit::new(value)) }
                         slot.stamp.store(tail + 1, Ordering::Release);
                         return Ok(());
                     }
@@ -266,7 +264,7 @@ impl<T> ArrayQueue<T> {
                 ) {
                     Ok(_) => {
                         // Read the value from the slot and update the stamp.
-                        let msg = unsafe { slot.value.get().read() };
+                        let msg = unsafe { slot.value.get().read().assume_init() };
                         slot.stamp
                             .store(head.wrapping_add(self.one_lap), Ordering::Release);
                         return Ok(msg);
