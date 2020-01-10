@@ -40,7 +40,7 @@ version = "1"
 default-features = false
 
 [build-dependencies]
-autocfg = "0.1.6"
+autocfg = "1"
 
 [dev-dependencies]
 rand = "0.6"
