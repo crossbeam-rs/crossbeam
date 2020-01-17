@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
+use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread::{self, ThreadId};
 
 use CachePadded;
@@ -99,10 +99,12 @@ impl<T> ShardedLock<T> {
     pub fn new(value: T) -> ShardedLock<T> {
         ShardedLock {
             shards: (0..NUM_SHARDS)
-                .map(|_| CachePadded::new(Shard {
-                    lock: RwLock::new(()),
-                    write_guard: UnsafeCell::new(None),
-                }))
+                .map(|_| {
+                    CachePadded::new(Shard {
+                        lock: RwLock::new(()),
+                        write_guard: UnsafeCell::new(None),
+                    })
+                })
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             value: UnsafeCell::new(value),
@@ -232,7 +234,7 @@ impl<T: ?Sized> ShardedLock<T> {
                     _marker: PhantomData,
                 };
                 Err(TryLockError::Poisoned(PoisonError::new(guard)))
-            },
+            }
             Err(TryLockError::WouldBlock) => Err(TryLockError::WouldBlock),
         }
     }
@@ -317,7 +319,7 @@ impl<T: ?Sized> ShardedLock<T> {
                 Err(TryLockError::Poisoned(err)) => {
                     poisoned = true;
                     err.into_inner()
-                },
+                }
                 Err(TryLockError::WouldBlock) => {
                     blocked = Some(i);
                     break;
@@ -416,10 +418,14 @@ impl<T: ?Sized> ShardedLock<T> {
 impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLock<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.try_read() {
-            Ok(guard) => f.debug_struct("ShardedLock").field("data", &&*guard).finish(),
-            Err(TryLockError::Poisoned(err)) => {
-                f.debug_struct("ShardedLock").field("data", &&**err.get_ref()).finish()
-            },
+            Ok(guard) => f
+                .debug_struct("ShardedLock")
+                .field("data", &&*guard)
+                .finish(),
+            Err(TryLockError::Poisoned(err)) => f
+                .debug_struct("ShardedLock")
+                .field("data", &&**err.get_ref())
+                .finish(),
             Err(TryLockError::WouldBlock) => {
                 struct LockedPlaceholder;
                 impl fmt::Debug for LockedPlaceholder {
@@ -427,7 +433,9 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLock<T> {
                         f.write_str("<locked>")
                     }
                 }
-                f.debug_struct("ShardedLock").field("data", &LockedPlaceholder).finish()
+                f.debug_struct("ShardedLock")
+                    .field("data", &LockedPlaceholder)
+                    .finish()
             }
         }
     }
