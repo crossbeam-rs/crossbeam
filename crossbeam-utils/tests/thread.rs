@@ -179,3 +179,33 @@ fn join_nested() {
     })
     .unwrap();
 }
+
+#[cfg(unix)]
+#[test]
+fn as_pthread_t() {
+    use std::os::unix::thread::JoinHandleExt;
+    thread::scope(|scope| {
+        let handle = scope.spawn(|_scope| {
+            sleep(Duration::from_millis(100));
+            42
+        });
+        let _pthread_t = handle.as_pthread_t();
+        handle.join().unwrap();
+    })
+    .unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn as_raw_handle() {
+    use std::os::windows::io::AsRawHandle;
+    thread::scope(|scope| {
+        let handle = scope.spawn(|_scope| {
+            sleep(Duration::from_millis(100));
+            42
+        });
+        let _raw_handle = handle.as_raw_handle();
+        handle.join().unwrap();
+    })
+    .unwrap();
+}
