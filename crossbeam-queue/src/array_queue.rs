@@ -12,11 +12,13 @@ use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
-use core::mem::{self, MaybeUninit};
+use core::mem;
 use core::ptr;
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
+
+use maybe_uninit::MaybeUninit;
 
 use err::{PopError, PushError};
 

@@ -8,10 +8,11 @@
 //! Simon Doherty, Lindsay Groves, Victor Luchangco, and Mark Moir. 2004b. Formal Verification of a
 //! Practical Lock-Free Queue Algorithm. https://doi.org/10.1007/978-3-540-30232-2_7
 
-use core::mem::MaybeUninit;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 use crossbeam_utils::CachePadded;
+
+use maybe_uninit::MaybeUninit;
 
 use {unprotected, Atomic, Guard, Owned, Shared};
 
