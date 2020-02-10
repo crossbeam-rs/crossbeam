@@ -188,7 +188,9 @@ impl<T> ArrayQueue<T> {
                 ) {
                     Ok(_) => {
                         // Write the value into the slot and update the stamp.
-                        unsafe { slot.value.get().write(MaybeUninit::new(value)); }
+                        unsafe {
+                            slot.value.get().write(MaybeUninit::new(value));
+                        }
                         slot.stamp.store(tail + 1, Ordering::Release);
                         return Ok(());
                     }
