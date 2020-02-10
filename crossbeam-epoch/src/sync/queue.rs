@@ -154,7 +154,6 @@ impl<T> Queue<T> {
                                 let _ = self.tail.compare_and_set(tail, next, Release, guard);
                             }
                             guard.defer_destroy(head);
-                            // TODO: Replace with MaybeUninit::read when api is stable
                             Some(n.data.as_ptr().read())
                         })
                         .map_err(|_| ())
