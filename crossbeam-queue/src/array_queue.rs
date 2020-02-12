@@ -18,6 +18,8 @@ use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
+use maybe_uninit::MaybeUninit;
+
 use err::{PopError, PushError};
 
 /// A slot in a queue.
@@ -29,7 +31,7 @@ struct Slot<T> {
     stamp: AtomicUsize,
 
     /// The value in this slot.
-    value: UnsafeCell<T>,
+    value: UnsafeCell<MaybeUninit<T>>,
 }
 
 /// A bounded multi-producer multi-consumer queue.
@@ -187,7 +189,7 @@ impl<T> ArrayQueue<T> {
                     Ok(_) => {
                         // Write the value into the slot and update the stamp.
                         unsafe {
-                            slot.value.get().write(value);
+                            slot.value.get().write(MaybeUninit::new(value));
                         }
                         slot.stamp.store(tail + 1, Ordering::Release);
                         return Ok(());
@@ -266,7 +268,7 @@ impl<T> ArrayQueue<T> {
                 ) {
                     Ok(_) => {
                         // Read the value from the slot and update the stamp.
-                        let msg = unsafe { slot.value.get().read() };
+                        let msg = unsafe { slot.value.get().read().assume_init() };
                         slot.stamp
                             .store(head.wrapping_add(self.one_lap), Ordering::Release);
                         return Ok(msg);
@@ -415,7 +417,12 @@ impl<T> Drop for ArrayQueue<T> {
             };
 
             unsafe {
-                self.buffer.add(index).drop_in_place();
+                let p = {
+                    let slot = &mut *self.buffer.add(index);
+                    let value = &mut *slot.value.get();
+                    value.as_mut_ptr()
+                };
+                p.drop_in_place();
             }
         }
 

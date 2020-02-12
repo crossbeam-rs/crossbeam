@@ -64,6 +64,8 @@ extern crate cfg_if;
 #[cfg(feature = "std")]
 extern crate core;
 
+extern crate maybe_uninit;
+
 cfg_if! {
     if #[cfg(feature = "alloc")] {
         extern crate alloc;

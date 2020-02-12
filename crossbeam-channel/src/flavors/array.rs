@@ -22,6 +22,8 @@ use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
+use maybe_uninit::MaybeUninit;
+
 use context::Context;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use select::{Operation, SelectHandle, Selected, Token};
@@ -33,7 +35,7 @@ struct Slot<T> {
     stamp: AtomicUsize,
 
     /// The message in this slot.
-    msg: UnsafeCell<T>,
+    msg: UnsafeCell<MaybeUninit<T>>,
 }
 
 /// The token type for the array flavor.
@@ -233,7 +235,7 @@ impl<T> Channel<T> {
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
         // Write the message into the slot and update the stamp.
-        slot.msg.get().write(msg);
+        slot.msg.get().write(MaybeUninit::new(msg));
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping receiver.
@@ -323,7 +325,7 @@ impl<T> Channel<T> {
         let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
         // Read the message from the slot and update the stamp.
-        let msg = slot.msg.get().read();
+        let msg = slot.msg.get().read().assume_init();
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping sender.
@@ -542,7 +544,12 @@ impl<T> Drop for Channel<T> {
             };
 
             unsafe {
-                self.buffer.add(index).drop_in_place();
+                let p = {
+                    let slot = &mut *self.buffer.add(index);
+                    let msg = &mut *slot.msg.get();
+                    msg.as_mut_ptr()
+                };
+                p.drop_in_place();
             }
         }
 
