@@ -4,7 +4,7 @@ name = "crossbeam-deque"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-deque-X.Y.Z" git tag
-version = "0.7.2"
+version = "0.7.3"
 authors = ["The Crossbeam Project Developers"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
@@ -27,4 +27,4 @@ version = "0.7"
 path = "../crossbeam-utils"
 
 [dev-dependencies]
-rand = "0.6"
+rand = "0.7"
