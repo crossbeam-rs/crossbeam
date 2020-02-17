@@ -27,4 +27,4 @@ version = "0.7"
 path = "../crossbeam-utils"
 
 [dev-dependencies]
-rand = "0.7"
+rand = "0.6"

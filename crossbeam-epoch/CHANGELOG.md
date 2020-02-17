@@ -1,6 +1,5 @@
 # Version 0.8.1
 
-- Bump `rand` dev-dependency to version 0.7.
 - Bump `autocfg` dependency to version 1.0. (#460)
 - Reduce stall in list iteration. (#376)
 - Stop stealing from the same deque. (#448)

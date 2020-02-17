@@ -30,4 +30,4 @@ path = "../crossbeam-utils"
 default-features = false
 
 [dev-dependencies]
-rand = "0.7"
+rand = "0.6"

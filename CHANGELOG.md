@@ -1,7 +1,3 @@
-# Version 0.7.4
-
-- Bump `rand` dev-dependency to version 0.7.
-
 # Version 0.7.3
 
 - Fix breakage with nightly feature due to rust-lang/rust#65214.
