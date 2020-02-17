@@ -4,7 +4,7 @@ name = "crossbeam-channel"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-channel-X.Y.Z" git tag
-version = "0.4.0"
+version = "0.4.1"
 authors = ["The Crossbeam Project Developers"]
 license = "MIT/Apache-2.0 AND BSD-2-Clause"
 readme = "README.md"
@@ -24,5 +24,5 @@ path = "../crossbeam-utils"
 
 [dev-dependencies]
 num_cpus = "1.10.0"
-rand = "0.6"
+rand = "0.7"
 signal-hook = "0.1.5"
