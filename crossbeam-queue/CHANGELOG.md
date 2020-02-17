@@ -1,3 +1,8 @@
+# Version 0.2.2
+
+- Bump `rand` dev-dependency to version 0.7.
+- Fix unsoundness issues by adopting `MaybeUninit`. (#458)
+
 # Version 0.2.1
 
 - Add `no_std` support.
