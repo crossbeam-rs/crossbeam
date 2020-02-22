@@ -1,3 +1,7 @@
+# Version 0.2.2
+
+- Fix unsoundness issues by adopting `MaybeUninit`. (#458)
+
 # Version 0.2.1
 
 - Add `no_std` support.

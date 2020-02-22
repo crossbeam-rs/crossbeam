@@ -1,3 +1,8 @@
+# Version 0.7.3
+
+- Stop stealing from the same deque. (#448)
+- Fix unsoundness issues by adopting `MaybeUninit`. (#458)
+
 # Version 0.7.2
 
 - Bump `crossbeam-epoch` to `0.8`.

@@ -1,3 +1,8 @@
+# Version 0.4.1
+
+- Avoid time drift in `channel::tick`. (#456)
+- Fix unsoundness issues by adopting `MaybeUninit`. (#458)
+
 # Version 0.4.0
 
 - Bump the minimum required version to 1.28.

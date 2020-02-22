@@ -1,3 +1,11 @@
+# Version 0.8.1
+
+- Bump `autocfg` dependency to version 1.0. (#460)
+- Reduce stall in list iteration. (#376)
+- Stop stealing from the same deque. (#448)
+- Fix unsoundness issues by adopting `MaybeUninit`. (#458)
+- Fix use-after-free in lock-free queue. (#466)
+
 # Version 0.8.0
 
 - Bump the minimum required version to 1.28.
