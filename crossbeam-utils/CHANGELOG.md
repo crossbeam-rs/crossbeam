@@ -1,3 +1,7 @@
+# Version 0.7.2
+
+- Fix bug in release (yanking 0.7.1)
+
 # Version 0.7.1
 
 - Bump `autocfg` dependency to version 1.0. (#460)

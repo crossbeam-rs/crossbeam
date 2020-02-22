@@ -1,3 +1,7 @@
+# Version 0.4.2
+
+- Fix bug in release (yanking 0.4.1)
+
 # Version 0.4.1
 
 - Avoid time drift in `channel::tick`. (#456)
