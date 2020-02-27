@@ -221,12 +221,14 @@ impl SyncWaker {
     pub fn notify(&self) {
         if !self.is_empty.load(Ordering::SeqCst) {
             let mut inner = self.inner.lock();
-            inner.try_select();
-            inner.notify();
-            self.is_empty.store(
-                inner.selectors.is_empty() && inner.observers.is_empty(),
-                Ordering::SeqCst,
-            );
+            if !self.is_empty.load(Ordering::SeqCst) {
+                inner.try_select();
+                inner.notify();
+                self.is_empty.store(
+                    inner.selectors.is_empty() && inner.observers.is_empty(),
+                    Ordering::SeqCst,
+                );
+            }
         }
     }
 
