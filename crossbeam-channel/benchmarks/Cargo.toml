@@ -8,10 +8,11 @@ atomicring = "1.1.1"
 bus = "2.0.1"
 chan = "0.1.23"
 crossbeam = { path = "../.." }
-crossbeam-deque = { path = "../../crossbeam-deque" }
 crossbeam-channel = { path = ".." }
-lockfree = "0.5.1"
+crossbeam-deque = { path = "../../crossbeam-deque" }
+flume = "0.5.0"
 futures-preview = "0.2.2"
+lockfree = "0.5.1"
 mpmc = "0.1.5"
 
 [[bin]]
@@ -37,6 +38,10 @@ path = "crossbeam-channel.rs"
 [[bin]]
 name = "crossbeam-deque"
 path = "crossbeam-deque.rs"
+
+[[bin]]
+name = "flume"
+path = "flume.rs"
 
 [[bin]]
 name = "futures-channel"
