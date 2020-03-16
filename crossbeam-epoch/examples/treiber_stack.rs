@@ -64,7 +64,7 @@ impl<T> TreiberStack<T> {
 
                     if self
                         .head
-                        .compare_and_set(head, next, Release, &guard)
+                        .compare_and_set(head, next, Relaxed, &guard)
                         .is_ok()
                     {
                         unsafe {
