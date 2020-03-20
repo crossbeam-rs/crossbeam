@@ -78,6 +78,16 @@ pub mod utils {
 }
 
 cfg_if! {
+    if #[cfg(any(feature = "std", feature = "alloc"))] {
+        mod _queue {
+            pub extern crate crossbeam_queue;
+        }
+        #[doc(inline)]
+        pub use _queue::crossbeam_queue as queue;
+    }
+}
+
+cfg_if! {
     if #[cfg(feature = "std")] {
         mod _deque {
             pub extern crate crossbeam_deque;
@@ -95,12 +105,6 @@ cfg_if! {
         // HACK(stjepang): This is the only way to reexport `select!` in Rust older than 1.30.0
         #[doc(hidden)]
         pub use _channel::*;
-
-        mod _queue {
-            pub extern crate crossbeam_queue;
-        }
-        #[doc(inline)]
-        pub use _queue::crossbeam_queue as queue;
 
         pub use crossbeam_utils::sync;
         pub use crossbeam_utils::thread;

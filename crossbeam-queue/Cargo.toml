@@ -19,6 +19,7 @@ categories = ["concurrency", "data-structures"]
 default = ["std"]
 std = ["crossbeam-utils/std"]
 alloc = ["crossbeam-utils/alloc"]
+nightly = []
 
 [dependencies]
 cfg-if = "0.1.2"
