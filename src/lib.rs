@@ -77,11 +77,15 @@ pub mod utils {
     pub use crossbeam_utils::CachePadded;
 }
 
-mod _queue {
-    pub extern crate crossbeam_queue;
+cfg_if! {
+    if #[cfg(any(feature = "std", feature = "alloc"))] {
+        mod _queue {
+            pub extern crate crossbeam_queue;
+        }
+        #[doc(inline)]
+        pub use _queue::crossbeam_queue as queue;
+    }
 }
-#[doc(inline)]
-pub use _queue::crossbeam_queue as queue;
 
 cfg_if! {
     if #[cfg(feature = "std")] {
