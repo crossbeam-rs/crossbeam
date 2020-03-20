@@ -11,6 +11,7 @@
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
 #[macro_use]
 extern crate cfg_if;
@@ -29,6 +30,7 @@ cfg_if! {
 
 extern crate crossbeam_utils;
 
+#[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
 cfg_if! {
     if #[cfg(any(feature = "alloc", feature = "std"))] {
         mod array_queue;
