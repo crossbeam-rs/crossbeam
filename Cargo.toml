@@ -26,7 +26,7 @@ std = [
   "crossbeam-channel",
   "crossbeam-deque",
   "crossbeam-epoch/std",
-  "crossbeam-queue",
+  "crossbeam-queue/std",
   "crossbeam-utils/std",
 ]
 alloc = ["crossbeam-epoch/alloc", "crossbeam-utils/alloc", "crossbeam-queue/alloc"]
@@ -52,6 +52,7 @@ default-features = false
 [dependencies.crossbeam-queue]
 version = "0.2"
 path = "./crossbeam-queue"
+default-features = false
 optional = true
 
 [dependencies.crossbeam-utils]
