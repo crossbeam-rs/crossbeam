@@ -77,6 +77,7 @@ pub mod utils {
     pub use crossbeam_utils::CachePadded;
 }
 
+#[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
 cfg_if! {
     if #[cfg(any(feature = "std", feature = "alloc"))] {
         mod _queue {
