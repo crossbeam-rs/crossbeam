@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Deref, DerefMut};
 use core::ptr;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicPtr, Ordering};
 
 use crossbeam_utils::atomic::AtomicConsume;
 use guard::Guard;
@@ -103,15 +103,20 @@ fn low_bits<T>() -> usize {
 ///
 /// `tag` is truncated to fit into the unused bits of the pointer to `T`.
 #[inline]
-fn data_with_tag<T>(data: usize, tag: usize) -> usize {
-    (data & !low_bits::<T>()) | (tag & low_bits::<T>())
+fn data_with_tag<T>(data: *mut T, tag: usize) -> *mut T {
+    // transmute preserves pointer provenance
+    let data: usize = core::mem::transmute(data);
+    core::mem::transmute((data & !low_bits::<T>()) | (tag & low_bits::<T>()))
 }
 
 /// Decomposes a tagged pointer `data` into the pointer and the tag.
 #[inline]
-fn decompose_data<T>(data: usize) -> (*mut T, usize) {
-    let raw = (data & !low_bits::<T>()) as *mut T;
-    let tag = data & low_bits::<T>();
+fn decompose_data<T>(data: *mut T) -> (*mut T, usize) {
+    // transmute preserves pointer provenance
+    let data: usize = core::mem::transmute(data);
+    let raw = core::mem::transmute(data & !low_bits::<T>());
+    // explicitly erase provenance of tag
+    let tag = data as usize & low_bits::<T>();
     (raw, tag)
 }
 
@@ -125,8 +130,7 @@ fn decompose_data<T>(data: usize) -> (*mut T, usize) {
 ///
 /// [`Guard`]: struct.Guard.html
 pub struct Atomic<T> {
-    data: AtomicUsize,
-    _marker: PhantomData<*mut T>,
+    data: AtomicPtr<T>,
 }
 
 unsafe impl<T: Send + Sync> Send for Atomic<T> {}
@@ -134,10 +138,15 @@ unsafe impl<T: Send + Sync> Sync for Atomic<T> {}
 
 impl<T> Atomic<T> {
     /// Returns a new atomic pointer pointing to the tagged pointer `data`.
+    #[deprecated(since = "0.8.3", note = "please use `from_ptr` instead")]
     fn from_usize(data: usize) -> Self {
+        Self::from_ptr(data as *mut _)
+    }
+
+    /// Returns a new atomic pointer pointing to the tagged pointer `data`.
+    fn from_ptr(data: *mut T) -> Self {
         Self {
-            data: AtomicUsize::new(data),
-            _marker: PhantomData,
+            data: AtomicPtr::new(data),
         }
     }
 
@@ -153,8 +162,7 @@ impl<T> Atomic<T> {
     #[cfg(not(has_min_const_fn))]
     pub fn null() -> Atomic<T> {
         Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
+            data: AtomicPtr::new(core::ptr::null_mut()),
         }
     }
 
@@ -170,8 +178,7 @@ impl<T> Atomic<T> {
     #[cfg(has_min_const_fn)]
     pub const fn null() -> Atomic<T> {
         Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
+            data: AtomicPtr::new(core::ptr::null_mut()),
         }
     }
 
@@ -206,7 +213,7 @@ impl<T> Atomic<T> {
     /// let p = a.load(SeqCst, guard);
     /// ```
     pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_usize(self.data.load(ord)) }
+        unsafe { Shared::from_ptr(self.data.load(ord)) }
     }
 
     /// Loads a `Shared` from the atomic pointer using a "consume" memory ordering.
@@ -231,7 +238,7 @@ impl<T> Atomic<T> {
     /// let p = a.load_consume(guard);
     /// ```
     pub fn load_consume<'g>(&self, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_usize(self.data.load_consume()) }
+        unsafe { Shared::from_ptr(self.data.load_consume()) }
     }
 
     /// Stores a `Shared` or `Owned` pointer into the atomic pointer.
@@ -252,7 +259,7 @@ impl<T> Atomic<T> {
     /// a.store(Owned::new(1234), SeqCst);
     /// ```
     pub fn store<'g, P: Pointer<T>>(&self, new: P, ord: Ordering) {
-        self.data.store(new.into_usize(), ord);
+        self.data.store(new.into_ptr(), ord);
     }
 
     /// Stores a `Shared` or `Owned` pointer into the atomic pointer, returning the previous
@@ -274,7 +281,7 @@ impl<T> Atomic<T> {
     /// let p = a.swap(Shared::null(), SeqCst, guard);
     /// ```
     pub fn swap<'g, P: Pointer<T>>(&self, new: P, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_usize(self.data.swap(new.into_usize(), ord)) }
+        unsafe { Shared::from_ptr(self.data.swap(new.into_ptr(), ord)) }
     }
 
     /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
@@ -314,14 +321,14 @@ impl<T> Atomic<T> {
         O: CompareAndSetOrdering,
         P: Pointer<T>,
     {
-        let new = new.into_usize();
+        let new = new.into_ptr();
         self.data
-            .compare_exchange(current.into_usize(), new, ord.success(), ord.failure())
-            .map(|_| unsafe { Shared::from_usize(new) })
+            .compare_exchange(current.into_ptr(), new, ord.success(), ord.failure())
+            .map(|_| unsafe { Shared::from_ptr(new) })
             .map_err(|current| unsafe {
                 CompareAndSetError {
-                    current: Shared::from_usize(current),
-                    new: P::from_usize(new),
+                    current: Shared::from_ptr(current),
+                    new: P::from_ptr(new),
                 }
             })
     }
@@ -384,14 +391,14 @@ impl<T> Atomic<T> {
         O: CompareAndSetOrdering,
         P: Pointer<T>,
     {
-        let new = new.into_usize();
+        let new = new.into_ptr();
         self.data
-            .compare_exchange_weak(current.into_usize(), new, ord.success(), ord.failure())
-            .map(|_| unsafe { Shared::from_usize(new) })
+            .compare_exchange_weak(current.into_ptr(), new, ord.success(), ord.failure())
+            .map(|_| unsafe { Shared::from_ptr(new) })
             .map_err(|current| unsafe {
                 CompareAndSetError {
-                    current: Shared::from_usize(current),
-                    new: P::from_usize(new),
+                    current: Shared::from_ptr(current),
+                    new: P::from_ptr(new),
                 }
             })
     }
@@ -418,7 +425,7 @@ impl<T> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
     pub fn fetch_and<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_usize(self.data.fetch_and(val | !low_bits::<T>(), ord)) }
+        unsafe { Shared::from_ptr(self.data.fetch_and(val | !low_bits::<T>(), ord)) }
     }
 
     /// Bitwise "or" with the current tag.
@@ -443,7 +450,7 @@ impl<T> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 3);
     /// ```
     pub fn fetch_or<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_usize(self.data.fetch_or(val & low_bits::<T>(), ord)) }
+        unsafe { Shared::from_ptr(self.data.fetch_or(val & low_bits::<T>(), ord)) }
     }
 
     /// Bitwise "xor" with the current tag.
@@ -468,7 +475,7 @@ impl<T> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
     pub fn fetch_xor<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_usize(self.data.fetch_xor(val & low_bits::<T>(), ord)) }
+        unsafe { Shared::from_ptr(self.data.fetch_xor(val & low_bits::<T>(), ord)) }
     }
 
     /// Takes ownership of the pointee.
@@ -506,7 +513,7 @@ impl<T> Atomic<T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
-        Owned::from_usize(self.data.into_inner())
+        Owned::from_ptr(self.data.into_inner())
     }
 }
 
@@ -537,7 +544,7 @@ impl<T> Clone for Atomic<T> {
     /// atomics or fences.
     fn clone(&self) -> Self {
         let data = self.data.load(Ordering::Relaxed);
-        Atomic::from_usize(data)
+        Atomic::from_ptr(data)
     }
 }
 
@@ -560,7 +567,7 @@ impl<T> From<Owned<T>> for Atomic<T> {
     fn from(owned: Owned<T>) -> Self {
         let data = owned.data;
         mem::forget(owned);
-        Self::from_usize(data)
+        Self::from_ptr(data)
     }
 }
 
@@ -587,7 +594,7 @@ impl<'g, T> From<Shared<'g, T>> for Atomic<T> {
     /// let a = Atomic::<i32>::from(Shared::<i32>::null());
     /// ```
     fn from(ptr: Shared<'g, T>) -> Self {
-        Self::from_usize(ptr.data)
+        Self::from_ptr(ptr.data)
     }
 }
 
@@ -603,17 +610,25 @@ impl<T> From<*const T> for Atomic<T> {
     /// let a = Atomic::<i32>::from(ptr::null::<i32>());
     /// ```
     fn from(raw: *const T) -> Self {
-        Self::from_usize(raw as usize)
+        Self::from_ptr(raw as *mut T)
     }
 }
 
 /// A trait for either `Owned` or `Shared` pointers.
 pub trait Pointer<T> {
     /// Returns the machine representation of the pointer.
+    #[deprecated(since = "0.8.3", note = "prefer `into_ptr`")]
     fn into_usize(self) -> usize;
 
+    /// Returns the machine representation of the pointer.
+    fn into_ptr(self) -> *mut T;
+
     /// Returns a new pointer pointing to the tagged pointer `data`.
+    #[deprecated(since = "0.8.3", note = "prefer `from_ptr`")]
     unsafe fn from_usize(data: usize) -> Self;
+
+    /// Returns a new pointer pointing to the tagged pointer `data`.
+    unsafe fn from_ptr(data: *mut T) -> Self;
 }
 
 /// An owned heap-allocated object.
@@ -623,13 +638,18 @@ pub trait Pointer<T> {
 /// The pointer must be properly aligned. Since it is aligned, a tag can be stored into the unused
 /// least significant bits of the address.
 pub struct Owned<T> {
-    data: usize,
-    _marker: PhantomData<Box<T>>,
+    data: *mut T,
 }
 
 impl<T> Pointer<T> for Owned<T> {
     #[inline]
     fn into_usize(self) -> usize {
+        // transmute preserves pointer provenance
+        core::mem::transmute(self.into_ptr())
+    }
+
+    #[inline]
+    fn into_ptr(self) -> *mut T {
         let data = self.data;
         mem::forget(self);
         data
@@ -642,11 +662,19 @@ impl<T> Pointer<T> for Owned<T> {
     /// Panics if the data is zero in debug mode.
     #[inline]
     unsafe fn from_usize(data: usize) -> Self {
-        debug_assert!(data != 0, "converting zero into `Owned`");
-        Owned {
-            data: data,
-            _marker: PhantomData,
-        }
+        // transmute preserves pointer provenance
+        Self::from_ptr(core::mem::transmute(data))
+    }
+
+    /// Returns a new pointer pointing to the tagged pointer `data`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the data is zero in debug mode.
+    #[inline]
+    unsafe fn from_ptr(data: *mut T) -> Self {
+        debug_assert!(!data.is_null(), "converting zero into `Owned`");
+        Owned { data: data }
     }
 }
 
@@ -683,7 +711,7 @@ impl<T> Owned<T> {
     /// ```
     pub unsafe fn from_raw(raw: *mut T) -> Owned<T> {
         ensure_aligned(raw);
-        Self::from_usize(raw as usize)
+        Self::from_ptr(raw)
     }
 
     /// Converts the owned pointer into a [`Shared`].
@@ -700,7 +728,7 @@ impl<T> Owned<T> {
     ///
     /// [`Shared`]: struct.Shared.html
     pub fn into_shared<'g>(self, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_usize(self.into_usize()) }
+        unsafe { Shared::from_ptr(self.into_ptr()) }
     }
 
     /// Converts the owned pointer into a `Box`.
@@ -748,8 +776,8 @@ impl<T> Owned<T> {
     /// assert_eq!(o.tag(), 2);
     /// ```
     pub fn with_tag(self, tag: usize) -> Owned<T> {
-        let data = self.into_usize();
-        unsafe { Self::from_usize(data_with_tag::<T>(data, tag)) }
+        let data = self.into_ptr();
+        unsafe { Self::from_ptr(data_with_tag::<T>(data, tag)) }
     }
 }
 
@@ -851,7 +879,7 @@ impl<T> AsMut<T> for Owned<T> {
 /// The pointer must be properly aligned. Since it is aligned, a tag can be stored into the unused
 /// least significant bits of the address.
 pub struct Shared<'g, T: 'g> {
-    data: usize,
+    data: *mut T,
     _marker: PhantomData<(&'g (), *const T)>,
 }
 
@@ -869,11 +897,23 @@ impl<'g, T> Copy for Shared<'g, T> {}
 impl<'g, T> Pointer<T> for Shared<'g, T> {
     #[inline]
     fn into_usize(self) -> usize {
+        // transmute preserves pointer provenance
+        core::mem::transmute(self.into_ptr())
+    }
+
+    #[inline]
+    fn into_ptr(self) -> *mut T {
         self.data
     }
 
     #[inline]
     unsafe fn from_usize(data: usize) -> Self {
+        // transmute preserves pointer provenance
+        Self::from_ptr(core::mem::transmute(data))
+    }
+
+    #[inline]
+    unsafe fn from_ptr(data: *mut T) -> Self {
         Shared {
             data: data,
             _marker: PhantomData,
@@ -894,7 +934,7 @@ impl<'g, T> Shared<'g, T> {
     /// ```
     pub fn null() -> Shared<'g, T> {
         Shared {
-            data: 0,
+            data: core::ptr::null_mut(),
             _marker: PhantomData,
         }
     }
@@ -983,6 +1023,8 @@ impl<'g, T> Shared<'g, T> {
     ///   actual object at the same time.
     ///
     ///   The user must know that there are no concurrent accesses towards the object itself.
+    ///
+    /// * The `Shared` cannot have been constructed from a `*const T`.
     ///
     /// * Other than the above, all safety concerns of `deref()` applies here.
     ///
@@ -1077,7 +1119,7 @@ impl<'g, T> Shared<'g, T> {
             self.as_raw() != ptr::null(),
             "converting a null `Shared` into `Owned`"
         );
-        Owned::from_usize(self.data)
+        Owned::from_ptr(self.data)
     }
 
     /// Returns the tag stored within the pointer.
@@ -1117,7 +1159,7 @@ impl<'g, T> Shared<'g, T> {
     /// assert_eq!(p1.as_raw(), p2.as_raw());
     /// ```
     pub fn with_tag(&self, tag: usize) -> Shared<'g, T> {
-        unsafe { Self::from_usize(data_with_tag::<T>(self.data, tag)) }
+        unsafe { Self::from_ptr(data_with_tag::<T>(self.data, tag)) }
     }
 }
 
@@ -1138,7 +1180,10 @@ impl<'g, T> From<*const T> for Shared<'g, T> {
     /// ```
     fn from(raw: *const T) -> Self {
         ensure_aligned(raw);
-        unsafe { Self::from_usize(raw as usize) }
+        // XXX: this is almost certainly not okay
+        // or rather, the user _promises_ that they will never deref_mut this Shared
+        // which, I suppose, is okay, because deref and deref_mut are both unsafe
+        unsafe { Self::from_ptr(raw as *mut _) }
     }
 }
 
