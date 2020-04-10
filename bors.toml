@@ -1,1 +1,18 @@
-status = ["continuous-integration/travis-ci/push"]
+status = [
+    "test (crossbeam, 1.28.0)",
+    "test (crossbeam, nightly)",
+    "test (crossbeam-channel, 1.28.0)",
+    "test (crossbeam-channel, nightly)",
+    "test (crossbeam-deque, 1.28.0)",
+    "test (crossbeam-deque, nightly)",
+    "test (crossbeam-epoch, 1.28.0)",
+    "test (crossbeam-epoch, nightly)",
+    "test (crossbeam-queue, 1.28.0)",
+    "test (crossbeam-queue, nightly)",
+    "test (crossbeam-skiplist, 1.28.0)",
+    "test (crossbeam-skiplist, nightly)",
+    "test (crossbeam-utils, 1.28.0)",
+    "test (crossbeam-utils, nightly)",
+    "dependencies",
+    "rustfmt",
+]
