@@ -621,14 +621,36 @@ pub trait Pointer<T> {
     fn into_usize(self) -> usize;
 
     /// Returns the machine representation of the pointer.
-    fn into_ptr(self) -> *mut T;
+    ///
+    /// The Self: Sized bound will go away once the deprecated into_usize is removed.
+    fn into_ptr(self) -> *mut T
+    where
+        Self: Sized,
+    {
+        // this fallback impl is only provided to be backwards compatible.
+        // remove when default impl when into_usize is removed.
+        // transmute preserves pointer provenance
+        #[allow(deprecated)]
+        core::mem::transmute(self.into_usize())
+    }
 
     /// Returns a new pointer pointing to the tagged pointer `data`.
     #[deprecated(since = "0.8.3", note = "prefer `from_ptr`")]
     unsafe fn from_usize(data: usize) -> Self;
 
     /// Returns a new pointer pointing to the tagged pointer `data`.
-    unsafe fn from_ptr(data: *mut T) -> Self;
+    ///
+    /// The Self: Sized bound will go away once the deprecated from_usize is removed.
+    unsafe fn from_ptr(data: *mut T) -> Self
+    where
+        Self: Sized,
+    {
+        // this fallback impl is only provided to be backwards compatible.
+        // remove when default impl when from_usize is removed.
+        // transmute preserves pointer provenance
+        #[allow(deprecated)]
+        Self::from_usize(core::mem::transmute(data))
+    }
 }
 
 /// An owned heap-allocated object.
