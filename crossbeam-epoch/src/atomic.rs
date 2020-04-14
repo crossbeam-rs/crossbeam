@@ -1,3 +1,4 @@
+use crate::concurrency::sync::atomic::AtomicUsize;
 use alloc::boxed::Box;
 use core::borrow::{Borrow, BorrowMut};
 use core::cmp;
@@ -5,7 +6,7 @@ use core::fmt;
 use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::Ordering;
 
 use crate::guard::Guard;
 use crossbeam_utils::atomic::AtomicConsume;
@@ -149,6 +150,24 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
+    #[cfg(loom)]
+    pub fn null() -> Atomic<T> {
+        Self {
+            data: AtomicUsize::new(0),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Returns a new null atomic pointer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::Atomic;
+    ///
+    /// let a = Atomic::<i32>::null();
+    /// ```
+    #[cfg(not(loom))]
     pub const fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
@@ -487,7 +506,14 @@ impl<T> Atomic<T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
-        Owned::from_usize(self.data.into_inner())
+        #[cfg(loom)]
+        {
+            Owned::from_usize(self.data.unsync_load())
+        }
+        #[cfg(not(loom))]
+        {
+            Owned::from_usize(self.data.into_inner())
+        }
     }
 }
 
@@ -1166,7 +1192,7 @@ impl<T> Default for Shared<'_, T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use super::Shared;
 

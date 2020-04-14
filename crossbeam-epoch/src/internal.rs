@@ -35,10 +35,11 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use core::cell::{Cell, UnsafeCell};
+use crate::concurrency::cell::UnsafeCell;
+use crate::concurrency::sync::atomic;
+use core::cell::Cell;
 use core::mem::{self, ManuallyDrop};
 use core::num::Wrapping;
-use core::sync::atomic;
 use core::sync::atomic::Ordering;
 use core::{fmt, ptr};
 
@@ -408,7 +409,7 @@ impl Local {
     /// Returns a reference to the `Collector` in which this `Local` resides.
     #[inline]
     pub fn collector(&self) -> &Collector {
-        unsafe { &**self.collector.get() }
+        self.collector.with(|c| unsafe { &**c })
     }
 
     /// Returns `true` if the current participant is pinned.
@@ -423,7 +424,7 @@ impl Local {
     ///
     /// It should be safe for another thread to execute the given function.
     pub unsafe fn defer(&self, mut deferred: Deferred, guard: &Guard) {
-        let bag = &mut *self.bag.get();
+        let bag = self.bag.with_mut(|b| &mut *b);
 
         while let Err(d) = bag.try_push(deferred) {
             let epoch = self.epoch.load(Ordering::Relaxed).unpinned();
@@ -433,7 +434,7 @@ impl Local {
     }
 
     pub fn flush(&self, guard: &Guard) {
-        let bag = unsafe { &mut *self.bag.get() };
+        let bag = self.bag.with_mut(|b| unsafe { &mut *b });
 
         if !bag.is_empty() {
             let epoch = self.epoch.load(Ordering::Relaxed).unpinned();
@@ -582,7 +583,8 @@ impl Local {
             // doesn't defer destruction on any new garbage.
             let epoch = self.epoch.load(Ordering::Relaxed).unpinned();
             let guard = &self.pin();
-            self.global().push_bag(&mut *self.bag.get(), epoch, guard);
+            self.global()
+                .push_bag(self.bag.with_mut(|b| &mut *b), epoch, guard);
         }
         // Revert the handle count back to zero.
         self.handle_count.set(0);
@@ -591,7 +593,7 @@ impl Local {
             // Take the reference to the `Global` out of this `Local`. Since we're not protected
             // by a guard at this time, it's crucial that the reference is read before marking the
             // `Local` as deleted.
-            let collector: Collector = ptr::read(&*(*self.collector.get()));
+            let collector: Collector = ptr::read(self.collector.with(|c| &*(*c)));
 
             // Mark this node in the linked list as deleted.
             self.entry.delete(&unprotected());
@@ -622,7 +624,7 @@ impl IsElement<Local> for Local {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 

@@ -40,6 +40,9 @@ sanitize = [] # Makes it more likely to trigger any potential data races.
 cfg-if = "0.1.10"
 memoffset = "0.5.1"
 
+[target.'cfg(loom)'.dependencies]
+loom = "0.3.2"
+
 [dependencies.crossbeam-utils]
 version = "0.7"
 path = "../crossbeam-utils"

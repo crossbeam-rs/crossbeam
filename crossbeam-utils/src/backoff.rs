@@ -1,6 +1,6 @@
+use crate::concurrency::sync::atomic;
 use core::cell::Cell;
 use core::fmt;
-use core::sync::atomic;
 
 const SPIN_LIMIT: u32 = 6;
 const YIELD_LIMIT: u32 = 10;

@@ -1,5 +1,7 @@
 //! Makes sure subcrates are properly re-exported.
 
+#![cfg(not(loom))]
+
 use crossbeam::select;
 
 #[test]

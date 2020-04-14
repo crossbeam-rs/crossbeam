@@ -12,7 +12,7 @@
 ///
 /// handle.pin().flush();
 /// ```
-use alloc::sync::Arc;
+use crate::concurrency::sync::Arc;
 use core::fmt;
 
 use crate::guard::Guard;
@@ -109,7 +109,7 @@ impl fmt::Debug for LocalHandle {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use std::mem;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -151,9 +151,9 @@ mod tests {
                 let a = Owned::new(7).into_shared(guard);
                 guard.defer_destroy(a);
 
-                assert!(!(*(*guard.local).bag.get()).is_empty());
+                assert!(!(*guard.local).bag.with(|b| (*b).is_empty()));
 
-                while !(*(*guard.local).bag.get()).is_empty() {
+                while !(*guard.local).bag.with(|b| (*b).is_empty()) {
                     guard.flush();
                 }
             }
@@ -172,7 +172,7 @@ mod tests {
                 let a = Owned::new(7).into_shared(guard);
                 guard.defer_destroy(a);
             }
-            assert!(!(*(*guard.local).bag.get()).is_empty());
+            assert!(!(*guard.local).bag.with(|b| (*b).is_empty()));
         }
     }
 

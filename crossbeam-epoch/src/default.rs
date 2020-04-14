@@ -5,8 +5,8 @@
 //! destructed on thread exit, which in turn unregisters the thread.
 
 use crate::collector::{Collector, LocalHandle};
+use crate::concurrency::{lazy_static, thread_local};
 use crate::guard::Guard;
-use lazy_static::lazy_static;
 
 lazy_static! {
     /// The global data for the default garbage collector.
@@ -45,7 +45,7 @@ where
         .unwrap_or_else(|_| f(&COLLECTOR.register()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use crossbeam_utils::thread;
 

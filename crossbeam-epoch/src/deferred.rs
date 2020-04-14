@@ -76,7 +76,7 @@ impl Deferred {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use super::Deferred;
     use std::cell::Cell;

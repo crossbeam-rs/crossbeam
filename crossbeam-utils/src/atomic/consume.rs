@@ -1,5 +1,5 @@
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use core::sync::atomic::compiler_fence;
+use crate::concurrency::sync::atomic::compiler_fence;
 use core::sync::atomic::Ordering;
 
 /// Trait which allows reading from primitive atomic types with "consume" ordering.
@@ -53,30 +53,42 @@ macro_rules! impl_atomic {
             type Val = $val;
             impl_consume!();
         }
+        #[cfg(loom)]
+        impl AtomicConsume for ::loom::sync::atomic::$atomic {
+            type Val = $val;
+            impl_consume!();
+        }
     };
 }
 
 impl_atomic!(AtomicBool, bool);
 impl_atomic!(AtomicUsize, usize);
+#[cfg(not(loom))]
 impl_atomic!(AtomicIsize, isize);
 #[cfg(all(feature = "nightly", target_has_atomic = "8"))]
 impl_atomic!(AtomicU8, u8);
-#[cfg(all(feature = "nightly", target_has_atomic = "8"))]
+#[cfg(all(feature = "nightly", target_has_atomic = "8", not(loom)))]
 impl_atomic!(AtomicI8, i8);
 #[cfg(all(feature = "nightly", target_has_atomic = "16"))]
 impl_atomic!(AtomicU16, u16);
-#[cfg(all(feature = "nightly", target_has_atomic = "16"))]
+#[cfg(all(feature = "nightly", target_has_atomic = "16", not(loom)))]
 impl_atomic!(AtomicI16, i16);
 #[cfg(all(feature = "nightly", target_has_atomic = "32"))]
 impl_atomic!(AtomicU32, u32);
-#[cfg(all(feature = "nightly", target_has_atomic = "32"))]
+#[cfg(all(feature = "nightly", target_has_atomic = "32", not(loom)))]
 impl_atomic!(AtomicI32, i32);
 #[cfg(all(feature = "nightly", target_has_atomic = "64"))]
 impl_atomic!(AtomicU64, u64);
-#[cfg(all(feature = "nightly", target_has_atomic = "64"))]
+#[cfg(all(feature = "nightly", target_has_atomic = "64", not(loom)))]
 impl_atomic!(AtomicI64, i64);
 
 impl<T> AtomicConsume for ::core::sync::atomic::AtomicPtr<T> {
+    type Val = *mut T;
+    impl_consume!();
+}
+
+#[cfg(loom)]
+impl<T> AtomicConsume for ::loom::sync::atomic::AtomicPtr<T> {
     type Val = *mut T;
     impl_consume!();
 }
