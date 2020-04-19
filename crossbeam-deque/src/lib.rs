@@ -454,6 +454,25 @@ impl<T> Worker<T> {
         b.wrapping_sub(f) <= 0
     }
 
+    /// Returns the number of tasks in the deque.
+    ///
+    /// ```
+    /// use crossbeam_deque::Worker;
+    ///
+    /// let w = Worker::new_lifo();
+    ///
+    /// assert_eq!(w.len(), 0);
+    /// w.push(1);
+    /// assert_eq!(w.len(), 1);
+    /// w.push(1);
+    /// assert_eq!(w.len(), 2);
+    /// ```
+    pub fn len(&self) -> usize {
+        let b = self.inner.back.load(Ordering::Relaxed);
+        let f = self.inner.front.load(Ordering::SeqCst);
+        b.wrapping_sub(f).max(0) as usize
+    }
+
     /// Pushes a task into the queue.
     ///
     /// # Examples
@@ -1787,6 +1806,57 @@ impl<T> Injector<T> {
         let head = self.head.index.load(Ordering::SeqCst);
         let tail = self.tail.index.load(Ordering::SeqCst);
         head >> SHIFT == tail >> SHIFT
+    }
+
+    /// Returns the number of tasks in the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Injector;
+    ///
+    /// let q = Injector::new();
+    ///
+    /// assert_eq!(q.len(), 0);
+    /// q.push(1);
+    /// assert_eq!(q.len(), 1);
+    /// q.push(1);
+    /// assert_eq!(q.len(), 2);
+    /// ```
+    pub fn len(&self) -> usize {
+        loop {
+            // Load the tail index, then load the head index.
+            let mut tail = self.tail.index.load(Ordering::SeqCst);
+            let mut head = self.head.index.load(Ordering::SeqCst);
+
+            // If the tail index didn't change, we've got consistent indices to work with.
+            if self.tail.index.load(Ordering::SeqCst) == tail {
+                // Erase the lower bits.
+                tail &= !((1 << SHIFT) - 1);
+                head &= !((1 << SHIFT) - 1);
+
+                // Rotate indices so that head falls into the first block.
+                let lap = (head >> SHIFT) / LAP;
+                tail = tail.wrapping_sub((lap * LAP) << SHIFT);
+                head = head.wrapping_sub((lap * LAP) << SHIFT);
+
+                // Remove the lower bits.
+                tail >>= SHIFT;
+                head >>= SHIFT;
+
+                // Fix up indices if they fall onto block ends.
+                if head == BLOCK_CAP {
+                    head = 0;
+                    tail -= LAP;
+                }
+                if tail == BLOCK_CAP {
+                    tail += 1;
+                }
+
+                // Return the difference minus the number of blocks between tail and head.
+                return tail - head - tail / LAP;
+            }
+        }
     }
 }
 
