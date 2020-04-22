@@ -38,6 +38,29 @@ func spsc(cap int) {
     <-done
 }
 
+func ping_pong(cap int) {
+    var ca = make(chan Message, cap)
+    var cb = make(chan Message, cap)
+    var done = make(chan bool)
+
+    go func() {
+        var val = Message(0)
+        for i := 0; i < MESSAGES; i++ {
+            ca <- val
+            val = <- cb
+        }
+        done <- true
+    }()
+
+    for i := 0; i < MESSAGES; i++ {
+        var val = Message(0)
+        val = <- ca
+        cb <- val
+    }
+
+    <-done
+}
+
 func mpsc(cap int) {
     var c = make(chan Message, cap)
     var done = make(chan bool)
@@ -180,12 +203,14 @@ func main() {
     run("bounded0_select_both", select_both, 0)
     run("bounded0_select_rx", select_rx, 0)
     run("bounded0_spsc", spsc, 0)
+    run("bounded0_ping_pong", ping_pong, 0)
 
     run("bounded1_mpmc", mpmc, 1)
     run("bounded1_mpsc", mpsc, 1)
     run("bounded1_select_both", select_both, 1)
     run("bounded1_select_rx", select_rx, 1)
     run("bounded1_spsc", spsc, 1)
+    run("bounded1_ping_pong", ping_pong, 1)
 
     run("bounded_mpmc", mpmc, MESSAGES)
     run("bounded_mpsc", mpsc, MESSAGES)
@@ -193,4 +218,5 @@ func main() {
     run("bounded_select_rx", select_rx, MESSAGES)
     run("bounded_seq", seq, MESSAGES)
     run("bounded_spsc", spsc, MESSAGES)
+    run("bounded_ping_pong", ping_pong, MESSAGES)
 }

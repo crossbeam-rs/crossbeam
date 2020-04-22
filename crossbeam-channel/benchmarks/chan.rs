@@ -43,6 +43,26 @@ fn spsc(cap: Option<usize>) {
     .unwrap();
 }
 
+fn ping_pong(cap: Option<usize>) {
+    let (txa, rxb) = new(cap);
+    let (txb, rxa) = new(cap);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(|_| {
+            let mut val = message::new(0);
+            for _ in 0..MESSAGES {
+                txa.send(val);
+                val = rxa.recv().unwrap();
+            }
+        });
+
+        for _ in 0..MESSAGES {
+            let val = rxb.recv().unwrap();
+            txb.send(val);
+        }
+    })
+    .unwrap();
+}
 fn mpsc(cap: Option<usize>) {
     let (tx, rx) = new(cap);
 
@@ -180,12 +200,14 @@ fn main() {
     run!("bounded0_mpsc", mpsc(Some(0)));
     run!("bounded0_select_rx", select_rx(Some(0)));
     run!("bounded0_spsc", spsc(Some(0)));
+    run!("bounded0_ping_pong", ping_pong(Some(0)));
 
     run!("bounded1_mpmc", mpmc(Some(1)));
     run!("bounded1_mpsc", mpsc(Some(1)));
     run!("bounded1_select_both", select_both(Some(1)));
     run!("bounded1_select_rx", select_rx(Some(1)));
     run!("bounded1_spsc", spsc(Some(1)));
+    run!("bounded1_ping_pong", ping_pong(Some(1)));
 
     run!("bounded_mpmc", mpmc(Some(MESSAGES)));
     run!("bounded_mpsc", mpsc(Some(MESSAGES)));
@@ -193,6 +215,7 @@ fn main() {
     run!("bounded_select_rx", select_rx(Some(MESSAGES)));
     run!("bounded_seq", seq(Some(MESSAGES)));
     run!("bounded_spsc", spsc(Some(MESSAGES)));
+    run!("bounded_ping_pong", ping_pong(Some(MESSAGES)));
 
     run!("unbounded_mpmc", mpmc(None));
     run!("unbounded_mpsc", mpsc(None));
@@ -200,4 +223,5 @@ fn main() {
     run!("unbounded_select_rx", select_rx(None));
     run!("unbounded_seq", seq(None));
     run!("unbounded_spsc", spsc(None));
+    run!("unbounded_ping_pong", ping_pong(None));
 }

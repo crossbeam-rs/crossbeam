@@ -100,6 +100,48 @@ fn spsc_sync(cap: usize) {
     .unwrap();
 }
 
+fn ping_pong_async() {
+    let (txa, rxb) = mpsc::channel();
+    let (txb, rxa) = mpsc::channel();
+
+    crossbeam::scope(|scope| {
+        scope.spawn(move |_| {
+            let mut val = message::new(0);
+            for _ in 0..MESSAGES {
+                txa.send(val).unwrap();
+                val = rxa.recv().unwrap();
+            }
+        });
+
+        for _ in 0..MESSAGES {
+            let val = rxb.recv().unwrap();
+            txb.send(val).unwrap();
+        }
+    })
+    .unwrap();
+}
+
+fn ping_pong_sync(cap: usize) {
+    let (txa, rxb) = mpsc::sync_channel(cap);
+    let (txb, rxa) = mpsc::sync_channel(cap);
+
+    crossbeam::scope(|scope| {
+        scope.spawn(move |_| {
+            let mut val = message::new(0);
+            for _ in 0..MESSAGES {
+                txa.send(val).unwrap();
+                val = rxa.recv().unwrap();
+            }
+        });
+
+        for _ in 0..MESSAGES {
+            let val = rxb.recv().unwrap();
+            txb.send(val).unwrap();
+        }
+    })
+    .unwrap();
+}
+
 fn mpsc_async() {
     let (tx, rx) = mpsc::channel();
 
@@ -157,15 +199,19 @@ fn main() {
 
     run!("bounded0_mpsc", mpsc_sync(0));
     run!("bounded0_spsc", spsc_sync(0));
+    run!("bounded0_ping_pong", ping_pong_sync(0));
 
     run!("bounded1_mpsc", mpsc_sync(1));
     run!("bounded1_spsc", spsc_sync(1));
+    run!("bounded1_ping_pong", ping_pong_sync(1));
 
     run!("bounded_mpsc", mpsc_sync(MESSAGES));
     run!("bounded_seq", seq_sync(MESSAGES));
     run!("bounded_spsc", spsc_sync(MESSAGES));
+    run!("bounded_ping_pong", ping_pong_sync(MESSAGES));
 
     run!("unbounded_mpsc", mpsc_async());
     run!("unbounded_seq", seq_async());
     run!("unbounded_spsc", spsc_async());
+    run!("unbounded_ping_pong", ping_pong_async());
 }
