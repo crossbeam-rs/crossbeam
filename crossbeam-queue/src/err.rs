@@ -16,8 +16,8 @@ impl fmt::Display for PopError {
     }
 }
 
-#[cfg(features = "std")]
-impl std::error::Error for PopError {
+#[cfg(feature = "std")]
+impl ::std::error::Error for PopError {
     fn description(&self) -> &str {
         "popping from an empty queue"
     }
@@ -39,8 +39,8 @@ impl<T> fmt::Display for PushError<T> {
     }
 }
 
-#[cfg(features = "std")]
-impl<T: Send> std::error::Error for PushError<T> {
+#[cfg(feature = "std")]
+impl<T: Send> ::std::error::Error for PushError<T> {
     fn description(&self) -> &str {
         "pushing into a full queue"
     }
