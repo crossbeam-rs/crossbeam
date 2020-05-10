@@ -1007,6 +1007,23 @@ impl<T> Receiver<T> {
             _ => false,
         }
     }
+
+    /// Returns a new sender that sends to this channel.
+    ///
+    /// This returns `None` for channels that don't have a `Sender` (the
+    /// [`tick`], [`after`] and [`never`] channels) as its not possible to
+    /// create a sender for these channels.
+    pub fn new_sender(&self) -> Option<Sender<T>> {
+        let flavor = match &self.flavor {
+            ReceiverFlavor::Array(chan) => SenderFlavor::Array(chan.new_sender()),
+            ReceiverFlavor::List(chan) => SenderFlavor::List(chan.new_sender()),
+            ReceiverFlavor::Zero(chan) => SenderFlavor::Zero(chan.new_sender()),
+            ReceiverFlavor::After(_) | ReceiverFlavor::Tick(_) | ReceiverFlavor::Never(_) => {
+                return None
+            }
+        };
+        Some(Sender { flavor })
+    }
 }
 
 impl<T> Drop for Receiver<T> {

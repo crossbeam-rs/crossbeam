@@ -657,3 +657,25 @@ fn channel_through_channel() {
     })
     .unwrap();
 }
+
+#[test]
+fn new_sender() {
+    let (s1, r) = bounded(2);
+    let s2 = r.new_sender().unwrap();
+
+    scope(|scope| {
+        scope.spawn(|_| {
+            r.recv().unwrap();
+            r.recv()
+        });
+
+        scope.spawn(|_| {
+            s1.send(()).unwrap();
+        });
+
+        scope.spawn(|_| {
+            s2.send(()).unwrap();
+        });
+    })
+    .unwrap();
+}

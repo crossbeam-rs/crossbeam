@@ -337,3 +337,9 @@ fn fairness_duplicates() {
         assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
     }
 }
+
+#[test]
+fn new_sender() {
+    let r = after(ms(100));
+    assert!(r.new_sender().is_none());
+}
