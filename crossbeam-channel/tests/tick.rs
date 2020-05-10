@@ -351,3 +351,9 @@ fn fairness_duplicates() {
         assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
     }
 }
+
+#[test]
+fn is_connected() {
+    let r = after(ms(50));
+    assert!(r.is_connected());
+}

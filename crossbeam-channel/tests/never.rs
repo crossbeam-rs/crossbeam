@@ -97,3 +97,9 @@ fn recv_timeout() {
     assert!(now - start >= ms(200));
     assert!(now - start <= ms(250));
 }
+
+#[test]
+fn is_connected() {
+    let r = never::<i32>();
+    assert!(!r.is_connected());
+}

@@ -657,3 +657,17 @@ fn channel_through_channel() {
     })
     .unwrap();
 }
+
+#[test]
+fn is_connected() {
+    let (s, r) = bounded::<i32>(1);
+    assert!(s.is_connected());
+    assert!(r.is_connected());
+
+    drop(s);
+    assert!(!r.is_connected());
+
+    let (s, r) = bounded::<i32>(1);
+    drop(r);
+    assert!(!s.is_connected());
+}

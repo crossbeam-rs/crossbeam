@@ -44,6 +44,10 @@ impl<C> Sender<C> {
         unsafe { &*self.counter }
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.counter().receivers.load(Ordering::Relaxed) >= 1
+    }
+
     /// Acquires another sender reference.
     pub fn acquire(&self) -> Sender<C> {
         let count = self.counter().senders.fetch_add(1, Ordering::Relaxed);
@@ -97,6 +101,10 @@ impl<C> Receiver<C> {
     /// Returns the internal `Counter`.
     fn counter(&self) -> &Counter<C> {
         unsafe { &*self.counter }
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.counter().senders.load(Ordering::Relaxed) >= 1
     }
 
     /// Acquires another receiver reference.

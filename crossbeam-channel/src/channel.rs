@@ -440,6 +440,16 @@ impl<T> Sender<T> {
         }
     }
 
+    /// Returns `true` if one or more receivers are connected, `false`
+    /// otherwise.
+    pub fn is_connected(&self) -> bool {
+        match &self.flavor {
+            SenderFlavor::Array(chan) => chan.is_connected(),
+            SenderFlavor::List(chan) => chan.is_connected(),
+            SenderFlavor::Zero(chan) => chan.is_connected(),
+        }
+    }
+
     /// Returns `true` if the channel is empty.
     ///
     /// Note: Zero-capacity channels are always empty.
@@ -805,6 +815,20 @@ impl<T> Receiver<T> {
                 }
             }
             ReceiverFlavor::Never(chan) => chan.recv(Some(deadline)),
+        }
+    }
+
+    /// Returns `true` if one or more senders are connected, `false` otherwise.
+    ///
+    /// For [`after`] and [`tick`] channels this always returns `true`. For
+    /// [`never`] channels this always returns `false`.
+    pub fn is_connected(&self) -> bool {
+        match &self.flavor {
+            ReceiverFlavor::Array(chan) => chan.is_connected(),
+            ReceiverFlavor::List(chan) => chan.is_connected(),
+            ReceiverFlavor::Zero(chan) => chan.is_connected(),
+            ReceiverFlavor::After(_) | ReceiverFlavor::Tick(_) => true,
+            ReceiverFlavor::Never(_) => false,
         }
     }
 
