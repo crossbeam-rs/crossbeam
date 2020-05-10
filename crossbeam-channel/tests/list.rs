@@ -558,3 +558,25 @@ fn new_sender() {
     })
     .unwrap();
 }
+
+#[test]
+fn new_receiver() {
+    let (s, r1) = unbounded();
+    let r2 = s.new_receiver();
+
+    scope(|scope| {
+        scope.spawn(|_| {
+            s.send(10).unwrap();
+            s.send(10).unwrap();
+        });
+
+        scope.spawn(|_| {
+            r1.recv().unwrap();
+        });
+
+        scope.spawn(|_| {
+            r2.recv().unwrap();
+        });
+    })
+    .unwrap();
+}

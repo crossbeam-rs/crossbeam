@@ -60,6 +60,22 @@ impl<C> Sender<C> {
         }
     }
 
+    /// Create a new receiver.
+    pub fn new_receiver(&self) -> Receiver<C> {
+        let count = self.counter().receivers.fetch_add(1, Ordering::Relaxed);
+
+        // Cloning senders and calling `mem::forget` on the clones could potentially overflow the
+        // counter. It's very difficult to recover sensibly from such degenerate scenarios so we
+        // just abort when the count becomes very large.
+        if count > isize::MAX as usize {
+            process::abort();
+        }
+
+        Receiver {
+            counter: self.counter,
+        }
+    }
+
     /// Releases the sender reference.
     ///
     /// Function `disconnect` will be called if this is the last sender reference.

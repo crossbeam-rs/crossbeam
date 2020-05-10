@@ -579,3 +579,29 @@ fn new_sender() {
     })
     .unwrap();
 }
+
+#[test]
+fn new_receiver() {
+    let (s, r1) = bounded(0);
+    let r2 = s.new_receiver();
+
+    assert_eq!(s.try_send(7), Err(TrySendError::Full(7)));
+    assert_eq!(r1.try_recv(), Err(TryRecvError::Empty));
+    assert_eq!(r2.try_recv(), Err(TryRecvError::Empty));
+
+    scope(|scope| {
+        scope.spawn(|_| {
+            s.send(10).unwrap();
+            s.send(10).unwrap();
+        });
+
+        scope.spawn(|_| {
+            r1.recv().unwrap();
+        });
+
+        scope.spawn(|_| {
+            r2.recv().unwrap();
+        });
+    })
+    .unwrap();
+}

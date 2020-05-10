@@ -555,6 +555,16 @@ impl<T> Sender<T> {
             _ => false,
         }
     }
+
+    /// Returns a new receiver that receives from this channel.
+    pub fn new_receiver(&self) -> Receiver<T> {
+        let flavor = match &self.flavor {
+            SenderFlavor::Array(chan) => ReceiverFlavor::Array(chan.new_receiver()),
+            SenderFlavor::List(chan) => ReceiverFlavor::List(chan.new_receiver()),
+            SenderFlavor::Zero(chan) => ReceiverFlavor::Zero(chan.new_receiver()),
+        };
+        Receiver { flavor }
+    }
 }
 
 impl<T> Drop for Sender<T> {
