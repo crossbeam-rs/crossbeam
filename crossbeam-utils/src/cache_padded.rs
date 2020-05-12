@@ -13,7 +13,7 @@ use core::ops::{Deref, DerefMut};
 ///
 /// Cache lines are assumed to be N bytes long, depending on the architecture:
 ///
-/// * On x86-64, N = 128.
+/// * On x86-64 and aarch64, N = 128.
 /// * On all others, N = 64.
 ///
 /// Note that N is just a reasonable guess and is not guaranteed to match the actual cache line
@@ -63,8 +63,13 @@ use core::ops::{Deref, DerefMut};
 // Sources:
 // - https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-optimization-manual.pdf
 // - https://github.com/facebook/folly/blob/1b5288e6eea6df074758f877c849b6e73bbb9fbb/folly/lang/Align.h#L107
-#[cfg_attr(target_arch = "x86_64", repr(align(128)))]
-#[cfg_attr(not(target_arch = "x86_64"), repr(align(64)))]
+//
+// ARM's big.LITTLE architecture has asymmetric cores and "big" cores have 128 byte cache line size
+// Sources:
+// - https://www.mono-project.com/news/2016/09/12/arm64-icache/
+//
+#[cfg_attr(any(target_arch = "x86_64", target_arch = "aarch64"), repr(align(128)))]
+#[cfg_attr(not(any(target_arch = "x86_64", target_arch = "aarch64")), repr(align(64)))]
 pub struct CachePadded<T> {
     value: T,
 }
