@@ -114,22 +114,22 @@ impl<T> Channel<T> {
         // Tail is initialized to `{ lap: 0, mark: 0, index: 0 }`.
         let tail = 0;
 
-        // Allocate a buffer of `cap` slots.
+        // Allocate a buffer of `cap` slots initialized
+        // with stamps.
         let buffer = {
-            let mut v = Vec::<Slot<T>>::with_capacity(cap);
+            let mut v: Vec<Slot<T>> = (0..cap)
+                .map(|i| {
+                    // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
+                    Slot {
+                        stamp: AtomicUsize::new(i),
+                        msg: UnsafeCell::new(MaybeUninit::uninit()),
+                    }
+                })
+                .collect();
             let ptr = v.as_mut_ptr();
             mem::forget(v);
             ptr
         };
-
-        // Initialize stamps in the slots.
-        for i in 0..cap {
-            unsafe {
-                // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
-                let slot = buffer.add(i);
-                ptr::write(&mut (*slot).stamp, AtomicUsize::new(i));
-            }
-        }
 
         Channel {
             buffer,
