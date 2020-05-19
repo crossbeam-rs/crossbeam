@@ -522,6 +522,42 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
     }
 }
 
+cfg_if! {
+    if #[cfg(unix)] {
+        use std::os::unix::thread::{JoinHandleExt, RawPthread};
+
+        impl<'scope, T> JoinHandleExt for ScopedJoinHandle<'scope, T> {
+            fn as_pthread_t(&self) -> RawPthread {
+                // Borrow the handle. The handle will surely be available because the root scope waits
+                // for nested scopes before joining remaining threads.
+                let handle = self.handle.lock().unwrap();
+                handle.as_ref().unwrap().as_pthread_t()
+            }
+            fn into_pthread_t(self) -> RawPthread {
+                self.as_pthread_t()
+            }
+        }
+    } else if #[cfg(windows)] {
+        use std::os::windows::io::{AsRawHandle, IntoRawHandle, RawHandle};
+
+        impl<'scope, T> AsRawHandle for ScopedJoinHandle<'scope, T> {
+            fn as_raw_handle(&self) -> RawHandle {
+                // Borrow the handle. The handle will surely be available because the root scope waits
+                // for nested scopes before joining remaining threads.
+                let handle = self.handle.lock().unwrap();
+                handle.as_ref().unwrap().as_raw_handle()
+            }
+        }
+
+        #[cfg(windows)]
+        impl<'scope, T> IntoRawHandle for ScopedJoinHandle<'scope, T> {
+            fn into_raw_handle(self) -> RawHandle {
+                self.as_raw_handle()
+            }
+        }
+    }
+}
+
 impl<'scope, T> fmt::Debug for ScopedJoinHandle<'scope, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.pad("ScopedJoinHandle { .. }")
