@@ -1,5 +1,5 @@
+use core::mem;
 use core::sync::atomic::{self, AtomicUsize, Ordering};
-use std::mem;
 
 use Backoff;
 
@@ -75,6 +75,9 @@ impl SeqLockWriteGuard {
     #[inline]
     pub fn abort(self) {
         self.lock.state.store(self.state, Ordering::Release);
+
+        // We specifically don't want to call drop(), since that's
+        // what increments the stamp.
         mem::forget(self);
     }
 }
