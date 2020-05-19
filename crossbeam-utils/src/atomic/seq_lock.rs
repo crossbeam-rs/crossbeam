@@ -1,4 +1,5 @@
 use core::sync::atomic::{self, AtomicUsize, Ordering};
+use std::mem;
 
 use Backoff;
 
@@ -74,6 +75,7 @@ impl SeqLockWriteGuard {
     #[inline]
     pub fn abort(self) {
         self.lock.state.store(self.state, Ordering::Release);
+        mem::forget(self);
     }
 }
 
@@ -84,5 +86,22 @@ impl Drop for SeqLockWriteGuard {
         self.lock
             .state
             .store(self.state.wrapping_add(2), Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SeqLock;
+
+    #[test]
+    fn test_abort() {
+        static LK: SeqLock = SeqLock::INIT;
+        let before = LK.optimistic_read().unwrap();
+        {
+            let guard = LK.write();
+            guard.abort();
+        }
+        let after = LK.optimistic_read().unwrap();
+        assert_eq!(before, after, "aborted write does not update the stamp");
     }
 }
