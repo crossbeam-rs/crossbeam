@@ -414,6 +414,14 @@ impl<T> SegQueue<T> {
                 tail &= !((1 << SHIFT) - 1);
                 head &= !((1 << SHIFT) - 1);
 
+                // Fix up indices if they fall onto block ends.
+                if (tail >> SHIFT) & (LAP - 1) == LAP - 1 {
+                    tail = tail.wrapping_add(1 << SHIFT);
+                }
+                if (head >> SHIFT) & (LAP - 1) == LAP - 1 {
+                    head = head.wrapping_add(1 << SHIFT);
+                }
+
                 // Rotate indices so that head falls into the first block.
                 let lap = (head >> SHIFT) / LAP;
                 tail = tail.wrapping_sub((lap * LAP) << SHIFT);
@@ -422,15 +430,6 @@ impl<T> SegQueue<T> {
                 // Remove the lower bits.
                 tail >>= SHIFT;
                 head >>= SHIFT;
-
-                // Fix up indices if they fall onto block ends.
-                if head == BLOCK_CAP {
-                    head = 0;
-                    tail -= LAP;
-                }
-                if tail == BLOCK_CAP {
-                    tail += 1;
-                }
 
                 // Return the difference minus the number of blocks between tail and head.
                 return tail - head - tail / LAP;
