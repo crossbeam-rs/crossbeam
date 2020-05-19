@@ -36,6 +36,8 @@ extern crate cfg_if;
 #[cfg(feature = "std")]
 extern crate core;
 
+extern crate parking_lot;
+
 cfg_if! {
     if #[cfg(feature = "alloc")] {
         extern crate alloc;

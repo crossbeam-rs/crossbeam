@@ -118,7 +118,7 @@ use std::io;
 use std::marker::PhantomData;
 use std::mem;
 use std::panic;
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::thread;
 
 use sync::WaitGroup;

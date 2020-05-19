@@ -1,5 +1,5 @@
 use std::fmt;
-use std::sync::{Arc, Condvar, Mutex};
+use crate::sync::{Arc, Condvar, Mutex};
 
 /// Enables threads to synchronize the beginning or end of some computation.
 ///

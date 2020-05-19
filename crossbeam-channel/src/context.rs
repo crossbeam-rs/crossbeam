@@ -7,7 +7,7 @@ use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 
 use crossbeam_utils::Backoff;
-
+use crossbeam_utils::sync::{Parker};
 use select::Selected;
 
 /// Thread-local context used in select.
@@ -27,7 +27,7 @@ struct Inner {
 
     /// Thread handle.
     thread: Thread,
-
+    parker: Parker, 
     /// Thread id.
     thread_id: ThreadId,
 }
@@ -71,6 +71,7 @@ impl Context {
                 select: AtomicUsize::new(Selected::Waiting.into()),
                 packet: AtomicUsize::new(0),
                 thread: thread::current(),
+                parker: Parker::new(),
                 thread_id: thread::current().id(),
             }),
         }
@@ -163,7 +164,8 @@ impl Context {
                 let now = Instant::now();
 
                 if now < end {
-                    thread::park_timeout(end - now);
+                    // thread::park_timeout(end - now);
+                    self.park_timeout(end-now);
                 } else {
                     // The deadline has been reached. Try aborting select.
                     return match self.try_select(Selected::Aborted) {
@@ -172,7 +174,8 @@ impl Context {
                     };
                 }
             } else {
-                thread::park();
+                self.park();
+                // thread::park();
             }
         }
     }
@@ -180,7 +183,21 @@ impl Context {
     /// Unparks the thread this context belongs to.
     #[inline]
     pub fn unpark(&self) {
-        self.inner.thread.unpark();
+        // self.inner.thread.unpark();
+        self.inner.parker.unparker().unpark()
+    }
+
+    // park the current thread
+    #[inline]
+    pub fn park(&self) {
+        // self.inner.thread.unpark();
+        self.inner.parker.park()
+    }
+
+    // park the current thread with timeout
+    #[inline]
+    pub fn park_timeout(&self, dur: std::time::Duration) {
+        self.inner.parker.park_timeout(dur);
     }
 
     /// Returns the id of the thread this context belongs to.

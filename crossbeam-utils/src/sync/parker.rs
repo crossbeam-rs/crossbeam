@@ -2,7 +2,8 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
-use std::sync::{Arc, Condvar, Mutex};
+use crate::sync::{Arc, Condvar, Mutex};
+
 use std::time::Duration;
 
 /// A thread parking primitive.
