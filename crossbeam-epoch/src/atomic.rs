@@ -150,24 +150,6 @@ impl<T> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(not(has_min_const_fn))]
-    pub fn null() -> Atomic<T> {
-        Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a new null atomic pointer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Atomic;
-    ///
-    /// let a = Atomic::<i32>::null();
-    /// ```
-    #[cfg(has_min_const_fn)]
     pub const fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
