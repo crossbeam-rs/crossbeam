@@ -92,22 +92,18 @@
 extern crate crossbeam_epoch as epoch;
 extern crate crossbeam_utils as utils;
 
-extern crate maybe_uninit;
-
 use std::cell::{Cell, UnsafeCell};
 use std::cmp;
 use std::fmt;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, MaybeUninit};
 use std::ptr;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use epoch::{Atomic, Owned};
 use utils::{Backoff, CachePadded};
-
-use maybe_uninit::MaybeUninit;
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;
