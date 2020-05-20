@@ -19,7 +19,7 @@ categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 default = ["std"]
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
 std = ["alloc", "crossbeam-epoch/std", "crossbeam-utils/std"]
-alloc = ["crossbeam-epoch/alloc", "crossbeam-utils/alloc"]
+alloc = ["crossbeam-epoch/alloc"]
 
 [dependencies]
 cfg-if = "0.1.2"

@@ -19,7 +19,7 @@ categories = ["concurrency", "memory-management", "no-std"]
 default = ["std"]
 nightly = ["crossbeam-utils/nightly"]
 std = ["alloc", "crossbeam-utils/std", "lazy_static"]
-alloc = ["crossbeam-utils/alloc"]
+alloc = []
 sanitize = [] # Makes it more likely to trigger any potential data races.
 
 [dependencies]

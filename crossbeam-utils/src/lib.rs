@@ -33,8 +33,6 @@
 
 #[macro_use]
 extern crate cfg_if;
-#[cfg(feature = "alloc")]
-extern crate alloc;
 #[cfg(feature = "std")]
 extern crate core;
 
