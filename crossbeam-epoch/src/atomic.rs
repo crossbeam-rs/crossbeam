@@ -8,6 +8,7 @@ use core::slice;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::alloc::alloc;
+use crate::alloc::boxed::Box;
 use crate::guard::Guard;
 use crossbeam_utils::atomic::AtomicConsume;
 
