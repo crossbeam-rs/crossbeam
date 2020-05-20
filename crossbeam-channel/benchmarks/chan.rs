@@ -1,6 +1,4 @@
-#[macro_use]
-extern crate chan;
-extern crate crossbeam;
+use chan::chan_select;
 
 mod message;
 
@@ -9,7 +7,7 @@ const THREADS: usize = 4;
 
 fn new<T>(cap: Option<usize>) -> (chan::Sender<T>, chan::Receiver<T>) {
     match cap {
-        None => chan::async(),
+        None => chan::r#async(),
         Some(cap) => chan::sync(cap),
     }
 }

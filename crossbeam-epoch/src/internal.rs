@@ -44,13 +44,13 @@ use core::{fmt, ptr};
 
 use crossbeam_utils::CachePadded;
 
-use atomic::{Owned, Shared};
-use collector::{Collector, LocalHandle};
-use deferred::Deferred;
-use epoch::{AtomicEpoch, Epoch};
-use guard::{unprotected, Guard};
-use sync::list::{Entry, IsElement, IterError, List};
-use sync::queue::Queue;
+use crate::atomic::{Owned, Shared};
+use crate::collector::{Collector, LocalHandle};
+use crate::deferred::Deferred;
+use crate::epoch::{AtomicEpoch, Epoch};
+use crate::guard::{unprotected, Guard};
+use crate::sync::list::{Entry, IsElement, IterError, List};
+use crate::sync::queue::Queue;
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(feature = "sanitize"))]

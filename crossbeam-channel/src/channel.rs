@@ -7,11 +7,11 @@ use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use context::Context;
-use counter;
-use err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
-use flavors;
-use select::{Operation, SelectHandle, Token};
+use crate::context::Context;
+use crate::counter;
+use crate::err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::flavors;
+use crate::select::{Operation, SelectHandle, Token};
 
 /// Creates a channel of unbounded capacity.
 ///

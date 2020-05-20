@@ -6,10 +6,10 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, Mutex};
 
-use deque::Steal::{Empty, Success};
-use deque::Worker;
+use crate::deque::Steal::{Empty, Success};
+use crate::deque::Worker;
 use rand::Rng;
-use utils::thread::scope;
+use crate::utils::thread::scope;
 
 #[test]
 fn smoke() {

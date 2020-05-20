@@ -10,9 +10,8 @@ use core::ops::{Bound, Deref, Index, RangeBounds};
 use core::ptr;
 use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
-use epoch::{self, Atomic, Collector, Guard, Shared};
-use scopeguard;
-use utils::CachePadded;
+use crate::epoch::{self, Atomic, Collector, Guard, Shared};
+use crate::utils::CachePadded;
 
 /// Number of bits needed to store height.
 const HEIGHT_BITS: usize = 5;

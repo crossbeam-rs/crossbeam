@@ -99,6 +99,6 @@ cfg_if! {
         extern crate crossbeam_utils as utils;
 
         mod deque;
-        pub use deque::{Injector, Steal, Stealer, Worker};
+        pub use crate::deque::{Injector, Steal, Stealer, Worker};
     }
 }

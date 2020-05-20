@@ -8,8 +8,8 @@ use std::ptr;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use epoch::{Atomic, Owned};
-use utils::{Backoff, CachePadded};
+use crate::epoch::{Atomic, Owned};
+use crate::utils::{Backoff, CachePadded};
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;

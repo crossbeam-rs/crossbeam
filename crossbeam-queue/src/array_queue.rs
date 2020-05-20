@@ -17,7 +17,7 @@ use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use err::{PopError, PushError};
+use crate::err::{PopError, PushError};
 
 /// A slot in a queue.
 struct Slot<T> {

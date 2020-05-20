@@ -1,6 +1,3 @@
-extern crate bus;
-extern crate crossbeam;
-
 use bus::Bus;
 
 mod message;

@@ -121,7 +121,7 @@ use std::panic;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use sync::WaitGroup;
+use crate::sync::WaitGroup;
 
 type SharedVec<T> = Arc<Mutex<Vec<T>>>;
 type SharedOption<T> = Arc<Mutex<Option<T>>>;

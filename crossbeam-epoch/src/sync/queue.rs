@@ -13,7 +13,7 @@ use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 use crossbeam_utils::CachePadded;
 
-use {unprotected, Atomic, Guard, Owned, Shared};
+use crate::{unprotected, Atomic, Guard, Owned, Shared};
 
 // The representation here is a singly-linked list, with a sentinel node at the front. In general
 // the `tail` pointer may lag behind the actual tail. Non-sentinel nodes are either all `Data` or
@@ -206,7 +206,7 @@ impl<T> Drop for Queue<T> {
 mod test {
     use super::*;
     use crossbeam_utils::thread;
-    use pin;
+    use crate::pin;
 
     struct Queue<T> {
         queue: super::Queue<T>,

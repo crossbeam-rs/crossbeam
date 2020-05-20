@@ -22,10 +22,10 @@ use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use context::Context;
-use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use select::{Operation, SelectHandle, Selected, Token};
-use waker::SyncWaker;
+use crate::context::Context;
+use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::select::{Operation, SelectHandle, Selected, Token};
+use crate::waker::SyncWaker;
 
 /// A slot in a channel.
 struct Slot<T> {

@@ -8,7 +8,7 @@ use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use err::PopError;
+use crate::err::PopError;
 
 // Bits indicating the state of a slot:
 // * If a value has been written into the slot, `WRITE` is set.

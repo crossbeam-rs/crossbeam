@@ -4,9 +4,9 @@ extern crate crossbeam_epoch as epoch;
 extern crate crossbeam_utils as utils;
 extern crate test;
 
-use epoch::Owned;
+use crate::epoch::Owned;
 use test::Bencher;
-use utils::thread::scope;
+use crate::utils::thread::scope;
 
 #[bench]
 fn single_alloc_defer_free(b: &mut Bencher) {

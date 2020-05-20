@@ -5,8 +5,8 @@ use std::mem::ManuallyDrop;
 use std::ptr;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use epoch::{Atomic, Owned};
-use utils::thread::scope;
+use crate::epoch::{Atomic, Owned};
+use crate::utils::thread::scope;
 
 /// Treiber's lock-free stack.
 ///

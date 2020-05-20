@@ -6,6 +6,7 @@ name = "crossbeam-deque"
 # - Create "crossbeam-deque-X.Y.Z" git tag
 version = "0.7.3"
 authors = ["The Crossbeam Project Developers"]
+edition = "2018"
 license = "MIT/Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/crossbeam-rs/crossbeam"
