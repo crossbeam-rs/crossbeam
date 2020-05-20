@@ -829,7 +829,6 @@ macro_rules! crossbeam_channel_internal {
             let _oper = $crate::internal::select(&mut $sel);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            #[allow(unsafe_code)]
             unsafe { ::std::mem::transmute(_oper) }
         };
 
@@ -852,7 +851,6 @@ macro_rules! crossbeam_channel_internal {
             let _oper = $crate::internal::try_select(&mut $sel);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            #[allow(unsafe_code)]
             unsafe { ::std::mem::transmute(_oper) }
         };
 
@@ -883,7 +881,6 @@ macro_rules! crossbeam_channel_internal {
             let _oper = $crate::internal::select_timeout(&mut $sel, $timeout);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
-            #[allow(unsafe_code)]
             unsafe { ::std::mem::transmute(_oper) }
         };
 
@@ -922,7 +919,6 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         match $r {
             ref _r => {
-                #[allow(unsafe_code)]
                 let $var: &$crate::Receiver<_> = unsafe {
                     let _r: &$crate::Receiver<_> = _r;
 
@@ -955,7 +951,6 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         match $s {
             ref _s => {
-                #[allow(unsafe_code)]
                 let $var: &$crate::Sender<_> = unsafe {
                     let _s: &$crate::Sender<_> = _s;
 
