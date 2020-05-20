@@ -49,6 +49,7 @@ optional = true
 version = "0.8"
 path = "./crossbeam-epoch"
 default-features = false
+optional = true
 
 [dependencies.crossbeam-queue]
 version = "0.2"

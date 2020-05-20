@@ -54,12 +54,6 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate core;
 
-mod _epoch {
-    pub extern crate crossbeam_epoch;
-}
-#[doc(inline)]
-pub use _epoch::crossbeam_epoch as epoch;
-
 extern crate crossbeam_utils;
 
 #[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
@@ -73,6 +67,12 @@ pub mod utils {
 
 cfg_if! {
     if #[cfg(feature = "alloc")] {
+        mod _epoch {
+            pub extern crate crossbeam_epoch;
+        }
+        #[doc(inline)]
+        pub use _epoch::crossbeam_epoch as epoch;
+
         mod _queue {
             pub extern crate crossbeam_queue;
         }
