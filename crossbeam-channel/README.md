@@ -53,7 +53,9 @@ extern crate crossbeam_channel;
 
 ## Compatibility
 
-The minimum supported Rust version is 1.36. Any change to this is considered a breaking change.
+Crossbeam Channel supports stable Rust releases going back at least six months,
+and every time the minimum supported Rust version is increased, a new minor
+version is released. Currently, the minimum supported Rust version is 1.36.
 
 ## License
 
