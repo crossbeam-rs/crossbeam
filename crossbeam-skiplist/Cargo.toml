@@ -28,6 +28,7 @@ cfg-if = "0.1.2"
 version = "0.8"
 path = "../crossbeam-epoch"
 default-features = false
+optional = true
 
 [dependencies.crossbeam-utils]
 version = "0.7"

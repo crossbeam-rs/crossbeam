@@ -24,8 +24,8 @@ default = ["std"]
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
 std = [
   "alloc",
-  "crossbeam-channel",
-  "crossbeam-deque",
+  "crossbeam-channel/std",
+  "crossbeam-deque/std",
   "crossbeam-epoch/std",
   "crossbeam-queue/std",
   "crossbeam-utils/std",
@@ -38,11 +38,13 @@ cfg-if = "0.1.2"
 [dependencies.crossbeam-channel]
 version = "0.4"
 path = "./crossbeam-channel"
+default-features = false
 optional = true
 
 [dependencies.crossbeam-deque]
 version = "0.7.0"
 path = "./crossbeam-deque"
+default-features = false
 optional = true
 
 [dependencies.crossbeam-epoch]

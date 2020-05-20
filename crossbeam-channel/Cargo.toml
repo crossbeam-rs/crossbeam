@@ -15,9 +15,18 @@ description = "Multi-producer multi-consumer channels for message passing"
 keywords = ["channel", "mpmc", "select", "golang", "message"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
+[features]
+default = ["std"]
+std = ["crossbeam-utils/std"]
+
+[dependencies]
+cfg-if = "0.1.2"
+
 [dependencies.crossbeam-utils]
 version = "0.7"
 path = "../crossbeam-utils"
+default-features = false
+optional = true
 
 [dev-dependencies]
 num_cpus = "1.10.0"

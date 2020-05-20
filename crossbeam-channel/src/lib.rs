@@ -346,33 +346,41 @@
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
-extern crate crossbeam_utils;
+#[macro_use]
+extern crate cfg_if;
 
-mod channel;
-mod context;
-mod counter;
-mod err;
-mod flavors;
-mod select;
-mod select_macro;
-mod utils;
-mod waker;
+cfg_if! {
+    if #[cfg(feature = "std")] {
+        extern crate crossbeam_utils;
 
-/// Crate internals used by the `select!` macro.
-#[doc(hidden)]
-pub mod internal {
-    pub use select::SelectHandle;
-    pub use select::{select, select_timeout, try_select};
+        mod channel;
+        mod context;
+        mod counter;
+        mod err;
+        mod flavors;
+        mod select;
+        mod select_macro;
+        mod utils;
+        mod waker;
+
+        /// Crate internals used by the `select!` macro.
+        #[doc(hidden)]
+        pub mod internal {
+            pub use select::SelectHandle;
+            pub use select::{select, select_timeout, try_select};
+        }
+
+        pub use channel::{after, never, tick};
+        pub use channel::{bounded, unbounded};
+        pub use channel::{IntoIter, Iter, TryIter};
+        pub use channel::{Receiver, Sender};
+
+        pub use select::{Select, SelectedOperation};
+
+        pub use err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
+        pub use err::{RecvError, RecvTimeoutError, TryRecvError};
+        pub use err::{SendError, SendTimeoutError, TrySendError};
+    }
 }
-
-pub use channel::{after, never, tick};
-pub use channel::{bounded, unbounded};
-pub use channel::{IntoIter, Iter, TryIter};
-pub use channel::{Receiver, Sender};
-
-pub use select::{Select, SelectedOperation};
-
-pub use err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
-pub use err::{RecvError, RecvTimeoutError, TryRecvError};
-pub use err::{SendError, SendTimeoutError, TrySendError};
