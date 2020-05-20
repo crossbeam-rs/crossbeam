@@ -23,6 +23,7 @@ travis-ci = { repository = "crossbeam-rs/crossbeam" }
 default = ["std"]
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
 std = [
+  "alloc",
   "crossbeam-channel",
   "crossbeam-deque",
   "crossbeam-epoch/std",

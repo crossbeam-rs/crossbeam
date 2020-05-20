@@ -17,7 +17,7 @@ categories = ["concurrency", "data-structures"]
 
 [features]
 default = ["std"]
-std = ["crossbeam-utils/std"]
+std = ["alloc", "crossbeam-utils/std"]
 alloc = ["crossbeam-utils/alloc"]
 nightly = []
 

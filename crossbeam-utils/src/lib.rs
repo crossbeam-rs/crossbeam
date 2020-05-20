@@ -33,16 +33,10 @@
 
 #[macro_use]
 extern crate cfg_if;
+#[cfg(feature = "alloc")]
+extern crate alloc;
 #[cfg(feature = "std")]
 extern crate core;
-
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
-    } else if #[cfg(feature = "std")] {
-        extern crate std as alloc;
-    }
-}
 
 #[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
 pub mod atomic;
