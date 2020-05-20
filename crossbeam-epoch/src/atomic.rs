@@ -200,6 +200,9 @@ impl<T> Pointable for T {
 ///
 /// Elements are not present in the type, but they will be in the allocation.
 /// ```
+///
+// TODO(@jeehoonkang): once we bump the minimum required Rust version to 1.44 or newer, use
+// [`alloc::alloc::Layout::extend`] instead.
 #[repr(C)]
 struct Array<T> {
     size: usize,
