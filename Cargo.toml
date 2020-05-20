@@ -21,7 +21,9 @@ travis-ci = { repository = "crossbeam-rs/crossbeam" }
 
 [features]
 default = ["std"]
-nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
+
+# Enable to use APIs that require `std`.
+# This is enabled by default.
 std = [
   "alloc",
   "crossbeam-channel/std",
@@ -30,7 +32,16 @@ std = [
   "crossbeam-queue/std",
   "crossbeam-utils/std",
 ]
+
+# Enable to use APIs that require `alloc`.
+# This is enabled by default and also enabled if the `std` feature is enabled.
 alloc = ["crossbeam-epoch/alloc", "crossbeam-queue/alloc"]
+
+# Enable to use of unstable functionality.
+# This is disabled by default and requires recent nightly compiler.
+# Note that this is outside of the normal semver guarantees and minor versions
+# of crossbeam may make breaking changes to them at any time.
+nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
 
 [dependencies]
 cfg-if = "0.1.2"

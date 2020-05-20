@@ -17,8 +17,19 @@ categories = ["concurrency", "data-structures"]
 
 [features]
 default = ["std"]
+
+# Enable to use APIs that require `std`.
+# This is enabled by default.
 std = ["alloc", "crossbeam-utils/std"]
+
+# Enable to use APIs that require `alloc`.
+# This is enabled by default and also enabled if the `std` feature is enabled.
 alloc = []
+
+# Enable to use of unstable functionality.
+# This is disabled by default and requires recent nightly compiler.
+# Note that this is outside of the normal semver guarantees and minor versions
+# of crossbeam may make breaking changes to them at any time.
 nightly = []
 
 [dependencies]

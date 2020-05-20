@@ -17,6 +17,9 @@ categories = ["algorithms", "concurrency", "data-structures"]
 
 [features]
 default = ["std"]
+
+# Enable to use APIs that require `std`.
+# This is enabled by default.
 std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 
 [dependencies]
