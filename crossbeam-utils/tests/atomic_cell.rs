@@ -223,7 +223,6 @@ fn garbage_padding() {
     println!();
 }
 
-#[cfg(has_min_const_fn)]
 #[test]
 fn const_atomic_cell_new() {
     static CELL: AtomicCell<usize> = AtomicCell::new(0);

@@ -15,9 +15,6 @@ description = "Concurrent work-stealing deque"
 keywords = ["chase-lev", "lock-free", "scheduler", "scheduling"]
 categories = ["algorithms", "concurrency", "data-structures"]
 
-[dependencies]
-maybe-uninit = "2.0.0"
-
 [dependencies.crossbeam-epoch]
 version = "0.8"
 path = "../crossbeam-epoch"

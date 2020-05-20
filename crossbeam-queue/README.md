@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam-queue/tree/master/src)
 https://crates.io/crates/crossbeam-queue)
 [![Documentation](https://docs.rs/crossbeam-queue/badge.svg)](
 https://docs.rs/crossbeam-queue)
-[![Rust 1.28+](https://img.shields.io/badge/rust-1.28+-lightgray.svg)](
+[![Rust 1.36+](https://img.shields.io/badge/rust-1.36+-lightgray.svg)](
 https://www.rust-lang.org)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.gg/BBYwKq)
 
@@ -37,7 +37,9 @@ extern crate crossbeam_queue;
 
 ## Compatibility
 
-The minimum supported Rust version is 1.28. Any change to this is considered a breaking change.
+Crossbeam Queue supports stable Rust releases going back at least six months,
+and every time the minimum supported Rust version is increased, a new minor
+version is released. Currently, the minimum supported Rust version is 1.36.
 
 ## License
 

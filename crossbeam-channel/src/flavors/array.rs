@@ -15,14 +15,12 @@
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, MaybeUninit};
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
-
-use maybe_uninit::MaybeUninit;
 
 use context::Context;
 use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};

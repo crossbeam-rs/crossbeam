@@ -23,7 +23,6 @@ nightly = []
 
 [dependencies]
 cfg-if = "0.1.2"
-maybe-uninit = "2.0.0"
 
 [dependencies.crossbeam-utils]
 version = "0.7"

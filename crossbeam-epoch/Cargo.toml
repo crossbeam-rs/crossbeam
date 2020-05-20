@@ -24,7 +24,6 @@ sanitize = [] # Makes it more likely to trigger any potential data races.
 
 [dependencies]
 cfg-if = "0.1.2"
-maybe-uninit = "2.0.0"
 memoffset = "0.5"
 
 [dependencies.crossbeam-utils]
@@ -39,9 +38,6 @@ optional = true
 [dependencies.scopeguard]
 version = "1"
 default-features = false
-
-[build-dependencies]
-autocfg = "1"
 
 [dev-dependencies]
 rand = "0.6"

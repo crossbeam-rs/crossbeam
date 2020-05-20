@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam-channel)
 https://crates.io/crates/crossbeam-channel)
 [![Documentation](https://docs.rs/crossbeam-channel/badge.svg)](
 https://docs.rs/crossbeam-channel)
-[![Rust 1.28+](https://img.shields.io/badge/rust-1.28+-lightgray.svg)](
+[![Rust 1.36+](https://img.shields.io/badge/rust-1.36+-lightgray.svg)](
 https://www.rust-lang.org)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.gg/BBYwKq)
 
@@ -53,7 +53,9 @@ extern crate crossbeam_channel;
 
 ## Compatibility
 
-The minimum supported Rust version is 1.28. Any change to this is considered a breaking change.
+Crossbeam Channel supports stable Rust releases going back at least six months,
+and every time the minimum supported Rust version is increased, a new minor
+version is released. Currently, the minimum supported Rust version is 1.36.
 
 ## License
 

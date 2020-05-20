@@ -1,10 +1,8 @@
 use alloc::boxed::Box;
 use core::fmt;
 use core::marker::PhantomData;
-use core::mem;
+use core::mem::{self, MaybeUninit};
 use core::ptr;
-
-use maybe_uninit::MaybeUninit;
 
 /// Number of words a piece of `Data` can hold.
 ///

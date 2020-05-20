@@ -25,7 +25,7 @@ jobs:
           - crossbeam-skiplist
           - crossbeam-utils
         rust:
-          - 1.28.0
+          - 1.36.0
           - nightly
     steps:
       - uses: actions/checkout@master
@@ -36,12 +36,6 @@ jobs:
         run: |
           rustup target add thumbv7m-none-eabi
           rustup target add thumbv6m-none-eabi
-      # cfg-if 0.1.10 requires Rust 1.31+ so downgrade it.
-      - name: Downgrade dependencies
-        if: matrix.rust == '1.28.0'
-        run: |
-          cargo generate-lockfile
-          cargo update -p cfg-if --precise 0.1.9
       - name: Test
         run: ./ci/${{ matrix.crates }}.sh
 
