@@ -267,13 +267,6 @@ impl Backoff {
     pub fn is_completed(&self) -> bool {
         self.step.get() > YIELD_LIMIT
     }
-
-    #[inline]
-    #[doc(hidden)]
-    #[deprecated(note = "use `is_completed` instead")]
-    pub fn is_complete(&self) -> bool {
-        self.is_completed()
-    }
 }
 
 impl fmt::Debug for Backoff {

@@ -162,24 +162,6 @@ impl<T: ?Sized> AtomicCell<T> {
     pub fn as_ptr(&self) -> *mut T {
         self.value.get()
     }
-
-    /// Returns a mutable reference to the inner value.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_utils::atomic::AtomicCell;
-    ///
-    /// let mut a = AtomicCell::new(7);
-    /// *a.get_mut() += 1;
-    ///
-    /// assert_eq!(a.load(), 8);
-    /// ```
-    #[doc(hidden)]
-    #[deprecated(note = "this method is unsound and will be removed in the next release")]
-    pub fn get_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.value.get() }
-    }
 }
 
 impl<T: Default> AtomicCell<T> {
