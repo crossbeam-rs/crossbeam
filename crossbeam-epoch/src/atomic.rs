@@ -145,16 +145,54 @@ pub trait Pointable {
     /// The type for initializers.
     type Init;
 
-    /// Initializes a with the given initializer.  The result should be a multiple of `ALIGN`.
-    fn init(init: Self::Init) -> usize;
+    /// Initializes a with the given initializer.
+    ///
+    /// # Safety
+    ///
+    /// The result should be a multiple of `ALIGN`.
+    unsafe fn init(init: Self::Init) -> usize;
 
     /// Dereferences the given pointer.
+    ///
+    /// # Safety
+    ///
+    /// - The given `ptr` should have been initialized with [`Pointable::init`].
+    /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
+    /// - `ptr` should not be mutably dereferenced by [`Pointable::deref_mut`] concurrently.
+    ///
+    /// [`Pointable::init`]: trait.Pointable.html#method.init
+    /// [`Pointable::drop`]: trait.Pointable.html#method.drop
+    /// [`Pointable::deref`]: trait.Pointable.html#method.deref
     unsafe fn deref<'a>(ptr: usize) -> &'a Self;
 
     /// Mutably dereferences the given pointer.
+    ///
+    /// # Safety
+    ///
+    /// - The given `ptr` should have been initialized with [`Pointable::init`].
+    /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
+    /// - `ptr` should not be dereferenced by [`Pointable::deref`] or [`Pointable::deref_mut`]
+    ///   concurrently.
+    ///
+    /// [`Pointable::init`]: trait.Pointable.html#method.init
+    /// [`Pointable::drop`]: trait.Pointable.html#method.drop
+    /// [`Pointable::deref`]: trait.Pointable.html#method.deref
+    /// [`Pointable::deref_mut`]: trait.Pointable.html#method.deref_mut
     unsafe fn deref_mut<'a>(ptr: usize) -> &'a mut Self;
 
     /// Drops the object pointed to by the given pointer.
+    ///
+    /// # Safety
+    ///
+    /// - The given `ptr` should have been initialized with [`Pointable::init`].
+    /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
+    /// - `ptr` should not be dereferenced by [`Pointable::deref`] or [`Pointable::deref_mut`]
+    ///   concurrently.
+    ///
+    /// [`Pointable::init`]: trait.Pointable.html#method.init
+    /// [`Pointable::drop`]: trait.Pointable.html#method.drop
+    /// [`Pointable::deref`]: trait.Pointable.html#method.deref
+    /// [`Pointable::deref_mut`]: trait.Pointable.html#method.deref_mut
     unsafe fn drop(ptr: usize);
 }
 
@@ -163,7 +201,7 @@ impl<T> Pointable for T {
 
     type Init = T;
 
-    fn init(init: Self::Init) -> usize {
+    unsafe fn init(init: Self::Init) -> usize {
         Box::into_raw(Box::new(init)) as usize
     }
 
@@ -214,15 +252,13 @@ impl<T> Pointable for [MaybeUninit<T>] {
 
     type Init = usize;
 
-    fn init(size: Self::Init) -> usize {
+    unsafe fn init(size: Self::Init) -> usize {
         let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * size;
         let align = mem::align_of::<Array<T>>();
         let layout = alloc::Layout::from_size_align(size, align).unwrap();
-        unsafe {
-            let ptr = alloc::alloc(layout) as *mut Array<T>;
-            (*ptr).size = size;
-            ptr as usize
-        }
+        let ptr = alloc::alloc(layout) as *mut Array<T>;
+        (*ptr).size = size;
+        ptr as usize
     }
 
     unsafe fn deref<'a>(ptr: usize) -> &'a Self {
