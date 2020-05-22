@@ -1,6 +1,5 @@
 #![feature(test)]
 
-extern crate crossbeam_skiplist;
 extern crate test;
 
 use test::{black_box, Bencher};

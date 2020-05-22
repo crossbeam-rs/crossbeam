@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use crate::context::Context;
 use crate::counter;
-use crate::err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::err::{
+    RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError,
+};
 use crate::flavors;
 use crate::select::{Operation, SelectHandle, Token};
 
@@ -134,11 +136,9 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// Using an `after` channel for timeouts:
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
 /// # fn main() {
 /// use std::time::Duration;
-/// use crossbeam_channel::{after, unbounded};
+/// use crossbeam_channel::{after, select, unbounded};
 ///
 /// let (s, r) = unbounded::<i32>();
 /// let timeout = Duration::from_millis(100);
@@ -187,12 +187,10 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// Using a `never` channel to optionally add a timeout to [`select!`]:
 ///
 /// ```
-/// # #[macro_use]
-/// # extern crate crossbeam_channel;
 /// # fn main() {
 /// use std::thread;
 /// use std::time::{Duration, Instant};
-/// use crossbeam_channel::{after, never, unbounded};
+/// use crossbeam_channel::{after, select, never, unbounded};
 ///
 /// let (s, r) = unbounded();
 ///
@@ -582,7 +580,7 @@ impl<T> Clone for Sender<T> {
 }
 
 impl<T> fmt::Debug for Sender<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Sender { .. }")
     }
 }
@@ -941,7 +939,7 @@ impl<T> Receiver<T> {
     ///
     /// assert_eq!(v, [1, 2, 3]);
     /// ```
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter { receiver: self }
     }
 
@@ -977,7 +975,7 @@ impl<T> Receiver<T> {
     ///
     /// assert_eq!(v, [1, 2]);
     /// ```
-    pub fn try_iter(&self) -> TryIter<T> {
+    pub fn try_iter(&self) -> TryIter<'_, T> {
         TryIter { receiver: self }
     }
 
@@ -1040,7 +1038,7 @@ impl<T> Clone for Receiver<T> {
 }
 
 impl<T> fmt::Debug for Receiver<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Receiver { .. }")
     }
 }
@@ -1092,13 +1090,13 @@ impl<T> IntoIterator for Receiver<T> {
 ///
 /// assert_eq!(v, [1, 2, 3]);
 /// ```
-pub struct Iter<'a, T: 'a> {
+pub struct Iter<'a, T> {
     receiver: &'a Receiver<T>,
 }
 
-impl<'a, T> FusedIterator for Iter<'a, T> {}
+impl<T> FusedIterator for Iter<'_, T> {}
 
-impl<'a, T> Iterator for Iter<'a, T> {
+impl<T> Iterator for Iter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1106,8 +1104,8 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-impl<'a, T> fmt::Debug for Iter<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<T> fmt::Debug for Iter<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Iter { .. }")
     }
 }
@@ -1144,11 +1142,11 @@ impl<'a, T> fmt::Debug for Iter<'a, T> {
 ///
 /// assert_eq!(v, [1, 2]);
 /// ```
-pub struct TryIter<'a, T: 'a> {
+pub struct TryIter<'a, T> {
     receiver: &'a Receiver<T>,
 }
 
-impl<'a, T> Iterator for TryIter<'a, T> {
+impl<T> Iterator for TryIter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1156,8 +1154,8 @@ impl<'a, T> Iterator for TryIter<'a, T> {
     }
 }
 
-impl<'a, T> fmt::Debug for TryIter<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<T> fmt::Debug for TryIter<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("TryIter { .. }")
     }
 }
@@ -1206,7 +1204,7 @@ impl<T> Iterator for IntoIter<T> {
 }
 
 impl<T> fmt::Debug for IntoIter<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("IntoIter { .. }")
     }
 }

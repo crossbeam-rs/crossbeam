@@ -102,7 +102,7 @@ pub struct List<T, C: IsElement<T> = T> {
 }
 
 /// An iterator used for retrieving values from the list.
-pub struct Iter<'g, T: 'g, C: IsElement<T>> {
+pub struct Iter<'g, T, C: IsElement<T>> {
     /// The guard that protects the iteration.
     guard: &'g Guard,
 
@@ -298,9 +298,9 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Collector, Owned};
     use crossbeam_utils::thread;
     use std::sync::Barrier;
-    use crate::{Collector, Owned};
 
     impl IsElement<Entry> for Entry {
         fn entry_of(entry: &Entry) -> &Entry {

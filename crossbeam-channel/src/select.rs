@@ -119,7 +119,7 @@ pub trait SelectHandle {
     fn unwatch(&self, oper: Operation);
 }
 
-impl<'a, T: SelectHandle> SelectHandle for &'a T {
+impl<T: SelectHandle> SelectHandle for &T {
     fn try_select(&self, token: &mut Token) -> bool {
         (**self).try_select(token)
     }
@@ -585,8 +585,8 @@ pub struct Select<'a> {
     next_index: usize,
 }
 
-unsafe impl<'a> Send for Select<'a> {}
-unsafe impl<'a> Sync for Select<'a> {}
+unsafe impl Send for Select<'_> {}
+unsafe impl Sync for Select<'_> {}
 
 impl<'a> Select<'a> {
     /// Creates an empty list of channel operations for selection.
@@ -1017,8 +1017,8 @@ impl<'a> Default for Select<'a> {
     }
 }
 
-impl<'a> fmt::Debug for Select<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Debug for Select<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Select { .. }")
     }
 }
@@ -1049,7 +1049,7 @@ pub struct SelectedOperation<'a> {
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a> SelectedOperation<'a> {
+impl SelectedOperation<'_> {
     /// Returns the index of the selected operation.
     ///
     /// # Examples
@@ -1153,13 +1153,13 @@ impl<'a> SelectedOperation<'a> {
     }
 }
 
-impl<'a> fmt::Debug for SelectedOperation<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Debug for SelectedOperation<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("SelectedOperation { .. }")
     }
 }
 
-impl<'a> Drop for SelectedOperation<'a> {
+impl Drop for SelectedOperation<'_> {
     fn drop(&mut self) {
         panic!("dropped `SelectedOperation` without completing the operation");
     }

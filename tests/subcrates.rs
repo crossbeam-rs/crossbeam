@@ -1,7 +1,6 @@
 //! Makes sure subcrates are properly re-exported.
 
-#[macro_use]
-extern crate crossbeam;
+use crossbeam::select;
 
 #[test]
 fn channel() {

@@ -44,13 +44,6 @@ Add this to your `Cargo.toml`:
 crossbeam-channel = "0.4"
 ```
 
-Next, add this to your crate:
-
-```rust
-#[macro_use]
-extern crate crossbeam_channel;
-```
-
 ## Compatibility
 
 Crossbeam Channel supports stable Rust releases going back at least six months,

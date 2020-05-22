@@ -431,7 +431,7 @@ impl<T> Drop for ArrayQueue<T> {
 }
 
 impl<T> fmt::Debug for ArrayQueue<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("ArrayQueue { .. }")
     }
 }

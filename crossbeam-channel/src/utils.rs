@@ -87,17 +87,17 @@ impl<T> Spinlock<T> {
 }
 
 /// A guard holding a spinlock locked.
-pub struct SpinlockGuard<'a, T: 'a> {
+pub struct SpinlockGuard<'a, T> {
     parent: &'a Spinlock<T>,
 }
 
-impl<'a, T> Drop for SpinlockGuard<'a, T> {
+impl<T> Drop for SpinlockGuard<'_, T> {
     fn drop(&mut self) {
         self.parent.flag.store(false, Ordering::Release);
     }
 }
 
-impl<'a, T> Deref for SpinlockGuard<'a, T> {
+impl<T> Deref for SpinlockGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -105,7 +105,7 @@ impl<'a, T> Deref for SpinlockGuard<'a, T> {
     }
 }
 
-impl<'a, T> DerefMut for SpinlockGuard<'a, T> {
+impl<T> DerefMut for SpinlockGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { &mut *self.parent.value.get() }
     }

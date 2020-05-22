@@ -1,14 +1,10 @@
 //! Prints the elapsed time every 1 second and quits on Ctrl+C.
 
-#[macro_use]
-extern crate crossbeam_channel;
-extern crate signal_hook;
-
 use std::io;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{bounded, tick, Receiver};
+use crossbeam_channel::{bounded, select, tick, Receiver};
 use signal_hook::iterator::Signals;
 use signal_hook::SIGINT;
 

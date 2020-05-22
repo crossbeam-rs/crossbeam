@@ -265,7 +265,7 @@ where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Node")
             .field(&self.key)
             .field(&self.value)
@@ -277,7 +277,7 @@ where
 ///
 /// The result indicates whether the key was found, as well as what were the adjacent nodes to the
 /// key on each level of the skip list.
-struct Position<'a, K: 'a, V: 'a> {
+struct Position<'a, K, V> {
     /// Reference to a node with the given key, if found.
     ///
     /// If this is `Some` then it will point to the same node as `right[0]`.
@@ -470,7 +470,7 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
-    pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<K, V> {
+    pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
         self.insert_internal(key, value, false, guard)
     }
 
@@ -486,7 +486,7 @@ where
     }
 
     /// Returns an iterator over all entries in the skip list.
-    pub fn ref_iter(&self) -> RefIter<K, V> {
+    pub fn ref_iter(&self) -> RefIter<'_, K, V> {
         RefIter {
             parent: self,
             head: None,
@@ -831,7 +831,13 @@ where
     /// Inserts an entry with the specified `key` and `value`.
     ///
     /// If `replace` is `true`, then any existing entry with this key will first be removed.
-    fn insert_internal(&self, key: K, value: V, replace: bool, guard: &Guard) -> RefEntry<K, V> {
+    fn insert_internal(
+        &self,
+        key: K,
+        value: V,
+        replace: bool,
+        guard: &Guard,
+    ) -> RefEntry<'_, K, V> {
         self.check_guard(guard);
 
         unsafe {
@@ -1048,12 +1054,12 @@ where
     ///
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
-    pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<K, V> {
+    pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
         self.insert_internal(key, value, true, guard)
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
-    pub fn remove<Q>(&self, key: &Q, guard: &Guard) -> Option<RefEntry<K, V>>
+    pub fn remove<Q>(&self, key: &Q, guard: &Guard) -> Option<RefEntry<'_, K, V>>
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
@@ -1118,7 +1124,7 @@ where
     }
 
     /// Removes an entry from the front of the skip list.
-    pub fn pop_front(&self, guard: &Guard) -> Option<RefEntry<K, V>> {
+    pub fn pop_front(&self, guard: &Guard) -> Option<RefEntry<'_, K, V>> {
         self.check_guard(guard);
         loop {
             let e = self.front(guard)?;
@@ -1131,7 +1137,7 @@ where
     }
 
     /// Removes an entry from the back of the skip list.
-    pub fn pop_back(&self, guard: &Guard) -> Option<RefEntry<K, V>> {
+    pub fn pop_back(&self, guard: &Guard) -> Option<RefEntry<'_, K, V>> {
         self.check_guard(guard);
         loop {
             let e = self.back(guard)?;
@@ -1216,7 +1222,7 @@ where
     K: Ord + fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("SkipList { .. }")
     }
 }
@@ -1252,7 +1258,7 @@ impl<K, V> IntoIterator for SkipList<K, V> {
 /// The lifetimes of the key and value are the same as that of the `Guard`
 /// used when creating the `Entry` (`'g`). This lifetime is also constrained to
 /// not outlive the `SkipList`.
-pub struct Entry<'a: 'g, 'g, K: 'a, V: 'a> {
+pub struct Entry<'a: 'g, 'g, K, V> {
     parent: &'a SkipList<K, V>,
     node: &'g Node<K, V>,
     guard: &'g Guard,
@@ -1324,12 +1330,12 @@ impl<'a: 'g, 'g, K, V> Clone for Entry<'a, 'g, K, V> {
     }
 }
 
-impl<'a, 'g, K, V> fmt::Debug for Entry<'a, 'g, K, V>
+impl<K, V> fmt::Debug for Entry<'_, '_, K, V>
 where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Entry")
             .field(self.key())
             .field(self.value())
@@ -1394,7 +1400,7 @@ where
 ///
 /// You *must* call `release` to free this type, otherwise the node will be
 /// leaked. This is because releasing the entry requires a `Guard`.
-pub struct RefEntry<'a, K: 'a, V: 'a> {
+pub struct RefEntry<'a, K, V> {
     parent: &'a SkipList<K, V>,
     node: &'a Node<K, V>,
 }
@@ -1455,7 +1461,7 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
     }
 }
 
-impl<'a, K, V> RefEntry<'a, K, V>
+impl<K, V> RefEntry<'_, K, V>
 where
     K: Ord + Send + 'static,
     V: Send + 'static,
@@ -1495,12 +1501,12 @@ impl<'a, K, V> Clone for RefEntry<'a, K, V> {
     }
 }
 
-impl<'a, K, V> fmt::Debug for RefEntry<'a, K, V>
+impl<K, V> fmt::Debug for RefEntry<'_, K, V>
 where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("RefEntry")
             .field(self.key())
             .field(self.value())
@@ -1567,7 +1573,7 @@ where
 }
 
 /// An iterator over the entries of a `SkipList`.
-pub struct Iter<'a: 'g, 'g, K: 'a, V: 'a> {
+pub struct Iter<'a: 'g, 'g, K, V> {
     parent: &'a SkipList<K, V>,
     head: Option<&'g Node<K, V>>,
     tail: Option<&'g Node<K, V>>,
@@ -1628,12 +1634,12 @@ where
     }
 }
 
-impl<'a, 'g, K, V> fmt::Debug for Iter<'a, 'g, K, V>
+impl<K, V> fmt::Debug for Iter<'_, '_, K, V>
 where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Iter")
             .field("head", &self.head.map(|n| (&n.key, &n.value)))
             .field("tail", &self.tail.map(|n| (&n.key, &n.value)))
@@ -1642,18 +1648,18 @@ where
 }
 
 /// An iterator over reference-counted entries of a `SkipList`.
-pub struct RefIter<'a, K: 'a, V: 'a> {
+pub struct RefIter<'a, K, V> {
     parent: &'a SkipList<K, V>,
     head: Option<RefEntry<'a, K, V>>,
     tail: Option<RefEntry<'a, K, V>>,
 }
 
-impl<'a, K, V> fmt::Debug for RefIter<'a, K, V>
+impl<K, V> fmt::Debug for RefIter<'_, K, V>
 where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_struct("RefIter");
         match &self.head {
             None => d.field("head", &None::<(&K, &V)>),
@@ -1725,7 +1731,7 @@ where
 }
 
 /// An iterator over a subset of entries of a `SkipList`.
-pub struct Range<'a: 'g, 'g, Q, R, K: 'a, V: 'a>
+pub struct Range<'a: 'g, 'g, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -1807,14 +1813,14 @@ where
     }
 }
 
-impl<'a, 'g, Q, R, K, V> fmt::Debug for Range<'a, 'g, Q, R, K, V>
+impl<Q, R, K, V> fmt::Debug for Range<'_, '_, Q, R, K, V>
 where
     K: Ord + Borrow<Q> + fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Range")
             .field("range", &self.range)
             .field("head", &self.head)
@@ -1824,7 +1830,7 @@ where
 }
 
 /// An iterator over reference-counted subset of entries of a `SkipList`.
-pub struct RefRange<'a, Q, R, K: 'a, V: 'a>
+pub struct RefRange<'a, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -1837,7 +1843,7 @@ where
     _marker: PhantomData<fn() -> Q>, // covariant over `Q`
 }
 
-unsafe impl<'a, Q, R, K, V> Send for RefRange<'a, Q, R, K, V>
+unsafe impl<Q, R, K, V> Send for RefRange<'_, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -1845,7 +1851,7 @@ where
 {
 }
 
-unsafe impl<'a, Q, R, K, V> Sync for RefRange<'a, Q, R, K, V>
+unsafe impl<Q, R, K, V> Sync for RefRange<'_, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -1853,14 +1859,14 @@ where
 {
 }
 
-impl<'a, Q, R, K, V> fmt::Debug for RefRange<'a, Q, R, K, V>
+impl<Q, R, K, V> fmt::Debug for RefRange<'_, Q, R, K, V>
 where
     K: Ord + Borrow<Q> + fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RefRange")
             .field("range", &self.range)
             .field("head", &self.head)
@@ -1987,7 +1993,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
 }
 
 impl<K, V> fmt::Debug for IntoIter<K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("IntoIter { .. }")
     }
 }

@@ -42,13 +42,13 @@ where
     K: Ord,
 {
     /// Returns the entry with the smallest key.
-    pub fn front(&self) -> Option<Entry<K, V>> {
+    pub fn front(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
         try_pin_loop(|| self.inner.front(guard)).map(Entry::new)
     }
 
     /// Returns the entry with the largest key.
-    pub fn back(&self) -> Option<Entry<K, V>> {
+    pub fn back(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
         try_pin_loop(|| self.inner.back(guard)).map(Entry::new)
     }
@@ -64,7 +64,7 @@ where
     }
 
     /// Returns an entry with the specified `key`.
-    pub fn get<Q>(&self, key: &Q) -> Option<Entry<K, V>>
+    pub fn get<Q>(&self, key: &Q) -> Option<Entry<'_, K, V>>
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
@@ -98,13 +98,13 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
-    pub fn get_or_insert(&self, key: K, value: V) -> Entry<K, V> {
+    pub fn get_or_insert(&self, key: K, value: V) -> Entry<'_, K, V> {
         let guard = &epoch::pin();
         Entry::new(self.inner.get_or_insert(key, value, guard))
     }
 
     /// Returns an iterator over all entries in the map.
-    pub fn iter(&self) -> Iter<K, V> {
+    pub fn iter(&self) -> Iter<'_, K, V> {
         Iter {
             inner: self.inner.ref_iter(),
         }
@@ -132,13 +132,13 @@ where
     ///
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
-    pub fn insert(&self, key: K, value: V) -> Entry<K, V> {
+    pub fn insert(&self, key: K, value: V) -> Entry<'_, K, V> {
         let guard = &epoch::pin();
         Entry::new(self.inner.insert(key, value, guard))
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
-    pub fn remove<Q>(&self, key: &Q) -> Option<Entry<K, V>>
+    pub fn remove<Q>(&self, key: &Q) -> Option<Entry<'_, K, V>>
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
@@ -148,13 +148,13 @@ where
     }
 
     /// Removes an entry from the front of the map.
-    pub fn pop_front(&self) -> Option<Entry<K, V>> {
+    pub fn pop_front(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
         self.inner.pop_front(guard).map(Entry::new)
     }
 
     /// Removes an entry from the back of the map.
-    pub fn pop_back(&self) -> Option<Entry<K, V>> {
+    pub fn pop_back(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
         self.inner.pop_back(guard).map(Entry::new)
     }
@@ -177,7 +177,7 @@ where
     K: Ord + fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("SkipMap { .. }")
     }
 }
@@ -222,7 +222,7 @@ where
 }
 
 /// A reference-counted entry in a map.
-pub struct Entry<'a, K: 'a, V: 'a> {
+pub struct Entry<'a, K, V> {
     inner: ManuallyDrop<base::RefEntry<'a, K, V>>,
 }
 
@@ -249,7 +249,7 @@ impl<'a, K, V> Entry<'a, K, V> {
     }
 }
 
-impl<'a, K, V> Drop for Entry<'a, K, V> {
+impl<K, V> Drop for Entry<'_, K, V> {
     fn drop(&mut self) {
         unsafe {
             ManuallyDrop::into_inner(ptr::read(&mut self.inner)).release_with_pin(epoch::pin);
@@ -286,7 +286,7 @@ where
     }
 }
 
-impl<'a, K, V> Entry<'a, K, V>
+impl<K, V> Entry<'_, K, V>
 where
     K: Ord + Send + 'static,
     V: Send + 'static,
@@ -308,12 +308,12 @@ impl<'a, K, V> Clone for Entry<'a, K, V> {
     }
 }
 
-impl<'a, K, V> fmt::Debug for Entry<'a, K, V>
+impl<K, V> fmt::Debug for Entry<'_, K, V>
 where
     K: fmt::Debug,
     V: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Entry")
             .field(self.key())
             .field(self.value())
@@ -335,13 +335,13 @@ impl<K, V> Iterator for IntoIter<K, V> {
 }
 
 impl<K, V> fmt::Debug for IntoIter<K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("IntoIter { .. }")
     }
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Iter<'a, K: 'a, V: 'a> {
+pub struct Iter<'a, K, V> {
     inner: base::RefIter<'a, K, V>,
 }
 
@@ -367,14 +367,14 @@ where
     }
 }
 
-impl<'a, K, V> fmt::Debug for Iter<'a, K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<K, V> fmt::Debug for Iter<'_, K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Iter { .. }")
     }
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Range<'a, Q, R, K: 'a, V: 'a>
+pub struct Range<'a, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -409,14 +409,14 @@ where
     }
 }
 
-impl<'a, Q, R, K, V> fmt::Debug for Range<'a, Q, R, K, V>
+impl<Q, R, K, V> fmt::Debug for Range<'_, Q, R, K, V>
 where
     K: Ord + Borrow<Q> + fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Range")
             .field("range", &self.inner.range)
             .field("head", &self.inner.head)

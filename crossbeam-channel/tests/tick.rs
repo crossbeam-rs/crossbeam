@@ -1,16 +1,11 @@
 //! Tests for the tick channel flavor.
 
-#[macro_use]
-extern crate crossbeam_channel;
-extern crate crossbeam_utils;
-extern crate rand;
-
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{after, tick, Select, TryRecvError};
+use crossbeam_channel::{after, select, tick, Select, TryRecvError};
 use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {

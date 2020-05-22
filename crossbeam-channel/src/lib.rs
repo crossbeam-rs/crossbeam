@@ -122,8 +122,6 @@
 //! It's also possible to share senders and receivers by reference:
 //!
 //! ```
-//! # extern crate crossbeam_channel;
-//! # extern crate crossbeam_utils;
 //! # fn main() {
 //! use std::thread;
 //! use crossbeam_channel::bounded;
@@ -271,12 +269,10 @@
 //! An example of receiving a message from two channels:
 //!
 //! ```
-//! # #[macro_use]
-//! # extern crate crossbeam_channel;
 //! # fn main() {
 //! use std::thread;
 //! use std::time::Duration;
-//! use crossbeam_channel::unbounded;
+//! use crossbeam_channel::{select, unbounded};
 //!
 //! let (s1, r1) = unbounded();
 //! let (s2, r2) = unbounded();
@@ -310,11 +306,9 @@
 //! An example that prints elapsed time every 50 milliseconds for the duration of 1 second:
 //!
 //! ```
-//! # #[macro_use]
-//! # extern crate crossbeam_channel;
 //! # fn main() {
 //! use std::time::{Duration, Instant};
-//! use crossbeam_channel::{after, tick};
+//! use crossbeam_channel::{after, select, tick};
 //!
 //! let start = Instant::now();
 //! let ticker = tick(Duration::from_millis(50));
@@ -344,17 +338,13 @@
 //! [`Sender`]: struct.Sender.html
 //! [`Receiver`]: struct.Receiver.html
 
-#![warn(missing_docs)]
-#![warn(missing_debug_implementations)]
+#![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[macro_use]
-extern crate cfg_if;
+use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(feature = "std")] {
-        extern crate crossbeam_utils;
-
         mod channel;
         mod context;
         mod counter;

@@ -1,6 +1,3 @@
-extern crate crossbeam;
-extern crate lockfree;
-
 use lockfree::channel;
 
 mod message;

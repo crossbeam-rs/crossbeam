@@ -1,5 +1,3 @@
-extern crate crossbeam;
-
 use std::sync::mpsc;
 
 mod message;

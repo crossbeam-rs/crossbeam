@@ -63,7 +63,7 @@ impl<T> Queue<T> {
     /// Attempts to atomically place `n` into the `next` pointer of `onto`, and returns `true` on
     /// success. The queue's `tail` pointer may be updated.
     #[inline(always)]
-    fn push_internal(&self, onto: Shared<Node<T>>, new: Shared<Node<T>>, guard: &Guard) -> bool {
+    fn push_internal(&self, onto: Shared<'_, Node<T>>, new: Shared<'_, Node<T>>, guard: &Guard) -> bool {
         // is `onto` the actual tail?
         let o = unsafe { onto.deref() };
         let next = o.next.load(Acquire, guard);

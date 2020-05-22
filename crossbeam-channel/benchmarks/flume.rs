@@ -1,5 +1,3 @@
-extern crate crossbeam;
-
 mod message;
 
 const MESSAGES: usize = 5_000_000;

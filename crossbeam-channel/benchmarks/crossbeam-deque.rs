@@ -1,7 +1,4 @@
-extern crate crossbeam;
-extern crate crossbeam_deque as deque;
-
-use crate::deque::{Steal, Worker};
+use crossbeam_deque::{Steal, Worker};
 use std::thread;
 
 mod message;

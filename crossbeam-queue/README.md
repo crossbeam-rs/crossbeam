@@ -29,12 +29,6 @@ Add this to your `Cargo.toml`:
 crossbeam-queue = "0.2"
 ```
 
-Next, add this to your crate:
-
-```rust
-extern crate crossbeam_queue;
-```
-
 ## Compatibility
 
 Crossbeam Queue supports stable Rust releases going back at least six months,

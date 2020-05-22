@@ -23,7 +23,7 @@ pub struct Deferred {
 }
 
 impl fmt::Debug for Deferred {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         f.pad("Deferred { .. }")
     }
 }

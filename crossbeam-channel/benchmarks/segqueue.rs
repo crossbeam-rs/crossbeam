@@ -1,5 +1,3 @@
-extern crate crossbeam;
-
 use crossbeam::queue::SegQueue;
 use std::thread;
 

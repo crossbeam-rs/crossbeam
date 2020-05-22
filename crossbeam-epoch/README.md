@@ -31,12 +31,6 @@ Add this to your `Cargo.toml`:
 crossbeam-epoch = "0.8"
 ```
 
-Next, add this to your crate:
-
-```rust
-extern crate crossbeam_epoch as epoch;
-```
-
 ## Compatibility
 
 Crossbeam Epoch supports stable Rust releases going back at least six months,

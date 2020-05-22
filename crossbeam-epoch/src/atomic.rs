@@ -8,8 +8,8 @@ use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crossbeam_utils::atomic::AtomicConsume;
 use crate::guard::Guard;
+use crossbeam_utils::atomic::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
 /// appropriate ordering for the failure case.
@@ -24,7 +24,7 @@ fn strongest_failure_ordering(ord: Ordering) -> Ordering {
 }
 
 /// The error returned on failed compare-and-set operation.
-pub struct CompareAndSetError<'g, T: 'g, P: Pointer<T>> {
+pub struct CompareAndSetError<'g, T, P: Pointer<T>> {
     /// The value in the atomic pointer at the time of the failed operation.
     pub current: Shared<'g, T>,
 
@@ -33,7 +33,7 @@ pub struct CompareAndSetError<'g, T: 'g, P: Pointer<T>> {
 }
 
 impl<'g, T: 'g, P: Pointer<T> + fmt::Debug> fmt::Debug for CompareAndSetError<'g, T, P> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CompareAndSetError")
             .field("current", &self.current)
             .field("new", &self.new)
@@ -287,7 +287,7 @@ impl<T> Atomic<T> {
     /// ```
     pub fn compare_and_set<'g, O, P>(
         &self,
-        current: Shared<T>,
+        current: Shared<'_, T>,
         new: P,
         ord: O,
         _: &'g Guard,
@@ -357,7 +357,7 @@ impl<T> Atomic<T> {
     /// ```
     pub fn compare_and_set_weak<'g, O, P>(
         &self,
-        current: Shared<T>,
+        current: Shared<'_, T>,
         new: P,
         ord: O,
         _: &'g Guard,
@@ -493,7 +493,7 @@ impl<T> Atomic<T> {
 }
 
 impl<T> fmt::Debug for Atomic<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, tag) = decompose_data::<T>(data);
 
@@ -505,7 +505,7 @@ impl<T> fmt::Debug for Atomic<T> {
 }
 
 impl<T> fmt::Pointer for Atomic<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, _) = decompose_data::<T>(data);
         fmt::Pointer::fmt(&raw, f)
@@ -745,7 +745,7 @@ impl<T> Drop for Owned<T> {
 }
 
 impl<T> fmt::Debug for Owned<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (raw, tag) = decompose_data::<T>(self.data);
 
         f.debug_struct("Owned")
@@ -837,7 +837,7 @@ pub struct Shared<'g, T: 'g> {
     _marker: PhantomData<(&'g (), *const T)>,
 }
 
-impl<'g, T> Clone for Shared<'g, T> {
+impl<T> Clone for Shared<'_, T> {
     fn clone(&self) -> Self {
         Shared {
             data: self.data,
@@ -846,9 +846,9 @@ impl<'g, T> Clone for Shared<'g, T> {
     }
 }
 
-impl<'g, T> Copy for Shared<'g, T> {}
+impl<T> Copy for Shared<'_, T> {}
 
-impl<'g, T> Pointer<T> for Shared<'g, T> {
+impl<T> Pointer<T> for Shared<'_, T> {
     #[inline]
     fn into_usize(self) -> usize {
         self.data
@@ -1103,7 +1103,7 @@ impl<'g, T> Shared<'g, T> {
     }
 }
 
-impl<'g, T> From<*const T> for Shared<'g, T> {
+impl<T> From<*const T> for Shared<'_, T> {
     /// Returns a new pointer pointing to `raw`.
     ///
     /// # Panics
@@ -1130,7 +1130,7 @@ impl<'g, T> PartialEq<Shared<'g, T>> for Shared<'g, T> {
     }
 }
 
-impl<'g, T> Eq for Shared<'g, T> {}
+impl<T> Eq for Shared<'_, T> {}
 
 impl<'g, T> PartialOrd<Shared<'g, T>> for Shared<'g, T> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
@@ -1138,14 +1138,14 @@ impl<'g, T> PartialOrd<Shared<'g, T>> for Shared<'g, T> {
     }
 }
 
-impl<'g, T> Ord for Shared<'g, T> {
+impl<T> Ord for Shared<'_, T> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.data.cmp(&other.data)
     }
 }
 
-impl<'g, T> fmt::Debug for Shared<'g, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<T> fmt::Debug for Shared<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (raw, tag) = decompose_data::<T>(self.data);
 
         f.debug_struct("Shared")
@@ -1155,13 +1155,13 @@ impl<'g, T> fmt::Debug for Shared<'g, T> {
     }
 }
 
-impl<'g, T> fmt::Pointer for Shared<'g, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<T> fmt::Pointer for Shared<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Pointer::fmt(&self.as_raw(), f)
     }
 }
 
-impl<'g, T> Default for Shared<'g, T> {
+impl<T> Default for Shared<'_, T> {
     fn default() -> Self {
         Shared::null()
     }

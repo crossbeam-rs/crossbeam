@@ -9,9 +9,6 @@
 //!   - https://golang.org/LICENSE
 //!   - https://golang.org/PATENTS
 
-#[macro_use]
-extern crate crossbeam_channel;
-
 use std::any::Any;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -19,7 +16,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, tick, Receiver, Select, Sender};
+use crossbeam_channel::{bounded, select, tick, Receiver, Select, Sender};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

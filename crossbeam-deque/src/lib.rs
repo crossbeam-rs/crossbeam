@@ -86,17 +86,15 @@
 //! [`steal_batch()`]: struct.Stealer.html#method.steal_batch
 //! [`steal_batch_and_pop()`]: struct.Stealer.html#method.steal_batch_and_pop
 
-#![warn(missing_docs)]
-#![warn(missing_debug_implementations)]
+#![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[macro_use]
-extern crate cfg_if;
+use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(feature = "std")] {
-        extern crate crossbeam_epoch as epoch;
-        extern crate crossbeam_utils as utils;
+        use crossbeam_epoch as epoch;
+        use crossbeam_utils as utils;
 
         mod deque;
         pub use crate::deque::{Injector, Steal, Stealer, Worker};

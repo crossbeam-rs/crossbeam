@@ -25,12 +25,6 @@ Add this to your `Cargo.toml`:
 [dependencies]
 crossbeam-skiplist = "0.1"
 ```
-
-Next, add this to your crate:
-
-```rust
-extern crate crossbeam_skiplist;
-```
 -->
 
 ## Compatibility

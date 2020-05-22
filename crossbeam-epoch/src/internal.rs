@@ -43,6 +43,7 @@ use core::sync::atomic::Ordering;
 use core::{fmt, ptr};
 
 use crossbeam_utils::CachePadded;
+use memoffset::offset_of;
 
 use crate::atomic::{Owned, Shared};
 use crate::collector::{Collector, LocalHandle};
@@ -205,7 +206,7 @@ impl Drop for Bag {
 
 // can't #[derive(Debug)] because Debug is not implemented for arrays 64 items long
 impl fmt::Debug for Bag {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Bag")
             .field("deferreds", &&self.deferreds[..self.len])
             .finish()

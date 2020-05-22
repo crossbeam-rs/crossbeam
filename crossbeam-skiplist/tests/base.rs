@@ -1,10 +1,8 @@
-extern crate crossbeam_epoch as epoch;
-extern crate crossbeam_skiplist as skiplist;
-
 use std::ops::Bound;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::skiplist::SkipList;
+use crossbeam_epoch as epoch;
+use crossbeam_skiplist::SkipList;
 
 #[test]
 fn new() {

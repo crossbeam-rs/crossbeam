@@ -1,5 +1,3 @@
-extern crate crossbeam_utils;
-
 use std::thread::sleep;
 use std::time::Duration;
 use std::u32;

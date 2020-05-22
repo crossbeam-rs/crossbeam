@@ -50,7 +50,7 @@ impl Clone for Collector {
 }
 
 impl fmt::Debug for Collector {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Collector { .. }")
     }
 }
@@ -98,7 +98,7 @@ impl Drop for LocalHandle {
 }
 
 impl fmt::Debug for LocalHandle {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("LocalHandle { .. }")
     }
 }

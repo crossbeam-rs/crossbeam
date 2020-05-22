@@ -1,13 +1,9 @@
 //! Tests for the never channel flavor.
 
-#[macro_use]
-extern crate crossbeam_channel;
-extern crate rand;
-
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{never, tick, unbounded};
+use crossbeam_channel::{never, select, tick, unbounded};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

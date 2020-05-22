@@ -1,6 +1,3 @@
-extern crate crossbeam;
-extern crate mpmc;
-
 use std::thread;
 
 mod message;

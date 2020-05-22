@@ -1,6 +1,5 @@
 #![feature(test)]
 
-extern crate crossbeam_utils;
 extern crate test;
 
 use std::sync::Barrier;

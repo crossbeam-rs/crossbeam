@@ -125,7 +125,7 @@ impl<T> DerefMut for CachePadded<T> {
 }
 
 impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CachePadded")
             .field("value", &self.value)
             .finish()

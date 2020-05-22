@@ -1,6 +1,4 @@
-extern crate crossbeam_skiplist as skiplist;
-
-use crate::skiplist::SkipMap;
+use crossbeam_skiplist::SkipMap;
 
 #[test]
 fn smoke() {
