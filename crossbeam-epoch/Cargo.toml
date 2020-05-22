@@ -37,8 +37,8 @@ nightly = ["crossbeam-utils/nightly"]
 sanitize = [] # Makes it more likely to trigger any potential data races.
 
 [dependencies]
-cfg-if = "0.1.2"
-memoffset = "0.5"
+cfg-if = "0.1.10"
+memoffset = "0.5.1"
 
 [dependencies.crossbeam-utils]
 version = "0.7"
