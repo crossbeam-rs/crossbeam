@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_abort() {
-        static LK: SeqLock = SeqLock::INIT;
+        static LK: SeqLock = SeqLock::init();
         let before = LK.optimistic_read().unwrap();
         {
             let guard = LK.write();
