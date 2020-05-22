@@ -52,6 +52,17 @@ struct Inner {
     count: Mutex<usize>,
 }
 
+impl Default for WaitGroup {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                cvar: Condvar::new(),
+                count: Mutex::new(1),
+            }),
+        }
+    }
+}
+
 impl WaitGroup {
     /// Creates a new wait group and returns the single reference to it.
     ///
@@ -62,13 +73,8 @@ impl WaitGroup {
     ///
     /// let wg = WaitGroup::new();
     /// ```
-    pub fn new() -> WaitGroup {
-        WaitGroup {
-            inner: Arc::new(Inner {
-                cvar: Condvar::new(),
-                count: Mutex::new(1),
-            }),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Drops this reference and waits until all other references are dropped.

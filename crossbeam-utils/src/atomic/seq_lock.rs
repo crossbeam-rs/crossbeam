@@ -13,9 +13,11 @@ pub struct SeqLock {
 }
 
 impl SeqLock {
-    pub const INIT: Self = Self {
-        state: AtomicUsize::new(0),
-    };
+    pub const fn init() -> Self {
+        Self {
+            state: AtomicUsize::new(0),
+        }
+    }
 
     /// If not locked, returns the current stamp.
     ///

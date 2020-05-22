@@ -4,6 +4,8 @@ use core::mem;
 use core::ptr;
 use core::sync::atomic::{self, AtomicBool, Ordering};
 
+use arr_macro::arr;
+
 #[cfg(feature = "std")]
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
@@ -638,14 +640,7 @@ fn lock(addr: usize) -> &'static SeqLock {
     // In order to protect from such cases, we simply choose a large prime number for `LEN`.
     const LEN: usize = 97;
 
-    const L: SeqLock = SeqLock::INIT;
-
-    static LOCKS: [SeqLock; LEN] = [
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L,
-    ];
+    static LOCKS: [SeqLock; LEN] = arr![SeqLock::init(); 97];
 
     // If the modulus is a constant number, the compiler will use crazy math to transform this into
     // a sequence of cheap arithmetic operations rather than using the slow modulo instruction.

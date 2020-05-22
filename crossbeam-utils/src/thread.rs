@@ -166,18 +166,15 @@ where
     wg.wait();
 
     // Join all remaining spawned threads.
-    let panics: Vec<_> = {
-        let mut handles = scope.handles.lock().unwrap();
-
+    let panics: Vec<_> = scope
+        .handles
+        .lock()
+        .unwrap()
         // Filter handles that haven't been joined, join them, and collect errors.
-        let panics = handles
-            .drain(..)
-            .filter_map(|handle| handle.lock().unwrap().take())
-            .filter_map(|handle| handle.join().err())
-            .collect();
-
-        panics
-    };
+        .drain(..)
+        .filter_map(|handle| handle.lock().unwrap().take())
+        .filter_map(|handle| handle.join().err())
+        .collect();
 
     // If `f` has panicked, resume unwinding.
     // If any of the child threads have panicked, return the panic errors.
