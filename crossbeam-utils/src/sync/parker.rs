@@ -150,6 +150,44 @@ impl Parker {
     pub fn unparker(&self) -> &Unparker {
         &self.unparker
     }
+
+    /// Converts a `Parker` into a raw pointer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::sync::Parker;
+    ///
+    /// let p = Parker::new();
+    /// let raw = Parker::into_raw(p);
+    /// ```
+    pub fn into_raw(this: Parker) -> *const () {
+        Unparker::into_raw(this.unparker)
+    }
+
+    /// Converts a raw pointer into a `Parker`.
+    ///
+    /// # Safety
+    ///
+    /// This method is safe to use only with pointers returned by [`Parker::into_raw`].
+    ///
+    /// [`Parker::into_raw`]: struct.Parker.html#method.into_raw
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::sync::Parker;
+    ///
+    /// let p = Parker::new();
+    /// let raw = Parker::into_raw(p);
+    /// let p = unsafe { Parker::from_raw(raw) };
+    /// ```
+    pub unsafe fn from_raw(ptr: *const ()) -> Parker {
+        Parker {
+            unparker: Unparker::from_raw(ptr),
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl fmt::Debug for Parker {
@@ -198,6 +236,46 @@ impl Unparker {
     /// [`park_timeout`]: struct.Parker.html#method.park_timeout
     pub fn unpark(&self) {
         self.inner.unpark()
+    }
+
+    /// Converts an `Unparker` into a raw pointer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::sync::{Parker, Unparker};
+    ///
+    /// let p = Parker::new();
+    /// let u = p.unparker().clone();
+    /// let raw = Unparker::into_raw(u);
+    /// ```
+    pub fn into_raw(this: Unparker) -> *const () {
+        Arc::into_raw(this.inner) as *const ()
+    }
+
+    /// Converts a raw pointer into an `Unparker`.
+    ///
+    /// # Safety
+    ///
+    /// This method is safe to use only with pointers returned by [`Unparker::into_raw`].
+    ///
+    /// [`Unparker::into_raw`]: struct.Unparker.html#method.into_raw
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::sync::{Parker, Unparker};
+    ///
+    /// let p = Parker::new();
+    /// let u = p.unparker().clone();
+    ///
+    /// let raw = Unparker::into_raw(u);
+    /// let u = unsafe { Unparker::from_raw(raw) };
+    /// ```
+    pub unsafe fn from_raw(ptr: *const ()) -> Unparker {
+        Unparker {
+            inner: Arc::from_raw(ptr as *const Inner),
+        }
     }
 }
 
