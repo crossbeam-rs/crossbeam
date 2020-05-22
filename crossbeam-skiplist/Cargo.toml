@@ -17,9 +17,20 @@ categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 
 [features]
 default = ["std"]
+
+# Enable to use APIs that require `std`.
+# This is enabled by default.
+std = ["alloc", "crossbeam-epoch/std", "crossbeam-utils/std"]
+
+# Enable to use APIs that require `alloc`.
+# This is enabled by default and also enabled if the `std` feature is enabled.
+alloc = ["crossbeam-epoch/alloc"]
+
+# Enable to use of unstable functionality.
+# This is disabled by default and requires recent nightly compiler.
+# Note that this is outside of the normal semver guarantees and minor versions
+# of crossbeam may make breaking changes to them at any time.
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
-std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
-alloc = ["crossbeam-epoch/alloc", "crossbeam-utils/alloc"]
 
 [dependencies]
 cfg-if = "0.1.2"
@@ -28,6 +39,7 @@ cfg-if = "0.1.2"
 version = "0.8"
 path = "../crossbeam-epoch"
 default-features = false
+optional = true
 
 [dependencies.crossbeam-utils]
 version = "0.7"

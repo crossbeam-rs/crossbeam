@@ -21,15 +21,27 @@ travis-ci = { repository = "crossbeam-rs/crossbeam" }
 
 [features]
 default = ["std"]
-nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
+
+# Enable to use APIs that require `std`.
+# This is enabled by default.
 std = [
-  "crossbeam-channel",
-  "crossbeam-deque",
+  "alloc",
+  "crossbeam-channel/std",
+  "crossbeam-deque/std",
   "crossbeam-epoch/std",
   "crossbeam-queue/std",
   "crossbeam-utils/std",
 ]
-alloc = ["crossbeam-epoch/alloc", "crossbeam-utils/alloc", "crossbeam-queue/alloc"]
+
+# Enable to use APIs that require `alloc`.
+# This is enabled by default and also enabled if the `std` feature is enabled.
+alloc = ["crossbeam-epoch/alloc", "crossbeam-queue/alloc"]
+
+# Enable to use of unstable functionality.
+# This is disabled by default and requires recent nightly compiler.
+# Note that this is outside of the normal semver guarantees and minor versions
+# of crossbeam may make breaking changes to them at any time.
+nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
 
 [dependencies]
 cfg-if = "0.1.2"
@@ -37,17 +49,20 @@ cfg-if = "0.1.2"
 [dependencies.crossbeam-channel]
 version = "0.4"
 path = "./crossbeam-channel"
+default-features = false
 optional = true
 
 [dependencies.crossbeam-deque]
 version = "0.7.0"
 path = "./crossbeam-deque"
+default-features = false
 optional = true
 
 [dependencies.crossbeam-epoch]
 version = "0.8"
 path = "./crossbeam-epoch"
 default-features = false
+optional = true
 
 [dependencies.crossbeam-queue]
 version = "0.2"

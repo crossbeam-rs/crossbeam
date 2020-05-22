@@ -17,9 +17,16 @@ categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 
 [features]
 default = ["std"]
-nightly = []
+
+# Enable to use APIs that require `std`.
+# This is enabled by default.
 std = ["lazy_static"]
-alloc = []
+
+# Enable to use of unstable functionality.
+# This is disabled by default and requires recent nightly compiler.
+# Note that this is outside of the normal semver guarantees and minor versions
+# of crossbeam may make breaking changes to them at any time.
+nightly = []
 
 [dependencies]
 cfg-if = "0.1.2"

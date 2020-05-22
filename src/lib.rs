@@ -49,22 +49,10 @@
 
 #[macro_use]
 extern crate cfg_if;
+#[cfg(feature = "alloc")]
+extern crate alloc;
 #[cfg(feature = "std")]
 extern crate core;
-
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
-    } else if #[cfg(feature = "std")] {
-        extern crate std as alloc;
-    }
-}
-
-mod _epoch {
-    pub extern crate crossbeam_epoch;
-}
-#[doc(inline)]
-pub use _epoch::crossbeam_epoch as epoch;
 
 extern crate crossbeam_utils;
 
@@ -78,7 +66,13 @@ pub mod utils {
 }
 
 cfg_if! {
-    if #[cfg(any(feature = "std", feature = "alloc"))] {
+    if #[cfg(feature = "alloc")] {
+        mod _epoch {
+            pub extern crate crossbeam_epoch;
+        }
+        #[doc(inline)]
+        pub use _epoch::crossbeam_epoch as epoch;
+
         mod _queue {
             pub extern crate crossbeam_queue;
         }
