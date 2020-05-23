@@ -13,7 +13,7 @@ pub struct SeqLock {
 }
 
 impl SeqLock {
-    pub const fn init() -> Self {
+    pub const fn new() -> Self {
         Self {
             state: AtomicUsize::new(0),
         }
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_abort() {
-        static LK: SeqLock = SeqLock::init();
+        static LK: SeqLock = SeqLock::new();
         let before = LK.optimistic_read().unwrap();
         {
             let guard = LK.write();
