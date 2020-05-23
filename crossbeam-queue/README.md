@@ -2,8 +2,8 @@
 
 [![Build Status](https://github.com/crossbeam-rs/crossbeam/workflows/CI/badge.svg)](
 https://github.com/crossbeam-rs/crossbeam/actions)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](
-https://github.com/crossbeam-rs/crossbeam-queue/tree/master/src)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](
+https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-queue#license)
 [![Cargo](https://img.shields.io/crates/v/crossbeam-queue.svg)](
 https://crates.io/crates/crossbeam-queue)
 [![Documentation](https://docs.rs/crossbeam-queue/badge.svg)](
