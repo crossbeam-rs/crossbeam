@@ -5,7 +5,6 @@ use core::fmt;
 use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Deref, DerefMut};
-use core::ptr;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::guard::Guard;
@@ -233,7 +232,7 @@ impl<T> Atomic<T> {
     /// a.store(Shared::null(), SeqCst);
     /// a.store(Owned::new(1234), SeqCst);
     /// ```
-    pub fn store<'g, P: Pointer<T>>(&self, new: P, ord: Ordering) {
+    pub fn store<P: Pointer<T>>(&self, new: P, ord: Ordering) {
         self.data.store(new.into_usize(), ord);
     }
 
@@ -1056,7 +1055,7 @@ impl<'g, T> Shared<'g, T> {
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
         debug_assert!(
-            self.as_raw() != ptr::null(),
+            !self.as_raw().is_null(),
             "converting a null `Shared` into `Owned`"
         );
         Owned::from_usize(self.data)

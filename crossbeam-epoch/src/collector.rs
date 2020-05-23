@@ -26,12 +26,18 @@ pub struct Collector {
 unsafe impl Send for Collector {}
 unsafe impl Sync for Collector {}
 
+impl Default for Collector {
+    fn default() -> Self {
+        Self {
+            global: Arc::new(Global::new()),
+        }
+    }
+}
+
 impl Collector {
     /// Creates a new collector.
     pub fn new() -> Self {
-        Collector {
-            global: Arc::new(Global::new()),
-        }
+        Self::default()
     }
 
     /// Registers a new handle for the collector.

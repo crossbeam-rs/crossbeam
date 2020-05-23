@@ -18,10 +18,12 @@ pub struct SeqLock {
 }
 
 impl SeqLock {
-    pub const INIT: Self = Self {
-        state_hi: AtomicUsize::new(0),
-        state_lo: AtomicUsize::new(0),
-    };
+    pub const fn new() -> Self {
+        Self {
+            state_hi: AtomicUsize::new(0),
+            state_lo: AtomicUsize::new(0),
+        }
+    }
 
     /// If not locked, returns the current stamp.
     ///
@@ -130,5 +132,22 @@ impl Drop for SeqLockWriteGuard {
         //
         // Release ordering for synchronizing with `optimistic_read`.
         self.lock.state_lo.store(state_lo, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SeqLock;
+
+    #[test]
+    fn test_abort() {
+        static LK: SeqLock = SeqLock::new();
+        let before = LK.optimistic_read().unwrap();
+        {
+            let guard = LK.write();
+            guard.abort();
+        }
+        let after = LK.optimistic_read().unwrap();
+        assert_eq!(before, after, "aborted write does not update the stamp");
     }
 }

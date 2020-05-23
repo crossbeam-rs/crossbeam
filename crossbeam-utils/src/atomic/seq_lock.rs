@@ -13,9 +13,11 @@ pub struct SeqLock {
 }
 
 impl SeqLock {
-    pub const INIT: Self = Self {
-        state: AtomicUsize::new(0),
-    };
+    pub const fn new() -> Self {
+        Self {
+            state: AtomicUsize::new(0),
+        }
+    }
 
     /// If not locked, returns the current stamp.
     ///
@@ -98,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_abort() {
-        static LK: SeqLock = SeqLock::INIT;
+        static LK: SeqLock = SeqLock::new();
         let before = LK.optimistic_read().unwrap();
         {
             let guard = LK.write();

@@ -58,6 +58,21 @@ pub struct Parker {
 
 unsafe impl Send for Parker {}
 
+impl Default for Parker {
+    fn default() -> Self {
+        Self {
+            unparker: Unparker {
+                inner: Arc::new(Inner {
+                    state: AtomicUsize::new(EMPTY),
+                    lock: Mutex::new(()),
+                    cvar: Condvar::new(),
+                }),
+            },
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl Parker {
     /// Creates a new `Parker`.
     ///
@@ -70,16 +85,7 @@ impl Parker {
     /// ```
     ///
     pub fn new() -> Parker {
-        Parker {
-            unparker: Unparker {
-                inner: Arc::new(Inner {
-                    state: AtomicUsize::new(EMPTY),
-                    lock: Mutex::new(()),
-                    cvar: Condvar::new(),
-                }),
-            },
-            _marker: PhantomData,
-        }
+        Self::default()
     }
 
     /// Blocks the current thread until the token is made available.
@@ -346,10 +352,12 @@ impl Inner {
                     // Block the current thread on the conditional variable.
                     m = self.cvar.wait(m).unwrap();
 
-                    match self.state.compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst) {
-                        Ok(_) => return, // got a notification
-                        Err(_) => {}     // spurious wakeup, go back to sleep
+                    if self.state.compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst).is_ok() {
+                        // got a notification
+                        return;
                     }
+
+                    // spurious wakeup, go back to sleep
                 }
             }
             Some(timeout) => {
