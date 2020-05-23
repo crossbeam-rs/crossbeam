@@ -1,7 +1,7 @@
 # Crossbeam Queue
 
-[![Build Status](https://travis-ci.org/crossbeam-rs/crossbeam.svg?branch=master)](
-https://travis-ci.org/crossbeam-rs/crossbeam)
+[![Build Status](https://github.com/crossbeam-rs/crossbeam/workflows/CI/badge.svg)](
+https://github.com/crossbeam-rs/crossbeam/actions)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](
 https://github.com/crossbeam-rs/crossbeam-queue/tree/master/src)
 [![Cargo](https://img.shields.io/crates/v/crossbeam-queue.svg)](
