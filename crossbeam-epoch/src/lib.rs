@@ -57,9 +57,6 @@
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
-#![cfg_attr(feature = "nightly", feature(const_fn))]
-// TODO(@jeehoonkang): needs to be removed
-#![allow(clippy::missing_safety_doc)]
 
 use cfg_if::cfg_if;
 
