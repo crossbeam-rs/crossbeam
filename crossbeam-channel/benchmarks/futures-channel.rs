@@ -1,6 +1,3 @@
-extern crate crossbeam;
-extern crate futures;
-
 use futures::channel::mpsc;
 use futures::executor::ThreadPool;
 use futures::prelude::*;

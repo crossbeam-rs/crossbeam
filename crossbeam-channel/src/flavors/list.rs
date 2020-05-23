@@ -9,10 +9,10 @@ use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use context::Context;
-use err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use select::{Operation, SelectHandle, Selected, Token};
-use waker::SyncWaker;
+use crate::context::Context;
+use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::select::{Operation, SelectHandle, Selected, Token};
+use crate::waker::SyncWaker;
 
 // TODO(stjepang): Once we bump the minimum required Rust version to 1.28 or newer, re-apply the
 // following changes by @kleimkuhler:
@@ -183,12 +183,12 @@ impl<T> Channel<T> {
     }
 
     /// Returns a receiver handle to the channel.
-    pub fn receiver(&self) -> Receiver<T> {
+    pub fn receiver(&self) -> Receiver<'_, T> {
         Receiver(self)
     }
 
     /// Returns a sender handle to the channel.
-    pub fn sender(&self) -> Sender<T> {
+    pub fn sender(&self) -> Sender<'_, T> {
         Sender(self)
     }
 
@@ -597,12 +597,12 @@ impl<T> Drop for Channel<T> {
 }
 
 /// Receiver handle to a channel.
-pub struct Receiver<'a, T: 'a>(&'a Channel<T>);
+pub struct Receiver<'a, T>(&'a Channel<T>);
 
 /// Sender handle to a channel.
-pub struct Sender<'a, T: 'a>(&'a Channel<T>);
+pub struct Sender<'a, T>(&'a Channel<T>);
 
-impl<'a, T> SelectHandle for Receiver<'a, T> {
+impl<T> SelectHandle for Receiver<'_, T> {
     fn try_select(&self, token: &mut Token) -> bool {
         self.0.start_recv(token)
     }
@@ -638,7 +638,7 @@ impl<'a, T> SelectHandle for Receiver<'a, T> {
     }
 }
 
-impl<'a, T> SelectHandle for Sender<'a, T> {
+impl<T> SelectHandle for Sender<'_, T> {
     fn try_select(&self, token: &mut Token) -> bool {
         self.0.start_send(token)
     }

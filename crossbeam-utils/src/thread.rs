@@ -121,7 +121,8 @@ use std::panic;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use sync::WaitGroup;
+use crate::sync::WaitGroup;
+use cfg_if::cfg_if;
 
 type SharedVec<T> = Arc<Mutex<Vec<T>>>;
 type SharedOption<T> = Arc<Mutex<Option<T>>>;
@@ -205,7 +206,7 @@ pub struct Scope<'env> {
     _marker: PhantomData<&'env mut &'env ()>,
 }
 
-unsafe impl<'env> Sync for Scope<'env> {}
+unsafe impl Sync for Scope<'_> {}
 
 impl<'env> Scope<'env> {
     /// Spawns a scoped thread.
@@ -268,8 +269,8 @@ impl<'env> Scope<'env> {
     }
 }
 
-impl<'env> fmt::Debug for Scope<'env> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Debug for Scope<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Scope { .. }")
     }
 }
@@ -308,7 +309,7 @@ impl<'env> fmt::Debug for Scope<'env> {
 /// [naming-threads]: https://doc.rust-lang.org/std/thread/index.html#naming-threads
 /// [stack-size]: https://doc.rust-lang.org/std/thread/index.html#stack-size
 #[derive(Debug)]
-pub struct ScopedThreadBuilder<'scope, 'env: 'scope> {
+pub struct ScopedThreadBuilder<'scope, 'env> {
     scope: &'scope Scope<'env>,
     builder: thread::Builder,
 }
@@ -448,8 +449,8 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     }
 }
 
-unsafe impl<'scope, T> Send for ScopedJoinHandle<'scope, T> {}
-unsafe impl<'scope, T> Sync for ScopedJoinHandle<'scope, T> {}
+unsafe impl<T> Send for ScopedJoinHandle<'_, T> {}
+unsafe impl<T> Sync for ScopedJoinHandle<'_, T> {}
 
 /// A handle that can be used to join its scoped thread.
 pub struct ScopedJoinHandle<'scope, T> {
@@ -466,7 +467,7 @@ pub struct ScopedJoinHandle<'scope, T> {
     _marker: PhantomData<&'scope ()>,
 }
 
-impl<'scope, T> ScopedJoinHandle<'scope, T> {
+impl<T> ScopedJoinHandle<'_, T> {
     /// Waits for the thread to finish and returns its result.
     ///
     /// If the child thread panics, an error is returned.
@@ -526,7 +527,7 @@ cfg_if! {
     if #[cfg(unix)] {
         use std::os::unix::thread::{JoinHandleExt, RawPthread};
 
-        impl<'scope, T> JoinHandleExt for ScopedJoinHandle<'scope, T> {
+        impl<T> JoinHandleExt for ScopedJoinHandle<'_, T> {
             fn as_pthread_t(&self) -> RawPthread {
                 // Borrow the handle. The handle will surely be available because the root scope waits
                 // for nested scopes before joining remaining threads.
@@ -540,7 +541,7 @@ cfg_if! {
     } else if #[cfg(windows)] {
         use std::os::windows::io::{AsRawHandle, IntoRawHandle, RawHandle};
 
-        impl<'scope, T> AsRawHandle for ScopedJoinHandle<'scope, T> {
+        impl<T> AsRawHandle for ScopedJoinHandle<'_, T> {
             fn as_raw_handle(&self) -> RawHandle {
                 // Borrow the handle. The handle will surely be available because the root scope waits
                 // for nested scopes before joining remaining threads.
@@ -550,7 +551,7 @@ cfg_if! {
         }
 
         #[cfg(windows)]
-        impl<'scope, T> IntoRawHandle for ScopedJoinHandle<'scope, T> {
+        impl<T> IntoRawHandle for ScopedJoinHandle<'_, T> {
             fn into_raw_handle(self) -> RawHandle {
                 self.as_raw_handle()
             }
@@ -558,8 +559,8 @@ cfg_if! {
     }
 }
 
-impl<'scope, T> fmt::Debug for ScopedJoinHandle<'scope, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<T> fmt::Debug for ScopedJoinHandle<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("ScopedJoinHandle { .. }")
     }
 }

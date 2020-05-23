@@ -3,9 +3,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, ThreadId};
 
-use context::Context;
-use select::{Operation, Selected};
-use utils::Spinlock;
+use crate::context::Context;
+use crate::select::{Operation, Selected};
+use crate::utils::Spinlock;
 
 /// Represents a thread blocked on a specific channel operation.
 pub struct Entry {

@@ -8,8 +8,8 @@ use std::ptr;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use epoch::{Atomic, Owned};
-use utils::{Backoff, CachePadded};
+use crate::epoch::{self, Atomic, Owned};
+use crate::utils::{Backoff, CachePadded};
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;
@@ -532,7 +532,7 @@ impl<T> Worker<T> {
 }
 
 impl<T> fmt::Debug for Worker<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Worker { .. }")
     }
 }
@@ -1040,7 +1040,7 @@ impl<T> Clone for Stealer<T> {
 }
 
 impl<T> fmt::Debug for Stealer<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Stealer { .. }")
     }
 }
@@ -1798,7 +1798,7 @@ impl<T> Drop for Injector<T> {
 }
 
 impl<T> fmt::Debug for Injector<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Worker { .. }")
     }
 }
@@ -1951,7 +1951,7 @@ impl<T> Steal<T> {
 }
 
 impl<T> fmt::Debug for Steal<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Steal::Empty => f.pad("Empty"),
             Steal::Success(_) => f.pad("Success(..)"),

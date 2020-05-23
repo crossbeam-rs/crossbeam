@@ -1,6 +1,6 @@
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
-use Backoff;
+use crate::Backoff;
 
 /// A simple stamped lock.
 ///

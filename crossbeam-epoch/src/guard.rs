@@ -1,10 +1,12 @@
 use core::fmt;
 use core::mem;
 
-use atomic::Shared;
-use collector::Collector;
-use deferred::Deferred;
-use internal::Local;
+use scopeguard::defer;
+
+use crate::atomic::Shared;
+use crate::collector::Collector;
+use crate::deferred::Deferred;
+use crate::internal::Local;
 
 /// A guard that keeps the current thread pinned.
 ///
@@ -268,7 +270,7 @@ impl Guard {
     /// ```
     ///
     /// [`unprotected`]: fn.unprotected.html
-    pub unsafe fn defer_destroy<T>(&self, ptr: Shared<T>) {
+    pub unsafe fn defer_destroy<T>(&self, ptr: Shared<'_, T>) {
         self.defer_unchecked(move || ptr.into_owned());
     }
 
@@ -426,7 +428,7 @@ impl Drop for Guard {
 }
 
 impl fmt::Debug for Guard {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Guard { .. }")
     }
 }

@@ -90,12 +90,6 @@ Add this to your `Cargo.toml`:
 crossbeam = "0.7"
 ```
 
-Next, add this to your crate:
-
-```rust
-extern crate crossbeam;
-```
-
 ## Compatibility
 
 Crossbeam supports stable Rust releases going back at least six months,

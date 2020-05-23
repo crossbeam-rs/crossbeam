@@ -590,7 +590,7 @@ impl<T: Default> Default for AtomicCell<T> {
 }
 
 impl<T: Copy + fmt::Debug> fmt::Debug for AtomicCell<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AtomicCell")
             .field("value", &self.load())
             .finish()

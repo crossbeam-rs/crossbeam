@@ -42,19 +42,9 @@
 //! [`CachePadded`]: utils/struct.CachePadded.html
 //! [`scope`]: fn.scope.html
 
-#![warn(missing_docs)]
-#![warn(missing_debug_implementations)]
+#![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
-
-#[macro_use]
-extern crate cfg_if;
-#[cfg(feature = "alloc")]
-extern crate alloc;
-#[cfg(feature = "std")]
-extern crate core;
-
-extern crate crossbeam_utils;
 
 #[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
 pub use crossbeam_utils::atomic;
@@ -65,40 +55,39 @@ pub mod utils {
     pub use crossbeam_utils::CachePadded;
 }
 
+use cfg_if::cfg_if;
+
 cfg_if! {
     if #[cfg(feature = "alloc")] {
         mod _epoch {
-            pub extern crate crossbeam_epoch;
+            pub use crossbeam_epoch;
         }
         #[doc(inline)]
-        pub use _epoch::crossbeam_epoch as epoch;
+        pub use crate::_epoch::crossbeam_epoch as epoch;
 
         mod _queue {
-            pub extern crate crossbeam_queue;
+            pub use crossbeam_queue;
         }
         #[doc(inline)]
-        pub use _queue::crossbeam_queue as queue;
+        pub use crate::_queue::crossbeam_queue as queue;
     }
 }
 
 cfg_if! {
     if #[cfg(feature = "std")] {
         mod _deque {
-            pub extern crate crossbeam_deque;
+            pub use crossbeam_deque;
         }
         #[doc(inline)]
-        pub use _deque::crossbeam_deque as deque;
+        pub use crate::_deque::crossbeam_deque as deque;
 
         mod _channel {
-            pub extern crate crossbeam_channel;
-            pub use self::crossbeam_channel::*;
+            pub use crossbeam_channel;
         }
         #[doc(inline)]
-        pub use _channel::crossbeam_channel as channel;
+        pub use crate::_channel::crossbeam_channel as channel;
 
-        // HACK(stjepang): This is the only way to reexport `select!` in Rust older than 1.30.0
-        #[doc(hidden)]
-        pub use _channel::*;
+        pub use crossbeam_channel::select;
 
         pub use crossbeam_utils::sync;
         pub use crossbeam_utils::thread;

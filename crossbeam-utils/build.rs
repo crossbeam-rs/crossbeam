@@ -1,5 +1,3 @@
-extern crate autocfg;
-
 fn main() {
     let cfg = autocfg::new();
     cfg.emit_type_cfg("core::sync::atomic::AtomicU8", "has_atomic_u8");

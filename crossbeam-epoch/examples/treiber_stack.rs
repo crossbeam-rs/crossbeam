@@ -1,12 +1,9 @@
-extern crate crossbeam_epoch as epoch;
-extern crate crossbeam_utils as utils;
-
 use std::mem::ManuallyDrop;
 use std::ptr;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
-use epoch::{Atomic, Owned};
-use utils::thread::scope;
+use crossbeam_epoch::{self as epoch, Atomic, Owned};
+use crossbeam_utils::thread::scope;
 
 /// Treiber's lock-free stack.
 ///

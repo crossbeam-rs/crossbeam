@@ -1,11 +1,10 @@
 #![feature(test)]
 
-extern crate crossbeam_epoch as epoch;
-extern crate crossbeam_skiplist;
 extern crate test;
 
 use test::{black_box, Bencher};
 
+use crossbeam_epoch as epoch;
 use crossbeam_skiplist::SkipList;
 
 #[bench]

@@ -1,11 +1,10 @@
 #![feature(test)]
 
-extern crate crossbeam_epoch as epoch;
-extern crate crossbeam_utils as utils;
 extern crate test;
 
+use crossbeam_epoch as epoch;
+use crossbeam_utils::thread::scope;
 use test::Bencher;
-use utils::thread::scope;
 
 #[bench]
 fn single_pin(b: &mut Bencher) {

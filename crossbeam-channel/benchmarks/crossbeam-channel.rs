@@ -1,6 +1,3 @@
-extern crate crossbeam;
-extern crate crossbeam_channel;
-
 use crossbeam_channel::{bounded, unbounded, Receiver, Select, Sender};
 
 mod message;

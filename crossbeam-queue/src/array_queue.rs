@@ -17,7 +17,7 @@ use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use err::{PopError, PushError};
+use crate::err::{PopError, PushError};
 
 /// A slot in a queue.
 struct Slot<T> {
@@ -431,7 +431,7 @@ impl<T> Drop for ArrayQueue<T> {
 }
 
 impl<T> fmt::Debug for ArrayQueue<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("ArrayQueue { .. }")
     }
 }

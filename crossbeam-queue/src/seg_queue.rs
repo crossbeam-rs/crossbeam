@@ -8,7 +8,7 @@ use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use err::PopError;
+use crate::err::PopError;
 
 // Bits indicating the state of a slot:
 // * If a value has been written into the slot, `WRITE` is set.
@@ -476,7 +476,7 @@ impl<T> Drop for SegQueue<T> {
 }
 
 impl<T> fmt::Debug for SegQueue<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("SegQueue { .. }")
     }
 }

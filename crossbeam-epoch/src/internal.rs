@@ -43,14 +43,15 @@ use core::sync::atomic::Ordering;
 use core::{fmt, ptr};
 
 use crossbeam_utils::CachePadded;
+use memoffset::offset_of;
 
-use atomic::{Owned, Shared};
-use collector::{Collector, LocalHandle};
-use deferred::Deferred;
-use epoch::{AtomicEpoch, Epoch};
-use guard::{unprotected, Guard};
-use sync::list::{Entry, IsElement, IterError, List};
-use sync::queue::Queue;
+use crate::atomic::{Owned, Shared};
+use crate::collector::{Collector, LocalHandle};
+use crate::deferred::Deferred;
+use crate::epoch::{AtomicEpoch, Epoch};
+use crate::guard::{unprotected, Guard};
+use crate::sync::list::{Entry, IsElement, IterError, List};
+use crate::sync::queue::Queue;
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(feature = "sanitize"))]
@@ -205,7 +206,7 @@ impl Drop for Bag {
 
 // can't #[derive(Debug)] because Debug is not implemented for arrays 64 items long
 impl fmt::Debug for Bag {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Bag")
             .field("deferreds", &&self.deferreds[..self.len])
             .finish()

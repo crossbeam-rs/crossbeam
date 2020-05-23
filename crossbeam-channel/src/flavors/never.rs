@@ -5,10 +5,10 @@
 use std::marker::PhantomData;
 use std::time::Instant;
 
-use context::Context;
-use err::{RecvTimeoutError, TryRecvError};
-use select::{Operation, SelectHandle, Token};
-use utils;
+use crate::context::Context;
+use crate::err::{RecvTimeoutError, TryRecvError};
+use crate::select::{Operation, SelectHandle, Token};
+use crate::utils;
 
 /// This flavor doesn't need a token.
 pub type NeverToken = ();

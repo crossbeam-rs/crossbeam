@@ -5,7 +5,7 @@ use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Bound, RangeBounds};
 
-use map;
+use crate::map;
 
 /// A set based on a lock-free skip list.
 pub struct SkipSet<T> {
@@ -39,12 +39,12 @@ where
     T: Ord,
 {
     /// Returns the entry with the smallest key.
-    pub fn front(&self) -> Option<Entry<T>> {
+    pub fn front(&self) -> Option<Entry<'_, T>> {
         self.inner.front().map(Entry::new)
     }
 
     /// Returns the entry with the largest key.
-    pub fn back(&self) -> Option<Entry<T>> {
+    pub fn back(&self) -> Option<Entry<'_, T>> {
         self.inner.back().map(Entry::new)
     }
 
@@ -58,7 +58,7 @@ where
     }
 
     /// Returns an entry with the specified `key`.
-    pub fn get<Q>(&self, key: &Q) -> Option<Entry<T>>
+    pub fn get<Q>(&self, key: &Q) -> Option<Entry<'_, T>>
     where
         T: Borrow<Q>,
         Q: Ord + ?Sized,
@@ -89,12 +89,12 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
-    pub fn get_or_insert(&self, key: T) -> Entry<T> {
+    pub fn get_or_insert(&self, key: T) -> Entry<'_, T> {
         Entry::new(self.inner.get_or_insert(key, ()))
     }
 
     /// Returns an iterator over all entries in the map.
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             inner: self.inner.iter(),
         }
@@ -121,12 +121,12 @@ where
     ///
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
-    pub fn insert(&self, key: T) -> Entry<T> {
+    pub fn insert(&self, key: T) -> Entry<'_, T> {
         Entry::new(self.inner.insert(key, ()))
     }
 
     /// Removes an entry with the specified key from the set and returns it.
-    pub fn remove<Q>(&self, key: &Q) -> Option<Entry<T>>
+    pub fn remove<Q>(&self, key: &Q) -> Option<Entry<'_, T>>
     where
         T: Borrow<Q>,
         Q: Ord + ?Sized,
@@ -135,12 +135,12 @@ where
     }
 
     /// Removes an entry from the front of the map.
-    pub fn pop_front(&self) -> Option<Entry<T>> {
+    pub fn pop_front(&self) -> Option<Entry<'_, T>> {
         self.inner.pop_front().map(Entry::new)
     }
 
     /// Removes an entry from the back of the map.
-    pub fn pop_back(&self) -> Option<Entry<T>> {
+    pub fn pop_back(&self) -> Option<Entry<'_, T>> {
         self.inner.pop_back().map(Entry::new)
     }
 
@@ -160,7 +160,7 @@ impl<T> fmt::Debug for SkipSet<T>
 where
     T: Ord + fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("SkipSet { .. }")
     }
 }
@@ -205,7 +205,7 @@ where
 }
 
 /// TODO
-pub struct Entry<'a, T: 'a> {
+pub struct Entry<'a, T> {
     inner: map::Entry<'a, T, ()>,
 }
 
@@ -250,7 +250,7 @@ where
     }
 }
 
-impl<'a, T> Entry<'a, T>
+impl<T> Entry<'_, T>
 where
     T: Ord + Send + 'static,
 {
@@ -270,11 +270,11 @@ impl<'a, T> Clone for Entry<'a, T> {
     }
 }
 
-impl<'a, T> fmt::Debug for Entry<'a, T>
+impl<T> fmt::Debug for Entry<'_, T>
 where
     T: fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entry")
             .field("value", self.value())
             .finish()
@@ -295,13 +295,13 @@ impl<T> Iterator for IntoIter<T> {
 }
 
 impl<T> fmt::Debug for IntoIter<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("IntoIter { .. }")
     }
 }
 
 /// An iterator over the entries of a `SkipSet`.
-pub struct Iter<'a, T: 'a> {
+pub struct Iter<'a, T> {
     inner: map::Iter<'a, T, ()>,
 }
 
@@ -325,14 +325,14 @@ where
     }
 }
 
-impl<'a, T> fmt::Debug for Iter<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<T> fmt::Debug for Iter<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("Iter { .. }")
     }
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Range<'a, Q, R, T: 'a>
+pub struct Range<'a, Q, R, T>
 where
     T: Ord + Borrow<Q>,
     R: RangeBounds<Q>,
@@ -365,13 +365,13 @@ where
     }
 }
 
-impl<'a, Q, R, T> fmt::Debug for Range<'a, Q, R, T>
+impl<Q, R, T> fmt::Debug for Range<'_, Q, R, T>
 where
     T: Ord + Borrow<Q> + fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Range")
             .field("range", &self.inner.inner.range)
             .field("head", &self.inner.inner.head.as_ref().map(|e| e.key()))

@@ -2,17 +2,13 @@
 
 #![forbid(unsafe_code)] // select! is safe.
 
-#[macro_use]
-extern crate crossbeam_channel;
-extern crate crossbeam_utils;
-
 use std::any::Any;
 use std::cell::Cell;
 use std::ops::Deref;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{after, bounded, never, tick, unbounded};
+use crossbeam_channel::{after, bounded, never, select, tick, unbounded};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender, TryRecvError};
 use crossbeam_utils::thread::scope;
 

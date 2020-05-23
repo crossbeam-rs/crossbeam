@@ -1,10 +1,8 @@
-extern crate crossbeam_epoch as epoch;
-extern crate crossbeam_skiplist as skiplist;
-
 use std::ops::Bound;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use skiplist::SkipList;
+use crossbeam_epoch as epoch;
+use crossbeam_skiplist::SkipList;
 
 #[test]
 fn new() {
@@ -509,7 +507,7 @@ fn iter() {
 
 #[test]
 fn iter_range() {
-    use Bound::*;
+    use crate::Bound::*;
     let guard = &epoch::pin();
     let s = SkipList::new(epoch::default_collector().clone());
     let v = (0..10).map(|x| x * 10).collect::<Vec<_>>();

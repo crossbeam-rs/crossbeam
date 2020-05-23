@@ -1,5 +1,3 @@
-extern crate crossbeam_utils;
-
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;

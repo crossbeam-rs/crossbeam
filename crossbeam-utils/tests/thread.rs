@@ -1,5 +1,3 @@
-extern crate crossbeam_utils;
-
 use std::any::Any;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::sleep;
