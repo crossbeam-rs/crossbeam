@@ -50,7 +50,7 @@
 //! An implementation of this work-stealing strategy:
 //!
 //! ```
-//! use crossbeam_deque::{Injector, Steal, Stealer, Worker};
+//! use crossbeam_deque::{Injector, Stealer, Worker};
 //! use std::iter;
 //!
 //! fn find_task<T>(
@@ -86,6 +86,13 @@
 //! [`steal_batch()`]: struct.Stealer.html#method.steal_batch
 //! [`steal_batch_and_pop()`]: struct.Stealer.html#method.steal_batch_and_pop
 
+#![doc(test(
+    no_crate_inject,
+    attr(
+        deny(warnings, rust_2018_idioms),
+        allow(dead_code, unused_assignments, unused_variables)
+    )
+))]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
 

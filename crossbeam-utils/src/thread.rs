@@ -108,7 +108,7 @@
 //!         // Yay, this works because we're using a fresh argument `s`! :)
 //!         s.spawn(|_| println!("nested thread"));
 //!     });
-//! });
+//! }).unwrap();
 //! ```
 //!
 //! [`std::thread::spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
@@ -250,7 +250,6 @@ impl<'env> Scope<'env> {
     ///
     /// ```
     /// use crossbeam_utils::thread;
-    /// use std::thread::current;
     ///
     /// thread::scope(|s| {
     ///     s.builder()

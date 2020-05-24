@@ -615,7 +615,6 @@ impl<'a> Select<'a> {
     /// # Examples
     ///
     /// ```
-    /// use std::thread;
     /// use crossbeam_channel::{unbounded, Select};
     ///
     /// let (s, r) = unbounded::<i32>();
@@ -638,7 +637,6 @@ impl<'a> Select<'a> {
     /// # Examples
     ///
     /// ```
-    /// use std::thread;
     /// use crossbeam_channel::{unbounded, Select};
     ///
     /// let (s, r) = unbounded::<i32>();
@@ -669,7 +667,6 @@ impl<'a> Select<'a> {
     /// # Examples
     ///
     /// ```
-    /// use std::thread;
     /// use crossbeam_channel::{unbounded, Select};
     ///
     /// let (s1, r1) = unbounded::<i32>();
@@ -728,7 +725,6 @@ impl<'a> Select<'a> {
     /// # Examples
     ///
     /// ```
-    /// use std::thread;
     /// use crossbeam_channel::{unbounded, Select};
     ///
     /// let (s1, r1) = unbounded();
@@ -874,7 +870,6 @@ impl<'a> Select<'a> {
     /// # Examples
     ///
     /// ```
-    /// use std::thread;
     /// use crossbeam_channel::{unbounded, Select};
     ///
     /// let (s1, r1) = unbounded();

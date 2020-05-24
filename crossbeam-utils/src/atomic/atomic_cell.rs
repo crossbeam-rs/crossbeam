@@ -64,7 +64,7 @@ impl<T> AtomicCell<T> {
     /// ```
     /// use crossbeam_utils::atomic::AtomicCell;
     ///
-    /// let mut a = AtomicCell::new(7);
+    /// let a = AtomicCell::new(7);
     /// let v = a.into_inner();
     ///
     /// assert_eq!(v, 7);
@@ -154,7 +154,7 @@ impl<T: ?Sized> AtomicCell<T> {
     /// ```
     /// use crossbeam_utils::atomic::AtomicCell;
     ///
-    /// let mut a = AtomicCell::new(5);
+    /// let a = AtomicCell::new(5);
     ///
     /// let ptr = a.as_ptr();
     /// ```

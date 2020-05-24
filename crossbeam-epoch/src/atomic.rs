@@ -225,7 +225,7 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
+    /// use crossbeam_epoch::{Atomic, Owned, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
@@ -247,7 +247,7 @@ impl<T> Atomic<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
+    /// use crossbeam_epoch::{self as epoch, Atomic, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
@@ -280,7 +280,7 @@ impl<T> Atomic<T> {
     /// let a = Atomic::new(1234);
     ///
     /// let guard = &epoch::pin();
-    /// let mut curr = a.load(SeqCst, guard);
+    /// let curr = a.load(SeqCst, guard);
     /// let res1 = a.compare_and_set(curr, Shared::null(), SeqCst, guard);
     /// let res2 = a.compare_and_set(curr, Owned::new(5678), SeqCst, guard);
     /// ```
@@ -689,7 +689,7 @@ impl<T> Owned<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Owned};
+    /// use crossbeam_epoch::Owned;
     ///
     /// let o = Owned::new(1234);
     /// let b: Box<i32> = o.into_box();
@@ -1114,7 +1114,7 @@ impl<T> From<*const T> for Shared<'_, T> {
     /// ```
     /// use crossbeam_epoch::Shared;
     ///
-    /// let p = unsafe { Shared::from(Box::into_raw(Box::new(1234)) as *const _) };
+    /// let p = Shared::from(Box::into_raw(Box::new(1234)) as *const _);
     /// assert!(!p.is_null());
     /// ```
     fn from(raw: *const T) -> Self {

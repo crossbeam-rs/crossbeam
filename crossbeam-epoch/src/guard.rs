@@ -30,7 +30,7 @@ use crate::internal::Local;
 /// For example:
 ///
 /// ```
-/// use crossbeam_epoch::{self as epoch, Atomic, Owned};
+/// use crossbeam_epoch::{self as epoch, Atomic};
 /// use std::sync::atomic::Ordering::SeqCst;
 ///
 /// // Create a heap-allocated number.
@@ -289,11 +289,9 @@ impl Guard {
     /// use crossbeam_epoch as epoch;
     ///
     /// let guard = &epoch::pin();
-    /// unsafe {
-    ///     guard.defer(move || {
-    ///         println!("This better be printed as soon as possible!");
-    ///     });
-    /// }
+    /// guard.defer(move || {
+    ///     println!("This better be printed as soon as possible!");
+    /// });
     /// guard.flush();
     /// ```
     ///
@@ -318,8 +316,6 @@ impl Guard {
     /// ```
     /// use crossbeam_epoch::{self as epoch, Atomic};
     /// use std::sync::atomic::Ordering::SeqCst;
-    /// use std::thread;
-    /// use std::time::Duration;
     ///
     /// let a = Atomic::new(777);
     /// let mut guard = epoch::pin();
@@ -407,8 +403,8 @@ impl Guard {
     /// ```
     /// use crossbeam_epoch as epoch;
     ///
-    /// let mut guard1 = epoch::pin();
-    /// let mut guard2 = epoch::pin();
+    /// let guard1 = epoch::pin();
+    /// let guard2 = epoch::pin();
     /// assert!(guard1.collector() == guard2.collector());
     /// ```
     ///

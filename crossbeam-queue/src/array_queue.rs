@@ -299,7 +299,7 @@ impl<T> ArrayQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{ArrayQueue, PopError};
+    /// use crossbeam_queue::ArrayQueue;
     ///
     /// let q = ArrayQueue::<i32>::new(100);
     ///
@@ -314,7 +314,7 @@ impl<T> ArrayQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{ArrayQueue, PopError};
+    /// use crossbeam_queue::ArrayQueue;
     ///
     /// let q = ArrayQueue::new(100);
     ///
@@ -339,7 +339,7 @@ impl<T> ArrayQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{ArrayQueue, PopError};
+    /// use crossbeam_queue::ArrayQueue;
     ///
     /// let q = ArrayQueue::new(1);
     ///
@@ -363,7 +363,7 @@ impl<T> ArrayQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{ArrayQueue, PopError};
+    /// use crossbeam_queue::ArrayQueue;
     ///
     /// let q = ArrayQueue::new(100);
     /// assert_eq!(q.len(), 0);
