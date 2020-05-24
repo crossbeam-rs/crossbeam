@@ -69,10 +69,7 @@ use core::ops::{Deref, DerefMut};
 // - https://www.mono-project.com/news/2016/09/12/arm64-icache/
 //
 #[cfg_attr(any(target_arch = "x86_64", target_arch = "aarch64"), repr(align(128)))]
-#[cfg_attr(
-    not(any(target_arch = "x86_64", target_arch = "aarch64")),
-    repr(align(64))
-)]
+#[cfg_attr(not(any(target_arch = "x86_64", target_arch = "aarch64")), repr(align(64)))]
 pub struct CachePadded<T> {
     value: T,
 }
