@@ -33,6 +33,6 @@ default-features = false
 optional = true
 
 [dev-dependencies]
-num_cpus = "1.10.0"
-rand = "0.6"
+num_cpus = "1.10"
+rand = "0.7"
 signal-hook = "0.1.5"
