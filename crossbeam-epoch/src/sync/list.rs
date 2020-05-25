@@ -218,7 +218,7 @@ impl<T, C: IsElement<T>> List<T, C> {
 impl<T, C: IsElement<T>> Drop for List<T, C> {
     fn drop(&mut self) {
         unsafe {
-            let guard = &unprotected();
+            let guard = unprotected();
             let mut curr = self.head.load(Relaxed, guard);
             while let Some(c) = curr.as_ref() {
                 let succ = c.next.load(Relaxed, guard);

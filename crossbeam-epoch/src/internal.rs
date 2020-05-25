@@ -395,8 +395,8 @@ impl Local {
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
             })
-            .into_shared(&unprotected());
-            collector.global.locals.insert(local, &unprotected());
+            .into_shared(unprotected());
+            collector.global.locals.insert(local, unprotected());
             LocalHandle {
                 local: local.as_raw(),
             }
@@ -586,7 +586,7 @@ impl Local {
             let collector: Collector = ptr::read(&*(*self.collector.get()));
 
             // Mark this node in the linked list as deleted.
-            self.entry.delete(&unprotected());
+            self.entry.delete(unprotected());
 
             // Finally, drop the reference to the global. Note that this might be the last reference
             // to the `Global`. If so, the global data will be destroyed and all deferred functions
