@@ -390,7 +390,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{SegQueue, PopError};
+    /// use crossbeam_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     /// assert_eq!(q.len(), 0);

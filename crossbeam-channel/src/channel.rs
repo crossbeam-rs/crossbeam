@@ -136,7 +136,6 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// Using an `after` channel for timeouts:
 ///
 /// ```
-/// # fn main() {
 /// use std::time::Duration;
 /// use crossbeam_channel::{after, select, unbounded};
 ///
@@ -147,7 +146,6 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 ///     recv(r) -> msg => println!("received {:?}", msg),
 ///     recv(after(timeout)) -> _ => println!("timed out"),
 /// }
-/// # }
 /// ```
 ///
 /// When the message gets sent:
@@ -187,9 +185,8 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 /// Using a `never` channel to optionally add a timeout to [`select!`]:
 ///
 /// ```
-/// # fn main() {
 /// use std::thread;
-/// use std::time::{Duration, Instant};
+/// use std::time::Duration;
 /// use crossbeam_channel::{after, select, never, unbounded};
 ///
 /// let (s, r) = unbounded();
@@ -211,7 +208,6 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 ///     recv(r) -> msg => assert_eq!(msg, Ok(1)),
 ///     recv(timeout) -> _ => println!("timed out"),
 /// }
-/// # }
 /// ```
 ///
 /// [`select!`]: macro.select.html
@@ -597,9 +593,9 @@ impl<T> fmt::Debug for Sender<T> {
 /// let (s, r) = unbounded();
 ///
 /// thread::spawn(move || {
-///     s.send(1);
+///     let _ = s.send(1);
 ///     thread::sleep(Duration::from_secs(1));
-///     s.send(2);
+///     let _ = s.send(2);
 /// });
 ///
 /// assert_eq!(r.recv(), Ok(1)); // Received immediately.

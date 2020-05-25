@@ -665,7 +665,7 @@ impl<T> Stealer<T> {
     /// let s = w1.stealer();
     /// let w2 = Worker::new_fifo();
     ///
-    /// s.steal_batch(&w2);
+    /// let _ = s.steal_batch(&w2);
     /// assert_eq!(w2.pop(), Some(1));
     /// assert_eq!(w2.pop(), Some(2));
     /// ```
@@ -1384,7 +1384,7 @@ impl<T> Injector<T> {
     /// q.push(4);
     ///
     /// let w = Worker::new_fifo();
-    /// q.steal_batch(&w);
+    /// let _ = q.steal_batch(&w);
     /// assert_eq!(w.pop(), Some(1));
     /// assert_eq!(w.pop(), Some(2));
     /// ```

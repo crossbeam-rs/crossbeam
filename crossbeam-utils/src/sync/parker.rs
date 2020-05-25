@@ -30,7 +30,7 @@ use std::time::Duration;
 /// use std::time::Duration;
 /// use crossbeam_utils::sync::Parker;
 ///
-/// let mut p = Parker::new();
+/// let p = Parker::new();
 /// let u = p.unparker().clone();
 ///
 /// // Make the token available.
@@ -98,7 +98,7 @@ impl Parker {
     /// ```
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let mut p = Parker::new();
+    /// let p = Parker::new();
     /// let u = p.unparker().clone();
     ///
     /// // Make the token available.
@@ -122,7 +122,7 @@ impl Parker {
     /// use std::time::Duration;
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let mut p = Parker::new();
+    /// let p = Parker::new();
     ///
     /// // Waits for the token to become available, but will not wait longer than 500 ms.
     /// p.park_timeout(Duration::from_millis(500));
@@ -140,7 +140,7 @@ impl Parker {
     /// ```
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let mut p = Parker::new();
+    /// let p = Parker::new();
     /// let u = p.unparker().clone();
     ///
     /// // Make the token available.
@@ -225,7 +225,7 @@ impl Unparker {
     /// use std::time::Duration;
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let mut p = Parker::new();
+    /// let p = Parker::new();
     /// let u = p.unparker().clone();
     ///
     /// thread::spawn(move || {
@@ -352,7 +352,11 @@ impl Inner {
                     // Block the current thread on the conditional variable.
                     m = self.cvar.wait(m).unwrap();
 
-                    if self.state.compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst).is_ok() {
+                    if self
+                        .state
+                        .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst)
+                        .is_ok()
+                    {
                         // got a notification
                         return;
                     }
