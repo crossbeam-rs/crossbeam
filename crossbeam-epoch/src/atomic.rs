@@ -130,7 +130,7 @@ fn decompose_tag<T: ?Sized + Pointable>(data: usize) -> (usize, usize) {
 ///
 /// ```
 /// use std::mem::MaybeUninit;
-/// use crossbeam_epoch::{self as epoch, Owned};
+/// use crossbeam_epoch::Owned;
 ///
 /// let o = Owned::<[MaybeUninit<i32>]>::init(10); // allocating [i32; 10]
 /// ```
@@ -862,7 +862,7 @@ impl<T> Owned<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::{self as epoch, Owned};
+    /// use crossbeam_epoch::Owned;
     ///
     /// let o = Owned::new(1234);
     /// let b: Box<i32> = o.into_box();
@@ -907,7 +907,7 @@ impl<T: ?Sized + Pointable> Owned<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_epoch::Owned;
+    /// use crossbeam_epoch::{self as epoch, Owned};
     ///
     /// let o = Owned::new(1234);
     /// let guard = &epoch::pin();
