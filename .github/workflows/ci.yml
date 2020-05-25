@@ -7,11 +7,18 @@ on:
       - staging
       - trying
 
+env:
+  RUSTFLAGS: -Dwarnings
+  RUST_BACKTRACE: 1
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
     name: test
-    runs-on: ubuntu-latest
     env:
       RUST_VERSION: ${{ matrix.rust }}
     strategy:
@@ -27,6 +34,10 @@ jobs:
         rust:
           - 1.36.0
           - nightly
+        os:
+         - ubuntu
+         - windows
+    runs-on: ${{ matrix.os }}-latest
     steps:
       - uses: actions/checkout@master
       - name: Install Rust
@@ -60,3 +71,32 @@ jobs:
         run: rustup update stable && rustup default stable
       - name: rustfmt
         run: ./ci/rustfmt.sh
+
+  # These jobs don't actually test anything, but they're used to tell bors the
+  # build completed, as there is no practical way to detect when a workflow is
+  # successful listening to webhooks only.
+  #
+  # ALL THE PREVIOUS JOBS NEEDS TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
+
+  ci-success:
+    name: ci
+    if: github.event_name == 'push' && success()
+    needs:
+      - test
+      - dependencies
+      - rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark the job as a success
+        run: exit 0
+  ci-failure:
+    name: ci
+    if: github.event_name == 'push' && !success()
+    needs:
+      - test
+      - dependencies
+      - rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark the job as a failure
+        run: exit 1
