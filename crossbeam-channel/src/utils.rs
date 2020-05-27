@@ -17,7 +17,7 @@ pub fn shuffle<T>(v: &mut [T]) {
     }
 
     thread_local! {
-        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1406868647));
+        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1_406_868_647));
     }
 
     let _ = RNG.try_with(|rng| {

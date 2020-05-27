@@ -308,6 +308,7 @@ impl From<RecvError> for TryRecvError {
 
 impl TryRecvError {
     /// Returns `true` if the receive operation failed because the channel is empty.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_empty(&self) -> bool {
         match self {
             TryRecvError::Empty => true,
@@ -316,6 +317,7 @@ impl TryRecvError {
     }
 
     /// Returns `true` if the receive operation failed because the channel is disconnected.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_disconnected(&self) -> bool {
         match self {
             TryRecvError::Disconnected => true,
@@ -345,6 +347,7 @@ impl From<RecvError> for RecvTimeoutError {
 
 impl RecvTimeoutError {
     /// Returns `true` if the receive operation timed out.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_timeout(&self) -> bool {
         match self {
             RecvTimeoutError::Timeout => true,
@@ -353,6 +356,7 @@ impl RecvTimeoutError {
     }
 
     /// Returns `true` if the receive operation failed because the channel is disconnected.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_disconnected(&self) -> bool {
         match self {
             RecvTimeoutError::Disconnected => true,
