@@ -38,7 +38,7 @@ sanitize = [] # Makes it more likely to trigger any potential data races.
 
 [dependencies]
 cfg-if = "0.1.10"
-memoffset = "0.5.1"
+memoffset = "0.5.4"
 
 [dependencies.crossbeam-utils]
 version = "0.7"
@@ -46,12 +46,12 @@ path = "../crossbeam-utils"
 default-features = false
 
 [dependencies.lazy_static]
-version = "1"
+version = "1.4.0"
 optional = true
 
 [dependencies.scopeguard]
-version = "1"
+version = "1.1.0"
 default-features = false
 
 [dev-dependencies]
-rand = "0.7"
+rand = "0.7.3"
