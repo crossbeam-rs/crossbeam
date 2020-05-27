@@ -72,6 +72,17 @@ jobs:
       - name: rustfmt
         run: ./ci/rustfmt.sh
 
+  # Check clippy.
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: clippy
+        run: ./ci/clippy.sh
+
   # These jobs don't actually test anything, but they're used to tell bors the
   # build completed, as there is no practical way to detect when a workflow is
   # successful listening to webhooks only.
@@ -85,6 +96,7 @@ jobs:
       - test
       - dependencies
       - rustfmt
+      - clippy
     runs-on: ubuntu-latest
     steps:
       - name: Mark the job as a success
@@ -96,6 +108,7 @@ jobs:
       - test
       - dependencies
       - rustfmt
+      - clippy
     runs-on: ubuntu-latest
     steps:
       - name: Mark the job as a failure
