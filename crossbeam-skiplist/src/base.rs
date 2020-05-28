@@ -517,7 +517,8 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
-    pub fn ref_range<'a, 'g, Q, R>(&'a self, range: R) -> RefRange<'a, Q, R, K, V>
+    #[allow(clippy::needless_lifetimes)]
+    pub fn ref_range<'a, Q, R>(&'a self, range: R) -> RefRange<'a, Q, R, K, V>
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
@@ -725,11 +726,9 @@ where
                                 break;
                             }
                             result = Some(c);
-                        } else {
-                            if above_lower_bound(&bound, c.key.borrow()) {
-                                result = Some(c);
-                                break;
-                            }
+                        } else if above_lower_bound(&bound, c.key.borrow()) {
+                            result = Some(c);
+                            break;
                         }
 
                         // Move one step forward.
