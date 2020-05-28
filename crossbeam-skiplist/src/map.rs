@@ -252,7 +252,7 @@ impl<'a, K, V> Entry<'a, K, V> {
 impl<K, V> Drop for Entry<'_, K, V> {
     fn drop(&mut self) {
         unsafe {
-            ManuallyDrop::into_inner(ptr::read(&mut self.inner)).release_with_pin(epoch::pin);
+            ManuallyDrop::into_inner(ptr::read(&self.inner)).release_with_pin(epoch::pin);
         }
     }
 }
