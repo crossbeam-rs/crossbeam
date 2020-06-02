@@ -415,16 +415,12 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
                     *result.lock().unwrap() = Some(res);
                 };
 
-                // Change the type of `closure` from `FnOnce() -> T` to `FnMut() -> T`.
-                let mut closure = Some(closure);
-                let closure = move || closure.take().unwrap()();
-
                 // Allocate `clsoure` on the heap and erase the `'env` bound.
-                let closure: Box<dyn FnMut() + Send + 'env> = Box::new(closure);
-                let closure: Box<dyn FnMut() + Send + 'static> = unsafe { mem::transmute(closure) };
+                let closure: Box<dyn FnOnce() + Send + 'env> = Box::new(closure);
+                let closure: Box<dyn FnOnce() + Send + 'static> =
+                    unsafe { mem::transmute(closure) };
 
                 // Finally, spawn the closure.
-                let mut closure = closure;
                 self.builder.spawn(move || closure())?
             };
 
