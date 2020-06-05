@@ -90,21 +90,6 @@ impl<T> CachePadded<T> {
     ///
     /// let padded_value = CachePadded::new(1);
     /// ```
-    #[cfg(not(feature = "nightly"))]
-    pub fn new(t: T) -> CachePadded<T> {
-        CachePadded::<T> { value: t }
-    }
-
-    /// Pads and aligns a value to the length of a cache line.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_utils::CachePadded;
-    ///
-    /// let padded_value = CachePadded::new(1);
-    /// ```
-    #[cfg(feature = "nightly")]
     pub const fn new(t: T) -> CachePadded<T> {
         CachePadded::<T> { value: t }
     }
