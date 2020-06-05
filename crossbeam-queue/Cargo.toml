@@ -31,7 +31,7 @@ alloc = []
 # This is disabled by default and requires recent nightly compiler.
 # Note that this is outside of the normal semver guarantees and minor versions
 # of crossbeam may make breaking changes to them at any time.
-nightly = []
+nightly = ["crossbeam-utils/nightly"]
 
 [dependencies]
 cfg-if = "0.1.10"
