@@ -35,9 +35,27 @@ jobs:
           - 1.36.0
           - nightly
         os:
-         - ubuntu
-         - windows
-    runs-on: ${{ matrix.os }}-latest
+         - ubuntu-latest
+         - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@master
+      - name: Install Rust
+        run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+      - name: Test
+        run: ./ci/${{ matrix.crates }}.sh
+
+  # Check all feature combinations works properly.
+  check-features:
+    name: check-features
+    env:
+      RUST_VERSION: ${{ matrix.rust }}
+    strategy:
+      matrix:
+        rust:
+          - 1.36.0
+          - nightly
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
       - name: Install Rust
@@ -47,8 +65,8 @@ jobs:
         run: |
           rustup target add thumbv7m-none-eabi
           rustup target add thumbv6m-none-eabi
-      - name: Test
-        run: ./ci/${{ matrix.crates }}.sh
+      - name: Check features
+        run: . ./ci/check-features.sh
 
   # Check for duplicate dependencies.
   dependencies:
