@@ -90,7 +90,7 @@ impl<T> CachePadded<T> {
     ///
     /// let padded_value = CachePadded::new(1);
     /// ```
-    pub fn new(t: T) -> CachePadded<T> {
+    pub const fn new(t: T) -> CachePadded<T> {
         CachePadded::<T> { value: t }
     }
 

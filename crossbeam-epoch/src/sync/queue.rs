@@ -198,7 +198,7 @@ impl<T> Drop for Queue<T> {
         unsafe {
             let guard = unprotected();
 
-            while let Some(_) = self.try_pop(guard) {}
+            while self.try_pop(guard).is_some() {}
 
             // Destroy the remaining sentinel node.
             let sentinel = self.head.load(Relaxed, guard);
