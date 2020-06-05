@@ -1,6 +1,5 @@
 #!/bin/bash
 
-cd "$(dirname "$0")"/..
 set -ex
 
 if [[ ! -x "$(command -v cargo-hack)" ]]; then
