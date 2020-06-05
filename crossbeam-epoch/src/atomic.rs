@@ -832,7 +832,7 @@ impl<T: ?Sized + Pointable> Pointer<T> for Owned<T> {
     unsafe fn from_usize(data: usize) -> Self {
         debug_assert!(data != 0, "converting zero into `Owned`");
         Owned {
-            data: data,
+            data,
             _marker: PhantomData,
         }
     }
@@ -1085,7 +1085,7 @@ impl<T: ?Sized + Pointable> Pointer<T> for Shared<'_, T> {
     #[inline]
     unsafe fn from_usize(data: usize) -> Self {
         Shared {
-            data: data,
+            data,
             _marker: PhantomData,
         }
     }

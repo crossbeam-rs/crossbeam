@@ -105,9 +105,7 @@ impl Bag {
 }
 
 impl Default for Bag {
-    // TODO(taiki-e): when the minimum supported Rust version is bumped to 1.31+,
-    // replace this with `#[rustfmt::skip]`.
-    #[cfg_attr(rustfmt, rustfmt_skip)]
+    #[rustfmt::skip]
     fn default() -> Self {
         // TODO: [no_op; MAX_OBJECTS] syntax blocked by https://github.com/rust-lang/rust/issues/49147
         #[cfg(not(feature = "sanitize"))]
