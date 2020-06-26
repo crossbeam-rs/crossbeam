@@ -52,16 +52,17 @@
 //!
 //! let numbers = SkipSet::new();
 //! scope(|s| {
-//!     numbers.insert(5);
-//!
 //!     // Spawn a thread which will remove 5 from the set.
 //!     s.spawn(|_| {
 //!         numbers.remove(&5);
 //!     });
+//!     
+//!     // While the thread above is running, insert a value into the set.
+//!     numbers.insert(5);
 //!
 //!     // This check can fail!
-//!     // The othe thread may remove the value
-//!     // we perform this check.
+//!     // The other thread may remove the value
+//!     // before we perform this check.
 //!     assert!(numbers.contains(&5));
 //! }).unwrap();
 //! ```
@@ -69,7 +70,7 @@
 //! In effect, a _single_ operation on the map, such as [`insert`],
 //! operates atomically: race conditions are impossible. However,
 //! concurrent calls to functions can become interleaved across
-//! threads, introducing non-determinism into your code.
+//! threads, introducing non-determinism.
 //!
 //! To avoid this sort of race condition, never assume that a collection's
 //! state will remain the same across multiple lines of code. For instance,
@@ -102,7 +103,7 @@
 //! A problem faced by many concurrent data structures
 //! is choosing when to free unused memory. Care must be
 //! taken to prevent use-after-frees and double-frees, both
-//! of which cause undefined behvarior.
+//! of which cause undefined behavior.
 //!
 //! Consider the following sequence of events operating on a [`SkipMap`]:
 //! * Thread A calls [`get`] and holds a reference to a value in the map.
@@ -119,7 +120,7 @@
 //! is similar to the garbage collection found in some languages, such as Java, except
 //! it operates solely on the values inside the map.
 //!
-//! This garbage collection scheme operates automatically; users don't have to worry about it.
+//! This garbage collection scheme functions automatically; users don't have to worry about it.
 //! However, keep in mind that holding [`Entry`] handles to entries in the map will prevent
 //! that memory from being freed until at least after the handles are dropped.
 //!
