@@ -141,6 +141,18 @@
 //! In the end, the best way to choose between [`BTreeMap`] and [`SkipMap`]
 //! is to benchmark them in your own application.
 //!
+//! # Alternatives
+//! This crate implements _ordered_ maps and sets, akin to [`BTreeMap`] and [`BTreeSet`].
+//! In many situations, however, a defined order on elements is not required. For these
+//! purposes, unordered maps will suffice. In addition, unordered maps
+//! often have better performance characteristics than their ordered alternatives.
+//!
+//! Crossbeam [does not currently provide a concurrent unordered map](https://github.com/crossbeam-rs/rfcs/issues/32).
+//! That said, here are some other crates which may suit you:
+//! * [`DashMap`](https://docs.rs/dashmap) implements a novel concurrent hash map
+//! with good performance characteristics.
+//! * [`flurry`](https://docs.rs/flurry) is a Rust port of Java's `ConcurrentHashMap`.
+//!
 //! [`SkipMap`]: struct.SkipMap.html
 //! [`SkipSet`]: struct.SkipSet.html
 //! [`insert`]: struct.SkipMap.html#method.insert
