@@ -82,6 +82,47 @@
 //! A race between multiple threads can never cause memory errors or
 //! segfaults. A race condition is a _logic error_ in its entirety.
 //!
+//! # Mutable access to elements
+//! [`SkipMap`] and [`SkipSet`] provide no way to retrieve a mutable reference
+//! to a value. Since access methods can be called concurrently, providing
+//! e.g. a `get_mut` function could cause data races.
+//!
+//! A solution to the above is to have the implementation wrap
+//! each value in a lock. However, this has some repercussions:
+//! * The map would no longer be lock-free, inhibiting scalability
+//! and allowing for deadlocks.
+//! * If a user of the map doesn't need mutable access, then they pay
+//! the price of locks without actually needing them.
+//!
+//! Instead, the approach taken by this crate gives more control to the user.
+//! If mutable access is needed, then you can use interior mutability,
+//! such as [`RwLock`]: `SkipMap<Key, RwLock<Value>>`.
+//!
+//! # Garbage collection
+//! A problem faced by many concurrent data structures
+//! is choosing when to free unused memory. Care must be
+//! taken to prevent use-after-frees and double-frees, both
+//! of which cause undefined behvarior.
+//!
+//! Consider the following sequence of events operating on a [`SkipMap`]:
+//! * Thread A calls [`get`] and holds a reference to a value in the map.
+//! * Thread B removes that key from the map.
+//! * Thread A now attempts to access the value.
+//!
+//! What happens here? If the map implementation frees the memory
+//! belonging to a value when it is
+//! removed, then a user-after-free occurs, resulting in memory corruption.
+//!
+//! To solve the above, this crate uses the _epoch-based memory reclamation_ mechanism
+//! implemented in [`crossbeam-epoch`]. Simplified, a value removed from the map
+//! is not freed until after all references to it have been dropped. This mechanism
+//! is similar to the garbage collection found in some languages, such as Java, except
+//! it operates solely on the values inside the map.
+//!
+//! This garbage collection scheme operates automatically; users don't have to worry about it.
+//! However, keep in mind that holding [`Entry`] handles to entries in the map will prevent
+//! that memory from being freed until at least after the handles are dropped.
+//!
 //! # Performance versus B-trees
 //! In general, when you need concurrent writes
 //! to an ordered collection, skip lists are a reasonable choice.
@@ -101,10 +142,14 @@
 //!
 //! [`SkipMap`]: struct.SkipMap.html
 //! [`SkipSet`]: struct.SkipSet.html
-//! [`insert`]: struct.SkipSet.html#method.insert
+//! [`insert`]: struct.SkipMap.html#method.insert
+//! [`get`]: struct.SkipMap.html#method.get
+//! [`Entry`]: map/struct.Entry.html
 //! [skip lists]: https://en.wikipedia.org/wiki/Skip_list
+//! [`crossbeam-epoch`]: https://docs.rs/crossbeam-epoch
 //! [`BTreeMap`]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
 //! [`BTreeSet`]: https://doc.rust-lang.org/std/collections/struct.BTreeSet.html
+//! [`RwLock`]: https://doc.rust-lang.org/std/sync/struct.RwLock.html
 //!
 //! # Examples
 //! [`SkipMap`] basic usage:
