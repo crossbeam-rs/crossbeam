@@ -1,4 +1,176 @@
-//! TODO
+//! Concurrent maps and sets based on [skip lists].
+//!
+//! This crate provides the types [`SkipMap`] and [`SkipSet`].
+//! These data structures provide an interface similar to [`BTreeMap`] and [`BTreeSet`],
+//! respectively, except they support safe concurrent access across
+//! multiple threads.
+//!
+//! # Concurrent access
+//! [`SkipMap`] and [`SkipSet`] implement `Send` and `Sync`,
+//! so they can be shared across threads with ease.
+//!
+//! Methods which mutate the map, such as [`insert`],
+//! take `&self` rather than `&mut self`. This allows
+//! them to be invoked concurrently.
+//!
+//! ```
+//! use crossbeam_skiplist::SkipMap;
+//! use crossbeam_utils::thread::scope;
+//!
+//! let person_ages = SkipMap::new();
+//!
+//! scope(|s| {
+//!     // Insert entries into the map from multiple threads.     
+//!     s.spawn(|_| {
+//!         person_ages.insert("Spike Garrett", 22);
+//!         person_ages.insert("Stan Hancock", 47);
+//!         person_ages.insert("Rea Bryan", 234);
+//!
+//!         assert_eq!(person_ages.get("Spike Garrett").unwrap().value(), &22);
+//!     });
+//!     s.spawn(|_| {
+//!         person_ages.insert("Bryon Conroy", 65);
+//!         person_ages.insert("Lauren Reilly", 2);
+//!     });
+//! }).unwrap();
+//!
+//! assert!(person_ages.contains_key("Spike Garrett"));
+//! person_ages.remove("Rea Bryan");
+//! assert!(!person_ages.contains_key("Rea Bryan"));
+//!
+//! ```
+//!
+//! Concurrent access to skip lists is lock-free and sound.
+//! Threads won't get blocked waiting for other threads to finish operating
+//! on the map.
+//!
+//! Be warned that, because of this lock-freedom, it's easy to introduce
+//! race conditions into your code. For example:
+//! ```no_run
+//! use crossbeam_skiplist::SkipSet;
+//! use crossbeam_utils::thread::scope;
+//!
+//! let numbers = SkipSet::new();
+//! scope(|s| {
+//!     numbers.insert(5);
+//!
+//!     // Spawn a thread which will remove 5 from the set.
+//!     s.spawn(|_| {
+//!         numbers.remove(&5);
+//!     });
+//!
+//!     // This check can fail!
+//!     // The othe thread may remove the value
+//!     // we perform this check.
+//!     assert!(numbers.contains(&5));
+//! }).unwrap();
+//! ```
+//!
+//! In effect, a _single_ operation on the map, such as [`insert`],
+//! operates atomically: race conditions are impossible. However,
+//! concurrent calls to functions can become interleaved across
+//! threads, introducing non-determinism into your code.
+//!
+//! To avoid this sort of race condition, never assume that a collection's
+//! state will remain the same across multiple lines of code. For instance,
+//! in the example above, the problem arises from the assumption that
+//! the map won't be mutated between the calls to `insert` and `contains`.
+//! In sequential code, this would be correct. But when multiple
+//! threads are introduced, more care is needed.
+//!
+//! Note that race conditions do not violate Rust's memory safety rules.
+//! A race between multiple threads can never cause memory errors or
+//! segfaults. A race condition is a _logic error_ in its entirety.
+//!
+//! # Performance versus B-trees
+//! In general, when you need concurrent writes
+//! to an ordered collection, skip lists are a reasonable choice.
+//! However, they can be substantially slower than B-trees
+//! in some scenarios.
+//!
+//! The main benefit of a skip list over a `RwLock<BTreeMap>`
+//! is that it allows concurrent writes to progress without
+//! mutual exclusion. However, when the frequency
+//! of writes is low, this benefit isn't as useful.
+//! In these cases, a shared [`BTreeMap`] may be a faster option.
+//!
+//! These guidelines should be taken with a grain of salt—performance
+//! in practice varies depending on your use case.
+//! In the end, the best way to choose between [`BTreeMap`] and [`SkipMap`]
+//! is to benchmark them in your own application.
+//!
+//! [`SkipMap`]: struct.SkipMap.html
+//! [`SkipSet`]: struct.SkipSet.html
+//! [`insert`]: struct.SkipSet.html#method.insert
+//! [skip lists]: https://en.wikipedia.org/wiki/Skip_list
+//! [`BTreeMap`]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
+//! [`BTreeSet`]: https://doc.rust-lang.org/std/collections/struct.BTreeSet.html
+//!
+//! # Examples
+//! [`SkipMap`] basic usage:
+//! ```
+//! use crossbeam_skiplist::SkipMap;
+//!
+//! // Note that the variable doesn't have to be mutable:
+//! // SkipMap methods take &self to support concurrent access.
+//! let movie_reviews = SkipMap::new();
+//!
+//! // Insert some key-value pairs.
+//! movie_reviews.insert("Office Space",       "Deals with real issues in the workplace.");
+//! movie_reviews.insert("Pulp Fiction",       "Masterpiece.");
+//! movie_reviews.insert("The Godfather",      "Very enjoyable.");
+//! movie_reviews.insert("The Blues Brothers", "Eye lyked it a lot.");
+//!
+//! // Get the value associated with a key.
+//! // get() returns an Entry, which gives
+//! // references to the key and value.
+//! let pulp_fiction = movie_reviews.get("Pulp Fiction").unwrap();
+//! assert_eq!(*pulp_fiction.key(), "Pulp Fiction");
+//! assert_eq!(*pulp_fiction.value(), "Masterpiece.");
+//!
+//! // Remove a key-value pair.
+//! movie_reviews.remove("The Blues Brothers");
+//! assert!(movie_reviews.get("The Blues Brothers").is_none());
+//!
+//! // Iterate over the reviews. Since SkipMap
+//! // is an ordered map, the iterator will yield
+//! // keys in lexicographical order.
+//! for entry in &movie_reviews {
+//!     let movie = entry.key();
+//!     let review = entry.value();
+//!     println!("{}: \"{}\"", movie, review);   
+//! }
+//! ```
+//!
+//! [`SkipSet`] basic usage:
+//! ```
+//! use crossbeam_skiplist::SkipSet;
+//!
+//! let books = SkipSet::new();
+//!
+//! // Add some books to the set.
+//! books.insert("A Dance With Dragons");
+//! books.insert("To Kill a Mockingbird");
+//! books.insert("The Odyssey");
+//! books.insert("The Great Gatsby");
+//!
+//! // Check for a specific one.
+//! if !books.contains("The Winds of Winter") {
+//!    println!("We have {} books, but The Winds of Winter ain't one.",
+//!             books.len());
+//! }
+//!
+//! // Remove a book from the set.
+//! books.remove("To Kill a Mockingbird");
+//! assert!(!books.contains("To Kill a Mockingbird"));
+//!
+//! // Iterate over the books in the set.
+//! // Values are returned in lexicographical order.
+//! for entry in &books {
+//!     let book = entry.value();    
+//!     println!("{}", book);  
+//! }
+//! ```
 
 #![doc(test(
     no_crate_inject,
