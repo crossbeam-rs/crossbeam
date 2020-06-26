@@ -115,7 +115,7 @@ impl<T> Channel<T> {
         // Allocate a buffer of `cap` slots initialized
         // with stamps.
         let buffer = {
-            let mut v: Vec<Slot<T>> = (0..cap)
+            let mut boxed: Box<[Slot<T>]> = (0..cap)
                 .map(|i| {
                     // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
                     Slot {
@@ -124,8 +124,8 @@ impl<T> Channel<T> {
                     }
                 })
                 .collect();
-            let ptr = v.as_mut_ptr();
-            mem::forget(v);
+            let ptr = boxed.as_mut_ptr();
+            mem::forget(boxed);
             ptr
         };
 
@@ -553,7 +553,11 @@ impl<T> Drop for Channel<T> {
 
         // Finally, deallocate the buffer, but don't run any destructors.
         unsafe {
-            Vec::from_raw_parts(self.buffer, 0, self.cap);
+            // Create a slice from the buffer to make
+            // a fat pointer. Then, use Box::from_raw
+            // to deallocate it.
+            let ptr = std::slice::from_raw_parts_mut(self.buffer, self.cap) as *mut [Slot<T>];
+            Box::from_raw(ptr);
         }
     }
 }
