@@ -24,7 +24,7 @@
 /// ```
 pub mod bounded {
     use crate::sp_inner;
-    pub use TryRecv;
+    pub use crate::TryRecv;
 
     /// The sender of a bounded SPSC queue.
     #[derive(Debug)]
@@ -122,7 +122,7 @@ pub mod bounded {
 /// ```
 pub mod unbounded {
     use crate::sp_inner;
-    pub use TryRecv;
+    pub use crate::TryRecv;
 
     /// The sender of an unbounded SPSC queue.
     #[derive(Debug)]

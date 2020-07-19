@@ -135,7 +135,7 @@ pub mod bounded {
                     // Tries moving the tail.
                     if self
                         .tail
-                        .compare_exchange_weak(tail, new_tail, Ordering::AcqRel, Ordering::Relaxed)
+                        .compare_exchange_weak(tail, new_tail, Ordering::Release, Ordering::Relaxed)
                         .is_ok()
                     {
                         // Writes the value into the slot and update the stamp.
@@ -146,15 +146,13 @@ pub mod bounded {
                         };
                         return Ok(());
                     }
-                // But if the slot lags one lap behind the tail...
-                } else if index.wrapping_add(self.lap()) == tail {
-                    let head = self.head.load(Ordering::Acquire);
-
-                    // ...and if the head lags one lap behind the tail as well...
-                    if head.wrapping_add(self.lap()) == tail {
-                        // ...then the queue is full.
-                        return Err(value);
-                    }
+                }
+                // If the slot lags one lap behind the tail and coincides with the head at the same
+                // time, then the queue is full.
+                else if index == tail.wrapping_sub(self.lap())
+                    && index == self.head.load(Ordering::Acquire)
+                {
+                    return Err(value);
                 }
             }
         }
@@ -198,15 +196,13 @@ pub mod bounded {
                         };
                         return Some(ManuallyDrop::into_inner(value));
                     }
-                // But if the slot lags one lap behind the head...
-                } else if index.wrapping_add(self.lap()) == head {
-                    let tail = self.tail.load(Ordering::Acquire);
-
-                    // ...and if the tail lags one lap behind the head as well, that means the queue
-                    // is empty.
-                    if tail.wrapping_add(self.lap()) == head {
-                        return None;
-                    }
+                }
+                // If the slot lags one lap behind the head and coincides with the tail at the same
+                // time, then the queue is empty.
+                else if index == head.wrapping_sub(self.lap())
+                    && index == self.tail.load(Ordering::Acquire)
+                {
+                    return None;
                 }
             }
         }

@@ -541,7 +541,7 @@ impl<T> DynamicCircBuf<T> {
         // Copies data from the old buffer to the new one.
         let mut i = rx;
         while i != tx {
-            ptr::copy_nonoverlapping(buffer.deref().get(i), new.get(i) as *mut _, 1);
+            ptr::copy_nonoverlapping(buffer.deref().get(i), new.get(i) as *const _ as *mut _, 1);
             i = i.wrapping_add(1);
         }
 
