@@ -224,7 +224,7 @@ impl<T> Pointable for T {
 ///
 /// An array consisting of size and elements:
 ///
-/// ```ignore
+/// ```text
 ///          elements
 ///          |
 ///          |
