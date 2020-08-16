@@ -24,7 +24,7 @@
 //!
 //! Suppose we wanted to re-write the previous example using plain threads:
 //!
-//! ```ignore
+//! ```compile_fail,E0597
 //! use std::thread;
 //!
 //! let people = vec![
@@ -36,7 +36,7 @@
 //! let mut threads = Vec::new();
 //!
 //! for person in &people {
-//!     threads.push(thread::spawn(move |_| {
+//!     threads.push(thread::spawn(move || {
 //!         println!("Hello, {}!", person);
 //!     }));
 //! }
@@ -84,7 +84,7 @@
 //! tricky because argument `s` lives *inside* the invocation of `thread::scope()` and as such
 //! cannot be borrowed by scoped threads:
 //!
-//! ```ignore
+//! ```compile_fail,E0373,E0521
 //! use crossbeam_utils::thread;
 //!
 //! thread::scope(|s| {
