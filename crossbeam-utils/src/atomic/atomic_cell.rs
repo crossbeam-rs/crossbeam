@@ -12,6 +12,7 @@ use core::sync::atomic::{self, AtomicBool, Ordering};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
 use super::seq_lock::SeqLock;
+use const_fn::const_fn;
 
 /// A thread-safe mutable memory location.
 ///
@@ -105,7 +106,8 @@ impl<T> AtomicCell<T> {
     /// // operations on them will have to use global locks for synchronization.
     /// assert_eq!(AtomicCell::<[u8; 1000]>::is_lock_free(), false);
     /// ```
-    pub fn is_lock_free() -> bool {
+    #[const_fn("1.46")]
+    pub const fn is_lock_free() -> bool {
         atomic_is_lock_free::<T>()
     }
 
@@ -602,7 +604,8 @@ impl<T: Copy + fmt::Debug> fmt::Debug for AtomicCell<T> {
 }
 
 /// Returns `true` if values of type `A` can be transmuted into values of type `B`.
-fn can_transmute<A, B>() -> bool {
+#[const_fn("1.46")]
+const fn can_transmute<A, B>() -> bool {
     // Sizes must be equal, but alignment of `A` must be greater or equal than that of `B`.
     mem::size_of::<A>() == mem::size_of::<B>() && mem::align_of::<A>() >= mem::align_of::<B>()
 }
@@ -807,7 +810,8 @@ macro_rules! atomic {
 }
 
 /// Returns `true` if operations on `AtomicCell<T>` are lock-free.
-fn atomic_is_lock_free<T>() -> bool {
+#[const_fn("1.46")]
+const fn atomic_is_lock_free<T>() -> bool {
     atomic! { T, _a, true, false }
 }
 
