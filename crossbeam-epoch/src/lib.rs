@@ -81,6 +81,8 @@ cfg_if! {
         mod internal;
         mod sync;
 
+        /// Provides an `Atomic<Arc<T>>` and related types
+        pub mod arc;
         pub use self::atomic::{Pointable, Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard};

@@ -45,6 +45,7 @@ use core::{fmt, ptr};
 use crossbeam_utils::CachePadded;
 use memoffset::offset_of;
 
+use crate::arc::{Ledger, UnpinObserver};
 use crate::atomic::{Owned, Shared};
 use crate::collector::{Collector, LocalHandle};
 use crate::deferred::Deferred;
@@ -372,6 +373,9 @@ pub struct Local {
     ///
     /// This is just an auxilliary counter that sometimes kicks off collection.
     pin_count: Cell<Wrapping<usize>>,
+
+    /// Ledger of outstanding reference count deltas
+    pub(crate) ledger: Ledger,
 }
 
 impl Local {
@@ -392,6 +396,7 @@ impl Local {
                 guard_count: Cell::new(0),
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
+                ledger: Ledger::default(),
             })
             .into_shared(unprotected());
             collector.global.locals.insert(local, unprotected());
@@ -569,9 +574,12 @@ impl Local {
         // doesn't call `finalize` again.
         self.handle_count.set(1);
         unsafe {
-            // Pin and move the local bag into the global queue. It's important that `push_bag`
-            // doesn't defer destruction on any new garbage.
+            // Pin and move the local bag into the global queue.
             let guard = &self.pin();
+            // Move outstanding arc decrements into the bag.
+            self.will_unpin(guard);
+            // It's important that `push_bag` doesn't defer destruction on any
+            // new garbage.
             self.global().push_bag(&mut *self.bag.get(), guard);
         }
         // Revert the handle count back to zero.
