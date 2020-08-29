@@ -1501,7 +1501,7 @@ mod closedchan {
         fn nbsend(&self, n: i32) -> bool {
             select! {
                 default => { false },
-                send(self.inner.tx(), n) -> _ => { true },
+                send(self.inner.tx(), n) -> res => { res.unwrap(); true },
             }
         }
         fn recv(&self) -> Option<i32> {
