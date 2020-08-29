@@ -10,6 +10,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::alloc::alloc;
 use crate::alloc::boxed::Box;
 use crate::guard::Guard;
+use const_fn::const_fn;
 use crossbeam_utils::atomic::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
@@ -346,25 +347,9 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(feature = "nightly")]
+    ///
+    #[const_fn(feature = "nightly")]
     pub const fn null() -> Atomic<T> {
-        Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a new null atomic pointer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Atomic;
-    ///
-    /// let a = Atomic::<i32>::null();
-    /// ```
-    #[cfg(not(feature = "nightly"))]
-    pub fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
             _marker: PhantomData,

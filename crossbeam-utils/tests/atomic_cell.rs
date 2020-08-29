@@ -22,6 +22,13 @@ fn is_lock_free() {
     assert_eq!(AtomicCell::<u128>::is_lock_free(), cfg!(has_atomic_u128));
 }
 
+#[rustversion::since(1.46)]
+#[test]
+fn const_is_lock_free() {
+    const _: bool = AtomicCell::<usize>::is_lock_free();
+    const _: bool = AtomicCell::<isize>::is_lock_free();
+}
+
 #[test]
 fn drops_unit() {
     static CNT: AtomicUsize = AtomicUsize::new(0);
