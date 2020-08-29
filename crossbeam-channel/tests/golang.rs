@@ -1495,7 +1495,7 @@ mod closedchan {
     impl GoChan for SChan {
         fn send(&self, n: i32) {
             select! {
-                send(self.inner.tx(), n) -> _ => {}
+                send(self.inner.tx(), n) -> res => res.unwrap()
             }
         }
         fn nbsend(&self, n: i32) -> bool {
