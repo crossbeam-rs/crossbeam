@@ -17,7 +17,7 @@ use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use crate::err::{PopError, PushError};
+use crate::err::PushError;
 
 /// A slot in a queue.
 struct Slot<T> {
@@ -50,7 +50,7 @@ struct Slot<T> {
 /// assert_eq!(q.push('a'), Ok(()));
 /// assert_eq!(q.push('b'), Ok(()));
 /// assert_eq!(q.push('c'), Err(PushError('c')));
-/// assert_eq!(q.pop(), Ok('a'));
+/// assert_eq!(q.pop(), Some('a'));
 /// ```
 pub struct ArrayQueue<T> {
     /// The head of the queue.
@@ -218,20 +218,20 @@ impl<T> ArrayQueue<T> {
 
     /// Attempts to pop an element from the queue.
     ///
-    /// If the queue is empty, an error is returned.
+    /// If the queue is empty, `None` is returned.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{ArrayQueue, PopError};
+    /// use crossbeam_queue::ArrayQueue;
     ///
     /// let q = ArrayQueue::new(1);
     /// assert_eq!(q.push(10), Ok(()));
     ///
-    /// assert_eq!(q.pop(), Ok(10));
-    /// assert_eq!(q.pop(), Err(PopError));
+    /// assert_eq!(q.pop(), Some(10));
+    /// assert!(q.pop().is_none());
     /// ```
-    pub fn pop(&self) -> Result<T, PopError> {
+    pub fn pop(&self) -> Option<T> {
         let backoff = Backoff::new();
         let mut head = self.head.load(Ordering::Relaxed);
 
@@ -268,7 +268,7 @@ impl<T> ArrayQueue<T> {
                         let msg = unsafe { slot.value.get().read().assume_init() };
                         slot.stamp
                             .store(head.wrapping_add(self.one_lap), Ordering::Release);
-                        return Ok(msg);
+                        return Some(msg);
                     }
                     Err(h) => {
                         head = h;
@@ -281,7 +281,7 @@ impl<T> ArrayQueue<T> {
 
                 // If the tail equals the head, that means the channel is empty.
                 if tail == head {
-                    return Err(PopError);
+                    return None;
                 }
 
                 backoff.spin();

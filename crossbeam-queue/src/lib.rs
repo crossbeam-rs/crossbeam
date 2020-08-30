@@ -29,7 +29,7 @@ cfg_if::cfg_if! {
         mod seg_queue;
 
         pub use self::array_queue::ArrayQueue;
-        pub use self::err::{PopError, PushError};
+        pub use self::err::PushError;
         pub use self::seg_queue::SegQueue;
     }
 }
