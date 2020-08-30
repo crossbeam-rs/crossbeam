@@ -17,8 +17,6 @@ use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use crate::err::{PopError, PushError};
-
 /// A slot in a queue.
 struct Slot<T> {
     /// The current stamp.
@@ -43,14 +41,14 @@ struct Slot<T> {
 /// # Examples
 ///
 /// ```
-/// use crossbeam_queue::{ArrayQueue, PushError};
+/// use crossbeam_queue::ArrayQueue;
 ///
 /// let q = ArrayQueue::new(2);
 ///
 /// assert_eq!(q.push('a'), Ok(()));
 /// assert_eq!(q.push('b'), Ok(()));
-/// assert_eq!(q.push('c'), Err(PushError('c')));
-/// assert_eq!(q.pop(), Ok('a'));
+/// assert_eq!(q.push('c'), Err('c'));
+/// assert_eq!(q.pop(), Some('a'));
 /// ```
 pub struct ArrayQueue<T> {
     /// The head of the queue.
@@ -144,14 +142,14 @@ impl<T> ArrayQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{ArrayQueue, PushError};
+    /// use crossbeam_queue::ArrayQueue;
     ///
     /// let q = ArrayQueue::new(1);
     ///
     /// assert_eq!(q.push(10), Ok(()));
-    /// assert_eq!(q.push(20), Err(PushError(20)));
+    /// assert_eq!(q.push(20), Err(20));
     /// ```
-    pub fn push(&self, value: T) -> Result<(), PushError<T>> {
+    pub fn push(&self, value: T) -> Result<(), T> {
         let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
 
@@ -203,7 +201,7 @@ impl<T> ArrayQueue<T> {
                 // If the head lags one lap behind the tail as well...
                 if head.wrapping_add(self.one_lap) == tail {
                     // ...then the queue is full.
-                    return Err(PushError(value));
+                    return Err(value);
                 }
 
                 backoff.spin();
@@ -218,20 +216,20 @@ impl<T> ArrayQueue<T> {
 
     /// Attempts to pop an element from the queue.
     ///
-    /// If the queue is empty, an error is returned.
+    /// If the queue is empty, `None` is returned.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{ArrayQueue, PopError};
+    /// use crossbeam_queue::ArrayQueue;
     ///
     /// let q = ArrayQueue::new(1);
     /// assert_eq!(q.push(10), Ok(()));
     ///
-    /// assert_eq!(q.pop(), Ok(10));
-    /// assert_eq!(q.pop(), Err(PopError));
+    /// assert_eq!(q.pop(), Some(10));
+    /// assert!(q.pop().is_none());
     /// ```
-    pub fn pop(&self) -> Result<T, PopError> {
+    pub fn pop(&self) -> Option<T> {
         let backoff = Backoff::new();
         let mut head = self.head.load(Ordering::Relaxed);
 
@@ -268,7 +266,7 @@ impl<T> ArrayQueue<T> {
                         let msg = unsafe { slot.value.get().read().assume_init() };
                         slot.stamp
                             .store(head.wrapping_add(self.one_lap), Ordering::Release);
-                        return Ok(msg);
+                        return Some(msg);
                     }
                     Err(h) => {
                         head = h;
@@ -281,7 +279,7 @@ impl<T> ArrayQueue<T> {
 
                 // If the tail equals the head, that means the channel is empty.
                 if tail == head {
-                    return Err(PopError);
+                    return None;
                 }
 
                 backoff.spin();
