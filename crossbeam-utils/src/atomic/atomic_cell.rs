@@ -595,6 +595,13 @@ impl<T: Default> Default for AtomicCell<T> {
     }
 }
 
+impl<T> From<T> for AtomicCell<T> {
+    #[inline]
+    fn from(val: T) -> AtomicCell<T> {
+        AtomicCell::new(val)
+    }
+}
+
 impl<T: Copy + fmt::Debug> fmt::Debug for AtomicCell<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AtomicCell")
