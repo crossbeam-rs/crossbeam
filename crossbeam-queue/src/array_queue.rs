@@ -17,8 +17,6 @@ use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use crate::err::PushError;
-
 /// A slot in a queue.
 struct Slot<T> {
     /// The current stamp.
@@ -43,13 +41,13 @@ struct Slot<T> {
 /// # Examples
 ///
 /// ```
-/// use crossbeam_queue::{ArrayQueue, PushError};
+/// use crossbeam_queue::ArrayQueue;
 ///
 /// let q = ArrayQueue::new(2);
 ///
 /// assert_eq!(q.push('a'), Ok(()));
 /// assert_eq!(q.push('b'), Ok(()));
-/// assert_eq!(q.push('c'), Err(PushError('c')));
+/// assert_eq!(q.push('c'), Err('c'));
 /// assert_eq!(q.pop(), Some('a'));
 /// ```
 pub struct ArrayQueue<T> {
@@ -144,14 +142,14 @@ impl<T> ArrayQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{ArrayQueue, PushError};
+    /// use crossbeam_queue::ArrayQueue;
     ///
     /// let q = ArrayQueue::new(1);
     ///
     /// assert_eq!(q.push(10), Ok(()));
-    /// assert_eq!(q.push(20), Err(PushError(20)));
+    /// assert_eq!(q.push(20), Err(20));
     /// ```
-    pub fn push(&self, value: T) -> Result<(), PushError<T>> {
+    pub fn push(&self, value: T) -> Result<(), T> {
         let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
 
@@ -203,7 +201,7 @@ impl<T> ArrayQueue<T> {
                 // If the head lags one lap behind the tail as well...
                 if head.wrapping_add(self.one_lap) == tail {
                     // ...then the queue is full.
-                    return Err(PushError(value));
+                    return Err(value);
                 }
 
                 backoff.spin();

@@ -25,11 +25,9 @@ cfg_if::cfg_if! {
         extern crate alloc;
 
         mod array_queue;
-        mod err;
         mod seg_queue;
 
         pub use self::array_queue::ArrayQueue;
-        pub use self::err::PushError;
         pub use self::seg_queue::SegQueue;
     }
 }
