@@ -59,21 +59,21 @@ macro_rules! impl_atomic {
 impl_atomic!(AtomicBool, bool);
 impl_atomic!(AtomicUsize, usize);
 impl_atomic!(AtomicIsize, isize);
-#[cfg(all(feature = "nightly", target_has_atomic = "8"))]
+#[cfg(has_atomic_u8)]
 impl_atomic!(AtomicU8, u8);
-#[cfg(all(feature = "nightly", target_has_atomic = "8"))]
+#[cfg(has_atomic_u8)]
 impl_atomic!(AtomicI8, i8);
-#[cfg(all(feature = "nightly", target_has_atomic = "16"))]
+#[cfg(has_atomic_u16)]
 impl_atomic!(AtomicU16, u16);
-#[cfg(all(feature = "nightly", target_has_atomic = "16"))]
+#[cfg(has_atomic_u16)]
 impl_atomic!(AtomicI16, i16);
-#[cfg(all(feature = "nightly", target_has_atomic = "32"))]
+#[cfg(has_atomic_u32)]
 impl_atomic!(AtomicU32, u32);
-#[cfg(all(feature = "nightly", target_has_atomic = "32"))]
+#[cfg(has_atomic_u32)]
 impl_atomic!(AtomicI32, i32);
-#[cfg(all(feature = "nightly", target_has_atomic = "64"))]
+#[cfg(has_atomic_u64)]
 impl_atomic!(AtomicU64, u64);
-#[cfg(all(feature = "nightly", target_has_atomic = "64"))]
+#[cfg(has_atomic_u64)]
 impl_atomic!(AtomicI64, i64);
 
 impl<T> AtomicConsume for ::core::sync::atomic::AtomicPtr<T> {
