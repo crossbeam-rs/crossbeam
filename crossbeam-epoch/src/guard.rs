@@ -3,7 +3,7 @@ use core::mem;
 
 use scopeguard::defer;
 
-use crate::atomic::Shared;
+use crate::atomic::{Pointable, Shared};
 use crate::collector::Collector;
 use crate::deferred::Deferred;
 use crate::internal::Local;
@@ -270,7 +270,7 @@ impl Guard {
     /// ```
     ///
     /// [`unprotected`]: fn.unprotected.html
-    pub unsafe fn defer_destroy<T>(&self, ptr: Shared<'_, T>) {
+    pub unsafe fn defer_destroy<T: ?Sized + Pointable>(&self, ptr: Shared<'_, T>) {
         self.defer_unchecked(move || ptr.into_owned());
     }
 

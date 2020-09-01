@@ -88,6 +88,12 @@ cfg_if! {
         #[doc(inline)]
         pub use crate::_deque::crossbeam_deque as deque;
 
+        mod _circbuf {
+            pub use crossbeam_circbuf;
+        }
+        #[doc(inline)]
+        pub use crate::_circbuf::crossbeam_circbuf as circbuf;
+
         mod _channel {
             pub use crossbeam_channel;
         }

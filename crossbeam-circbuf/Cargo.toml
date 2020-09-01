@@ -1,0 +1,24 @@
+[package]
+name = "crossbeam-circbuf"
+# When publishing a new version:
+# - Update CHANGELOG.md
+# - Update README.md
+# - Create "crossbeam-circbuf-X.Y.Z" git tag
+version = "0.1.0"
+authors = ["The Crossbeam Project Developers"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/crossbeam-rs/crossbeam"
+homepage = "https://github.com/crossbeam-rs/crossbeam"
+documentation = "https://docs.rs/crossbeam-circbuf"
+description = "Concurrent queues based on circular buffer"
+keywords = ["circular-buffer", "ring-buffer", "spsc", "spmc", "concurrent-queue"]
+categories = ["concurrency", "data-structures"]
+
+[dependencies]
+crossbeam-epoch = { path = "../crossbeam-epoch" }
+crossbeam-utils = { path = "../crossbeam-utils" }
+memoffset = "0.5.4"
+
+[dev-dependencies]
+rand = "0.7"

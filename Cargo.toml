@@ -56,6 +56,10 @@ path = "./crossbeam-deque"
 default-features = false
 optional = true
 
+[dependencies.crossbeam-circbuf]
+version = "0.1.0"
+path = "./crossbeam-circbuf"
+
 [dependencies.crossbeam-epoch]
 version = "0.8"
 path = "./crossbeam-epoch"
@@ -85,5 +89,6 @@ members = [
   "crossbeam-epoch",
   "crossbeam-queue",
   "crossbeam-skiplist",
+  "crossbeam-circbuf",
   "crossbeam-utils",
 ]
