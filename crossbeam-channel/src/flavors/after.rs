@@ -76,14 +76,13 @@ impl Channel {
         loop {
             let now = Instant::now();
 
-            // Check if we can receive the next message.
-            if now >= self.delivery_time {
-                break;
-            }
-
             let deadline = match deadline {
+                // Check if we can receive the next message.
+                _ if now >= self.delivery_time => break,
                 // Check if the timeout deadline has been reached.
                 Some(d) if now >= d => return Err(RecvTimeoutError::Timeout),
+
+                // Sleep until one of the above happens
                 Some(d) if d < self.delivery_time => d,
                 _ => self.delivery_time,
             };

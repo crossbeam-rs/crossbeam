@@ -176,11 +176,12 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
     }
 }
 
-/// Creates a receiver that delivers a message after at a certain instant in time
+/// Creates a receiver that delivers a message at a certain instant in time
 ///
 /// The channel is bounded with capacity of 1 and never gets disconnected. Exactly one message will
 /// be sent into the channel at the moment in time `when`. The message is the instant at which it
-/// is sent, which is the same as `when`.
+/// is sent, which is the same as `when`. If `when` is in the past, the message will be delivered
+/// instantly to the receiver.
 ///
 /// # Examples
 ///
