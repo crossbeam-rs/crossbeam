@@ -481,9 +481,16 @@ pub fn select_timeout<'a>(
     handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
     timeout: Duration,
 ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
-    let timeout = Timeout::At(Instant::now() + timeout);
+    select_deadline(handles, Instant::now() + timeout)
+}
 
-    match run_select(handles, timeout) {
+/// Blocks until a given deadline, or until one of the operations becomes ready and selects it.
+#[inline]
+pub fn select_deadline<'a>(
+    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    deadline: Instant,
+) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
+    match run_select(handles, Timeout::At(deadline)) {
         None => Err(SelectTimeoutError),
         Some((token, index, ptr)) => Ok(SelectedOperation {
             token,
@@ -855,6 +862,61 @@ impl<'a> Select<'a> {
         select_timeout(&mut self.handles, timeout)
     }
 
+    /// Blocks until a given deadline, or until one of the operations becomes ready and selects it.
+    ///
+    /// If an operation becomes ready, it is selected and returned. If multiple operations are
+    /// ready at the same time, a random one among them is selected. If none of the operations
+    /// become ready before the given deadline, an error is returned.
+    ///
+    /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
+    /// even when it will simply return an error because the channel is disconnected.
+    ///
+    /// The selected operation must be completed with [`SelectedOperation::send`]
+    /// or [`SelectedOperation::recv`].
+    ///
+    /// [`SelectedOperation::send`]: struct.SelectedOperation.html#method.send
+    /// [`SelectedOperation::recv`]: struct.SelectedOperation.html#method.recv
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::{Instant, Duration};
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded();
+    /// let (s2, r2) = unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     s1.send(10).unwrap();
+    /// });
+    /// thread::spawn(move || s2.send(20).unwrap());
+    ///
+    /// let mut sel = Select::new();
+    /// let oper1 = sel.recv(&r1);
+    /// let oper2 = sel.recv(&r2);
+    ///
+    /// let deadline = Instant::now() + Duration::from_millis(500);
+    ///
+    /// // The second operation will be selected because it becomes ready first.
+    /// let oper = sel.select_deadline(deadline);
+    /// match oper {
+    ///     Err(_) => panic!("should not have timed out"),
+    ///     Ok(oper) => match oper.index() {
+    ///         i if i == oper1 => assert_eq!(oper.recv(&r1), Ok(10)),
+    ///         i if i == oper2 => assert_eq!(oper.recv(&r2), Ok(20)),
+    ///         _ => unreachable!(),
+    ///     }
+    /// }
+    /// ```
+    pub fn select_deadline(
+        &mut self,
+        deadline: Instant,
+    ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
+        select_deadline(&mut self.handles, deadline)
+    }
+
     /// Attempts to find a ready operation without blocking.
     ///
     /// If an operation is ready, its index is returned. If multiple operations are ready at the
@@ -988,9 +1050,53 @@ impl<'a> Select<'a> {
     /// }
     /// ```
     pub fn ready_timeout(&mut self, timeout: Duration) -> Result<usize, ReadyTimeoutError> {
-        let timeout = Timeout::At(Instant::now() + timeout);
+        self.ready_deadline(Instant::now() + timeout)
+    }
 
-        match run_ready(&mut self.handles, timeout) {
+    /// Blocks for a until a given deadline, or until one of the operations becomes ready.
+    ///
+    /// If an operation becomes ready, its index is returned. If multiple operations are ready at
+    /// the same time, a random one among them is chosen. If none of the operations become ready
+    /// before the deadline, an error is returned.
+    ///
+    /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
+    /// even when it will simply return an error because the channel is disconnected.
+    ///
+    /// Note that this method might return with success spuriously, so it's a good idea to double
+    /// check if the operation is really ready.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::{Duration, Instant};
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let deadline = Instant::now() + Duration::from_millis(500);
+    ///
+    /// let (s1, r1) = unbounded();
+    /// let (s2, r2) = unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     s1.send(10).unwrap();
+    /// });
+    /// thread::spawn(move || s2.send(20).unwrap());
+    ///
+    /// let mut sel = Select::new();
+    /// let oper1 = sel.recv(&r1);
+    /// let oper2 = sel.recv(&r2);
+    ///
+    /// // The second operation will be selected because it becomes ready first.
+    /// match sel.ready_deadline(deadline) {
+    ///     Err(_) => panic!("should not have timed out"),
+    ///     Ok(i) if i == oper1 => assert_eq!(r1.try_recv(), Ok(10)),
+    ///     Ok(i) if i == oper2 => assert_eq!(r2.try_recv(), Ok(20)),
+    ///     Ok(_) => unreachable!(),
+    /// }
+    /// ```
+    pub fn ready_deadline(&mut self, deadline: Instant) -> Result<usize, ReadyTimeoutError> {
+        match run_ready(&mut self.handles, Timeout::At(deadline)) {
             None => Err(ReadyTimeoutError),
             Some(index) => Ok(index),
         }

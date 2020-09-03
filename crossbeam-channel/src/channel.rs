@@ -172,7 +172,54 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// ```
 pub fn after(duration: Duration) -> Receiver<Instant> {
     Receiver {
-        flavor: ReceiverFlavor::After(Arc::new(flavors::after::Channel::new(duration))),
+        flavor: ReceiverFlavor::After(Arc::new(flavors::after::Channel::new_timeout(duration))),
+    }
+}
+
+/// Creates a receiver that delivers a message after at a certain instant in time
+///
+/// The channel is bounded with capacity of 1 and never gets disconnected. Exactly one message will
+/// be sent into the channel at the moment in time `when`. The message is the instant at which it
+/// is sent, which is the same as `when`.
+///
+/// # Examples
+///
+/// Using an `after` channel for timeouts:
+///
+/// ```
+/// use std::time::Duration;
+/// use crossbeam_channel::{after, select, unbounded};
+///
+/// let (s, r) = unbounded::<i32>();
+/// let timeout = Duration::from_millis(100);
+///
+/// select! {
+///     recv(r) -> msg => println!("received {:?}", msg),
+///     recv(after(timeout)) -> _ => println!("timed out"),
+/// }
+/// ```
+///
+/// When the message gets sent:
+///
+/// ```
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel::at;
+///
+/// // Converts a number of milliseconds into a `Duration`.
+/// let ms = |ms| Duration::from_millis(ms);
+///
+/// let start = Instant::now();
+/// let end = start + ms(100);
+///
+/// let r = at(end);
+///
+/// // This message was sent 100 ms from the start
+/// assert_eq!(r.recv().unwrap(), end);
+/// assert!(Instant::now() > start + ms(100));
+/// ```
+pub fn at(when: Instant) -> Receiver<Instant> {
+    Receiver {
+        flavor: ReceiverFlavor::After(Arc::new(flavors::after::Channel::new_deadline(when))),
     }
 }
 
@@ -425,8 +472,49 @@ impl<T> Sender<T> {
     /// );
     /// ```
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
-        let deadline = Instant::now() + timeout;
+        self.send_deadline(msg, Instant::now() + timeout)
+    }
 
+    /// Waits for a message to be sent into the channel, but only until a given deadline.
+    ///
+    /// If the channel is full and not disconnected, this call will block until the send operation
+    /// can proceed or the operation times out. If the channel becomes disconnected, this call will
+    /// wake up and return an error. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::{Duration, Instant};
+    /// use crossbeam_channel::{bounded, SendTimeoutError};
+    ///
+    /// let (s, r) = bounded(0);
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     assert_eq!(r.recv(), Ok(2));
+    ///     drop(r);
+    /// });
+    ///
+    /// let now = Instant::now();
+    ///
+    /// assert_eq!(
+    ///     s.send_deadline(1, now + Duration::from_millis(500)),
+    ///     Err(SendTimeoutError::Timeout(1)),
+    /// );
+    /// assert_eq!(
+    ///     s.send_deadline(2, now + Duration::from_millis(1500)),
+    ///     Ok(()),
+    /// );
+    /// assert_eq!(
+    ///     s.send_deadline(3, now + Duration::from_millis(2000)),
+    ///     Err(SendTimeoutError::Disconnected(3)),
+    /// );
+    /// ```
+    pub fn send_deadline(&self, msg: T, deadline: Instant) -> Result<(), SendTimeoutError<T>> {
         match &self.flavor {
             SenderFlavor::Array(chan) => chan.send(msg, Some(deadline)),
             SenderFlavor::List(chan) => chan.send(msg, Some(deadline)),
@@ -774,8 +862,49 @@ impl<T> Receiver<T> {
     /// );
     /// ```
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        let deadline = Instant::now() + timeout;
+        self.recv_deadline(Instant::now() + timeout)
+    }
 
+    /// Waits for a message to be received from the channel, but only before a given deadline.
+    ///
+    /// If the channel is empty and not disconnected, this call will block until the receive
+    /// operation can proceed or the operation times out. If the channel is empty and becomes
+    /// disconnected, this call will wake up and return an error.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
+    /// on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::{Instant, Duration};
+    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
+    ///
+    /// let (s, r) = unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     s.send(5).unwrap();
+    ///     drop(s);
+    /// });
+    ///
+    /// let now = Instant::now();
+    ///
+    /// assert_eq!(
+    ///     r.recv_deadline(now + Duration::from_millis(500)),
+    ///     Err(RecvTimeoutError::Timeout),
+    /// );
+    /// assert_eq!(
+    ///     r.recv_deadline(now + Duration::from_millis(1500)),
+    ///     Ok(5),
+    /// );
+    /// assert_eq!(
+    ///     r.recv_deadline(now + Duration::from_secs(5)),
+    ///     Err(RecvTimeoutError::Disconnected),
+    /// );
+    /// ```
+    pub fn recv_deadline(&self, deadline: Instant) -> Result<T, RecvTimeoutError> {
         match &self.flavor {
             ReceiverFlavor::Array(chan) => chan.recv(Some(deadline)),
             ReceiverFlavor::List(chan) => chan.recv(Some(deadline)),

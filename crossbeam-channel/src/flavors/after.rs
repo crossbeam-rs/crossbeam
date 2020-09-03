@@ -24,13 +24,18 @@ pub struct Channel {
 }
 
 impl Channel {
-    /// Creates a channel that delivers a message after a certain duration of time.
+    /// Creates a channel that delivers a message at a certain instant in time.
     #[inline]
-    pub fn new(dur: Duration) -> Self {
+    pub fn new_deadline(when: Instant) -> Self {
         Channel {
-            delivery_time: Instant::now() + dur,
+            delivery_time: when,
             received: AtomicBool::new(false),
         }
+    }
+    /// Creates a channel that delivers a message after a certain duration of time.
+    #[inline]
+    pub fn new_timeout(dur: Duration) -> Self {
+        Self::new_deadline(Instant::now() + dur)
     }
 
     /// Attempts to receive a message without blocking.
@@ -76,16 +81,14 @@ impl Channel {
                 break;
             }
 
-            // Check if the deadline has been reached.
-            if let Some(d) = deadline {
-                if now >= d {
-                    return Err(RecvTimeoutError::Timeout);
-                }
+            let deadline = match deadline {
+                // Check if the timeout deadline has been reached.
+                Some(d) if now >= d => return Err(RecvTimeoutError::Timeout),
+                Some(d) if d < self.delivery_time => d,
+                _ => self.delivery_time,
+            };
 
-                thread::sleep(self.delivery_time.min(d) - now);
-            } else {
-                thread::sleep(self.delivery_time - now);
-            }
+            thread::sleep(deadline - now);
         }
 
         // Try receiving the message if it is still available.
