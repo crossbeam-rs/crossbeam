@@ -185,18 +185,18 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 ///
 /// # Examples
 ///
-/// Using an `after` channel for timeouts:
+/// Using an `at` channel for timeouts:
 ///
 /// ```
-/// use std::time::Duration;
-/// use crossbeam_channel::{after, select, unbounded};
+/// use std::time::{Instant, Duration};
+/// use crossbeam_channel::{at, select, unbounded};
 ///
 /// let (s, r) = unbounded::<i32>();
-/// let timeout = Duration::from_millis(100);
+/// let deadline = Instant::now() + Duration::from_millis(500);
 ///
 /// select! {
 ///     recv(r) -> msg => println!("received {:?}", msg),
-///     recv(after(timeout)) -> _ => println!("timed out"),
+///     recv(at(deadline)) -> _ => println!("timed out"),
 /// }
 /// ```
 ///
