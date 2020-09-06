@@ -62,6 +62,25 @@ impl<T> AtomicCell<T> {
         }
     }
 
+    /// Returns a mutable reference to the underlying value.
+    ///
+    /// This is safe because the mutable reference guarantees that no other threads are concurrently accessing the atomic data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::atomic::AtomicCell;
+    ///
+    /// let mut a = AtomicCell::new(10);
+    /// assert_eq!(*a.get_mut(), 10);
+    /// *a.get_mut() = 5;
+    /// assert_eq!(a.load(), 5);
+    /// ```
+    pub fn get_mut(&mut self) -> &mut T {
+        // SAFETY: the mutable reference guarantees unique ownership.
+        unsafe { &mut *self.value.get() }
+    }
+
     /// Unwraps the atomic cell and returns its inner value.
     ///
     /// # Examples
