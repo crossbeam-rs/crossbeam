@@ -17,14 +17,12 @@
 //! * [`CachePadded`], for padding and aligning a value to the length of a cache line.
 //! * [`scope`], for spawning threads that borrow local variables from the stack.
 //!
-//! [`AtomicCell`]: atomic/struct.AtomicCell.html
-//! [`AtomicConsume`]: atomic/trait.AtomicConsume.html
-//! [`Parker`]: sync/struct.Parker.html
-//! [`ShardedLock`]: sync/struct.ShardedLock.html
-//! [`WaitGroup`]: sync/struct.WaitGroup.html
-//! [`Backoff`]: struct.Backoff.html
-//! [`CachePadded`]: struct.CachePadded.html
-//! [`scope`]: thread/fn.scope.html
+//! [`AtomicCell`]: atomic::AtomicCell
+//! [`AtomicConsume`]: atomic::AtomicConsume
+//! [`Parker`]: sync::Parker
+//! [`ShardedLock`]: sync::ShardedLock
+//! [`WaitGroup`]: sync::WaitGroup
+//! [`scope`]: thread::scope
 
 #![doc(test(
     no_crate_inject,

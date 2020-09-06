@@ -4,9 +4,6 @@
 //!
 //! * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
 //! * [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
-//!
-//! [`ArrayQueue`]: struct.ArrayQueue.html
-//! [`SegQueue`]: struct.SegQueue.html
 
 #![doc(test(
     no_crate_inject,

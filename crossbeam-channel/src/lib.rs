@@ -316,20 +316,10 @@
 //! }
 //! ```
 //!
-//! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
-//! [`unbounded`]: fn.unbounded.html
-//! [`bounded`]: fn.bounded.html
-//! [`after`]: fn.after.html
-//! [`tick`]: fn.tick.html
-//! [`never`]: fn.never.html
-//! [`send`]: struct.Sender.html#method.send
-//! [`recv`]: struct.Receiver.html#method.recv
-//! [`iter`]: struct.Receiver.html#method.iter
-//! [`try_iter`]: struct.Receiver.html#method.try_iter
-//! [`select!`]: macro.select.html
-//! [`Select`]: struct.Select.html
-//! [`Sender`]: struct.Sender.html
-//! [`Receiver`]: struct.Receiver.html
+//! [`send`]: Sender::send
+//! [`recv`]: Receiver::recv
+//! [`iter`]: Receiver::iter
+//! [`try_iter`]: Receiver::try_iter
 
 #![doc(test(
     no_crate_inject,

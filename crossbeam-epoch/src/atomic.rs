@@ -135,10 +135,6 @@ fn decompose_tag<T: ?Sized + Pointable>(data: usize) -> (usize, usize) {
 ///
 /// let o = Owned::<[MaybeUninit<i32>]>::init(10); // allocating [i32; 10]
 /// ```
-///
-/// [`Atomic`]: struct.Atomic.html
-/// [`Owned`]: struct.Owned.html
-/// [`Shared`]: struct.Shared.html
 pub trait Pointable {
     /// The alignment of pointer.
     const ALIGN: usize;
@@ -160,10 +156,6 @@ pub trait Pointable {
     /// - The given `ptr` should have been initialized with [`Pointable::init`].
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
     /// - `ptr` should not be mutably dereferenced by [`Pointable::deref_mut`] concurrently.
-    ///
-    /// [`Pointable::init`]: trait.Pointable.html#method.init
-    /// [`Pointable::drop`]: trait.Pointable.html#method.drop
-    /// [`Pointable::deref`]: trait.Pointable.html#method.deref
     unsafe fn deref<'a>(ptr: usize) -> &'a Self;
 
     /// Mutably dereferences the given pointer.
@@ -174,11 +166,6 @@ pub trait Pointable {
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
     /// - `ptr` should not be dereferenced by [`Pointable::deref`] or [`Pointable::deref_mut`]
     ///   concurrently.
-    ///
-    /// [`Pointable::init`]: trait.Pointable.html#method.init
-    /// [`Pointable::drop`]: trait.Pointable.html#method.drop
-    /// [`Pointable::deref`]: trait.Pointable.html#method.deref
-    /// [`Pointable::deref_mut`]: trait.Pointable.html#method.deref_mut
     unsafe fn deref_mut<'a>(ptr: usize) -> &'a mut Self;
 
     /// Drops the object pointed to by the given pointer.
@@ -189,11 +176,6 @@ pub trait Pointable {
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
     /// - `ptr` should not be dereferenced by [`Pointable::deref`] or [`Pointable::deref_mut`]
     ///   concurrently.
-    ///
-    /// [`Pointable::init`]: trait.Pointable.html#method.init
-    /// [`Pointable::drop`]: trait.Pointable.html#method.drop
-    /// [`Pointable::deref`]: trait.Pointable.html#method.deref
-    /// [`Pointable::deref_mut`]: trait.Pointable.html#method.deref_mut
     unsafe fn drop(ptr: usize);
 }
 
@@ -290,9 +272,6 @@ impl<T> Pointable for [MaybeUninit<T>] {
 /// Any method that loads the pointer must be passed a reference to a [`Guard`].
 ///
 /// Crossbeam supports dynamically sized types.  See [`Pointable`] for details.
-///
-/// [`Guard`]: struct.Guard.html
-/// [`Pointable`]: trait.Pointable.html
 pub struct Atomic<T: ?Sized + Pointable> {
     data: AtomicUsize,
     _marker: PhantomData<*mut T>,
@@ -361,8 +340,6 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
     ///
-    /// [`Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
-    ///
     /// # Examples
     ///
     /// ```
@@ -407,8 +384,6 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
     ///
-    /// [`Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
-    ///
     /// # Examples
     ///
     /// ```
@@ -428,8 +403,6 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
-    ///
-    /// [`Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
     ///
     /// # Examples
     ///
@@ -455,8 +428,6 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// This method takes a [`CompareAndSetOrdering`] argument which describes the memory
     /// ordering of this operation.
-    ///
-    /// [`CompareAndSetOrdering`]: trait.CompareAndSetOrdering.html
     ///
     /// # Examples
     ///
@@ -506,8 +477,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// This method takes a [`CompareAndSetOrdering`] argument which describes the memory
     /// ordering of this operation.
     ///
-    /// [`compare_and_set`]: struct.Atomic.html#method.compare_and_set
-    /// [`CompareAndSetOrdering`]: trait.CompareAndSetOrdering.html
+    /// [`compare_and_set`]: Atomic::compare_and_set
     ///
     /// # Examples
     ///
@@ -572,8 +542,6 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
     ///
-    /// [`Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
-    ///
     /// # Examples
     ///
     /// ```
@@ -597,8 +565,6 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
     ///
-    /// [`Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
-    ///
     /// # Examples
     ///
     /// ```
@@ -621,8 +587,6 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// This method takes an [`Ordering`] argument which describes the memory ordering of this
     /// operation.
-    ///
-    /// [`Ordering`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html
     ///
     /// # Examples
     ///
@@ -908,8 +872,6 @@ impl<T: ?Sized + Pointable> Owned<T> {
     /// let guard = &epoch::pin();
     /// let p = o.into_shared(guard);
     /// ```
-    ///
-    /// [`Shared`]: struct.Shared.html
     #[allow(clippy::needless_lifetimes)]
     pub fn into_shared<'g>(self, _: &'g Guard) -> Shared<'g, T> {
         unsafe { Shared::from_usize(self.into_usize()) }

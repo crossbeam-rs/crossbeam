@@ -1046,7 +1046,7 @@ macro_rules! crossbeam_channel_internal {
 /// The `select` macro is a convenience wrapper around [`Select`]. However, it cannot select over a
 /// dynamically created list of channel operations.
 ///
-/// [`Select`]: struct.Select.html
+/// [`Select`]: super::Select
 ///
 /// # Examples
 ///
@@ -1154,8 +1154,8 @@ macro_rules! crossbeam_channel_internal {
 ///
 /// To optionally add a timeout to `select!`, see the [example] for [`never`].
 ///
-/// [`never`]: fn.never.html
-/// [example]: fn.never.html#examples
+/// [`never`]: super::never
+/// [example]: super::never#examples
 #[macro_export]
 macro_rules! select {
     ($($tokens:tt)*) => {

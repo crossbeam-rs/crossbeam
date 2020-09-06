@@ -911,8 +911,7 @@ impl<T> Receiver<T> {
     /// Each call to [`next`] blocks waiting for the next message and then returns it. However, if
     /// the channel becomes empty and disconnected, it returns [`None`] without blocking.
     ///
-    /// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
-    /// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
+    /// [`next`]: Iterator::next
     ///
     /// # Examples
     ///
@@ -944,7 +943,7 @@ impl<T> Receiver<T> {
     /// Each call to [`next`] returns a message if there is one ready to be received. The iterator
     /// never blocks waiting for the next message.
     ///
-    /// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
+    /// [`next`]: Iterator::next
     ///
     /// # Examples
     ///
@@ -1062,8 +1061,7 @@ impl<T> IntoIterator for Receiver<T> {
 /// Each call to [`next`] blocks waiting for the next message and then returns it. However, if the
 /// channel becomes empty and disconnected, it returns [`None`] without blocking.
 ///
-/// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
-/// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
+/// [`next`]: Iterator::next
 ///
 /// # Examples
 ///
@@ -1111,7 +1109,7 @@ impl<T> fmt::Debug for Iter<'_, T> {
 /// Each call to [`next`] returns a message if there is one ready to be received. The iterator
 /// never blocks waiting for the next message.
 ///
-/// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
+/// [`next`]: Iterator::next
 ///
 /// # Examples
 ///
@@ -1161,8 +1159,7 @@ impl<T> fmt::Debug for TryIter<'_, T> {
 /// Each call to [`next`] blocks waiting for the next message and then returns it. However, if the
 /// channel becomes empty and disconnected, it returns [`None`] without blocking.
 ///
-/// [`next`]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
-/// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
+/// [`next`]: Iterator::next
 ///
 /// # Examples
 ///

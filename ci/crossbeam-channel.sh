@@ -11,4 +11,6 @@ cargo test -- --test-threads=1
 if [[ "$RUST_VERSION" == "nightly"* ]]; then
     cd benchmarks
     cargo check --bins
+
+    RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps --all-features
 fi

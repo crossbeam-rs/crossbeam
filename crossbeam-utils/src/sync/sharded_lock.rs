@@ -106,8 +106,7 @@ impl<T> ShardedLock<T> {
                         write_guard: UnsafeCell::new(None),
                     })
                 })
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .collect::<Box<[_]>>(),
             value: UnsafeCell::new(value),
         }
     }
@@ -481,8 +480,6 @@ impl<T> From<T> for ShardedLock<T> {
 }
 
 /// A guard used to release the shared read access of a [`ShardedLock`] when dropped.
-///
-/// [`ShardedLock`]: struct.ShardedLock.html
 pub struct ShardedLockReadGuard<'a, T: ?Sized> {
     lock: &'a ShardedLock<T>,
     _guard: RwLockReadGuard<'a, ()>,
@@ -514,8 +511,6 @@ impl<T: ?Sized + fmt::Display> fmt::Display for ShardedLockReadGuard<'_, T> {
 }
 
 /// A guard used to release the exclusive write access of a [`ShardedLock`] when dropped.
-///
-/// [`ShardedLock`]: struct.ShardedLock.html
 pub struct ShardedLockWriteGuard<'a, T: ?Sized> {
     lock: &'a ShardedLock<T>,
     _marker: PhantomData<RwLockWriteGuard<'a, T>>,

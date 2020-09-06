@@ -11,6 +11,8 @@ cargo test
 if [[ "$RUST_VERSION" == "nightly"* ]]; then
     cargo test --features nightly
 
+    RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps --all-features
+
     if [[ "$OSTYPE" == "linux"* ]]; then
         ASAN_OPTIONS="detect_odr_violation=0 detect_leaks=0" \
         RUSTFLAGS="-Z sanitizer=address" \

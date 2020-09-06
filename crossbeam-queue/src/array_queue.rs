@@ -36,7 +36,7 @@ struct Slot<T> {
 /// element into a full queue will fail. Having a buffer allocated upfront makes this queue a bit
 /// faster than [`SegQueue`].
 ///
-/// [`SegQueue`]: struct.SegQueue.html
+/// [`SegQueue`]: super::SegQueue
 ///
 /// # Examples
 ///

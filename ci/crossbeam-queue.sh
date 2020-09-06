@@ -7,3 +7,7 @@ export RUSTFLAGS="-D warnings"
 
 cargo check --bins --examples --tests
 cargo test
+
+if [[ "$RUST_VERSION" == "nightly"* ]]; then
+    RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps --all-features
+fi
