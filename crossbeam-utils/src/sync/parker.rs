@@ -48,9 +48,9 @@ use std::time::Duration;
 /// p.park();
 /// ```
 ///
-/// [`park`]: struct.Parker.html#method.park
-/// [`park_timeout`]: struct.Parker.html#method.park_timeout
-/// [`unpark`]: struct.Unparker.html#method.unpark
+/// [`park`]: Parker::park
+/// [`park_timeout`]: Parker::park_timeout
+/// [`unpark`]: Unparker::unpark
 pub struct Parker {
     unparker: Unparker,
     _marker: PhantomData<*const ()>,
@@ -149,10 +149,8 @@ impl Parker {
     /// p.park();
     /// ```
     ///
-    /// [`park`]: struct.Parker.html#method.park
-    /// [`park_timeout`]: struct.Parker.html#method.park_timeout
-    ///
-    /// [`Unparker`]: struct.Unparker.html
+    /// [`park`]: Parker::park
+    /// [`park_timeout`]: Parker::park_timeout
     pub fn unparker(&self) -> &Unparker {
         &self.unparker
     }
@@ -176,8 +174,6 @@ impl Parker {
     /// # Safety
     ///
     /// This method is safe to use only with pointers returned by [`Parker::into_raw`].
-    ///
-    /// [`Parker::into_raw`]: struct.Parker.html#method.into_raw
     ///
     /// # Examples
     ///
@@ -203,8 +199,6 @@ impl fmt::Debug for Parker {
 }
 
 /// Unparks a thread parked by the associated [`Parker`].
-///
-/// [`Parker`]: struct.Parker.html
 pub struct Unparker {
     inner: Arc<Inner>,
 }
@@ -238,8 +232,8 @@ impl Unparker {
     /// p.park();
     /// ```
     ///
-    /// [`park`]: struct.Parker.html#method.park
-    /// [`park_timeout`]: struct.Parker.html#method.park_timeout
+    /// [`park`]: Parker::park
+    /// [`park_timeout`]: Parker::park_timeout
     pub fn unpark(&self) {
         self.inner.unpark()
     }
@@ -264,8 +258,6 @@ impl Unparker {
     /// # Safety
     ///
     /// This method is safe to use only with pointers returned by [`Unparker::into_raw`].
-    ///
-    /// [`Unparker::into_raw`]: struct.Unparker.html#method.into_raw
     ///
     /// # Examples
     ///
