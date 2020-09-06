@@ -1,3 +1,7 @@
+# Version 0.2.3
+
+- Fix bug in release (yanking 0.2.2)
+
 # Version 0.2.2
 
 - Fix unsoundness issues by adopting `MaybeUninit`. (#458)
