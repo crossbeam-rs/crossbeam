@@ -1,3 +1,8 @@
+# Version 0.4.4
+
+- Fix bug in release (yanking 0.4.3)
+- Fix UB and breaking change introduced in 0.4.3
+
 # Version 0.4.3
 
 - Change license to "MIT OR Apache-2.0".
