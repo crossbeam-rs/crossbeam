@@ -75,16 +75,12 @@
 //! }
 //! ```
 //!
-//! [`Worker`]: struct.Worker.html
-//! [`Stealer`]: struct.Stealer.html
-//! [`Injector`]: struct.Injector.html
-//! [`Steal::Retry`]: enum.Steal.html#variant.Retry
-//! [`new_fifo()`]: struct.Worker.html#method.new_fifo
-//! [`new_lifo()`]: struct.Worker.html#method.new_lifo
-//! [`stealer()`]: struct.Worker.html#method.stealer
-//! [`steal()`]: struct.Stealer.html#method.steal
-//! [`steal_batch()`]: struct.Stealer.html#method.steal_batch
-//! [`steal_batch_and_pop()`]: struct.Stealer.html#method.steal_batch_and_pop
+//! [`new_fifo()`]: Worker::new_fifo
+//! [`new_lifo()`]: Worker::new_lifo
+//! [`stealer()`]: Worker::stealer
+//! [`steal()`]: Stealer::steal
+//! [`steal_batch()`]: Stealer::steal_batch
+//! [`steal_batch_and_pop()`]: Stealer::steal_batch_and_pop
 
 #![doc(test(
     no_crate_inject,

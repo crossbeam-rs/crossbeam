@@ -39,7 +39,7 @@
 //! pinned participants get unpinned. Such objects can be stored into a thread-local or global
 //! storage, where they are kept until the right time for their destruction comes.
 //!
-//! There is a global shared instance of garbage queue. You can [`defer`] the execution of an
+//! There is a global shared instance of garbage queue. You can [`defer`](Guard::defer) the execution of an
 //! arbitrary function until the global epoch is advanced enough. Most notably, concurrent data
 //! structures may defer the deallocation of an object.
 //!
@@ -47,12 +47,6 @@
 //!
 //! For majority of use cases, just use the default garbage collector by invoking [`pin`]. If you
 //! want to create your own garbage collector, use the [`Collector`] API.
-//!
-//! [`Atomic`]: struct.Atomic.html
-//! [`Collector`]: struct.Collector.html
-//! [`Shared`]: struct.Shared.html
-//! [`pin`]: fn.pin.html
-//! [`defer`]: struct.Guard.html#method.defer
 
 #![doc(test(
     no_crate_inject,

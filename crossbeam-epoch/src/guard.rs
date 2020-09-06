@@ -66,7 +66,7 @@ use crate::internal::Local;
 /// assert!(!epoch::is_pinned());
 /// ```
 ///
-/// [`pin`]: fn.pin.html
+/// [`pin`]: super::pin
 pub struct Guard {
     pub(crate) local: *const Local,
 }
@@ -87,8 +87,6 @@ impl Guard {
     ///
     /// If this method is called from an [`unprotected`] guard, the function will simply be
     /// executed immediately.
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn defer<F, R>(&self, f: F)
     where
         F: FnOnce() -> R,
@@ -187,8 +185,6 @@ impl Guard {
     ///     }
     /// }
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub unsafe fn defer_unchecked<F, R>(&self, f: F)
     where
         F: FnOnce() -> R,
@@ -268,8 +264,6 @@ impl Guard {
     ///     }
     /// }
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub unsafe fn defer_destroy<T>(&self, ptr: Shared<'_, T>) {
         self.defer_unchecked(move || ptr.into_owned());
     }
@@ -294,8 +288,6 @@ impl Guard {
     /// });
     /// guard.flush();
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn flush(&self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
             local.flush(self);
@@ -329,8 +321,6 @@ impl Guard {
     ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
     /// }
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn repin(&mut self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
             local.repin();
@@ -367,8 +357,6 @@ impl Guard {
     ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
     /// }
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn repin_after<F, R>(&mut self, f: F) -> R
     where
         F: FnOnce() -> R,
@@ -407,8 +395,6 @@ impl Guard {
     /// let guard2 = epoch::pin();
     /// assert!(guard1.collector() == guard2.collector());
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn collector(&self) -> Option<&Collector> {
         unsafe { self.local.as_ref().map(|local| local.collector()) }
     }
@@ -512,8 +498,8 @@ impl fmt::Debug for Guard {
 /// }
 /// ```
 ///
-/// [`Atomic`]: struct.Atomic.html
-/// [`defer`]: struct.Guard.html#method.defer
+/// [`Atomic`]: super::Atomic
+/// [`defer`]: Guard::defer
 #[inline]
 pub unsafe fn unprotected() -> &'static Guard {
     // HACK(stjepang): An unprotected guard is just a `Guard` with its field `local` set to null.

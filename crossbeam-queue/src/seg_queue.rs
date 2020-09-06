@@ -116,7 +116,7 @@ struct Position<T> {
 /// at a time. However, since segments need to be dynamically allocated as elements get pushed,
 /// this queue is somewhat slower than [`ArrayQueue`].
 ///
-/// [`ArrayQueue`]: struct.ArrayQueue.html
+/// [`ArrayQueue`]: super::ArrayQueue
 ///
 /// # Examples
 ///

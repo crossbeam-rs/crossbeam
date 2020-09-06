@@ -570,13 +570,12 @@ pub fn select_timeout<'a>(
 /// }
 /// ```
 ///
-/// [`select!`]: macro.select.html
-/// [`try_select`]: struct.Select.html#method.try_select
-/// [`select`]: struct.Select.html#method.select
-/// [`select_timeout`]: struct.Select.html#method.select_timeout
-/// [`try_ready`]: struct.Select.html#method.try_ready
-/// [`ready`]: struct.Select.html#method.ready
-/// [`ready_timeout`]: struct.Select.html#method.ready_timeout
+/// [`try_select`]: Select::try_select
+/// [`select`]: Select::select
+/// [`select_timeout`]: Select::select_timeout
+/// [`try_ready`]: Select::try_ready
+/// [`ready`]: Select::ready
+/// [`ready_timeout`]: Select::ready_timeout
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
     handles: Vec<(&'a dyn SelectHandle, usize, *const u8)>,
@@ -719,9 +718,6 @@ impl<'a> Select<'a> {
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
     ///
-    /// [`SelectedOperation::send`]: struct.SelectedOperation.html#method.send
-    /// [`SelectedOperation::recv`]: struct.SelectedOperation.html#method.recv
-    ///
     /// # Examples
     ///
     /// ```
@@ -762,9 +758,6 @@ impl<'a> Select<'a> {
     ///
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
-    ///
-    /// [`SelectedOperation::send`]: struct.SelectedOperation.html#method.send
-    /// [`SelectedOperation::recv`]: struct.SelectedOperation.html#method.recv
     ///
     /// # Panics
     ///
@@ -813,9 +806,6 @@ impl<'a> Select<'a> {
     ///
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
-    ///
-    /// [`SelectedOperation::send`]: struct.SelectedOperation.html#method.send
-    /// [`SelectedOperation::recv`]: struct.SelectedOperation.html#method.recv
     ///
     /// # Examples
     ///
@@ -1027,8 +1017,8 @@ impl fmt::Debug for Select<'_> {
 /// Forgetting to complete the operation is an error and might lead to deadlocks. If a
 /// `SelectedOperation` is dropped without completion, a panic occurs.
 ///
-/// [`send`]: struct.SelectedOperation.html#method.send
-/// [`recv`]: struct.SelectedOperation.html#method.recv
+/// [`send`]: SelectedOperation::send
+/// [`recv`]: SelectedOperation::recv
 #[must_use]
 pub struct SelectedOperation<'a> {
     /// Token needed to complete the operation.
@@ -1097,9 +1087,6 @@ impl SelectedOperation<'_> {
     /// assert_eq!(oper.index(), oper1);
     /// assert_eq!(oper.send(&s, 10), Err(SendError(10)));
     /// ```
-    ///
-    /// [`Sender`]: struct.Sender.html
-    /// [`Select::send`]: struct.Select.html#method.send
     pub fn send<T>(mut self, s: &Sender<T>, msg: T) -> Result<(), SendError<T>> {
         assert!(
             s as *const Sender<T> as *const u8 == self.ptr,
@@ -1134,9 +1121,6 @@ impl SelectedOperation<'_> {
     /// assert_eq!(oper.index(), oper1);
     /// assert_eq!(oper.recv(&r), Err(RecvError));
     /// ```
-    ///
-    /// [`Receiver`]: struct.Receiver.html
-    /// [`Select::recv`]: struct.Select.html#method.recv
     pub fn recv<T>(mut self, r: &Receiver<T>) -> Result<T, RecvError> {
         assert!(
             r as *const Receiver<T> as *const u8 == self.ptr,
