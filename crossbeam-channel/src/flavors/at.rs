@@ -1,4 +1,4 @@
-//! Channel that delivers a message after a certain amount of time.
+//! Channel that delivers a message at a certain moment in time.
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
@@ -12,9 +12,9 @@ use crate::select::{Operation, SelectHandle, Token};
 use crate::utils;
 
 /// Result of a receive operation.
-pub type AfterToken = Option<Instant>;
+pub type AtToken = Option<Instant>;
 
-/// Channel that delivers a message after a certain amount of time.
+/// Channel that delivers a message at a certain moment in time
 pub struct Channel {
     /// The instant at which the message will be delivered.
     delivery_time: Instant,
@@ -104,7 +104,7 @@ impl Channel {
     /// Reads a message from the channel.
     #[inline]
     pub unsafe fn read(&self, token: &mut Token) -> Result<Instant, ()> {
-        token.after.ok_or(())
+        token.at.ok_or(())
     }
 
     /// Returns `true` if the channel is empty.
@@ -153,11 +153,11 @@ impl SelectHandle for Channel {
     fn try_select(&self, token: &mut Token) -> bool {
         match self.try_recv() {
             Ok(msg) => {
-                token.after = Some(msg);
+                token.at = Some(msg);
                 true
             }
             Err(TryRecvError::Disconnected) => {
-                token.after = None;
+                token.at = None;
                 true
             }
             Err(TryRecvError::Empty) => false,

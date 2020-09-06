@@ -21,7 +21,7 @@ use crate::utils;
 /// Each field contains data associated with a specific channel flavor.
 #[derive(Debug, Default)]
 pub struct Token {
-    pub after: flavors::after::AfterToken,
+    pub at: flavors::at::AtToken,
     pub array: flavors::array::ArrayToken,
     pub list: flavors::list::ListToken,
     pub never: flavors::never::NeverToken,
