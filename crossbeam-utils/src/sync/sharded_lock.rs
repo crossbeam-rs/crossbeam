@@ -106,8 +106,7 @@ impl<T> ShardedLock<T> {
                         write_guard: UnsafeCell::new(None),
                     })
                 })
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+                .collect::<Box<[_]>>(),
             value: UnsafeCell::new(value),
         }
     }
