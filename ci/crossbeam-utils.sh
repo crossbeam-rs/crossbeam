@@ -10,4 +10,6 @@ cargo test
 
 if [[ "$RUST_VERSION" == "nightly"* ]]; then
     cargo test --features nightly
+
+    RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps --all-features
 fi
