@@ -72,7 +72,7 @@ struct Shard {
 /// } // Write lock is dropped here.
 /// ```
 ///
-/// [`RwLock`]: https://doc.rust-lang.org/std/sync/struct.RwLock.html
+/// [`RwLock`]: std::sync::RwLock
 pub struct ShardedLock<T: ?Sized> {
     /// A list of locks protecting the internal data.
     shards: Box<[CachePadded<Shard>]>,
@@ -113,6 +113,8 @@ impl<T> ShardedLock<T> {
     }
 
     /// Consumes this lock, returning the underlying data.
+    ///
+    /// # Errors
     ///
     /// This method will return an error if the lock is poisoned. A lock gets poisoned when a write
     /// operation panics.
@@ -171,6 +173,8 @@ impl<T: ?Sized> ShardedLock<T> {
     ///
     /// Since this call borrows the lock mutably, no actual locking needs to take place.
     ///
+    /// # Errors
+    ///
     /// This method will return an error if the lock is poisoned. A lock gets poisoned when a write
     /// operation panics.
     ///
@@ -200,6 +204,8 @@ impl<T: ?Sized> ShardedLock<T> {
     /// is returned which will release the shared access when it is dropped. This method does not
     /// provide any guarantees with respect to the ordering of whether contentious readers or
     /// writers will acquire the lock first.
+    ///
+    /// # Errors
     ///
     /// This method will return an error if the lock is poisoned. A lock gets poisoned when a write
     /// operation panics.
@@ -249,6 +255,15 @@ impl<T: ?Sized> ShardedLock<T> {
     ///
     /// Returns a guard which will release the shared access when dropped.
     ///
+    /// # Errors
+    ///
+    /// This method will return an error if the lock is poisoned. A lock gets poisoned when a write
+    /// operation panics.
+    ///
+    /// # Panics
+    ///
+    /// This method might panic when called if the lock is already held by the current thread.
+    ///
     /// # Examples
     ///
     /// ```
@@ -293,6 +308,8 @@ impl<T: ?Sized> ShardedLock<T> {
     /// is returned which will release the exclusive access when it is dropped. This method does
     /// not provide any guarantees with respect to the ordering of whether contentious readers or
     /// writers will acquire the lock first.
+    ///
+    /// # Errors
     ///
     /// This method will return an error if the lock is poisoned. A lock gets poisoned when a write
     /// operation panics.
@@ -367,6 +384,15 @@ impl<T: ?Sized> ShardedLock<T> {
     /// or writers will acquire the lock first.
     ///
     /// Returns a guard which will release the exclusive access when dropped.
+    ///
+    /// # Errors
+    ///
+    /// This method will return an error if the lock is poisoned. A lock gets poisoned when a write
+    /// operation panics.
+    ///
+    /// # Panics
+    ///
+    /// This method might panic when called if the lock is already held by the current thread.
     ///
     /// # Examples
     ///

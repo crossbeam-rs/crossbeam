@@ -24,10 +24,10 @@ use const_fn::const_fn;
 ///
 /// Atomic loads use the [`Acquire`] ordering and atomic stores use the [`Release`] ordering.
 ///
-/// [`Cell`]: https://doc.rust-lang.org/std/cell/struct.Cell.html
-/// [`AtomicCell::<T>::is_lock_free()`]: struct.AtomicCell.html#method.is_lock_free
-/// [`Acquire`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html#variant.Acquire
-/// [`Release`]: https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html#variant.Release
+/// [`Cell`]: std::cell::Cell
+/// [`AtomicCell::<T>::is_lock_free()`]: AtomicCell::is_lock_free
+/// [`Acquire`]: std::sync::atomic::Ordering::Acquire
+/// [`Release`]: std::sync::atomic::Ordering::Release
 #[repr(transparent)]
 pub struct AtomicCell<T: ?Sized> {
     /// The inner value.
@@ -62,7 +62,7 @@ impl<T> AtomicCell<T> {
         }
     }
 
-    /// Unwraps the atomic cell and returns its inner value.
+    /// Consumes the atomic and returns the contained value.
     ///
     /// # Examples
     ///
@@ -190,7 +190,7 @@ impl<T: Default> AtomicCell<T> {
 }
 
 impl<T: Copy> AtomicCell<T> {
-    /// Loads a value.
+    /// Loads a value from the atomic cell.
     ///
     /// # Examples
     ///
