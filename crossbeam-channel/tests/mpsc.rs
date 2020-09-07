@@ -57,7 +57,7 @@ impl<T> SyncSender<T> {
     pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
         self.inner.try_send(t).map_err(|err| match err {
             cc::TrySendError::Full(m) => TrySendError::Full(m),
-            cc::TrySendError::Disconnected(m) => TrySendError::Disconnected(m),
+            cc::TrySendError::Closed(m) => TrySendError::Disconnected(m),
         })
     }
 }
@@ -78,7 +78,7 @@ impl<T> Receiver<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         self.inner.try_recv().map_err(|err| match err {
             cc::TryRecvError::Empty => TryRecvError::Empty,
-            cc::TryRecvError::Disconnected => TryRecvError::Disconnected,
+            cc::TryRecvError::Closed => TryRecvError::Disconnected,
         })
     }
 
@@ -89,7 +89,7 @@ impl<T> Receiver<T> {
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         self.inner.recv_timeout(timeout).map_err(|err| match err {
             cc::RecvTimeoutError::Timeout => RecvTimeoutError::Timeout,
-            cc::RecvTimeoutError::Disconnected => RecvTimeoutError::Disconnected,
+            cc::RecvTimeoutError::Closed => RecvTimeoutError::Disconnected,
         })
     }
 

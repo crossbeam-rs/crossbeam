@@ -140,11 +140,11 @@
 //! }).unwrap();
 //! ```
 //!
-//! # Disconnection
+//! # Closing channels
 //!
 //! When all senders or all receivers associated with a channel get dropped, the channel becomes
-//! disconnected. No more messages can be sent, but any remaining messages can still be received.
-//! Send and receive operations on a disconnected channel never block.
+//! closed. No more messages can be sent, but any remaining messages can still be received.
+//! Send and receive operations on a closed channel never block.
 //!
 //! ```
 //! use crossbeam_channel::{unbounded, RecvError};
@@ -154,7 +154,7 @@
 //! s.send(2).unwrap();
 //! s.send(3).unwrap();
 //!
-//! // The only sender is dropped, disconnecting the channel.
+//! // The only sender is dropped, closing the channel.
 //! drop(s);
 //!
 //! // The remaining messages can be received.
@@ -175,7 +175,7 @@
 //! Send and receive operations come in three flavors:
 //!
 //! * Non-blocking (returns immediately with success or failure).
-//! * Blocking (waits until the operation succeeds or the channel becomes disconnected).
+//! * Blocking (waits until the operation succeeds or the channel becomes closed).
 //! * Blocking with a timeout (blocks only for a certain duration of time).
 //!
 //! A simple example showing the difference between non-blocking and blocking operations:
@@ -200,17 +200,17 @@
 //! // Try receiving a message without blocking.
 //! assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 //!
-//! // Disconnect the channel.
+//! // Close the channel.
 //! drop(s);
 //!
-//! // This call doesn't block because the channel is now disconnected.
+//! // This call doesn't block because the channel is now closed.
 //! assert_eq!(r.recv(), Err(RecvError));
 //! ```
 //!
 //! # Iteration
 //!
 //! Receivers can be used as iterators. For example, method [`iter`] creates an iterator that
-//! receives messages until the channel becomes empty and disconnected. Note that iteration may
+//! receives messages until the channel becomes empty and closed. Note that iteration may
 //! block waiting for next message to arrive.
 //!
 //! ```
@@ -223,7 +223,7 @@
 //!     s.send(1).unwrap();
 //!     s.send(2).unwrap();
 //!     s.send(3).unwrap();
-//!     drop(s); // Disconnect the channel.
+//!     drop(s); // Close the channel.
 //! });
 //!
 //! // Collect all messages from the channel.
@@ -261,7 +261,7 @@
 //! ready, either right away or for a certain duration of time.
 //!
 //! An operation is considered to be ready if it doesn't have to block. Note that it is ready even
-//! when it will simply return an error because the channel is disconnected.
+//! when it will simply return an error because the channel is closed.
 //!
 //! An example of receiving a message from two channels:
 //!

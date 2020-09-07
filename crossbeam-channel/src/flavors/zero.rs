@@ -75,8 +75,8 @@ struct Inner {
     /// Receivers waiting to pair up with a send operation.
     receivers: Waker,
 
-    /// Equals `true` when the channel is disconnected.
-    is_disconnected: bool,
+    /// Equals `true` when the channel is closed.
+    is_closed: bool,
 }
 
 /// Zero-capacity channel.
@@ -95,7 +95,7 @@ impl<T> Channel<T> {
             inner: Spinlock::new(Inner {
                 senders: Waker::new(),
                 receivers: Waker::new(),
-                is_disconnected: false,
+                is_closed: false,
             }),
             _marker: PhantomData,
         }
@@ -119,7 +119,7 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.receivers.try_select() {
             token.zero = operation.packet;
             true
-        } else if inner.is_disconnected {
+        } else if inner.is_closed {
             token.zero = 0;
             true
         } else {
@@ -129,7 +129,7 @@ impl<T> Channel<T> {
 
     /// Writes a message into the packet.
     pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
-        // If there is no packet, the channel is disconnected.
+        // If there is no packet, the channel is closed.
         if token.zero == 0 {
             return Err(msg);
         }
@@ -148,7 +148,7 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.senders.try_select() {
             token.zero = operation.packet;
             true
-        } else if inner.is_disconnected {
+        } else if inner.is_closed {
             token.zero = 0;
             true
         } else {
@@ -158,7 +158,7 @@ impl<T> Channel<T> {
 
     /// Reads a message from the packet.
     pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
-        // If there is no packet, the channel is disconnected.
+        // If there is no packet, the channel is closed.
         if token.zero == 0 {
             return Err(());
         }
@@ -195,8 +195,8 @@ impl<T> Channel<T> {
                 self.write(token, msg).ok().unwrap();
             }
             Ok(())
-        } else if inner.is_disconnected {
-            Err(TrySendError::Disconnected(msg))
+        } else if inner.is_closed {
+            Err(TrySendError::Closed(msg))
         } else {
             Err(TrySendError::Full(msg))
         }
@@ -217,8 +217,8 @@ impl<T> Channel<T> {
             return Ok(());
         }
 
-        if inner.is_disconnected {
-            return Err(SendTimeoutError::Disconnected(msg));
+        if inner.is_closed {
+            return Err(SendTimeoutError::Closed(msg));
         }
 
         Context::with(|cx| {
@@ -241,10 +241,10 @@ impl<T> Channel<T> {
                     let msg = unsafe { packet.msg.get().replace(None).unwrap() };
                     Err(SendTimeoutError::Timeout(msg))
                 }
-                Selected::Disconnected => {
+                Selected::Closed => {
                     self.inner.lock().senders.unregister(oper).unwrap();
                     let msg = unsafe { packet.msg.get().replace(None).unwrap() };
-                    Err(SendTimeoutError::Disconnected(msg))
+                    Err(SendTimeoutError::Closed(msg))
                 }
                 Selected::Operation(_) => {
                     // Wait until the message is read, then drop the packet.
@@ -264,9 +264,9 @@ impl<T> Channel<T> {
         if let Some(operation) = inner.senders.try_select() {
             token.zero = operation.packet;
             drop(inner);
-            unsafe { self.read(token).map_err(|_| TryRecvError::Disconnected) }
-        } else if inner.is_disconnected {
-            Err(TryRecvError::Disconnected)
+            unsafe { self.read(token).map_err(|_| TryRecvError::Closed) }
+        } else if inner.is_closed {
+            Err(TryRecvError::Closed)
         } else {
             Err(TryRecvError::Empty)
         }
@@ -282,12 +282,12 @@ impl<T> Channel<T> {
             token.zero = operation.packet;
             drop(inner);
             unsafe {
-                return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
+                return self.read(token).map_err(|_| RecvTimeoutError::Closed);
             }
         }
 
-        if inner.is_disconnected {
-            return Err(RecvTimeoutError::Disconnected);
+        if inner.is_closed {
+            return Err(RecvTimeoutError::Closed);
         }
 
         Context::with(|cx| {
@@ -309,9 +309,9 @@ impl<T> Channel<T> {
                     self.inner.lock().receivers.unregister(oper).unwrap();
                     Err(RecvTimeoutError::Timeout)
                 }
-                Selected::Disconnected => {
+                Selected::Closed => {
                     self.inner.lock().receivers.unregister(oper).unwrap();
-                    Err(RecvTimeoutError::Disconnected)
+                    Err(RecvTimeoutError::Closed)
                 }
                 Selected::Operation(_) => {
                     // Wait until the message is provided, then read it.
@@ -322,16 +322,16 @@ impl<T> Channel<T> {
         })
     }
 
-    /// Disconnects the channel and wakes up all blocked senders and receivers.
+    /// Closes the channel and wakes up all blocked senders and receivers.
     ///
-    /// Returns `true` if this call disconnected the channel.
-    pub fn disconnect(&self) -> bool {
+    /// Returns `true` if this call closed the channel.
+    pub fn close(&self) -> bool {
         let mut inner = self.inner.lock();
 
-        if !inner.is_disconnected {
-            inner.is_disconnected = true;
-            inner.senders.disconnect();
-            inner.receivers.disconnect();
+        if !inner.is_closed {
+            inner.is_closed = true;
+            inner.senders.close();
+            inner.receivers.close();
             true
         } else {
             false
@@ -382,7 +382,7 @@ impl<T> SelectHandle for Receiver<'_, T> {
             .receivers
             .register_with_packet(oper, packet as usize, cx);
         inner.senders.notify();
-        inner.senders.can_select() || inner.is_disconnected
+        inner.senders.can_select() || inner.is_closed
     }
 
     fn unregister(&self, oper: Operation) {
@@ -400,13 +400,13 @@ impl<T> SelectHandle for Receiver<'_, T> {
 
     fn is_ready(&self) -> bool {
         let inner = self.0.inner.lock();
-        inner.senders.can_select() || inner.is_disconnected
+        inner.senders.can_select() || inner.is_closed
     }
 
     fn watch(&self, oper: Operation, cx: &Context) -> bool {
         let mut inner = self.0.inner.lock();
         inner.receivers.watch(oper, cx);
-        inner.senders.can_select() || inner.is_disconnected
+        inner.senders.can_select() || inner.is_closed
     }
 
     fn unwatch(&self, oper: Operation) {
@@ -432,7 +432,7 @@ impl<T> SelectHandle for Sender<'_, T> {
             .senders
             .register_with_packet(oper, packet as usize, cx);
         inner.receivers.notify();
-        inner.receivers.can_select() || inner.is_disconnected
+        inner.receivers.can_select() || inner.is_closed
     }
 
     fn unregister(&self, oper: Operation) {
@@ -450,13 +450,13 @@ impl<T> SelectHandle for Sender<'_, T> {
 
     fn is_ready(&self) -> bool {
         let inner = self.0.inner.lock();
-        inner.receivers.can_select() || inner.is_disconnected
+        inner.receivers.can_select() || inner.is_closed
     }
 
     fn watch(&self, oper: Operation, cx: &Context) -> bool {
         let mut inner = self.0.inner.lock();
         inner.senders.watch(oper, cx);
-        inner.receivers.can_select() || inner.is_disconnected
+        inner.receivers.can_select() || inner.is_closed
     }
 
     fn unwatch(&self, oper: Operation) {

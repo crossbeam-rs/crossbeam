@@ -43,7 +43,7 @@ impl Operation {
     pub fn hook<T>(r: &mut T) -> Operation {
         let val = r as *mut T as usize;
         // Make sure that the pointer address doesn't equal the numerical representation of
-        // `Selected::{Waiting, Aborted, Disconnected}`.
+        // `Selected::{Waiting, Aborted, Closed}`.
         assert!(val > 2);
         Operation(val)
     }
@@ -58,8 +58,8 @@ pub enum Selected {
     /// The attempt to block the current thread has been aborted.
     Aborted,
 
-    /// An operation became ready because a channel is disconnected.
-    Disconnected,
+    /// An operation became ready because a channel is closed.
+    Closed,
 
     /// An operation became ready because a message can be sent or received.
     Operation(Operation),
@@ -71,7 +71,7 @@ impl From<usize> for Selected {
         match val {
             0 => Selected::Waiting,
             1 => Selected::Aborted,
-            2 => Selected::Disconnected,
+            2 => Selected::Closed,
             oper => Selected::Operation(Operation(oper)),
         }
     }
@@ -83,7 +83,7 @@ impl Into<usize> for Selected {
         match self {
             Selected::Waiting => 0,
             Selected::Aborted => 1,
-            Selected::Disconnected => 2,
+            Selected::Closed => 2,
             Selected::Operation(Operation(val)) => val,
         }
     }
@@ -274,7 +274,7 @@ fn run_select(
                         }
                     }
                 }
-                Selected::Disconnected => {}
+                Selected::Closed => {}
                 Selected::Operation(_) => {
                     // Find the selected operation.
                     for (handle, i, ptr) in handles.iter_mut() {
@@ -420,7 +420,7 @@ fn run_ready(
             match sel {
                 Selected::Waiting => unreachable!(),
                 Selected::Aborted => {}
-                Selected::Disconnected => {}
+                Selected::Closed => {}
                 Selected::Operation(_) => {
                     for (handle, i, _) in handles.iter_mut() {
                         let oper = Operation::hook::<&dyn SelectHandle>(handle);
@@ -501,7 +501,7 @@ pub fn select_timeout<'a>(
 /// among them is selected.
 ///
 /// An operation is considered to be ready if it doesn't have to block. Note that it is ready even
-/// when it will simply return an error because the channel is disconnected.
+/// when it will simply return an error because the channel is closed.
 ///
 /// The [`select!`] macro is a convenience wrapper around `Select`. However, it cannot select over a
 /// dynamically created list of channel operations.
@@ -653,7 +653,7 @@ impl<'a> Select<'a> {
 
     /// Removes a previously added operation.
     ///
-    /// This is useful when an operation is selected because the channel got disconnected and we
+    /// This is useful when an operation is selected because the channel got closed and we
     /// want to try again to select a different operation instead.
     ///
     /// If new operations are added after removing some, the indices of removed operations will not
@@ -713,7 +713,7 @@ impl<'a> Select<'a> {
     /// error is returned.
     ///
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
-    /// even when it will simply return an error because the channel is disconnected.
+    /// even when it will simply return an error because the channel is closed.
     ///
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
@@ -754,7 +754,7 @@ impl<'a> Select<'a> {
     /// ready at the same time, a random one among them is selected.
     ///
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
-    /// even when it will simply return an error because the channel is disconnected.
+    /// even when it will simply return an error because the channel is closed.
     ///
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
@@ -802,7 +802,7 @@ impl<'a> Select<'a> {
     /// become ready for the specified duration, an error is returned.
     ///
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
-    /// even when it will simply return an error because the channel is disconnected.
+    /// even when it will simply return an error because the channel is closed.
     ///
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
@@ -852,7 +852,7 @@ impl<'a> Select<'a> {
     /// is returned.
     ///
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
-    /// even when it will simply return an error because the channel is disconnected.
+    /// even when it will simply return an error because the channel is closed.
     ///
     /// Note that this method might return with success spuriously, so it's a good idea to always
     /// double check if the operation is really ready.
@@ -893,7 +893,7 @@ impl<'a> Select<'a> {
     /// the same time, a random one among them is chosen.
     ///
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
-    /// even when it will simply return an error because the channel is disconnected.
+    /// even when it will simply return an error because the channel is closed.
     ///
     /// Note that this method might return with success spuriously, so it's a good idea to always
     /// double check if the operation is really ready.
@@ -944,7 +944,7 @@ impl<'a> Select<'a> {
     /// for the specified duration, an error is returned.
     ///
     /// An operation is considered to be ready if it doesn't have to block. Note that it is ready
-    /// even when it will simply return an error because the channel is disconnected.
+    /// even when it will simply return an error because the channel is closed.
     ///
     /// Note that this method might return with success spuriously, so it's a good idea to double
     /// check if the operation is really ready.

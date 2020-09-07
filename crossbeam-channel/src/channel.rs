@@ -127,7 +127,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 
 /// Creates a receiver that delivers a message after a certain duration of time.
 ///
-/// The channel is bounded with capacity of 1 and never gets disconnected. Exactly one message will
+/// The channel is bounded with capacity of 1 and never gets closed. Exactly one message will
 /// be sent into the channel after `duration` elapses. The message is the instant at which it is
 /// sent.
 ///
@@ -178,7 +178,7 @@ pub fn after(duration: Duration) -> Receiver<Instant> {
 
 /// Creates a receiver that never delivers messages.
 ///
-/// The channel is bounded with capacity of 0 and never gets disconnected.
+/// The channel is bounded with capacity of 0 and never gets closed.
 ///
 /// # Examples
 ///
@@ -219,7 +219,7 @@ pub fn never<T>() -> Receiver<T> {
 
 /// Creates a receiver that delivers messages periodically.
 ///
-/// The channel is bounded with capacity of 1 and never gets disconnected. Messages will be
+/// The channel is bounded with capacity of 1 and never gets closed. Messages will be
 /// sent into the channel in intervals of `duration`. Each message is the instant at which it is
 /// sent.
 ///
@@ -321,7 +321,7 @@ impl<T> Sender<T> {
     /// Attempts to send a message into the channel without blocking.
     ///
     /// This method will either send a message into the channel immediately or return an error if
-    /// the channel is full or disconnected. The returned error contains the original message.
+    /// the channel is full or closed. The returned error contains the original message.
     ///
     /// If called on a zero-capacity channel, this method will send the message only if there
     /// happens to be a receive operation on the other side of the channel at the same time.
@@ -337,7 +337,7 @@ impl<T> Sender<T> {
     /// assert_eq!(s.try_send(2), Err(TrySendError::Full(2)));
     ///
     /// drop(r);
-    /// assert_eq!(s.try_send(3), Err(TrySendError::Disconnected(3)));
+    /// assert_eq!(s.try_send(3), Err(TrySendError::Closed(3)));
     /// ```
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         match &self.flavor {
@@ -347,10 +347,10 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Blocks the current thread until a message is sent or the channel is disconnected.
+    /// Blocks the current thread until a message is sent or the channel is closed.
     ///
-    /// If the channel is full and not disconnected, this call will block until the send operation
-    /// can proceed. If the channel becomes disconnected, this call will wake up and return an
+    /// If the channel is full and not closed, this call will block until the send operation
+    /// can proceed. If the channel becomes closed, this call will wake up and return an
     /// error. The returned error contains the original message.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
@@ -382,15 +382,15 @@ impl<T> Sender<T> {
             SenderFlavor::Zero(chan) => chan.send(msg, None),
         }
         .map_err(|err| match err {
-            SendTimeoutError::Disconnected(msg) => SendError(msg),
+            SendTimeoutError::Closed(msg) => SendError(msg),
             SendTimeoutError::Timeout(_) => unreachable!(),
         })
     }
 
     /// Waits for a message to be sent into the channel, but only for a limited time.
     ///
-    /// If the channel is full and not disconnected, this call will block until the send operation
-    /// can proceed or the operation times out. If the channel becomes disconnected, this call will
+    /// If the channel is full and not closed, this call will block until the send operation
+    /// can proceed or the operation times out. If the channel becomes closed, this call will
     /// wake up and return an error. The returned error contains the original message.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
@@ -421,7 +421,7 @@ impl<T> Sender<T> {
     /// );
     /// assert_eq!(
     ///     s.send_timeout(3, Duration::from_millis(500)),
-    ///     Err(SendTimeoutError::Disconnected(3)),
+    ///     Err(SendTimeoutError::Closed(3)),
     /// );
     /// ```
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
@@ -555,9 +555,9 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         unsafe {
             match &self.flavor {
-                SenderFlavor::Array(chan) => chan.release(|c| c.disconnect()),
-                SenderFlavor::List(chan) => chan.release(|c| c.disconnect()),
-                SenderFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
+                SenderFlavor::Array(chan) => chan.release(|c| c.close()),
+                SenderFlavor::List(chan) => chan.release(|c| c.close()),
+                SenderFlavor::Zero(chan) => chan.release(|c| c.close()),
             }
         }
     }
@@ -653,7 +653,7 @@ impl<T> Receiver<T> {
     /// drop(s);
     ///
     /// assert_eq!(r.try_recv(), Ok(5));
-    /// assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
+    /// assert_eq!(r.try_recv(), Err(TryRecvError::Closed));
     /// ```
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match &self.flavor {
@@ -681,10 +681,10 @@ impl<T> Receiver<T> {
     }
 
     /// Blocks the current thread until a message is received or the channel is empty and
-    /// disconnected.
+    /// closed.
     ///
-    /// If the channel is empty and not disconnected, this call will block until the receive
-    /// operation can proceed. If the channel is empty and becomes disconnected, this call will
+    /// If the channel is empty and not closed, this call will block until the receive
+    /// operation can proceed. If the channel is empty and becomes closed, this call will
     /// wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
@@ -738,9 +738,9 @@ impl<T> Receiver<T> {
 
     /// Waits for a message to be received from the channel, but only for a limited time.
     ///
-    /// If the channel is empty and not disconnected, this call will block until the receive
+    /// If the channel is empty and not closed, this call will block until the receive
     /// operation can proceed or the operation times out. If the channel is empty and becomes
-    /// disconnected, this call will wake up and return an error.
+    /// closed, this call will wake up and return an error.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
     /// on the other side of the channel.
@@ -770,7 +770,7 @@ impl<T> Receiver<T> {
     /// );
     /// assert_eq!(
     ///     r.recv_timeout(Duration::from_secs(1)),
-    ///     Err(RecvTimeoutError::Disconnected),
+    ///     Err(RecvTimeoutError::Closed),
     /// );
     /// ```
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
@@ -909,7 +909,7 @@ impl<T> Receiver<T> {
     /// A blocking iterator over messages in the channel.
     ///
     /// Each call to [`next`] blocks waiting for the next message and then returns it. However, if
-    /// the channel becomes empty and disconnected, it returns [`None`] without blocking.
+    /// the channel becomes empty and closed, it returns [`None`] without blocking.
     ///
     /// [`next`]: Iterator::next
     ///
@@ -925,7 +925,7 @@ impl<T> Receiver<T> {
     ///     s.send(1).unwrap();
     ///     s.send(2).unwrap();
     ///     s.send(3).unwrap();
-    ///     drop(s); // Disconnect the channel.
+    ///     drop(s); // Close the channel.
     /// });
     ///
     /// // Collect all messages from the channel.
@@ -1006,9 +1006,9 @@ impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         unsafe {
             match &self.flavor {
-                ReceiverFlavor::Array(chan) => chan.release(|c| c.disconnect()),
-                ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect()),
-                ReceiverFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
+                ReceiverFlavor::Array(chan) => chan.release(|c| c.close()),
+                ReceiverFlavor::List(chan) => chan.release(|c| c.close()),
+                ReceiverFlavor::Zero(chan) => chan.release(|c| c.close()),
                 ReceiverFlavor::After(_) => {}
                 ReceiverFlavor::Tick(_) => {}
                 ReceiverFlavor::Never(_) => {}
@@ -1059,7 +1059,7 @@ impl<T> IntoIterator for Receiver<T> {
 /// A blocking iterator over messages in a channel.
 ///
 /// Each call to [`next`] blocks waiting for the next message and then returns it. However, if the
-/// channel becomes empty and disconnected, it returns [`None`] without blocking.
+/// channel becomes empty and closed, it returns [`None`] without blocking.
 ///
 /// [`next`]: Iterator::next
 ///
@@ -1075,7 +1075,7 @@ impl<T> IntoIterator for Receiver<T> {
 ///     s.send(1).unwrap();
 ///     s.send(2).unwrap();
 ///     s.send(3).unwrap();
-///     drop(s); // Disconnect the channel.
+///     drop(s); // Close the channel.
 /// });
 ///
 /// // Collect all messages from the channel.
@@ -1157,7 +1157,7 @@ impl<T> fmt::Debug for TryIter<'_, T> {
 /// A blocking iterator over messages in a channel.
 ///
 /// Each call to [`next`] blocks waiting for the next message and then returns it. However, if the
-/// channel becomes empty and disconnected, it returns [`None`] without blocking.
+/// channel becomes empty and closed, it returns [`None`] without blocking.
 ///
 /// [`next`]: Iterator::next
 ///
@@ -1173,7 +1173,7 @@ impl<T> fmt::Debug for TryIter<'_, T> {
 ///     s.send(1).unwrap();
 ///     s.send(2).unwrap();
 ///     s.send(3).unwrap();
-///     drop(s); // Disconnect the channel.
+///     drop(s); // Close the channel.
 /// });
 ///
 /// // Collect all messages from the channel.

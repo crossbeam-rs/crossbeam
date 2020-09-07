@@ -56,7 +56,7 @@ fn smoke2() {
 }
 
 #[test]
-fn disconnected() {
+fn closed() {
     let (s1, r1) = unbounded::<i32>();
     let (s2, r2) = unbounded::<i32>();
 
@@ -71,7 +71,7 @@ fn disconnected() {
         sel.recv(&r1);
         sel.recv(&r2);
         match sel.ready_timeout(ms(1000)) {
-            Ok(0) => assert_eq!(r1.try_recv(), Err(TryRecvError::Disconnected)),
+            Ok(0) => assert_eq!(r1.try_recv(), Err(TryRecvError::Closed)),
             _ => panic!(),
         }
 
@@ -83,7 +83,7 @@ fn disconnected() {
     sel.recv(&r1);
     sel.recv(&r2);
     match sel.ready_timeout(ms(1000)) {
-        Ok(0) => assert_eq!(r1.try_recv(), Err(TryRecvError::Disconnected)),
+        Ok(0) => assert_eq!(r1.try_recv(), Err(TryRecvError::Closed)),
         _ => panic!(),
     }
 
@@ -96,7 +96,7 @@ fn disconnected() {
         let mut sel = Select::new();
         sel.recv(&r2);
         match sel.ready_timeout(ms(1000)) {
-            Ok(0) => assert_eq!(r2.try_recv(), Err(TryRecvError::Disconnected)),
+            Ok(0) => assert_eq!(r2.try_recv(), Err(TryRecvError::Closed)),
             _ => panic!(),
         }
     })
@@ -180,7 +180,7 @@ fn timeout() {
         let mut sel = Select::new();
         sel.recv(&r);
         match sel.try_ready() {
-            Ok(0) => assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected)),
+            Ok(0) => assert_eq!(r.try_recv(), Err(TryRecvError::Closed)),
             _ => panic!(),
         }
     })
@@ -188,13 +188,13 @@ fn timeout() {
 }
 
 #[test]
-fn default_when_disconnected() {
+fn default_when_closed() {
     let (_, r) = unbounded::<i32>();
 
     let mut sel = Select::new();
     sel.recv(&r);
     match sel.try_ready() {
-        Ok(0) => assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected)),
+        Ok(0) => assert_eq!(r.try_recv(), Err(TryRecvError::Closed)),
         _ => panic!(),
     }
 
@@ -203,7 +203,7 @@ fn default_when_disconnected() {
     let mut sel = Select::new();
     sel.recv(&r);
     match sel.ready_timeout(ms(1000)) {
-        Ok(0) => assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected)),
+        Ok(0) => assert_eq!(r.try_recv(), Err(TryRecvError::Closed)),
         _ => panic!(),
     }
 
@@ -212,7 +212,7 @@ fn default_when_disconnected() {
     let mut sel = Select::new();
     sel.send(&s);
     match sel.try_ready() {
-        Ok(0) => assert_eq!(s.try_send(0), Err(TrySendError::Disconnected(0))),
+        Ok(0) => assert_eq!(s.try_send(0), Err(TrySendError::Closed(0))),
         _ => panic!(),
     }
 
@@ -221,7 +221,7 @@ fn default_when_disconnected() {
     let mut sel = Select::new();
     sel.send(&s);
     match sel.ready_timeout(ms(1000)) {
-        Ok(0) => assert_eq!(s.try_send(0), Err(TrySendError::Disconnected(0))),
+        Ok(0) => assert_eq!(s.try_send(0), Err(TrySendError::Closed(0))),
         _ => panic!(),
     }
 }
@@ -395,7 +395,7 @@ fn preflight2() {
         _ => panic!(),
     }
 
-    assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
+    assert_eq!(r.try_recv(), Err(TryRecvError::Closed));
 }
 
 #[test]
@@ -409,7 +409,7 @@ fn preflight3() {
     let mut sel = Select::new();
     sel.recv(&r);
     match sel.ready() {
-        0 => assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected)),
+        0 => assert_eq!(r.try_recv(), Err(TryRecvError::Closed)),
         _ => panic!(),
     }
 }

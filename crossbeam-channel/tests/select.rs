@@ -70,7 +70,7 @@ fn smoke2() {
 }
 
 #[test]
-fn disconnected() {
+fn closed() {
     let (s1, r1) = unbounded::<i32>();
     let (s2, r2) = unbounded::<i32>();
 
@@ -258,7 +258,7 @@ fn timeout() {
 }
 
 #[test]
-fn default_when_disconnected() {
+fn default_when_closed() {
     let (_, r) = unbounded::<i32>();
 
     let mut sel = Select::new();
@@ -589,7 +589,7 @@ fn preflight2() {
         _ => unreachable!(),
     }
 
-    assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
+    assert_eq!(r.try_recv(), Err(TryRecvError::Closed));
 }
 
 #[test]

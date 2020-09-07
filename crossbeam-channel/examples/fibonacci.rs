@@ -4,7 +4,7 @@ use std::thread;
 
 use crossbeam_channel::{bounded, Sender};
 
-// Sends the Fibonacci sequence into the channel until it becomes disconnected.
+// Sends the Fibonacci sequence into the channel until it becomes closed.
 fn fibonacci(sender: Sender<u64>) {
     let (mut x, mut y) = (0, 1);
     while sender.send(x).is_ok() {

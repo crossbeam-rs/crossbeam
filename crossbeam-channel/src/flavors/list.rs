@@ -36,7 +36,7 @@ const BLOCK_CAP: usize = LAP - 1;
 const SHIFT: usize = 1;
 // Has two different purposes:
 // * If set in head, indicates that the block is not the last one.
-// * If set in tail, indicates that the channel is disconnected.
+// * If set in tail, indicates that the channel is closed.
 const MARK_BIT: usize = 1;
 
 /// A slot in a block.
@@ -158,7 +158,7 @@ pub struct Channel<T> {
     /// The tail of the channel.
     tail: CachePadded<Position<T>>,
 
-    /// Receivers waiting while the channel is empty and not disconnected.
+    /// Receivers waiting while the channel is empty and not closed.
     receivers: SyncWaker,
 
     /// Indicates that dropping a `Channel<T>` may drop messages of type `T`.
@@ -200,7 +200,7 @@ impl<T> Channel<T> {
         let mut next_block = None;
 
         loop {
-            // Check if the channel is disconnected.
+            // Check if the channel is closed.
             if tail & MARK_BIT != 0 {
                 token.list.block = ptr::null();
                 return true;
@@ -277,7 +277,7 @@ impl<T> Channel<T> {
 
     /// Writes a message into the channel.
     pub unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
-        // If there is no slot, the channel is disconnected.
+        // If there is no slot, the channel is closed.
         if token.list.block.is_null() {
             return Err(msg);
         }
@@ -320,7 +320,7 @@ impl<T> Channel<T> {
 
                 // If the tail equals the head, that means the channel is empty.
                 if head >> SHIFT == tail >> SHIFT {
-                    // If the channel is disconnected...
+                    // If the channel is closed...
                     if tail & MARK_BIT != 0 {
                         // ...then receive an error.
                         token.list.block = ptr::null();
@@ -382,7 +382,7 @@ impl<T> Channel<T> {
     /// Reads a message from the channel.
     pub unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.list.block.is_null() {
-            // The channel is disconnected.
+            // The channel is closed.
             return Err(());
         }
 
@@ -407,7 +407,7 @@ impl<T> Channel<T> {
     /// Attempts to send a message into the channel.
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         self.send(msg, None).map_err(|err| match err {
-            SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
+            SendTimeoutError::Closed(msg) => TrySendError::Closed(msg),
             SendTimeoutError::Timeout(_) => unreachable!(),
         })
     }
@@ -416,10 +416,7 @@ impl<T> Channel<T> {
     pub fn send(&self, msg: T, _deadline: Option<Instant>) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
         assert!(self.start_send(token));
-        unsafe {
-            self.write(token, msg)
-                .map_err(SendTimeoutError::Disconnected)
-        }
+        unsafe { self.write(token, msg).map_err(SendTimeoutError::Closed) }
     }
 
     /// Attempts to receive a message without blocking.
@@ -427,7 +424,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
 
         if self.start_recv(token) {
-            unsafe { self.read(token).map_err(|_| TryRecvError::Disconnected) }
+            unsafe { self.read(token).map_err(|_| TryRecvError::Closed) }
         } else {
             Err(TryRecvError::Empty)
         }
@@ -442,7 +439,7 @@ impl<T> Channel<T> {
             loop {
                 if self.start_recv(token) {
                     unsafe {
-                        return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
+                        return self.read(token).map_err(|_| RecvTimeoutError::Closed);
                     }
                 }
 
@@ -465,7 +462,7 @@ impl<T> Channel<T> {
                 self.receivers.register(oper, cx);
 
                 // Has the channel become ready just now?
-                if !self.is_empty() || self.is_disconnected() {
+                if !self.is_empty() || self.is_closed() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
@@ -474,9 +471,9 @@ impl<T> Channel<T> {
 
                 match sel {
                     Selected::Waiting => unreachable!(),
-                    Selected::Aborted | Selected::Disconnected => {
+                    Selected::Aborted | Selected::Closed => {
                         self.receivers.unregister(oper).unwrap();
-                        // If the channel was disconnected, we still have to check for remaining
+                        // If the channel was closed, we still have to check for remaining
                         // messages.
                     }
                     Selected::Operation(_) => {}
@@ -526,22 +523,22 @@ impl<T> Channel<T> {
         None
     }
 
-    /// Disconnects the channel and wakes up all blocked receivers.
+    /// Closes the channel and wakes up all blocked receivers.
     ///
-    /// Returns `true` if this call disconnected the channel.
-    pub fn disconnect(&self) -> bool {
+    /// Returns `true` if this call closed the channel.
+    pub fn close(&self) -> bool {
         let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
 
         if tail & MARK_BIT == 0 {
-            self.receivers.disconnect();
+            self.receivers.close();
             true
         } else {
             false
         }
     }
 
-    /// Returns `true` if the channel is disconnected.
-    pub fn is_disconnected(&self) -> bool {
+    /// Returns `true` if the channel is closed.
+    pub fn is_closed(&self) -> bool {
         self.tail.index.load(Ordering::SeqCst) & MARK_BIT != 0
     }
 
@@ -625,7 +622,7 @@ impl<T> SelectHandle for Receiver<'_, T> {
     }
 
     fn is_ready(&self) -> bool {
-        !self.0.is_empty() || self.0.is_disconnected()
+        !self.0.is_empty() || self.0.is_closed()
     }
 
     fn watch(&self, oper: Operation, cx: &Context) -> bool {

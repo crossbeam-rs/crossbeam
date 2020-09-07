@@ -154,7 +154,7 @@ impl SelectHandle for Channel {
                 token.after = Some(msg);
                 true
             }
-            Err(TryRecvError::Disconnected) => {
+            Err(TryRecvError::Closed) => {
                 token.after = None;
                 true
             }

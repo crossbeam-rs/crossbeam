@@ -1041,7 +1041,7 @@ macro_rules! crossbeam_channel_internal {
 /// ready, either right away or for a certain duration of time.
 ///
 /// An operation is considered to be ready if it doesn't have to block. Note that it is ready even
-/// when it will simply return an error because the channel is disconnected.
+/// when it will simply return an error because the channel is closed.
 ///
 /// The `select` macro is a convenience wrapper around [`Select`]. However, it cannot select over a
 /// dynamically created list of channel operations.

@@ -62,10 +62,10 @@ impl<C> Sender<C> {
 
     /// Releases the sender reference.
     ///
-    /// Function `disconnect` will be called if this is the last sender reference.
-    pub unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
+    /// Function `close` will be called if this is the last sender reference.
+    pub unsafe fn release<F: FnOnce(&C) -> bool>(&self, close: F) {
         if self.counter().senders.fetch_sub(1, Ordering::AcqRel) == 1 {
-            disconnect(&self.counter().chan);
+            close(&self.counter().chan);
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
                 drop(Box::from_raw(self.counter));
@@ -117,10 +117,10 @@ impl<C> Receiver<C> {
 
     /// Releases the receiver reference.
     ///
-    /// Function `disconnect` will be called if this is the last receiver reference.
-    pub unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
+    /// Function `close` will be called if this is the last receiver reference.
+    pub unsafe fn release<F: FnOnce(&C) -> bool>(&self, close: F) {
         if self.counter().receivers.fetch_sub(1, Ordering::AcqRel) == 1 {
-            disconnect(&self.counter().chan);
+            close(&self.counter().chan);
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
                 drop(Box::from_raw(self.counter));

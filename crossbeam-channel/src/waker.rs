@@ -146,11 +146,11 @@ impl Waker {
         }
     }
 
-    /// Notifies all registered operations that the channel is disconnected.
+    /// Notifies all registered operations that the channel is closed.
     #[inline]
-    pub fn disconnect(&mut self) {
+    pub fn close(&mut self) {
         for entry in self.selectors.iter() {
-            if entry.cx.try_select(Selected::Disconnected).is_ok() {
+            if entry.cx.try_select(Selected::Closed).is_ok() {
                 // Wake the thread up.
                 //
                 // Here we don't remove the entry from the queue. Registered threads must
@@ -254,11 +254,11 @@ impl SyncWaker {
         );
     }
 
-    /// Notifies all threads that the channel is disconnected.
+    /// Notifies all threads that the channel is closed.
     #[inline]
-    pub fn disconnect(&self) {
+    pub fn close(&self) {
         let mut inner = self.inner.lock();
-        inner.disconnect();
+        inner.close();
         self.is_empty.store(
             inner.selectors.is_empty() && inner.observers.is_empty(),
             Ordering::SeqCst,

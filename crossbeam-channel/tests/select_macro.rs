@@ -56,7 +56,7 @@ fn smoke2() {
 }
 
 #[test]
-fn disconnected() {
+fn closed() {
     let (s1, r1) = unbounded::<i32>();
     let (s2, r2) = unbounded::<i32>();
 
@@ -179,7 +179,7 @@ fn timeout() {
 }
 
 #[test]
-fn default_when_disconnected() {
+fn default_when_closed() {
     let (_, r) = unbounded::<i32>();
 
     select! {
@@ -401,7 +401,7 @@ fn preflight2() {
     select! {
         recv(r) -> v => assert!(v.is_ok()),
     }
-    assert_eq!(r.try_recv(), Err(TryRecvError::Disconnected));
+    assert_eq!(r.try_recv(), Err(TryRecvError::Closed));
 }
 
 #[test]
@@ -1400,7 +1400,7 @@ fn send_timeout() {
 }
 
 #[test]
-fn disconnect_wakes_sender() {
+fn close_wakes_sender() {
     let (s, r) = bounded(0);
 
     scope(|scope| {
@@ -1418,7 +1418,7 @@ fn disconnect_wakes_sender() {
 }
 
 #[test]
-fn disconnect_wakes_receiver() {
+fn close_wakes_receiver() {
     let (s, r) = bounded::<()>(0);
 
     scope(|scope| {

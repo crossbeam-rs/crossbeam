@@ -126,7 +126,7 @@ impl SelectHandle for Channel {
                 token.tick = Some(msg);
                 true
             }
-            Err(TryRecvError::Disconnected) => {
+            Err(TryRecvError::Closed) => {
                 token.tick = None;
                 true
             }
