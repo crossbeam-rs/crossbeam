@@ -365,8 +365,9 @@ impl Inner {
             m = match deadline {
                 None => self.cvar.wait(m).unwrap(),
                 Some(deadline) => match deadline.checked_duration_since(Instant::now()) {
-                    // We could check for a timeout here, but in the case that a timeout and an
-                    // unpark arrive simultaneously, we prefer to report the former.
+                    // We could check for a timeout here, in the return value of wait_timeout,
+                    // but in the case that a timeout and an unpark arrive simultaneously, we
+                    // prefer to report the former.
                     Some(duration) if duration > Duration::from_secs(0) => {
                         self.cvar.wait_timeout(m, duration).unwrap().0
                     }
