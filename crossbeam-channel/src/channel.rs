@@ -172,7 +172,55 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// ```
 pub fn after(duration: Duration) -> Receiver<Instant> {
     Receiver {
-        flavor: ReceiverFlavor::After(Arc::new(flavors::after::Channel::new(duration))),
+        flavor: ReceiverFlavor::At(Arc::new(flavors::at::Channel::new_timeout(duration))),
+    }
+}
+
+/// Creates a receiver that delivers a message at a certain instant in time.
+///
+/// The channel is bounded with capacity of 1 and never gets disconnected. Exactly one message will
+/// be sent into the channel at the moment in time `when`. The message is the instant at which it
+/// is sent, which is the same as `when`. If `when` is in the past, the message will be delivered
+/// instantly to the receiver.
+///
+/// # Examples
+///
+/// Using an `at` channel for timeouts:
+///
+/// ```
+/// use std::time::{Instant, Duration};
+/// use crossbeam_channel::{at, select, unbounded};
+///
+/// let (s, r) = unbounded::<i32>();
+/// let deadline = Instant::now() + Duration::from_millis(500);
+///
+/// select! {
+///     recv(r) -> msg => println!("received {:?}", msg),
+///     recv(at(deadline)) -> _ => println!("timed out"),
+/// }
+/// ```
+///
+/// When the message gets sent:
+///
+/// ```
+/// use std::time::{Duration, Instant};
+/// use crossbeam_channel::at;
+///
+/// // Converts a number of milliseconds into a `Duration`.
+/// let ms = |ms| Duration::from_millis(ms);
+///
+/// let start = Instant::now();
+/// let end = start + ms(100);
+///
+/// let r = at(end);
+///
+/// // This message was sent 100 ms from the start
+/// assert_eq!(r.recv().unwrap(), end);
+/// assert!(Instant::now() > start + ms(100));
+/// ```
+pub fn at(when: Instant) -> Receiver<Instant> {
+    Receiver {
+        flavor: ReceiverFlavor::At(Arc::new(flavors::at::Channel::new_deadline(when))),
     }
 }
 
@@ -425,8 +473,49 @@ impl<T> Sender<T> {
     /// );
     /// ```
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
-        let deadline = Instant::now() + timeout;
+        self.send_deadline(msg, Instant::now() + timeout)
+    }
 
+    /// Waits for a message to be sent into the channel, but only until a given deadline.
+    ///
+    /// If the channel is full and not disconnected, this call will block until the send operation
+    /// can proceed or the operation times out. If the channel becomes disconnected, this call will
+    /// wake up and return an error. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::{Duration, Instant};
+    /// use crossbeam_channel::{bounded, SendTimeoutError};
+    ///
+    /// let (s, r) = bounded(0);
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     assert_eq!(r.recv(), Ok(2));
+    ///     drop(r);
+    /// });
+    ///
+    /// let now = Instant::now();
+    ///
+    /// assert_eq!(
+    ///     s.send_deadline(1, now + Duration::from_millis(500)),
+    ///     Err(SendTimeoutError::Timeout(1)),
+    /// );
+    /// assert_eq!(
+    ///     s.send_deadline(2, now + Duration::from_millis(1500)),
+    ///     Ok(()),
+    /// );
+    /// assert_eq!(
+    ///     s.send_deadline(3, now + Duration::from_millis(2000)),
+    ///     Err(SendTimeoutError::Disconnected(3)),
+    /// );
+    /// ```
+    pub fn send_deadline(&self, msg: T, deadline: Instant) -> Result<(), SendTimeoutError<T>> {
         match &self.flavor {
             SenderFlavor::Array(chan) => chan.send(msg, Some(deadline)),
             SenderFlavor::List(chan) => chan.send(msg, Some(deadline)),
@@ -617,7 +706,7 @@ enum ReceiverFlavor<T> {
     Zero(counter::Receiver<flavors::zero::Channel<T>>),
 
     /// The after flavor.
-    After(Arc<flavors::after::Channel>),
+    At(Arc<flavors::at::Channel>),
 
     /// The tick flavor.
     Tick(Arc<flavors::tick::Channel>),
@@ -660,7 +749,7 @@ impl<T> Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.try_recv(),
             ReceiverFlavor::List(chan) => chan.try_recv(),
             ReceiverFlavor::Zero(chan) => chan.try_recv(),
-            ReceiverFlavor::After(chan) => {
+            ReceiverFlavor::At(chan) => {
                 let msg = chan.try_recv();
                 unsafe {
                     mem::transmute_copy::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
@@ -713,7 +802,7 @@ impl<T> Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.recv(None),
             ReceiverFlavor::List(chan) => chan.recv(None),
             ReceiverFlavor::Zero(chan) => chan.recv(None),
-            ReceiverFlavor::After(chan) => {
+            ReceiverFlavor::At(chan) => {
                 let msg = chan.recv(None);
                 unsafe {
                     mem::transmute_copy::<
@@ -774,13 +863,54 @@ impl<T> Receiver<T> {
     /// );
     /// ```
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        let deadline = Instant::now() + timeout;
+        self.recv_deadline(Instant::now() + timeout)
+    }
 
+    /// Waits for a message to be received from the channel, but only before a given deadline.
+    ///
+    /// If the channel is empty and not disconnected, this call will block until the receive
+    /// operation can proceed or the operation times out. If the channel is empty and becomes
+    /// disconnected, this call will wake up and return an error.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a send operation to appear
+    /// on the other side of the channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::{Instant, Duration};
+    /// use crossbeam_channel::{unbounded, RecvTimeoutError};
+    ///
+    /// let (s, r) = unbounded();
+    ///
+    /// thread::spawn(move || {
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     s.send(5).unwrap();
+    ///     drop(s);
+    /// });
+    ///
+    /// let now = Instant::now();
+    ///
+    /// assert_eq!(
+    ///     r.recv_deadline(now + Duration::from_millis(500)),
+    ///     Err(RecvTimeoutError::Timeout),
+    /// );
+    /// assert_eq!(
+    ///     r.recv_deadline(now + Duration::from_millis(1500)),
+    ///     Ok(5),
+    /// );
+    /// assert_eq!(
+    ///     r.recv_deadline(now + Duration::from_secs(5)),
+    ///     Err(RecvTimeoutError::Disconnected),
+    /// );
+    /// ```
+    pub fn recv_deadline(&self, deadline: Instant) -> Result<T, RecvTimeoutError> {
         match &self.flavor {
             ReceiverFlavor::Array(chan) => chan.recv(Some(deadline)),
             ReceiverFlavor::List(chan) => chan.recv(Some(deadline)),
             ReceiverFlavor::Zero(chan) => chan.recv(Some(deadline)),
-            ReceiverFlavor::After(chan) => {
+            ReceiverFlavor::At(chan) => {
                 let msg = chan.recv(Some(deadline));
                 unsafe {
                     mem::transmute_copy::<
@@ -822,7 +952,7 @@ impl<T> Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.is_empty(),
             ReceiverFlavor::List(chan) => chan.is_empty(),
             ReceiverFlavor::Zero(chan) => chan.is_empty(),
-            ReceiverFlavor::After(chan) => chan.is_empty(),
+            ReceiverFlavor::At(chan) => chan.is_empty(),
             ReceiverFlavor::Tick(chan) => chan.is_empty(),
             ReceiverFlavor::Never(chan) => chan.is_empty(),
         }
@@ -848,7 +978,7 @@ impl<T> Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.is_full(),
             ReceiverFlavor::List(chan) => chan.is_full(),
             ReceiverFlavor::Zero(chan) => chan.is_full(),
-            ReceiverFlavor::After(chan) => chan.is_full(),
+            ReceiverFlavor::At(chan) => chan.is_full(),
             ReceiverFlavor::Tick(chan) => chan.is_full(),
             ReceiverFlavor::Never(chan) => chan.is_full(),
         }
@@ -873,7 +1003,7 @@ impl<T> Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.len(),
             ReceiverFlavor::List(chan) => chan.len(),
             ReceiverFlavor::Zero(chan) => chan.len(),
-            ReceiverFlavor::After(chan) => chan.len(),
+            ReceiverFlavor::At(chan) => chan.len(),
             ReceiverFlavor::Tick(chan) => chan.len(),
             ReceiverFlavor::Never(chan) => chan.len(),
         }
@@ -900,7 +1030,7 @@ impl<T> Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.capacity(),
             ReceiverFlavor::List(chan) => chan.capacity(),
             ReceiverFlavor::Zero(chan) => chan.capacity(),
-            ReceiverFlavor::After(chan) => chan.capacity(),
+            ReceiverFlavor::At(chan) => chan.capacity(),
             ReceiverFlavor::Tick(chan) => chan.capacity(),
             ReceiverFlavor::Never(chan) => chan.capacity(),
         }
@@ -994,7 +1124,7 @@ impl<T> Receiver<T> {
             (ReceiverFlavor::Array(a), ReceiverFlavor::Array(b)) => a == b,
             (ReceiverFlavor::List(a), ReceiverFlavor::List(b)) => a == b,
             (ReceiverFlavor::Zero(a), ReceiverFlavor::Zero(b)) => a == b,
-            (ReceiverFlavor::After(a), ReceiverFlavor::After(b)) => Arc::ptr_eq(a, b),
+            (ReceiverFlavor::At(a), ReceiverFlavor::At(b)) => Arc::ptr_eq(a, b),
             (ReceiverFlavor::Tick(a), ReceiverFlavor::Tick(b)) => Arc::ptr_eq(a, b),
             (ReceiverFlavor::Never(_), ReceiverFlavor::Never(_)) => true,
             _ => false,
@@ -1009,7 +1139,7 @@ impl<T> Drop for Receiver<T> {
                 ReceiverFlavor::Array(chan) => chan.release(|c| c.disconnect()),
                 ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect()),
                 ReceiverFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
-                ReceiverFlavor::After(_) => {}
+                ReceiverFlavor::At(_) => {}
                 ReceiverFlavor::Tick(_) => {}
                 ReceiverFlavor::Never(_) => {}
             }
@@ -1023,7 +1153,7 @@ impl<T> Clone for Receiver<T> {
             ReceiverFlavor::Array(chan) => ReceiverFlavor::Array(chan.acquire()),
             ReceiverFlavor::List(chan) => ReceiverFlavor::List(chan.acquire()),
             ReceiverFlavor::Zero(chan) => ReceiverFlavor::Zero(chan.acquire()),
-            ReceiverFlavor::After(chan) => ReceiverFlavor::After(chan.clone()),
+            ReceiverFlavor::At(chan) => ReceiverFlavor::At(chan.clone()),
             ReceiverFlavor::Tick(chan) => ReceiverFlavor::Tick(chan.clone()),
             ReceiverFlavor::Never(_) => ReceiverFlavor::Never(flavors::never::Channel::new()),
         };
@@ -1270,7 +1400,7 @@ impl<T> SelectHandle for Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.receiver().try_select(token),
             ReceiverFlavor::List(chan) => chan.receiver().try_select(token),
             ReceiverFlavor::Zero(chan) => chan.receiver().try_select(token),
-            ReceiverFlavor::After(chan) => chan.try_select(token),
+            ReceiverFlavor::At(chan) => chan.try_select(token),
             ReceiverFlavor::Tick(chan) => chan.try_select(token),
             ReceiverFlavor::Never(chan) => chan.try_select(token),
         }
@@ -1281,7 +1411,7 @@ impl<T> SelectHandle for Receiver<T> {
             ReceiverFlavor::Array(_) => None,
             ReceiverFlavor::List(_) => None,
             ReceiverFlavor::Zero(_) => None,
-            ReceiverFlavor::After(chan) => chan.deadline(),
+            ReceiverFlavor::At(chan) => chan.deadline(),
             ReceiverFlavor::Tick(chan) => chan.deadline(),
             ReceiverFlavor::Never(chan) => chan.deadline(),
         }
@@ -1292,7 +1422,7 @@ impl<T> SelectHandle for Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.receiver().register(oper, cx),
             ReceiverFlavor::List(chan) => chan.receiver().register(oper, cx),
             ReceiverFlavor::Zero(chan) => chan.receiver().register(oper, cx),
-            ReceiverFlavor::After(chan) => chan.register(oper, cx),
+            ReceiverFlavor::At(chan) => chan.register(oper, cx),
             ReceiverFlavor::Tick(chan) => chan.register(oper, cx),
             ReceiverFlavor::Never(chan) => chan.register(oper, cx),
         }
@@ -1303,7 +1433,7 @@ impl<T> SelectHandle for Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.receiver().unregister(oper),
             ReceiverFlavor::List(chan) => chan.receiver().unregister(oper),
             ReceiverFlavor::Zero(chan) => chan.receiver().unregister(oper),
-            ReceiverFlavor::After(chan) => chan.unregister(oper),
+            ReceiverFlavor::At(chan) => chan.unregister(oper),
             ReceiverFlavor::Tick(chan) => chan.unregister(oper),
             ReceiverFlavor::Never(chan) => chan.unregister(oper),
         }
@@ -1314,7 +1444,7 @@ impl<T> SelectHandle for Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.receiver().accept(token, cx),
             ReceiverFlavor::List(chan) => chan.receiver().accept(token, cx),
             ReceiverFlavor::Zero(chan) => chan.receiver().accept(token, cx),
-            ReceiverFlavor::After(chan) => chan.accept(token, cx),
+            ReceiverFlavor::At(chan) => chan.accept(token, cx),
             ReceiverFlavor::Tick(chan) => chan.accept(token, cx),
             ReceiverFlavor::Never(chan) => chan.accept(token, cx),
         }
@@ -1325,7 +1455,7 @@ impl<T> SelectHandle for Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.receiver().is_ready(),
             ReceiverFlavor::List(chan) => chan.receiver().is_ready(),
             ReceiverFlavor::Zero(chan) => chan.receiver().is_ready(),
-            ReceiverFlavor::After(chan) => chan.is_ready(),
+            ReceiverFlavor::At(chan) => chan.is_ready(),
             ReceiverFlavor::Tick(chan) => chan.is_ready(),
             ReceiverFlavor::Never(chan) => chan.is_ready(),
         }
@@ -1336,7 +1466,7 @@ impl<T> SelectHandle for Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.receiver().watch(oper, cx),
             ReceiverFlavor::List(chan) => chan.receiver().watch(oper, cx),
             ReceiverFlavor::Zero(chan) => chan.receiver().watch(oper, cx),
-            ReceiverFlavor::After(chan) => chan.watch(oper, cx),
+            ReceiverFlavor::At(chan) => chan.watch(oper, cx),
             ReceiverFlavor::Tick(chan) => chan.watch(oper, cx),
             ReceiverFlavor::Never(chan) => chan.watch(oper, cx),
         }
@@ -1347,7 +1477,7 @@ impl<T> SelectHandle for Receiver<T> {
             ReceiverFlavor::Array(chan) => chan.receiver().unwatch(oper),
             ReceiverFlavor::List(chan) => chan.receiver().unwatch(oper),
             ReceiverFlavor::Zero(chan) => chan.receiver().unwatch(oper),
-            ReceiverFlavor::After(chan) => chan.unwatch(oper),
+            ReceiverFlavor::At(chan) => chan.unwatch(oper),
             ReceiverFlavor::Tick(chan) => chan.unwatch(oper),
             ReceiverFlavor::Never(chan) => chan.unwatch(oper),
         }
@@ -1369,7 +1499,7 @@ pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()> {
         ReceiverFlavor::Array(chan) => chan.read(token),
         ReceiverFlavor::List(chan) => chan.read(token),
         ReceiverFlavor::Zero(chan) => chan.read(token),
-        ReceiverFlavor::After(chan) => {
+        ReceiverFlavor::At(chan) => {
             mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
         }
         ReceiverFlavor::Tick(chan) => {
