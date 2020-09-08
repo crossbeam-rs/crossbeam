@@ -1053,7 +1053,7 @@ impl<'a> Select<'a> {
         self.ready_deadline(Instant::now() + timeout)
     }
 
-    /// Blocks for a until a given deadline, or until one of the operations becomes ready.
+    /// Blocks until a given deadline, or until one of the operations becomes ready.
     ///
     /// If an operation becomes ready, its index is returned. If multiple operations are ready at
     /// the same time, a random one among them is chosen. If none of the operations become ready
