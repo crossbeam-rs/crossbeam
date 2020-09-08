@@ -364,21 +364,22 @@ impl Inner {
             // Block the current thread on the conditional variable.
             m = match deadline {
                 None => self.cvar.wait(m).unwrap(),
-                Some(deadline) => match deadline.checked_duration_since(Instant::now()) {
-                    // We could check for a timeout here, in the return value of wait_timeout,
-                    // but in the case that a timeout and an unpark arrive simultaneously, we
-                    // prefer to report the former.
-                    Some(duration) if duration > Duration::from_secs(0) => {
-                        self.cvar.wait_timeout(m, duration).unwrap().0
+                Some(deadline) => {
+                    let now = Instant::now();
+                    if now < deadline {
+                        // We could check for a timeout here, in the return value of wait_timeout,
+                        // but in the case that a timeout and an unpark arrive simultaneously, we
+                        // prefer to report the former.
+                        self.cvar.wait_timeout(m, deadline - now).unwrap().0
+                    } else {
+                        // We've timed out; swap out the state back to empty on our way out
+                        return match self.state.swap(EMPTY, SeqCst) {
+                            NOTIFIED => UnparkReason::Unparked, // got a notification
+                            PARKED => UnparkReason::Timeout,    // no notification
+                            n => panic!("inconsistent park_timeout state: {}", n),
+                        };
                     }
-
-                    // We've timed out; swap out the state back to empty on our way out
-                    _ => match self.state.swap(EMPTY, SeqCst) {
-                        NOTIFIED => return UnparkReason::Unparked, // got a notification
-                        PARKED => return UnparkReason::Timeout,    // no notification
-                        n => panic!("inconsistent park_timeout state: {}", n),
-                    },
-                },
+                }
             };
 
             if self
