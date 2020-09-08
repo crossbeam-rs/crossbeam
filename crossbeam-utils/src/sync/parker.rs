@@ -1,20 +1,19 @@
-use std::fmt;
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
+use std::{fmt, time::Instant};
 
 /// A thread parking primitive.
 ///
 /// Conceptually, each `Parker` has an associated token which is initially not present:
 ///
 /// * The [`park`] method blocks the current thread unless or until the token is available, at
-///   which point it automatically consumes the token. It may also return *spuriously*, without
-///   consuming the token.
+///   which point it automatically consumes the token.
 ///
-/// * The [`park_timeout`] method works the same as [`park`], but blocks for a specified maximum
-///   time.
+/// * The [`park_timeout`] and [`park_deadline`] methods work the same as [`park`], but block for
+///   a specified maximum time.
 ///
 /// * The [`unpark`] method atomically makes the token available if it wasn't already. Because the
 ///   token is initially absent, [`unpark`] followed by [`park`] will result in the second call
@@ -43,13 +42,13 @@ use std::time::Duration;
 ///     u.unpark();
 /// });
 ///
-/// // Wakes up when `u.unpark()` provides the token, but may also wake up
-/// // spuriously before that without consuming the token.
+/// // Wakes up when `u.unpark()` provides the token.
 /// p.park();
 /// ```
 ///
 /// [`park`]: Parker::park
 /// [`park_timeout`]: Parker::park_timeout
+/// [`park_deadline`]: Parker::park_deadline
 /// [`unpark`]: Unparker::unpark
 pub struct Parker {
     unparker: Unparker,
@@ -90,9 +89,6 @@ impl Parker {
 
     /// Blocks the current thread until the token is made available.
     ///
-    /// A call to `park` may wake up spuriously without consuming the token, and callers should be
-    /// prepared for this possibility.
-    ///
     /// # Examples
     ///
     /// ```
@@ -113,9 +109,6 @@ impl Parker {
 
     /// Blocks the current thread until the token is made available, but only for a limited time.
     ///
-    /// A call to `park_timeout` may wake up spuriously without consuming the token, and callers
-    /// should be prepared for this possibility.
-    ///
     /// # Examples
     ///
     /// ```
@@ -127,8 +120,26 @@ impl Parker {
     /// // Waits for the token to become available, but will not wait longer than 500 ms.
     /// p.park_timeout(Duration::from_millis(500));
     /// ```
-    pub fn park_timeout(&self, timeout: Duration) {
-        self.unparker.inner.park(Some(timeout));
+    pub fn park_timeout(&self, timeout: Duration) -> UnparkReason {
+        self.park_deadline(Instant::now() + timeout)
+    }
+
+    /// Blocks the current thread until the token is made available, or until a certain deadline.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::{Duration, Instant};
+    /// use crossbeam_utils::sync::Parker;
+    ///
+    /// let p = Parker::new();
+    /// let deadline = Instant::now() + Duration::from_millis(500);
+    ///
+    /// // Waits for the token to become available, but will not wait longer than 500 ms.
+    /// p.park_deadline(deadline);
+    /// ```
+    pub fn park_deadline(&self, deadline: Instant) -> UnparkReason {
+        self.unparker.inner.park(Some(deadline))
     }
 
     /// Returns a reference to an associated [`Unparker`].
@@ -227,8 +238,7 @@ impl Unparker {
     ///     u.unpark();
     /// });
     ///
-    /// // Wakes up when `u.unpark()` provides the token, but may also wake up
-    /// // spuriously before that without consuming the token.
+    /// // Wakes up when `u.unpark()` provides the token.
     /// p.park();
     /// ```
     ///
@@ -291,6 +301,18 @@ impl Clone for Unparker {
     }
 }
 
+/// An enum that reports whether a `Parker::park_timeout` or
+/// `Parker::park_deadline` returned because another thread called `unpark` or
+/// because of a timeout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnparkReason {
+    /// The park method returned due to a call to `unpark`.
+    Unparked,
+
+    /// The park method returned due to a timeout.
+    Timeout,
+}
+
 const EMPTY: usize = 0;
 const PARKED: usize = 1;
 const NOTIFIED: usize = 2;
@@ -302,20 +324,20 @@ struct Inner {
 }
 
 impl Inner {
-    fn park(&self, timeout: Option<Duration>) {
+    fn park(&self, deadline: Option<Instant>) -> UnparkReason {
         // If we were previously notified then we consume this notification and return quickly.
         if self
             .state
             .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst)
             .is_ok()
         {
-            return;
+            return UnparkReason::Unparked;
         }
 
         // If the timeout is zero, then there is no need to actually block.
-        if let Some(ref dur) = timeout {
-            if *dur == Duration::from_millis(0) {
-                return;
+        if let Some(deadline) = deadline {
+            if deadline <= Instant::now() {
+                return UnparkReason::Timeout;
             }
         }
 
@@ -333,41 +355,42 @@ impl Inner {
                 // do that we must read from the write it made to `state`.
                 let old = self.state.swap(EMPTY, SeqCst);
                 assert_eq!(old, NOTIFIED, "park state changed unexpectedly");
-                return;
+                return UnparkReason::Unparked;
             }
             Err(n) => panic!("inconsistent park_timeout state: {}", n),
         }
 
-        match timeout {
-            None => {
-                loop {
-                    // Block the current thread on the conditional variable.
-                    m = self.cvar.wait(m).unwrap();
-
-                    if self
-                        .state
-                        .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst)
-                        .is_ok()
-                    {
-                        // got a notification
-                        return;
+        loop {
+            // Block the current thread on the conditional variable.
+            m = match deadline {
+                None => self.cvar.wait(m).unwrap(),
+                Some(deadline) => match deadline.checked_duration_since(Instant::now()) {
+                    // We could check for a timeout here, but in the case that a timeout and an
+                    // unpark arrive simultaneously, we prefer to report the former.
+                    Some(duration) if duration > Duration::from_secs(0) => {
+                        self.cvar.wait_timeout(m, duration).unwrap().0
                     }
 
-                    // spurious wakeup, go back to sleep
-                }
-            }
-            Some(timeout) => {
-                // Wait with a timeout, and if we spuriously wake up or otherwise wake up from a
-                // notification we just want to unconditionally set `state` back to `EMPTY`, either
-                // consuming a notification or un-flagging ourselves as parked.
-                let (_m, _result) = self.cvar.wait_timeout(m, timeout).unwrap();
+                    // We've timed out; swap out the state back to empty on our way out
+                    _ => match self.state.swap(EMPTY, SeqCst) {
+                        NOTIFIED => return UnparkReason::Unparked, // got a notification
+                        PARKED => return UnparkReason::Timeout,    // no notification
+                        n => panic!("inconsistent park_timeout state: {}", n),
+                    },
+                },
+            };
 
-                match self.state.swap(EMPTY, SeqCst) {
-                    NOTIFIED => {} // got a notification
-                    PARKED => {}   // no notification
-                    n => panic!("inconsistent park_timeout state: {}", n),
-                }
+            if self
+                .state
+                .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst)
+                .is_ok()
+            {
+                // got a notification
+                return UnparkReason::Unparked;
             }
+
+            // Spurious wakeup, go back to sleep. Alternatively, if we timed out, it will be caught
+            // in the branch above, when we discover the deadline is in the past
         }
     }
 
