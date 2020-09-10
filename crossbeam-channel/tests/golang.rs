@@ -16,7 +16,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, unbounded, select, tick, Receiver, Select, Sender};
+use crossbeam_channel::{bounded, select, tick, unbounded, Receiver, Select, Sender};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -667,7 +667,7 @@ mod select {
 // https://github.com/golang/go/blob/master/test/chan/select2.go
 mod select2 {
     use super::*;
-    use std::alloc::{System, GlobalAlloc, Layout};
+    use std::alloc::{GlobalAlloc, Layout, System};
     use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
     struct Counter;
@@ -679,9 +679,9 @@ mod select2 {
             if !ret.is_null() {
                 ALLOCATED.fetch_add(layout.size(), SeqCst);
             }
-            return ret
+            return ret;
         }
-    
+
         unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
             System.dealloc(ptr, layout);
             ALLOCATED.fetch_sub(layout.size(), SeqCst);
@@ -716,7 +716,7 @@ mod select2 {
         let dummy = make_unbounded::<i32>();
 
         ALLOCATED.store(0, SeqCst);
-        
+
         go!(c, sender(&c, 100000));
         receiver(&c, &dummy, 100000);
 
