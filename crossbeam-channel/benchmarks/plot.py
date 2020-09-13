@@ -30,6 +30,7 @@ def plot(subplot, title, prefix, runs):
     futures_channel = [0] * len(runs)
     chan = [0] * len(runs)
     crossbeam_channel = [0] * len(runs)
+    flume = [0] * len(runs)
 
     for (i, run) in enumerate(runs):
         for (test, lang, impl, secs) in results:
@@ -44,15 +45,18 @@ def plot(subplot, title, prefix, runs):
                     chan[i] = secs
                 if lang == 'Rust' and impl == 'crossbeam-channel':
                     crossbeam_channel[i] = secs
+                if lang == 'Rust' and impl == 'flume':
+                    flume[i] = secs
 
     opts = dict(height=0.7, align='center')
     ax.barh([y-2 for y in ys], go, color='skyblue', **opts)
     ax.barh([y-1 for y in ys], crossbeam_channel, color='red', **opts)
-    ax.barh([y+0 for y in ys], chan, color='orange', **opts)
-    ax.barh([y+1 for y in ys], mpsc, color='black', **opts)
-    ax.barh([y+2 for y in ys], futures_channel, color='blue', **opts)
+    ax.barh([y+0 for y in ys], flume, color='green', **opts)
+    ax.barh([y+1 for y in ys], chan, color='orange', **opts)
+    ax.barh([y+2 for y in ys], mpsc, color='black', **opts)
+    ax.barh([y+3 for y in ys], futures_channel, color='blue', **opts)
 
-    m = int(max(go + mpsc + futures_channel + chan + crossbeam_channel) * 1.3)
+    m = int(max(go + mpsc + futures_channel + chan + crossbeam_channel + flume) * 1.3)
     if m < 10:
         ax.set_xticks(range(m + 1))
     elif m < 50:
@@ -70,15 +74,18 @@ def plot(subplot, title, prefix, runs):
     for (x, y) in zip(crossbeam_channel, ys):
         if x > 0:
             ax.text(x+m/200., y-1-0.3, 'crossbeam-channel', fontsize=9)
+    for (x, y) in zip(flume, ys):
+        if x > 0:
+            ax.text(x+m/200., y+0-0.3, 'flume', fontsize=9)
     for (x, y) in zip(chan, ys):
         if x > 0:
-            ax.text(x+m/200., y+0-0.3, 'chan', fontsize=9)
+            ax.text(x+m/200., y+1-0.3, 'chan', fontsize=9)
     for (x, y) in zip(mpsc, ys):
         if x > 0:
-            ax.text(x+m/200., y+1-0.3, 'mpsc', fontsize=9)
+            ax.text(x+m/200., y+2-0.3, 'mpsc', fontsize=9)
     for (x, y) in zip(futures_channel, ys):
         if x > 0:
-            ax.text(x+m/200., y+2-0.3, 'futures-channel', fontsize=9)
+            ax.text(x+m/200., y+3-0.3, 'futures-channel', fontsize=9)
 
 plot(
     221,
