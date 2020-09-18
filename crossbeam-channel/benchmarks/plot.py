@@ -84,28 +84,28 @@ plot(
     221,
     "Bounded channel of capacity 0",
     'bounded0',
-    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
+    ['spsc', 'ping_pong', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plot(
     222,
     "Bounded channel of capacity 1",
     'bounded1',
-    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
+    ['spsc', 'ping_pong', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plot(
     223,
     "Bounded channel of capacity N",
     'bounded',
-    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
+    ['seq', 'spsc', 'ping_pong', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plot(
     224,
     "Unbounded channel",
     'unbounded',
-    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
+    ['seq', 'spsc', 'ping_pong', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
 )
 
 plt.subplots_adjust(
