@@ -99,7 +99,7 @@ def plot(results, fig, subplot, title, prefix):
 
     for pre, test, lang, impl, secs in results:
         if pre == prefix:
-            name = lang + '_' + impl
+            name = impl if lang == 'Rust' else impl + f' ({lang})'
             if name not in scores:
                 scores[name] = [0] * len(runs)
             scores[name][find(runs, test)] = secs
