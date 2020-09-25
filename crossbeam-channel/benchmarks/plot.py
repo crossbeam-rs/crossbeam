@@ -105,12 +105,13 @@ def plot(results, fig, subplot, title, prefix):
             scores[name][find(runs, test)] = secs
 
     opts = dict(height=0.8, align='center')
+    x_max = max(max(scores.values(), key=lambda x: max(x)))
     for i, (name, score) in enumerate(scores.items()):
         yy = [y + i - len(runs) // 2 + 0.2 for y in ys]
         ax.barh(yy, score, color=get_color(name), **opts)
         for xxx, yyy in zip(score, yy):
             if xxx:
-                ax.text(xxx, yyy - 0.25, name, fontsize=9)
+                ax.text(min(x_max - len(name) * 0.018 * x_max, xxx), yyy - 0.25, name, fontsize=9)
 
 
 def plot_all(results, descriptions, labels):
