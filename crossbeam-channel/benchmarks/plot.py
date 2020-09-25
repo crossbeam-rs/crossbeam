@@ -1,23 +1,93 @@
 #!/usr/bin/env python3
-
+import random
 import sys
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-
-results = []
-for f in sys.argv[1:]:
-    with open(f) as f:
-        for line in f.readlines():
-            test, lang, impl, secs, _ = line.split()
-            results.append((test, lang, impl, float(secs)))
-
-fig = plt.figure(figsize=(10, 10))
 
 
-def plot(subplot, title, prefix, runs):
-    runs.reverse()
+def read_data(files):
+    results = []
+    for f in files:
+        with open(f) as f:
+            for line in f.readlines():
+                test, lang, impl, secs, _ = line.split()
+                splt = test.split('_')
+                results.append((splt[0], '_'.join(splt[1:]), lang, impl, float(secs)))
+    return results
 
-    ys = [6 * (i + 1) for i in range(len(runs))]
+
+def get_runs(results, prefix):
+    runs = set()
+    for pre, test, lang, impl, secs in results:
+        if pre == prefix:
+            runs.add(test)
+    result = list(runs)
+    result.sort()
+    return result
+
+
+def find(s, x):
+    for i in range(len(s)):
+        if s[i] == x:
+            return i
+    return None
+
+
+color_set = {
+    'aqua': '#00ffff',
+    'azure': '#f0ffff',
+    'beige': '#f5f5dc',
+    'black': '#000000',
+    'blue': '#0000ff',
+    'brown': '#a52a2a',
+    'cyan': '#00ffff',
+    'darkblue': '#00008b',
+    'darkcyan': '#008b8b',
+    'darkgrey': '#a9a9a9',
+    'darkgreen': '#006400',
+    'darkkhaki': '#bdb76b',
+    'darkmagenta': '#8b008b',
+    'darkolivegreen': '#556b2f',
+    'darkorange': '#ff8c00',
+    'darkorchid': '#9932cc',
+    'darkred': '#8b0000',
+    'darksalmon': '#e9967a',
+    'darkviolet': '#9400d3',
+    'fuchsia': '#ff00ff',
+    'gold': '#ffd700',
+    'green': '#008000',
+    'indigo': '#4b0082',
+    'khaki': '#f0e68c',
+    'lightblue': '#add8e6',
+    'lightcyan': '#e0ffff',
+    'lightgreen': '#90ee90',
+    'lightgrey': '#d3d3d3',
+    'lightpink': '#ffb6c1',
+    'lightyellow': '#ffffe0',
+    'lime': '#00ff00',
+    'magenta': '#ff00ff',
+    'maroon': '#800000',
+    'navy': '#000080',
+    'olive': '#808000',
+    'orange': '#ffa500',
+    'pink': '#ffc0cb',
+    'purple': '#800080',
+    'red': '#ff0000',
+}
+saved_color = {}
+
+
+def get_color(name):
+    if name not in saved_color:
+        color = color_set.popitem()
+        saved_color[name] = color
+    return saved_color[name][1]
+
+
+def plot(results, fig, subplot, title, prefix):
+    runs = get_runs(results, prefix)
+
+    ys = [len(runs) * (i + 1) for i in range(len(runs))]
+
     ax = fig.add_subplot(subplot)
     ax.set_title(title)
     ax.set_yticks(ys)
@@ -27,70 +97,51 @@ def plot(subplot, title, prefix, runs):
 
     scores = {}
 
-    for (i, run) in enumerate(runs):
-        for (test, lang, impl, secs) in results:
-            if test == prefix + '_' + run:
-                name = lang + '_' + impl
-                if name not in scores:
-                    scores[name] = [0] * len(runs)
-                scores[name][i] = secs
+    for pre, test, lang, impl, secs in results:
+        if pre == prefix:
+            name = lang + '_' + impl
+            if name not in scores:
+                scores[name] = [0] * len(runs)
+            scores[name][find(runs, test)] = secs
 
-    opts = dict(height=0.7, align='center')
-    for (i, score) in enumerate(scores.values()):
-        ax.barh([y + i - len(scores) // 2 for y in ys], score, **opts)
-
-    m = int(max(max([x for x in scores.values()])) * 1.3)
-    if m < 10:
-        ax.set_xticks(list(range(m + 1)))
-    elif m < 50:
-        ax.set_xticks([x * 5 for x in range(m // 5 + 1)])
-    elif m < 100:
-        ax.set_xticks([x * 10 for x in range(m // 10 + 1)])
-    elif m < 400:
-        ax.set_xticks([x * 20 for x in range(m // 20 + 1)])
-    else:
-        ax.set_xticks([x * 100 for x in range(m // 100 + 1)])
-
-    for (i, (name, score)) in enumerate(scores.items()):
-        for (x, y) in zip(score, ys):
-            ax.text(x + m / 200., y + i - len(scores) // 2 - 0.25, name, fontsize=9)
+    opts = dict(height=0.8, align='center')
+    for i, (name, score) in enumerate(scores.items()):
+        yy = [y + i - len(runs) // 2 + 0.2 for y in ys]
+        ax.barh(yy, score, color=get_color(name), **opts)
+        for xxx, yyy in zip(score, yy):
+            if xxx:
+                ax.text(xxx, yyy - 0.25, name, fontsize=9)
 
 
-plot(
-    221,
-    "Bounded channel of capacity 0",
-    'bounded0',
-    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
-)
+def plot_all(results, descriptions, labels):
+    fig = plt.figure(figsize=(10, 10))
+    # TODO support more number subplots
+    subplot = [221, 222, 223, 224]
+    for p, d, l in zip(subplot, descriptions, labels):
+        plot(results, fig, p, d, l)
+    plt.subplots_adjust(
+        top=0.95,
+        bottom=0.05,
+        left=0.1,
+        right=0.95,
+        wspace=0.3,
+        hspace=0.2,
+    )
+    plt.savefig('plot.png')
+    # plt.show()
 
-plot(
-    222,
-    "Bounded channel of capacity 1",
-    'bounded1',
-    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
-)
 
-plot(
-    223,
-    "Bounded channel of capacity N",
-    'bounded',
-    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
-)
+def main():
+    results = read_data(sys.argv[1:])
+    descriptions = [
+        'Bounded channel of capacity 0',
+        'Bounded channel of capacity 1',
+        'Bounded channel of capacity N',
+        'Unbounded channel',
+    ]
+    labels = ['bounded0', 'bounded1', 'bounded', 'unbounded']
+    plot_all(results, descriptions, labels)
 
-plot(
-    224,
-    "Unbounded channel",
-    'unbounded',
-    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
-)
 
-plt.subplots_adjust(
-    top=0.95,
-    bottom=0.05,
-    left=0.1,
-    right=0.95,
-    wspace=0.3,
-    hspace=0.2,
-)
-plt.savefig('plot.png')
-# plt.show()
+if __name__ == '__main__':
+    main()
