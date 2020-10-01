@@ -1,23 +1,93 @@
-#!/usr/bin/env python2
-
+#!/usr/bin/env python3
+import random
 import sys
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-
-results = []
-for f in sys.argv[1:]:
-    with open(f) as f:
-        for line in f.readlines():
-            test, lang, impl, secs, _ = line.split()
-            results.append((test, lang, impl, float(secs)))
-
-fig = plt.figure(figsize=(10, 10))
 
 
-def plot(subplot, title, prefix, runs):
-    runs.reverse()
+def read_data(files):
+    results = []
+    for f in files:
+        with open(f) as f:
+            for line in f.readlines():
+                test, lang, impl, secs, _ = line.split()
+                splt = test.split('_')
+                results.append((splt[0], '_'.join(splt[1:]), lang, impl, float(secs)))
+    return results
 
-    ys = [6 * (i+1) for i in xrange(len(runs))]
+
+def get_runs(results, prefix):
+    runs = set()
+    for pre, test, lang, impl, secs in results:
+        if pre == prefix:
+            runs.add(test)
+    result = list(runs)
+    result.sort()
+    return result
+
+
+def find(s, x):
+    for i in range(len(s)):
+        if s[i] == x:
+            return i
+    return None
+
+
+color_set = {
+    'aqua': '#00ffff',
+    'azure': '#f0ffff',
+    'beige': '#f5f5dc',
+    'black': '#000000',
+    'blue': '#0000ff',
+    'brown': '#a52a2a',
+    'cyan': '#00ffff',
+    'darkblue': '#00008b',
+    'darkcyan': '#008b8b',
+    'darkgrey': '#a9a9a9',
+    'darkgreen': '#006400',
+    'darkkhaki': '#bdb76b',
+    'darkmagenta': '#8b008b',
+    'darkolivegreen': '#556b2f',
+    'darkorange': '#ff8c00',
+    'darkorchid': '#9932cc',
+    'darkred': '#8b0000',
+    'darksalmon': '#e9967a',
+    'darkviolet': '#9400d3',
+    'fuchsia': '#ff00ff',
+    'gold': '#ffd700',
+    'green': '#008000',
+    'indigo': '#4b0082',
+    'khaki': '#f0e68c',
+    'lightblue': '#add8e6',
+    'lightcyan': '#e0ffff',
+    'lightgreen': '#90ee90',
+    'lightgrey': '#d3d3d3',
+    'lightpink': '#ffb6c1',
+    'lightyellow': '#ffffe0',
+    'lime': '#00ff00',
+    'magenta': '#ff00ff',
+    'maroon': '#800000',
+    'navy': '#000080',
+    'olive': '#808000',
+    'orange': '#ffa500',
+    'pink': '#ffc0cb',
+    'purple': '#800080',
+    'red': '#ff0000',
+}
+saved_color = {}
+
+
+def get_color(name):
+    if name not in saved_color:
+        color = color_set.popitem()
+        saved_color[name] = color
+    return saved_color[name][1]
+
+
+def plot(results, fig, subplot, title, prefix):
+    runs = get_runs(results, prefix)
+
+    ys = [len(runs) * (i + 1) for i in range(len(runs))]
+
     ax = fig.add_subplot(subplot)
     ax.set_title(title)
     ax.set_yticks(ys)
@@ -25,96 +95,54 @@ def plot(subplot, title, prefix, runs):
     ax.tick_params(which='major', length=0)
     ax.set_xlabel('seconds')
 
-    go = [0] * len(runs)
-    mpsc = [0] * len(runs)
-    futures_channel = [0] * len(runs)
-    chan = [0] * len(runs)
-    crossbeam_channel = [0] * len(runs)
+    scores = {}
 
-    for (i, run) in enumerate(runs):
-        for (test, lang, impl, secs) in results:
-            if test == prefix + '_' + run:
-                if lang == 'Go' and impl == 'chan':
-                    go[i] = secs
-                if lang == 'Rust' and impl == 'mpsc':
-                    mpsc[i] = secs
-                if lang == 'Rust' and impl == 'futures-channel':
-                    futures_channel[i] = secs
-                if lang == 'Rust' and impl == 'chan':
-                    chan[i] = secs
-                if lang == 'Rust' and impl == 'crossbeam-channel':
-                    crossbeam_channel[i] = secs
+    for pre, test, lang, impl, secs in results:
+        if pre == prefix:
+            name = impl if lang == 'Rust' else impl + f' ({lang})'
+            if name not in scores:
+                scores[name] = [0] * len(runs)
+            scores[name][find(runs, test)] = secs
 
-    opts = dict(height=0.7, align='center')
-    ax.barh([y-2 for y in ys], go, color='skyblue', **opts)
-    ax.barh([y-1 for y in ys], crossbeam_channel, color='red', **opts)
-    ax.barh([y+0 for y in ys], chan, color='orange', **opts)
-    ax.barh([y+1 for y in ys], mpsc, color='black', **opts)
-    ax.barh([y+2 for y in ys], futures_channel, color='blue', **opts)
+    opts = dict(height=0.8, align='center')
+    x_max = max(max(scores.values(), key=lambda x: max(x)))
+    for i, (name, score) in enumerate(scores.items()):
+        yy = [y + i - len(runs) // 2 + 0.2 for y in ys]
+        ax.barh(yy, score, color=get_color(name), **opts)
+        for xxx, yyy in zip(score, yy):
+            if xxx:
+                ax.text(min(x_max - len(name) * 0.018 * x_max, xxx), yyy - 0.25, name, fontsize=9)
 
-    m = int(max(go + mpsc + futures_channel + chan + crossbeam_channel) * 1.3)
-    if m < 10:
-        ax.set_xticks(range(m + 1))
-    elif m < 50:
-        ax.set_xticks([x*5 for x in range(m / 5 + 1)])
-    elif m < 100:
-        ax.set_xticks([x*10 for x in range(m / 10 + 1)])
-    elif m < 100:
-        ax.set_xticks([x*20 for x in range(m / 20 + 1)])
-    else:
-        ax.set_xticks([x*100 for x in range(m / 100 + 1)])
 
-    for (x, y) in zip(go, ys):
-        if x > 0:
-            ax.text(x+m/200., y-2-0.3, 'Go', fontsize=9)
-    for (x, y) in zip(crossbeam_channel, ys):
-        if x > 0:
-            ax.text(x+m/200., y-1-0.3, 'crossbeam-channel', fontsize=9)
-    for (x, y) in zip(chan, ys):
-        if x > 0:
-            ax.text(x+m/200., y+0-0.3, 'chan', fontsize=9)
-    for (x, y) in zip(mpsc, ys):
-        if x > 0:
-            ax.text(x+m/200., y+1-0.3, 'mpsc', fontsize=9)
-    for (x, y) in zip(futures_channel, ys):
-        if x > 0:
-            ax.text(x+m/200., y+2-0.3, 'futures-channel', fontsize=9)
+def plot_all(results, descriptions, labels):
+    fig = plt.figure(figsize=(10, 10))
+    # TODO support more number subplots
+    subplot = [221, 222, 223, 224]
+    for p, d, l in zip(subplot, descriptions, labels):
+        plot(results, fig, p, d, l)
+    plt.subplots_adjust(
+        top=0.95,
+        bottom=0.05,
+        left=0.1,
+        right=0.95,
+        wspace=0.3,
+        hspace=0.2,
+    )
+    plt.savefig('plot.png')
+    # plt.show()
 
-plot(
-    221,
-    "Bounded channel of capacity 0",
-    'bounded0',
-    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
-)
 
-plot(
-    222,
-    "Bounded channel of capacity 1",
-    'bounded1',
-    ['spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
-)
+def main():
+    results = read_data(sys.argv[1:])
+    descriptions = [
+        'Bounded channel of capacity 0',
+        'Bounded channel of capacity 1',
+        'Bounded channel of capacity N',
+        'Unbounded channel',
+    ]
+    labels = ['bounded0', 'bounded1', 'bounded', 'unbounded']
+    plot_all(results, descriptions, labels)
 
-plot(
-    223,
-    "Bounded channel of capacity N",
-    'bounded',
-    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
-)
 
-plot(
-    224,
-    "Unbounded channel",
-    'unbounded',
-    ['seq', 'spsc', 'mpsc', 'mpmc', 'select_rx', 'select_both'],
-)
-
-plt.subplots_adjust(
-    top=0.95,
-    bottom=0.05,
-    left=0.1,
-    right=0.95,
-    wspace=0.3,
-    hspace=0.2,
-)
-plt.savefig('plot.png')
-# plt.show()
+if __name__ == '__main__':
+    main()
