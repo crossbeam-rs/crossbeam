@@ -442,7 +442,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
                     *result.lock().unwrap() = Some(res);
                 };
 
-                // Allocate `clsoure` on the heap and erase the `'env` bound.
+                // Allocate `closure` on the heap and erase the `'env` bound.
                 let closure: Box<dyn FnOnce() + Send + 'env> = Box::new(closure);
                 let closure: Box<dyn FnOnce() + Send + 'static> =
                     unsafe { mem::transmute(closure) };
