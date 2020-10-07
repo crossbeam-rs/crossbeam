@@ -772,13 +772,10 @@ mod select3 {
         go!(c, signal, {
             if signal == NEVER {
                 // Wait a long time to make sure that we don't miss our window by accident on a slow machine.
-                println!("cekam never");
-                // std::thread::sleep(std::time::Duration::from_secs(10));
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                std::thread::sleep(std::time::Duration::from_secs(10));
             } else {
                 // Wait as short a time as we can without false negatives.
                 // 10ms should be long enough to catch most failures.
-                println!("cekam always");
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
             // f blocked always
