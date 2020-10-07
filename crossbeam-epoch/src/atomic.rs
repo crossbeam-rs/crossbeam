@@ -749,7 +749,7 @@ pub trait Pointer<T: ?Sized + Pointable> {
     /// # Safety
     ///
     /// The given `data` should have been created by `Pointer::into_usize()`, and one `data` should
-    /// not be converted back by `Pointer::from_usize()` mutliple times.
+    /// not be converted back by `Pointer::from_usize()` multiple times.
     unsafe fn from_usize(data: usize) -> Self;
 }
 
@@ -801,7 +801,7 @@ impl<T> Owned<T> {
     /// # Safety
     ///
     /// The given `raw` should have been derived from `Owned`, and one `raw` should not be converted
-    /// back by `Owned::from_raw()` mutliple times.
+    /// back by `Owned::from_raw()` multiple times.
     ///
     /// # Examples
     ///
@@ -1108,7 +1108,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     ///
     /// Dereferencing a pointer is unsafe because it could be pointing to invalid memory.
     ///
-    /// Another concern is the possiblity of data races due to lack of proper synchronization.
+    /// Another concern is the possibility of data races due to lack of proper synchronization.
     /// For example, consider the following scenario:
     ///
     /// 1. A thread creates a new object: `a.store(Owned::new(10), Relaxed)`
@@ -1188,7 +1188,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     ///
     /// Dereferencing a pointer is unsafe because it could be pointing to invalid memory.
     ///
-    /// Another concern is the possiblity of data races due to lack of proper synchronization.
+    /// Another concern is the possibility of data races due to lack of proper synchronization.
     /// For example, consider the following scenario:
     ///
     /// 1. A thread creates a new object: `a.store(Owned::new(10), Relaxed)`

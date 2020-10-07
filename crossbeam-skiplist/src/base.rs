@@ -226,7 +226,7 @@ impl<K, V> Node<K, V> {
         }
     }
 
-    /// Decrements the reference count of a node, pinning the thread and destoying the node
+    /// Decrements the reference count of a node, pinning the thread and destroying the node
     /// if the count become zero.
     #[inline]
     unsafe fn decrement_with_pin<F>(&self, parent: &SkipList<K, V>, pin: F)
@@ -1157,7 +1157,7 @@ where
 
         loop {
             {
-                // Search for the first entry in order to unlink all the preceeding entries
+                // Search for the first entry in order to unlink all the preceding entries
                 // we have removed.
                 //
                 // By unlinking nodes in batches we make sure that the final search doesn't
@@ -1933,7 +1933,7 @@ where
 pub struct IntoIter<K, V> {
     /// The current node.
     ///
-    /// All preceeding nods have already been destroyed.
+    /// All preceding nods have already been destroyed.
     node: *mut Node<K, V>,
 }
 
@@ -1946,7 +1946,7 @@ impl<K, V> Drop for IntoIter<K, V> {
                 // the skip list.
                 let next = (*self.node).tower[0].load(Ordering::Relaxed, epoch::unprotected());
 
-                // We can safely do this without defering because references to
+                // We can safely do this without deferring because references to
                 // keys & values that we give out never outlive the SkipList.
                 Node::finalize(self.node);
 

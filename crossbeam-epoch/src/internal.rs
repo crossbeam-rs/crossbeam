@@ -29,7 +29,7 @@
 //! Whenever a bag is pushed into a queue, the objects in some bags in the queue are collected and
 //! destroyed along the way. This design reduces contention on data structures. The global queue
 //! cannot be explicitly accessed: the only way to interact with it is by calling functions
-//! `defer()` that adds an object tothe thread-local bag, or `collect()` that manually triggers
+//! `defer()` that adds an object to the thread-local bag, or `collect()` that manually triggers
 //! garbage collection.
 //!
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
@@ -368,7 +368,7 @@ pub struct Local {
 
     /// Total number of pinnings performed.
     ///
-    /// This is just an auxilliary counter that sometimes kicks off collection.
+    /// This is just an auxiliary counter that sometimes kicks off collection.
     pin_count: Cell<Wrapping<usize>>,
 }
 
