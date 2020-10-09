@@ -4,7 +4,7 @@ name = "crossbeam-deque"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-deque-X.Y.Z" git tag
-version = "0.7.3"
+version = "1.0.0"
 authors = ["The Crossbeam Project Developers"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -15,6 +15,7 @@ documentation = "https://docs.rs/crossbeam-deque"
 description = "Concurrent work-stealing deque"
 keywords = ["chase-lev", "lock-free", "scheduler", "scheduling"]
 categories = ["algorithms", "concurrency", "data-structures"]
+publish = false # blocked on https://github.com/crossbeam-rs/crossbeam/issues/503
 
 [features]
 default = ["std"]
@@ -27,13 +28,13 @@ std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 cfg-if = "1"
 
 [dependencies.crossbeam-epoch]
-version = "0.8"
+version = "1"
 path = "../crossbeam-epoch"
 default-features = false
 optional = true
 
 [dependencies.crossbeam-utils]
-version = "0.7"
+version = "1"
 path = "../crossbeam-utils"
 default-features = false
 optional = true

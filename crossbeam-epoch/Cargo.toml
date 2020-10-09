@@ -4,7 +4,7 @@ name = "crossbeam-epoch"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-epoch-X.Y.Z" git tag
-version = "0.8.2"
+version = "1.0.0"
 authors = ["The Crossbeam Project Developers"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -15,6 +15,7 @@ documentation = "https://docs.rs/crossbeam-epoch"
 description = "Epoch-based garbage collection"
 keywords = ["lock-free", "rcu", "atomic", "garbage"]
 categories = ["concurrency", "memory-management", "no-std"]
+publish = false # blocked on https://github.com/crossbeam-rs/crossbeam/issues/503
 
 [features]
 default = ["std"]
@@ -42,7 +43,7 @@ const_fn = "0.4"
 memoffset = "0.5.4"
 
 [dependencies.crossbeam-utils]
-version = "0.7"
+version = "1"
 path = "../crossbeam-utils"
 default-features = false
 

@@ -37,13 +37,13 @@ nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
 cfg-if = "1"
 
 [dependencies.crossbeam-epoch]
-version = "0.8"
+version = "1"
 path = "../crossbeam-epoch"
 default-features = false
 optional = true
 
 [dependencies.crossbeam-utils]
-version = "0.7"
+version = "1"
 path = "../crossbeam-utils"
 default-features = false
 
