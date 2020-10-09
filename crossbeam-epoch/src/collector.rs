@@ -383,7 +383,7 @@ mod tests {
             let ptr = v.as_mut_ptr() as usize;
             let len = v.len();
             guard.defer_unchecked(move || {
-                drop(Vec::from_raw_parts(ptr as *const u8 as *mut u8, len, len));
+                drop(Vec::from_raw_parts(ptr as *const i32 as *mut i32, len, len));
                 DESTROYS.fetch_add(len, Ordering::Relaxed);
             });
             guard.flush();
