@@ -59,6 +59,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 #![cfg_attr(feature = "nightly", feature(const_fn))]
+// matches! requires Rust 1.42
+#![allow(clippy::match_like_matches_macro)]
 
 use cfg_if::cfg_if;
 

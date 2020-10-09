@@ -34,7 +34,7 @@ alloc = []
 nightly = ["crossbeam-utils/nightly"]
 
 [dependencies]
-cfg-if = "0.1.10"
+cfg-if = "1"
 
 [dependencies.crossbeam-utils]
 version = "0.7"
