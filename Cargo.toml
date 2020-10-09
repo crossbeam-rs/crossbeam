@@ -42,7 +42,7 @@ alloc = ["crossbeam-epoch/alloc", "crossbeam-queue/alloc"]
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
 
 [dependencies]
-cfg-if = "0.1.10"
+cfg-if = "1"
 
 [dependencies.crossbeam-channel]
 version = "0.4"
