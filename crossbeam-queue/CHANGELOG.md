@@ -1,3 +1,8 @@
+# Version 0.3.0
+
+- Bump the minimum supported Rust version to 1.36.
+- Remove `PushError` and `PopError`.
+
 # Version 0.2.3
 
 - Fix bug in release (yanking 0.2.2)

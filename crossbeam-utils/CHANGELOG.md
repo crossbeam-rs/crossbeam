@@ -1,3 +1,12 @@
+# Version 0.8.0
+
+- Bump the minimum supported Rust version to 1.36.
+- Remove deprecated `AtomicCell::get_mut()` and `Backoff::is_complete()` methods
+- Remove `alloc` feature.
+- Make `CachePadded::new()` const function.
+- Make `AtomicCell::is_lock_free()` const function at 1.46+.
+- Implement `From<T>` for `AtomicCell<T>`.
+
 # Version 0.7.2
 
 - Fix bug in release (yanking 0.7.1)
