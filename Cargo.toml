@@ -4,7 +4,7 @@ name = "crossbeam"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-X.Y.Z" git tag
-version = "0.7.3"
+version = "0.8.0"
 authors = ["The Crossbeam Project Developers"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -45,31 +45,31 @@ nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queu
 cfg-if = "1"
 
 [dependencies.crossbeam-channel]
-version = "0.4"
+version = "0.5"
 path = "./crossbeam-channel"
 default-features = false
 optional = true
 
 [dependencies.crossbeam-deque]
-version = "0.7.0"
+version = "0.8"
 path = "./crossbeam-deque"
 default-features = false
 optional = true
 
 [dependencies.crossbeam-epoch]
-version = "0.8"
+version = "0.9"
 path = "./crossbeam-epoch"
 default-features = false
 optional = true
 
 [dependencies.crossbeam-queue]
-version = "0.2"
+version = "0.3"
 path = "./crossbeam-queue"
 default-features = false
 optional = true
 
 [dependencies.crossbeam-utils]
-version = "0.7"
+version = "0.8"
 path = "./crossbeam-utils"
 default-features = false
 
