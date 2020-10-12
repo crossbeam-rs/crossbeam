@@ -21,7 +21,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-deque = "0.7"
+crossbeam-deque = "0.8"
 ```
 
 ## Compatibility
