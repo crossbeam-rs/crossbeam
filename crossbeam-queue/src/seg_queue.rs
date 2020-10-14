@@ -156,7 +156,7 @@ impl<T> SegQueue<T> {
     ///
     /// let q = SegQueue::<i32>::new();
     /// ```
-    pub fn new() -> SegQueue<T> {
+    pub const fn new() -> SegQueue<T> {
         SegQueue {
             head: CachePadded::new(Position {
                 block: AtomicPtr::new(ptr::null_mut()),
