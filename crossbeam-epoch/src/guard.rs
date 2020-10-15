@@ -503,9 +503,12 @@ impl fmt::Debug for Guard {
 #[inline]
 pub unsafe fn unprotected() -> &'static Guard {
     // An unprotected guard is just a `Guard` with its field `local` set to null.
-    // The static needs to be a `static mut` because `Guard` isn't `Sync`
-    static mut UNPROTECTED: Guard = Guard {
-        local: std::ptr::null(),
-    };
-    &UNPROTECTED
+    // We make a newtype over `Guard` because `Guard` isn't `Sync`, so can't be directly stored in
+    // a `static`
+    struct GuardWrapper(Guard);
+    unsafe impl Sync for GuardWrapper {}
+    static UNPROTECTED: GuardWrapper = GuardWrapper(Guard {
+        local: core::ptr::null(),
+    });
+    &UNPROTECTED.0
 }
