@@ -502,12 +502,13 @@ impl fmt::Debug for Guard {
 /// [`defer`]: Guard::defer
 #[inline]
 pub unsafe fn unprotected() -> &'static Guard {
-    // HACK(stjepang): An unprotected guard is just a `Guard` with its field `local` set to null.
-    // Since this function returns a `'static` reference to a `Guard`, we must return a reference
-    // to a global guard. However, it's not possible to create a `static` `Guard` because it does
-    // not implement `Sync`. To get around the problem, we create a static `usize` initialized to
-    // zero and then transmute it into a `Guard`. This is safe because `usize` and `Guard`
-    // (consisting of a single pointer) have the same representation in memory.
-    static UNPROTECTED: usize = 0;
-    &*(&UNPROTECTED as *const _ as *const Guard)
+    // An unprotected guard is just a `Guard` with its field `local` set to null.
+    // We make a newtype over `Guard` because `Guard` isn't `Sync`, so can't be directly stored in
+    // a `static`
+    struct GuardWrapper(Guard);
+    unsafe impl Sync for GuardWrapper {}
+    static UNPROTECTED: GuardWrapper = GuardWrapper(Guard {
+        local: core::ptr::null(),
+    });
+    &UNPROTECTED.0
 }
