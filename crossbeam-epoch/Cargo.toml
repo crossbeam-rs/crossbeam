@@ -39,7 +39,7 @@ sanitize = [] # Makes it more likely to trigger any potential data races.
 [dependencies]
 cfg-if = "1"
 const_fn = "0.4"
-memoffset = "0.5.4"
+memoffset = "0.6"
 
 [dependencies.crossbeam-utils]
 version = "0.8"
