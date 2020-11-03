@@ -1,4 +1,5 @@
 name: CI
+
 on:
   pull_request:
   push:
@@ -6,6 +7,8 @@ on:
       - master
       - staging
       - trying
+  schedule:
+    - cron: '0 1 * * *'
 
 env:
   RUSTFLAGS: -Dwarnings
@@ -46,8 +49,8 @@ jobs:
         run: ./ci/${{ matrix.crates }}.sh
 
   # Check all feature combinations works properly.
-  check-features:
-    name: check-features
+  features:
+    name: features
     env:
       RUST_VERSION: ${{ matrix.rust }}
     strategy:
@@ -66,7 +69,7 @@ jobs:
           rustup target add thumbv7m-none-eabi
           rustup target add thumbv6m-none-eabi
       - name: Check features
-        run: . ./ci/check-features.sh
+        run: ./ci/check-features.sh
 
   # Check for duplicate dependencies.
   dependencies:
@@ -112,6 +115,7 @@ jobs:
     if: github.event_name == 'push' && success()
     needs:
       - test
+      - features
       - dependencies
       - rustfmt
       - clippy
@@ -124,6 +128,7 @@ jobs:
     if: github.event_name == 'push' && !success()
     needs:
       - test
+      - features
       - dependencies
       - rustfmt
       - clippy

@@ -1,5 +1,6 @@
 #!/bin/bash
 
+cd "$(dirname "$0")"/..
 set -ex
 
 if [[ ! -x "$(command -v cargo-hack)" ]]; then
@@ -16,8 +17,6 @@ if [[ "$RUST_VERSION" != "nightly"* ]]; then
 else
     # On nightly, all feature　combinations should work.
     cargo hack check --all --feature-powerset --no-dev-deps --exclude benchmarks
-    # TODO(taiki-e): if https://github.com/taiki-e/cargo-hack/issues/42 merged, remove this.
-    cargo hack check --all --all-features --no-dev-deps --exclude benchmarks
 
     # Check for no_std environment.
     cargo hack check --all --feature-powerset --no-dev-deps --exclude benchmarks --target thumbv7m-none-eabi --skip std,default
