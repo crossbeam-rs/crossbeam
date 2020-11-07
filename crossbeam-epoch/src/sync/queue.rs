@@ -3,10 +3,10 @@
 //! Usable with any number of producers and consumers.
 //!
 //! Michael and Scott.  Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue
-//! Algorithms.  PODC 1996.  http://dl.acm.org/citation.cfm?id=248106
+//! Algorithms.  PODC 1996.  <http://dl.acm.org/citation.cfm?id=248106>
 //!
 //! Simon Doherty, Lindsay Groves, Victor Luchangco, and Mark Moir. 2004b. Formal Verification of a
-//! Practical Lock-Free Queue Algorithm. https://doi.org/10.1007/978-3-540-30232-2_7
+//! Practical Lock-Free Queue Algorithm. <https://doi.org/10.1007/978-3-540-30232-2_7>
 
 use core::mem::MaybeUninit;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};

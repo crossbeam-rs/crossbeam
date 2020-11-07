@@ -1,7 +1,7 @@
 //! Lock-free intrusive linked list.
 //!
 //! Ideas from Michael.  High Performance Dynamic Lock-Free Hash Tables and List-Based Sets.  SPAA
-//! 2002.  http://dl.acm.org/citation.cfm?id=564870.564881
+//! 2002.  <http://dl.acm.org/citation.cfm?id=564870.564881>
 
 use core::marker::PhantomData;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
