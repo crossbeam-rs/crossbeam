@@ -12,7 +12,6 @@ use core::sync::atomic::{self, AtomicBool, Ordering};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
 use super::seq_lock::SeqLock;
-use const_fn::const_fn;
 
 /// A thread-safe mutable memory location.
 ///
@@ -106,7 +105,6 @@ impl<T> AtomicCell<T> {
     /// // operations on them will have to use global locks for synchronization.
     /// assert_eq!(AtomicCell::<[u8; 1000]>::is_lock_free(), false);
     /// ```
-    #[const_fn("1.46")]
     pub const fn is_lock_free() -> bool {
         atomic_is_lock_free::<T>()
     }
@@ -611,10 +609,9 @@ impl<T: Copy + fmt::Debug> fmt::Debug for AtomicCell<T> {
 }
 
 /// Returns `true` if values of type `A` can be transmuted into values of type `B`.
-#[const_fn("1.46")]
 const fn can_transmute<A, B>() -> bool {
     // Sizes must be equal, but alignment of `A` must be greater or equal than that of `B`.
-    mem::size_of::<A>() == mem::size_of::<B>() && mem::align_of::<A>() >= mem::align_of::<B>()
+    (mem::size_of::<A>() == mem::size_of::<B>()) & (mem::align_of::<A>() >= mem::align_of::<B>())
 }
 
 /// Returns a reference to the global lock associated with the `AtomicCell` at address `addr`.
@@ -810,6 +807,8 @@ macro_rules! atomic {
             atomic!(@check, $t, atomic::AtomicU32, $a, $atomic_op);
             #[cfg(has_atomic_u64)]
             atomic!(@check, $t, atomic::AtomicU64, $a, $atomic_op);
+            #[cfg(has_atomic_u128)]
+            atomic!(@check, $t, atomic::AtomicU128, $a, $atomic_op);
 
             break $fallback_op;
         }
@@ -817,9 +816,20 @@ macro_rules! atomic {
 }
 
 /// Returns `true` if operations on `AtomicCell<T>` are lock-free.
-#[const_fn("1.46")]
 const fn atomic_is_lock_free<T>() -> bool {
-    atomic! { T, _a, true, false }
+    // HACK(taiki-e): This is equivalent to `atomic! { T, _a, true, false }`, but can be used in const fn even in Rust 1.36.
+    let is_lock_free = can_transmute::<T, AtomicUnit>() | can_transmute::<T, atomic::AtomicUsize>();
+    #[cfg(has_atomic_u8)]
+    let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU8>();
+    #[cfg(has_atomic_u16)]
+    let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU16>();
+    #[cfg(has_atomic_u32)]
+    let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU32>();
+    #[cfg(has_atomic_u64)]
+    let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU64>();
+    #[cfg(has_atomic_u128)]
+    let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU128>();
+    is_lock_free
 }
 
 /// Atomically reads data from `src`.
