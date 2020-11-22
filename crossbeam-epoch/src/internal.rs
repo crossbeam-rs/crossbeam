@@ -376,7 +376,7 @@ pub struct Local {
 // https://github.com/crossbeam-rs/crossbeam/issues/551
 #[test]
 fn local_size() {
-    assert!(core::mem::size_of::<Local>() <= 2040, "An allocation of `Local` should be <= 2048 bytes.");
+    assert!(core::mem::size_of::<Local>() <= 2048, "An allocation of `Local` should be <= 2048 bytes.");
 }
 
 impl Local {
