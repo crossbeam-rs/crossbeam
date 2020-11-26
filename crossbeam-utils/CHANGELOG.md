@@ -1,3 +1,10 @@
+# Version 0.8.1
+
+- Make `AtomicCell::is_lock_free` always const fn. (#600)
+- Fix a bug in `seq_lock_wide`. (#596)
+- Remove `const_fn` dependency. (#600)
+- `crossbeam-utils` no longer fails to compile if unable to determine rustc version. Instead, it now displays a warning. (#604)
+
 # Version 0.8.0
 
 - Bump the minimum supported Rust version to 1.36.

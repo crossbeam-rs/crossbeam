@@ -1,3 +1,7 @@
+# Version 0.9.1
+
+- Bump `memoffset` dependency to version 0.6. (#592)
+
 # Version 0.9.0
 
 - Bump the minimum supported Rust version to 1.36.

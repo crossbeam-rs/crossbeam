@@ -1,3 +1,8 @@
+# Version 0.3.1
+
+- Make `SegQueue::new` const fn. (#584)
+- Change license to "MIT OR Apache-2.0".
+
 # Version 0.3.0
 
 - Bump the minimum supported Rust version to 1.36.
