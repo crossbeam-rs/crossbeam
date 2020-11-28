@@ -120,7 +120,7 @@ impl Parker {
     /// // Waits for the token to become available, but will not wait longer than 500 ms.
     /// p.park_timeout(Duration::from_millis(500));
     /// ```
-    pub fn park_timeout(&self, timeout: Duration) -> UnparkReason {
+    pub fn park_timeout(&self, timeout: Duration) {
         self.park_deadline(Instant::now() + timeout)
     }
 
@@ -138,7 +138,7 @@ impl Parker {
     /// // Waits for the token to become available, but will not wait longer than 500 ms.
     /// p.park_deadline(deadline);
     /// ```
-    pub fn park_deadline(&self, deadline: Instant) -> UnparkReason {
+    pub fn park_deadline(&self, deadline: Instant) {
         self.unparker.inner.park(Some(deadline))
     }
 
@@ -301,18 +301,6 @@ impl Clone for Unparker {
     }
 }
 
-/// An enum that reports whether a `Parker::park_timeout` or
-/// `Parker::park_deadline` returned because another thread called `unpark` or
-/// because of a timeout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnparkReason {
-    /// The park method returned due to a call to `unpark`.
-    Unparked,
-
-    /// The park method returned due to a timeout.
-    Timeout,
-}
-
 const EMPTY: usize = 0;
 const PARKED: usize = 1;
 const NOTIFIED: usize = 2;
@@ -324,20 +312,20 @@ struct Inner {
 }
 
 impl Inner {
-    fn park(&self, deadline: Option<Instant>) -> UnparkReason {
+    fn park(&self, deadline: Option<Instant>) {
         // If we were previously notified then we consume this notification and return quickly.
         if self
             .state
             .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst)
             .is_ok()
         {
-            return UnparkReason::Unparked;
+            return;
         }
 
         // If the timeout is zero, then there is no need to actually block.
         if let Some(deadline) = deadline {
             if deadline <= Instant::now() {
-                return UnparkReason::Timeout;
+                return;
             }
         }
 
@@ -355,7 +343,7 @@ impl Inner {
                 // do that we must read from the write it made to `state`.
                 let old = self.state.swap(EMPTY, SeqCst);
                 assert_eq!(old, NOTIFIED, "park state changed unexpectedly");
-                return UnparkReason::Unparked;
+                return;
             }
             Err(n) => panic!("inconsistent park_timeout state: {}", n),
         }
@@ -373,9 +361,8 @@ impl Inner {
                         self.cvar.wait_timeout(m, deadline - now).unwrap().0
                     } else {
                         // We've timed out; swap out the state back to empty on our way out
-                        return match self.state.swap(EMPTY, SeqCst) {
-                            NOTIFIED => UnparkReason::Unparked, // got a notification
-                            PARKED => UnparkReason::Timeout,    // no notification
+                        match self.state.swap(EMPTY, SeqCst) {
+                            NOTIFIED | PARKED => return,
                             n => panic!("inconsistent park_timeout state: {}", n),
                         };
                     }
@@ -388,7 +375,7 @@ impl Inner {
                 .is_ok()
             {
                 // got a notification
-                return UnparkReason::Unparked;
+                return;
             }
 
             // Spurious wakeup, go back to sleep. Alternatively, if we timed out, it will be caught
