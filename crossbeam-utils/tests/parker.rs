@@ -18,7 +18,7 @@ fn park_timeout_unpark_before() {
 fn park_timeout_unpark_not_called() {
     let p = Parker::new();
     for _ in 0..10 {
-        p.park_timeout(Duration::from_millis(10));
+        p.park_timeout(Duration::from_millis(10))
     }
 }
 
@@ -34,7 +34,7 @@ fn park_timeout_unpark_called_other_thread() {
                 u.unpark();
             });
 
-            p.park_timeout(Duration::from_millis(u32::MAX as u64));
+            p.park_timeout(Duration::from_millis(u32::MAX as u64))
         })
         .unwrap();
     }
