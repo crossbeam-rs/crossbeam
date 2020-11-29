@@ -49,15 +49,3 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
-
-#### Third party software
-
-This product includes copies and modifications of software developed by third parties:
-
-* [src/array_queue.rs](src/array_queue.rs) is based on
-  [Bounded MPMC queue](http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue)
-  by Dmitry Vyukov, licensed under the Simplified BSD License and the Apache License, Version 2.0.
-
-See the source code files for more details.
-
-Copies of third party licenses can be found in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY).

@@ -2,11 +2,6 @@
 //!
 //! Source:
 //!   - <http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue>
-//!
-//! Copyright & License:
-//!   - Copyright (c) 2010-2011 Dmitry Vyukov
-//!   - Simplified BSD License and Apache License, Version 2.0
-//!   - <http://www.1024cores.net/home/code-license>
 
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;

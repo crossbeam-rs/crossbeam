@@ -7,11 +7,6 @@
 //! Source:
 //!   - <http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue>
 //!   - <https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub>
-//!
-//! Copyright & License:
-//!   - Copyright (c) 2010-2011 Dmitry Vyukov
-//!   - Simplified BSD License and Apache License, Version 2.0
-//!   - <http://www.1024cores.net/home/code-license>
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
