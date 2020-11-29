@@ -73,10 +73,6 @@ This product includes copies and modifications of software developed by third pa
   [matching.go](http://www.nada.kth.se/~snilsson/concurrency/src/matching.go) by Stefan Nilsson,
   licensed under Creative Commons Attribution 3.0 Unported License.
 
-* [src/flavors/array.rs](src/flavors/array.rs) is based on
-  [Bounded MPMC queue](http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue)
-  by Dmitry Vyukov, licensed under the Simplified BSD License and the Apache License, Version 2.0.
-
 * [tests/mpsc.rs](tests/mpsc.rs) includes modifications of code from The Rust Programming Language,
   licensed under the MIT License and the Apache License, Version 2.0.
 
