@@ -31,14 +31,14 @@ alloc = []
 # This is disabled by default and requires recent nightly compiler.
 # Note that this is outside of the normal semver guarantees and minor versions
 # of crossbeam may make breaking changes to them at any time.
-nightly = ["crossbeam-utils/nightly"]
+nightly = ["crossbeam-utils/nightly", "const_fn"]
 
 # TODO: docs
 sanitize = [] # Makes it more likely to trigger any potential data races.
 
 [dependencies]
 cfg-if = "1"
-const_fn = "0.4"
+const_fn = { version = "0.4.4", optional = true }
 memoffset = "0.6"
 
 # Enable the use of loom for concurrency testing.

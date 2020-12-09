@@ -11,7 +11,6 @@ use crate::alloc::alloc;
 use crate::alloc::boxed::Box;
 use crate::concurrency::sync::atomic::AtomicUsize;
 use crate::guard::Guard;
-use const_fn::const_fn;
 use crossbeam_utils::atomic::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
@@ -328,8 +327,8 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::<i32>::null();
     /// ```
     ///
-    #[const_fn(cfg(all(feature = "nightly", not(loom_crossbeam))))]
-    pub const fn null() -> Atomic<T> {
+    #[cfg_attr(all(feature = "nightly", not(loom_crossbeam)), const_fn::const_fn)]
+    pub fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
             _marker: PhantomData,
@@ -1381,5 +1380,12 @@ mod tests {
     #[test]
     fn valid_tag_i64() {
         Shared::<i64>::null().with_tag(7);
+    }
+
+    #[cfg(feature = "nightly")]
+    #[test]
+    fn const_atomic_null() {
+        use super::Atomic;
+        const _: Atomic<u8> = Atomic::<u8>::null();
     }
 }
