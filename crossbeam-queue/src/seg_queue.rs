@@ -8,8 +8,6 @@ use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use crate::err::PopError;
-
 // Bits indicating the state of a slot:
 // * If a value has been written into the slot, `WRITE` is set.
 // * If a value has been read from the slot, `READ` is set.
@@ -118,21 +116,21 @@ struct Position<T> {
 /// at a time. However, since segments need to be dynamically allocated as elements get pushed,
 /// this queue is somewhat slower than [`ArrayQueue`].
 ///
-/// [`ArrayQueue`]: struct.ArrayQueue.html
+/// [`ArrayQueue`]: super::ArrayQueue
 ///
 /// # Examples
 ///
 /// ```
-/// use crossbeam_queue::{PopError, SegQueue};
+/// use crossbeam_queue::SegQueue;
 ///
 /// let q = SegQueue::new();
 ///
 /// q.push('a');
 /// q.push('b');
 ///
-/// assert_eq!(q.pop(), Ok('a'));
-/// assert_eq!(q.pop(), Ok('b'));
-/// assert_eq!(q.pop(), Err(PopError));
+/// assert_eq!(q.pop(), Some('a'));
+/// assert_eq!(q.pop(), Some('b'));
+/// assert!(q.pop().is_none());
 /// ```
 pub struct SegQueue<T> {
     /// The head of the queue.
@@ -158,7 +156,7 @@ impl<T> SegQueue<T> {
     ///
     /// let q = SegQueue::<i32>::new();
     /// ```
-    pub fn new() -> SegQueue<T> {
+    pub const fn new() -> SegQueue<T> {
         SegQueue {
             head: CachePadded::new(Position {
                 block: AtomicPtr::new(ptr::null_mut()),
@@ -266,20 +264,20 @@ impl<T> SegQueue<T> {
 
     /// Pops an element from the queue.
     ///
-    /// If the queue is empty, an error is returned.
+    /// If the queue is empty, `None` is returned.
     ///
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{PopError, SegQueue};
+    /// use crossbeam_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     ///
     /// q.push(10);
-    /// assert_eq!(q.pop(), Ok(10));
-    /// assert_eq!(q.pop(), Err(PopError));
+    /// assert_eq!(q.pop(), Some(10));
+    /// assert!(q.pop().is_none());
     /// ```
-    pub fn pop(&self) -> Result<T, PopError> {
+    pub fn pop(&self) -> Option<T> {
         let backoff = Backoff::new();
         let mut head = self.head.index.load(Ordering::Acquire);
         let mut block = self.head.block.load(Ordering::Acquire);
@@ -304,7 +302,7 @@ impl<T> SegQueue<T> {
 
                 // If the tail equals the head, that means the queue is empty.
                 if head >> SHIFT == tail >> SHIFT {
-                    return Err(PopError);
+                    return None;
                 }
 
                 // If head and tail are not in the same block, set `HAS_NEXT` in head.
@@ -355,7 +353,7 @@ impl<T> SegQueue<T> {
                         Block::destroy(block, offset + 1);
                     }
 
-                    return Ok(value);
+                    return Some(value);
                 },
                 Err(h) => {
                     head = h;
@@ -390,7 +388,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_queue::{SegQueue, PopError};
+    /// use crossbeam_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     /// assert_eq!(q.len(), 0);

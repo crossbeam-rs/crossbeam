@@ -1,3 +1,6 @@
+// Necessary for using `Mutex<usize>` for conditional variables
+#![allow(clippy::mutex_atomic)]
+
 use crate::concurrency::sync::{Arc, Condvar, Mutex};
 use std::fmt;
 
@@ -7,13 +10,13 @@ use std::fmt;
 ///
 /// `WaitGroup` is very similar to [`Barrier`], but there are a few differences:
 ///
-/// * `Barrier` needs to know the number of threads at construction, while `WaitGroup` is cloned to
+/// * [`Barrier`] needs to know the number of threads at construction, while `WaitGroup` is cloned to
 ///   register more threads.
 ///
-/// * A `Barrier` can be reused even after all threads have synchronized, while a `WaitGroup`
+/// * A [`Barrier`] can be reused even after all threads have synchronized, while a `WaitGroup`
 ///   synchronizes threads only once.
 ///
-/// * All threads wait for others to reach the `Barrier`. With `WaitGroup`, each thread can choose
+/// * All threads wait for others to reach the [`Barrier`]. With `WaitGroup`, each thread can choose
 ///   to either wait for other threads or to continue without blocking.
 ///
 /// # Examples
@@ -41,7 +44,7 @@ use std::fmt;
 /// wg.wait();
 /// ```
 ///
-/// [`Barrier`]: https://doc.rust-lang.org/std/sync/struct.Barrier.html
+/// [`Barrier`]: std::sync::Barrier
 pub struct WaitGroup {
     inner: Arc<Inner>,
 }

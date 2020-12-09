@@ -29,7 +29,7 @@
 //! Whenever a bag is pushed into a queue, the objects in some bags in the queue are collected and
 //! destroyed along the way. This design reduces contention on data structures. The global queue
 //! cannot be explicitly accessed: the only way to interact with it is by calling functions
-//! `defer()` that adds an object tothe thread-local bag, or `collect()` that manually triggers
+//! `defer()` that adds an object to the thread-local bag, or `collect()` that manually triggers
 //! garbage collection.
 //!
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
@@ -56,7 +56,7 @@ use crate::sync::queue::Queue;
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(feature = "sanitize"))]
-const MAX_OBJECTS: usize = 64;
+const MAX_OBJECTS: usize = 62;
 #[cfg(feature = "sanitize")]
 const MAX_OBJECTS: usize = 4;
 
@@ -106,17 +106,13 @@ impl Bag {
 }
 
 impl Default for Bag {
-    // TODO(taiki-e): when the minimum supported Rust version is bumped to 1.31+,
-    // replace this with `#[rustfmt::skip]`.
-    #[cfg_attr(rustfmt, rustfmt_skip)]
+    #[rustfmt::skip]
     fn default() -> Self {
         // TODO: [no_op; MAX_OBJECTS] syntax blocked by https://github.com/rust-lang/rust/issues/49147
         #[cfg(not(feature = "sanitize"))]
         return Bag {
             len: 0,
             deferreds: [
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
                 Deferred::new(no_op_func),
                 Deferred::new(no_op_func),
                 Deferred::new(no_op_func),
@@ -229,9 +225,9 @@ unsafe impl Sync for SealedBag {}
 impl SealedBag {
     /// Checks if it is safe to drop the bag w.r.t. the given global epoch.
     fn is_expired(&self, global_epoch: Epoch) -> bool {
-        // A pinned participant can witness at most two epoch advancement. Therefore, any bag that
-        // is within two epoch of the current one cannot be destroyed yet.
-        global_epoch.wrapping_sub(self.epoch) >= 3
+        // A pinned participant can witness at most one epoch advancement. Therefore, any bag that
+        // is within one epoch of the current one cannot be destroyed yet.
+        global_epoch.wrapping_sub(self.epoch) >= 2
     }
 }
 
@@ -262,8 +258,12 @@ impl Global {
     }
 
     /// Pushes the bag into the global queue and replaces the bag with a new empty bag.
-    pub fn push_bag(&self, bag: &mut Bag, epoch: Epoch, guard: &Guard) {
+    pub fn push_bag(&self, bag: &mut Bag, guard: &Guard) {
         let bag = mem::replace(bag, Bag::new());
+
+        atomic::fence(Ordering::SeqCst);
+
+        let epoch = self.epoch.load(Ordering::Relaxed);
         self.queue.push(bag.seal(epoch), guard);
     }
 
@@ -369,8 +369,18 @@ pub struct Local {
 
     /// Total number of pinnings performed.
     ///
-    /// This is just an auxilliary counter that sometimes kicks off collection.
+    /// This is just an auxiliary counter that sometimes kicks off collection.
     pin_count: Cell<Wrapping<usize>>,
+}
+
+// Make sure `Local` is less than or equal to 2048 bytes.
+// https://github.com/crossbeam-rs/crossbeam/issues/551
+#[test]
+fn local_size() {
+    assert!(
+        core::mem::size_of::<Local>() <= 2048,
+        "An allocation of `Local` should be <= 2048 bytes."
+    );
 }
 
 impl Local {
@@ -392,8 +402,8 @@ impl Local {
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
             })
-            .into_shared(&unprotected());
-            collector.global.locals.insert(local, &unprotected());
+            .into_shared(unprotected());
+            collector.global.locals.insert(local, unprotected());
             LocalHandle {
                 local: local.as_raw(),
             }
@@ -427,8 +437,7 @@ impl Local {
         let bag = self.bag.with_mut(|b| &mut *b);
 
         while let Err(d) = bag.try_push(deferred) {
-            let epoch = self.epoch.load(Ordering::Relaxed).unpinned();
-            self.global().push_bag(bag, epoch, guard);
+            self.global().push_bag(bag, guard);
             deferred = d;
         }
     }
@@ -437,8 +446,7 @@ impl Local {
         let bag = self.bag.with_mut(|b| unsafe { &mut *b });
 
         if !bag.is_empty() {
-            let epoch = self.epoch.load(Ordering::Relaxed).unpinned();
-            self.global().push_bag(bag, epoch, guard);
+            self.global().push_bag(bag, guard);
         }
 
         self.global().collect(guard);
@@ -453,47 +461,38 @@ impl Local {
         self.guard_count.set(guard_count.checked_add(1).unwrap());
 
         if guard_count == 0 {
-            // Now we must store the global epoch into `self.epoch` and execute a `SeqCst` fence.
-            // The fence makes sure that any future loads from `Atomic`s will not happen before this
-            // store.
-            let mut current = Epoch::starting();
-            let mut new = self.global().epoch.load(Ordering::Relaxed).pinned();
+            let global_epoch = self.global().epoch.load(Ordering::Relaxed);
+            let new_epoch = global_epoch.pinned();
 
-            loop {
-                if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
-                    // HACK(stjepang): On x86 architectures there are two different ways of
-                    // executing a `SeqCst` fence.
-                    //
-                    // 1. `atomic::fence(SeqCst)`, which compiles into a `mfence` instruction.
-                    // 2. `_.compare_and_swap(_, _, SeqCst)`, which compiles into a `lock cmpxchg`
-                    //    instruction.
-                    //
-                    // Both instructions have the effect of a full barrier, but benchmarks have
-                    // shown that the second one makes pinning faster in this particular case.  It
-                    // is not clear that this is permitted by the C++ memory model (SC fences work
-                    // very differently from SC accesses), but experimental evidence suggests that
-                    // this works fine.  Using inline assembly would be a viable (and correct)
-                    // alternative, but alas, that is not possible on stable Rust.
-                    let previous = self.epoch.compare_and_swap(current, new, Ordering::SeqCst);
-                    debug_assert_eq!(current, previous, "participant was expected to be unpinned");
-
-                    // We add a compiler fence to make it less likely for LLVM to do something wrong
-                    // here.  Formally, this is not enough to get rid of data races; practically, it
-                    // should go a long way.
-                    atomic::compiler_fence(Ordering::SeqCst);
-                } else {
-                    self.epoch.store(new, Ordering::Relaxed);
-                    atomic::fence(Ordering::SeqCst);
-                }
-
-                // Now we validate that the value we read from the global epoch is not stale.
-                let validation = self.global().epoch.load(Ordering::Relaxed).pinned();
-                if new == validation {
-                    break;
-                }
-
-                current = new;
-                new = validation;
+            // Now we must store `new_epoch` into `self.epoch` and execute a `SeqCst` fence.
+            // The fence makes sure that any future loads from `Atomic`s will not happen before
+            // this store.
+            if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
+                // HACK(stjepang): On x86 architectures there are two different ways of executing
+                // a `SeqCst` fence.
+                //
+                // 1. `atomic::fence(SeqCst)`, which compiles into a `mfence` instruction.
+                // 2. `_.compare_and_swap(_, _, SeqCst)`, which compiles into a `lock cmpxchg`
+                //    instruction.
+                //
+                // Both instructions have the effect of a full barrier, but benchmarks have shown
+                // that the second one makes pinning faster in this particular case.  It is not
+                // clear that this is permitted by the C++ memory model (SC fences work very
+                // differently from SC accesses), but experimental evidence suggests that this
+                // works fine.  Using inline assembly would be a viable (and correct) alternative,
+                // but alas, that is not possible on stable Rust.
+                let current = Epoch::starting();
+                let previous = self
+                    .epoch
+                    .compare_and_swap(current, new_epoch, Ordering::SeqCst);
+                debug_assert_eq!(current, previous, "participant was expected to be unpinned");
+                // We add a compiler fence to make it less likely for LLVM to do something wrong
+                // here.  Formally, this is not enough to get rid of data races; practically,
+                // it should go a long way.
+                atomic::compiler_fence(Ordering::SeqCst);
+            } else {
+                self.epoch.store(new_epoch, Ordering::Relaxed);
+                atomic::fence(Ordering::SeqCst);
             }
 
             // Increment the pin counter.
@@ -581,10 +580,9 @@ impl Local {
         unsafe {
             // Pin and move the local bag into the global queue. It's important that `push_bag`
             // doesn't defer destruction on any new garbage.
-            let epoch = self.epoch.load(Ordering::Relaxed).unpinned();
             let guard = &self.pin();
             self.global()
-                .push_bag(self.bag.with_mut(|b| &mut *b), epoch, guard);
+                .push_bag(self.bag.with_mut(|b| &mut *b), guard);
         }
         // Revert the handle count back to zero.
         self.handle_count.set(0);
@@ -596,7 +594,7 @@ impl Local {
             let collector: Collector = ptr::read(self.collector.with(|c| &*(*c)));
 
             // Mark this node in the linked list as deleted.
-            self.entry.delete(&unprotected());
+            self.entry.delete(unprotected());
 
             // Finally, drop the reference to the global. Note that this might be the last reference
             // to the `Global`. If so, the global data will be destroyed and all deferred functions

@@ -23,6 +23,12 @@ fn is_lock_free() {
 }
 
 #[test]
+fn const_is_lock_free() {
+    const _U: bool = AtomicCell::<usize>::is_lock_free();
+    const _I: bool = AtomicCell::<isize>::is_lock_free();
+}
+
+#[test]
 fn drops_unit() {
     static CNT: AtomicUsize = AtomicUsize::new(0);
     CNT.store(0, SeqCst);

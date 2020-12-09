@@ -1,3 +1,4 @@
+use core::mem;
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crate::Backoff;
@@ -110,6 +111,7 @@ impl SeqLockWriteGuard {
     #[inline]
     pub fn abort(self) {
         self.lock.state_lo.store(self.state_lo, Ordering::Release);
+        mem::forget(self);
     }
 }
 

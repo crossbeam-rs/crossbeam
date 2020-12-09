@@ -72,11 +72,11 @@ const YIELD_LIMIT: u32 = 10;
 /// }
 /// ```
 ///
-/// [`is_completed`]: struct.Backoff.html#method.is_completed
-/// [`std::thread::park()`]: https://doc.rust-lang.org/std/thread/fn.park.html
-/// [`Condvar`]: https://doc.rust-lang.org/std/sync/struct.Condvar.html
-/// [`AtomicBool`]: https://doc.rust-lang.org/std/sync/atomic/struct.AtomicBool.html
-/// [`unpark()`]: https://doc.rust-lang.org/std/thread/struct.Thread.html#method.unpark
+/// [`is_completed`]: Backoff::is_completed
+/// [`std::thread::park()`]: std::thread::park
+/// [`Condvar`]: std::sync::Condvar
+/// [`AtomicBool`]: std::sync::atomic::AtomicBool
+/// [`unpark()`]: std::thread::Thread::unpark
 pub struct Backoff {
     step: Cell<u32>,
 }
@@ -165,8 +165,8 @@ impl Backoff {
     /// If possible, use [`is_completed`] to check when it is advised to stop using backoff and
     /// block the current thread using a different synchronization mechanism instead.
     ///
-    /// [`spin`]: struct.Backoff.html#method.spin
-    /// [`is_completed`]: struct.Backoff.html#method.is_completed
+    /// [`spin`]: Backoff::spin
+    /// [`is_completed`]: Backoff::is_completed
     ///
     /// # Examples
     ///
@@ -200,7 +200,7 @@ impl Backoff {
     /// assert_eq!(ready.load(SeqCst), true);
     /// ```
     ///
-    /// [`AtomicBool`]: https://doc.rust-lang.org/std/sync/atomic/struct.AtomicBool.html
+    /// [`AtomicBool`]: std::sync::atomic::AtomicBool
     #[inline]
     pub fn snooze(&self) {
         if self.step.get() <= SPIN_LIMIT {
@@ -262,7 +262,7 @@ impl Backoff {
     /// assert_eq!(ready.load(SeqCst), true);
     /// ```
     ///
-    /// [`AtomicBool`]: https://doc.rust-lang.org/std/sync/atomic/struct.AtomicBool.html
+    /// [`AtomicBool`]: std::sync::atomic::AtomicBool
     #[inline]
     pub fn is_completed(&self) -> bool {
         self.step.get() > YIELD_LIMIT

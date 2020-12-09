@@ -1,3 +1,12 @@
+# Version 0.8.0
+
+- Bump the minimum supported Rust version to 1.36.
+- Bump `crossbeam-channel` to `0.5`.
+- Bump `crossbeam-deque` to `0.8`.
+- Bump `crossbeam-epoch` to `0.9`.
+- Bump `crossbeam-queue` to `0.3`.
+- Bump `crossbeam-utils` to `0.8`.
+
 # Version 0.7.3
 
 - Fix breakage with nightly feature due to rust-lang/rust#65214.

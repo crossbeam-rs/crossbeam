@@ -24,7 +24,7 @@
 //!
 //! Suppose we wanted to re-write the previous example using plain threads:
 //!
-//! ```ignore
+//! ```compile_fail,E0597
 //! use std::thread;
 //!
 //! let people = vec![
@@ -36,7 +36,7 @@
 //! let mut threads = Vec::new();
 //!
 //! for person in &people {
-//!     threads.push(thread::spawn(move |_| {
+//!     threads.push(thread::spawn(move || {
 //!         println!("Hello, {}!", person);
 //!     }));
 //! }
@@ -84,7 +84,7 @@
 //! tricky because argument `s` lives *inside* the invocation of `thread::scope()` and as such
 //! cannot be borrowed by scoped threads:
 //!
-//! ```ignore
+//! ```compile_fail,E0373,E0521
 //! use crossbeam_utils::thread;
 //!
 //! thread::scope(|s| {
@@ -108,10 +108,10 @@
 //!         // Yay, this works because we're using a fresh argument `s`! :)
 //!         s.spawn(|_| println!("nested thread"));
 //!     });
-//! });
+//! }).unwrap();
 //! ```
 //!
-//! [`std::thread::spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
+//! [`std::thread::spawn`]: std::thread::spawn
 
 use std::fmt;
 use std::io;
@@ -215,9 +215,18 @@ impl<'env> Scope<'env> {
     /// The scoped thread is passed a reference to this scope as an argument, which can be used for
     /// spawning nested threads.
     ///
-    /// The returned handle can be used to manually join the thread before the scope exits.
+    /// The returned [handle](ScopedJoinHandle) can be used to manually
+    /// [join](ScopedJoinHandle::join) the thread before the scope exits.
     ///
-    /// [`spawn`]: https://doc.rust-lang.org/std/thread/fn.spawn.html
+    /// This will create a thread using default parameters of [`ScopedThreadBuilder`], if you want to specify the
+    /// stack size or the name of the thread, use this API instead.
+    ///
+    /// [`spawn`]: std::thread::spawn
+    ///
+    /// # Panics
+    ///
+    /// Panics if the OS fails to create a thread; use [`ScopedThreadBuilder::spawn`]
+    /// to recover from such errors.
     ///
     /// # Examples
     ///
@@ -241,7 +250,9 @@ impl<'env> Scope<'env> {
         F: Send + 'env,
         T: Send + 'env,
     {
-        self.builder().spawn(f).unwrap()
+        self.builder()
+            .spawn(f)
+            .expect("failed to spawn scoped thread")
     }
 
     /// Creates a builder that can configure a thread before spawning.
@@ -250,7 +261,6 @@ impl<'env> Scope<'env> {
     ///
     /// ```
     /// use crossbeam_utils::thread;
-    /// use std::thread::current;
     ///
     /// thread::scope(|s| {
     ///     s.builder()
@@ -298,13 +308,12 @@ impl fmt::Debug for Scope<'_> {
 /// }).unwrap();
 /// ```
 ///
-/// [`name`]: struct.ScopedThreadBuilder.html#method.name
-/// [`stack_size`]: struct.ScopedThreadBuilder.html#method.stack_size
-/// [`spawn`]: struct.ScopedThreadBuilder.html#method.spawn
-/// [`Scope::spawn`]: struct.Scope.html#method.spawn
-/// [`io::Result`]: https://doc.rust-lang.org/std/io/type.Result.html
-/// [naming-threads]: https://doc.rust-lang.org/std/thread/index.html#naming-threads
-/// [stack-size]: https://doc.rust-lang.org/std/thread/index.html#stack-size
+/// [`name`]: ScopedThreadBuilder::name
+/// [`stack_size`]: ScopedThreadBuilder::stack_size
+/// [`spawn`]: ScopedThreadBuilder::spawn
+/// [`io::Result`]: std::io::Result
+/// [naming-threads]: std::thread#naming-threads
+/// [stack-size]: std::thread#stack-size
 #[derive(Debug)]
 pub struct ScopedThreadBuilder<'scope, 'env> {
     scope: &'scope Scope<'env>,
@@ -314,8 +323,9 @@ pub struct ScopedThreadBuilder<'scope, 'env> {
 impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     /// Sets the name for the new thread.
     ///
-    /// The name must not contain null bytes. For more information about named threads, see
-    /// [here][naming-threads].
+    /// The name must not contain null bytes (`\0`).
+    ///
+    /// For more information about named threads, see [here][naming-threads].
     ///
     /// # Examples
     ///
@@ -331,7 +341,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     /// }).unwrap();
     /// ```
     ///
-    /// [naming-threads]: https://doc.rust-lang.org/std/thread/index.html#naming-threads
+    /// [naming-threads]: std::thread#naming-threads
     pub fn name(mut self, name: String) -> ScopedThreadBuilder<'scope, 'env> {
         self.builder = self.builder.name(name);
         self
@@ -340,6 +350,8 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     /// Sets the size of the stack for the new thread.
     ///
     /// The stack size is measured in bytes.
+    ///
+    /// For more information about the stack size for threads, see [here][stack-size].
     ///
     /// # Examples
     ///
@@ -353,6 +365,8 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     ///         .unwrap();
     /// }).unwrap();
     /// ```
+    ///
+    /// [stack-size]: std::thread#stack-size
     pub fn stack_size(mut self, size: usize) -> ScopedThreadBuilder<'scope, 'env> {
         self.builder = self.builder.stack_size(size);
         self
@@ -364,6 +378,18 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     /// spawning nested threads.
     ///
     /// The returned handle can be used to manually join the thread before the scope exits.
+    ///
+    /// # Errors
+    ///
+    /// Unlike the [`Scope::spawn`] method, this method yields an
+    /// [`io::Result`] to capture any failure to create the thread at
+    /// the OS level.
+    ///
+    /// [`io::Result`]: std::io::Result
+    ///
+    /// # Panics
+    ///
+    /// Panics if a thread name was set and it contained null bytes.
     ///
     /// # Examples
     ///
@@ -416,16 +442,12 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
                     *result.lock().unwrap() = Some(res);
                 };
 
-                // Change the type of `closure` from `FnOnce() -> T` to `FnMut() -> T`.
-                let mut closure = Some(closure);
-                let closure = move || closure.take().unwrap()();
-
-                // Allocate `clsoure` on the heap and erase the `'env` bound.
-                let closure: Box<dyn FnMut() + Send + 'env> = Box::new(closure);
-                let closure: Box<dyn FnMut() + Send + 'static> = unsafe { mem::transmute(closure) };
+                // Allocate `closure` on the heap and erase the `'env` bound.
+                let closure: Box<dyn FnOnce() + Send + 'env> = Box::new(closure);
+                let closure: Box<dyn FnOnce() + Send + 'static> =
+                    unsafe { mem::transmute(closure) };
 
                 // Finally, spawn the closure.
-                let mut closure = closure;
                 self.builder.spawn(move || closure())?
             };
 
@@ -450,6 +472,9 @@ unsafe impl<T> Send for ScopedJoinHandle<'_, T> {}
 unsafe impl<T> Sync for ScopedJoinHandle<'_, T> {}
 
 /// A handle that can be used to join its scoped thread.
+///
+/// This struct is created by the [`Scope::spawn`] method and the
+/// [`ScopedThreadBuilder::spawn`] method.
 pub struct ScopedJoinHandle<'scope, T> {
     /// A join handle to the spawned thread.
     handle: SharedOption<thread::JoinHandle<()>>,

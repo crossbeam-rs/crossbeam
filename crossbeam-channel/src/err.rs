@@ -7,7 +7,7 @@ use std::fmt;
 ///
 /// The error contains the message so it can be recovered.
 ///
-/// [`send`]: struct.Sender.html#method.send
+/// [`send`]: super::Sender::send
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(pub T);
 
@@ -15,7 +15,7 @@ pub struct SendError<T>(pub T);
 ///
 /// The error contains the message being sent so it can be recovered.
 ///
-/// [`try_send`]: struct.Sender.html#method.try_send
+/// [`try_send`]: super::Sender::try_send
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum TrySendError<T> {
     /// The message could not be sent because the channel is full.
@@ -32,7 +32,7 @@ pub enum TrySendError<T> {
 ///
 /// The error contains the message being sent so it can be recovered.
 ///
-/// [`send_timeout`]: struct.Sender.html#method.send_timeout
+/// [`send_timeout`]: super::Sender::send_timeout
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum SendTimeoutError<T> {
     /// The message could not be sent because the channel is full and the operation timed out.
@@ -49,13 +49,13 @@ pub enum SendTimeoutError<T> {
 ///
 /// A message could not be received because the channel is empty and disconnected.
 ///
-/// [`recv`]: struct.Receiver.html#method.recv
+/// [`recv`]: super::Receiver::recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct RecvError;
 
 /// An error returned from the [`try_recv`] method.
 ///
-/// [`try_recv`]: struct.Receiver.html#method.recv
+/// [`try_recv`]: super::Receiver::try_recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum TryRecvError {
     /// A message could not be received because the channel is empty.
@@ -70,7 +70,7 @@ pub enum TryRecvError {
 
 /// An error returned from the [`recv_timeout`] method.
 ///
-/// [`recv_timeout`]: struct.Receiver.html#method.recv_timeout
+/// [`recv_timeout`]: super::Receiver::recv_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum RecvTimeoutError {
     /// A message could not be received because the channel is empty and the operation timed out.
@@ -87,7 +87,7 @@ pub enum RecvTimeoutError {
 ///
 /// Failed because none of the channel operations were ready.
 ///
-/// [`try_select`]: struct.Select.html#method.try_select
+/// [`try_select`]: super::Select::try_select
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct TrySelectError;
 
@@ -95,7 +95,7 @@ pub struct TrySelectError;
 ///
 /// Failed because none of the channel operations became ready before the timeout.
 ///
-/// [`select_timeout`]: struct.Select.html#method.select_timeout
+/// [`select_timeout`]: super::Select::select_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct SelectTimeoutError;
 
@@ -103,7 +103,7 @@ pub struct SelectTimeoutError;
 ///
 /// Failed because none of the channel operations were ready.
 ///
-/// [`try_ready`]: struct.Select.html#method.try_ready
+/// [`try_ready`]: super::Select::try_ready
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct TryReadyError;
 
@@ -111,7 +111,7 @@ pub struct TryReadyError;
 ///
 /// Failed because none of the channel operations became ready before the timeout.
 ///
-/// [`ready_timeout`]: struct.Select.html#method.ready_timeout
+/// [`ready_timeout`]: super::Select::ready_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct ReadyTimeoutError;
 
@@ -308,6 +308,7 @@ impl From<RecvError> for TryRecvError {
 
 impl TryRecvError {
     /// Returns `true` if the receive operation failed because the channel is empty.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_empty(&self) -> bool {
         match self {
             TryRecvError::Empty => true,
@@ -316,6 +317,7 @@ impl TryRecvError {
     }
 
     /// Returns `true` if the receive operation failed because the channel is disconnected.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_disconnected(&self) -> bool {
         match self {
             TryRecvError::Disconnected => true,
@@ -345,6 +347,7 @@ impl From<RecvError> for RecvTimeoutError {
 
 impl RecvTimeoutError {
     /// Returns `true` if the receive operation timed out.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_timeout(&self) -> bool {
         match self {
             RecvTimeoutError::Timeout => true,
@@ -353,6 +356,7 @@ impl RecvTimeoutError {
     }
 
     /// Returns `true` if the receive operation failed because the channel is disconnected.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn is_disconnected(&self) -> bool {
         match self {
             RecvTimeoutError::Disconnected => true,

@@ -1,28 +1,5 @@
 //! The `select!` macro.
 
-/// A simple wrapper around the standard macros.
-///
-/// This is just an ugly workaround until it becomes possible to import macros with `use`
-/// statements.
-///
-/// TODO(stjepang): Replace `crossbeam_channel_delegate` with direct macro invocations.
-#[doc(hidden)]
-#[macro_export]
-macro_rules! crossbeam_channel_delegate {
-    (concat($($args:tt)*)) => {
-        concat!($($args)*)
-    };
-    (stringify($($args:tt)*)) => {
-        stringify!($($args)*)
-    };
-    (unreachable($($args:tt)*)) => {
-        unreachable!($($args)*)
-    };
-    (compile_error($($args:tt)*)) => {
-        compile_error!($($args)*)
-    };
-}
-
 /// A helper macro for `select!` to hide the long list of macro patterns from the documentation.
 ///
 /// The macro consists of two stages:
@@ -43,7 +20,7 @@ macro_rules! crossbeam_channel_delegate {
 /// If the parsing stage encounters a syntax error or the codegen stage ends up with too many
 /// cases to process, the macro fails with a compile-time error.
 #[doc(hidden)]
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! crossbeam_channel_internal {
     // The list is empty. Now check the arguments of each processed case.
     (@list
@@ -73,52 +50,52 @@ macro_rules! crossbeam_channel_internal {
         (default -> $($tail:tt)*)
         ($($head:tt)*)
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "expected `=>` after `default` case, found `->`"
-        ))
+        )
     };
     // Print an error if there's an `->` after the argument list in the default case.
     (@list
         (default $args:tt -> $($tail:tt)*)
         ($($head:tt)*)
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "expected `=>` after `default` case, found `->`"
-        ))
+        )
     };
     // Print an error if there is a missing result in a recv case.
     (@list
         (recv($($args:tt)*) => $($tail:tt)*)
         ($($head:tt)*)
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "expected `->` after `recv` case, found `=>`"
-        ))
+        )
     };
     // Print an error if there is a missing result in a send case.
     (@list
         (send($($args:tt)*) => $($tail:tt)*)
         ($($head:tt)*)
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "expected `->` after `send` operation, found `=>`"
-        ))
+        )
     };
     // Make sure the arrow and the result are not repeated.
     (@list
         ($case:ident $args:tt -> $res:tt -> $($tail:tt)*)
         ($($head:tt)*)
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error("expected `=>`, found `->`"))
+        compile_error!("expected `=>`, found `->`")
     };
     // Print an error if there is a semicolon after the block.
     (@list
         ($case:ident $args:tt $(-> $res:pat)* => $body:block; $($tail:tt)*)
         ($($head:tt)*)
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "did you mean to put a comma instead of the semicolon after `}`?"
-        ))
+        )
     };
     // The first case is separated by a comma.
     (@list
@@ -182,203 +159,203 @@ macro_rules! crossbeam_channel_internal {
         $crate::crossbeam_channel_internal!(@list_error2 default $($tail)*)
     };
     (@list_error1 $t:tt $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected one of `recv`, `send`, or `default`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($t)),
+                stringify!($t),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error1 $($tail:tt)*) => {
         $crate::crossbeam_channel_internal!(@list_error2 $($tail)*);
     };
     // Stage 2: check the argument list.
     (@list_error2 $case:ident) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "missing argument list after `",
-                $crate::crossbeam_channel_delegate!(stringify($case)),
+                stringify!($case),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error2 $case:ident => $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "missing argument list after `",
-                $crate::crossbeam_channel_delegate!(stringify($case)),
+                stringify!($case),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error2 $($tail:tt)*) => {
         $crate::crossbeam_channel_internal!(@list_error3 $($tail)*)
     };
     // Stage 3: check the `=>` and what comes after it.
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "missing `=>` after `",
-                $crate::crossbeam_channel_delegate!(stringify($case)),
+                stringify!($case),
                 "` case",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* =>) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "expected expression after `=>`"
-        ))
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $body:expr; $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "did you mean to put a comma instead of the semicolon after `",
-                $crate::crossbeam_channel_delegate!(stringify($body)),
+                stringify!($body),
                 "`?",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => recv($($a:tt)*) $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "expected an expression after `=>`"
-        ))
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => send($($a:tt)*) $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "expected an expression after `=>`"
-        ))
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => default($($a:tt)*) $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "expected an expression after `=>`"
-        ))
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $f:ident($($a:tt)*) $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "did you mean to put a comma after `",
-                $crate::crossbeam_channel_delegate!(stringify($f)),
+                stringify!($f),
                 "(",
-                $crate::crossbeam_channel_delegate!(stringify($($a)*)),
+                stringify!($($a)*),
                 ")`?",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $f:ident!($($a:tt)*) $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "did you mean to put a comma after `",
-                $crate::crossbeam_channel_delegate!(stringify($f)),
+                stringify!($f),
                 "!(",
-                $crate::crossbeam_channel_delegate!(stringify($($a)*)),
+                stringify!($($a)*),
                 ")`?",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $f:ident![$($a:tt)*] $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "did you mean to put a comma after `",
-                $crate::crossbeam_channel_delegate!(stringify($f)),
+                stringify!($f),
                 "![",
-                $crate::crossbeam_channel_delegate!(stringify($($a)*)),
+                stringify!($($a)*),
                 "]`?",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $f:ident!{$($a:tt)*} $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "did you mean to put a comma after `",
-                $crate::crossbeam_channel_delegate!(stringify($f)),
+                stringify!($f),
                 "!{",
-                $crate::crossbeam_channel_delegate!(stringify($($a)*)),
+                stringify!($($a)*),
                 "}`?",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) $(-> $r:pat)* => $body:tt $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "did you mean to put a comma after `",
-                $crate::crossbeam_channel_delegate!(stringify($body)),
+                stringify!($body),
                 "`?",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) -> => $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error("missing pattern after `->`"))
+        compile_error!("missing pattern after `->`")
     };
     (@list_error3 $case:ident($($args:tt)*) $t:tt $(-> $r:pat)* => $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected `->`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($t)),
+                stringify!($t),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $case:ident($($args:tt)*) -> $t:tt $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected a pattern, found `",
-                $crate::crossbeam_channel_delegate!(stringify($t)),
+                stringify!($t),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 recv($($args:tt)*) $t:tt $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected `->`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($t)),
+                stringify!($t),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 send($($args:tt)*) $t:tt $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected `->`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($t)),
+                stringify!($t),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 recv $args:tt $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected an argument list after `recv`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($args)),
+                stringify!($args),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 send $args:tt $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected an argument list after `send`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($args)),
+                stringify!($args),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 default $args:tt $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected an argument list or `=>` after `default`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($args)),
+                stringify!($args),
                 "`",
-            ))
-        ))
+            )
+        )
     };
     (@list_error3 $($tail:tt)*) => {
         $crate::crossbeam_channel_internal!(@list_error4 $($tail)*)
     };
     // Stage 4: fail with a generic error message.
     (@list_error4 $($tail:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error("invalid syntax"))
+        compile_error!("invalid syntax")
     };
 
     // Success! All cases were parsed.
@@ -426,13 +403,13 @@ macro_rules! crossbeam_channel_internal {
         ($($cases:tt)*)
         $default:tt
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "invalid argument list in `recv(",
-                $crate::crossbeam_channel_delegate!(stringify($($args)*)),
+                stringify!($($args)*),
                 ")`",
-            ))
-        ))
+            )
+        )
     };
     // Print an error if there is no argument list.
     (@case
@@ -440,13 +417,13 @@ macro_rules! crossbeam_channel_internal {
         ($($cases:tt)*)
         $default:tt
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected an argument list after `recv`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($t)),
+                stringify!($t),
                 "`",
-            ))
-        ))
+            )
+        )
     };
 
     // Check the format of a send case.
@@ -481,13 +458,13 @@ macro_rules! crossbeam_channel_internal {
         ($($cases:tt)*)
         $default:tt
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "invalid argument list in `send(",
-                $crate::crossbeam_channel_delegate!(stringify($($args)*)),
+                stringify!($($args)*),
                 ")`",
-            ))
-        ))
+            )
+        )
     };
     // Print an error if there is no argument list.
     (@case
@@ -495,13 +472,13 @@ macro_rules! crossbeam_channel_internal {
         ($($cases:tt)*)
         $default:tt
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected an argument list after `send`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($t)),
+                stringify!($t),
                 "`",
-            ))
-        ))
+            )
+        )
     };
 
     // Check the format of a default case.
@@ -549,9 +526,9 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
         ($($def:tt)+)
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
+        compile_error!(
             "there can be only one `default` case in a `select!` block"
-        ))
+        )
     };
     // Print an error if the argument list is invalid.
     (@case
@@ -559,13 +536,13 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
         $default:tt
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "invalid argument list in `default(",
-                $crate::crossbeam_channel_delegate!(stringify($($args)*)),
+                stringify!($($args)*),
                 ")`",
-            ))
-        ))
+            )
+        )
     };
     // Print an error if there is an unexpected token after `default`.
     (@case
@@ -573,13 +550,13 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
         $default:tt
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected an argument list or `=>` after `default`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($t)),
+                stringify!($t),
                 "`",
-            ))
-        ))
+            )
+        )
     };
 
     // The case was not consumed, therefore it must be invalid.
@@ -588,13 +565,13 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
         $default:tt
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "expected one of `recv`, `send`, or `default`, found `",
-                $crate::crossbeam_channel_delegate!(stringify($case)),
+                stringify!($case),
                 "`",
-            ))
-        ))
+            )
+        )
     };
 
     // Optimize `select!` into `try_recv()`.
@@ -904,7 +881,7 @@ macro_rules! crossbeam_channel_internal {
         ()
         $cases:tt
     ) => {
-        $crate::crossbeam_channel_delegate!(compile_error("too many operations in a `select!` block"))
+        compile_error!("too many operations in a `select!` block")
     };
     // Add a receive operation to `sel`.
     (@add
@@ -1019,24 +996,24 @@ macro_rules! crossbeam_channel_internal {
         $oper:ident
         ()
     ) => {{
-        $crate::crossbeam_channel_delegate!(unreachable(
+        unreachable!(
             "internal error in crossbeam-channel: invalid case"
-        ))
+        )
     }};
 
     // Catches a bug within this macro (should not happen).
     (@$($tokens:tt)*) => {
-        $crate::crossbeam_channel_delegate!(compile_error(
-            $crate::crossbeam_channel_delegate!(concat(
+        compile_error!(
+            concat!(
                 "internal error in crossbeam-channel: ",
-                $crate::crossbeam_channel_delegate!(stringify(@$($tokens)*)),
-            ))
-        ))
+                stringify!(@$($tokens)*),
+            )
+        )
     };
 
     // The entry points.
     () => {
-        $crate::crossbeam_channel_delegate!(compile_error("empty `select!` block"))
+        compile_error!("empty `select!` block")
     };
     ($($case:ident $(($($args:tt)*))* => $body:expr $(,)*)*) => {
         $crate::crossbeam_channel_internal!(
@@ -1069,15 +1046,13 @@ macro_rules! crossbeam_channel_internal {
 /// The `select` macro is a convenience wrapper around [`Select`]. However, it cannot select over a
 /// dynamically created list of channel operations.
 ///
-/// [`Select`]: struct.Select.html
+/// [`Select`]: super::Select
 ///
 /// # Examples
 ///
 /// Block until a send or a receive operation is selected:
 ///
 /// ```
-/// # fn main() {
-/// use std::thread;
 /// use crossbeam_channel::{select, unbounded};
 ///
 /// let (s1, r1) = unbounded();
@@ -1092,13 +1067,11 @@ macro_rules! crossbeam_channel_internal {
 ///         assert_eq!(r2.recv(), Ok(20));
 ///     }
 /// }
-/// # }
 /// ```
 ///
 /// Select from a set of operations without blocking:
 ///
 /// ```
-/// # fn main() {
 /// use std::thread;
 /// use std::time::Duration;
 /// use crossbeam_channel::{select, unbounded};
@@ -1121,13 +1094,11 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r2) -> msg => panic!(),
 ///     default => println!("not ready"),
 /// }
-/// # }
 /// ```
 ///
 /// Select over a set of operations with a timeout:
 ///
 /// ```
-/// # fn main() {
 /// use std::thread;
 /// use std::time::Duration;
 /// use crossbeam_channel::{select, unbounded};
@@ -1150,13 +1121,11 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r2) -> msg => panic!(),
 ///     default(Duration::from_millis(100)) => println!("timed out"),
 /// }
-/// # }
 /// ```
 ///
 /// Optionally add a receive operation to `select!` using [`never`]:
 ///
 /// ```
-/// # fn main() {
 /// use std::thread;
 /// use std::time::Duration;
 /// use crossbeam_channel::{select, never, unbounded};
@@ -1181,14 +1150,13 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r1) -> msg => panic!(),
 ///     recv(r2.unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(20)),
 /// }
-/// # }
 /// ```
 ///
 /// To optionally add a timeout to `select!`, see the [example] for [`never`].
 ///
-/// [`never`]: fn.never.html
-/// [example]: fn.never.html#examples
-#[macro_export(local_inner_macros)]
+/// [`never`]: super::never
+/// [example]: super::never#examples
+#[macro_export]
 macro_rules! select {
     ($($tokens:tt)*) => {
         $crate::crossbeam_channel_internal!(

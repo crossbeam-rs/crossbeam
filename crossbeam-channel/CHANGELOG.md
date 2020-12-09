@@ -1,3 +1,21 @@
+# Version 0.5.0
+
+- Bump the minimum supported Rust version to 1.36.
+- Add `at()` function.
+- Add `Sender::send_deadline()` and `Receiver::recv_deadline()` methods.
+- Add `Select::select_deadline()` and `Select::ready_deadline()` methods.
+- Add `std` (enabled by default) feature for forward compatibility.
+- Allow `select!` macro compile with `forbid(unsafe_code)`.
+
+# Version 0.4.4
+
+- Fix bug in release (yanking 0.4.3)
+- Fix UB and breaking change introduced in 0.4.3
+
+# Version 0.4.3
+
+- Change license to "MIT OR Apache-2.0".
+
 # Version 0.4.2
 
 - Fix bug in release (yanking 0.4.1)

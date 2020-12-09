@@ -17,18 +17,25 @@
 //! * [`CachePadded`], for padding and aligning a value to the length of a cache line.
 //! * [`scope`], for spawning threads that borrow local variables from the stack.
 //!
-//! [`AtomicCell`]: atomic/struct.AtomicCell.html
-//! [`AtomicConsume`]: atomic/trait.AtomicConsume.html
-//! [`Parker`]: sync/struct.Parker.html
-//! [`ShardedLock`]: sync/struct.ShardedLock.html
-//! [`WaitGroup`]: sync/struct.WaitGroup.html
-//! [`Backoff`]: struct.Backoff.html
-//! [`CachePadded`]: struct.CachePadded.html
-//! [`scope`]: thread/fn.scope.html
+//! [`AtomicCell`]: atomic::AtomicCell
+//! [`AtomicConsume`]: atomic::AtomicConsume
+//! [`Parker`]: sync::Parker
+//! [`ShardedLock`]: sync::ShardedLock
+//! [`WaitGroup`]: sync::WaitGroup
+//! [`scope`]: thread::scope
 
+#![doc(test(
+    no_crate_inject,
+    attr(
+        deny(warnings, rust_2018_idioms),
+        allow(dead_code, unused_assignments, unused_variables)
+    )
+))]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
+// matches! requires Rust 1.42
+#![allow(clippy::match_like_matches_macro)]
 
 #[cfg(loom)]
 #[allow(unused_imports)]

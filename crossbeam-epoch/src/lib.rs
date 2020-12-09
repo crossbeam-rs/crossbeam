@@ -39,7 +39,7 @@
 //! pinned participants get unpinned. Such objects can be stored into a thread-local or global
 //! storage, where they are kept until the right time for their destruction comes.
 //!
-//! There is a global shared instance of garbage queue. You can [`defer`] the execution of an
+//! There is a global shared instance of garbage queue. You can [`defer`](Guard::defer) the execution of an
 //! arbitrary function until the global epoch is advanced enough. Most notably, concurrent data
 //! structures may defer the deallocation of an object.
 //!
@@ -47,16 +47,20 @@
 //!
 //! For majority of use cases, just use the default garbage collector by invoking [`pin`]. If you
 //! want to create your own garbage collector, use the [`Collector`] API.
-//!
-//! [`Atomic`]: struct.Atomic.html
-//! [`Collector`]: struct.Collector.html
-//! [`Shared`]: struct.Shared.html
-//! [`pin`]: fn.pin.html
-//! [`defer`]: struct.Guard.html#method.defer
 
+#![doc(test(
+    no_crate_inject,
+    attr(
+        deny(warnings, rust_2018_idioms),
+        allow(dead_code, unused_assignments, unused_variables)
+    )
+))]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
+#![cfg_attr(feature = "nightly", feature(const_fn))]
+// matches! requires Rust 1.42
+#![allow(clippy::match_like_matches_macro)]
 
 use cfg_if::cfg_if;
 
@@ -152,7 +156,7 @@ cfg_if! {
         mod internal;
         mod sync;
 
-        pub use self::atomic::{Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
+        pub use self::atomic::{Pointable, Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard};
     }

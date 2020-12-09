@@ -178,6 +178,12 @@ fn join_nested() {
     .unwrap();
 }
 
+#[test]
+fn scope_returns_ok() {
+    let result = thread::scope(|scope| scope.spawn(|_| 1234).join().unwrap()).unwrap();
+    assert_eq!(result, 1234);
+}
+
 #[cfg(unix)]
 #[test]
 fn as_pthread_t() {

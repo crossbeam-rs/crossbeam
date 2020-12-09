@@ -4,10 +4,10 @@ name = "crossbeam-queue"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-queue-X.Y.Z" git tag
-version = "0.2.2"
+version = "0.3.1"
 authors = ["The Crossbeam Project Developers"]
 edition = "2018"
-license = "MIT/Apache-2.0 AND BSD-2-Clause"
+license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils"
@@ -31,15 +31,15 @@ alloc = []
 # This is disabled by default and requires recent nightly compiler.
 # Note that this is outside of the normal semver guarantees and minor versions
 # of crossbeam may make breaking changes to them at any time.
-nightly = []
+nightly = ["crossbeam-utils/nightly"]
 
 [dependencies]
-cfg-if = "0.1.10"
+cfg-if = "1"
 
 [dependencies.crossbeam-utils]
-version = "0.7"
+version = "0.8"
 path = "../crossbeam-utils"
 default-features = false
 
 [dev-dependencies]
-rand = "0.6"
+rand = "0.7.3"

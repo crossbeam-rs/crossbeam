@@ -3,18 +3,17 @@ use crate::concurrency::sync::{Arc, Condvar, Mutex};
 use core::sync::atomic::Ordering::SeqCst;
 use std::fmt;
 use std::marker::PhantomData;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// A thread parking primitive.
 ///
 /// Conceptually, each `Parker` has an associated token which is initially not present:
 ///
 /// * The [`park`] method blocks the current thread unless or until the token is available, at
-///   which point it automatically consumes the token. It may also return *spuriously*, without
-///   consuming the token.
+///   which point it automatically consumes the token.
 ///
-/// * The [`park_timeout`] method works the same as [`park`], but blocks for a specified maximum
-///   time.
+/// * The [`park_timeout`] and [`park_deadline`] methods work the same as [`park`], but block for
+///   a specified maximum time.
 ///
 /// * The [`unpark`] method atomically makes the token available if it wasn't already. Because the
 ///   token is initially absent, [`unpark`] followed by [`park`] will result in the second call
@@ -30,7 +29,7 @@ use std::time::Duration;
 /// use std::time::Duration;
 /// use crossbeam_utils::sync::Parker;
 ///
-/// let mut p = Parker::new();
+/// let p = Parker::new();
 /// let u = p.unparker().clone();
 ///
 /// // Make the token available.
@@ -43,14 +42,14 @@ use std::time::Duration;
 ///     u.unpark();
 /// });
 ///
-/// // Wakes up when `u.unpark()` provides the token, but may also wake up
-/// // spuriously before that without consuming the token.
+/// // Wakes up when `u.unpark()` provides the token.
 /// p.park();
 /// ```
 ///
-/// [`park`]: struct.Parker.html#method.park
-/// [`park_timeout`]: struct.Parker.html#method.park_timeout
-/// [`unpark`]: struct.Unparker.html#method.unpark
+/// [`park`]: Parker::park
+/// [`park_timeout`]: Parker::park_timeout
+/// [`park_deadline`]: Parker::park_deadline
+/// [`unpark`]: Unparker::unpark
 pub struct Parker {
     unparker: Unparker,
     _marker: PhantomData<*const ()>,
@@ -90,15 +89,12 @@ impl Parker {
 
     /// Blocks the current thread until the token is made available.
     ///
-    /// A call to `park` may wake up spuriously without consuming the token, and callers should be
-    /// prepared for this possibility.
-    ///
     /// # Examples
     ///
     /// ```
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let mut p = Parker::new();
+    /// let p = Parker::new();
     /// let u = p.unparker().clone();
     ///
     /// // Make the token available.
@@ -113,22 +109,37 @@ impl Parker {
 
     /// Blocks the current thread until the token is made available, but only for a limited time.
     ///
-    /// A call to `park_timeout` may wake up spuriously without consuming the token, and callers
-    /// should be prepared for this possibility.
-    ///
     /// # Examples
     ///
     /// ```
     /// use std::time::Duration;
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let mut p = Parker::new();
+    /// let p = Parker::new();
     ///
     /// // Waits for the token to become available, but will not wait longer than 500 ms.
     /// p.park_timeout(Duration::from_millis(500));
     /// ```
     pub fn park_timeout(&self, timeout: Duration) {
-        self.unparker.inner.park(Some(timeout));
+        self.park_deadline(Instant::now() + timeout)
+    }
+
+    /// Blocks the current thread until the token is made available, or until a certain deadline.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::{Duration, Instant};
+    /// use crossbeam_utils::sync::Parker;
+    ///
+    /// let p = Parker::new();
+    /// let deadline = Instant::now() + Duration::from_millis(500);
+    ///
+    /// // Waits for the token to become available, but will not wait longer than 500 ms.
+    /// p.park_deadline(deadline);
+    /// ```
+    pub fn park_deadline(&self, deadline: Instant) {
+        self.unparker.inner.park(Some(deadline))
     }
 
     /// Returns a reference to an associated [`Unparker`].
@@ -140,7 +151,7 @@ impl Parker {
     /// ```
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let mut p = Parker::new();
+    /// let p = Parker::new();
     /// let u = p.unparker().clone();
     ///
     /// // Make the token available.
@@ -149,10 +160,8 @@ impl Parker {
     /// p.park();
     /// ```
     ///
-    /// [`park`]: struct.Parker.html#method.park
-    /// [`park_timeout`]: struct.Parker.html#method.park_timeout
-    ///
-    /// [`Unparker`]: struct.Unparker.html
+    /// [`park`]: Parker::park
+    /// [`park_timeout`]: Parker::park_timeout
     pub fn unparker(&self) -> &Unparker {
         &self.unparker
     }
@@ -176,8 +185,6 @@ impl Parker {
     /// # Safety
     ///
     /// This method is safe to use only with pointers returned by [`Parker::into_raw`].
-    ///
-    /// [`Parker::into_raw`]: struct.Parker.html#method.into_raw
     ///
     /// # Examples
     ///
@@ -203,8 +210,6 @@ impl fmt::Debug for Parker {
 }
 
 /// Unparks a thread parked by the associated [`Parker`].
-///
-/// [`Parker`]: struct.Parker.html
 pub struct Unparker {
     inner: Arc<Inner>,
 }
@@ -225,7 +230,7 @@ impl Unparker {
     /// use std::time::Duration;
     /// use crossbeam_utils::sync::Parker;
     ///
-    /// let mut p = Parker::new();
+    /// let p = Parker::new();
     /// let u = p.unparker().clone();
     ///
     /// thread::spawn(move || {
@@ -233,13 +238,12 @@ impl Unparker {
     ///     u.unpark();
     /// });
     ///
-    /// // Wakes up when `u.unpark()` provides the token, but may also wake up
-    /// // spuriously before that without consuming the token.
+    /// // Wakes up when `u.unpark()` provides the token.
     /// p.park();
     /// ```
     ///
-    /// [`park`]: struct.Parker.html#method.park
-    /// [`park_timeout`]: struct.Parker.html#method.park_timeout
+    /// [`park`]: Parker::park
+    /// [`park_timeout`]: Parker::park_timeout
     pub fn unpark(&self) {
         self.inner.unpark()
     }
@@ -264,8 +268,6 @@ impl Unparker {
     /// # Safety
     ///
     /// This method is safe to use only with pointers returned by [`Unparker::into_raw`].
-    ///
-    /// [`Unparker::into_raw`]: struct.Unparker.html#method.into_raw
     ///
     /// # Examples
     ///
@@ -310,7 +312,7 @@ struct Inner {
 }
 
 impl Inner {
-    fn park(&self, timeout: Option<Duration>) {
+    fn park(&self, deadline: Option<Instant>) {
         // If we were previously notified then we consume this notification and return quickly.
         if self
             .state
@@ -321,8 +323,8 @@ impl Inner {
         }
 
         // If the timeout is zero, then there is no need to actually block.
-        if let Some(ref dur) = timeout {
-            if *dur == Duration::from_millis(0) {
+        if let Some(deadline) = deadline {
+            if deadline <= Instant::now() {
                 return;
             }
         }
@@ -346,32 +348,38 @@ impl Inner {
             Err(n) => panic!("inconsistent park_timeout state: {}", n),
         }
 
-        match timeout {
-            None => {
-                loop {
-                    // Block the current thread on the conditional variable.
-                    m = self.cvar.wait(m).unwrap();
-
-                    if self.state.compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst).is_ok() {
-                        // got a notification
-                        return;
+        loop {
+            // Block the current thread on the conditional variable.
+            m = match deadline {
+                None => self.cvar.wait(m).unwrap(),
+                Some(deadline) => {
+                    let now = Instant::now();
+                    if now < deadline {
+                        // We could check for a timeout here, in the return value of wait_timeout,
+                        // but in the case that a timeout and an unpark arrive simultaneously, we
+                        // prefer to report the former.
+                        self.cvar.wait_timeout(m, deadline - now).unwrap().0
+                    } else {
+                        // We've timed out; swap out the state back to empty on our way out
+                        match self.state.swap(EMPTY, SeqCst) {
+                            NOTIFIED | PARKED => return,
+                            n => panic!("inconsistent park_timeout state: {}", n),
+                        };
                     }
-
-                    // spurious wakeup, go back to sleep
                 }
-            }
-            Some(timeout) => {
-                // Wait with a timeout, and if we spuriously wake up or otherwise wake up from a
-                // notification we just want to unconditionally set `state` back to `EMPTY`, either
-                // consuming a notification or un-flagging ourselves as parked.
-                let (_m, _result) = self.cvar.wait_timeout(m, timeout).unwrap();
+            };
 
-                match self.state.swap(EMPTY, SeqCst) {
-                    NOTIFIED => {} // got a notification
-                    PARKED => {}   // no notification
-                    n => panic!("inconsistent park_timeout state: {}", n),
-                }
+            if self
+                .state
+                .compare_exchange(NOTIFIED, EMPTY, SeqCst, SeqCst)
+                .is_ok()
+            {
+                // got a notification
+                return;
             }
+
+            // Spurious wakeup, go back to sleep. Alternatively, if we timed out, it will be caught
+            // in the branch above, when we discover the deadline is in the past
         }
     }
 

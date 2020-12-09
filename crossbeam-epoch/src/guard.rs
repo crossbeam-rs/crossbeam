@@ -30,7 +30,7 @@ use crate::internal::Local;
 /// For example:
 ///
 /// ```
-/// use crossbeam_epoch::{self as epoch, Atomic, Owned};
+/// use crossbeam_epoch::{self as epoch, Atomic};
 /// use std::sync::atomic::Ordering::SeqCst;
 ///
 /// // Create a heap-allocated number.
@@ -66,7 +66,7 @@ use crate::internal::Local;
 /// assert!(!epoch::is_pinned());
 /// ```
 ///
-/// [`pin`]: fn.pin.html
+/// [`pin`]: super::pin
 pub struct Guard {
     pub(crate) local: *const Local,
 }
@@ -87,8 +87,6 @@ impl Guard {
     ///
     /// If this method is called from an [`unprotected`] guard, the function will simply be
     /// executed immediately.
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn defer<F, R>(&self, f: F)
     where
         F: FnOnce() -> R,
@@ -187,8 +185,6 @@ impl Guard {
     ///     }
     /// }
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub unsafe fn defer_unchecked<F, R>(&self, f: F)
     where
         F: FnOnce() -> R,
@@ -268,8 +264,6 @@ impl Guard {
     ///     }
     /// }
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub unsafe fn defer_destroy<T>(&self, ptr: Shared<'_, T>) {
         self.defer_unchecked(move || ptr.into_owned());
     }
@@ -289,15 +283,11 @@ impl Guard {
     /// use crossbeam_epoch as epoch;
     ///
     /// let guard = &epoch::pin();
-    /// unsafe {
-    ///     guard.defer(move || {
-    ///         println!("This better be printed as soon as possible!");
-    ///     });
-    /// }
+    /// guard.defer(move || {
+    ///     println!("This better be printed as soon as possible!");
+    /// });
     /// guard.flush();
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn flush(&self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
             local.flush(self);
@@ -318,8 +308,6 @@ impl Guard {
     /// ```
     /// use crossbeam_epoch::{self as epoch, Atomic};
     /// use std::sync::atomic::Ordering::SeqCst;
-    /// use std::thread;
-    /// use std::time::Duration;
     ///
     /// let a = Atomic::new(777);
     /// let mut guard = epoch::pin();
@@ -333,8 +321,6 @@ impl Guard {
     ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
     /// }
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn repin(&mut self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
             local.repin();
@@ -371,8 +357,6 @@ impl Guard {
     ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
     /// }
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn repin_after<F, R>(&mut self, f: F) -> R
     where
         F: FnOnce() -> R,
@@ -407,12 +391,10 @@ impl Guard {
     /// ```
     /// use crossbeam_epoch as epoch;
     ///
-    /// let mut guard1 = epoch::pin();
-    /// let mut guard2 = epoch::pin();
+    /// let guard1 = epoch::pin();
+    /// let guard2 = epoch::pin();
     /// assert!(guard1.collector() == guard2.collector());
     /// ```
-    ///
-    /// [`unprotected`]: fn.unprotected.html
     pub fn collector(&self) -> Option<&Collector> {
         unsafe { self.local.as_ref().map(|local| local.collector()) }
     }
@@ -516,16 +498,17 @@ impl fmt::Debug for Guard {
 /// }
 /// ```
 ///
-/// [`Atomic`]: struct.Atomic.html
-/// [`defer`]: struct.Guard.html#method.defer
+/// [`Atomic`]: super::Atomic
+/// [`defer`]: Guard::defer
 #[inline]
 pub unsafe fn unprotected() -> &'static Guard {
-    // HACK(stjepang): An unprotected guard is just a `Guard` with its field `local` set to null.
-    // Since this function returns a `'static` reference to a `Guard`, we must return a reference
-    // to a global guard. However, it's not possible to create a `static` `Guard` because it does
-    // not implement `Sync`. To get around the problem, we create a static `usize` initialized to
-    // zero and then transmute it into a `Guard`. This is safe because `usize` and `Guard`
-    // (consisting of a single pointer) have the same representation in memory.
-    static UNPROTECTED: usize = 0;
-    &*(&UNPROTECTED as *const _ as *const Guard)
+    // An unprotected guard is just a `Guard` with its field `local` set to null.
+    // We make a newtype over `Guard` because `Guard` isn't `Sync`, so can't be directly stored in
+    // a `static`
+    struct GuardWrapper(Guard);
+    unsafe impl Sync for GuardWrapper {}
+    static UNPROTECTED: GuardWrapper = GuardWrapper(Guard {
+        local: core::ptr::null(),
+    });
+    &UNPROTECTED.0
 }

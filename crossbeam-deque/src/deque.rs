@@ -1,3 +1,7 @@
+// TODO(@jeehoonkang): we mutates `batch_size` inside `for i in 0..batch_size {}`. It is difficult
+// to read because we're mutating the range bound.
+#![allow(clippy::mut_range_bound)]
+
 use std::cell::{Cell, UnsafeCell};
 use std::cmp;
 use std::fmt;
@@ -665,7 +669,7 @@ impl<T> Stealer<T> {
     /// let s = w1.stealer();
     /// let w2 = Worker::new_fifo();
     ///
-    /// s.steal_batch(&w2);
+    /// let _ = s.steal_batch(&w2);
     /// assert_eq!(w2.pop(), Some(1));
     /// assert_eq!(w2.pop(), Some(2));
     /// ```
@@ -1178,6 +1182,23 @@ pub struct Injector<T> {
 unsafe impl<T: Send> Send for Injector<T> {}
 unsafe impl<T: Send> Sync for Injector<T> {}
 
+impl<T> Default for Injector<T> {
+    fn default() -> Self {
+        let block = Box::into_raw(Box::new(Block::<T>::new()));
+        Self {
+            head: CachePadded::new(Position {
+                block: AtomicPtr::new(block),
+                index: AtomicUsize::new(0),
+            }),
+            tail: CachePadded::new(Position {
+                block: AtomicPtr::new(block),
+                index: AtomicUsize::new(0),
+            }),
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<T> Injector<T> {
     /// Creates a new injector queue.
     ///
@@ -1189,18 +1210,7 @@ impl<T> Injector<T> {
     /// let q = Injector::<i32>::new();
     /// ```
     pub fn new() -> Injector<T> {
-        let block = Box::into_raw(Box::new(Block::<T>::new()));
-        Injector {
-            head: CachePadded::new(Position {
-                block: AtomicPtr::new(block),
-                index: AtomicUsize::new(0),
-            }),
-            tail: CachePadded::new(Position {
-                block: AtomicPtr::new(block),
-                index: AtomicUsize::new(0),
-            }),
-            _marker: PhantomData,
-        }
+        Self::default()
     }
 
     /// Pushes a task into the queue.
@@ -1357,9 +1367,7 @@ impl<T> Injector<T> {
 
             // Destroy the block if we've reached the end, or if another thread wanted to destroy
             // but couldn't because we were busy reading from the slot.
-            if offset + 1 == BLOCK_CAP {
-                Block::destroy(block, offset);
-            } else if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
+            if (offset + 1 == BLOCK_CAP) || (slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0) {
                 Block::destroy(block, offset);
             }
 
@@ -1384,7 +1392,7 @@ impl<T> Injector<T> {
     /// q.push(4);
     ///
     /// let w = Worker::new_fifo();
-    /// q.steal_batch(&w);
+    /// let _ = q.steal_batch(&w);
     /// assert_eq!(w.pop(), Some(1));
     /// assert_eq!(w.pop(), Some(2));
     /// ```

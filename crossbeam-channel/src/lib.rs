@@ -122,8 +122,6 @@
 //! It's also possible to share senders and receivers by reference:
 //!
 //! ```
-//! # fn main() {
-//! use std::thread;
 //! use crossbeam_channel::bounded;
 //! use crossbeam_utils::thread::scope;
 //!
@@ -140,7 +138,6 @@
 //!     s.send(1).unwrap();
 //!     r.recv().unwrap();
 //! }).unwrap();
-//! # }
 //! ```
 //!
 //! # Disconnection
@@ -269,7 +266,6 @@
 //! An example of receiving a message from two channels:
 //!
 //! ```
-//! # fn main() {
 //! use std::thread;
 //! use std::time::Duration;
 //! use crossbeam_channel::{select, unbounded};
@@ -286,7 +282,6 @@
 //!     recv(r2) -> msg => assert_eq!(msg, Ok(20)),
 //!     default(Duration::from_secs(1)) => println!("timed out"),
 //! }
-//! # }
 //! ```
 //!
 //! If you need to select over a dynamically created list of channel operations, use [`Select`]
@@ -306,7 +301,6 @@
 //! An example that prints elapsed time every 50 milliseconds for the duration of 1 second:
 //!
 //! ```
-//! # fn main() {
 //! use std::time::{Duration, Instant};
 //! use crossbeam_channel::{after, select, tick};
 //!
@@ -320,26 +314,24 @@
 //!         recv(timeout) -> _ => break,
 //!     }
 //! }
-//! # }
 //! ```
 //!
-//! [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
-//! [`unbounded`]: fn.unbounded.html
-//! [`bounded`]: fn.bounded.html
-//! [`after`]: fn.after.html
-//! [`tick`]: fn.tick.html
-//! [`never`]: fn.never.html
-//! [`send`]: struct.Sender.html#method.send
-//! [`recv`]: struct.Receiver.html#method.recv
-//! [`iter`]: struct.Receiver.html#method.iter
-//! [`try_iter`]: struct.Receiver.html#method.try_iter
-//! [`select!`]: macro.select.html
-//! [`Select`]: struct.Select.html
-//! [`Sender`]: struct.Sender.html
-//! [`Receiver`]: struct.Receiver.html
+//! [`send`]: Sender::send
+//! [`recv`]: Receiver::recv
+//! [`iter`]: Receiver::iter
+//! [`try_iter`]: Receiver::try_iter
 
+#![doc(test(
+    no_crate_inject,
+    attr(
+        deny(warnings, rust_2018_idioms),
+        allow(dead_code, unused_assignments, unused_variables)
+    )
+))]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 #![cfg_attr(not(feature = "std"), no_std)]
+// matches! requires Rust 1.42
+#![allow(clippy::match_like_matches_macro)]
 
 use cfg_if::cfg_if;
 
@@ -362,7 +354,7 @@ cfg_if! {
             pub use crate::select::{select, select_timeout, try_select};
         }
 
-        pub use crate::channel::{after, never, tick};
+        pub use crate::channel::{after, at, never, tick};
         pub use crate::channel::{bounded, unbounded};
         pub use crate::channel::{IntoIter, Iter, TryIter};
         pub use crate::channel::{Receiver, Sender};

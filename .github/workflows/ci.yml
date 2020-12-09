@@ -1,4 +1,5 @@
 name: CI
+
 on:
   pull_request:
   push:
@@ -6,12 +7,21 @@ on:
       - master
       - staging
       - trying
+  schedule:
+    - cron: '0 1 * * *'
+
+env:
+  RUSTFLAGS: -Dwarnings
+  RUST_BACKTRACE: 1
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
     name: test
-    runs-on: ubuntu-latest
     env:
       RUST_VERSION: ${{ matrix.rust }}
     strategy:
@@ -27,6 +37,29 @@ jobs:
         rust:
           - 1.36.0
           - nightly
+        os:
+         - ubuntu-latest
+         - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@master
+      - name: Install Rust
+        # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
+        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
+      - name: Test
+        run: ./ci/${{ matrix.crates }}.sh
+
+  # Check all feature combinations works properly.
+  features:
+    name: features
+    env:
+      RUST_VERSION: ${{ matrix.rust }}
+    strategy:
+      matrix:
+        rust:
+          - 1.36.0
+          - nightly
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
       - name: Install Rust
@@ -36,8 +69,8 @@ jobs:
         run: |
           rustup target add thumbv7m-none-eabi
           rustup target add thumbv6m-none-eabi
-      - name: Test
-        run: ./ci/${{ matrix.crates }}.sh
+      - name: Check features
+        run: ./ci/check-features.sh
 
   # Check for duplicate dependencies.
   dependencies:
@@ -61,6 +94,17 @@ jobs:
       - name: rustfmt
         run: ./ci/rustfmt.sh
 
+  # Check clippy.
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: clippy
+        run: ./ci/clippy.sh
+
   # Run loom tests.
   loom:
     name: loom
@@ -71,3 +115,38 @@ jobs:
         run: rustup update stable && rustup default stable
       - name: loom
         run: ./ci/crossbeam-epoch-loom.sh
+
+  # These jobs don't actually test anything, but they're used to tell bors the
+  # build completed, as there is no practical way to detect when a workflow is
+  # successful listening to webhooks only.
+  #
+  # ALL THE PREVIOUS JOBS NEEDS TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
+
+  ci-success:
+    name: ci
+    if: github.event_name == 'push' && success()
+    needs:
+      - test
+      - features
+      - dependencies
+      - rustfmt
+      - clippy
+      - loom
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark the job as a success
+        run: exit 0
+  ci-failure:
+    name: ci
+    if: github.event_name == 'push' && !success()
+    needs:
+      - test
+      - features
+      - dependencies
+      - rustfmt
+      - clippy
+      - loom
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark the job as a failure
+        run: exit 1

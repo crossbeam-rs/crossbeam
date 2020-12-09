@@ -8,7 +8,9 @@ export RUSTFLAGS="-D warnings"
 cargo check --bins --examples --tests
 cargo test -- --test-threads=1
 
-if [[ "$RUST_VERSION" == "nightly" ]]; then
+if [[ "$RUST_VERSION" == "nightly"* ]]; then
     cd benchmarks
     cargo check --bins
+
+    RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps --all-features
 fi

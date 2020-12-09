@@ -3,10 +3,10 @@
 //! Usable with any number of producers and consumers.
 //!
 //! Michael and Scott.  Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue
-//! Algorithms.  PODC 1996.  http://dl.acm.org/citation.cfm?id=248106
+//! Algorithms.  PODC 1996.  <http://dl.acm.org/citation.cfm?id=248106>
 //!
 //! Simon Doherty, Lindsay Groves, Victor Luchangco, and Mark Moir. 2004b. Formal Verification of a
-//! Practical Lock-Free Queue Algorithm. https://doi.org/10.1007/978-3-540-30232-2_7
+//! Practical Lock-Free Queue Algorithm. <https://doi.org/10.1007/978-3-540-30232-2_7>
 
 use core::mem::MaybeUninit;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
@@ -52,7 +52,7 @@ impl<T> Queue<T> {
             next: Atomic::null(),
         });
         unsafe {
-            let guard = &unprotected();
+            let guard = unprotected();
             let sentinel = sentinel.into_shared(guard);
             q.head.store(sentinel, Relaxed);
             q.tail.store(sentinel, Relaxed);
@@ -63,7 +63,12 @@ impl<T> Queue<T> {
     /// Attempts to atomically place `n` into the `next` pointer of `onto`, and returns `true` on
     /// success. The queue's `tail` pointer may be updated.
     #[inline(always)]
-    fn push_internal(&self, onto: Shared<'_, Node<T>>, new: Shared<'_, Node<T>>, guard: &Guard) -> bool {
+    fn push_internal(
+        &self,
+        onto: Shared<'_, Node<T>>,
+        new: Shared<'_, Node<T>>,
+        guard: &Guard,
+    ) -> bool {
         // is `onto` the actual tail?
         let o = unsafe { onto.deref() };
         let next = o.next.load(Acquire, guard);
@@ -191,9 +196,9 @@ impl<T> Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         unsafe {
-            let guard = &unprotected();
+            let guard = unprotected();
 
-            while let Some(_) = self.try_pop(guard) {}
+            while self.try_pop(guard).is_some() {}
 
             // Destroy the remaining sentinel node.
             let sentinel = self.head.load(Relaxed, guard);
@@ -205,8 +210,8 @@ impl<T> Drop for Queue<T> {
 #[cfg(all(test, not(loom)))]
 mod test {
     use super::*;
-    use crossbeam_utils::thread;
     use crate::pin;
+    use crossbeam_utils::thread;
 
     struct Queue<T> {
         queue: super::Queue<T>,

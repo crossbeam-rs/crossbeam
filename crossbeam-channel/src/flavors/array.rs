@@ -5,13 +5,8 @@
 //! The implementation is based on Dmitry Vyukov's bounded MPMC queue.
 //!
 //! Source:
-//!   - http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
-//!   - https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub
-//!
-//! Copyright & License:
-//!   - Copyright (c) 2010-2011 Dmitry Vyukov
-//!   - Simplified BSD License and Apache License, Version 2.0
-//!   - http://www.1024cores.net/home/code-license
+//!   - <http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue>
+//!   - <https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub>
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -115,7 +110,7 @@ impl<T> Channel<T> {
         // Allocate a buffer of `cap` slots initialized
         // with stamps.
         let buffer = {
-            let mut v: Vec<Slot<T>> = (0..cap)
+            let mut boxed: Box<[Slot<T>]> = (0..cap)
                 .map(|i| {
                     // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
                     Slot {
@@ -124,8 +119,8 @@ impl<T> Channel<T> {
                     }
                 })
                 .collect();
-            let ptr = v.as_mut_ptr();
-            mem::forget(v);
+            let ptr = boxed.as_mut_ptr();
+            mem::forget(boxed);
             ptr
         };
 
@@ -553,7 +548,11 @@ impl<T> Drop for Channel<T> {
 
         // Finally, deallocate the buffer, but don't run any destructors.
         unsafe {
-            Vec::from_raw_parts(self.buffer, 0, self.cap);
+            // Create a slice from the buffer to make
+            // a fat pointer. Then, use Box::from_raw
+            // to deallocate it.
+            let ptr = std::slice::from_raw_parts_mut(self.buffer, self.cap) as *mut [Slot<T>];
+            Box::from_raw(ptr);
         }
     }
 }

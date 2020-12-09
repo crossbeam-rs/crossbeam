@@ -1,3 +1,12 @@
+# Version 0.9.1
+
+- Bump `memoffset` dependency to version 0.6. (#592)
+
+# Version 0.9.0
+
+- Bump the minimum supported Rust version to 1.36.
+- Support dynamically sized types.
+
 # Version 0.8.2
 
 - Fix bug in release (yanking 0.8.1)
