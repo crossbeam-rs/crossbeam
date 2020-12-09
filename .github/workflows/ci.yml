@@ -49,6 +49,30 @@ jobs:
       - name: Test
         run: ./ci/${{ matrix.crates }}.sh
 
+  # Test crates on non x86_64 architectures.
+  cross:
+    strategy:
+      matrix:
+        crates:
+          - crossbeam
+          - crossbeam-channel
+          - crossbeam-deque
+          - crossbeam-epoch
+          - crossbeam-queue
+          - crossbeam-skiplist
+          - crossbeam-utils
+        target:
+          - i686-unknown-linux-gnu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: Install cross
+        run: cargo install cross
+      - name: Test
+        run: cross test --package ${{ matrix.crates }} --target ${{ matrix.target }}
+
   # Check all feature combinations works properly.
   features:
     name: features
@@ -127,6 +151,7 @@ jobs:
     if: github.event_name == 'push' && success()
     needs:
       - test
+      - cross
       - features
       - dependencies
       - rustfmt
