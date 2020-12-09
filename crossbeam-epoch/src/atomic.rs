@@ -11,10 +11,8 @@ use crate::alloc::alloc;
 use crate::alloc::boxed::Box;
 use crate::concurrency::sync::atomic::AtomicUsize;
 use crate::guard::Guard;
-use crossbeam_utils::atomic::AtomicConsume;
-
-#[cfg(not(loom_crossbeam))]
 use const_fn::const_fn;
+use crossbeam_utils::atomic::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
 /// appropriate ordering for the failure case.
@@ -329,26 +327,8 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(loom_crossbeam)]
-    pub fn null() -> Atomic<T> {
-        Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a new null atomic pointer.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Atomic;
-    ///
-    /// let a = Atomic::<i32>::null();
-    /// ```
-    ///
-    #[cfg(not(loom_crossbeam))]
-    #[const_fn(feature = "nightly")]
+    #[const_fn(cfg(all(feature = "nightly", not(loom_crossbeam))))]
     pub const fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
