@@ -41,7 +41,10 @@ cfg-if = "1"
 const_fn = "0.4"
 memoffset = "0.6"
 
-[target.'cfg(loom)'.dependencies]
+# An internal configuration option used when running loom.
+# This is not part of the public API and crossbeam may make breaking changes
+# to the behavior of this configuration flag at any time.
+[target.'cfg(loom_crossbeam)'.dependencies]
 loom = "0.4"
 
 [dependencies.crossbeam-utils]

@@ -1,4 +1,4 @@
-#![cfg(loom)]
+#![cfg(loom_crossbeam)]
 
 use crossbeam_epoch as epoch;
 

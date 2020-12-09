@@ -207,7 +207,7 @@ impl<T> Drop for Queue<T> {
     }
 }
 
-#[cfg(all(test, not(loom)))]
+#[cfg(all(test, not(loom_crossbeam)))]
 mod test {
     use super::*;
     use crate::pin;

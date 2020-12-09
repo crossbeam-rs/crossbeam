@@ -622,7 +622,7 @@ impl IsElement<Local> for Local {
     }
 }
 
-#[cfg(all(test, not(loom)))]
+#[cfg(all(test, not(loom_crossbeam)))]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 

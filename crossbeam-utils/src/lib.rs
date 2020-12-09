@@ -37,7 +37,7 @@
 // matches! requires Rust 1.42
 #![allow(clippy::match_like_matches_macro)]
 
-#[cfg(loom)]
+#[cfg(loom_crossbeam)]
 #[allow(unused_imports)]
 pub(crate) mod concurrency {
     pub(crate) mod sync {
@@ -57,7 +57,7 @@ pub(crate) mod concurrency {
         pub(crate) use loom::sync::{Arc, Condvar, Mutex};
     }
 }
-#[cfg(not(loom))]
+#[cfg(not(loom_crossbeam))]
 #[allow(unused_imports)]
 pub(crate) mod concurrency {
     pub(crate) mod sync {
@@ -103,7 +103,7 @@ cfg_if! {
     if #[cfg(feature = "std")] {
         pub mod sync;
 
-        #[cfg(not(loom))]
+        #[cfg(not(loom_crossbeam))]
         pub mod thread;
     }
 }

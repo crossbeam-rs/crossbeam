@@ -13,7 +13,7 @@ use crate::concurrency::sync::atomic::AtomicUsize;
 use crate::guard::Guard;
 use crossbeam_utils::atomic::AtomicConsume;
 
-#[cfg(not(loom))]
+#[cfg(not(loom_crossbeam))]
 use const_fn::const_fn;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
@@ -329,7 +329,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(loom)]
+    #[cfg(loom_crossbeam)]
     pub fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
@@ -347,7 +347,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::<i32>::null();
     /// ```
     ///
-    #[cfg(not(loom))]
+    #[cfg(not(loom_crossbeam))]
     #[const_fn(feature = "nightly")]
     pub const fn null() -> Atomic<T> {
         Self {
@@ -659,11 +659,11 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
-        #[cfg(loom)]
+        #[cfg(loom_crossbeam)]
         {
             Owned::from_usize(self.data.unsync_load())
         }
-        #[cfg(not(loom))]
+        #[cfg(not(loom_crossbeam))]
         {
             Owned::from_usize(self.data.into_inner())
         }
@@ -1386,7 +1386,7 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
     }
 }
 
-#[cfg(all(test, not(loom)))]
+#[cfg(all(test, not(loom_crossbeam)))]
 mod tests {
     use super::Shared;
 

@@ -33,7 +33,10 @@ nightly = []
 cfg-if = "1"
 lazy_static = { version = "1.4.0", optional = true }
 
-[target.'cfg(loom)'.dependencies]
+# An internal configuration option used when running loom.
+# This is not part of the public API and crossbeam may make breaking changes
+# to the behavior of this configuration flag at any time.
+[target.'cfg(loom_crossbeam)'.dependencies]
 loom = "0.4"
 
 [build-dependencies]

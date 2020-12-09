@@ -53,7 +53,7 @@ macro_rules! impl_atomic {
             type Val = $val;
             impl_consume!();
         }
-        #[cfg(loom)]
+        #[cfg(loom_crossbeam)]
         impl AtomicConsume for ::loom::sync::atomic::$atomic {
             type Val = $val;
             impl_consume!();
@@ -63,7 +63,7 @@ macro_rules! impl_atomic {
 
 impl_atomic!(AtomicBool, bool);
 impl_atomic!(AtomicUsize, usize);
-#[cfg(not(loom))]
+#[cfg(not(loom_crossbeam))]
 impl_atomic!(AtomicIsize, isize);
 #[cfg(has_atomic_u8)]
 impl_atomic!(AtomicU8, u8);
@@ -87,7 +87,7 @@ impl<T> AtomicConsume for ::core::sync::atomic::AtomicPtr<T> {
     impl_consume!();
 }
 
-#[cfg(loom)]
+#[cfg(loom_crossbeam)]
 impl<T> AtomicConsume for ::loom::sync::atomic::AtomicPtr<T> {
     type Val = *mut T;
     impl_consume!();

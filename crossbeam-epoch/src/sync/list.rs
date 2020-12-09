@@ -295,7 +295,7 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
     }
 }
 
-#[cfg(all(test, not(loom)))]
+#[cfg(all(test, not(loom_crossbeam)))]
 mod tests {
     use super::*;
     use crate::{Collector, Owned};

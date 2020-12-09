@@ -1,9 +1,9 @@
 //! Atomic types.
 
-#[cfg(not(loom))]
+#[cfg(not(loom_crossbeam))]
 use cfg_if::cfg_if;
 
-#[cfg(not(loom))]
+#[cfg(not(loom_crossbeam))]
 cfg_if! {
     // Use "wide" sequence lock if the pointer width <= 32 for preventing its counter against wrap
     // around.

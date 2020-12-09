@@ -64,7 +64,7 @@
 
 use cfg_if::cfg_if;
 
-#[cfg(loom)]
+#[cfg(loom_crossbeam)]
 #[allow(unused_imports, dead_code)]
 pub(crate) mod concurrency {
     pub(crate) mod cell {
@@ -99,7 +99,7 @@ pub(crate) mod concurrency {
     pub(crate) use loom::lazy_static;
     pub(crate) use loom::thread_local;
 }
-#[cfg(not(loom))]
+#[cfg(not(loom_crossbeam))]
 #[allow(unused_imports, dead_code)]
 pub(crate) mod concurrency {
     #[cfg(any(feature = "alloc", feature = "std"))]
