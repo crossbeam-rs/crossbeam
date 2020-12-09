@@ -35,4 +35,4 @@ optional = true
 [dev-dependencies]
 num_cpus = "1.13.0"
 rand = "0.7.3"
-signal-hook = "0.1.15"
+signal-hook = "0.2"
