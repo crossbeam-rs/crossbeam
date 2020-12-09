@@ -108,6 +108,11 @@ pub(crate) mod concurrency {
         #[repr(transparent)]
         pub(crate) struct UnsafeCell<T>(::core::cell::UnsafeCell<T>);
 
+        // loom's UnsafeCell has a slightly different API than the standard library UnsafeCell.
+        // Since we want the rest of the code to be agnostic to whether it's running under loom or
+        // not, we write this small wrapper that provides the loom-supported API for the standard
+        // library UnsafeCell. This is also what the loom documentation recommends:
+        // https://github.com/tokio-rs/loom#handling-loom-api-differences
         impl<T> UnsafeCell<T> {
             #[inline]
             pub(crate) fn new(data: T) -> UnsafeCell<T> {

@@ -661,6 +661,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     pub unsafe fn into_owned(self) -> Owned<T> {
         #[cfg(loom_crossbeam)]
         {
+            // https://github.com/tokio-rs/loom/issues/117
             Owned::from_usize(self.data.unsync_load())
         }
         #[cfg(not(loom_crossbeam))]
