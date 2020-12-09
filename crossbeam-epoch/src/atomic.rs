@@ -641,6 +641,8 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     pub unsafe fn into_owned(self) -> Owned<T> {
         #[cfg(loom_crossbeam)]
         {
+            // loom does not yet support into_inner, so we use unsync_load for now,
+            // which should have the same synchronization properties:
             // https://github.com/tokio-rs/loom/issues/117
             Owned::from_usize(self.data.unsync_load())
         }
