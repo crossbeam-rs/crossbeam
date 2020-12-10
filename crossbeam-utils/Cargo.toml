@@ -33,9 +33,10 @@ nightly = []
 cfg-if = "1"
 lazy_static = { version = "1.4.0", optional = true }
 
-# An internal configuration option used when running loom.
-# This is not part of the public API and crossbeam may make breaking changes
-# to the behavior of this configuration flag at any time.
+# Enable the use of loom for concurrency testing.
+#
+# This configuration option is outside of the normal semver guarantees: minor
+# versions of crossbeam may make breaking changes to it at any time.
 [target.'cfg(loom_crossbeam)'.dependencies]
 loom = "0.4"
 
