@@ -14,7 +14,7 @@
 /// ```
 use core::fmt;
 
-use crate::concurrency::sync::Arc;
+use crate::primitive::sync::Arc;
 use crate::guard::Guard;
 use crate::internal::{Global, Local};
 

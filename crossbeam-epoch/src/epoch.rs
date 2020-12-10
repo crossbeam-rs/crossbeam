@@ -7,7 +7,7 @@
 //! If an object became garbage in some epoch, then we can be sure that after two advancements no
 //! participant will hold a reference to it. That is the crux of safe memory reclamation.
 
-use crate::concurrency::sync::atomic::AtomicUsize;
+use crate::primitive::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
 /// An epoch that can be marked as pinned or unpinned.

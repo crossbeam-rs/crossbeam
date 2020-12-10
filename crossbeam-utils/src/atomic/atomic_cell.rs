@@ -2,7 +2,7 @@
 #![allow(clippy::unit_arg)]
 #![allow(clippy::let_unit_value)]
 
-use crate::concurrency::sync::atomic::{self, AtomicBool};
+use crate::primitive::sync::atomic::{self, AtomicBool};
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::mem;

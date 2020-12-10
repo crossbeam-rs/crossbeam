@@ -1,7 +1,7 @@
 // Necessary for using `Mutex<usize>` for conditional variables
 #![allow(clippy::mutex_atomic)]
 
-use crate::concurrency::sync::{Arc, Condvar, Mutex};
+use crate::primitive::sync::{Arc, Condvar, Mutex};
 use std::fmt;
 
 /// Enables threads to synchronize the beginning or end of some computation.

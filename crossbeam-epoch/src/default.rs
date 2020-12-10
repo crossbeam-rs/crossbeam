@@ -5,7 +5,7 @@
 //! destructed on thread exit, which in turn unregisters the thread.
 
 use crate::collector::{Collector, LocalHandle};
-use crate::concurrency::{lazy_static, thread_local};
+use crate::primitive::{lazy_static, thread_local};
 use crate::guard::Guard;
 
 lazy_static! {

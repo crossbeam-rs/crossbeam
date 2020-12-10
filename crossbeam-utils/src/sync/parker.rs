@@ -1,5 +1,5 @@
-use crate::concurrency::sync::atomic::AtomicUsize;
-use crate::concurrency::sync::{Arc, Condvar, Mutex};
+use crate::primitive::sync::atomic::AtomicUsize;
+use crate::primitive::sync::{Arc, Condvar, Mutex};
 use core::sync::atomic::Ordering::SeqCst;
 use std::fmt;
 use std::marker::PhantomData;

@@ -35,8 +35,8 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use crate::concurrency::cell::UnsafeCell;
-use crate::concurrency::sync::atomic;
+use crate::primitive::cell::UnsafeCell;
+use crate::primitive::sync::atomic;
 use core::cell::Cell;
 use core::mem::{self, ManuallyDrop};
 use core::num::Wrapping;

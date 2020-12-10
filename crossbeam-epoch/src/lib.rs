@@ -66,7 +66,7 @@ use cfg_if::cfg_if;
 
 #[cfg(loom_crossbeam)]
 #[allow(unused_imports, dead_code)]
-pub(crate) mod concurrency {
+pub(crate) mod primitive {
     pub(crate) mod cell {
         pub(crate) use loom::cell::UnsafeCell;
     }
@@ -101,7 +101,7 @@ pub(crate) mod concurrency {
 }
 #[cfg(not(loom_crossbeam))]
 #[allow(unused_imports, dead_code)]
-pub(crate) mod concurrency {
+pub(crate) mod primitive {
     #[cfg(any(feature = "alloc", feature = "std"))]
     pub(crate) mod cell {
         #[derive(Debug)]

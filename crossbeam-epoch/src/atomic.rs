@@ -9,7 +9,7 @@ use core::sync::atomic::Ordering;
 
 use crate::alloc::alloc;
 use crate::alloc::boxed::Box;
-use crate::concurrency::sync::atomic::AtomicUsize;
+use crate::primitive::sync::atomic::AtomicUsize;
 use crate::guard::Guard;
 use crossbeam_utils::atomic::AtomicConsume;
 

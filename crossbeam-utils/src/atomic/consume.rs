@@ -1,5 +1,5 @@
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use crate::concurrency::sync::atomic::compiler_fence;
+use crate::primitive::sync::atomic::compiler_fence;
 use core::sync::atomic::Ordering;
 
 /// Trait which allows reading from primitive atomic types with "consume" ordering.

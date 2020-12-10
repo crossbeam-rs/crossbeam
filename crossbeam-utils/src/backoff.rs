@@ -1,4 +1,4 @@
-use crate::concurrency::sync::atomic;
+use crate::primitive::sync::atomic;
 use core::cell::Cell;
 use core::fmt;
 
