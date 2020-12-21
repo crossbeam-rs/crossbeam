@@ -428,6 +428,8 @@ mod nonblock {
             ticker.recv().unwrap();
             ticker.recv().unwrap();
             thread::yield_now();
+            thread::yield_now();
+            thread::yield_now();
         };
 
         let sync = make::<bool>(0);
