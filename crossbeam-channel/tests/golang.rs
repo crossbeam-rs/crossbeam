@@ -428,8 +428,6 @@ mod nonblock {
             ticker.recv().unwrap();
             ticker.recv().unwrap();
             thread::yield_now();
-            thread::yield_now();
-            thread::yield_now();
         };
 
         let sync = make::<bool>(0);
@@ -1507,5 +1505,59 @@ mod chan {
 
 // https://github.com/golang/go/blob/master/test/ken/chan1.go
 mod chan1 {
-    // TODO
+    use super::*;
+
+    // sent messages
+    const N: usize = 1000;
+    // receiving "goroutines"
+    const M: usize = 10;
+    // channel buffering
+    const W: usize = 2;
+
+    fn r(c: Chan<usize>, m: usize, h: Arc<Mutex<[usize; N]>>) {
+        loop {
+            select! {
+                recv(c.rx()) -> rr => {
+                    if let Ok(r) = rr {
+                        let mut data = h.lock().unwrap();
+                        if data[r] != 1 {
+                            println!("r\nm={}\nr={}\nh={}\n", m, r, data[r]);
+                            panic!("fail")
+                        }
+                        data[r] = 2;
+                        drop(data);
+                    }
+                }
+            }
+        }
+    }
+
+    fn s(c: Chan<usize>, h: Arc<Mutex<[usize; N]>>) {
+        for n in 0..N {
+            let r = n;
+            let mut data = h.lock().unwrap();
+            if data[r] != 0 {
+                println!("s");
+                panic!("fail");
+            }
+            data[r] = 1;
+            drop(data);
+            c.send(r);
+        }
+    }
+
+    #[test]
+    fn main() {
+        let h = Arc::new(Mutex::new([0usize; N]));
+        let c = make::<usize>(W);
+        for m in 0..M {
+            go!(c, h, {
+                r(c, m, h);
+            });
+            thread::yield_now();
+        }
+        thread::yield_now();
+        thread::yield_now();
+        s(c, h);
+    }
 }
