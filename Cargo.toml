@@ -74,7 +74,7 @@ path = "./crossbeam-utils"
 default-features = false
 
 [dev-dependencies]
-rand = "0.7.3"
+rand = "0.8"
 
 [workspace]
 members = [

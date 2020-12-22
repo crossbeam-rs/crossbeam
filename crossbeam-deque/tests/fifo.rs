@@ -177,7 +177,7 @@ fn stress() {
         let mut rng = rand::thread_rng();
         let mut expected = 0;
         while expected < COUNT {
-            if rng.gen_range(0, 3) == 0 {
+            if rng.gen_range(0..3) == 0 {
                 while let Some(_) = w.pop() {
                     hits.fetch_add(1, SeqCst);
                 }
@@ -237,8 +237,8 @@ fn no_starvation() {
         let mut rng = rand::thread_rng();
         let mut my_hits = 0;
         loop {
-            for i in 0..rng.gen_range(0, COUNT) {
-                if rng.gen_range(0, 3) == 0 && my_hits == 0 {
+            for i in 0..rng.gen_range(0..COUNT) {
+                if rng.gen_range(0..3) == 0 && my_hits == 0 {
                     while let Some(_) = w.pop() {
                         my_hits += 1;
                     }

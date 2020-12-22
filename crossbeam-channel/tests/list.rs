@@ -387,8 +387,8 @@ fn drops() {
     let mut rng = thread_rng();
 
     for _ in 0..100 {
-        let steps = rng.gen_range(0, 10_000);
-        let additional = rng.gen_range(0, 1000);
+        let steps = rng.gen_range(0..10_000);
+        let additional = rng.gen_range(0..1000);
 
         DROPS.store(0, Ordering::SeqCst);
         let (s, r) = unbounded::<DropCounter>();
