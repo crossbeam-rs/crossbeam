@@ -196,8 +196,8 @@ fn drops() {
     let mut rng = thread_rng();
 
     for _ in 0..RUNS {
-        let steps = rng.gen_range(0, 10_000);
-        let additional = rng.gen_range(0, 50);
+        let steps = rng.gen_range(0..10_000);
+        let additional = rng.gen_range(0..50);
 
         DROPS.store(0, Ordering::SeqCst);
         let q = ArrayQueue::new(50);

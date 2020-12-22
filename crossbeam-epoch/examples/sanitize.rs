@@ -14,7 +14,7 @@ fn worker(a: Arc<Atomic<AtomicUsize>>, handle: LocalHandle) -> usize {
     if rng.gen() {
         thread::sleep(Duration::from_millis(1));
     }
-    let timeout = Duration::from_millis(rng.gen_range(0, 10));
+    let timeout = Duration::from_millis(rng.gen_range(0..10));
     let now = Instant::now();
 
     while now.elapsed() < timeout {
