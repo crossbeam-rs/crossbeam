@@ -27,7 +27,7 @@ const YIELD_LIMIT: u32 = 10;
 ///     let backoff = Backoff::new();
 ///     loop {
 ///         let val = a.load(SeqCst);
-///         if a.compare_and_swap(val, val.wrapping_mul(b), SeqCst) == val {
+///         if a.compare_exchange(val, val.wrapping_mul(b), SeqCst, SeqCst).is_ok() {
 ///             return val;
 ///         }
 ///         backoff.spin();
@@ -131,7 +131,7 @@ impl Backoff {
     ///     let backoff = Backoff::new();
     ///     loop {
     ///         let val = a.load(SeqCst);
-    ///         if a.compare_and_swap(val, val.wrapping_mul(b), SeqCst) == val {
+    ///         if a.compare_exchange(val, val.wrapping_mul(b), SeqCst, SeqCst).is_ok() {
     ///             return val;
     ///         }
     ///         backoff.spin();
