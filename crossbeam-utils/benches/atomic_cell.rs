@@ -28,11 +28,11 @@ fn fetch_add_u8(b: &mut test::Bencher) {
 }
 
 #[bench]
-fn compare_and_swap_u8(b: &mut test::Bencher) {
+fn compare_exchange_u8(b: &mut test::Bencher) {
     let a = AtomicCell::new(0u8);
     let mut i = 0;
     b.iter(|| {
-        a.compare_and_swap(i, i.wrapping_add(1));
+        let _ = a.compare_exchange(i, i.wrapping_add(1));
         i = i.wrapping_add(1);
     });
 }
@@ -102,11 +102,11 @@ fn fetch_add_usize(b: &mut test::Bencher) {
 }
 
 #[bench]
-fn compare_and_swap_usize(b: &mut test::Bencher) {
+fn compare_exchange_usize(b: &mut test::Bencher) {
     let a = AtomicCell::new(0usize);
     let mut i = 0;
     b.iter(|| {
-        a.compare_and_swap(i, i.wrapping_add(1));
+        let _ = a.compare_exchange(i, i.wrapping_add(1));
         i = i.wrapping_add(1);
     });
 }
