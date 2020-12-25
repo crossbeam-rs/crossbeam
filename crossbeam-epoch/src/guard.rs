@@ -3,6 +3,7 @@ use core::mem;
 
 use scopeguard::defer;
 
+use crate::arc::UnpinObserver;
 use crate::atomic::Shared;
 use crate::collector::Collector;
 use crate::deferred::Deferred;
@@ -290,6 +291,7 @@ impl Guard {
     /// ```
     pub fn flush(&self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
+            local.will_unpin(self);
             local.flush(self);
         }
     }
@@ -323,6 +325,7 @@ impl Guard {
     /// ```
     pub fn repin(&mut self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
+            local.will_unpin(self);
             local.repin();
         }
     }
@@ -365,6 +368,7 @@ impl Guard {
             // We need to acquire a handle here to ensure the Local doesn't
             // disappear from under us.
             local.acquire_handle();
+            local.will_unpin(self);
             local.unpin();
         }
 
@@ -404,6 +408,7 @@ impl Drop for Guard {
     #[inline]
     fn drop(&mut self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
+            local.will_unpin(self);
             local.unpin();
         }
     }

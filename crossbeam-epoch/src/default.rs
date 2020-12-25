@@ -15,7 +15,7 @@ lazy_static! {
 
 thread_local! {
     /// The per-thread participant for the default garbage collector.
-    static HANDLE: LocalHandle = COLLECTOR.register();
+    pub(crate) static HANDLE: LocalHandle = COLLECTOR.register();
 }
 
 /// Pins the current thread.
@@ -36,7 +36,7 @@ pub fn default_collector() -> &'static Collector {
 }
 
 #[inline]
-fn with_handle<F, R>(mut f: F) -> R
+pub(crate) fn with_handle<F, R>(mut f: F) -> R
 where
     F: FnMut(&LocalHandle) -> R,
 {
