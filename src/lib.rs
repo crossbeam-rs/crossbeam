@@ -95,7 +95,10 @@ cfg_if! {
         pub use crossbeam_channel::select;
 
         pub use crossbeam_utils::sync;
+
+        #[cfg(not(loom_crossbeam))]
         pub use crossbeam_utils::thread;
+        #[cfg(not(loom_crossbeam))]
         pub use crossbeam_utils::thread::scope;
     }
 }

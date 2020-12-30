@@ -5,10 +5,11 @@ use core::marker::PhantomData;
 use core::mem::{self, MaybeUninit};
 use core::ops::{Deref, DerefMut};
 use core::slice;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::Ordering;
 
 use crate::alloc::alloc;
 use crate::alloc::boxed::Box;
+use crate::primitive::sync::atomic::AtomicUsize;
 use crate::guard::Guard;
 use crossbeam_utils::atomic::AtomicConsume;
 
@@ -326,7 +327,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::<i32>::null();
     /// ```
     ///
-    #[cfg_attr(feature = "nightly", const_fn::const_fn)]
+    #[cfg_attr(all(feature = "nightly", not(loom_crossbeam)), const_fn::const_fn)]
     pub fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
@@ -637,7 +638,17 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
-        Owned::from_usize(self.data.into_inner())
+        #[cfg(loom_crossbeam)]
+        {
+            // FIXME: loom does not yet support into_inner, so we use unsync_load for now,
+            // which should have the same synchronization properties:
+            // https://github.com/tokio-rs/loom/issues/117
+            Owned::from_usize(self.data.unsync_load())
+        }
+        #[cfg(not(loom_crossbeam))]
+        {
+            Owned::from_usize(self.data.into_inner())
+        }
     }
 }
 
@@ -1357,7 +1368,7 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom_crossbeam)))]
 mod tests {
     use super::Shared;
 
