@@ -472,7 +472,7 @@ impl Local {
                 // a `SeqCst` fence.
                 //
                 // 1. `atomic::fence(SeqCst)`, which compiles into a `mfence` instruction.
-                // 2. `_.compare_and_swap(_, _, SeqCst)`, which compiles into a `lock cmpxchg`
+                // 2. `_.compare_exchange(_, _, SeqCst, SeqCst)`, which compiles into a `lock cmpxchg`
                 //    instruction.
                 //
                 // Both instructions have the effect of a full barrier, but benchmarks have shown
@@ -482,10 +482,13 @@ impl Local {
                 // works fine.  Using inline assembly would be a viable (and correct) alternative,
                 // but alas, that is not possible on stable Rust.
                 let current = Epoch::starting();
-                let previous = self
-                    .epoch
-                    .compare_and_swap(current, new_epoch, Ordering::SeqCst);
-                debug_assert_eq!(current, previous, "participant was expected to be unpinned");
+                let res = self.epoch.compare_exchange(
+                    current,
+                    new_epoch,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                );
+                debug_assert!(res.is_ok(), "participant was expected to be unpinned");
                 // We add a compiler fence to make it less likely for LLVM to do something wrong
                 // here.  Formally, this is not enough to get rid of data races; practically,
                 // it should go a long way.

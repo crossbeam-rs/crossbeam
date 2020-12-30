@@ -217,6 +217,7 @@ impl<T: Copy + Eq> AtomicCell<T> {
     /// # Examples
     ///
     /// ```
+    /// # #![allow(deprecated)]
     /// use crossbeam_utils::atomic::AtomicCell;
     ///
     /// let a = AtomicCell::new(1);
@@ -227,6 +228,7 @@ impl<T: Copy + Eq> AtomicCell<T> {
     /// assert_eq!(a.compare_and_swap(1, 2), 1);
     /// assert_eq!(a.load(), 2);
     /// ```
+    #[deprecated(note = "Use `compare_exchange` instead")]
     pub fn compare_and_swap(&self, current: T, new: T) -> T {
         match self.compare_exchange(current, new) {
             Ok(v) => v,

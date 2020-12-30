@@ -103,13 +103,31 @@ impl AtomicEpoch {
 
     /// Stores a value into the atomic epoch if the current value is the same as `current`.
     ///
-    /// The return value is always the previous value. If it is equal to `current`, then the value
-    /// is updated.
+    /// The return value is a result indicating whether the new value was written and containing
+    /// the previous value. On success this value is guaranteed to be equal to `current`.
     ///
-    /// The `Ordering` argument describes the memory ordering of this operation.
+    /// `compare_exchange` takes two `Ordering` arguments to describe the memory
+    /// ordering of this operation. `success` describes the required ordering for the
+    /// read-modify-write operation that takes place if the comparison with `current` succeeds.
+    /// `failure` describes the required ordering for the load operation that takes place when
+    /// the comparison fails. Using `Acquire` as success ordering makes the store part
+    /// of this operation `Relaxed`, and using `Release` makes the successful load
+    /// `Relaxed`. The failure ordering can only be `SeqCst`, `Acquire` or `Relaxed`
+    /// and must be equivalent to or weaker than the success ordering.
     #[inline]
-    pub fn compare_and_swap(&self, current: Epoch, new: Epoch, ord: Ordering) -> Epoch {
-        let data = self.data.compare_and_swap(current.data, new.data, ord);
-        Epoch { data }
+    pub fn compare_exchange(
+        &self,
+        current: Epoch,
+        new: Epoch,
+        success: Ordering,
+        failure: Ordering,
+    ) -> Result<Epoch, Epoch> {
+        match self
+            .data
+            .compare_exchange(current.data, new.data, success, failure)
+        {
+            Ok(data) => Ok(Epoch { data }),
+            Err(data) => Err(Epoch { data }),
+        }
     }
 }
