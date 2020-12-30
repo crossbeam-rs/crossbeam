@@ -39,7 +39,7 @@
 
 #[cfg(loom_crossbeam)]
 #[allow(unused_imports)]
-pub(crate) mod primitive {
+mod primitive {
     pub(crate) mod sync {
         pub(crate) mod atomic {
             pub(crate) use loom::sync::atomic::spin_loop_hint;
@@ -59,7 +59,7 @@ pub(crate) mod primitive {
 }
 #[cfg(not(loom_crossbeam))]
 #[allow(unused_imports)]
-pub(crate) mod primitive {
+mod primitive {
     pub(crate) mod sync {
         pub(crate) mod atomic {
             pub(crate) use core::sync::atomic::compiler_fence;
