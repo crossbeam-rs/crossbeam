@@ -1527,7 +1527,6 @@ mod chan1 {
                             panic!("fail")
                         }
                         data[r] = 2;
-                        drop(data);
                     }
                 }
             }
@@ -1543,6 +1542,7 @@ mod chan1 {
                 panic!("fail");
             }
             data[r] = 1;
+            // https://github.com/crossbeam-rs/crossbeam/pull/615#discussion_r550281094
             drop(data);
             c.send(r);
         }
