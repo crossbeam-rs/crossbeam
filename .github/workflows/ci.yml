@@ -105,7 +105,7 @@ jobs:
       - name: clippy
         run: ./ci/clippy.sh
 
-  # These jobs don't actually test anything, but they're used to tell bors the
+  # This job doesn't actually test anything, but they're used to tell bors the
   # build completed, as there is no practical way to detect when a workflow is
   # successful listening to webhooks only.
   #
@@ -124,16 +124,3 @@ jobs:
     steps:
       - name: Mark the job as a success
         run: exit 0
-  ci-failure:
-    name: ci
-    if: github.event_name == 'push' && !success()
-    needs:
-      - test
-      - features
-      - dependencies
-      - rustfmt
-      - clippy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mark the job as a failure
-        run: exit 1
