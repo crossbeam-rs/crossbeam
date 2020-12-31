@@ -1520,14 +1520,13 @@ mod chan1 {
         loop {
             select! {
                 recv(c.rx()) -> rr => {
-                    if let Ok(r) = rr {
-                        let mut data = h.lock().unwrap();
-                        if data[r] != 1 {
-                            println!("r\nm={}\nr={}\nh={}\n", m, r, data[r]);
-                            panic!("fail")
-                        }
-                        data[r] = 2;
+                    let r = rr.unwrap();
+                    let mut data = h.lock().unwrap();
+                    if data[r] != 1 {
+                        println!("r\nm={}\nr={}\nh={}\n", m, r, data[r]);
+                        panic!("fail")
                     }
+                    data[r] = 2;
                 }
             }
         }
