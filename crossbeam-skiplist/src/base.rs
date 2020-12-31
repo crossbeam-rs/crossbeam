@@ -123,7 +123,7 @@ impl<K, V> Node<K, V> {
 
     /// Returns the layout of a node with the given `height`.
     unsafe fn get_layout(height: usize) -> Layout {
-        assert!(1 <= height && height <= MAX_HEIGHT);
+        assert!((1..=MAX_HEIGHT).contains(&height));
 
         let size_self = mem::size_of::<Self>();
         let align_self = mem::align_of::<Self>();
