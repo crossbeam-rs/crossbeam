@@ -1507,5 +1507,58 @@ mod chan {
 
 // https://github.com/golang/go/blob/master/test/ken/chan1.go
 mod chan1 {
-    // TODO
+    use super::*;
+
+    // sent messages
+    const N: usize = 1000;
+    // receiving "goroutines"
+    const M: usize = 10;
+    // channel buffering
+    const W: usize = 2;
+
+    fn r(c: Chan<usize>, m: usize, h: Arc<Mutex<[usize; N]>>) {
+        loop {
+            select! {
+                recv(c.rx()) -> rr => {
+                    let r = rr.unwrap();
+                    let mut data = h.lock().unwrap();
+                    if data[r] != 1 {
+                        println!("r\nm={}\nr={}\nh={}\n", m, r, data[r]);
+                        panic!("fail")
+                    }
+                    data[r] = 2;
+                }
+            }
+        }
+    }
+
+    fn s(c: Chan<usize>, h: Arc<Mutex<[usize; N]>>) {
+        for n in 0..N {
+            let r = n;
+            let mut data = h.lock().unwrap();
+            if data[r] != 0 {
+                println!("s");
+                panic!("fail");
+            }
+            data[r] = 1;
+            // https://github.com/crossbeam-rs/crossbeam/pull/615#discussion_r550281094
+            drop(data);
+            c.send(r);
+        }
+    }
+
+    #[test]
+    fn main() {
+        let h = Arc::new(Mutex::new([0usize; N]));
+        let c = make::<usize>(W);
+        for m in 0..M {
+            go!(c, h, {
+                r(c, m, h);
+            });
+            thread::yield_now();
+        }
+        thread::yield_now();
+        thread::yield_now();
+        s(c, h);
+    }
 }
