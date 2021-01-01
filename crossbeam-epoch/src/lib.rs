@@ -161,7 +161,10 @@ cfg_if! {
         mod internal;
         mod sync;
 
-        pub use self::atomic::{Pointable, Atomic, CompareAndSetError, CompareAndSetOrdering, Owned, Pointer, Shared};
+        pub use self::atomic::{
+            Pointable, Atomic, CompareExchangeError, CompareAndSetError, CompareAndSetOrdering,
+            Owned, Pointer, Shared,
+        };
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard};
     }

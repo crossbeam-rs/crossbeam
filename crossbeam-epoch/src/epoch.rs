@@ -106,7 +106,7 @@ impl AtomicEpoch {
     /// The return value is a result indicating whether the new value was written and containing
     /// the previous value. On success this value is guaranteed to be equal to `current`.
     ///
-    /// `compare_exchange` takes two `Ordering` arguments to describe the memory
+    /// This method takes two `Ordering` arguments to describe the memory
     /// ordering of this operation. `success` describes the required ordering for the
     /// read-modify-write operation that takes place if the comparison with `current` succeeds.
     /// `failure` describes the required ordering for the load operation that takes place when
