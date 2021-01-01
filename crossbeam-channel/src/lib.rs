@@ -294,7 +294,7 @@
 //!
 //! * [`after`] creates a channel that delivers a single message after a certain duration of time.
 //! * [`tick`] creates a channel that delivers messages periodically.
-//! * [`never`] creates a channel that never delivers messages.
+//! * [`never`](never()) creates a channel that never delivers messages.
 //!
 //! These channels are very efficient because messages get lazily generated on receive operations.
 //!
