@@ -14,7 +14,7 @@ homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-queu
 documentation = "https://docs.rs/crossbeam-queue"
 description = "Concurrent queues"
 keywords = ["queue", "mpmc", "lock-free", "producer", "consumer"]
-categories = ["concurrency", "data-structures"]
+categories = ["concurrency", "data-structures", "no-std"]
 
 [features]
 default = ["std"]
