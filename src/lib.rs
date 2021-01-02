@@ -64,34 +64,21 @@ use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(feature = "alloc")] {
-        mod _epoch {
-            pub use crossbeam_epoch;
-        }
         #[doc(inline)]
-        pub use crate::_epoch::crossbeam_epoch as epoch;
+        pub use crossbeam_epoch as epoch;
 
-        mod _queue {
-            pub use crossbeam_queue;
-        }
         #[doc(inline)]
-        pub use crate::_queue::crossbeam_queue as queue;
+        pub use crossbeam_queue as queue;
     }
 }
 
 cfg_if! {
     if #[cfg(feature = "std")] {
-        mod _deque {
-            pub use crossbeam_deque;
-        }
         #[doc(inline)]
-        pub use crate::_deque::crossbeam_deque as deque;
+        pub use crossbeam_deque as deque;
 
-        mod _channel {
-            pub use crossbeam_channel;
-        }
         #[doc(inline)]
-        pub use crate::_channel::crossbeam_channel as channel;
-
+        pub use crossbeam_channel as channel;
         pub use crossbeam_channel::select;
 
         pub use crossbeam_utils::sync;
