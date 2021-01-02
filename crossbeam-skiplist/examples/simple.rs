@@ -7,7 +7,7 @@ fn main() {
     //
     // let now = Instant::now();
     //
-    // let mut num = 0 as u64;
+    // let mut num = 0u64;
     // for _ in 0..1_000_000 {
     //     num = num.wrapping_mul(17).wrapping_add(255);
     //     map.insert(num, !num);
