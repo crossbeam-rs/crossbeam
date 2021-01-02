@@ -22,8 +22,8 @@ This crate provides a set of tools for concurrent programming:
 #### Data structures
 
 * [`deque`], work-stealing deques for building task schedulers.
-* [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
-* [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
+* [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.<sup>(alloc)</sup>
+* [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.<sup>(alloc)</sup>
 
 #### Memory management
 
@@ -44,7 +44,7 @@ This crate provides a set of tools for concurrent programming:
 
 *Features marked with <sup>(no_std)</sup> can be used in `no_std` environments.*<br/>
 *Features marked with <sup>(alloc)</sup> can be used in `no_std` environments, but only if `alloc`
-and `nightly` are enabled.*
+feature is enabled.*
 
 [`AtomicCell`]: https://docs.rs/crossbeam/*/crossbeam/atomic/struct.AtomicCell.html
 [`AtomicConsume`]: https://docs.rs/crossbeam/*/crossbeam/atomic/trait.AtomicConsume.html
