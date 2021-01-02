@@ -606,8 +606,7 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(500));
                 }
 
-                let done = false;
-                while !done {
+                loop {
                     let mut sel = Select::new();
                     sel.send(&s);
                     match sel.ready_timeout(ms(100)) {
@@ -628,15 +627,14 @@ fn stress_timeout_two_threads() {
                     thread::sleep(ms(500));
                 }
 
-                let mut done = false;
-                while !done {
+                loop {
                     let mut sel = Select::new();
                     sel.recv(&r);
                     match sel.ready_timeout(ms(100)) {
                         Err(_) => {}
                         Ok(0) => {
                             assert_eq!(r.try_recv(), Ok(i));
-                            done = true;
+                            break;
                         }
                         Ok(_) => panic!(),
                     }

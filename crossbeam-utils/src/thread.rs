@@ -572,7 +572,6 @@ cfg_if! {
             }
         }
 
-        #[cfg(windows)]
         impl<T> IntoRawHandle for ScopedJoinHandle<'_, T> {
             fn into_raw_handle(self) -> RawHandle {
                 self.as_raw_handle()
