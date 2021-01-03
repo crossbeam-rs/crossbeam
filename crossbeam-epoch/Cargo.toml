@@ -36,17 +36,17 @@ nightly = ["crossbeam-utils/nightly", "const_fn"]
 # TODO: docs
 sanitize = [] # Makes it more likely to trigger any potential data races.
 
-[dependencies]
-cfg-if = "1"
-const_fn = { version = "0.4.4", optional = true }
-memoffset = "0.6"
-
 # Enable the use of loom for concurrency testing.
 #
 # This configuration option is outside of the normal semver guarantees: minor
 # versions of crossbeam may make breaking changes to it at any time.
-[target.'cfg(loom_crossbeam)'.dependencies]
-loom = "0.4"
+loom_crossbeam = []
+
+[dependencies]
+cfg-if = "1"
+const_fn = { version = "0.4.4", optional = true }
+loom = { version = "0.4", optional = true }
+memoffset = "0.6"
 
 [dependencies.crossbeam-utils]
 version = "0.8"
