@@ -9,8 +9,8 @@ use core::sync::atomic::Ordering;
 
 use crate::alloc::alloc;
 use crate::alloc::boxed::Box;
-use crate::primitive::sync::atomic::AtomicUsize;
 use crate::guard::Guard;
+use crate::primitive::sync::atomic::AtomicUsize;
 use crossbeam_utils::atomic::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
@@ -27,6 +27,7 @@ fn strongest_failure_ordering(ord: Ordering) -> Ordering {
 
 /// The error returned on failed compare-and-set operation.
 // TODO: remove in the next major version.
+#[deprecated(note = "Use `CompareExchangeError` instead")]
 pub type CompareAndSetError<'g, T, P> = CompareExchangeError<'g, T, P>;
 
 /// The error returned on failed compare-and-swap operation.
@@ -59,6 +60,10 @@ impl<T, P: Pointer<T> + fmt::Debug> fmt::Debug for CompareExchangeError<'_, T, P
 /// 2. A pair of `Ordering`s. The first one is for the success case, while the second one is
 ///    for the failure case.
 // TODO: remove in the next major version.
+#[deprecated(
+    note = "`compare_and_set` and `compare_and_set_weak` that use this trait are deprecated, \
+            use `compare_exchange` or `compare_exchange_weak instead`"
+)]
 pub trait CompareAndSetOrdering {
     /// The ordering of the operation when it succeeds.
     fn success(&self) -> Ordering;
@@ -70,6 +75,7 @@ pub trait CompareAndSetOrdering {
     fn failure(&self) -> Ordering;
 }
 
+#[allow(deprecated)]
 impl CompareAndSetOrdering for Ordering {
     #[inline]
     fn success(&self) -> Ordering {
@@ -82,6 +88,7 @@ impl CompareAndSetOrdering for Ordering {
     }
 }
 
+#[allow(deprecated)]
 impl CompareAndSetOrdering for (Ordering, Ordering) {
     #[inline]
     fn success(&self) -> Ordering {
@@ -590,6 +597,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let res2 = a.compare_and_set(curr, Owned::new(5678), SeqCst, guard);
     /// ```
     // TODO: remove in the next major version.
+    #[allow(deprecated)]
     #[deprecated(note = "Use `compare_exchange` instead")]
     pub fn compare_and_set<'g, O, P>(
         &self,
@@ -666,6 +674,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// }
     /// ```
     // TODO: remove in the next major version.
+    #[allow(deprecated)]
     #[deprecated(note = "Use `compare_exchange_weak` instead")]
     pub fn compare_and_set_weak<'g, O, P>(
         &self,
