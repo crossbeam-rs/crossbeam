@@ -9,8 +9,8 @@ use core::sync::atomic::Ordering;
 
 use crate::alloc::alloc;
 use crate::alloc::boxed::Box;
-use crate::primitive::sync::atomic::AtomicUsize;
 use crate::guard::Guard;
+use crate::primitive::sync::atomic::AtomicUsize;
 use crossbeam_utils::atomic::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
@@ -26,7 +26,12 @@ fn strongest_failure_ordering(ord: Ordering) -> Ordering {
 }
 
 /// The error returned on failed compare-and-set operation.
-pub struct CompareAndSetError<'g, T: ?Sized + Pointable, P: Pointer<T>> {
+// TODO: remove in the next major version.
+#[deprecated(note = "Use `CompareExchangeError` instead")]
+pub type CompareAndSetError<'g, T, P> = CompareExchangeError<'g, T, P>;
+
+/// The error returned on failed compare-and-swap operation.
+pub struct CompareExchangeError<'g, T: ?Sized + Pointable, P: Pointer<T>> {
     /// The value in the atomic pointer at the time of the failed operation.
     pub current: Shared<'g, T>,
 
@@ -34,9 +39,9 @@ pub struct CompareAndSetError<'g, T: ?Sized + Pointable, P: Pointer<T>> {
     pub new: P,
 }
 
-impl<'g, T: 'g, P: Pointer<T> + fmt::Debug> fmt::Debug for CompareAndSetError<'g, T, P> {
+impl<T, P: Pointer<T> + fmt::Debug> fmt::Debug for CompareExchangeError<'_, T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CompareAndSetError")
+        f.debug_struct("CompareExchangeError")
             .field("current", &self.current)
             .field("new", &self.new)
             .finish()
@@ -54,6 +59,11 @@ impl<'g, T: 'g, P: Pointer<T> + fmt::Debug> fmt::Debug for CompareAndSetError<'g
 ///    ordering is chosen.
 /// 2. A pair of `Ordering`s. The first one is for the success case, while the second one is
 ///    for the failure case.
+// TODO: remove in the next major version.
+#[deprecated(
+    note = "`compare_and_set` and `compare_and_set_weak` that use this trait are deprecated, \
+            use `compare_exchange` or `compare_exchange_weak instead`"
+)]
 pub trait CompareAndSetOrdering {
     /// The ordering of the operation when it succeeds.
     fn success(&self) -> Ordering;
@@ -65,6 +75,7 @@ pub trait CompareAndSetOrdering {
     fn failure(&self) -> Ordering;
 }
 
+#[allow(deprecated)]
 impl CompareAndSetOrdering for Ordering {
     #[inline]
     fn success(&self) -> Ordering {
@@ -77,6 +88,7 @@ impl CompareAndSetOrdering for Ordering {
     }
 }
 
+#[allow(deprecated)]
 impl CompareAndSetOrdering for (Ordering, Ordering) {
     #[inline]
     fn success(&self) -> Ordering {
@@ -426,8 +438,14 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// pointer that was written is returned. On failure the actual current value and `new` are
     /// returned.
     ///
-    /// This method takes a [`CompareAndSetOrdering`] argument which describes the memory
-    /// ordering of this operation.
+    /// This method takes two `Ordering` arguments to describe the memory
+    /// ordering of this operation. `success` describes the required ordering for the
+    /// read-modify-write operation that takes place if the comparison with `current` succeeds.
+    /// `failure` describes the required ordering for the load operation that takes place when
+    /// the comparison fails. Using `Acquire` as success ordering makes the store part
+    /// of this operation `Relaxed`, and using `Release` makes the successful load
+    /// `Relaxed`. The failure ordering can only be `SeqCst`, `Acquire` or `Relaxed`
+    /// and must be equivalent to or weaker than the success ordering.
     ///
     /// # Examples
     ///
@@ -439,30 +457,160 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let guard = &epoch::pin();
     /// let curr = a.load(SeqCst, guard);
+    /// let res1 = a.compare_exchange(curr, Shared::null(), SeqCst, SeqCst, guard);
+    /// let res2 = a.compare_exchange(curr, Owned::new(5678), SeqCst, SeqCst, guard);
+    /// ```
+    pub fn compare_exchange<'g, P>(
+        &self,
+        current: Shared<'_, T>,
+        new: P,
+        success: Ordering,
+        failure: Ordering,
+        _: &'g Guard,
+    ) -> Result<Shared<'g, T>, CompareExchangeError<'g, T, P>>
+    where
+        P: Pointer<T>,
+    {
+        let new = new.into_usize();
+        self.data
+            .compare_exchange(current.into_usize(), new, success, failure)
+            .map(|_| unsafe { Shared::from_usize(new) })
+            .map_err(|current| unsafe {
+                CompareExchangeError {
+                    current: Shared::from_usize(current),
+                    new: P::from_usize(new),
+                }
+            })
+    }
+
+    /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
+    /// value is the same as `current`. The tag is also taken into account, so two pointers to the
+    /// same object, but with different tags, will not be considered equal.
+    ///
+    /// Unlike [`compare_exchange`], this method is allowed to spuriously fail even when comparison
+    /// succeeds, which can result in more efficient code on some platforms.  The return value is a
+    /// result indicating whether the new pointer was written. On success the pointer that was
+    /// written is returned. On failure the actual current value and `new` are returned.
+    ///
+    /// This method takes two `Ordering` arguments to describe the memory
+    /// ordering of this operation. `success` describes the required ordering for the
+    /// read-modify-write operation that takes place if the comparison with `current` succeeds.
+    /// `failure` describes the required ordering for the load operation that takes place when
+    /// the comparison fails. Using `Acquire` as success ordering makes the store part
+    /// of this operation `Relaxed`, and using `Release` makes the successful load
+    /// `Relaxed`. The failure ordering can only be `SeqCst`, `Acquire` or `Relaxed`
+    /// and must be equivalent to or weaker than the success ordering.
+    ///
+    /// [`compare_exchange`]: Atomic::compare_exchange
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
+    /// use std::sync::atomic::Ordering::SeqCst;
+    ///
+    /// let a = Atomic::new(1234);
+    /// let guard = &epoch::pin();
+    ///
+    /// let mut new = Owned::new(5678);
+    /// let mut ptr = a.load(SeqCst, guard);
+    /// loop {
+    ///     match a.compare_exchange_weak(ptr, new, SeqCst, SeqCst, guard) {
+    ///         Ok(p) => {
+    ///             ptr = p;
+    ///             break;
+    ///         }
+    ///         Err(err) => {
+    ///             ptr = err.current;
+    ///             new = err.new;
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// let mut curr = a.load(SeqCst, guard);
+    /// loop {
+    ///     match a.compare_exchange_weak(curr, Shared::null(), SeqCst, SeqCst, guard) {
+    ///         Ok(_) => break,
+    ///         Err(err) => curr = err.current,
+    ///     }
+    /// }
+    /// ```
+    pub fn compare_exchange_weak<'g, P>(
+        &self,
+        current: Shared<'_, T>,
+        new: P,
+        success: Ordering,
+        failure: Ordering,
+        _: &'g Guard,
+    ) -> Result<Shared<'g, T>, CompareExchangeError<'g, T, P>>
+    where
+        P: Pointer<T>,
+    {
+        let new = new.into_usize();
+        self.data
+            .compare_exchange_weak(current.into_usize(), new, success, failure)
+            .map(|_| unsafe { Shared::from_usize(new) })
+            .map_err(|current| unsafe {
+                CompareExchangeError {
+                    current: Shared::from_usize(current),
+                    new: P::from_usize(new),
+                }
+            })
+    }
+
+    /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
+    /// value is the same as `current`. The tag is also taken into account, so two pointers to the
+    /// same object, but with different tags, will not be considered equal.
+    ///
+    /// The return value is a result indicating whether the new pointer was written. On success the
+    /// pointer that was written is returned. On failure the actual current value and `new` are
+    /// returned.
+    ///
+    /// This method takes a [`CompareAndSetOrdering`] argument which describes the memory
+    /// ordering of this operation.
+    ///
+    /// # Migrating to `compare_exchange`
+    ///
+    /// `compare_and_set` is equivalent to `compare_exchange` with the following mapping for
+    /// memory orderings:
+    ///
+    /// Original | Success | Failure
+    /// -------- | ------- | -------
+    /// Relaxed  | Relaxed | Relaxed
+    /// Acquire  | Acquire | Acquire
+    /// Release  | Release | Relaxed
+    /// AcqRel   | AcqRel  | Acquire
+    /// SeqCst   | SeqCst  | SeqCst
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #![allow(deprecated)]
+    /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
+    /// use std::sync::atomic::Ordering::SeqCst;
+    ///
+    /// let a = Atomic::new(1234);
+    ///
+    /// let guard = &epoch::pin();
+    /// let curr = a.load(SeqCst, guard);
     /// let res1 = a.compare_and_set(curr, Shared::null(), SeqCst, guard);
     /// let res2 = a.compare_and_set(curr, Owned::new(5678), SeqCst, guard);
     /// ```
+    // TODO: remove in the next major version.
+    #[allow(deprecated)]
+    #[deprecated(note = "Use `compare_exchange` instead")]
     pub fn compare_and_set<'g, O, P>(
         &self,
         current: Shared<'_, T>,
         new: P,
         ord: O,
-        _: &'g Guard,
+        guard: &'g Guard,
     ) -> Result<Shared<'g, T>, CompareAndSetError<'g, T, P>>
     where
         O: CompareAndSetOrdering,
         P: Pointer<T>,
     {
-        let new = new.into_usize();
-        self.data
-            .compare_exchange(current.into_usize(), new, ord.success(), ord.failure())
-            .map(|_| unsafe { Shared::from_usize(new) })
-            .map_err(|current| unsafe {
-                CompareAndSetError {
-                    current: Shared::from_usize(current),
-                    new: P::from_usize(new),
-                }
-            })
+        self.compare_exchange(current, new, ord.success(), ord.failure(), guard)
     }
 
     /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
@@ -479,9 +627,23 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// [`compare_and_set`]: Atomic::compare_and_set
     ///
+    /// # Migrating to `compare_exchange_weak`
+    ///
+    /// `compare_and_set_weak` is equivalent to `compare_exchange_weak` with the following mapping for
+    /// memory orderings:
+    ///
+    /// Original | Success | Failure
+    /// -------- | ------- | -------
+    /// Relaxed  | Relaxed | Relaxed
+    /// Acquire  | Acquire | Acquire
+    /// Release  | Release | Relaxed
+    /// AcqRel   | AcqRel  | Acquire
+    /// SeqCst   | SeqCst  | SeqCst
+    ///
     /// # Examples
     ///
     /// ```
+    /// # #![allow(deprecated)]
     /// use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
@@ -511,27 +673,21 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///     }
     /// }
     /// ```
+    // TODO: remove in the next major version.
+    #[allow(deprecated)]
+    #[deprecated(note = "Use `compare_exchange_weak` instead")]
     pub fn compare_and_set_weak<'g, O, P>(
         &self,
         current: Shared<'_, T>,
         new: P,
         ord: O,
-        _: &'g Guard,
+        guard: &'g Guard,
     ) -> Result<Shared<'g, T>, CompareAndSetError<'g, T, P>>
     where
         O: CompareAndSetOrdering,
         P: Pointer<T>,
     {
-        let new = new.into_usize();
-        self.data
-            .compare_exchange_weak(current.into_usize(), new, ord.success(), ord.failure())
-            .map(|_| unsafe { Shared::from_usize(new) })
-            .map_err(|current| unsafe {
-                CompareAndSetError {
-                    current: Shared::from_usize(current),
-                    new: P::from_usize(new),
-                }
-            })
+        self.compare_exchange_weak(current, new, ord.success(), ord.failure(), guard)
     }
 
     /// Bitwise "and" with the current tag.

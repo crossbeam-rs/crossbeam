@@ -228,6 +228,7 @@ impl<T: Copy + Eq> AtomicCell<T> {
     /// assert_eq!(a.compare_and_swap(1, 2), 1);
     /// assert_eq!(a.load(), 2);
     /// ```
+    // TODO: remove in the next major version.
     #[deprecated(note = "Use `compare_exchange` instead")]
     pub fn compare_and_swap(&self, current: T, new: T) -> T {
         match self.compare_exchange(current, new) {

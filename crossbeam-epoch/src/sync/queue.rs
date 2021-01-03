@@ -74,17 +74,21 @@ impl<T> Queue<T> {
         let next = o.next.load(Acquire, guard);
         if unsafe { next.as_ref().is_some() } {
             // if not, try to "help" by moving the tail pointer forward
-            let _ = self.tail.compare_and_set(onto, next, Release, guard);
+            let _ = self
+                .tail
+                .compare_exchange(onto, next, Release, Relaxed, guard);
             false
         } else {
             // looks like the actual tail; attempt to link in `n`
             let result = o
                 .next
-                .compare_and_set(Shared::null(), new, Release, guard)
+                .compare_exchange(Shared::null(), new, Release, Relaxed, guard)
                 .is_ok();
             if result {
                 // try to move the tail pointer forward
-                let _ = self.tail.compare_and_set(onto, new, Release, guard);
+                let _ = self
+                    .tail
+                    .compare_exchange(onto, new, Release, Relaxed, guard);
             }
             result
         }
@@ -118,12 +122,14 @@ impl<T> Queue<T> {
         match unsafe { next.as_ref() } {
             Some(n) => unsafe {
                 self.head
-                    .compare_and_set(head, next, Release, guard)
+                    .compare_exchange(head, next, Release, Relaxed, guard)
                     .map(|_| {
                         let tail = self.tail.load(Relaxed, guard);
                         // Advance the tail so that we don't retire a pointer to a reachable node.
                         if head == tail {
-                            let _ = self.tail.compare_and_set(tail, next, Release, guard);
+                            let _ = self
+                                .tail
+                                .compare_exchange(tail, next, Release, Relaxed, guard);
                         }
                         guard.defer_destroy(head);
                         // TODO: Replace with MaybeUninit::read when api is stable
@@ -149,12 +155,14 @@ impl<T> Queue<T> {
         match unsafe { next.as_ref() } {
             Some(n) if condition(unsafe { &*n.data.as_ptr() }) => unsafe {
                 self.head
-                    .compare_and_set(head, next, Release, guard)
+                    .compare_exchange(head, next, Release, Relaxed, guard)
                     .map(|_| {
                         let tail = self.tail.load(Relaxed, guard);
                         // Advance the tail so that we don't retire a pointer to a reachable node.
                         if head == tail {
-                            let _ = self.tail.compare_and_set(tail, next, Release, guard);
+                            let _ = self
+                                .tail
+                                .compare_exchange(tail, next, Release, Relaxed, guard);
                         }
                         guard.defer_destroy(head);
                         Some(n.data.as_ptr().read())

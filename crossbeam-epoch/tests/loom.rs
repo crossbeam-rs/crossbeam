@@ -81,7 +81,10 @@ fn treiber_stack() {
                 let head = self.head.load(Relaxed, &guard);
                 n.next.store(head, Relaxed);
 
-                match self.head.compare_and_set(head, n, Release, &guard) {
+                match self
+                    .head
+                    .compare_exchange(head, n, Release, Relaxed, &guard)
+                {
                     Ok(_) => break,
                     Err(e) => n = e.new,
                 }
@@ -102,7 +105,7 @@ fn treiber_stack() {
 
                         if self
                             .head
-                            .compare_and_set(head, next, Relaxed, &guard)
+                            .compare_exchange(head, next, Relaxed, Relaxed, &guard)
                             .is_ok()
                         {
                             unsafe {

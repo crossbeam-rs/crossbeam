@@ -183,7 +183,7 @@ impl<T, C: IsElement<T>> List<T, C> {
             // Set the Entry of the to-be-inserted element to point to the previous successor of
             // `to`.
             entry.next.store(next, Relaxed);
-            match to.compare_and_set_weak(next, entry_ptr, Release, guard) {
+            match to.compare_exchange_weak(next, entry_ptr, Release, Relaxed, guard) {
                 Ok(_) => break,
                 // We lost the race or weak CAS failed spuriously. Update the successor and try
                 // again.
@@ -250,7 +250,7 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                 // Try to unlink `curr` from the list, and get the new value of `self.pred`.
                 let succ = match self
                     .pred
-                    .compare_and_set(self.curr, succ, Acquire, self.guard)
+                    .compare_exchange(self.curr, succ, Acquire, Acquire, self.guard)
                 {
                     Ok(_) => {
                         // We succeeded in unlinking `curr`, so we have to schedule

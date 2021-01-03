@@ -592,10 +592,11 @@ where
     ) -> Option<Shared<'a, Node<K, V>>> {
         // If `succ` is marked, that means `curr` is removed. Let's try
         // unlinking it from the skip list at this level.
-        match pred.compare_and_set(
+        match pred.compare_exchange(
             Shared::from(curr as *const _),
             succ.with_tag(0),
             Ordering::Release,
+            Ordering::Relaxed,
             guard,
         ) {
             Ok(_) => {
@@ -900,7 +901,13 @@ where
                 // Try installing the new node into the skip list (at level 0).
                 // TODO(Amanieu): can we use release ordering here?
                 if search.left[0][0]
-                    .compare_and_set(search.right[0], node, Ordering::SeqCst, guard)
+                    .compare_exchange(
+                        search.right[0],
+                        node,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                        guard,
+                    )
                     .is_ok()
                 {
                     break;
@@ -992,7 +999,7 @@ where
                     // should stop building the tower.
                     // TODO(Amanieu): can we use release ordering here?
                     if n.tower[level]
-                        .compare_and_set(next, succ, Ordering::SeqCst, guard)
+                        .compare_exchange(next, succ, Ordering::SeqCst, Ordering::SeqCst, guard)
                         .is_err()
                     {
                         break 'build;
@@ -1006,7 +1013,7 @@ where
                     // Try installing the new node at the current level.
                     // TODO(Amanieu): can we use release ordering here?
                     if pred[level]
-                        .compare_and_set(succ, node, Ordering::SeqCst, guard)
+                        .compare_exchange(succ, node, Ordering::SeqCst, Ordering::SeqCst, guard)
                         .is_ok()
                     {
                         // Success! Continue on the next level.
@@ -1099,9 +1106,10 @@ where
                         // Try linking the predecessor and successor at this level.
                         // TODO(Amanieu): can we use release ordering here?
                         if search.left[level][level]
-                            .compare_and_set(
+                            .compare_exchange(
                                 Shared::from(n as *const _),
                                 succ,
+                                Ordering::SeqCst,
                                 Ordering::SeqCst,
                                 guard,
                             )
