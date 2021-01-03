@@ -1485,7 +1485,7 @@ impl<T> SelectHandle for Receiver<T> {
 }
 
 /// Writes a message into the channel.
-pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Result<(), T> {
+pub(crate) unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Result<(), T> {
     match &s.flavor {
         SenderFlavor::Array(chan) => chan.write(token, msg),
         SenderFlavor::List(chan) => chan.write(token, msg),
@@ -1494,7 +1494,7 @@ pub unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Result<(), T
 }
 
 /// Reads a message from the channel.
-pub unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()> {
+pub(crate) unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()> {
     match &r.flavor {
         ReceiverFlavor::Array(chan) => chan.read(token),
         ReceiverFlavor::List(chan) => chan.read(token),

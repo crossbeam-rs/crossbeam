@@ -9,9 +9,9 @@
 //! 5. `tick` - Channel that delivers messages periodically.
 //! 6. `zero` - Zero-capacity channel.
 
-pub mod array;
-pub mod at;
-pub mod list;
-pub mod never;
-pub mod tick;
-pub mod zero;
+pub(crate) mod array;
+pub(crate) mod at;
+pub(crate) mod list;
+pub(crate) mod never;
+pub(crate) mod tick;
+pub(crate) mod zero;

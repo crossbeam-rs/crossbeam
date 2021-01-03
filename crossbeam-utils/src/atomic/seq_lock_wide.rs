@@ -7,7 +7,7 @@ use crate::Backoff;
 ///
 /// The state is represented as two `AtomicUsize`: `state_hi` for high bits and `state_lo` for low
 /// bits.
-pub struct SeqLock {
+pub(crate) struct SeqLock {
     /// The high bits of the current state of the lock.
     state_hi: AtomicUsize,
 
@@ -19,7 +19,7 @@ pub struct SeqLock {
 }
 
 impl SeqLock {
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             state_hi: AtomicUsize::new(0),
             state_lo: AtomicUsize::new(0),
@@ -30,7 +30,7 @@ impl SeqLock {
     ///
     /// This method should be called before optimistic reads.
     #[inline]
-    pub fn optimistic_read(&self) -> Option<(usize, usize)> {
+    pub(crate) fn optimistic_read(&self) -> Option<(usize, usize)> {
         // The acquire loads from `state_hi` and `state_lo` synchronize with the release stores in
         // `SeqLockWriteGuard::drop`.
         //
@@ -51,7 +51,7 @@ impl SeqLock {
     /// This method should be called after optimistic reads to check whether they are valid. The
     /// argument `stamp` should correspond to the one returned by method `optimistic_read`.
     #[inline]
-    pub fn validate_read(&self, stamp: (usize, usize)) -> bool {
+    pub(crate) fn validate_read(&self, stamp: (usize, usize)) -> bool {
         // Thanks to the fence, if we're noticing any modification to the data at the critical
         // section of `(a, b)`, then the critical section's write of 1 to state_lo should be
         // visible.
@@ -76,7 +76,7 @@ impl SeqLock {
 
     /// Grabs the lock for writing.
     #[inline]
-    pub fn write(&'static self) -> SeqLockWriteGuard {
+    pub(crate) fn write(&'static self) -> SeqLockWriteGuard {
         let backoff = Backoff::new();
         loop {
             let previous = self.state_lo.swap(1, Ordering::Acquire);
@@ -98,7 +98,7 @@ impl SeqLock {
 }
 
 /// An RAII guard that releases the lock and increments the stamp when dropped.
-pub struct SeqLockWriteGuard {
+pub(crate) struct SeqLockWriteGuard {
     /// The parent lock.
     lock: &'static SeqLock,
 
@@ -109,7 +109,7 @@ pub struct SeqLockWriteGuard {
 impl SeqLockWriteGuard {
     /// Releases the lock without incrementing the stamp.
     #[inline]
-    pub fn abort(self) {
+    pub(crate) fn abort(self) {
         self.lock.state_lo.store(self.state_lo, Ordering::Release);
         mem::forget(self);
     }

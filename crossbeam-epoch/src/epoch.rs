@@ -15,7 +15,7 @@ use core::sync::atomic::Ordering;
 /// Internally, the epoch is represented as an integer that wraps around at some unspecified point
 /// and a flag that represents whether it is pinned or unpinned.
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
-pub struct Epoch {
+pub(crate) struct Epoch {
     /// The least significant bit is set if pinned. The rest of the bits hold the epoch.
     data: usize,
 }
@@ -23,7 +23,7 @@ pub struct Epoch {
 impl Epoch {
     /// Returns the starting epoch in unpinned state.
     #[inline]
-    pub fn starting() -> Self {
+    pub(crate) fn starting() -> Self {
         Self::default()
     }
 
@@ -31,7 +31,7 @@ impl Epoch {
     ///
     /// Internally, epochs are represented as numbers in the range `(isize::MIN / 2) .. (isize::MAX
     /// / 2)`, so the returned distance will be in the same interval.
-    pub fn wrapping_sub(self, rhs: Self) -> isize {
+    pub(crate) fn wrapping_sub(self, rhs: Self) -> isize {
         // The result is the same with `(self.data & !1).wrapping_sub(rhs.data & !1) as isize >> 1`,
         // because the possible difference of LSB in `(self.data & !1).wrapping_sub(rhs.data & !1)`
         // will be ignored in the shift operation.
@@ -40,13 +40,13 @@ impl Epoch {
 
     /// Returns `true` if the epoch is marked as pinned.
     #[inline]
-    pub fn is_pinned(self) -> bool {
+    pub(crate) fn is_pinned(self) -> bool {
         (self.data & 1) == 1
     }
 
     /// Returns the same epoch, but marked as pinned.
     #[inline]
-    pub fn pinned(self) -> Epoch {
+    pub(crate) fn pinned(self) -> Epoch {
         Epoch {
             data: self.data | 1,
         }
@@ -54,7 +54,7 @@ impl Epoch {
 
     /// Returns the same epoch, but marked as unpinned.
     #[inline]
-    pub fn unpinned(self) -> Epoch {
+    pub(crate) fn unpinned(self) -> Epoch {
         Epoch {
             data: self.data & !1,
         }
@@ -64,7 +64,7 @@ impl Epoch {
     ///
     /// The returned epoch will be marked as pinned only if the previous one was as well.
     #[inline]
-    pub fn successor(self) -> Epoch {
+    pub(crate) fn successor(self) -> Epoch {
         Epoch {
             data: self.data.wrapping_add(2),
         }
@@ -73,7 +73,7 @@ impl Epoch {
 
 /// An atomic value that holds an `Epoch`.
 #[derive(Default, Debug)]
-pub struct AtomicEpoch {
+pub(crate) struct AtomicEpoch {
     /// Since `Epoch` is just a wrapper around `usize`, an `AtomicEpoch` is similarly represented
     /// using an `AtomicUsize`.
     data: AtomicUsize,
@@ -82,14 +82,14 @@ pub struct AtomicEpoch {
 impl AtomicEpoch {
     /// Creates a new atomic epoch.
     #[inline]
-    pub fn new(epoch: Epoch) -> Self {
+    pub(crate) fn new(epoch: Epoch) -> Self {
         let data = AtomicUsize::new(epoch.data);
         AtomicEpoch { data }
     }
 
     /// Loads a value from the atomic epoch.
     #[inline]
-    pub fn load(&self, ord: Ordering) -> Epoch {
+    pub(crate) fn load(&self, ord: Ordering) -> Epoch {
         Epoch {
             data: self.data.load(ord),
         }
@@ -97,7 +97,7 @@ impl AtomicEpoch {
 
     /// Stores a value into the atomic epoch.
     #[inline]
-    pub fn store(&self, epoch: Epoch, ord: Ordering) {
+    pub(crate) fn store(&self, epoch: Epoch, ord: Ordering) {
         self.data.store(epoch.data, ord);
     }
 
@@ -115,7 +115,7 @@ impl AtomicEpoch {
     /// `Relaxed`. The failure ordering can only be `SeqCst`, `Acquire` or `Relaxed`
     /// and must be equivalent to or weaker than the success ordering.
     #[inline]
-    pub fn compare_exchange(
+    pub(crate) fn compare_exchange(
         &self,
         current: Epoch,
         new: Epoch,

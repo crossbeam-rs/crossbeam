@@ -16,7 +16,7 @@ type Data = [usize; DATA_WORDS];
 /// A `FnOnce()` that is stored inline if small, or otherwise boxed on the heap.
 ///
 /// This is a handy way of keeping an unsized `FnOnce()` within a sized structure.
-pub struct Deferred {
+pub(crate) struct Deferred {
     call: unsafe fn(*mut u8),
     data: Data,
     _marker: PhantomData<*mut ()>, // !Send + !Sync
@@ -30,7 +30,7 @@ impl fmt::Debug for Deferred {
 
 impl Deferred {
     /// Constructs a new `Deferred` from a `FnOnce()`.
-    pub fn new<F: FnOnce()>(f: F) -> Self {
+    pub(crate) fn new<F: FnOnce()>(f: F) -> Self {
         let size = mem::size_of::<F>();
         let align = mem::align_of::<F>();
 
@@ -73,7 +73,7 @@ impl Deferred {
 
     /// Calls the function.
     #[inline]
-    pub fn call(mut self) {
+    pub(crate) fn call(mut self) {
         let call = self.call;
         unsafe { call(&mut self.data as *mut Data as *mut u8) };
     }

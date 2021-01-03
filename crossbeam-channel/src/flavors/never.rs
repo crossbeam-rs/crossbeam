@@ -11,17 +11,17 @@ use crate::select::{Operation, SelectHandle, Token};
 use crate::utils;
 
 /// This flavor doesn't need a token.
-pub type NeverToken = ();
+pub(crate) type NeverToken = ();
 
 /// Channel that never delivers messages.
-pub struct Channel<T> {
+pub(crate) struct Channel<T> {
     _marker: PhantomData<T>,
 }
 
 impl<T> Channel<T> {
     /// Creates a channel that never delivers messages.
     #[inline]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Channel {
             _marker: PhantomData,
         }
@@ -29,44 +29,44 @@ impl<T> Channel<T> {
 
     /// Attempts to receive a message without blocking.
     #[inline]
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+    pub(crate) fn try_recv(&self) -> Result<T, TryRecvError> {
         Err(TryRecvError::Empty)
     }
 
     /// Receives a message from the channel.
     #[inline]
-    pub fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+    pub(crate) fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         utils::sleep_until(deadline);
         Err(RecvTimeoutError::Timeout)
     }
 
     /// Reads a message from the channel.
     #[inline]
-    pub unsafe fn read(&self, _token: &mut Token) -> Result<T, ()> {
+    pub(crate) unsafe fn read(&self, _token: &mut Token) -> Result<T, ()> {
         Err(())
     }
 
     /// Returns `true` if the channel is empty.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         true
     }
 
     /// Returns `true` if the channel is full.
     #[inline]
-    pub fn is_full(&self) -> bool {
+    pub(crate) fn is_full(&self) -> bool {
         true
     }
 
     /// Returns the number of messages in the channel.
     #[inline]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         0
     }
 
     /// Returns the capacity of the channel.
     #[inline]
-    pub fn capacity(&self) -> Option<usize> {
+    pub(crate) fn capacity(&self) -> Option<usize> {
         Some(0)
     }
 }
