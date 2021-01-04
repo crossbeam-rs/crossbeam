@@ -24,47 +24,31 @@ jobs:
     name: test
     env:
       RUST_VERSION: ${{ matrix.rust }}
+      TARGET: ${{ matrix.target }}
     strategy:
       matrix:
-        crates:
-          - crossbeam
-          - crossbeam-channel
-          - crossbeam-deque
-          - crossbeam-epoch
-          - crossbeam-queue
-          - crossbeam-skiplist
-          - crossbeam-utils
-        rust:
-          - 1.36.0
-          - nightly
-        os:
-         - ubuntu-latest
-         - windows-latest
-    runs-on: ${{ matrix.os }}
+        include:
+          - rust: 1.36.0
+          - rust: 1.36.0
+            os: windows-latest
+          - rust: nightly
+          # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
+          # - rust: nightly
+          #   os: macos-latest
+          - rust: nightly
+            os: windows-latest
+          - rust: nightly
+            target: i686-unknown-linux-gnu
+          - rust: nightly
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust
         # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
         run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
       - name: Test
-        run: ./ci/${{ matrix.crates }}.sh
-
-  # Test crates on non x86_64 architectures.
-  cross:
-    env:
-      TARGET: ${{ matrix.target }}
-    strategy:
-      matrix:
-        target:
-          - i686-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update stable && rustup default stable
-      - name: Test
-        run: ./ci/cross.sh
+        run: ./ci/test.sh
 
   # Check all feature combinations works properly.
   features:
@@ -144,7 +128,6 @@ jobs:
     if: github.event_name == 'push' && success()
     needs:
       - test
-      - cross
       - features
       - dependencies
       - rustfmt
