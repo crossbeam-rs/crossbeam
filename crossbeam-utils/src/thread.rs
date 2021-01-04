@@ -110,8 +110,6 @@
 //!     });
 //! }).unwrap();
 //! ```
-//!
-//! [`std::thread::spawn`]: std::thread::spawn
 
 use std::fmt;
 use std::io;
