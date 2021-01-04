@@ -32,6 +32,10 @@ jobs:
             os: ubuntu-latest
           - rust: 1.36.0
             os: windows-latest
+          - rust: stable
+            os: ubuntu-latest
+          - rust: stable
+            os: windows-latest
           - rust: nightly
             os: ubuntu-latest
           # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
