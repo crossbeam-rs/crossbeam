@@ -24,14 +24,11 @@ if [[ "$RUST_VERSION" == "nightly"* ]]; then
 
     # Benchmarks are only checked on nightly because depending on unstable features.
     cargo check --all --benches
-    cd crossbeam-channel/benchmarks
-    cargo check --bins
-    cd ../..
+    cargo check --bins --manifest-path crossbeam-channel/benchmarks/Cargo.toml
 
     # Run address sanitizer on crossbeam-epoch
     # Note: this will be significantly rewritten by https://github.com/crossbeam-rs/crossbeam/pull/591.
     if [[ "$OSTYPE" == "linux"* ]]; then
-        cd crossbeam-epoch
         cargo clean
 
         # TODO: Once `cfg(sanitize = "..")` is stable, replace
@@ -43,8 +40,7 @@ if [[ "$RUST_VERSION" == "nightly"* ]]; then
             --release \
             --target x86_64-unknown-linux-gnu \
             --features nightly \
-            --example sanitize
-
-        cd ..
+            --example sanitize \
+            --manifest-path crossbeam-epoch/Cargo.toml
     fi
 fi
