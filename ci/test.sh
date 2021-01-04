@@ -28,7 +28,7 @@ if [[ "$RUST_VERSION" == "nightly"* ]]; then
     cargo check --all --benches
     cd crossbeam-channel/benchmarks
     cargo check --bins
-    cd ..
+    cd ../..
 
     # Run address sanitizer on crossbeam-epoch
     # Note: this will be significantly rewritten by https://github.com/crossbeam-rs/crossbeam/pull/591.
@@ -36,12 +36,15 @@ if [[ "$RUST_VERSION" == "nightly"* ]]; then
         cd crossbeam-epoch
         cargo clean
 
+        # TODO: Once `cfg(sanitize = "..")` is stable, replace
+        # `cfg(crossbeam_sanitize)` with `cfg(sanitize = "..")` and remove
+        # `--cfg crossbeam_sanitize`.
         ASAN_OPTIONS="detect_odr_violation=0 detect_leaks=0" \
-        RUSTFLAGS="-Z sanitizer=address" \
+        RUSTFLAGS="-Z sanitizer=address --cfg crossbeam_sanitize" \
         cargo run \
             --release \
             --target x86_64-unknown-linux-gnu \
-            --features sanitize,nightly \
+            --features nightly \
             --example sanitize
 
         cd ..
