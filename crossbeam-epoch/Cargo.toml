@@ -33,9 +33,6 @@ alloc = []
 # of crossbeam may make breaking changes to them at any time.
 nightly = ["crossbeam-utils/nightly", "const_fn"]
 
-# TODO: docs
-sanitize = [] # Makes it more likely to trigger any potential data races.
-
 [dependencies]
 cfg-if = "1"
 const_fn = { version = "0.4.4", optional = true }

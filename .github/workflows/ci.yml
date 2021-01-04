@@ -24,22 +24,31 @@ jobs:
     name: test
     env:
       RUST_VERSION: ${{ matrix.rust }}
+      TARGET: ${{ matrix.target }}
     strategy:
       matrix:
-        crates:
-          - crossbeam
-          - crossbeam-channel
-          - crossbeam-deque
-          - crossbeam-epoch
-          - crossbeam-queue
-          - crossbeam-skiplist
-          - crossbeam-utils
-        rust:
-          - 1.36.0
-          - nightly
-        os:
-         - ubuntu-latest
-         - windows-latest
+        include:
+          - rust: 1.36.0
+            os: ubuntu-latest
+          - rust: 1.36.0
+            os: windows-latest
+          - rust: stable
+            os: ubuntu-latest
+          - rust: stable
+            os: windows-latest
+          - rust: nightly
+            os: ubuntu-latest
+          # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
+          # - rust: nightly
+          #   os: macos-latest
+          - rust: nightly
+            os: windows-latest
+          - rust: nightly
+            os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+          - rust: nightly
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
@@ -47,7 +56,7 @@ jobs:
         # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
         run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
       - name: Test
-        run: ./ci/${{ matrix.crates }}.sh
+        run: ./ci/test.sh
 
   # Check all feature combinations works properly.
   features:
@@ -116,6 +125,17 @@ jobs:
       - name: loom
         run: ./ci/crossbeam-epoch-loom.sh
 
+  # Check if the document can be generated without warning.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update nightly && rustup default nightly
+      - name: docs
+        run: ./ci/docs.sh
+
   # This job doesn't actually test anything, but they're used to tell bors the
   # build completed, as there is no practical way to detect when a workflow is
   # successful listening to webhooks only.
@@ -132,6 +152,7 @@ jobs:
       - rustfmt
       - clippy
       - loom
+      - docs
     runs-on: ubuntu-latest
     steps:
       - name: Mark the job as a success

@@ -55,9 +55,9 @@ use crate::sync::list::{Entry, IsElement, IterError, List};
 use crate::sync::queue::Queue;
 
 /// Maximum number of objects a bag can contain.
-#[cfg(not(feature = "sanitize"))]
+#[cfg(not(crossbeam_sanitize))]
 const MAX_OBJECTS: usize = 62;
-#[cfg(feature = "sanitize")]
+#[cfg(crossbeam_sanitize)]
 const MAX_OBJECTS: usize = 4;
 
 /// A bag of deferred functions.
@@ -109,7 +109,7 @@ impl Default for Bag {
     #[rustfmt::skip]
     fn default() -> Self {
         // TODO: [no_op; MAX_OBJECTS] syntax blocked by https://github.com/rust-lang/rust/issues/49147
-        #[cfg(not(feature = "sanitize"))]
+        #[cfg(not(crossbeam_sanitize))]
         return Bag {
             len: 0,
             deferreds: [
@@ -177,7 +177,7 @@ impl Default for Bag {
                 Deferred::new(no_op_func),
             ],
         };
-        #[cfg(feature = "sanitize")]
+        #[cfg(crossbeam_sanitize)]
         return Bag {
             len: 0,
             deferreds: [
@@ -278,7 +278,7 @@ impl Global {
     pub(crate) fn collect(&self, guard: &Guard) {
         let global_epoch = self.try_advance(guard);
 
-        let steps = if cfg!(feature = "sanitize") {
+        let steps = if cfg!(crossbeam_sanitize) {
             usize::max_value()
         } else {
             Self::COLLECT_STEPS
