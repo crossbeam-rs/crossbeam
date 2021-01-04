@@ -1,4 +1,4 @@
 //! Synchronization primitives.
 
-pub mod list;
-pub mod queue;
+pub(crate) mod list;
+pub(crate) mod queue;

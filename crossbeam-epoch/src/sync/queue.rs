@@ -19,7 +19,7 @@ use crate::{unprotected, Atomic, Guard, Owned, Shared};
 // the `tail` pointer may lag behind the actual tail. Non-sentinel nodes are either all `Data` or
 // all `Blocked` (requests for data from blocked threads).
 #[derive(Debug)]
-pub struct Queue<T> {
+pub(crate) struct Queue<T> {
     head: CachePadded<Atomic<Node<T>>>,
     tail: CachePadded<Atomic<Node<T>>>,
 }
@@ -42,7 +42,7 @@ unsafe impl<T: Send> Send for Queue<T> {}
 
 impl<T> Queue<T> {
     /// Create a new, empty queue.
-    pub fn new() -> Queue<T> {
+    pub(crate) fn new() -> Queue<T> {
         let q = Queue {
             head: CachePadded::new(Atomic::null()),
             tail: CachePadded::new(Atomic::null()),
@@ -95,7 +95,7 @@ impl<T> Queue<T> {
     }
 
     /// Adds `t` to the back of the queue, possibly waking up threads blocked on `pop`.
-    pub fn push(&self, t: T, guard: &Guard) {
+    pub(crate) fn push(&self, t: T, guard: &Guard) {
         let new = Owned::new(Node {
             data: MaybeUninit::new(t),
             next: Atomic::null(),
@@ -176,7 +176,7 @@ impl<T> Queue<T> {
     /// Attempts to dequeue from the front.
     ///
     /// Returns `None` if the queue is observed to be empty.
-    pub fn try_pop(&self, guard: &Guard) -> Option<T> {
+    pub(crate) fn try_pop(&self, guard: &Guard) -> Option<T> {
         loop {
             if let Ok(head) = self.pop_internal(guard) {
                 return head;
@@ -188,7 +188,7 @@ impl<T> Queue<T> {
     ///
     /// Returns `None` if the queue is observed to be empty, or the head does not satisfy the given
     /// condition.
-    pub fn try_pop_if<F>(&self, condition: F, guard: &Guard) -> Option<T>
+    pub(crate) fn try_pop_if<F>(&self, condition: F, guard: &Guard) -> Option<T>
     where
         T: Sync,
         F: Fn(&T) -> bool,
@@ -226,30 +226,30 @@ mod test {
     }
 
     impl<T> Queue<T> {
-        pub fn new() -> Queue<T> {
+        pub(crate) fn new() -> Queue<T> {
             Queue {
                 queue: super::Queue::new(),
             }
         }
 
-        pub fn push(&self, t: T) {
+        pub(crate) fn push(&self, t: T) {
             let guard = &pin();
             self.queue.push(t, guard);
         }
 
-        pub fn is_empty(&self) -> bool {
+        pub(crate) fn is_empty(&self) -> bool {
             let guard = &pin();
             let head = self.queue.head.load(Acquire, guard);
             let h = unsafe { head.deref() };
             h.next.load(Acquire, guard).is_null()
         }
 
-        pub fn try_pop(&self) -> Option<T> {
+        pub(crate) fn try_pop(&self) -> Option<T> {
             let guard = &pin();
             self.queue.try_pop(guard)
         }
 
-        pub fn pop(&self) -> T {
+        pub(crate) fn pop(&self) -> T {
             loop {
                 match self.try_pop() {
                     None => continue,

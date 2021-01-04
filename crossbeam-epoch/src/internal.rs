@@ -61,7 +61,7 @@ const MAX_OBJECTS: usize = 62;
 const MAX_OBJECTS: usize = 4;
 
 /// A bag of deferred functions.
-pub struct Bag {
+pub(crate) struct Bag {
     /// Stashed objects.
     deferreds: [Deferred; MAX_OBJECTS],
     len: usize,
@@ -72,12 +72,12 @@ unsafe impl Send for Bag {}
 
 impl Bag {
     /// Returns a new, empty bag.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Returns `true` if the bag is empty.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.len == 0
     }
 
@@ -89,7 +89,7 @@ impl Bag {
     /// # Safety
     ///
     /// It should be safe for another thread to execute the given function.
-    pub unsafe fn try_push(&mut self, deferred: Deferred) -> Result<(), Deferred> {
+    pub(crate) unsafe fn try_push(&mut self, deferred: Deferred) -> Result<(), Deferred> {
         if self.len < MAX_OBJECTS {
             self.deferreds[self.len] = deferred;
             self.len += 1;
@@ -232,7 +232,7 @@ impl SealedBag {
 }
 
 /// The global data for a garbage collector.
-pub struct Global {
+pub(crate) struct Global {
     /// The intrusive linked list of `Local`s.
     locals: List<Local>,
 
@@ -249,7 +249,7 @@ impl Global {
 
     /// Creates a new global data for garbage collection.
     #[inline]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             locals: List::new(),
             queue: Queue::new(),
@@ -258,7 +258,7 @@ impl Global {
     }
 
     /// Pushes the bag into the global queue and replaces the bag with a new empty bag.
-    pub fn push_bag(&self, bag: &mut Bag, guard: &Guard) {
+    pub(crate) fn push_bag(&self, bag: &mut Bag, guard: &Guard) {
         let bag = mem::replace(bag, Bag::new());
 
         atomic::fence(Ordering::SeqCst);
@@ -275,7 +275,7 @@ impl Global {
     /// path. In other words, we want the compiler to optimize branching for the case when
     /// `collect()` is not called.
     #[cold]
-    pub fn collect(&self, guard: &Guard) {
+    pub(crate) fn collect(&self, guard: &Guard) {
         let global_epoch = self.try_advance(guard);
 
         let steps = if cfg!(feature = "sanitize") {
@@ -304,7 +304,7 @@ impl Global {
     ///
     /// `try_advance()` is annotated `#[cold]` because it is rarely called.
     #[cold]
-    pub fn try_advance(&self, guard: &Guard) -> Epoch {
+    pub(crate) fn try_advance(&self, guard: &Guard) -> Epoch {
         let global_epoch = self.epoch.load(Ordering::Relaxed);
         atomic::fence(Ordering::SeqCst);
 
@@ -346,7 +346,7 @@ impl Global {
 }
 
 /// Participant for garbage collection.
-pub struct Local {
+pub(crate) struct Local {
     /// A node in the intrusive linked list of `Local`s.
     entry: Entry,
 
@@ -389,7 +389,7 @@ impl Local {
     const PINNINGS_BETWEEN_COLLECT: usize = 128;
 
     /// Registers a new `Local` in the provided `Global`.
-    pub fn register(collector: &Collector) -> LocalHandle {
+    pub(crate) fn register(collector: &Collector) -> LocalHandle {
         unsafe {
             // Since we dereference no pointers in this block, it is safe to use `unprotected`.
 
@@ -412,19 +412,19 @@ impl Local {
 
     /// Returns a reference to the `Global` in which this `Local` resides.
     #[inline]
-    pub fn global(&self) -> &Global {
+    pub(crate) fn global(&self) -> &Global {
         &self.collector().global
     }
 
     /// Returns a reference to the `Collector` in which this `Local` resides.
     #[inline]
-    pub fn collector(&self) -> &Collector {
+    pub(crate) fn collector(&self) -> &Collector {
         self.collector.with(|c| unsafe { &**c })
     }
 
     /// Returns `true` if the current participant is pinned.
     #[inline]
-    pub fn is_pinned(&self) -> bool {
+    pub(crate) fn is_pinned(&self) -> bool {
         self.guard_count.get() > 0
     }
 
@@ -433,7 +433,7 @@ impl Local {
     /// # Safety
     ///
     /// It should be safe for another thread to execute the given function.
-    pub unsafe fn defer(&self, mut deferred: Deferred, guard: &Guard) {
+    pub(crate) unsafe fn defer(&self, mut deferred: Deferred, guard: &Guard) {
         let bag = self.bag.with_mut(|b| &mut *b);
 
         while let Err(d) = bag.try_push(deferred) {
@@ -442,7 +442,7 @@ impl Local {
         }
     }
 
-    pub fn flush(&self, guard: &Guard) {
+    pub(crate) fn flush(&self, guard: &Guard) {
         let bag = self.bag.with_mut(|b| unsafe { &mut *b });
 
         if !bag.is_empty() {
@@ -454,7 +454,7 @@ impl Local {
 
     /// Pins the `Local`.
     #[inline]
-    pub fn pin(&self) -> Guard {
+    pub(crate) fn pin(&self) -> Guard {
         let guard = Guard { local: self };
 
         let guard_count = self.guard_count.get();
@@ -514,7 +514,7 @@ impl Local {
 
     /// Unpins the `Local`.
     #[inline]
-    pub fn unpin(&self) {
+    pub(crate) fn unpin(&self) {
         let guard_count = self.guard_count.get();
         self.guard_count.set(guard_count - 1);
 
@@ -529,7 +529,7 @@ impl Local {
 
     /// Unpins and then pins the `Local`.
     #[inline]
-    pub fn repin(&self) {
+    pub(crate) fn repin(&self) {
         let guard_count = self.guard_count.get();
 
         // Update the local epoch only if there's only one guard.
@@ -552,7 +552,7 @@ impl Local {
 
     /// Increments the handle count.
     #[inline]
-    pub fn acquire_handle(&self) {
+    pub(crate) fn acquire_handle(&self) {
         let handle_count = self.handle_count.get();
         debug_assert!(handle_count >= 1);
         self.handle_count.set(handle_count + 1);
@@ -560,7 +560,7 @@ impl Local {
 
     /// Decrements the handle count.
     #[inline]
-    pub fn release_handle(&self) {
+    pub(crate) fn release_handle(&self) {
         let guard_count = self.guard_count.get();
         let handle_count = self.handle_count.get();
         debug_assert!(handle_count >= 1);

@@ -21,7 +21,7 @@ struct Counter<C> {
 }
 
 /// Wraps a channel into the reference counter.
-pub fn new<C>(chan: C) -> (Sender<C>, Receiver<C>) {
+pub(crate) fn new<C>(chan: C) -> (Sender<C>, Receiver<C>) {
     let counter = Box::into_raw(Box::new(Counter {
         senders: AtomicUsize::new(1),
         receivers: AtomicUsize::new(1),
@@ -34,7 +34,7 @@ pub fn new<C>(chan: C) -> (Sender<C>, Receiver<C>) {
 }
 
 /// The sending side.
-pub struct Sender<C> {
+pub(crate) struct Sender<C> {
     counter: *mut Counter<C>,
 }
 
@@ -45,7 +45,7 @@ impl<C> Sender<C> {
     }
 
     /// Acquires another sender reference.
-    pub fn acquire(&self) -> Sender<C> {
+    pub(crate) fn acquire(&self) -> Sender<C> {
         let count = self.counter().senders.fetch_add(1, Ordering::Relaxed);
 
         // Cloning senders and calling `mem::forget` on the clones could potentially overflow the
@@ -63,7 +63,7 @@ impl<C> Sender<C> {
     /// Releases the sender reference.
     ///
     /// Function `disconnect` will be called if this is the last sender reference.
-    pub unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
+    pub(crate) unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
         if self.counter().senders.fetch_sub(1, Ordering::AcqRel) == 1 {
             disconnect(&self.counter().chan);
 
@@ -89,7 +89,7 @@ impl<C> PartialEq for Sender<C> {
 }
 
 /// The receiving side.
-pub struct Receiver<C> {
+pub(crate) struct Receiver<C> {
     counter: *mut Counter<C>,
 }
 
@@ -100,7 +100,7 @@ impl<C> Receiver<C> {
     }
 
     /// Acquires another receiver reference.
-    pub fn acquire(&self) -> Receiver<C> {
+    pub(crate) fn acquire(&self) -> Receiver<C> {
         let count = self.counter().receivers.fetch_add(1, Ordering::Relaxed);
 
         // Cloning receivers and calling `mem::forget` on the clones could potentially overflow the
@@ -118,7 +118,7 @@ impl<C> Receiver<C> {
     /// Releases the receiver reference.
     ///
     /// Function `disconnect` will be called if this is the last receiver reference.
-    pub unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
+    pub(crate) unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
         if self.counter().receivers.fetch_sub(1, Ordering::AcqRel) == 1 {
             disconnect(&self.counter().chan);
 

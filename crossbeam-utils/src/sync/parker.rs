@@ -383,7 +383,7 @@ impl Inner {
         }
     }
 
-    pub fn unpark(&self) {
+    pub(crate) fn unpark(&self) {
         // To ensure the unparked thread will observe any writes we made before this call, we must
         // perform a release operation that `park` can synchronize with. To do that we must write
         // `NOTIFIED` even if `state` is already `NOTIFIED`. That is why this must be a swap rather

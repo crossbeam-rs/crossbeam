@@ -486,7 +486,7 @@ pub fn select_timeout<'a>(
 
 /// Blocks until a given deadline, or until one of the operations becomes ready and selects it.
 #[inline]
-pub fn select_deadline<'a>(
+pub(crate) fn select_deadline<'a>(
     handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
     deadline: Instant,
 ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
