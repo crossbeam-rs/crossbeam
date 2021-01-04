@@ -1,4 +1,7 @@
 //! Atomic types.
+//!
+//! * [`AtomicCell`], a thread-safe mutable memory location.
+//! * [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.
 
 #[cfg(not(loom_crossbeam))]
 use cfg_if::cfg_if;
