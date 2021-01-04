@@ -73,11 +73,6 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Rust
         run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
-      - name: Add targets
-        if: matrix.rust == 'nightly'
-        run: |
-          rustup target add thumbv7m-none-eabi
-          rustup target add thumbv6m-none-eabi
       - name: Check features
         run: ./ci/check-features.sh
 
