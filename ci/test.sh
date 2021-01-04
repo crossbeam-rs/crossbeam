@@ -22,8 +22,6 @@ if [[ "$RUST_VERSION" == "nightly"* ]]; then
     # Some crates have `nightly` feature, so run tests with --all-features.
     cargo test --all --all-features --exclude benchmarks -- --test-threads=1
 
-    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all --all-features
-
     # Benchmarks are only checked on nightly because depending on unstable features.
     cargo check --all --benches
     cd crossbeam-channel/benchmarks

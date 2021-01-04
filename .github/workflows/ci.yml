@@ -117,6 +117,17 @@ jobs:
       - name: loom
         run: ./ci/crossbeam-epoch-loom.sh
 
+  # Check if the document can be generated without warning.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update nightly && rustup default nightly
+      - name: docs
+        run: ./ci/docs.sh
+
   # This job doesn't actually test anything, but they're used to tell bors the
   # build completed, as there is no practical way to detect when a workflow is
   # successful listening to webhooks only.
@@ -133,6 +144,7 @@ jobs:
       - rustfmt
       - clippy
       - loom
+      - docs
     runs-on: ubuntu-latest
     steps:
       - name: Mark the job as a success
