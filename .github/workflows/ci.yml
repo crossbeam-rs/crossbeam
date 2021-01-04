@@ -29,19 +29,23 @@ jobs:
       matrix:
         include:
           - rust: 1.36.0
+            os: ubuntu-latest
           - rust: 1.36.0
             os: windows-latest
           - rust: nightly
+            os: ubuntu-latest
           # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
           # - rust: nightly
           #   os: macos-latest
           - rust: nightly
             os: windows-latest
           - rust: nightly
+            os: ubuntu-latest
             target: i686-unknown-linux-gnu
           - rust: nightly
+            os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust
