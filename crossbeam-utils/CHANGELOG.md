@@ -1,3 +1,10 @@
+# Version 0.8.2
+
+- Deprecate `AtomicCell::compare_and_swap`. Use `AtomicCell::compare_exchange` instead. (#619)
+- Add `Parker::park_deadline`. (#563)
+- Improve implementation of `CachePadded`. (#636)
+- Add unstable support for `loom`. (#487)
+
 # Version 0.8.1
 
 - Make `AtomicCell::is_lock_free` always const fn. (#600)
@@ -8,7 +15,7 @@
 # Version 0.8.0
 
 - Bump the minimum supported Rust version to 1.36.
-- Remove deprecated `AtomicCell::get_mut()` and `Backoff::is_complete()` methods
+- Remove deprecated `AtomicCell::get_mut()` and `Backoff::is_complete()` methods.
 - Remove `alloc` feature.
 - Make `CachePadded::new()` const function.
 - Make `AtomicCell::is_lock_free()` const function at 1.46+.
