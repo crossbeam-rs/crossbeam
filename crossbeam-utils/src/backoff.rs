@@ -145,6 +145,9 @@ impl Backoff {
     #[inline]
     pub fn spin(&self) {
         for _ in 0..1 << self.step.get().min(SPIN_LIMIT) {
+            // TODO(taiki-e): once we bump the minimum required Rust version to 1.49+,
+            // use [`core::hint::spin_loop`] instead.
+            #[allow(deprecated)]
             atomic::spin_loop_hint();
         }
 
@@ -205,11 +208,17 @@ impl Backoff {
     pub fn snooze(&self) {
         if self.step.get() <= SPIN_LIMIT {
             for _ in 0..1 << self.step.get() {
+                // TODO(taiki-e): once we bump the minimum required Rust version to 1.49+,
+                // use [`core::hint::spin_loop`] instead.
+                #[allow(deprecated)]
                 atomic::spin_loop_hint();
             }
         } else {
             #[cfg(not(feature = "std"))]
             for _ in 0..1 << self.step.get() {
+                // TODO(taiki-e): once we bump the minimum required Rust version to 1.49+,
+                // use [`core::hint::spin_loop`] instead.
+                #[allow(deprecated)]
                 atomic::spin_loop_hint();
             }
 
