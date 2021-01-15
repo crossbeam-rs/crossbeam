@@ -68,6 +68,9 @@ mod primitive {
     pub(crate) mod sync {
         pub(crate) mod atomic {
             pub(crate) use core::sync::atomic::compiler_fence;
+            // TODO(taiki-e): once we bump the minimum required Rust version to 1.49+,
+            // use [`core::hint::spin_loop`] instead.
+            #[allow(deprecated)]
             pub(crate) use core::sync::atomic::spin_loop_hint;
             pub(crate) use core::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize};
             #[cfg(has_atomic_u16)]
