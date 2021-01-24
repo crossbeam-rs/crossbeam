@@ -55,6 +55,7 @@
         allow(dead_code, unused_assignments, unused_variables)
     )
 ))]
+#![doc(html_root_url = "https://docs.rs/crossbeam-epoch/0.9.1")]
 #![warn(
     missing_docs,
     missing_debug_implementations,

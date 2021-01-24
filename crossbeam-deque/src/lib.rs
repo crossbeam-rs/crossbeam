@@ -89,6 +89,7 @@
         allow(dead_code, unused_assignments, unused_variables)
     )
 ))]
+#![doc(html_root_url = "https://docs.rs/crossbeam-deque/0.8.0")]
 #![warn(
     missing_docs,
     missing_debug_implementations,

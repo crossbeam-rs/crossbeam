@@ -31,6 +31,7 @@
         allow(dead_code, unused_assignments, unused_variables)
     )
 ))]
+#![doc(html_root_url = "https://docs.rs/crossbeam-utils/0.8.1")]
 #![warn(
     missing_docs,
     missing_debug_implementations,
