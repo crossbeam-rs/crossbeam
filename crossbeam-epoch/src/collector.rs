@@ -199,6 +199,7 @@ mod tests {
         .unwrap();
     }
 
+    #[cfg(not(crossbeam_sanitize))] // TODO: assertions failed due to `cfg(crossbeam_sanitize)` reduce `internal::MAX_OBJECTS`
     #[test]
     fn incremental() {
         const COUNT: usize = 100_000;
