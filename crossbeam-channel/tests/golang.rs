@@ -315,7 +315,7 @@ mod fifo {
     fn chain(ch: Chan<i32>, val: i32, inp: Chan<i32>, out: Chan<i32>) {
         inp.recv();
         if ch.recv() != Some(val) {
-            panic!(val);
+            panic!("{}", val);
         }
         out.send(1);
     }
