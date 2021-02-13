@@ -85,9 +85,9 @@ where
     ///
     /// let set = SkipSet::new();
     /// set.insert(1);
-    /// assert_eq!(*set.front().unwrap().value(), 1);
+    /// assert_eq!(*set.front().unwrap(), 1);
     /// set.insert(2);
-    /// assert_eq!(*set.front().unwrap().value(), 1);
+    /// assert_eq!(*set.front().unwrap(), 1);
     /// ```
     pub fn front(&self) -> Option<Entry<'_, T>> {
         self.inner.front().map(Entry::new)
@@ -102,9 +102,9 @@ where
     ///
     /// let set = SkipSet::new();
     /// set.insert(1);
-    /// assert_eq!(*set.back().unwrap().value(), 1);
+    /// assert_eq!(*set.back().unwrap(), 1);
     /// set.insert(2);
-    /// assert_eq!(*set.back().unwrap().value(), 2);
+    /// assert_eq!(*set.back().unwrap(), 2);
     /// ```
     pub fn back(&self) -> Option<Entry<'_, T>> {
         self.inner.back().map(Entry::new)
@@ -137,7 +137,7 @@ where
     /// use crossbeam_skiplist::SkipSet;
     ///
     /// let set: SkipSet<_> = (1..=3).collect();
-    /// assert_eq!(*set.get(&3).unwrap().value(), 3);
+    /// assert_eq!(*set.get(&3).unwrap(), 3);
     /// assert!(set.get(&4).is_none());
     /// ```
     pub fn get<Q>(&self, key: &Q) -> Option<Entry<'_, T>>
@@ -164,10 +164,10 @@ where
     /// set.insert(12);
     ///
     /// let greater_than_five = set.lower_bound(Excluded(&5)).unwrap();
-    /// assert_eq!(*greater_than_five.value(), 6);
+    /// assert_eq!(*greater_than_five, 6);
     ///
     /// let greater_than_six = set.lower_bound(Excluded(&6)).unwrap();
-    /// assert_eq!(*greater_than_six.value(), 7);
+    /// assert_eq!(*greater_than_six, 7);
     ///
     /// let greater_than_thirteen = set.lower_bound(Excluded(&13));
     /// assert!(greater_than_thirteen.is_none());
@@ -196,7 +196,7 @@ where
     /// set.insert(12);
     ///
     /// let less_than_eight = set.upper_bound(Excluded(&8)).unwrap();
-    /// assert_eq!(*less_than_eight.value(), 7);
+    /// assert_eq!(*less_than_eight, 7);
     ///
     /// let less_than_six = set.upper_bound(Excluded(&6));
     /// assert!(less_than_six.is_none());
@@ -218,7 +218,7 @@ where
     ///
     /// let set = SkipSet::new();
     /// let entry = set.get_or_insert(2);
-    /// assert_eq!(*entry.value(), 2);
+    /// assert_eq!(*entry, 2);
     /// ```
     pub fn get_or_insert(&self, key: T) -> Entry<'_, T> {
         Entry::new(self.inner.get_or_insert(key, ()))
@@ -237,9 +237,9 @@ where
     /// set.insert(12);
     ///
     /// let mut set_iter = set.iter();
-    /// assert_eq!(*set_iter.next().unwrap().value(), 6);
-    /// assert_eq!(*set_iter.next().unwrap().value(), 7);
-    /// assert_eq!(*set_iter.next().unwrap().value(), 12);
+    /// assert_eq!(*set_iter.next().unwrap(), 6);
+    /// assert_eq!(*set_iter.next().unwrap(), 7);
+    /// assert_eq!(*set_iter.next().unwrap(), 12);
     /// assert!(set_iter.next().is_none());
     /// ```
     pub fn iter(&self) -> Iter<'_, T> {
@@ -261,8 +261,8 @@ where
     /// set.insert(12);
     ///
     /// let mut set_range = set.range(5..=8);
-    /// assert_eq!(*set_range.next().unwrap().value(), 6);
-    /// assert_eq!(*set_range.next().unwrap().value(), 7);
+    /// assert_eq!(*set_range.next().unwrap(), 6);
+    /// assert_eq!(*set_range.next().unwrap(), 7);
     /// assert!(set_range.next().is_none());
     /// ```
     pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, T>
@@ -293,7 +293,7 @@ where
     ///
     /// let set = SkipSet::new();
     /// set.insert(2);
-    /// assert_eq!(*set.get(&2).unwrap().value(), 2);
+    /// assert_eq!(*set.get(&2).unwrap(), 2);
     /// ```
     pub fn insert(&self, key: T) -> Entry<'_, T> {
         Entry::new(self.inner.insert(key, ()))
@@ -311,7 +311,7 @@ where
     ///
     /// let set = SkipSet::new();
     /// set.insert(2);
-    /// assert_eq!(*set.remove(&2).unwrap().value(), 2);
+    /// assert_eq!(*set.remove(&2).unwrap(), 2);
     /// assert!(set.remove(&2).is_none());
     /// ```
     pub fn remove<Q>(&self, key: &Q) -> Option<Entry<'_, T>>
@@ -337,8 +337,8 @@ where
     /// set.insert(1);
     /// set.insert(2);
     ///
-    /// assert_eq!(*set.pop_front().unwrap().value(), 1);
-    /// assert_eq!(*set.pop_front().unwrap().value(), 2);
+    /// assert_eq!(*set.pop_front().unwrap(), 1);
+    /// assert_eq!(*set.pop_front().unwrap(), 2);
     ///
     /// // All entries have been removed now.
     /// assert!(set.is_empty());
@@ -362,8 +362,8 @@ where
     /// set.insert(1);
     /// set.insert(2);
     ///
-    /// assert_eq!(*set.pop_back().unwrap().value(), 2);
-    /// assert_eq!(*set.pop_back().unwrap().value(), 1);
+    /// assert_eq!(*set.pop_back().unwrap(), 2);
+    /// assert_eq!(*set.pop_back().unwrap(), 1);
     ///
     /// // All entries have been removed now.
     /// assert!(set.is_empty());
