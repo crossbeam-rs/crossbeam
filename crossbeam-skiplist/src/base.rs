@@ -1,4 +1,4 @@
-//! TODO: docs
+//! A lock-free skip list. See [`SkipList`].
 
 use alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
 use core::borrow::Borrow;
@@ -1551,6 +1551,7 @@ where
             }
         }
     }
+
     /// Moves to the previous entry in the skip list.
     pub fn move_prev(&mut self, guard: &Guard) -> bool {
         match self.prev(guard) {
@@ -1684,7 +1685,7 @@ impl<'a, K: 'a, V: 'a> RefIter<'a, K, V>
 where
     K: Ord,
 {
-    /// TODO
+    /// Advances the iterator and returns the next value.
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.head = match self.head {
@@ -1710,7 +1711,7 @@ where
         self.head.clone()
     }
 
-    /// TODO
+    /// Removes and returns an element from the end of the iterator.
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.tail = match self.tail {
@@ -1888,7 +1889,7 @@ where
     R: RangeBounds<Q>,
     Q: Ord + ?Sized,
 {
-    /// TODO
+    /// Advances the iterator and returns the next value.
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.head = match self.head {
@@ -1912,7 +1913,7 @@ where
         self.head.clone()
     }
 
-    /// TODO: docs
+    /// Removes and returns an element from the end of the iterator.
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.tail = match self.tail {
