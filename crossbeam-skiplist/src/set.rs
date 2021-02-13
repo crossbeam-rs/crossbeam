@@ -3,6 +3,7 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::iter::FromIterator;
+use std::ops::Deref;
 use std::ops::{Bound, RangeBounds};
 
 use crate::map;
@@ -278,6 +279,14 @@ where
         f.debug_struct("Entry")
             .field("value", self.value())
             .finish()
+    }
+}
+
+impl<T> Deref for Entry<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.value()
     }
 }
 
