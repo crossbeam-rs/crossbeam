@@ -864,9 +864,6 @@ impl<'a> Select<'a> {
     /// The selected operation must be completed with [`SelectedOperation::send`]
     /// or [`SelectedOperation::recv`].
     ///
-    /// [`SelectedOperation::send`]: struct.SelectedOperation.html#method.send
-    /// [`SelectedOperation::recv`]: struct.SelectedOperation.html#method.recv
-    ///
     /// # Examples
     ///
     /// ```

@@ -1,4 +1,4 @@
-//! An ordered map based on a lock-free skip list. See [`SkipMap`](struct.SkipMap.html).
+//! An ordered map based on a lock-free skip list. See [`SkipMap`].
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -15,7 +15,7 @@ use crate::epoch;
 /// This is an alternative to [`BTreeMap`] which supports
 /// concurrent access across multiple threads.
 ///
-/// [`BTreeMap`]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
+/// [`BTreeMap`]: std::collections::BTreeMap
 pub struct SkipMap<K, V> {
     inner: base::SkipList<K, V>,
 }
@@ -77,8 +77,6 @@ where
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
     ///
-    /// [`Entry`]: map/struct.Entry.html
-    ///
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;
@@ -98,8 +96,6 @@ where
     ///
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
-    ///
-    /// [`Entry`]: map/struct.Entry.html
     ///
     /// # Example
     /// ```
@@ -142,8 +138,6 @@ where
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
     ///
-    /// [`Entry`]: map/struct.Entry.html
-    ///
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;
@@ -169,8 +163,6 @@ where
     ///
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
-    ///
-    /// [`Entry`]: map/struct.Entry.html
     ///
     /// # Example
     /// ```
@@ -207,8 +199,6 @@ where
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
     ///
-    /// [`Entry`]: map/struct.Entry.html
-    ///
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;
@@ -239,8 +229,6 @@ where
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
     ///
-    /// [`Entry`]: map/struct.Entry.html
-    ///
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;
@@ -263,8 +251,6 @@ where
     ///
     /// This iterator returns [`Entry`]s which
     /// can be used to access keys and their associated values.
-    ///
-    /// [`Entry`]: map/struct.Entry.html
     ///
     /// # Examples
     /// ```
@@ -293,8 +279,6 @@ where
     ///  This iterator returns [`Entry`]s which
     /// can be used to access keys and their associated values.
     ///
-    /// [`Entry`]: map/struct.Entry.html
-    ///
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;
@@ -308,7 +292,7 @@ where
     /// for entry in numbers.range(5..=8) {
     ///     let number = entry.key();
     ///     let number_str = entry.value();
-    ///     println!("{} is {}", number, number_str);   
+    ///     println!("{} is {}", number, number_str);
     /// }
     /// ```
     pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, K, V>
@@ -336,8 +320,6 @@ where
     /// This function returns an [`Entry`] which
     /// can be used to access the inserted key's associated value.
     ///
-    /// [`Entry`]: map/struct.Entry.html
-    ///
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;
@@ -359,8 +341,6 @@ where
     ///
     /// This function returns an [`Entry`] which
     /// can be used to access the removed key's associated value.
-    ///
-    /// [`Entry`]: map/struct.Entry.html
     ///
     /// # Example
     /// ```

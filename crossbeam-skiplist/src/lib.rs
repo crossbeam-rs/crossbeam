@@ -20,7 +20,7 @@
 //! let person_ages = SkipMap::new();
 //!
 //! scope(|s| {
-//!     // Insert entries into the map from multiple threads.     
+//!     // Insert entries into the map from multiple threads.
 //!     s.spawn(|_| {
 //!         person_ages.insert("Spike Garrett", 22);
 //!         person_ages.insert("Stan Hancock", 47);
@@ -56,7 +56,7 @@
 //!     s.spawn(|_| {
 //!         numbers.remove(&5);
 //!     });
-//!     
+//!
 //!     // While the thread above is running, insert a value into the set.
 //!     numbers.insert(5);
 //!
@@ -153,16 +153,14 @@
 //! with good performance characteristics.
 //! * [`flurry`](https://docs.rs/flurry) is a Rust port of Java's `ConcurrentHashMap`.
 //!
-//! [`SkipMap`]: struct.SkipMap.html
-//! [`SkipSet`]: struct.SkipSet.html
-//! [`insert`]: struct.SkipMap.html#method.insert
-//! [`get`]: struct.SkipMap.html#method.get
-//! [`Entry`]: map/struct.Entry.html
+//! [`insert`]: SkipMap::insert
+//! [`get`]: SkipMap::get
+//! [`Entry`]: map::Entry
 //! [skip lists]: https://en.wikipedia.org/wiki/Skip_list
 //! [`crossbeam-epoch`]: https://docs.rs/crossbeam-epoch
-//! [`BTreeMap`]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
-//! [`BTreeSet`]: https://doc.rust-lang.org/std/collections/struct.BTreeSet.html
-//! [`RwLock`]: https://doc.rust-lang.org/std/sync/struct.RwLock.html
+//! [`BTreeMap`]: std::collections::BTreeMap
+//! [`BTreeSet`]: std::collections::BTreeSet
+//! [`RwLock`]: std::sync::RwLock
 //!
 //! # Examples
 //! [`SkipMap`] basic usage:
@@ -196,7 +194,7 @@
 //! for entry in &movie_reviews {
 //!     let movie = entry.key();
 //!     let review = entry.value();
-//!     println!("{}: \"{}\"", movie, review);   
+//!     println!("{}: \"{}\"", movie, review);
 //! }
 //! ```
 //!
@@ -225,8 +223,8 @@
 //! // Iterate over the books in the set.
 //! // Values are returned in lexicographical order.
 //! for entry in &books {
-//!     let book = entry.value();    
-//!     println!("{}", book);  
+//!     let book = entry.value();
+//!     println!("{}", book);
 //! }
 //! ```
 
