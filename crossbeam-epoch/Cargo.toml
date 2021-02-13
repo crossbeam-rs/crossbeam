@@ -41,7 +41,7 @@ memoffset = "0.6"
 #
 # This configuration option is outside of the normal semver guarantees: minor
 # versions of crossbeam may make breaking changes to it at any time.
-[target.'cfg(loom_crossbeam)'.dependencies]
+[target.'cfg(crossbeam_loom)'.dependencies]
 loom = "0.4"
 
 [dependencies.crossbeam-utils]

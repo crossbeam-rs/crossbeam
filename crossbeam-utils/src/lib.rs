@@ -40,7 +40,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
-#[cfg(loom_crossbeam)]
+#[cfg(crossbeam_loom)]
 #[allow(unused_imports)]
 mod primitive {
     pub(crate) mod sync {
@@ -60,7 +60,7 @@ mod primitive {
         pub(crate) use loom::sync::{Arc, Condvar, Mutex};
     }
 }
-#[cfg(not(loom_crossbeam))]
+#[cfg(not(crossbeam_loom))]
 #[allow(unused_imports)]
 mod primitive {
     pub(crate) mod sync {
@@ -109,7 +109,7 @@ cfg_if! {
     if #[cfg(feature = "std")] {
         pub mod sync;
 
-        #[cfg(not(loom_crossbeam))]
+        #[cfg(not(crossbeam_loom))]
         pub mod thread;
     }
 }

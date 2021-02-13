@@ -339,7 +339,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::<i32>::null();
     /// ```
     ///
-    #[cfg_attr(all(feature = "nightly", not(loom_crossbeam)), const_fn::const_fn)]
+    #[cfg_attr(all(feature = "nightly", not(crossbeam_loom)), const_fn::const_fn)]
     pub fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
@@ -794,14 +794,14 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
-        #[cfg(loom_crossbeam)]
+        #[cfg(crossbeam_loom)]
         {
             // FIXME: loom does not yet support into_inner, so we use unsync_load for now,
             // which should have the same synchronization properties:
             // https://github.com/tokio-rs/loom/issues/117
             Owned::from_usize(self.data.unsync_load())
         }
-        #[cfg(not(loom_crossbeam))]
+        #[cfg(not(crossbeam_loom))]
         {
             Owned::from_usize(self.data.into_inner())
         }
@@ -1524,7 +1524,7 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
     }
 }
 
-#[cfg(all(test, not(loom_crossbeam)))]
+#[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
     use super::Shared;
 
