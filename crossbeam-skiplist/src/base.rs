@@ -356,7 +356,7 @@ impl<K, V> SkipList<K, V> {
     pub fn len(&self) -> usize {
         let len = self.hot_data.len.load(Ordering::Relaxed);
 
-        // Due to the relaxed  memory ordering, the length counter may sometimes
+        // Due to the relaxed memory ordering, the length counter may sometimes
         // underflow and produce a very large value. We treat such values as 0.
         if len > isize::max_value() as usize {
             0

@@ -1,4 +1,4 @@
-//! TODO: docs
+//! An ordered map based on a lock-free skip list. See [`SkipMap`](struct.SkipMap.html).
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -10,7 +10,12 @@ use std::ptr;
 use crate::base::{self, try_pin_loop};
 use crate::epoch;
 
-/// A map based on a lock-free skip list.
+/// An ordered map based on a lock-free skip list.
+///
+/// This is an alternative to [`BTreeMap`] which supports
+/// concurrent access across multiple threads.
+///
+/// [`BTreeMap`]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
 pub struct SkipMap<K, V> {
     inner: base::SkipList<K, V>,
 }
@@ -24,6 +29,17 @@ impl<K, V> SkipMap<K, V> {
     }
 
     /// Returns `true` if the map is empty.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let map: SkipMap<&str, &str> = SkipMap::new();
+    /// assert!(map.is_empty());
+    ///
+    /// map.insert("key", "value");
+    /// assert!(!map.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
@@ -32,6 +48,21 @@ impl<K, V> SkipMap<K, V> {
     ///
     /// If the map is being concurrently modified, consider the returned number just an
     /// approximation without any guarantees.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let map = SkipMap::new();
+    /// map.insert(0, 1);
+    /// assert_eq!(map.len(), 1);
+    ///
+    /// for x in 1..=5 {
+    ///     map.insert(x, x + 1);
+    /// }
+    ///
+    /// assert_eq!(map.len(), 6);
+    /// ```
     pub fn len(&self) -> usize {
         self.inner.len()
     }
@@ -42,18 +73,61 @@ where
     K: Ord,
 {
     /// Returns the entry with the smallest key.
+    ///
+    /// This function returns an [`Entry`] which
+    /// can be used to access the key's associated value.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let numbers = SkipMap::new();
+    /// numbers.insert(5, "five");
+    /// numbers.insert(6, "six");
+    ///
+    /// assert_eq!(*numbers.front().unwrap().value(), "five");
+    /// ```
     pub fn front(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
         try_pin_loop(|| self.inner.front(guard)).map(Entry::new)
     }
 
     /// Returns the entry with the largest key.
+    ///
+    /// This function returns an [`Entry`] which
+    /// can be used to access the key's associated value.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let numbers = SkipMap::new();
+    /// numbers.insert(5, "five");
+    /// numbers.insert(6, "six");
+    ///
+    /// assert_eq!(*numbers.back().unwrap().value(), "six");
+    /// ```
     pub fn back(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
         try_pin_loop(|| self.inner.back(guard)).map(Entry::new)
     }
 
     /// Returns `true` if the map contains a value for the specified key.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let ages = SkipMap::new();
+    /// ages.insert("Bill Gates", 64);
+    ///
+    /// assert!(ages.contains_key(&"Bill Gates"));
+    /// assert!(!ages.contains_key(&"Steve Jobs"));
+    /// ```
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         K: Borrow<Q>,
@@ -64,6 +138,22 @@ where
     }
 
     /// Returns an entry with the specified `key`.
+    ///
+    /// This function returns an [`Entry`] which
+    /// can be used to access the key's associated value.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let numbers: SkipMap<&str, i32> = SkipMap::new();
+    /// assert!(numbers.get("six").is_none());
+    ///
+    /// numbers.insert("six", 6);
+    /// assert_eq!(*numbers.get("six").unwrap().value(), 6);
+    /// ```
     pub fn get<Q>(&self, key: &Q) -> Option<Entry<'_, K, V>>
     where
         K: Borrow<Q>,
@@ -76,6 +166,31 @@ where
     /// Returns an `Entry` pointing to the lowest element whose key is above
     /// the given bound. If no such element is found then `None` is
     /// returned.
+    ///
+    /// This function returns an [`Entry`] which
+    /// can be used to access the key's associated value.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    /// use std::ops::Bound::*;
+    ///
+    /// let numbers = SkipMap::new();
+    /// numbers.insert(6, "six");
+    /// numbers.insert(7, "seven");
+    /// numbers.insert(12, "twelve");
+    ///
+    /// let greater_than_five = numbers.lower_bound(Excluded(&5)).unwrap();
+    /// assert_eq!(*greater_than_five.value(), "six");
+    ///
+    /// let greater_than_six = numbers.lower_bound(Excluded(&6)).unwrap();
+    /// assert_eq!(*greater_than_six.value(), "seven");
+    ///
+    /// let greater_than_thirteen = numbers.lower_bound(Excluded(&13));
+    /// assert!(greater_than_thirteen.is_none());
+    /// ```
     pub fn lower_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, K, V>>
     where
         K: Borrow<Q>,
@@ -88,6 +203,28 @@ where
     /// Returns an `Entry` pointing to the highest element whose key is below
     /// the given bound. If no such element is found then `None` is
     /// returned.
+    ///
+    /// This function returns an [`Entry`] which
+    /// can be used to access the key's associated value.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    /// use std::ops::Bound::*;
+    ///
+    /// let numbers = SkipMap::new();
+    /// numbers.insert(6, "six");
+    /// numbers.insert(7, "seven");
+    /// numbers.insert(12, "twelve");
+    ///
+    /// let less_than_eight = numbers.upper_bound(Excluded(&8)).unwrap();
+    /// assert_eq!(*less_than_eight.value(), "seven");
+    ///
+    /// let less_than_six = numbers.upper_bound(Excluded(&6));
+    /// assert!(less_than_six.is_none());
+    /// ```
     pub fn upper_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, K, V>>
     where
         K: Borrow<Q>,
@@ -98,12 +235,53 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
+    ////
+    /// This function returns an [`Entry`] which
+    /// can be used to access the key's associated value.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let ages = SkipMap::new();
+    /// let gates_age = ages.get_or_insert("Bill Gates", 64);
+    /// assert_eq!(*gates_age.value(), 64);
+    ///
+    /// ages.insert("Steve Jobs", 65);
+    /// let jobs_age = ages.get_or_insert("Steve Jobs", -1);
+    /// assert_eq!(*jobs_age.value(), 65);
+    /// ```
     pub fn get_or_insert(&self, key: K, value: V) -> Entry<'_, K, V> {
         let guard = &epoch::pin();
         Entry::new(self.inner.get_or_insert(key, value, guard))
     }
 
-    /// Returns an iterator over all entries in the map.
+    /// Returns an iterator over all entries in the map,
+    /// sorted by key.
+    ///
+    /// This iterator returns [`Entry`]s which
+    /// can be used to access keys and their associated values.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Examples
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let numbers = SkipMap::new();
+    /// numbers.insert(6, "six");
+    /// numbers.insert(7, "seven");
+    /// numbers.insert(12, "twelve");
+    ///
+    /// // Print then numbers from least to greatest
+    /// for entry in numbers.iter() {
+    ///     let number = entry.key();
+    ///     let number_str = entry.value();
+    ///     println!("{} is {}", number, number_str);
+    /// }
+    /// ```
     pub fn iter(&self) -> Iter<'_, K, V> {
         Iter {
             inner: self.inner.ref_iter(),
@@ -111,6 +289,28 @@ where
     }
 
     /// Returns an iterator over a subset of entries in the skip list.
+    ///
+    ///  This iterator returns [`Entry`]s which
+    /// can be used to access keys and their associated values.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let numbers = SkipMap::new();
+    /// numbers.insert(6, "six");
+    /// numbers.insert(7, "seven");
+    /// numbers.insert(12, "twelve");
+    ///
+    /// // Print all numbers in the map between 5 and 8.
+    /// for entry in numbers.range(5..=8) {
+    ///     let number = entry.key();
+    ///     let number_str = entry.value();
+    ///     println!("{} is {}", number, number_str);   
+    /// }
+    /// ```
     pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, K, V>
     where
         K: Borrow<Q>,
@@ -132,12 +332,46 @@ where
     ///
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
+    ///
+    /// This function returns an [`Entry`] which
+    /// can be used to access the inserted key's associated value.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let map = SkipMap::new();
+    /// map.insert("key", "value");
+    ///
+    /// assert_eq!(*map.get("key").unwrap().value(), "value");
+    /// ```
     pub fn insert(&self, key: K, value: V) -> Entry<'_, K, V> {
         let guard = &epoch::pin();
         Entry::new(self.inner.insert(key, value, guard))
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
+    ///
+    /// The value will not actually be dropped until all references to it have gone
+    /// out of scope.
+    ///
+    /// This function returns an [`Entry`] which
+    /// can be used to access the removed key's associated value.
+    ///
+    /// [`Entry`]: map/struct.Entry.html
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let map: SkipMap<&str, &str> = SkipMap::new();
+    /// assert!(map.remove("invalid key").is_none());
+    ///
+    /// map.insert("key", "value");
+    /// assert_eq!(*map.remove("key").unwrap().value(), "value");
+    /// ```
     pub fn remove<Q>(&self, key: &Q) -> Option<Entry<'_, K, V>>
     where
         K: Borrow<Q>,
@@ -147,19 +381,73 @@ where
         self.inner.remove(key, guard).map(Entry::new)
     }
 
-    /// Removes an entry from the front of the map.
+    /// Removes the entry with the lowest key
+    /// from the map. Returns the removed entry.
+    ///
+    /// The value will not actually be dropped until all references to it have gone
+    /// out of scope.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let numbers = SkipMap::new();
+    /// numbers.insert(6, "six");
+    /// numbers.insert(7, "seven");
+    /// numbers.insert(12, "twelve");
+    ///
+    /// assert_eq!(*numbers.pop_front().unwrap().value(), "six");
+    /// assert_eq!(*numbers.pop_front().unwrap().value(), "seven");
+    /// assert_eq!(*numbers.pop_front().unwrap().value(), "twelve");
+    ///
+    /// // All entries have been removed now.
+    /// assert!(numbers.pop_front().is_none());
+    /// ```
     pub fn pop_front(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
         self.inner.pop_front(guard).map(Entry::new)
     }
 
-    /// Removes an entry from the back of the map.
+    /// Removes the entry with the greatest key from the map.
+    /// Returns the removed entry.
+    ///
+    /// The value will not actually be dropped until all references to it have gone
+    /// out of scope.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let numbers = SkipMap::new();
+    /// numbers.insert(6, "six");
+    /// numbers.insert(7, "seven");
+    /// numbers.insert(12, "twelve");
+    ///
+    /// assert_eq!(*numbers.pop_back().unwrap().value(), "twelve");
+    /// assert_eq!(*numbers.pop_back().unwrap().value(), "seven");
+    /// assert_eq!(*numbers.pop_back().unwrap().value(), "six");
+    ///
+    /// // All entries have been removed now.
+    /// assert!(numbers.pop_front().is_none());
+    /// ```
     pub fn pop_back(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
         self.inner.pop_back(guard).map(Entry::new)
     }
 
-    /// Iterates over the map and removes every entry.
+    /// Removes all entries from the map.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let people = SkipMap::new();
+    /// people.insert("Bill", "Gates");
+    /// people.insert("Steve", "Jobs");
+    ///
+    /// people.clear();
+    /// assert!(people.is_empty());
+    /// ```
     pub fn clear(&self) {
         let guard = &mut epoch::pin();
         self.inner.clear(guard);
