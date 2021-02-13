@@ -8,7 +8,6 @@ version = "0.3.1"
 authors = ["The Crossbeam Project Developers"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
-readme = "README.md"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-queue"
 documentation = "https://docs.rs/crossbeam-queue"
