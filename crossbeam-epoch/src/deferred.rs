@@ -79,7 +79,7 @@ impl Deferred {
     }
 }
 
-#[cfg(all(test, not(loom_crossbeam)))]
+#[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
     use super::Deferred;
     use std::cell::Cell;

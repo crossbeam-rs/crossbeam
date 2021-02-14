@@ -14,9 +14,9 @@
 /// ```
 use core::fmt;
 
-use crate::primitive::sync::Arc;
 use crate::guard::Guard;
 use crate::internal::{Global, Local};
+use crate::primitive::sync::Arc;
 
 /// An epoch-based garbage collector.
 pub struct Collector {
@@ -109,7 +109,7 @@ impl fmt::Debug for LocalHandle {
     }
 }
 
-#[cfg(all(test, not(loom_crossbeam)))]
+#[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
     use std::mem;
     use std::sync::atomic::{AtomicUsize, Ordering};

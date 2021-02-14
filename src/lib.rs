@@ -90,9 +90,9 @@ cfg_if! {
 
         pub use crossbeam_utils::sync;
 
-        #[cfg(not(loom_crossbeam))]
+        #[cfg(not(crossbeam_loom))]
         pub use crossbeam_utils::thread;
-        #[cfg(not(loom_crossbeam))]
+        #[cfg(not(crossbeam_loom))]
         pub use crossbeam_utils::thread::scope;
     }
 }

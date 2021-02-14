@@ -8,13 +8,13 @@ use core::fmt;
 use core::mem;
 use core::sync::atomic::Ordering;
 
-#[cfg(not(loom_crossbeam))]
+#[cfg(not(crossbeam_loom))]
 use core::ptr;
 
 #[cfg(feature = "std")]
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
-#[cfg(not(loom_crossbeam))]
+#[cfg(not(crossbeam_loom))]
 use super::seq_lock::SeqLock;
 
 /// A thread-safe mutable memory location.
@@ -499,23 +499,23 @@ macro_rules! impl_arithmetic {
 
 #[cfg(has_atomic_u8)]
 impl_arithmetic!(u8, atomic::AtomicU8, "let a = AtomicCell::new(7u8);");
-#[cfg(all(has_atomic_u8, not(loom_crossbeam)))]
+#[cfg(all(has_atomic_u8, not(crossbeam_loom)))]
 impl_arithmetic!(i8, atomic::AtomicI8, "let a = AtomicCell::new(7i8);");
 #[cfg(has_atomic_u16)]
 impl_arithmetic!(u16, atomic::AtomicU16, "let a = AtomicCell::new(7u16);");
-#[cfg(all(has_atomic_u16, not(loom_crossbeam)))]
+#[cfg(all(has_atomic_u16, not(crossbeam_loom)))]
 impl_arithmetic!(i16, atomic::AtomicI16, "let a = AtomicCell::new(7i16);");
 #[cfg(has_atomic_u32)]
 impl_arithmetic!(u32, atomic::AtomicU32, "let a = AtomicCell::new(7u32);");
-#[cfg(all(has_atomic_u32, not(loom_crossbeam)))]
+#[cfg(all(has_atomic_u32, not(crossbeam_loom)))]
 impl_arithmetic!(i32, atomic::AtomicI32, "let a = AtomicCell::new(7i32);");
 #[cfg(has_atomic_u64)]
 impl_arithmetic!(u64, atomic::AtomicU64, "let a = AtomicCell::new(7u64);");
-#[cfg(all(has_atomic_u64, not(loom_crossbeam)))]
+#[cfg(all(has_atomic_u64, not(crossbeam_loom)))]
 impl_arithmetic!(i64, atomic::AtomicI64, "let a = AtomicCell::new(7i64);");
-#[cfg(all(has_atomic_u128, not(loom_crossbeam)))]
+#[cfg(all(has_atomic_u128, not(crossbeam_loom)))]
 impl_arithmetic!(u128, atomic::AtomicU128, "let a = AtomicCell::new(7u128);");
-#[cfg(all(has_atomic_u128, not(loom_crossbeam)))]
+#[cfg(all(has_atomic_u128, not(crossbeam_loom)))]
 impl_arithmetic!(i128, atomic::AtomicI128, "let  a = AtomicCell::new(7i128);");
 
 impl_arithmetic!(
@@ -523,7 +523,7 @@ impl_arithmetic!(
     atomic::AtomicUsize,
     "let a = AtomicCell::new(7usize);"
 );
-#[cfg(not(loom_crossbeam))]
+#[cfg(not(crossbeam_loom))]
 impl_arithmetic!(
     isize,
     atomic::AtomicIsize,
@@ -632,7 +632,7 @@ const fn can_transmute<A, B>() -> bool {
 /// scalability.
 #[inline]
 #[must_use]
-#[cfg(not(loom_crossbeam))]
+#[cfg(not(crossbeam_loom))]
 fn lock(addr: usize) -> &'static SeqLock {
     // The number of locks is a prime number because we want to make sure `addr % LEN` gets
     // dispersed across all locks.
@@ -820,9 +820,9 @@ macro_rules! atomic {
             #[cfg(has_atomic_u128)]
             atomic!(@check, $t, atomic::AtomicU128, $a, $atomic_op);
 
-            #[cfg(loom_crossbeam)]
+            #[cfg(crossbeam_loom)]
             unimplemented!("loom does not support non-atomic atomic ops");
-            #[cfg(not(loom_crossbeam))]
+            #[cfg(not(crossbeam_loom))]
             break $fallback_op;
         }
     };
