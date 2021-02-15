@@ -6,7 +6,7 @@
 //! multiple threads.
 //!
 //! # Concurrent access
-//! [`SkipMap`] and [`SkipSet`] implement `Send` and `Sync`,
+//! [`SkipMap`] and [`SkipSet`] implement [`Send`] and [`Sync`],
 //! so they can be shared across threads with ease.
 //!
 //! Methods which mutate the map, such as [`insert`],

@@ -22,6 +22,14 @@ pub struct SkipMap<K, V> {
 
 impl<K, V> SkipMap<K, V> {
     /// Returns a new, empty map.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let map: SkipMap<i32, &str> = SkipMap::new();
+    /// ```
     pub fn new() -> SkipMap<K, V> {
         SkipMap {
             inner: base::SkipList::new(epoch::default_collector().clone()),
@@ -83,8 +91,8 @@ where
     ///
     /// let numbers = SkipMap::new();
     /// numbers.insert(5, "five");
+    /// assert_eq!(*numbers.front().unwrap().value(), "five");
     /// numbers.insert(6, "six");
-    ///
     /// assert_eq!(*numbers.front().unwrap().value(), "five");
     /// ```
     pub fn front(&self) -> Option<Entry<'_, K, V>> {
@@ -103,8 +111,8 @@ where
     ///
     /// let numbers = SkipMap::new();
     /// numbers.insert(5, "five");
+    /// assert_eq!(*numbers.back().unwrap().value(), "five");
     /// numbers.insert(6, "six");
-    ///
     /// assert_eq!(*numbers.back().unwrap().value(), "six");
     /// ```
     pub fn back(&self) -> Option<Entry<'_, K, V>> {
@@ -274,9 +282,9 @@ where
         }
     }
 
-    /// Returns an iterator over a subset of entries in the skip list.
+    /// Returns an iterator over a subset of entries in the map.
     ///
-    ///  This iterator returns [`Entry`]s which
+    /// This iterator returns [`Entry`]s which
     /// can be used to access keys and their associated values.
     ///
     /// # Example
@@ -381,7 +389,7 @@ where
     /// assert_eq!(*numbers.pop_front().unwrap().value(), "twelve");
     ///
     /// // All entries have been removed now.
-    /// assert!(numbers.pop_front().is_none());
+    /// assert!(numbers.is_empty());
     /// ```
     pub fn pop_front(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
@@ -408,7 +416,7 @@ where
     /// assert_eq!(*numbers.pop_back().unwrap().value(), "six");
     ///
     /// // All entries have been removed now.
-    /// assert!(numbers.pop_front().is_none());
+    /// assert!(numbers.is_empty());
     /// ```
     pub fn pop_back(&self) -> Option<Entry<'_, K, V>> {
         let guard = &epoch::pin();
@@ -641,7 +649,7 @@ impl<K, V> fmt::Debug for Iter<'_, K, V> {
     }
 }
 
-/// An iterator over the entries of a `SkipMap`.
+/// An iterator over a subset of entries of a `SkipMap`.
 pub struct Range<'a, Q, R, K, V>
 where
     K: Ord + Borrow<Q>,
