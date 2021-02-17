@@ -286,7 +286,7 @@ impl<T> Pointable for [MaybeUninit<T>] {
 /// Crossbeam supports dynamically sized types.  See [`Pointable`] for details.
 pub struct Atomic<T: ?Sized + Pointable> {
     data: AtomicUsize,
-    _marker: PhantomData<*mut T>,
+    _marker: PhantomData<*const T>,
 }
 
 unsafe impl<T: ?Sized + Pointable + Send + Sync> Send for Atomic<T> {}

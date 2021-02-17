@@ -29,7 +29,7 @@ const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
 /// *not* deallocate the buffer.
 struct Buffer<T> {
     /// Pointer to the allocated memory.
-    ptr: *mut T,
+    ptr: *const T,
 
     /// Capacity of the buffer. Always a power of two.
     cap: usize,
@@ -51,13 +51,13 @@ impl<T> Buffer<T> {
 
     /// Deallocates the buffer.
     unsafe fn dealloc(self) {
-        drop(Vec::from_raw_parts(self.ptr, 0, self.cap));
+        drop(Vec::from_raw_parts(self.ptr as *mut T, 0, self.cap));
     }
 
     /// Returns a pointer to the task at the specified `index`.
     unsafe fn at(&self, index: isize) -> *mut T {
         // `self.cap` is always a power of two.
-        self.ptr.offset(index & (self.cap - 1) as isize)
+        self.ptr.offset(index & (self.cap - 1) as isize) as *mut _
     }
 
     /// Writes `task` into the specified `index`.
