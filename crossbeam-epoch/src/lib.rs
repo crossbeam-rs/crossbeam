@@ -65,6 +65,9 @@
 #![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 #![cfg_attr(feature = "nightly", feature(const_fn))]
 
+#[cfg(crossbeam_loom)]
+extern crate loom_crate as loom;
+
 use cfg_if::cfg_if;
 
 #[cfg(crossbeam_loom)]
