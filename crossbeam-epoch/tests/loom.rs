@@ -1,6 +1,7 @@
 #![cfg(crossbeam_loom)]
 
 use crossbeam_epoch as epoch;
+use loom_crate as loom;
 
 use epoch::*;
 use epoch::{Atomic, Owned};
