@@ -1,3 +1,7 @@
+# Version 0.9.3
+
+- Make `loom` dependency optional. (#666)
+
 # Version 0.9.2
 
 - Add `Atomic::compare_exchange` and `Atomic::compare_exchange_weak`. (#628)

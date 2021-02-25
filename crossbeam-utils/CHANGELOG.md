@@ -1,3 +1,7 @@
+# Version 0.8.3
+
+- Make `loom` dependency optional. (#666)
+
 # Version 0.8.2
 
 - Deprecate `AtomicCell::compare_and_swap`. Use `AtomicCell::compare_exchange` instead. (#619)
