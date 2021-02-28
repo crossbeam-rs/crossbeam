@@ -595,7 +595,7 @@ impl<T> Channel<T> {
                 drop(Box::from_raw(block));
             }
         }
-        head = head & !MARK_BIT;
+        head &= !MARK_BIT;
         self.head.block.store(ptr::null_mut(), Ordering::Release);
         self.head.index.store(head, Ordering::Release);
     }
