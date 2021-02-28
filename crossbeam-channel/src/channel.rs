@@ -643,7 +643,7 @@ impl<T> Drop for Sender<T> {
         unsafe {
             match &self.flavor {
                 SenderFlavor::Array(chan) => chan.release(|c| c.disconnect()),
-                SenderFlavor::List(chan) => chan.release(|c| c.disconnect()),
+                SenderFlavor::List(chan) => chan.release(|c| c.disconnect_senders()),
                 SenderFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
             }
         }
@@ -1135,7 +1135,7 @@ impl<T> Drop for Receiver<T> {
         unsafe {
             match &self.flavor {
                 ReceiverFlavor::Array(chan) => chan.release(|c| c.disconnect()),
-                ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect()),
+                ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect_receivers()),
                 ReceiverFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
                 ReceiverFlavor::At(_) => {}
                 ReceiverFlavor::Tick(_) => {}
