@@ -1893,7 +1893,13 @@ where
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.head = match self.head {
-            Some(ref e) => e.next(guard),
+            Some(ref e) => {
+                let next_head = e.next(guard);
+                unsafe {
+                    e.node.decrement(guard);
+                }
+                next_head
+            }
             None => try_pin_loop(|| self.parent.lower_bound(self.range.start_bound(), guard)),
         };
         let mut finished = false;
@@ -1904,6 +1910,9 @@ where
             };
             if !below_upper_bound(&bound, h.key().borrow()) {
                 finished = true;
+                unsafe {
+                    h.node.decrement(guard);
+                }
             }
         }
         if finished {
@@ -1917,7 +1926,13 @@ where
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
         self.tail = match self.tail {
-            Some(ref e) => e.prev(guard),
+            Some(ref e) => {
+                let next_tail = e.prev(guard);
+                unsafe {
+                    e.node.decrement(guard);
+                }
+                next_tail
+            }
             None => try_pin_loop(|| self.parent.upper_bound(self.range.start_bound(), guard)),
         };
         let mut finished = false;
@@ -1928,6 +1943,9 @@ where
             };
             if !above_lower_bound(&bound, t.key().borrow()) {
                 finished = true;
+                unsafe {
+                    t.node.decrement(guard);
+                }
             }
         }
         if finished {
