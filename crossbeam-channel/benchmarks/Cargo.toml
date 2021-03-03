@@ -12,7 +12,7 @@ crossbeam = { path = "../.." }
 crossbeam-channel = { path = ".." }
 crossbeam-deque = { path = "../../crossbeam-deque" }
 flume = "0.5.0"
-futures-preview = "0.2.2"
+futures = { version = "0.3", features = ["thread-pool"] }
 lockfree = "0.5.1"
 mpmc = "0.1.5"
 
