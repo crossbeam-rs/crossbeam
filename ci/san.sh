@@ -21,6 +21,10 @@ cargo test --all --release --target x86_64-unknown-linux-gnu --tests \
 # There are memory leaks in crossbeam-skiplist.
 # https://github.com/crossbeam-rs/crossbeam/issues/614
 cargo clean
+RUSTFLAGS="-Dwarnings -Zsanitizer=address --cfg crossbeam_sanitize" \
+cargo test --release --target x86_64-unknown-linux-gnu \
+    -p crossbeam-skiplist --test map --test set
+cargo clean
 ASAN_OPTIONS="detect_leaks=0" \
 RUSTFLAGS="-Dwarnings -Zsanitizer=address --cfg crossbeam_sanitize" \
 cargo test --release --target x86_64-unknown-linux-gnu \
