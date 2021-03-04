@@ -1,4 +1,7 @@
+use std::{iter, ops::Bound, sync::Barrier};
+
 use crossbeam_skiplist::SkipMap;
+use crossbeam_utils::thread;
 
 #[test]
 fn smoke() {
@@ -6,6 +9,412 @@ fn smoke() {
     m.insert(1, 10);
     m.insert(5, 50);
     m.insert(7, 70);
+}
+
+#[test]
+fn is_empty() {
+    let s = SkipMap::new();
+    assert!(s.is_empty());
+
+    s.insert(1, 10);
+    assert!(!s.is_empty());
+    s.insert(2, 20);
+    s.insert(3, 30);
+    assert!(!s.is_empty());
+
+    s.remove(&2);
+    assert!(!s.is_empty());
+
+    s.remove(&1);
+    assert!(!s.is_empty());
+
+    s.remove(&3);
+    assert!(s.is_empty());
+}
+
+#[test]
+fn insert() {
+    let insert = [0, 4, 2, 12, 8, 7, 11, 5];
+    let not_present = [1, 3, 6, 9, 10];
+    let s = SkipMap::new();
+
+    for &x in &insert {
+        s.insert(x, x * 10);
+        assert_eq!(*s.get(&x).unwrap().value(), x * 10);
+    }
+
+    for &x in &not_present {
+        assert!(s.get(&x).is_none());
+    }
+}
+
+#[test]
+fn remove() {
+    let insert = [0, 4, 2, 12, 8, 7, 11, 5];
+    let not_present = [1, 3, 6, 9, 10];
+    let remove = [2, 12, 8];
+    let remaining = [0, 4, 5, 7, 11];
+
+    let s = SkipMap::new();
+
+    for &x in &insert {
+        s.insert(x, x * 10);
+    }
+    for x in &not_present {
+        assert!(s.remove(x).is_none());
+    }
+    for x in &remove {
+        assert!(s.remove(x).is_some());
+    }
+
+    let mut v = vec![];
+    let mut e = s.front().unwrap();
+    loop {
+        v.push(*e.key());
+        if !e.move_next() {
+            break;
+        }
+    }
+
+    assert_eq!(v, remaining);
+    for x in &insert {
+        s.remove(x);
+    }
+    assert!(s.is_empty());
+}
+
+// https://github.com/crossbeam-rs/crossbeam/issues/672
+#[test]
+fn concurrent_insert() {
+    for _ in 0..100 {
+        let set: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+        let barrier = Barrier::new(2);
+        thread::scope(|s| {
+            s.spawn(|_| {
+                barrier.wait();
+                set.insert(1, 1);
+            });
+            s.spawn(|_| {
+                barrier.wait();
+                set.insert(1, 1);
+            });
+        })
+        .unwrap();
+    }
+}
+
+// https://github.com/crossbeam-rs/crossbeam/issues/672
+#[test]
+fn concurrent_remove() {
+    for _ in 0..100 {
+        let set: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+        let barrier = Barrier::new(2);
+        thread::scope(|s| {
+            s.spawn(|_| {
+                barrier.wait();
+                set.remove(&1);
+            });
+            s.spawn(|_| {
+                barrier.wait();
+                set.remove(&1);
+            });
+        })
+        .unwrap();
+    }
+}
+
+#[test]
+fn entry() {
+    let s = SkipMap::new();
+
+    assert!(s.front().is_none());
+    assert!(s.back().is_none());
+
+    for &x in &[4, 2, 12, 8, 7, 11, 5] {
+        s.insert(x, x * 10);
+    }
+
+    let mut e = s.front().unwrap();
+    assert_eq!(*e.key(), 2);
+    assert!(!e.move_prev());
+    assert!(e.move_next());
+    assert_eq!(*e.key(), 4);
+
+    e = s.back().unwrap();
+    assert_eq!(*e.key(), 12);
+    assert!(!e.move_next());
+    assert!(e.move_prev());
+    assert_eq!(*e.key(), 11);
+}
+
+#[test]
+fn entry_remove() {
+    let s = SkipMap::new();
+
+    for &x in &[4, 2, 12, 8, 7, 11, 5] {
+        s.insert(x, x * 10);
+    }
+
+    let mut e = s.get(&7).unwrap();
+    assert!(!e.is_removed());
+    assert!(e.remove());
+    assert!(e.is_removed());
+
+    e.move_prev();
+    e.move_next();
+    assert_ne!(*e.key(), 7);
+
+    for e in s.iter() {
+        assert!(!s.is_empty());
+        assert_ne!(s.len(), 0);
+        e.remove();
+    }
+    assert!(s.is_empty());
+    assert_eq!(s.len(), 0);
+}
+
+#[test]
+fn entry_reposition() {
+    let s = SkipMap::new();
+
+    for &x in &[4, 2, 12, 8, 7, 11, 5] {
+        s.insert(x, x * 10);
+    }
+
+    let mut e = s.get(&7).unwrap();
+    assert!(!e.is_removed());
+    assert!(e.remove());
+    assert!(e.is_removed());
+
+    s.insert(7, 700);
+    e.move_prev();
+    e.move_next();
+    assert_eq!(*e.key(), 7);
+}
+
+#[test]
+fn len() {
+    let s = SkipMap::new();
+    assert_eq!(s.len(), 0);
+
+    for (i, &x) in [4, 2, 12, 8, 7, 11, 5].iter().enumerate() {
+        s.insert(x, x * 1);
+        assert_eq!(s.len(), i + 1);
+    }
+
+    s.insert(5, 0);
+    assert_eq!(s.len(), 7);
+    s.insert(5, 0);
+    assert_eq!(s.len(), 7);
+
+    s.remove(&6);
+    assert_eq!(s.len(), 7);
+    s.remove(&5);
+    assert_eq!(s.len(), 6);
+    s.remove(&12);
+    assert_eq!(s.len(), 5);
+}
+
+#[test]
+fn insert_and_remove() {
+    let s = SkipMap::new();
+    let keys = || s.iter().map(|e| *e.key()).collect::<Vec<_>>();
+
+    s.insert(3, 0);
+    s.insert(5, 0);
+    s.insert(1, 0);
+    s.insert(4, 0);
+    s.insert(2, 0);
+    assert_eq!(keys(), [1, 2, 3, 4, 5]);
+
+    assert!(s.remove(&4).is_some());
+    assert_eq!(keys(), [1, 2, 3, 5]);
+    assert!(s.remove(&3).is_some());
+    assert_eq!(keys(), [1, 2, 5]);
+    assert!(s.remove(&1).is_some());
+    assert_eq!(keys(), [2, 5]);
+
+    assert!(s.remove(&1).is_none());
+    assert_eq!(keys(), [2, 5]);
+    assert!(s.remove(&3).is_none());
+    assert_eq!(keys(), [2, 5]);
+
+    assert!(s.remove(&2).is_some());
+    assert_eq!(keys(), [5]);
+    assert!(s.remove(&5).is_some());
+    assert_eq!(keys(), []);
+
+    s.insert(3, 0);
+    assert_eq!(keys(), [3]);
+    s.insert(1, 0);
+    assert_eq!(keys(), [1, 3]);
+    s.insert(3, 0);
+    assert_eq!(keys(), [1, 3]);
+    s.insert(5, 0);
+    assert_eq!(keys(), [1, 3, 5]);
+
+    assert!(s.remove(&3).is_some());
+    assert_eq!(keys(), [1, 5]);
+    assert!(s.remove(&1).is_some());
+    assert_eq!(keys(), [5]);
+    assert!(s.remove(&3).is_none());
+    assert_eq!(keys(), [5]);
+    assert!(s.remove(&5).is_some());
+    assert_eq!(keys(), []);
+}
+
+#[test]
+fn get() {
+    let s = SkipMap::new();
+    s.insert(30, 3);
+    s.insert(50, 5);
+    s.insert(10, 1);
+    s.insert(40, 4);
+    s.insert(20, 2);
+
+    assert_eq!(*s.get(&10).unwrap().value(), 1);
+    assert_eq!(*s.get(&20).unwrap().value(), 2);
+    assert_eq!(*s.get(&30).unwrap().value(), 3);
+    assert_eq!(*s.get(&40).unwrap().value(), 4);
+    assert_eq!(*s.get(&50).unwrap().value(), 5);
+
+    assert!(s.get(&7).is_none());
+    assert!(s.get(&27).is_none());
+    assert!(s.get(&31).is_none());
+    assert!(s.get(&97).is_none());
+}
+
+#[test]
+fn lower_bound() {
+    let s = SkipMap::new();
+    s.insert(30, 3);
+    s.insert(50, 5);
+    s.insert(10, 1);
+    s.insert(40, 4);
+    s.insert(20, 2);
+
+    assert_eq!(*s.lower_bound(Bound::Unbounded).unwrap().value(), 1);
+
+    assert_eq!(*s.lower_bound(Bound::Included(&10)).unwrap().value(), 1);
+    assert_eq!(*s.lower_bound(Bound::Included(&20)).unwrap().value(), 2);
+    assert_eq!(*s.lower_bound(Bound::Included(&30)).unwrap().value(), 3);
+    assert_eq!(*s.lower_bound(Bound::Included(&40)).unwrap().value(), 4);
+    assert_eq!(*s.lower_bound(Bound::Included(&50)).unwrap().value(), 5);
+
+    assert_eq!(*s.lower_bound(Bound::Included(&7)).unwrap().value(), 1);
+    assert_eq!(*s.lower_bound(Bound::Included(&27)).unwrap().value(), 3);
+    assert_eq!(*s.lower_bound(Bound::Included(&31)).unwrap().value(), 4);
+    assert!(s.lower_bound(Bound::Included(&97)).is_none());
+
+    assert_eq!(*s.lower_bound(Bound::Excluded(&10)).unwrap().value(), 2);
+    assert_eq!(*s.lower_bound(Bound::Excluded(&20)).unwrap().value(), 3);
+    assert_eq!(*s.lower_bound(Bound::Excluded(&30)).unwrap().value(), 4);
+    assert_eq!(*s.lower_bound(Bound::Excluded(&40)).unwrap().value(), 5);
+    assert!(s.lower_bound(Bound::Excluded(&50)).is_none());
+
+    assert_eq!(*s.lower_bound(Bound::Excluded(&7)).unwrap().value(), 1);
+    assert_eq!(*s.lower_bound(Bound::Excluded(&27)).unwrap().value(), 3);
+    assert_eq!(*s.lower_bound(Bound::Excluded(&31)).unwrap().value(), 4);
+    assert!(s.lower_bound(Bound::Excluded(&97)).is_none());
+}
+
+#[test]
+fn upper_bound() {
+    let s = SkipMap::new();
+    s.insert(30, 3);
+    s.insert(50, 5);
+    s.insert(10, 1);
+    s.insert(40, 4);
+    s.insert(20, 2);
+
+    assert_eq!(*s.upper_bound(Bound::Unbounded).unwrap().value(), 5);
+
+    assert_eq!(*s.upper_bound(Bound::Included(&10)).unwrap().value(), 1);
+    assert_eq!(*s.upper_bound(Bound::Included(&20)).unwrap().value(), 2);
+    assert_eq!(*s.upper_bound(Bound::Included(&30)).unwrap().value(), 3);
+    assert_eq!(*s.upper_bound(Bound::Included(&40)).unwrap().value(), 4);
+    assert_eq!(*s.upper_bound(Bound::Included(&50)).unwrap().value(), 5);
+
+    assert!(s.upper_bound(Bound::Included(&7)).is_none());
+    assert_eq!(*s.upper_bound(Bound::Included(&27)).unwrap().value(), 2);
+    assert_eq!(*s.upper_bound(Bound::Included(&31)).unwrap().value(), 3);
+    assert_eq!(*s.upper_bound(Bound::Included(&97)).unwrap().value(), 5);
+
+    assert!(s.upper_bound(Bound::Excluded(&10)).is_none());
+    assert_eq!(*s.upper_bound(Bound::Excluded(&20)).unwrap().value(), 1);
+    assert_eq!(*s.upper_bound(Bound::Excluded(&30)).unwrap().value(), 2);
+    assert_eq!(*s.upper_bound(Bound::Excluded(&40)).unwrap().value(), 3);
+    assert_eq!(*s.upper_bound(Bound::Excluded(&50)).unwrap().value(), 4);
+
+    assert!(s.upper_bound(Bound::Excluded(&7)).is_none());
+    assert_eq!(*s.upper_bound(Bound::Excluded(&27)).unwrap().value(), 2);
+    assert_eq!(*s.upper_bound(Bound::Excluded(&31)).unwrap().value(), 3);
+    assert_eq!(*s.upper_bound(Bound::Excluded(&97)).unwrap().value(), 5);
+}
+
+#[test]
+fn get_or_insert() {
+    let s = SkipMap::new();
+    s.insert(3, 3);
+    s.insert(5, 5);
+    s.insert(1, 1);
+    s.insert(4, 4);
+    s.insert(2, 2);
+
+    assert_eq!(*s.get(&4).unwrap().value(), 4);
+    assert_eq!(*s.insert(4, 40).value(), 40);
+    assert_eq!(*s.get(&4).unwrap().value(), 40);
+
+    assert_eq!(*s.get_or_insert(4, 400).value(), 40);
+    assert_eq!(*s.get(&4).unwrap().value(), 40);
+    assert_eq!(*s.get_or_insert(6, 600).value(), 600);
+}
+
+#[test]
+fn get_next_prev() {
+    let s = SkipMap::new();
+    s.insert(3, 3);
+    s.insert(5, 5);
+    s.insert(1, 1);
+    s.insert(4, 4);
+    s.insert(2, 2);
+
+    let mut e = s.get(&3).unwrap();
+    assert_eq!(*e.next().unwrap().value(), 4);
+    assert_eq!(*e.prev().unwrap().value(), 2);
+    assert_eq!(*e.value(), 3);
+
+    e.move_prev();
+    assert_eq!(*e.next().unwrap().value(), 3);
+    assert_eq!(*e.prev().unwrap().value(), 1);
+    assert_eq!(*e.value(), 2);
+
+    e.move_prev();
+    assert_eq!(*e.next().unwrap().value(), 2);
+    assert!(e.prev().is_none());
+    assert_eq!(*e.value(), 1);
+
+    e.move_next();
+    e.move_next();
+    e.move_next();
+    e.move_next();
+    assert!(e.next().is_none());
+    assert_eq!(*e.prev().unwrap().value(), 4);
+    assert_eq!(*e.value(), 5);
+}
+
+#[test]
+fn front_and_back() {
+    let s = SkipMap::new();
+    assert!(s.front().is_none());
+    assert!(s.back().is_none());
+
+    for &x in &[4, 2, 12, 8, 7, 11, 5] {
+        s.insert(x, x * 10);
+    }
+
+    assert_eq!(*s.front().unwrap().key(), 2);
+    assert_eq!(*s.back().unwrap().key(), 12);
 }
 
 #[test]
@@ -251,4 +660,47 @@ fn iter_range() {
             .collect::<Vec<_>>(),
         vec![]
     );
+}
+
+// https://github.com/crossbeam-rs/crossbeam/issues/671
+#[test]
+fn iter_range2() {
+    let set: SkipMap<_, _> = [1, 3, 5].iter().map(|x| (*x, *x)).collect();
+    assert_eq!(set.range(2..4).count(), 1);
+    set.insert(3, 3);
+}
+
+#[test]
+fn into_iter() {
+    let s = SkipMap::new();
+    for &x in &[4, 2, 12, 8, 7, 11, 5] {
+        s.insert(x, x * 10);
+    }
+
+    assert_eq!(
+        s.into_iter().collect::<Vec<_>>(),
+        &[
+            (2, 20),
+            (4, 40),
+            (5, 50),
+            (7, 70),
+            (8, 80),
+            (11, 110),
+            (12, 120),
+        ]
+    );
+}
+
+#[test]
+fn clear() {
+    let s = SkipMap::new();
+    for &x in &[4, 2, 12, 8, 7, 11, 5] {
+        s.insert(x, x * 10);
+    }
+
+    assert!(!s.is_empty());
+    assert_ne!(s.len(), 0);
+    s.clear();
+    assert!(s.is_empty());
+    assert_eq!(s.len(), 0);
 }
