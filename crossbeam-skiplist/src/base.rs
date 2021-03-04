@@ -1123,9 +1123,8 @@ where
                             break;
                         }
                     }
-
-                    return Some(entry);
                 }
+                return Some(entry);
             }
         }
     }
