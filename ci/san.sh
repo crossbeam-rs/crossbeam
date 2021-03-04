@@ -10,14 +10,21 @@ fi
 rustup component add rust-src
 
 # Run address sanitizer
-# https://github.com/crossbeam-rs/crossbeam/issues/614
-export ASAN_OPTIONS="detect_leaks=0"
-cargo clean
 # TODO: Once `cfg(sanitize = "..")` is stable, replace
 # `cfg(crossbeam_sanitize)` with `cfg(sanitize = "..")` and remove
 # `--cfg crossbeam_sanitize`.
+cargo clean
 RUSTFLAGS="-Dwarnings -Zsanitizer=address --cfg crossbeam_sanitize" \
-cargo test --all --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
+cargo test --all --release --target x86_64-unknown-linux-gnu --tests \
+    --exclude crossbeam-skiplist --exclude benchmarks -- --test-threads=1
+
+# There are memory leaks in crossbeam-skiplist.
+# https://github.com/crossbeam-rs/crossbeam/issues/614
+cargo clean
+ASAN_OPTIONS="detect_leaks=0" \
+RUSTFLAGS="-Dwarnings -Zsanitizer=address --cfg crossbeam_sanitize" \
+cargo test --release --target x86_64-unknown-linux-gnu \
+    -p crossbeam-skiplist --tests
 
 cargo clean
 RUSTFLAGS="-Dwarnings -Zsanitizer=address --cfg crossbeam_sanitize" \
