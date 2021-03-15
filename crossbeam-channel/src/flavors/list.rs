@@ -151,20 +151,17 @@ pub(crate) struct Channel<T> {
 impl<T> Channel<T> {
     /// Creates a new unbounded channel.
     pub(crate) fn new() -> Self {
-        let first = Box::into_raw(Box::new(Block::<T>::new()));
         Channel {
             head: CachePadded::new(Position {
-                block: AtomicPtr::new(first),
+                block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
             }),
             tail: CachePadded::new(Position {
-                block: AtomicPtr::new(first),
+                block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
             }),
             receivers: SyncWaker::new(),
-            cached_block: CachePadded::new(AtomicPtr::new(Box::into_raw(Box::new(
-                Block::<T>::new(),
-            )))),
+            cached_block: CachePadded::new(AtomicPtr::new(ptr::null_mut())),
             _marker: PhantomData,
         }
     }
@@ -217,6 +214,27 @@ impl<T> Channel<T> {
                     } else {
                         Some(unsafe { Box::from_raw(cached) })
                     };
+                }
+            }
+
+            // If this is the first message to be sent into the channel, we need to allocate the
+            // first block and install it.
+            if block.is_null() {
+                let new = Box::into_raw(Box::new(Block::<T>::new()));
+
+                if self
+                    .tail
+                    .block
+                    .compare_exchange(block, new, Ordering::Release, Ordering::Relaxed)
+                    .is_ok()
+                {
+                    self.head.block.store(new, Ordering::Release);
+                    block = new;
+                } else {
+                    next_block = unsafe { Some(Box::from_raw(new)) };
+                    tail = self.tail.index.load(Ordering::Acquire);
+                    block = self.tail.block.load(Ordering::Acquire);
+                    continue;
                 }
             }
 
