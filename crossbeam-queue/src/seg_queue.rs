@@ -189,11 +189,11 @@ impl<T> SegQueue<T> {
             // short as possible.
             if offset + 1 == BLOCK_CAP && next_block.is_none() {
                 if self.cached_block.load(Ordering::Relaxed).is_null() {
-                    next_block = Some(Box::new(Block::<T>::new()));
+                    next_block = Some(Box::new(Block::new()));
                 } else {
                     let cached = self.cached_block.swap(ptr::null_mut(), Ordering::Acquire);
                     next_block = if cached.is_null() {
-                        Some(Box::new(Block::<T>::new()))
+                        Some(Box::new(Block::new()))
                     } else {
                         Some(unsafe { Box::from_raw(cached) })
                     };
@@ -202,7 +202,7 @@ impl<T> SegQueue<T> {
 
             // If this is the first push operation, we need to allocate the first block.
             if block.is_null() {
-                let new = Box::into_raw(Box::new(Block::<T>::new()));
+                let new = Box::into_raw(Box::new(Block::new()));
 
                 if self
                     .tail
