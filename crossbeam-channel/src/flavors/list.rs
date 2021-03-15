@@ -2,9 +2,9 @@
 
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
-use std::mem::MaybeUninit;
+use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr;
-use std::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{self, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
@@ -32,6 +32,8 @@ const DESTROY: usize = 4;
 const LAP: usize = 32;
 // The maximum number of messages a block can hold.
 const BLOCK_CAP: usize = LAP - 1;
+// The maximum number of blocks to retain in the block cache.
+const BLOCK_CACHE_SIZE: usize = 4;
 // How many lower bits are reserved for metadata.
 const SHIFT: usize = 1;
 // Has two different purposes:
@@ -94,6 +96,82 @@ impl<T> Block<T> {
     }
 }
 
+#[repr(C)]
+#[cfg(target_endian = "little")]
+struct BlockCacheSplitIndices {
+    head: AtomicU32,
+    tail: AtomicU32,
+}
+
+#[cfg(target_endian = "big")]
+struct BlockCacheSplitIndices {
+    tail: AtomicU32,
+    head: AtomicU32,
+}
+
+#[repr(C)]
+union BlockCacheIndices {
+    both: ManuallyDrop<AtomicU64>,
+    split: ManuallyDrop<BlockCacheSplitIndices>,
+}
+
+struct BlockCache<T> {
+    indices: BlockCacheIndices,
+    blocks: [AtomicPtr<Block<T>>; BLOCK_CACHE_SIZE],
+}
+
+impl<T> BlockCache<T> {
+    fn new() -> Self {
+        unsafe { MaybeUninit::zeroed().assume_init() }
+    }
+
+    unsafe fn try_get(&self) -> *mut Block<T> {
+        let both = self.indices.both.load(Ordering::Relaxed);
+        let head = both as u32;
+        let tail = (both >> 32) as u32;
+
+        if head == tail {
+            ptr::null_mut()
+        } else {
+            if self
+                .indices
+                .split
+                .head
+                .compare_exchange_weak(head, head + 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_err()
+            {
+                ptr::null_mut()
+            } else {
+                self.blocks[head as usize & (BLOCK_CACHE_SIZE - 1)]
+                    .swap(ptr::null_mut(), Ordering::Acquire)
+            }
+        }
+    }
+
+    unsafe fn try_put(&self, block: *mut Block<T>) -> *mut Block<T> {
+        let both = self.indices.both.load(Ordering::Relaxed);
+        let head = both as u32;
+        let tail = (both >> 32) as u32;
+
+        if tail - head == BLOCK_CACHE_SIZE as u32 {
+            block
+        } else {
+            *block = MaybeUninit::zeroed().assume_init();
+            if self
+                .indices
+                .split
+                .tail
+                .compare_exchange_weak(tail, tail + 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_err()
+            {
+                ptr::null_mut()
+            } else {
+                self.blocks[tail as usize & (BLOCK_CACHE_SIZE - 1)].swap(block, Ordering::Release)
+            }
+        }
+    }
+}
+
 /// A position in a channel.
 #[derive(Debug)]
 struct Position<T> {
@@ -138,8 +216,8 @@ pub(crate) struct Channel<T> {
     /// The tail of the channel.
     tail: CachePadded<Position<T>>,
 
-    /// Cache up to one block to avoid an allocation when possible.
-    cached_block: CachePadded<AtomicPtr<Block<T>>>,
+    /// Cache some number of blocks to avoid allocations when possible.
+    block_cache: CachePadded<BlockCache<T>>,
 
     /// Receivers waiting while the channel is empty and not disconnected.
     receivers: SyncWaker,
@@ -161,7 +239,7 @@ impl<T> Channel<T> {
                 index: AtomicUsize::new(0),
             }),
             receivers: SyncWaker::new(),
-            cached_block: CachePadded::new(AtomicPtr::new(ptr::null_mut())),
+            block_cache: CachePadded::new(BlockCache::new()),
             _marker: PhantomData,
         }
     }
@@ -205,16 +283,12 @@ impl<T> Channel<T> {
             // it in advance in order to make the wait for other threads as
             // short as possible.
             if offset + 1 == BLOCK_CAP && next_block.is_none() {
-                if self.cached_block.load(Ordering::Relaxed).is_null() {
-                    next_block = Some(Box::new(Block::new()));
+                let p = unsafe { self.block_cache.try_get() };
+                next_block = if p.is_null() {
+                    Some(Box::new(Block::new()))
                 } else {
-                    let cached = self.cached_block.swap(ptr::null_mut(), Ordering::Acquire);
-                    next_block = if cached.is_null() {
-                        Some(Box::new(Block::new()))
-                    } else {
-                        Some(unsafe { Box::from_raw(cached) })
-                    };
-                }
+                    Some(unsafe { Box::from_raw(p) })
+                };
             }
 
             // If this is the first message to be sent into the channel, we need to allocate the
@@ -390,17 +464,11 @@ impl<T> Channel<T> {
             }
         }
 
-        // No thread is using the block. Cache it for reuse if there isn't
-        // already a cached block, or deallocate it otherwise.
-        let cached = self.cached_block.load(Ordering::Relaxed);
-        if !cached.is_null() {
-            drop(Box::from_raw(this));
-        } else {
-            *this = MaybeUninit::zeroed().assume_init();
-            let prev = self.cached_block.swap(this, Ordering::Release);
-            if !prev.is_null() {
-                drop(Box::from_raw(prev));
-            }
+        // No thread is using the block. Try to cache it for reuse or deallocate
+        // it otherwise.
+        let p = self.block_cache.try_put(this);
+        if !p.is_null() {
+            drop(Box::from_raw(p));
         }
     }
 
@@ -662,7 +730,6 @@ impl<T> Drop for Channel<T> {
         let mut head = self.head.index.load(Ordering::Relaxed);
         let mut tail = self.tail.index.load(Ordering::Relaxed);
         let mut block = self.head.block.load(Ordering::Relaxed);
-        let cached = self.cached_block.load(Ordering::Relaxed);
 
         // Erase the lower bits.
         head &= !((1 << SHIFT) - 1);
@@ -688,13 +755,19 @@ impl<T> Drop for Channel<T> {
                 head = head.wrapping_add(1 << SHIFT);
             }
 
-            // Deallocate the last remaining block and the cached block, if any.
+            // Deallocate the last remaining block and any cached blocks.
             if !block.is_null() {
                 drop(Box::from_raw(block));
             }
-            if !cached.is_null() {
-                drop(Box::from_raw(cached));
-            }
+            self.block_cache
+                .blocks
+                .iter()
+                .map(|b| b.load(Ordering::Relaxed))
+                .for_each(|p| {
+                    if !p.is_null() {
+                        drop(Box::from_raw(p));
+                    }
+                });
         }
     }
 }
