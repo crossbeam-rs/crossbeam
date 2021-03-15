@@ -397,12 +397,9 @@ impl<T> Channel<T> {
             drop(Box::from_raw(this));
         } else {
             *this = MaybeUninit::zeroed().assume_init();
-            if self
-                .cached_block
-                .compare_exchange(cached, this, Ordering::Release, Ordering::Relaxed)
-                .is_err()
-            {
-                drop(Box::from_raw(this));
+            let prev = self.cached_block.swap(this, Ordering::Release);
+            if !prev.is_null() {
+                drop(Box::from_raw(prev));
             }
         }
     }
