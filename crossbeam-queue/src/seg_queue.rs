@@ -78,26 +78,6 @@ impl<T> Block<T> {
             backoff.snooze();
         }
     }
-
-    /// Sets the `DESTROY` bit in slots starting from `start` and destroys the block.
-    unsafe fn destroy(this: *mut Block<T>, start: usize) {
-        // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
-        // begun destruction of the block.
-        for i in start..BLOCK_CAP - 1 {
-            let slot = (*this).slots.get_unchecked(i);
-
-            // Mark the `DESTROY` bit if a thread is still using the slot.
-            if slot.state.load(Ordering::Acquire) & READ == 0
-                && slot.state.fetch_or(DESTROY, Ordering::AcqRel) & READ == 0
-            {
-                // If a thread is still using the slot, it will continue destruction of the block.
-                return;
-            }
-        }
-
-        // No thread is using the block, now it is safe to destroy it.
-        drop(Box::from_raw(this));
-    }
 }
 
 /// A position in a queue.
@@ -139,6 +119,9 @@ pub struct SegQueue<T> {
     /// The tail of the queue.
     tail: CachePadded<Position<T>>,
 
+    /// Cache up to one block to avoid an allocation when possible.
+    cached_block: AtomicPtr<Block<T>>,
+
     /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
 }
@@ -166,6 +149,7 @@ impl<T> SegQueue<T> {
                 block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
             }),
+            cached_block: AtomicPtr::new(ptr::null_mut()),
             _marker: PhantomData,
         }
     }
@@ -200,10 +184,20 @@ impl<T> SegQueue<T> {
                 continue;
             }
 
-            // If we're going to have to install the next block, allocate it in advance in order to
-            // make the wait for other threads as short as possible.
+            // If we're going to have to install the next block, get or allocate
+            // it in advance in order to make the wait for other threads as
+            // short as possible.
             if offset + 1 == BLOCK_CAP && next_block.is_none() {
-                next_block = Some(Box::new(Block::<T>::new()));
+                if self.cached_block.load(Ordering::Relaxed).is_null() {
+                    next_block = Some(Box::new(Block::<T>::new()));
+                } else {
+                    let cached = self.cached_block.swap(ptr::null_mut(), Ordering::Acquire);
+                    next_block = if cached.is_null() {
+                        Some(Box::new(Block::<T>::new()))
+                    } else {
+                        Some(unsafe { Box::from_raw(cached) })
+                    };
+                }
             }
 
             // If this is the first push operation, we need to allocate the first block.
@@ -258,6 +252,40 @@ impl<T> SegQueue<T> {
                     block = self.tail.block.load(Ordering::Acquire);
                     backoff.spin();
                 }
+            }
+        }
+    }
+
+    /// Sets the `DESTROY` bit in slots starting from `start` and caches or
+    /// destroys the block.
+    unsafe fn cache_or_destroy(&self, this: *mut Block<T>, start: usize) {
+        // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
+        // begun destruction of the block.
+        for i in start..BLOCK_CAP - 1 {
+            let slot = (*this).slots.get_unchecked(i);
+
+            // Mark the `DESTROY` bit if a thread is still using the slot.
+            if slot.state.load(Ordering::Acquire) & READ == 0
+                && slot.state.fetch_or(DESTROY, Ordering::AcqRel) & READ == 0
+            {
+                // If a thread is still using the slot, it will continue destruction of the block.
+                return;
+            }
+        }
+
+        // No thread is using the block. Cache it for reuse if there isn't
+        // already a cached block, or deallocate it otherwise.
+        let cached = self.cached_block.load(Ordering::Relaxed);
+        if !cached.is_null() {
+            drop(Box::from_raw(this));
+        } else {
+            *this = MaybeUninit::zeroed().assume_init();
+            if self
+                .cached_block
+                .compare_exchange(cached, this, Ordering::Release, Ordering::Relaxed)
+                .is_err()
+            {
+                drop(Box::from_raw(this));
             }
         }
     }
@@ -348,9 +376,9 @@ impl<T> SegQueue<T> {
                     // Destroy the block if we've reached the end, or if another thread wanted to
                     // destroy but couldn't because we were busy reading from the slot.
                     if offset + 1 == BLOCK_CAP {
-                        Block::destroy(block, 0);
+                        self.cache_or_destroy(block, 0);
                     } else if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
-                        Block::destroy(block, offset + 1);
+                        self.cache_or_destroy(block, offset + 1);
                     }
 
                     return Some(value);
@@ -440,6 +468,7 @@ impl<T> Drop for SegQueue<T> {
         let mut head = self.head.index.load(Ordering::Relaxed);
         let mut tail = self.tail.index.load(Ordering::Relaxed);
         let mut block = self.head.block.load(Ordering::Relaxed);
+        let cached = self.cached_block.load(Ordering::Relaxed);
 
         // Erase the lower bits.
         head &= !((1 << SHIFT) - 1);
@@ -465,9 +494,12 @@ impl<T> Drop for SegQueue<T> {
                 head = head.wrapping_add(1 << SHIFT);
             }
 
-            // Deallocate the last remaining block.
+            // Deallocate the last remaining block and the cached block, if any.
             if !block.is_null() {
                 drop(Box::from_raw(block));
+            }
+            if !cached.is_null() {
+                drop(Box::from_raw(cached));
             }
         }
     }

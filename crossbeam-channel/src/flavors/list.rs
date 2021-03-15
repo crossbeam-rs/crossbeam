@@ -92,26 +92,6 @@ impl<T> Block<T> {
             backoff.snooze();
         }
     }
-
-    /// Sets the `DESTROY` bit in slots starting from `start` and destroys the block.
-    unsafe fn destroy(this: *mut Block<T>, start: usize) {
-        // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
-        // begun destruction of the block.
-        for i in start..BLOCK_CAP - 1 {
-            let slot = (*this).slots.get_unchecked(i);
-
-            // Mark the `DESTROY` bit if a thread is still using the slot.
-            if slot.state.load(Ordering::Acquire) & READ == 0
-                && slot.state.fetch_or(DESTROY, Ordering::AcqRel) & READ == 0
-            {
-                // If a thread is still using the slot, it will continue destruction of the block.
-                return;
-            }
-        }
-
-        // No thread is using the block, now it is safe to destroy it.
-        drop(Box::from_raw(this));
-    }
 }
 
 /// A position in a channel.
@@ -158,6 +138,9 @@ pub(crate) struct Channel<T> {
     /// The tail of the channel.
     tail: CachePadded<Position<T>>,
 
+    /// Cache up to one block to avoid an allocation when possible.
+    cached_block: CachePadded<AtomicPtr<Block<T>>>,
+
     /// Receivers waiting while the channel is empty and not disconnected.
     receivers: SyncWaker,
 
@@ -168,16 +151,20 @@ pub(crate) struct Channel<T> {
 impl<T> Channel<T> {
     /// Creates a new unbounded channel.
     pub(crate) fn new() -> Self {
+        let first = Box::into_raw(Box::new(Block::<T>::new()));
         Channel {
             head: CachePadded::new(Position {
-                block: AtomicPtr::new(ptr::null_mut()),
+                block: AtomicPtr::new(first),
                 index: AtomicUsize::new(0),
             }),
             tail: CachePadded::new(Position {
-                block: AtomicPtr::new(ptr::null_mut()),
+                block: AtomicPtr::new(first),
                 index: AtomicUsize::new(0),
             }),
             receivers: SyncWaker::new(),
+            cached_block: CachePadded::new(AtomicPtr::new(Box::into_raw(Box::new(
+                Block::<T>::new(),
+            )))),
             _marker: PhantomData,
         }
     }
@@ -217,30 +204,19 @@ impl<T> Channel<T> {
                 continue;
             }
 
-            // If we're going to have to install the next block, allocate it in advance in order to
-            // make the wait for other threads as short as possible.
+            // If we're going to have to install the next block, get or allocate
+            // it in advance in order to make the wait for other threads as
+            // short as possible.
             if offset + 1 == BLOCK_CAP && next_block.is_none() {
-                next_block = Some(Box::new(Block::<T>::new()));
-            }
-
-            // If this is the first message to be sent into the channel, we need to allocate the
-            // first block and install it.
-            if block.is_null() {
-                let new = Box::into_raw(Box::new(Block::<T>::new()));
-
-                if self
-                    .tail
-                    .block
-                    .compare_exchange(block, new, Ordering::Release, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    self.head.block.store(new, Ordering::Release);
-                    block = new;
+                if self.cached_block.load(Ordering::Relaxed).is_null() {
+                    next_block = Some(Box::new(Block::<T>::new()));
                 } else {
-                    next_block = unsafe { Some(Box::from_raw(new)) };
-                    tail = self.tail.index.load(Ordering::Acquire);
-                    block = self.tail.block.load(Ordering::Acquire);
-                    continue;
+                    let cached = self.cached_block.swap(ptr::null_mut(), Ordering::Acquire);
+                    next_block = if cached.is_null() {
+                        Some(Box::new(Block::<T>::new()))
+                    } else {
+                        Some(unsafe { Box::from_raw(cached) })
+                    };
                 }
             }
 
@@ -379,6 +355,40 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Sets the `DESTROY` bit in slots starting from `start` and caches or
+    /// destroys the block.
+    unsafe fn cache_or_destroy(&self, this: *mut Block<T>, start: usize) {
+        // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
+        // begun destruction of the block.
+        for i in start..BLOCK_CAP - 1 {
+            let slot = (*this).slots.get_unchecked(i);
+
+            // Mark the `DESTROY` bit if a thread is still using the slot.
+            if slot.state.load(Ordering::Acquire) & READ == 0
+                && slot.state.fetch_or(DESTROY, Ordering::AcqRel) & READ == 0
+            {
+                // If a thread is still using the slot, it will continue destruction of the block.
+                return;
+            }
+        }
+
+        // No thread is using the block. Cache it for reuse if there isn't
+        // already a cached block, or deallocate it otherwise.
+        let cached = self.cached_block.load(Ordering::Relaxed);
+        if !cached.is_null() {
+            drop(Box::from_raw(this));
+        } else {
+            *this = MaybeUninit::zeroed().assume_init();
+            if self
+                .cached_block
+                .compare_exchange(cached, this, Ordering::Release, Ordering::Relaxed)
+                .is_err()
+            {
+                drop(Box::from_raw(this));
+            }
+        }
+    }
+
     /// Reads a message from the channel.
     pub(crate) unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.list.block.is_null() {
@@ -396,9 +406,9 @@ impl<T> Channel<T> {
         // Destroy the block if we've reached the end, or if another thread wanted to destroy but
         // couldn't because we were busy reading from the slot.
         if offset + 1 == BLOCK_CAP {
-            Block::destroy(block, 0);
+            self.cache_or_destroy(block, 0);
         } else if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
-            Block::destroy(block, offset + 1);
+            self.cache_or_destroy(block, offset + 1);
         }
 
         Ok(msg)
@@ -637,6 +647,7 @@ impl<T> Drop for Channel<T> {
         let mut head = self.head.index.load(Ordering::Relaxed);
         let mut tail = self.tail.index.load(Ordering::Relaxed);
         let mut block = self.head.block.load(Ordering::Relaxed);
+        let cached = self.cached_block.load(Ordering::Relaxed);
 
         // Erase the lower bits.
         head &= !((1 << SHIFT) - 1);
@@ -662,9 +673,12 @@ impl<T> Drop for Channel<T> {
                 head = head.wrapping_add(1 << SHIFT);
             }
 
-            // Deallocate the last remaining block.
+            // Deallocate the last remaining block and the cached block, if any.
             if !block.is_null() {
                 drop(Box::from_raw(block));
+            }
+            if !cached.is_null() {
+                drop(Box::from_raw(cached));
             }
         }
     }
