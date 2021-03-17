@@ -126,47 +126,48 @@ impl<T> BlockCache<T> {
     }
 
     unsafe fn try_get(&self) -> *mut Block<T> {
-        let both = self.indices.both.load(Ordering::Relaxed);
-        let head = both as u32;
-        let tail = (both >> 32) as u32;
+        loop {
+            let both = self.indices.both.load(Ordering::Relaxed);
+            let head = both as u32;
+            let tail = (both >> 32) as u32;
 
-        if head == tail {
-            ptr::null_mut()
-        } else {
+            if head == tail {
+                return ptr::null_mut();
+            }
+
             if self
                 .indices
                 .split
                 .head
                 .compare_exchange_weak(head, head + 1, Ordering::Relaxed, Ordering::Relaxed)
-                .is_err()
+                .is_ok()
             {
-                ptr::null_mut()
-            } else {
-                self.blocks[head as usize & (BLOCK_CACHE_SIZE - 1)]
-                    .swap(ptr::null_mut(), Ordering::Acquire)
+                return self.blocks[head as usize & (BLOCK_CACHE_SIZE - 1)]
+                    .swap(ptr::null_mut(), Ordering::Acquire);
             }
         }
     }
 
     unsafe fn try_put(&self, block: *mut Block<T>) -> *mut Block<T> {
-        let both = self.indices.both.load(Ordering::Relaxed);
-        let head = both as u32;
-        let tail = (both >> 32) as u32;
+        loop {
+            let both = self.indices.both.load(Ordering::Relaxed);
+            let head = both as u32;
+            let tail = (both >> 32) as u32;
 
-        if tail - head == BLOCK_CACHE_SIZE as u32 {
-            block
-        } else {
+            if tail - head == BLOCK_CACHE_SIZE as u32 {
+                return block;
+            }
+
             *block = MaybeUninit::zeroed().assume_init();
             if self
                 .indices
                 .split
                 .tail
                 .compare_exchange_weak(tail, tail + 1, Ordering::Relaxed, Ordering::Relaxed)
-                .is_err()
+                .is_ok()
             {
-                ptr::null_mut()
-            } else {
-                self.blocks[tail as usize & (BLOCK_CACHE_SIZE - 1)].swap(block, Ordering::Release)
+                return self.blocks[tail as usize & (BLOCK_CACHE_SIZE - 1)]
+                    .swap(block, Ordering::Release);
             }
         }
     }
