@@ -149,27 +149,24 @@ impl<T> BlockCache<T> {
     }
 
     unsafe fn try_put(&self, block: *mut Block<T>) -> *mut Block<T> {
-        loop {
-            let both = self.indices.both.load(Ordering::Relaxed);
-            let head = both as u32;
-            let tail = (both >> 32) as u32;
+        let both = self.indices.both.load(Ordering::Relaxed);
+        let head = both as u32;
+        let tail = (both >> 32) as u32;
 
-            if tail - head == BLOCK_CACHE_SIZE as u32 {
-                return block;
-            }
-
-            *block = MaybeUninit::zeroed().assume_init();
-            if self
-                .indices
-                .split
-                .tail
-                .compare_exchange_weak(tail, tail + 1, Ordering::Relaxed, Ordering::Relaxed)
-                .is_ok()
-            {
-                return self.blocks[tail as usize & (BLOCK_CACHE_SIZE - 1)]
-                    .swap(block, Ordering::Release);
-            }
+        if tail - head == BLOCK_CACHE_SIZE as u32 {
+            return block;
         }
+
+        *block = MaybeUninit::zeroed().assume_init();
+        let prev = self.blocks[tail as usize & (BLOCK_CACHE_SIZE - 1)]
+                .swap(block, Ordering::Release);
+        self
+            .indices
+            .split
+            .tail
+            .compare_exchange_weak(tail, tail + 1, Ordering::Relaxed, Ordering::Relaxed)
+            .ok();
+        prev
     }
 }
 
