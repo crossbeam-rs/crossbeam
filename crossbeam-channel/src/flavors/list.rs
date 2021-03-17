@@ -103,6 +103,7 @@ struct BlockCacheSplitIndices {
     tail: AtomicU32,
 }
 
+#[repr(C)]
 #[cfg(target_endian = "big")]
 struct BlockCacheSplitIndices {
     tail: AtomicU32,
