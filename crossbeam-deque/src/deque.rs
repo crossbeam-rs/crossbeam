@@ -1367,7 +1367,9 @@ impl<T> Injector<T> {
 
             // Destroy the block if we've reached the end, or if another thread wanted to destroy
             // but couldn't because we were busy reading from the slot.
-            if (offset + 1 == BLOCK_CAP) || (slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0) {
+            if (offset + 1 == BLOCK_CAP)
+                || (slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0)
+            {
                 Block::destroy(block, offset);
             }
 
