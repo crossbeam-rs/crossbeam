@@ -530,10 +530,10 @@ impl<T> Channel<T> {
         None
     }
 
-    /// Disconnects the channel and wakes up all blocked receivers.
+    /// Disconnects senders and wakes up all blocked receivers.
     ///
     /// Returns `true` if this call disconnected the channel.
-    pub(crate) fn disconnect(&self) -> bool {
+    pub(crate) fn disconnect_senders(&self) -> bool {
         let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
 
         if tail & MARK_BIT == 0 {
@@ -542,6 +542,76 @@ impl<T> Channel<T> {
         } else {
             false
         }
+    }
+
+    /// Disconnects receivers.
+    ///
+    /// Returns `true` if this call disconnected the channel.
+    pub(crate) fn disconnect_receivers(&self) -> bool {
+        let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
+
+        if tail & MARK_BIT == 0 {
+            // If receivers are dropped first, discard all messages to free
+            // memory eagerly.
+            self.discard_all_messages();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Discards all messages.
+    ///
+    /// This method should only be called when all receivers are dropped.
+    fn discard_all_messages(&self) {
+        let backoff = Backoff::new();
+        let mut tail = self.tail.index.load(Ordering::Acquire);
+        loop {
+            let offset = (tail >> SHIFT) % LAP;
+            if offset != BLOCK_CAP {
+                break;
+            }
+
+            // New updates to tail will be rejected by MARK_BIT and aborted unless it's
+            // at boundary. We need to wait for the updates take affect otherwise there
+            // can be memory leaks.
+            backoff.snooze();
+            tail = self.tail.index.load(Ordering::Acquire);
+        }
+
+        let mut head = self.head.index.load(Ordering::Acquire);
+        let mut block = self.head.block.load(Ordering::Acquire);
+
+        unsafe {
+            // Drop all messages between head and tail and deallocate the heap-allocated blocks.
+            while head >> SHIFT != tail >> SHIFT {
+                let offset = (head >> SHIFT) % LAP;
+
+                if offset < BLOCK_CAP {
+                    // Drop the message in the slot.
+                    let slot = (*block).slots.get_unchecked(offset);
+                    slot.wait_write();
+                    let p = &mut *slot.msg.get();
+                    p.as_mut_ptr().drop_in_place();
+                } else {
+                    (*block).wait_next();
+                    // Deallocate the block and move to the next one.
+                    let next = (*block).next.load(Ordering::Acquire);
+                    drop(Box::from_raw(block));
+                    block = next;
+                }
+
+                head = head.wrapping_add(1 << SHIFT);
+            }
+
+            // Deallocate the last remaining block.
+            if !block.is_null() {
+                drop(Box::from_raw(block));
+            }
+        }
+        head &= !MARK_BIT;
+        self.head.block.store(ptr::null_mut(), Ordering::Release);
+        self.head.index.store(head, Ordering::Release);
     }
 
     /// Returns `true` if the channel is disconnected.
