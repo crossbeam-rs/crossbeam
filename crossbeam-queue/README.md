@@ -10,7 +10,7 @@ https://crates.io/crates/crossbeam-queue)
 https://docs.rs/crossbeam-queue)
 [![Rust 1.36+](https://img.shields.io/badge/rust-1.36+-lightgray.svg)](
 https://www.rust-lang.org)
-[![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.gg/BBYwKq)
+[![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.com/invite/JXYwgWZ)
 
 This crate provides concurrent queues that can be shared among threads:
 
