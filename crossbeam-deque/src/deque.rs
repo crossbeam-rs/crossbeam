@@ -1,7 +1,3 @@
-// TODO(@jeehoonkang): we mutates `batch_size` inside `for i in 0..batch_size {}`. It is difficult
-// to read because we're mutating the range bound.
-#![allow(clippy::mut_range_bound)]
-
 use std::cell::{Cell, UnsafeCell};
 use std::cmp;
 use std::fmt;
@@ -760,7 +756,12 @@ impl<T> Stealer<T> {
 
             // Steal a batch of tasks from the front one by one.
             Flavor::Lifo => {
-                for i in 0..batch_size {
+                // This loop may modify the batch_size, which triggers a clippy lint warning.
+                // Use a new variable to avoid the warning, and to make it clear we aren't
+                // modifying the loop exit condition during iteration.
+                let original_batch_size = batch_size;
+
+                for i in 0..original_batch_size {
                     // If this is not the first steal, check whether the queue is empty.
                     if i > 0 {
                         // We've already got the current front index. Now execute the fence to
@@ -965,7 +966,12 @@ impl<T> Stealer<T> {
                 f = f.wrapping_add(1);
 
                 // Repeat the same procedure for the batch steals.
-                for i in 0..batch_size {
+                //
+                // This loop may modify the batch_size, which triggers a clippy lint warning.
+                // Use a new variable to avoid the warning, and to make it clear we aren't
+                // modifying the loop exit condition during iteration.
+                let original_batch_size = batch_size;
+                for i in 0..original_batch_size {
                     // We've already got the current front index. Now execute the fence to
                     // synchronize with other threads.
                     atomic::fence(Ordering::SeqCst);
