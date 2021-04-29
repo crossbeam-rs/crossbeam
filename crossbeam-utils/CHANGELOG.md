@@ -1,3 +1,7 @@
+# Version 0.8.4
+
+- Bump `loom` dependency to version 0.5. (#686)
+
 # Version 0.8.3
 
 - Make `loom` dependency optional. (#666)
