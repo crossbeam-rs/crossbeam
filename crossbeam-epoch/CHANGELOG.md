@@ -1,3 +1,8 @@
+# Version 0.9.4
+
+- Fix UB in `<[MaybeUninit<T>] as Pointable>::init` when global allocator failed allocation (#690)
+- Bump `loom` dependency to version 0.5. (#686)
+
 # Version 0.9.3
 
 - Make `loom` dependency optional. (#666)
