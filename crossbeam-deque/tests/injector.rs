@@ -178,7 +178,7 @@ fn stress() {
                         hits.fetch_add(1, SeqCst);
                     }
 
-                    while let Some(_) = w2.pop() {
+                    while w2.pop().is_some() {
                         hits.fetch_add(1, SeqCst);
                     }
                 }
@@ -238,7 +238,7 @@ fn no_starvation() {
                         hits.fetch_add(1, SeqCst);
                     }
 
-                    while let Some(_) = w2.pop() {
+                    while w2.pop().is_some() {
                         hits.fetch_add(1, SeqCst);
                     }
                 }
@@ -311,7 +311,7 @@ fn destructors() {
                         remaining.fetch_sub(1, SeqCst);
                     }
 
-                    while let Some(_) = w2.pop() {
+                    while w2.pop().is_some() {
                         cnt += 1;
                         remaining.fetch_sub(1, SeqCst);
                     }

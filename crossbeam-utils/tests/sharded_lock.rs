@@ -138,7 +138,7 @@ fn arc() {
 fn arc_access_in_unwind() {
     let arc = Arc::new(ShardedLock::new(1));
     let arc2 = arc.clone();
-    let _ = thread::spawn(move || -> () {
+    let _ = thread::spawn(move || {
         struct Unwinder {
             i: Arc<ShardedLock<isize>>,
         }

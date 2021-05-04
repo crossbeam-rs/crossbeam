@@ -167,7 +167,7 @@ fn stress() {
                         hits.fetch_add(1, SeqCst);
                     }
 
-                    while let Some(_) = w2.pop() {
+                    while w2.pop().is_some() {
                         hits.fetch_add(1, SeqCst);
                     }
                 }
@@ -178,7 +178,7 @@ fn stress() {
         let mut expected = 0;
         while expected < COUNT {
             if rng.gen_range(0..3) == 0 {
-                while let Some(_) = w.pop() {
+                while w.pop().is_some() {
                     hits.fetch_add(1, SeqCst);
                 }
             } else {
@@ -188,7 +188,7 @@ fn stress() {
         }
 
         while hits.load(SeqCst) < COUNT {
-            while let Some(_) = w.pop() {
+            while w.pop().is_some() {
                 hits.fetch_add(1, SeqCst);
             }
         }
@@ -227,7 +227,7 @@ fn no_starvation() {
                         hits.fetch_add(1, SeqCst);
                     }
 
-                    while let Some(_) = w2.pop() {
+                    while w2.pop().is_some() {
                         hits.fetch_add(1, SeqCst);
                     }
                 }
@@ -239,7 +239,7 @@ fn no_starvation() {
         loop {
             for i in 0..rng.gen_range(0..COUNT) {
                 if rng.gen_range(0..3) == 0 && my_hits == 0 {
-                    while let Some(_) = w.pop() {
+                    while w.pop().is_some() {
                         my_hits += 1;
                     }
                 } else {
@@ -300,7 +300,7 @@ fn destructors() {
                         remaining.fetch_sub(1, SeqCst);
                     }
 
-                    while let Some(_) = w2.pop() {
+                    while w2.pop().is_some() {
                         cnt += 1;
                         remaining.fetch_sub(1, SeqCst);
                     }
@@ -309,7 +309,7 @@ fn destructors() {
         }
 
         for _ in 0..STEPS {
-            if let Some(_) = w.pop() {
+            if w.pop().is_some() {
                 remaining.fetch_sub(1, SeqCst);
             }
         }

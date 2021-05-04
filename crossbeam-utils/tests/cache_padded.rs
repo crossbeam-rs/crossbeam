@@ -85,6 +85,7 @@ fn drops() {
     assert_eq!(count.get(), 2);
 }
 
+#[allow(clippy::clone_on_copy)] // This is intentional.
 #[test]
 fn clone() {
     let a = CachePadded::new(17);

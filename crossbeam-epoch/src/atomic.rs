@@ -1545,6 +1545,6 @@ mod tests {
     #[test]
     fn const_atomic_null() {
         use super::Atomic;
-        const _: Atomic<u8> = Atomic::<u8>::null();
+        static _U: Atomic<u8> = Atomic::<u8>::null();
     }
 }

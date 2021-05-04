@@ -164,7 +164,7 @@ fn len() {
     assert_eq!(s.len(), 0);
 
     for (i, &x) in [4, 2, 12, 8, 7, 11, 5].iter().enumerate() {
-        s.insert(x, x * 1, guard);
+        s.insert(x, x * 10, guard);
         assert_eq!(s.len(), i + 1);
     }
 

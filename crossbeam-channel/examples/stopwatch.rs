@@ -33,11 +33,7 @@ fn main() {
 
     // Prints the elapsed time.
     fn show(dur: Duration) {
-        println!(
-            "Elapsed: {}.{:03} sec",
-            dur.as_secs(),
-            dur.subsec_nanos() / 1_000_000
-        );
+        println!("Elapsed: {}.{:03} sec", dur.as_secs(), dur.subsec_millis());
     }
 
     let start = Instant::now();
