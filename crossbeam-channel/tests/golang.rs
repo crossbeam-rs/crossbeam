@@ -176,7 +176,7 @@ unsafe impl GlobalAlloc for Counter {
         if !ret.is_null() {
             ALLOCATED.fetch_add(layout.size(), SeqCst);
         }
-        return ret;
+        ret
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

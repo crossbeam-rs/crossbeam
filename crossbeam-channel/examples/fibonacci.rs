@@ -10,7 +10,7 @@ fn fibonacci(sender: Sender<u64>) {
     while sender.send(x).is_ok() {
         let tmp = x;
         x = y;
-        y = tmp + y;
+        y += tmp;
     }
 }
 
