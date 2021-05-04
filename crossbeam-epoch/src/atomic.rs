@@ -248,9 +248,9 @@ impl<T> Pointable for [MaybeUninit<T>] {
     type Init = usize;
 
     unsafe fn init(size: Self::Init) -> usize {
-        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * size;
+        let alloc_size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * size;
         let align = mem::align_of::<Array<T>>();
-        let layout = alloc::Layout::from_size_align(size, align).unwrap();
+        let layout = alloc::Layout::from_size_align(alloc_size, align).unwrap();
         let ptr = alloc::alloc(layout) as *mut Array<T>;
         if ptr.is_null() {
             alloc::handle_alloc_error(layout);
