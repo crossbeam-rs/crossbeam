@@ -136,16 +136,21 @@ func select_both(cap int) {
     var c3 = make(chan Message, cap)
     var done = make(chan bool)
 
-    var producer = func(c chan Message) {
+    var producer = func(c0 chan Message, c1 chan Message, c2 chan Message, c3 chan Message) {
         for i := 0; i < MESSAGES / THREADS; i++ {
-            c <- Message(i)
+            select {
+            case c0 <- Message(i);
+            case c1 <- Message(i);
+            case c2 <- Message(i);
+            case c3 <- Message(i);
+            }
         }
         done <- true
     }
-    go producer(c0)
-    go producer(c1)
-    go producer(c2)
-    go producer(c3)
+    go producer(c0,c1,c2,c3)
+    go producer(c0,c1,c2,c3)
+    go producer(c0,c1,c2,c3)
+    go producer(c0,c1,c2,c3)
 
     for t := 0; t < THREADS; t++ {
         go func() {
