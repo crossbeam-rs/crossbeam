@@ -38,7 +38,6 @@
     unreachable_pub
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
 #[cfg(crossbeam_loom)]
 #[allow(unused_imports)]
@@ -94,7 +93,7 @@ cfg_if! {
     }
 }
 
-#[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
+#[cfg(not(crossbeam_no_atomic_cas))]
 pub mod atomic;
 
 mod cache_padded;

@@ -22,10 +22,13 @@ default = ["std"]
 # This is enabled by default.
 std = ["lazy_static"]
 
+# These features are no longer used.
+# TODO: remove in the next major version.
 # Enable to use of unstable functionality.
 # This is disabled by default and requires recent nightly compiler.
-# Note that this is outside of the normal semver guarantees and minor versions
-# of crossbeam may make breaking changes to them at any time.
+#
+# NOTE: This feature is outside of the normal semver guarantees and minor or
+# patch versions of crossbeam may make breaking changes to them at any time.
 nightly = []
 
 [dependencies]
@@ -34,8 +37,8 @@ lazy_static = { version = "1.4.0", optional = true }
 
 # Enable the use of loom for concurrency testing.
 #
-# This configuration option is outside of the normal semver guarantees: minor
-# versions of crossbeam may make breaking changes to it at any time.
+# NOTE: This feature is outside of the normal semver guarantees and minor or
+# patch versions of crossbeam may make breaking changes to them at any time.
 [target.'cfg(crossbeam_loom)'.dependencies]
 loom = { version = "0.5", optional = true }
 

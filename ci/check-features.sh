@@ -22,7 +22,5 @@ else
     rustup target add thumbv7m-none-eabi
     rustup target add thumbv6m-none-eabi
     cargo hack check --all --feature-powerset --no-dev-deps --exclude benchmarks --target thumbv7m-none-eabi --skip std,default
-    # * `--features nightly` is required for enable `cfg_target_has_atomic`.
-    # * `--ignore-unknown-features` - some crates doesn't have 'nightly' feature
-    cargo hack check --all --feature-powerset --no-dev-deps --exclude benchmarks --target thumbv6m-none-eabi --skip std,default --features nightly --ignore-unknown-features
+    cargo hack check --all --feature-powerset --no-dev-deps --exclude benchmarks --target thumbv6m-none-eabi --skip std,default
 fi

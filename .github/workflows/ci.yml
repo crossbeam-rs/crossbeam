@@ -86,6 +86,19 @@ jobs:
       - name: dependency tree check
         run: ./ci/dependencies.sh
 
+  # When this job failed, run ci/no_atomic_cas.sh and commit result changes.
+  # TODO(taiki-e): Ideally, this should be automated using a bot that creates
+  #                PR when failed, but there is no bandwidth to implement it
+  #                right now...
+  codegen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update nightly && rustup default nightly
+      - run: ci/no_atomic_cas.sh
+      - run: git diff --exit-code
+
   # Check formatting.
   rustfmt:
     name: rustfmt
@@ -93,7 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust
-        run: rustup update stable && rustup default stable
+        run: rustup update stable
       - name: rustfmt
         run: ./ci/rustfmt.sh
 
@@ -104,7 +117,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust
-        run: rustup update stable && rustup default stable
+        run: rustup update stable
       - name: clippy
         run: ./ci/clippy.sh
 
@@ -126,7 +139,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust
-        run: rustup update stable && rustup default stable
+        run: rustup update stable
       - name: loom
         run: ./ci/crossbeam-epoch-loom.sh
 
@@ -154,6 +167,7 @@ jobs:
       - test
       - features
       - dependencies
+      - codegen
       - rustfmt
       - clippy
       - san

@@ -20,6 +20,8 @@ default = ["std"]
 
 # Enable to use APIs that require `std`.
 # This is enabled by default.
+#
+# NOTE: Disabling `std` feature is not supported yet.
 std = ["crossbeam-utils/std"]
 
 [dependencies]

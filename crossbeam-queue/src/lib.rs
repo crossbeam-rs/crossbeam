@@ -19,9 +19,8 @@
     unreachable_pub
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
-#[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
+#[cfg(not(crossbeam_no_atomic_cas))]
 cfg_if::cfg_if! {
     if #[cfg(feature = "alloc")] {
         extern crate alloc;
