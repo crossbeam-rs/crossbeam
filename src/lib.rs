@@ -53,7 +53,6 @@
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(not(crossbeam_no_atomic_cas))]
 pub use crossbeam_utils::atomic;
 
 pub mod utils {

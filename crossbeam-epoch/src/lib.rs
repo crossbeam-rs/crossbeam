@@ -104,10 +104,11 @@ mod primitive {
     pub(crate) use loom::lazy_static;
     pub(crate) use loom::thread_local;
 }
+#[cfg(not(crossbeam_no_atomic_cas))]
 #[cfg(not(crossbeam_loom))]
 #[allow(unused_imports, dead_code)]
 mod primitive {
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub(crate) mod cell {
         #[derive(Debug)]
         #[repr(transparent)]
@@ -135,14 +136,13 @@ mod primitive {
             }
         }
     }
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[cfg(feature = "alloc")]
     pub(crate) mod sync {
         pub(crate) mod atomic {
             pub(crate) use core::sync::atomic::compiler_fence;
             pub(crate) use core::sync::atomic::fence;
             pub(crate) use core::sync::atomic::AtomicUsize;
         }
-        #[cfg(not(crossbeam_no_atomic_cas))]
         pub(crate) use alloc::sync::Arc;
     }
 

@@ -69,13 +69,18 @@ mod primitive {
             // use [`core::hint::spin_loop`] instead.
             #[allow(deprecated)]
             pub(crate) use core::sync::atomic::spin_loop_hint;
+            #[cfg(not(crossbeam_no_atomic))]
             pub(crate) use core::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize};
+            #[cfg(not(crossbeam_no_atomic))]
             #[cfg(has_atomic_u16)]
             pub(crate) use core::sync::atomic::{AtomicI16, AtomicU16};
+            #[cfg(not(crossbeam_no_atomic))]
             #[cfg(has_atomic_u32)]
             pub(crate) use core::sync::atomic::{AtomicI32, AtomicU32};
+            #[cfg(not(crossbeam_no_atomic))]
             #[cfg(has_atomic_u64)]
             pub(crate) use core::sync::atomic::{AtomicI64, AtomicU64};
+            #[cfg(not(crossbeam_no_atomic))]
             #[cfg(has_atomic_u8)]
             pub(crate) use core::sync::atomic::{AtomicI8, AtomicU8};
         }
@@ -85,15 +90,6 @@ mod primitive {
     }
 }
 
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
-    } else if #[cfg(feature = "std")] {
-        extern crate std as alloc;
-    }
-}
-
-#[cfg(not(crossbeam_no_atomic_cas))]
 pub mod atomic;
 
 mod cache_padded;

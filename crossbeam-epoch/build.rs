@@ -2,7 +2,7 @@
 
 use std::env;
 
-include!("no_atomic_cas.rs");
+include!("no_atomic.rs");
 
 // The rustc-cfg strings below are *not* public API. Please let us know by
 // opening a GitHub issue if your build environment requires some way to enable
@@ -28,5 +28,5 @@ fn main() {
         println!("cargo:rustc-cfg=crossbeam_no_atomic_cas");
     }
 
-    println!("cargo:rerun-if-changed=no_atomic_cas.rs");
+    println!("cargo:rerun-if-changed=no_atomic.rs");
 }

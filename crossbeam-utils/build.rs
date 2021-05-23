@@ -4,7 +4,7 @@ use std::env;
 
 use autocfg::AutoCfg;
 
-include!("no_atomic_cas.rs");
+include!("no_atomic.rs");
 
 // The rustc-cfg strings below are *not* public API. Please let us know by
 // opening a GitHub issue if your build environment requires some way to enable
@@ -29,6 +29,9 @@ fn main() {
     if NO_ATOMIC_CAS.contains(&&*target) {
         println!("cargo:rustc-cfg=crossbeam_no_atomic_cas");
     }
+    if NO_ATOMIC.contains(&&*target) {
+        println!("cargo:rustc-cfg=crossbeam_no_atomic");
+    }
 
     let cfg = match AutoCfg::new() {
         Ok(cfg) => cfg,
@@ -47,4 +50,6 @@ fn main() {
     cfg.emit_type_cfg("core::sync::atomic::AtomicU32", "has_atomic_u32");
     cfg.emit_type_cfg("core::sync::atomic::AtomicU64", "has_atomic_u64");
     cfg.emit_type_cfg("core::sync::atomic::AtomicU128", "has_atomic_u128");
+
+    println!("cargo:rerun-if-changed=no_atomic.rs");
 }
