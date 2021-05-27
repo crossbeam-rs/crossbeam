@@ -52,8 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust
-        # `rustup self update` is necessary because the windows environment cannot self-update rustup.exe by `rustup update`.
-        run: rustup self update && rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+        # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
+        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
       - name: Test
         run: ./ci/test.sh
 
