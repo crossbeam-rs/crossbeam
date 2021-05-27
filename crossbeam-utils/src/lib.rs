@@ -46,7 +46,8 @@ mod primitive {
         pub(crate) mod atomic {
             pub(crate) use loom::sync::atomic::spin_loop_hint;
             pub(crate) use loom::sync::atomic::{
-                AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize,
+                AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize, AtomicU16,
+                AtomicU32, AtomicU64, AtomicU8, AtomicUsize,
             };
 
             // FIXME: loom does not support compiler_fence at the moment.
@@ -70,19 +71,12 @@ mod primitive {
             #[allow(deprecated)]
             pub(crate) use core::sync::atomic::spin_loop_hint;
             #[cfg(not(crossbeam_no_atomic))]
-            pub(crate) use core::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize};
-            #[cfg(not(crossbeam_no_atomic))]
-            #[cfg(has_atomic_u16)]
-            pub(crate) use core::sync::atomic::{AtomicI16, AtomicU16};
-            #[cfg(not(crossbeam_no_atomic))]
-            #[cfg(has_atomic_u32)]
-            pub(crate) use core::sync::atomic::{AtomicI32, AtomicU32};
-            #[cfg(not(crossbeam_no_atomic))]
-            #[cfg(has_atomic_u64)]
+            pub(crate) use core::sync::atomic::{
+                AtomicBool, AtomicI16, AtomicI32, AtomicI8, AtomicIsize, AtomicU16, AtomicU32,
+                AtomicU8, AtomicUsize,
+            };
+            #[cfg(not(crossbeam_no_atomic_64))]
             pub(crate) use core::sync::atomic::{AtomicI64, AtomicU64};
-            #[cfg(not(crossbeam_no_atomic))]
-            #[cfg(has_atomic_u8)]
-            pub(crate) use core::sync::atomic::{AtomicI8, AtomicU8};
         }
 
         #[cfg(feature = "std")]

@@ -68,21 +68,15 @@ macro_rules! impl_atomic {
 impl_atomic!(AtomicBool, bool);
 impl_atomic!(AtomicUsize, usize);
 impl_atomic!(AtomicIsize, isize);
-#[cfg(has_atomic_u8)]
 impl_atomic!(AtomicU8, u8);
-#[cfg(has_atomic_u8)]
 impl_atomic!(AtomicI8, i8);
-#[cfg(has_atomic_u16)]
 impl_atomic!(AtomicU16, u16);
-#[cfg(has_atomic_u16)]
 impl_atomic!(AtomicI16, i16);
-#[cfg(has_atomic_u32)]
 impl_atomic!(AtomicU32, u32);
-#[cfg(has_atomic_u32)]
 impl_atomic!(AtomicI32, i32);
-#[cfg(has_atomic_u64)]
+#[cfg(not(crossbeam_no_atomic_64))]
 impl_atomic!(AtomicU64, u64);
-#[cfg(has_atomic_u64)]
+#[cfg(not(crossbeam_no_atomic_64))]
 impl_atomic!(AtomicI64, i64);
 
 #[cfg(not(crossbeam_no_atomic))]

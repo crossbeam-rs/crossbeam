@@ -5,10 +5,10 @@ set -ex
 
 export RUSTFLAGS="-D warnings"
 
-if [[ -n "$TARGET" ]]; then
-    # If TARGET is specified, use cross for testing.
+if [[ -n "$RUST_TARGET" ]]; then
+    # If RUST_TARGET is specified, use cross for testing.
     cargo install cross
-    cross test --all --target "$TARGET" --exclude benchmarks -- --test-threads=1
+    cross test --all --target "$RUST_TARGET" --exclude benchmarks -- --test-threads=1
 
     # For now, the non-host target only runs tests.
     exit 0
