@@ -238,7 +238,8 @@ impl<T> Pointable for T {
 // [`alloc::alloc::Layout::extend`] instead.
 #[repr(C)]
 struct Array<T> {
-    size: usize,
+    /// The number of elements (not the number of bytes).
+    len: usize,
     elements: [MaybeUninit<T>; 0],
 }
 
@@ -247,31 +248,31 @@ impl<T> Pointable for [MaybeUninit<T>] {
 
     type Init = usize;
 
-    unsafe fn init(size: Self::Init) -> usize {
-        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * size;
+    unsafe fn init(len: Self::Init) -> usize {
+        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * len;
         let align = mem::align_of::<Array<T>>();
         let layout = alloc::Layout::from_size_align(size, align).unwrap();
         let ptr = alloc::alloc(layout) as *mut Array<T>;
         if ptr.is_null() {
             alloc::handle_alloc_error(layout);
         }
-        (*ptr).size = size;
+        (*ptr).len = len;
         ptr as usize
     }
 
     unsafe fn deref<'a>(ptr: usize) -> &'a Self {
         let array = &*(ptr as *const Array<T>);
-        slice::from_raw_parts(array.elements.as_ptr() as *const _, array.size)
+        slice::from_raw_parts(array.elements.as_ptr() as *const _, array.len)
     }
 
     unsafe fn deref_mut<'a>(ptr: usize) -> &'a mut Self {
         let array = &*(ptr as *mut Array<T>);
-        slice::from_raw_parts_mut(array.elements.as_ptr() as *mut _, array.size)
+        slice::from_raw_parts_mut(array.elements.as_ptr() as *mut _, array.len)
     }
 
     unsafe fn drop(ptr: usize) {
         let array = &*(ptr as *mut Array<T>);
-        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * array.size;
+        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * array.len;
         let align = mem::align_of::<Array<T>>();
         let layout = alloc::Layout::from_size_align(size, align).unwrap();
         alloc::dealloc(ptr as *mut u8, layout);
@@ -1529,7 +1530,8 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
-    use super::Shared;
+    use super::{Owned, Shared};
+    use std::mem::MaybeUninit;
 
     #[test]
     fn valid_tag_i8() {
@@ -1546,5 +1548,12 @@ mod tests {
     fn const_atomic_null() {
         use super::Atomic;
         static _U: Atomic<u8> = Atomic::<u8>::null();
+    }
+
+    #[test]
+    fn array_init() {
+        let owned = Owned::<[MaybeUninit<usize>]>::init(10);
+        let arr: &[MaybeUninit<usize>] = &*owned;
+        assert_eq!(arr.len(), 10);
     }
 }
