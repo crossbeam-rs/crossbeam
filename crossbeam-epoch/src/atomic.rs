@@ -561,6 +561,79 @@ impl<T: ?Sized + Pointable> Atomic<T> {
             })
     }
 
+    /// Fetches the pointer, and then applies a function to it that returns a new value.
+    /// Returns a `Result` of `Ok(previous_value)` if the function returned `Some`, else `Err(_)`.
+    ///
+    /// Note that the given function may be called multiple times if the value has been changed by
+    /// other threads in the meantime, as long as the function returns `Some(_)`, but the function
+    /// will have been applied only once to the stored value.
+    ///
+    /// `fetch_update` takes two [`Ordering`] arguments to describe the memory
+    /// ordering of this operation. The first describes the required ordering for
+    /// when the operation finally succeeds while the second describes the
+    /// required ordering for loads. These correspond to the success and failure
+    /// orderings of [`AtomicBool::compare_exchange`] respectively.
+    ///
+    /// Using [`Acquire`] as success ordering makes the store part of this
+    /// operation [`Relaxed`], and using [`Release`] makes the final successful
+    /// load [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`],
+    /// [`Acquire`] or [`Relaxed`] and must be equivalent to or weaker than the
+    /// success ordering.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_epoch::{self as epoch, Atomic, Owned};
+    /// use std::sync::atomic::Ordering::SeqCst;
+    ///
+    /// let a = Atomic::new(1234);
+    /// let guard = &epoch::pin();
+    ///
+    /// let res1 = a.fetch_update(|x, guard| Some(x.with_tag(1)), SeqCst, SeqCst, guard);
+    /// assert!(res1.is_ok());
+    ///
+    /// let res2 = a.fetch_update(|x, guard| None, SeqCst, SeqCst, guard);
+    /// assert!(res2.is_err());
+    /// ```
+    pub fn fetch_update<'g, F>(
+        &self,
+        func: F,
+        set_ord: Ordering,
+        fail_ord: Ordering,
+        guard: &'g Guard,
+    ) -> Result<Shared<'g, T>, Shared<'g, T>>
+    where
+        F: for<'a> FnMut(Shared<'a, T>, &'a Guard) -> Option<Shared<'a, T>>,
+    {
+        // This is here until we up the MSRV to >= 1.45.0, when AtomicUsize::fetch_update
+        // was stabilized.
+        #[inline]
+        fn fetch_update<F>(
+            this: &AtomicUsize,
+            set_order: Ordering,
+            fetch_order: Ordering,
+            mut f: F,
+        ) -> Result<usize, usize>
+        where
+            F: FnMut(usize) -> Option<usize>,
+        {
+            let mut prev = this.load(fetch_order);
+            while let Some(next) = f(prev) {
+                match this.compare_exchange_weak(prev, next, set_order, fetch_order) {
+                    x @ Ok(_) => return x,
+                    Err(next_prev) => prev = next_prev,
+                }
+            }
+            Err(prev)
+        }
+
+        fetch_update(&self.data, set_ord, fail_ord, |x| {
+            func(unsafe { Shared::from_usize(x) }, guard).map(Shared::into_usize)
+        })
+        .map(|old| unsafe { Shared::from_usize(old) })
+        .map_err(|current| unsafe { Shared::from_usize(current) })
+    }
+
     /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
     /// value is the same as `current`. The tag is also taken into account, so two pointers to the
     /// same object, but with different tags, will not be considered equal.
