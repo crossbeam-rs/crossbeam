@@ -1,3 +1,4 @@
+use std::mem;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 
@@ -8,18 +9,47 @@ fn is_lock_free() {
     struct UsizeWrap(usize);
     struct U8Wrap(bool);
     struct I16Wrap(i16);
+    #[repr(align(8))]
+    struct U64Align8(u64);
 
-    assert_eq!(AtomicCell::<usize>::is_lock_free(), true);
-    assert_eq!(AtomicCell::<isize>::is_lock_free(), true);
-    assert_eq!(AtomicCell::<UsizeWrap>::is_lock_free(), true);
+    assert!(AtomicCell::<usize>::is_lock_free());
+    assert!(AtomicCell::<isize>::is_lock_free());
+    assert!(AtomicCell::<UsizeWrap>::is_lock_free());
 
-    assert_eq!(AtomicCell::<u8>::is_lock_free(), cfg!(has_atomic_u8));
-    assert_eq!(AtomicCell::<bool>::is_lock_free(), cfg!(has_atomic_u8));
-    assert_eq!(AtomicCell::<U8Wrap>::is_lock_free(), cfg!(has_atomic_u8));
+    assert!(AtomicCell::<()>::is_lock_free());
 
-    assert_eq!(AtomicCell::<I16Wrap>::is_lock_free(), cfg!(has_atomic_u16));
+    assert!(AtomicCell::<u8>::is_lock_free());
+    assert!(AtomicCell::<i8>::is_lock_free());
+    assert!(AtomicCell::<bool>::is_lock_free());
+    assert!(AtomicCell::<U8Wrap>::is_lock_free());
 
-    assert_eq!(AtomicCell::<u128>::is_lock_free(), cfg!(has_atomic_u128));
+    assert!(AtomicCell::<u16>::is_lock_free());
+    assert!(AtomicCell::<i16>::is_lock_free());
+    assert!(AtomicCell::<I16Wrap>::is_lock_free());
+
+    assert!(AtomicCell::<u32>::is_lock_free());
+    assert!(AtomicCell::<i32>::is_lock_free());
+
+    // Sizes of both types must be equal, and the alignment of `u64` must be greater or equal than
+    // that of `AtomicU64`. In i686-unknown-linux-gnu, the alignment of `u64` is `4` and alignment
+    // of `AtomicU64` is `8`, so `AtomicCell<u64>` is not lock-free.
+    assert_eq!(
+        AtomicCell::<u64>::is_lock_free(),
+        cfg!(not(crossbeam_no_atomic_64))
+            && cfg!(any(
+                target_pointer_width = "64",
+                target_pointer_width = "128"
+            ))
+    );
+    assert_eq!(mem::size_of::<U64Align8>(), 8);
+    assert_eq!(mem::align_of::<U64Align8>(), 8);
+    assert_eq!(
+        AtomicCell::<U64Align8>::is_lock_free(),
+        cfg!(not(crossbeam_no_atomic_64))
+    );
+
+    // AtomicU128 is unstable
+    assert!(!AtomicCell::<u128>::is_lock_free());
 }
 
 #[test]

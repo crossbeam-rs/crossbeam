@@ -38,7 +38,6 @@
     unreachable_pub
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(feature = "nightly", feature(cfg_target_has_atomic))]
 
 #[cfg(crossbeam_loom)]
 #[allow(unused_imports)]
@@ -47,7 +46,8 @@ mod primitive {
         pub(crate) mod atomic {
             pub(crate) use loom::sync::atomic::spin_loop_hint;
             pub(crate) use loom::sync::atomic::{
-                AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize,
+                AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize, AtomicU16,
+                AtomicU32, AtomicU64, AtomicU8, AtomicUsize,
             };
 
             // FIXME: loom does not support compiler_fence at the moment.
@@ -70,15 +70,13 @@ mod primitive {
             // use [`core::hint::spin_loop`] instead.
             #[allow(deprecated)]
             pub(crate) use core::sync::atomic::spin_loop_hint;
-            pub(crate) use core::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize};
-            #[cfg(has_atomic_u16)]
-            pub(crate) use core::sync::atomic::{AtomicI16, AtomicU16};
-            #[cfg(has_atomic_u32)]
-            pub(crate) use core::sync::atomic::{AtomicI32, AtomicU32};
-            #[cfg(has_atomic_u64)]
+            #[cfg(not(crossbeam_no_atomic))]
+            pub(crate) use core::sync::atomic::{
+                AtomicBool, AtomicI16, AtomicI32, AtomicI8, AtomicIsize, AtomicU16, AtomicU32,
+                AtomicU8, AtomicUsize,
+            };
+            #[cfg(not(crossbeam_no_atomic_64))]
             pub(crate) use core::sync::atomic::{AtomicI64, AtomicU64};
-            #[cfg(has_atomic_u8)]
-            pub(crate) use core::sync::atomic::{AtomicI8, AtomicU8};
         }
 
         #[cfg(feature = "std")]
@@ -86,15 +84,6 @@ mod primitive {
     }
 }
 
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
-    } else if #[cfg(feature = "std")] {
-        extern crate std as alloc;
-    }
-}
-
-#[cfg_attr(feature = "nightly", cfg(target_has_atomic = "ptr"))]
 pub mod atomic;
 
 mod cache_padded;

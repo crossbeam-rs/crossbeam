@@ -24,13 +24,9 @@ std = ["alloc", "crossbeam-epoch/std", "crossbeam-utils/std"]
 
 # Enable to use APIs that require `alloc`.
 # This is enabled by default and also enabled if the `std` feature is enabled.
+#
+# NOTE: Disabling both `std` *and* `alloc` features is not supported yet.
 alloc = ["crossbeam-epoch/alloc"]
-
-# Enable to use of unstable functionality.
-# This is disabled by default and requires recent nightly compiler.
-# Note that this is outside of the normal semver guarantees and minor versions
-# of crossbeam may make breaking changes to them at any time.
-nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly"]
 
 [dependencies]
 cfg-if = "1"

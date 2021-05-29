@@ -1,5 +1,6 @@
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use crate::primitive::sync::atomic::compiler_fence;
+#[cfg(not(crossbeam_no_atomic))]
 use core::sync::atomic::Ordering;
 
 /// Trait which allows reading from primitive atomic types with "consume" ordering.
@@ -25,6 +26,7 @@ pub trait AtomicConsume {
     fn load_consume(&self) -> Self::Val;
 }
 
+#[cfg(not(crossbeam_no_atomic))]
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 macro_rules! impl_consume {
     () => {
@@ -37,6 +39,7 @@ macro_rules! impl_consume {
     };
 }
 
+#[cfg(not(crossbeam_no_atomic))]
 #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
 macro_rules! impl_consume {
     () => {
@@ -49,12 +52,13 @@ macro_rules! impl_consume {
 
 macro_rules! impl_atomic {
     ($atomic:ident, $val:ty) => {
-        impl AtomicConsume for ::core::sync::atomic::$atomic {
+        #[cfg(not(crossbeam_no_atomic))]
+        impl AtomicConsume for core::sync::atomic::$atomic {
             type Val = $val;
             impl_consume!();
         }
         #[cfg(crossbeam_loom)]
-        impl AtomicConsume for ::loom::sync::atomic::$atomic {
+        impl AtomicConsume for loom::sync::atomic::$atomic {
             type Val = $val;
             impl_consume!();
         }
@@ -63,32 +67,26 @@ macro_rules! impl_atomic {
 
 impl_atomic!(AtomicBool, bool);
 impl_atomic!(AtomicUsize, usize);
-#[cfg(not(crossbeam_loom))]
 impl_atomic!(AtomicIsize, isize);
-#[cfg(has_atomic_u8)]
 impl_atomic!(AtomicU8, u8);
-#[cfg(has_atomic_u8)]
 impl_atomic!(AtomicI8, i8);
-#[cfg(has_atomic_u16)]
 impl_atomic!(AtomicU16, u16);
-#[cfg(has_atomic_u16)]
 impl_atomic!(AtomicI16, i16);
-#[cfg(has_atomic_u32)]
 impl_atomic!(AtomicU32, u32);
-#[cfg(has_atomic_u32)]
 impl_atomic!(AtomicI32, i32);
-#[cfg(has_atomic_u64)]
+#[cfg(not(crossbeam_no_atomic_64))]
 impl_atomic!(AtomicU64, u64);
-#[cfg(has_atomic_u64)]
+#[cfg(not(crossbeam_no_atomic_64))]
 impl_atomic!(AtomicI64, i64);
 
-impl<T> AtomicConsume for ::core::sync::atomic::AtomicPtr<T> {
+#[cfg(not(crossbeam_no_atomic))]
+impl<T> AtomicConsume for core::sync::atomic::AtomicPtr<T> {
     type Val = *mut T;
     impl_consume!();
 }
 
 #[cfg(crossbeam_loom)]
-impl<T> AtomicConsume for ::loom::sync::atomic::AtomicPtr<T> {
+impl<T> AtomicConsume for loom::sync::atomic::AtomicPtr<T> {
     type Val = *mut T;
     impl_consume!();
 }

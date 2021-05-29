@@ -27,14 +27,6 @@ fn main() {
     if NO_ATOMIC_CAS.contains(&&*target) {
         println!("cargo:rustc-cfg=crossbeam_no_atomic_cas");
     }
-    if NO_ATOMIC.contains(&&*target) {
-        println!("cargo:rustc-cfg=crossbeam_no_atomic");
-        println!("cargo:rustc-cfg=crossbeam_no_atomic_64");
-    } else if NO_ATOMIC_64.contains(&&*target) {
-        println!("cargo:rustc-cfg=crossbeam_no_atomic_64");
-    } else {
-        // Otherwise, assuming `"max-atomic-width" == 64`.
-    }
 
     println!("cargo:rerun-if-changed=no_atomic.rs");
 }
