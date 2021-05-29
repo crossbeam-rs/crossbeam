@@ -597,7 +597,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// ```
     pub fn fetch_update<'g, F>(
         &self,
-        func: F,
+        mut func: F,
         set_ord: Ordering,
         fail_ord: Ordering,
         guard: &'g Guard,
