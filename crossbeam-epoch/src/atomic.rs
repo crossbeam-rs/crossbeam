@@ -572,13 +572,18 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// ordering of this operation. The first describes the required ordering for
     /// when the operation finally succeeds while the second describes the
     /// required ordering for loads. These correspond to the success and failure
-    /// orderings of [`AtomicBool::compare_exchange`] respectively.
+    /// orderings of [`Atomic::compare_exchange`] respectively.
     ///
     /// Using [`Acquire`] as success ordering makes the store part of this
     /// operation [`Relaxed`], and using [`Release`] makes the final successful
     /// load [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`],
     /// [`Acquire`] or [`Relaxed`] and must be equivalent to or weaker than the
     /// success ordering.
+    ///
+    /// [`Relaxed`]: Ordering::Relaxed
+    /// [`Acquire`]: Ordering::Acquire
+    /// [`Release`]: Ordering::Release
+    /// [`SeqCst`]: Ordering::SeqCst
     ///
     /// # Examples
     ///
