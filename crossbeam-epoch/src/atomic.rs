@@ -594,49 +594,30 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::new(1234);
     /// let guard = &epoch::pin();
     ///
-    /// let res1 = a.fetch_update(|x, guard| Some(x.with_tag(1)), SeqCst, SeqCst, guard);
+    /// let res1 = a.fetch_update(SeqCst, SeqCst, guard, |x, guard| Some(x.with_tag(1)));
     /// assert!(res1.is_ok());
     ///
-    /// let res2 = a.fetch_update(|x, guard| None, SeqCst, SeqCst, guard);
+    /// let res2 = a.fetch_update(SeqCst, SeqCst, guard, |x, guard| None);
     /// assert!(res2.is_err());
     /// ```
     pub fn fetch_update<'g, F>(
         &self,
-        mut func: F,
-        set_ord: Ordering,
-        fail_ord: Ordering,
+        set_order: Ordering,
+        fail_order: Ordering,
         guard: &'g Guard,
+        mut func: F,
     ) -> Result<Shared<'g, T>, Shared<'g, T>>
     where
         F: for<'a> FnMut(Shared<'a, T>, &'a Guard) -> Option<Shared<'a, T>>,
     {
-        // This is here until we up the MSRV to >= 1.45.0, when AtomicUsize::fetch_update
-        // was stabilized.
-        #[inline]
-        fn fetch_update<F>(
-            this: &AtomicUsize,
-            set_order: Ordering,
-            fetch_order: Ordering,
-            mut f: F,
-        ) -> Result<usize, usize>
-        where
-            F: FnMut(usize) -> Option<usize>,
-        {
-            let mut prev = this.load(fetch_order);
-            while let Some(next) = f(prev) {
-                match this.compare_exchange_weak(prev, next, set_order, fetch_order) {
-                    x @ Ok(_) => return x,
-                    Err(next_prev) => prev = next_prev,
-                }
+        let mut prev = self.load(fail_order, guard);
+        while let Some(next) = func(prev, guard) {
+            match self.compare_exchange_weak(prev, next, set_order, fail_order, guard) {
+                Ok(shared) => return Ok(shared),
+                Err(next_prev) => prev = next_prev.current,
             }
-            Err(prev)
         }
-
-        fetch_update(&self.data, set_ord, fail_ord, |x| {
-            func(unsafe { Shared::from_usize(x) }, guard).map(Shared::into_usize)
-        })
-        .map(|old| unsafe { Shared::from_usize(old) })
-        .map_err(|current| unsafe { Shared::from_usize(current) })
+        Err(prev)
     }
 
     /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
