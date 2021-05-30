@@ -608,7 +608,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         mut func: F,
     ) -> Result<Shared<'g, T>, Shared<'g, T>>
     where
-        F: for<'a> FnMut(Shared<'a, T>, &'a Guard) -> Option<Shared<'a, T>>,
+        F: FnMut(Shared<'g, T>, &'g Guard) -> Option<Shared<'g, T>>,
     {
         let mut prev = self.load(fail_order, guard);
         while let Some(next) = func(prev, guard) {
