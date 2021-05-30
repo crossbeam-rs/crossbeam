@@ -1,3 +1,7 @@
+# Version 0.3.2
+
+- Support targets that do not have atomic CAS on stable Rust (#698)
+
 # Version 0.3.1
 
 - Make `SegQueue::new` const fn. (#584)
