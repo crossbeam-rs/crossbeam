@@ -594,10 +594,10 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::new(1234);
     /// let guard = &epoch::pin();
     ///
-    /// let res1 = a.fetch_update(SeqCst, SeqCst, guard, |x, guard| Some(x.with_tag(1)));
+    /// let res1 = a.fetch_update(SeqCst, SeqCst, guard, |x| Some(x.with_tag(1)));
     /// assert!(res1.is_ok());
     ///
-    /// let res2 = a.fetch_update(SeqCst, SeqCst, guard, |x, guard| None);
+    /// let res2 = a.fetch_update(SeqCst, SeqCst, guard, |x| None);
     /// assert!(res2.is_err());
     /// ```
     pub fn fetch_update<'g, F>(
@@ -608,10 +608,10 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         mut func: F,
     ) -> Result<Shared<'g, T>, Shared<'g, T>>
     where
-        F: FnMut(Shared<'g, T>, &'g Guard) -> Option<Shared<'g, T>>,
+        F: FnMut(Shared<'g, T>) -> Option<Shared<'g, T>>,
     {
         let mut prev = self.load(fail_order, guard);
-        while let Some(next) = func(prev, guard) {
+        while let Some(next) = func(prev) {
             match self.compare_exchange_weak(prev, next, set_order, fail_order, guard) {
                 Ok(shared) => return Ok(shared),
                 Err(next_prev) => prev = next_prev.current,
