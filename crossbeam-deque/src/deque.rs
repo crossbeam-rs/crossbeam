@@ -588,6 +588,27 @@ impl<T> Stealer<T> {
         b.wrapping_sub(f) <= 0
     }
 
+    /// Returns the number of tasks in the deque.
+    ///
+    /// ```
+    /// use crossbeam_deque::Worker;
+    ///
+    /// let w = Worker::new_lifo();
+    /// let s = w.stealer();
+    ///
+    /// assert_eq!(s.len(), 0);
+    /// w.push(1);
+    /// assert_eq!(s.len(), 1);
+    /// w.push(2);
+    /// assert_eq!(s.len(), 2);
+    /// ```
+    pub fn len(&self) -> usize {
+        let f = self.inner.front.load(Ordering::Acquire);
+        atomic::fence(Ordering::SeqCst);
+        let b = self.inner.back.load(Ordering::Acquire);
+        b.wrapping_sub(f).max(0) as usize
+    }
+
     /// Steals a task from the queue.
     ///
     /// # Examples
