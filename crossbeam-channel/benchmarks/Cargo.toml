@@ -19,47 +19,59 @@ mpmc = "0.1.5"
 [[bin]]
 name = "atomicring"
 path = "atomicring.rs"
+doc = false
 
 [[bin]]
 name = "atomicringqueue"
 path = "atomicringqueue.rs"
+doc = false
 
 [[bin]]
 name = "bus"
 path = "bus.rs"
+doc = false
 
 [[bin]]
 name = "chan"
 path = "chan.rs"
+doc = false
 
 [[bin]]
 name = "crossbeam-channel"
 path = "crossbeam-channel.rs"
+doc = false
 
 [[bin]]
 name = "crossbeam-deque"
 path = "crossbeam-deque.rs"
+doc = false
 
 [[bin]]
 name = "flume"
 path = "flume.rs"
+doc = false
 
 [[bin]]
 name = "futures-channel"
 path = "futures-channel.rs"
+doc = false
 
 [[bin]]
 name = "lockfree"
 path = "lockfree.rs"
+doc = false
 
 [[bin]]
 name = "mpsc"
 path = "mpsc.rs"
+doc = false
 
 [[bin]]
 name = "segqueue"
 path = "segqueue.rs"
+doc = false
 
 [[bin]]
 name = "mpmc"
 path = "mpmc.rs"
+doc = false
