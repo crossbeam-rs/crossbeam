@@ -76,34 +76,26 @@ impl Waker {
     /// Attempts to find another thread's entry, select the operation, and wake it up.
     #[inline]
     pub(crate) fn try_select(&mut self) -> Option<Entry> {
-        let mut entry = None;
-
-        if !self.selectors.is_empty() {
-            let thread_id = current_thread_id();
-
-            for i in 0..self.selectors.len() {
+        self.selectors
+            .iter()
+            .position(|selector| {
                 // Does the entry belong to a different thread?
-                if self.selectors[i].cx.thread_id() != thread_id {
-                    // Try selecting this operation.
-                    let sel = Selected::Operation(self.selectors[i].oper);
-                    let res = self.selectors[i].cx.try_select(sel);
-
-                    if res.is_ok() {
+                selector.cx.thread_id() != current_thread_id()
+                    && selector // Try selecting this operation.
+                        .cx
+                        .try_select(Selected::Operation(selector.oper))
+                        .is_ok()
+                    && {
                         // Provide the packet.
-                        self.selectors[i].cx.store_packet(self.selectors[i].packet);
+                        selector.cx.store_packet(selector.packet);
                         // Wake the thread up.
-                        self.selectors[i].cx.unpark();
-
-                        // Remove the entry from the queue to keep it clean and improve
-                        // performance.
-                        entry = Some(self.selectors.remove(i));
-                        break;
+                        selector.cx.unpark();
+                        true
                     }
-                }
-            }
-        }
-
-        entry
+            })
+            // Remove the entry from the queue to keep it clean and improve
+            // performance.
+            .map(|pos| self.selectors.remove(pos))
     }
 
     /// Returns `true` if there is an entry which can be selected by the current thread.
