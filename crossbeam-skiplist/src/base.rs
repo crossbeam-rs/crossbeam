@@ -1797,7 +1797,7 @@ where
         self.tail = match self.tail {
             Some(n) => self
                 .parent
-                .search_bound(Bound::Excluded(&n.key.borrow()), true, self.guard),
+                .search_bound(Bound::Excluded(n.key.borrow()), true, self.guard),
             None => self
                 .parent
                 .search_bound(self.range.end_bound(), true, self.guard),

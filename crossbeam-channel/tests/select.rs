@@ -895,12 +895,12 @@ fn matching() {
         for i in 0..THREADS {
             scope.spawn(move |_| {
                 let mut sel = Select::new();
-                let oper1 = sel.recv(&r);
-                let oper2 = sel.send(&s);
+                let oper1 = sel.recv(r);
+                let oper2 = sel.send(s);
                 let oper = sel.select();
                 match oper.index() {
-                    ix if ix == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
-                    ix if ix == oper2 => assert!(oper.send(&s, i).is_ok()),
+                    ix if ix == oper1 => assert_ne!(oper.recv(r), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(s, i).is_ok()),
                     _ => unreachable!(),
                 }
             });
@@ -921,12 +921,12 @@ fn matching_with_leftover() {
         for i in 0..THREADS {
             scope.spawn(move |_| {
                 let mut sel = Select::new();
-                let oper1 = sel.recv(&r);
-                let oper2 = sel.send(&s);
+                let oper1 = sel.recv(r);
+                let oper2 = sel.send(s);
                 let oper = sel.select();
                 match oper.index() {
-                    ix if ix == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
-                    ix if ix == oper2 => assert!(oper.send(&s, i).is_ok()),
+                    ix if ix == oper1 => assert_ne!(oper.recv(r), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(s, i).is_ok()),
                     _ => unreachable!(),
                 }
             });
@@ -1212,8 +1212,8 @@ fn sync_and_clone() {
     let (s, r) = &bounded::<usize>(0);
 
     let mut sel = Select::new();
-    let oper1 = sel.recv(&r);
-    let oper2 = sel.send(&s);
+    let oper1 = sel.recv(r);
+    let oper2 = sel.send(s);
     let sel = &sel;
 
     scope(|scope| {
@@ -1222,8 +1222,8 @@ fn sync_and_clone() {
                 let mut sel = sel.clone();
                 let oper = sel.select();
                 match oper.index() {
-                    ix if ix == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
-                    ix if ix == oper2 => assert!(oper.send(&s, i).is_ok()),
+                    ix if ix == oper1 => assert_ne!(oper.recv(r), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(s, i).is_ok()),
                     _ => unreachable!(),
                 }
             });
@@ -1241,8 +1241,8 @@ fn send_and_clone() {
     let (s, r) = &bounded::<usize>(0);
 
     let mut sel = Select::new();
-    let oper1 = sel.recv(&r);
-    let oper2 = sel.send(&s);
+    let oper1 = sel.recv(r);
+    let oper2 = sel.send(s);
 
     scope(|scope| {
         for i in 0..THREADS {
@@ -1250,8 +1250,8 @@ fn send_and_clone() {
             scope.spawn(move |_| {
                 let oper = sel.select();
                 match oper.index() {
-                    ix if ix == oper1 => assert_ne!(oper.recv(&r), Ok(i)),
-                    ix if ix == oper2 => assert!(oper.send(&s, i).is_ok()),
+                    ix if ix == oper1 => assert_ne!(oper.recv(r), Ok(i)),
+                    ix if ix == oper2 => assert!(oper.send(s, i).is_ok()),
                     _ => unreachable!(),
                 }
             });

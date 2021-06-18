@@ -211,7 +211,7 @@ fn select() {
                             break;
                         }
                         i => {
-                            oper.recv(&v[i]).unwrap();
+                            oper.recv(v[i]).unwrap();
                             hits.fetch_add(1, Ordering::SeqCst);
                         }
                     }
