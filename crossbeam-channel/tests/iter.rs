@@ -93,7 +93,7 @@ fn recv_into_iter_owned() {
 
     assert_eq!(iter.next().unwrap(), 1);
     assert_eq!(iter.next().unwrap(), 2);
-    assert_eq!(iter.next().is_none(), true);
+    assert!(iter.next().is_none());
 }
 
 #[test]
@@ -106,5 +106,5 @@ fn recv_into_iter_borrowed() {
     let mut iter = (&r).into_iter();
     assert_eq!(iter.next().unwrap(), 1);
     assert_eq!(iter.next().unwrap(), 2);
-    assert_eq!(iter.next().is_none(), true);
+    assert!(iter.next().is_none());
 }

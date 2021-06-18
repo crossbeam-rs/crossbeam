@@ -56,20 +56,20 @@ fn len_empty_full() {
     let r = after(ms(50));
 
     assert_eq!(r.len(), 0);
-    assert_eq!(r.is_empty(), true);
-    assert_eq!(r.is_full(), false);
+    assert!(r.is_empty());
+    assert!(!r.is_full());
 
     thread::sleep(ms(100));
 
     assert_eq!(r.len(), 1);
-    assert_eq!(r.is_empty(), false);
-    assert_eq!(r.is_full(), true);
+    assert!(!r.is_empty());
+    assert!(r.is_full());
 
     r.try_recv().unwrap();
 
     assert_eq!(r.len(), 0);
-    assert_eq!(r.is_empty(), true);
-    assert_eq!(r.is_full(), false);
+    assert!(r.is_empty());
+    assert!(!r.is_full());
 }
 
 #[test]

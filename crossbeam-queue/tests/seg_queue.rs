@@ -20,17 +20,17 @@ fn len_empty_full() {
     let q = SegQueue::new();
 
     assert_eq!(q.len(), 0);
-    assert_eq!(q.is_empty(), true);
+    assert!(q.is_empty());
 
     q.push(());
 
     assert_eq!(q.len(), 1);
-    assert_eq!(q.is_empty(), false);
+    assert!(!q.is_empty());
 
     q.pop().unwrap();
 
     assert_eq!(q.len(), 0);
-    assert_eq!(q.is_empty(), true);
+    assert!(q.is_empty());
 }
 
 #[test]

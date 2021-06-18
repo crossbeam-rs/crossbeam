@@ -261,7 +261,7 @@ impl SyncWaker {
 impl Drop for SyncWaker {
     #[inline]
     fn drop(&mut self) {
-        debug_assert_eq!(self.is_empty.load(Ordering::SeqCst), true);
+        debug_assert!(self.is_empty.load(Ordering::SeqCst));
     }
 }
 

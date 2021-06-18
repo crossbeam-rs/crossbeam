@@ -880,7 +880,7 @@ mod channel_tests {
         };
         assert_eq!(iter.next().unwrap(), 1);
         assert_eq!(iter.next().unwrap(), 2);
-        assert_eq!(iter.next().is_none(), true);
+        assert!(iter.next().is_none());
     }
 
     #[test]
@@ -892,7 +892,7 @@ mod channel_tests {
         let mut iter = (&rx).into_iter();
         assert_eq!(iter.next().unwrap(), 1);
         assert_eq!(iter.next().unwrap(), 2);
-        assert_eq!(iter.next().is_none(), true);
+        assert!(iter.next().is_none());
     }
 
     #[test]

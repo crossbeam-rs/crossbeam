@@ -35,26 +35,26 @@ fn len_empty_full() {
     let q = ArrayQueue::new(2);
 
     assert_eq!(q.len(), 0);
-    assert_eq!(q.is_empty(), true);
-    assert_eq!(q.is_full(), false);
+    assert!(q.is_empty());
+    assert!(!q.is_full());
 
     q.push(()).unwrap();
 
     assert_eq!(q.len(), 1);
-    assert_eq!(q.is_empty(), false);
-    assert_eq!(q.is_full(), false);
+    assert!(!q.is_empty());
+    assert!(!q.is_full());
 
     q.push(()).unwrap();
 
     assert_eq!(q.len(), 2);
-    assert_eq!(q.is_empty(), false);
-    assert_eq!(q.is_full(), true);
+    assert!(!q.is_empty());
+    assert!(q.is_full());
 
     q.pop().unwrap();
 
     assert_eq!(q.len(), 1);
-    assert_eq!(q.is_empty(), false);
-    assert_eq!(q.is_full(), false);
+    assert!(!q.is_empty());
+    assert!(!q.is_full());
 }
 
 #[test]
