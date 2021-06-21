@@ -45,7 +45,7 @@ impl Context {
         }
 
         let mut f = Some(f);
-        let mut f = move |cx: &Context| -> R {
+        let mut f = |cx: &Context| -> R {
             let f = f.take().unwrap();
             f(cx)
         };
