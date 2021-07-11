@@ -14,6 +14,7 @@ use std::mem::{self, MaybeUninit};
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, Ordering};
 use std::time::Instant;
+use std::borrow::Cow;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
@@ -236,6 +237,30 @@ impl<T> Channel<T> {
         Ok(())
     }
 
+    /// Writes a message into the channel without cloning if writing fails.
+    pub(crate) unsafe fn write_cow<'a>(&self, token: &mut Token, msg: Cow<'a, T>) -> Result<(), Cow<'a, T>>
+    where
+        T: Clone
+    {
+        // If there is no slot, the channel is disconnected.
+        if token.array.slot.is_null() {
+            return Err(msg);
+        }
+
+        // Take ownership of/clone the underlying message.
+        let msg = msg.into_owned();
+
+        let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
+
+        // Write the message into the slot and update the stamp.
+        slot.msg.get().write(MaybeUninit::new(msg));
+        slot.stamp.store(token.array.stamp, Ordering::Release);
+
+        // Wake a sleeping receiver.
+        self.receivers.notify();
+        Ok(())
+    }
+
     /// Attempts to reserve a slot for receiving a message.
     fn start_recv(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
@@ -331,6 +356,19 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         if self.start_send(token) {
             unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
+        } else {
+            Err(TrySendError::Full(msg))
+        }
+    }
+
+    /// Attempts to send a message into the channel without performing work if sending fails.
+    pub(crate) fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>>
+    where
+        T: Clone
+    {
+        let token = &mut Token::default();
+        if self.start_send(token) {
+            unsafe { self.write_cow(token, msg).map_err(TrySendError::Disconnected) }
         } else {
             Err(TrySendError::Full(msg))
         }

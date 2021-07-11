@@ -6,6 +6,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
+use std::borrow::Cow;
 
 use crossbeam_utils::Backoff;
 
@@ -140,6 +141,24 @@ impl<T> Channel<T> {
         Ok(())
     }
 
+    /// Writes a message into the channel without cloning if writing fails.
+    pub(crate) unsafe fn write_cow<'a>(&self, token: &mut Token, msg: Cow<'a, T>) -> Result<(), Cow<'a, T>>
+    where
+        T: Clone
+    {
+        // If there is no packet, the channel is disconnected.
+        if token.zero == 0 {
+            return Err(msg);
+        }
+
+        let msg = msg.into_owned();
+
+        let packet = &*(token.zero as *const Packet<T>);
+        packet.msg.get().write(Some(msg));
+        packet.ready.store(true, Ordering::Release);
+        Ok(())
+    }
+
     /// Attempts to pair up with a sender.
     fn start_recv(&self, token: &mut Token) -> bool {
         let mut inner = self.inner.lock();
@@ -193,6 +212,29 @@ impl<T> Channel<T> {
             drop(inner);
             unsafe {
                 self.write(token, msg).ok().unwrap();
+            }
+            Ok(())
+        } else if inner.is_disconnected {
+            Err(TrySendError::Disconnected(msg))
+        } else {
+            Err(TrySendError::Full(msg))
+        }
+    }
+
+    /// Attempts to send a message into the channel without performing work if sending fails.
+    pub(crate) fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>>
+    where
+        T: Clone
+    {
+        let token = &mut Token::default();
+        let mut inner = self.inner.lock();
+
+        // If there's a waiting receiver, pair up with it.
+        if let Some(operation) = inner.receivers.try_select() {
+            token.zero = operation.packet;
+            drop(inner);
+            unsafe {
+                self.write_cow(token, msg).ok().unwrap();
             }
             Ok(())
         } else if inner.is_disconnected {
