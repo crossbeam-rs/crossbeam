@@ -408,15 +408,17 @@ impl<T> Sender<T> {
     /// # Examples
     ///
     /// ```
+    /// use std::borrow::Cow;
     /// use crossbeam_channel::{bounded, TrySendError};
     ///
     /// let (s, r) = bounded(1);
     ///
-    /// assert_eq!(s.try_send(1), Ok(()));
-    /// assert_eq!(s.try_send(2), Err(TrySendError::Full(2)));
+    /// assert_eq!(s.try_send_cow(Cow::Borrowed(&1)), Ok(())); // Clone occurs
+    /// assert_eq!(s.try_send_cow(Cow::Owned(1)), Ok(())); // Clone does not occur
+    /// assert_eq!(s.try_send_cow(Cow::Borrowed(&2)), Err(TrySendError::Full(Cow::Borrowed(&2)))); // Clone does not occur
     ///
     /// drop(r);
-    /// assert_eq!(s.try_send(3), Err(TrySendError::Disconnected(3)));
+    /// assert_eq!(s.try_send_cow(Cow::Borrowed(&3)), Err(TrySendError::Disconnected(Cow::Borrowed(&3)))); // Clone does not occur
     /// ```
     pub fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>>
     where
