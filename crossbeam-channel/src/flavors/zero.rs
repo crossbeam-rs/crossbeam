@@ -127,6 +127,14 @@ impl<T> Channel<T> {
             false
         }
     }
+    
+    /// Writes a message into the packet. **Assumes the channel is NOT disconnected.**
+    #[inline]
+    unsafe fn write_unchecked(&self, token: &mut Token, msg: T) {
+        let packet = &*(token.zero as *const Packet<T>);
+        packet.msg.get().write(Some(msg));
+        packet.ready.store(true, Ordering::Release);
+    }
 
     /// Writes a message into the packet.
     pub(crate) unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
@@ -135,9 +143,7 @@ impl<T> Channel<T> {
             return Err(msg);
         }
 
-        let packet = &*(token.zero as *const Packet<T>);
-        packet.msg.get().write(Some(msg));
-        packet.ready.store(true, Ordering::Release);
+        self.write_unchecked(token, msg);
         Ok(())
     }
 
@@ -151,11 +157,10 @@ impl<T> Channel<T> {
             return Err(msg);
         }
 
+        // Take ownership of/clone the underlying message.
         let msg = msg.into_owned();
 
-        let packet = &*(token.zero as *const Packet<T>);
-        packet.msg.get().write(Some(msg));
-        packet.ready.store(true, Ordering::Release);
+        self.write_unchecked(token, msg);
         Ok(())
     }
 

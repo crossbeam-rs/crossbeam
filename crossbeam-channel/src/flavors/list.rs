@@ -276,13 +276,9 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Writes a message into the channel.
-    pub(crate) unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
-        // If there is no slot, the channel is disconnected.
-        if token.list.block.is_null() {
-            return Err(msg);
-        }
-
+    /// Writes a message into the channel. **Assumes the channel is NOT disconnected.**
+    #[inline]
+    unsafe fn write_unchecked(&self, token: &mut Token, msg: T) {
         // Write the message into the slot.
         let block = token.list.block as *mut Block<T>;
         let offset = token.list.offset;
@@ -292,6 +288,16 @@ impl<T> Channel<T> {
 
         // Wake a sleeping receiver.
         self.receivers.notify();
+    }
+
+    /// Writes a message into the channel.
+    pub(crate) unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
+        // If there is no slot, the channel is disconnected.
+        if token.list.block.is_null() {
+            return Err(msg);
+        }
+
+        self.write_unchecked(token, msg);
         Ok(())
     }
 
@@ -308,15 +314,7 @@ impl<T> Channel<T> {
         // Take ownership of/clone the underlying message.
         let msg = msg.into_owned();
 
-        // Write the message into the slot.
-        let block = token.list.block as *mut Block<T>;
-        let offset = token.list.offset;
-        let slot = (*block).slots.get_unchecked(offset);
-        slot.msg.get().write(MaybeUninit::new(msg));
-        slot.state.fetch_or(WRITE, Ordering::Release);
-
-        // Wake a sleeping receiver.
-        self.receivers.notify();
+        self.write_unchecked(token, msg);
         Ok(())
     }
 
