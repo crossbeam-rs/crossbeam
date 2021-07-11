@@ -243,23 +243,6 @@ impl<T> Channel<T> {
         Ok(())
     }
 
-    /// Writes a message into the channel without cloning if writing fails.
-    pub(crate) unsafe fn write_cow<'a>(&self, token: &mut Token, msg: Cow<'a, T>) -> Result<(), Cow<'a, T>>
-    where
-        T: Clone
-    {
-        // If there is no slot, the channel is disconnected.
-        if token.array.slot.is_null() {
-            return Err(msg);
-        }
-
-        // Take ownership of/clone the underlying message.
-        let msg = msg.into_owned();
-        
-        self.write_unchecked(token, msg);
-        Ok(())
-    }
-
     /// Attempts to reserve a slot for receiving a message.
     fn start_recv(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
@@ -355,19 +338,6 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         if self.start_send(token) {
             unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
-        } else {
-            Err(TrySendError::Full(msg))
-        }
-    }
-
-    /// Attempts to send a message into the channel without performing work if sending fails.
-    pub(crate) fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>>
-    where
-        T: Clone
-    {
-        let token = &mut Token::default();
-        if self.start_send(token) {
-            unsafe { self.write_cow(token, msg).map_err(TrySendError::Disconnected) }
         } else {
             Err(TrySendError::Full(msg))
         }
@@ -561,6 +531,32 @@ impl<T> Channel<T> {
         // Note: If the tail changes just before we load the head, that means there was a moment
         // when the channel was not full, so it is safe to just return `false`.
         head.wrapping_add(self.one_lap) == tail & !self.mark_bit
+    }
+}
+
+impl<T: ToOwned<Owned = T>> Channel<T> {
+    /// Writes a message into the channel without cloning if writing fails.
+    pub(crate) unsafe fn write_cow<'a>(&self, token: &mut Token, msg: Cow<'a, T>) -> Result<(), Cow<'a, T>> {
+        // If there is no slot, the channel is disconnected.
+        if token.array.slot.is_null() {
+            return Err(msg);
+        }
+
+        // Take ownership of/clone the underlying message.
+        let msg = msg.into_owned();
+        
+        self.write_unchecked(token, msg);
+        Ok(())
+    }
+
+    /// Attempts to send a message into the channel without performing work if sending fails.
+    pub(crate) fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>> {
+        let token = &mut Token::default();
+        if self.start_send(token) {
+            unsafe { self.write_cow(token, msg).map_err(TrySendError::Disconnected) }
+        } else {
+            Err(TrySendError::Full(msg))
+        }
     }
 }
 

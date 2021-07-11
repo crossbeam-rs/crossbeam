@@ -64,7 +64,7 @@ impl<T> SyncSender<T> {
 
     pub fn try_send_cow<'a>(&self, t: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>>
     where
-        T: Clone
+        T: ToOwned<Owned = T>
     {
         self.inner.try_send_cow(t).map_err(|err| match err {
             cc::TrySendError::Full(m) => TrySendError::Full(m),

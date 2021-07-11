@@ -422,7 +422,7 @@ impl<T> Sender<T> {
     /// ```
     pub fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>>
     where
-        T: Clone
+        T: ToOwned<Owned = T>
     {
         match &self.flavor {
             SenderFlavor::Array(chan) => chan.try_send_cow(msg),

@@ -147,23 +147,6 @@ impl<T> Channel<T> {
         Ok(())
     }
 
-    /// Writes a message into the channel without cloning if writing fails.
-    pub(crate) unsafe fn write_cow<'a>(&self, token: &mut Token, msg: Cow<'a, T>) -> Result<(), Cow<'a, T>>
-    where
-        T: Clone
-    {
-        // If there is no packet, the channel is disconnected.
-        if token.zero == 0 {
-            return Err(msg);
-        }
-
-        // Take ownership of/clone the underlying message.
-        let msg = msg.into_owned();
-
-        self.write_unchecked(token, msg);
-        Ok(())
-    }
-
     /// Attempts to pair up with a sender.
     fn start_recv(&self, token: &mut Token) -> bool {
         let mut inner = self.inner.lock();
@@ -217,29 +200,6 @@ impl<T> Channel<T> {
             drop(inner);
             unsafe {
                 self.write(token, msg).ok().unwrap();
-            }
-            Ok(())
-        } else if inner.is_disconnected {
-            Err(TrySendError::Disconnected(msg))
-        } else {
-            Err(TrySendError::Full(msg))
-        }
-    }
-
-    /// Attempts to send a message into the channel without performing work if sending fails.
-    pub(crate) fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>>
-    where
-        T: Clone
-    {
-        let token = &mut Token::default();
-        let mut inner = self.inner.lock();
-
-        // If there's a waiting receiver, pair up with it.
-        if let Some(operation) = inner.receivers.try_select() {
-            token.zero = operation.packet;
-            drop(inner);
-            unsafe {
-                self.write_cow(token, msg).ok().unwrap();
             }
             Ok(())
         } else if inner.is_disconnected {
@@ -408,6 +368,42 @@ impl<T> Channel<T> {
     /// Returns `true` if the channel is full.
     pub(crate) fn is_full(&self) -> bool {
         true
+    }
+}
+
+impl<T: ToOwned<Owned = T>> Channel<T> {
+    /// Writes a message into the channel without cloning if writing fails.
+    pub(crate) unsafe fn write_cow<'a>(&self, token: &mut Token, msg: Cow<'a, T>) -> Result<(), Cow<'a, T>> {
+        // If there is no packet, the channel is disconnected.
+        if token.zero == 0 {
+            return Err(msg);
+        }
+
+        // Take ownership of/clone the underlying message.
+        let msg = msg.into_owned();
+
+        self.write_unchecked(token, msg);
+        Ok(())
+    }
+
+    /// Attempts to send a message into the channel without performing work if sending fails.
+    pub(crate) fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>> {
+        let token = &mut Token::default();
+        let mut inner = self.inner.lock();
+
+        // If there's a waiting receiver, pair up with it.
+        if let Some(operation) = inner.receivers.try_select() {
+            token.zero = operation.packet;
+            drop(inner);
+            unsafe {
+                self.write_cow(token, msg).ok().unwrap();
+            }
+            Ok(())
+        } else if inner.is_disconnected {
+            Err(TrySendError::Disconnected(msg))
+        } else {
+            Err(TrySendError::Full(msg))
+        }
     }
 }
 

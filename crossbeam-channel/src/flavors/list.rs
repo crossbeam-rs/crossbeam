@@ -301,23 +301,6 @@ impl<T> Channel<T> {
         Ok(())
     }
 
-    /// Writes a message into the channel without cloning if writing fails.
-    pub(crate) unsafe fn write_cow<'a>(&self, token: &mut Token, msg: Cow<'a, T>) -> Result<(), Cow<'a, T>>
-    where
-        T: Clone
-    {
-        // If there is no slot, the channel is disconnected.
-        if token.list.block.is_null() {
-            return Err(msg);
-        }
-
-        // Take ownership of/clone the underlying message.
-        let msg = msg.into_owned();
-
-        self.write_unchecked(token, msg);
-        Ok(())
-    }
-
     /// Attempts to reserve a slot for receiving a message.
     fn start_recv(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
@@ -436,17 +419,6 @@ impl<T> Channel<T> {
         })
     }
 
-    /// Attempts to send a message into the channel without performing work if sending fails.
-    pub(crate) fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>>
-    where
-        T: Clone
-    {
-        self.send_cow(msg, None).map_err(|err| match err {
-            SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
-            SendTimeoutError::Timeout(_) => unreachable!(),
-        })
-    }
-
     /// Sends a message into the channel.
     pub(crate) fn send(
         &self,
@@ -457,23 +429,6 @@ impl<T> Channel<T> {
         assert!(self.start_send(token));
         unsafe {
             self.write(token, msg)
-                .map_err(SendTimeoutError::Disconnected)
-        }
-    }
-
-    /// Sends a message into the channel without performing work if sending fails.
-    pub(crate) fn send_cow<'a>(
-        &self,
-        msg: Cow<'a, T>,
-        _deadline: Option<Instant>,
-    ) -> Result<(), SendTimeoutError<Cow<'a, T>>>
-    where
-        T: Clone
-    {
-        let token = &mut Token::default();
-        assert!(self.start_send(token));
-        unsafe {
-            self.write_cow(token, msg)
                 .map_err(SendTimeoutError::Disconnected)
         }
     }
@@ -718,6 +673,44 @@ impl<T> Drop for Channel<T> {
             if !block.is_null() {
                 drop(Box::from_raw(block));
             }
+        }
+    }
+}
+
+impl<T: ToOwned<Owned = T>> Channel<T> {
+    /// Writes a message into the channel without cloning if writing fails.
+    pub(crate) unsafe fn write_cow<'a>(&self, token: &mut Token, msg: Cow<'a, T>) -> Result<(), Cow<'a, T>> {
+        // If there is no slot, the channel is disconnected.
+        if token.list.block.is_null() {
+            return Err(msg);
+        }
+
+        // Take ownership of/clone the underlying message.
+        let msg = msg.into_owned();
+
+        self.write_unchecked(token, msg);
+        Ok(())
+    }
+
+    /// Attempts to send a message into the channel without performing work if sending fails.
+    pub(crate) fn try_send_cow<'a>(&self, msg: Cow<'a, T>) -> Result<(), TrySendError<Cow<'a, T>>> {
+        self.send_cow(msg, None).map_err(|err| match err {
+            SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
+            SendTimeoutError::Timeout(_) => unreachable!(),
+        })
+    }
+
+    /// Sends a message into the channel without performing work if sending fails.
+    pub(crate) fn send_cow<'a>(
+        &self,
+        msg: Cow<'a, T>,
+        _deadline: Option<Instant>,
+    ) -> Result<(), SendTimeoutError<Cow<'a, T>>> {
+        let token = &mut Token::default();
+        assert!(self.start_send(token));
+        unsafe {
+            self.write_cow(token, msg)
+                .map_err(SendTimeoutError::Disconnected)
         }
     }
 }
