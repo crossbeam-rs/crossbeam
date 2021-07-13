@@ -471,6 +471,11 @@ where
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
     pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
+        self.insert_internal(key, || value, false, guard)
+    }
+
+    /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist, where value is calculated with a function.
+    pub fn get_or_insert_with<F>(&self, key: K, value: F, guard: &Guard) -> RefEntry<'_, K, V> where F: FnOnce() -> V {
         self.insert_internal(key, value, false, guard)
     }
 
@@ -831,13 +836,13 @@ where
     /// Inserts an entry with the specified `key` and `value`.
     ///
     /// If `replace` is `true`, then any existing entry with this key will first be removed.
-    fn insert_internal(
+    fn insert_internal<F>(
         &self,
         key: K,
-        value: V,
+        value: F,
         replace: bool,
         guard: &Guard,
-    ) -> RefEntry<'_, K, V> {
+    ) -> RefEntry<'_, K, V> where F: FnOnce() -> V {
         self.check_guard(guard);
 
         unsafe {
@@ -886,7 +891,7 @@ where
 
                 // Write the key and the value into the node.
                 ptr::write(&mut (*n).key, key);
-                ptr::write(&mut (*n).value, value);
+                ptr::write(&mut (*n).value, value());
 
                 (Shared::<Node<K, V>>::from(n as *const _), &*n)
             };
@@ -1061,7 +1066,7 @@ where
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
     pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
-        self.insert_internal(key, value, true, guard)
+        self.insert_internal(key, || value, true, guard)
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
