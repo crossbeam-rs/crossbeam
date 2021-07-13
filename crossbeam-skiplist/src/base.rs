@@ -475,7 +475,10 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist, where value is calculated with a function.
-    pub fn get_or_insert_with<F>(&self, key: K, value: F, guard: &Guard) -> RefEntry<'_, K, V> where F: FnOnce() -> V {
+    pub fn get_or_insert_with<F>(&self, key: K, value: F, guard: &Guard) -> RefEntry<'_, K, V>
+    where
+        F: FnOnce() -> V,
+    {
         self.insert_internal(key, value, false, guard)
     }
 
@@ -842,7 +845,10 @@ where
         value: F,
         replace: bool,
         guard: &Guard,
-    ) -> RefEntry<'_, K, V> where F: FnOnce() -> V {
+    ) -> RefEntry<'_, K, V>
+    where
+        F: FnOnce() -> V,
+    {
         self.check_guard(guard);
 
         unsafe {
@@ -887,11 +893,14 @@ where
                 // The reference count is initially two to account for:
                 // 1. The entry that will be returned.
                 // 2. The link at the level 0 of the tower.
+
+                // create value before creating node, so extra allocation doesn't happen if value() function panics
+                let value = value();
                 let n = Node::<K, V>::alloc(height, 2);
 
                 // Write the key and the value into the node.
                 ptr::write(&mut (*n).key, key);
-                ptr::write(&mut (*n).value, value());
+                ptr::write(&mut (*n).value, value);
 
                 (Shared::<Node<K, V>>::from(n as *const _), &*n)
             };
