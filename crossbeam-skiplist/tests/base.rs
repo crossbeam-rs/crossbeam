@@ -432,6 +432,43 @@ fn get_or_insert() {
 }
 
 #[test]
+fn get_or_insert_with() {
+    let guard = &epoch::pin();
+    let s = SkipList::new(epoch::default_collector().clone());
+    s.insert(3, 3, guard);
+    s.insert(5, 5, guard);
+    s.insert(1, 1, guard);
+    s.insert(4, 4, guard);
+    s.insert(2, 2, guard);
+
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 4);
+    assert_eq!(*s.insert(4, 40, guard).value(), 40);
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 40);
+
+    assert_eq!(*s.get_or_insert_with(4, || 400, guard).value(), 40);
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 40);
+    assert_eq!(*s.get_or_insert_with(6, || 600, guard).value(), 600);
+}
+
+#[test]
+fn get_or_insert_with_panic() {
+    let guard = &epoch::pin();
+    let s = SkipList::new(epoch::default_collector().clone());
+    s.insert(3, 3, guard);
+    s.insert(5, 5, guard);
+    s.insert(1, 1, guard);
+    s.insert(4, 4, guard);
+    s.insert(2, 2, guard);
+
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 4);
+    assert_eq!(*s.insert(4, 40, guard).value(), 40);
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 40);
+
+    assert_eq!(*s.get_or_insert_with(4, || panic!(), guard).value(), 40);
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 40);
+}
+
+#[test]
 fn get_next_prev() {
     let guard = &epoch::pin();
     let s = SkipList::new(epoch::default_collector().clone());
