@@ -452,20 +452,18 @@ fn get_or_insert_with() {
 
 #[test]
 fn get_or_insert_with_panic() {
-    let guard = &epoch::pin();
+    use std::panic;
+
     let s = SkipList::new(epoch::default_collector().clone());
-    s.insert(3, 3, guard);
-    s.insert(5, 5, guard);
-    s.insert(1, 1, guard);
-    s.insert(4, 4, guard);
-    s.insert(2, 2, guard);
-
-    assert_eq!(*s.get(&4, guard).unwrap().value(), 4);
-    assert_eq!(*s.insert(4, 40, guard).value(), 40);
-    assert_eq!(*s.get(&4, guard).unwrap().value(), 40);
-
-    assert_eq!(*s.get_or_insert_with(4, || panic!(), guard).value(), 40);
-    assert_eq!(*s.get(&4, guard).unwrap().value(), 40);
+    let res = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let guard = &epoch::pin();
+        s.get_or_insert_with(4, || panic!(), guard);
+    }));
+    assert!(res.is_err());
+    assert!(s.is_empty());
+    let guard = &epoch::pin();
+    assert_eq!(*s.get_or_insert_with(4, || 40, guard).value(), 40);
+    assert_eq!(s.len(), 1);
 }
 
 #[test]
