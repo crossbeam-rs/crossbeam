@@ -432,6 +432,76 @@ fn get_or_insert() {
 }
 
 #[test]
+fn get_or_insert_with() {
+    let guard = &epoch::pin();
+    let s = SkipList::new(epoch::default_collector().clone());
+    s.insert(3, 3, guard);
+    s.insert(5, 5, guard);
+    s.insert(1, 1, guard);
+    s.insert(4, 4, guard);
+    s.insert(2, 2, guard);
+
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 4);
+    assert_eq!(*s.insert(4, 40, guard).value(), 40);
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 40);
+
+    assert_eq!(*s.get_or_insert_with(4, || 400, guard).value(), 40);
+    assert_eq!(*s.get(&4, guard).unwrap().value(), 40);
+    assert_eq!(*s.get_or_insert_with(6, || 600, guard).value(), 600);
+}
+
+#[test]
+fn get_or_insert_with_panic() {
+    use std::panic;
+
+    let s = SkipList::new(epoch::default_collector().clone());
+    let res = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let guard = &epoch::pin();
+        s.get_or_insert_with(4, || panic!(), guard);
+    }));
+    assert!(res.is_err());
+    assert!(s.is_empty());
+    let guard = &epoch::pin();
+    assert_eq!(*s.get_or_insert_with(4, || 40, guard).value(), 40);
+    assert_eq!(s.len(), 1);
+}
+
+#[test]
+fn get_or_insert_with_parallel_run() {
+    use std::sync::{Arc, Mutex};
+
+    let s = Arc::new(SkipList::new(epoch::default_collector().clone()));
+    let s2 = s.clone();
+    let called = Arc::new(Mutex::new(false));
+    let called2 = called.clone();
+    let handle = std::thread::spawn(move || {
+        let guard = &epoch::pin();
+        assert_eq!(
+            *s2.get_or_insert_with(
+                7,
+                || {
+                    *called2.lock().unwrap() = true;
+
+                    // allow main thread to run before we return result
+                    std::thread::sleep(std::time::Duration::from_secs(4));
+                    70
+                },
+                guard,
+            )
+            .value(),
+            700
+        );
+    });
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let guard = &epoch::pin();
+
+    // main thread writes the value first
+    assert_eq!(*s.get_or_insert(7, 700, guard).value(), 700);
+    handle.join().unwrap();
+    assert!(*called.lock().unwrap());
+}
+
+#[test]
 fn get_next_prev() {
     let guard = &epoch::pin();
     let s = SkipList::new(epoch::default_collector().clone());
