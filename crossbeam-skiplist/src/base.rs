@@ -476,8 +476,8 @@ where
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist,
     /// where value is calculated with a function.
-    /// <br>
-    /// <br>
+    ///
+    ///
     /// <b>Note:</b> Another thread may write key value first, leading to the result of this closure
     /// discarded. If closure is modifying some other state (such as shared counters or shared
     /// objects), it may lead to <u>undesired behaviour</u> such as counters being changed without

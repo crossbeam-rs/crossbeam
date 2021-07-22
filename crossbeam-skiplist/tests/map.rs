@@ -371,6 +371,67 @@ fn get_or_insert() {
 }
 
 #[test]
+fn get_or_insert_with() {
+    let s = SkipMap::new();
+    s.insert(3, 3);
+    s.insert(5, 5);
+    s.insert(1, 1);
+    s.insert(4, 4);
+    s.insert(2, 2);
+
+    assert_eq!(*s.get(&4).unwrap().value(), 4);
+    assert_eq!(*s.insert(4, 40).value(), 40);
+    assert_eq!(*s.get(&4).unwrap().value(), 40);
+
+    assert_eq!(*s.get_or_insert_with(4, || 400).value(), 40);
+    assert_eq!(*s.get(&4).unwrap().value(), 40);
+    assert_eq!(*s.get_or_insert_with(6, || 600).value(), 600);
+}
+
+#[test]
+fn get_or_insert_with_panic() {
+    use std::panic;
+
+    let s = SkipMap::new();
+    let res = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        s.get_or_insert_with(4, || panic!());
+    }));
+    assert!(res.is_err());
+    assert!(s.is_empty());
+    assert_eq!(*s.get_or_insert_with(4, || 40).value(), 40);
+    assert_eq!(s.len(), 1);
+}
+
+#[test]
+fn get_or_insert_with_parallel_run() {
+    use std::sync::{Arc, Mutex};
+
+    let s = Arc::new(SkipMap::new());
+    let s2 = s.clone();
+    let called = Arc::new(Mutex::new(false));
+    let called2 = called.clone();
+    let handle = std::thread::spawn(move || {
+        assert_eq!(
+            *s2.get_or_insert_with(7, || {
+                *called2.lock().unwrap() = true;
+
+                // allow main thread to run before we return result
+                std::thread::sleep(std::time::Duration::from_secs(4));
+                70
+            })
+            .value(),
+            700
+        );
+    });
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // main thread writes the value first
+    assert_eq!(*s.get_or_insert(7, 700).value(), 700);
+    handle.join().unwrap();
+    assert!(*called.lock().unwrap());
+}
+
+#[test]
 fn get_next_prev() {
     let s = SkipMap::new();
     s.insert(3, 3);

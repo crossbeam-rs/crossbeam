@@ -488,7 +488,7 @@ fn get_or_insert_with_parallel_run() {
                 },
                 guard,
             )
-                .value(),
+            .value(),
             700
         );
     });
