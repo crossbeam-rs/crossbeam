@@ -474,7 +474,14 @@ where
         self.insert_internal(key, || value, false, guard)
     }
 
-    /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist, where value is calculated with a function.
+    /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist,
+    /// where value is calculated with a function.
+    /// <br>
+    /// <br>
+    /// <b>Note:</b> Another thread may write key value first, leading to the result of this closure
+    /// discarded. If closure is modifying some other state (such as shared counters or shared
+    /// objects), it may lead to <u>undesired behaviour</u> such as counters being changed without
+    /// result of closure inserted
     pub fn get_or_insert_with<F>(&self, key: K, value: F, guard: &Guard) -> RefEntry<'_, K, V>
     where
         F: FnOnce() -> V,
@@ -887,15 +894,15 @@ where
                 }
             }
 
+            // create value before creating node, so extra allocation doesn't happen if value() function panics
+            let value = value();
+
             // Create a new node.
             let height = self.random_height();
             let (node, n) = {
                 // The reference count is initially two to account for:
                 // 1. The entry that will be returned.
                 // 2. The link at the level 0 of the tower.
-
-                // create value before creating node, so extra allocation doesn't happen if value() function panics
-                let value = value();
                 let n = Node::<K, V>::alloc(height, 2);
 
                 // Write the key and the value into the node.

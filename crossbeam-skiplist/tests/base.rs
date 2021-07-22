@@ -467,6 +467,41 @@ fn get_or_insert_with_panic() {
 }
 
 #[test]
+fn get_or_insert_with_parallel_run() {
+    use std::sync::{Arc, Mutex};
+
+    let s = Arc::new(SkipList::new(epoch::default_collector().clone()));
+    let s2 = s.clone();
+    let called = Arc::new(Mutex::new(false));
+    let called2 = called.clone();
+    let handle = std::thread::spawn(move || {
+        let guard = &epoch::pin();
+        assert_eq!(
+            *s2.get_or_insert_with(
+                7,
+                || {
+                    *called2.lock().unwrap() = true;
+
+                    // allow main thread to run before we return result
+                    std::thread::sleep(std::time::Duration::from_secs(4));
+                    70
+                },
+                guard,
+            )
+                .value(),
+            700
+        );
+    });
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let guard = &epoch::pin();
+
+    // main thread writes the value first
+    assert_eq!(*s.get_or_insert(7, 700, guard).value(), 700);
+    handle.join().unwrap();
+    assert!(*called.lock().unwrap());
+}
+
+#[test]
 fn get_next_prev() {
     let guard = &epoch::pin();
     let s = SkipList::new(epoch::default_collector().clone());
