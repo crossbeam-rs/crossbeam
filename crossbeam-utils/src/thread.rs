@@ -159,20 +159,26 @@ where
     // Execute the scoped function, but catch any panics.
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| f(&scope)));
 
-    // Wait until all nested scopes are dropped.
-    drop(scope.wait_group);
-    wg.wait();
-
     // Join all remaining spawned threads.
-    let panics: Vec<_> = scope
-        .handles
-        .lock()
-        .unwrap()
-        // Filter handles that haven't been joined, join them, and collect errors.
-        .drain(..)
-        .filter_map(|handle| handle.lock().unwrap().take())
-        .filter_map(|handle| handle.join().err())
-        .collect();
+    // If an unwinding panic occurs before all threads are joined
+    // promote it to an aborting panic to prevent any threads from escaping the scope.
+    let panics: Vec<_> = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        // Wait until all nested scopes are dropped.
+        drop(scope.wait_group);
+        wg.wait();
+
+        // Join all remaining spawned threads.
+        scope
+            .handles
+            .lock()
+            .unwrap()
+            // Filter handles that haven't been joined, join them, and collect errors.
+            .drain(..)
+            .filter_map(|handle| handle.lock().unwrap().take())
+            .filter_map(|handle| handle.join().err())
+            .collect()
+    }))
+    .unwrap_or_else(|_| std::process::abort());
 
     // If `f` has panicked, resume unwinding.
     // If any of the child threads have panicked, return the panic errors.
