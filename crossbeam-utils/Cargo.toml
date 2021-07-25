@@ -34,6 +34,7 @@ nightly = []
 [dependencies]
 cfg-if = "1"
 lazy_static = { version = "1.4.0", optional = true }
+array-macro = "2.1.0"
 
 # Enable the use of loom for concurrency testing.
 #
