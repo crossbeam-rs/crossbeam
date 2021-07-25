@@ -683,6 +683,7 @@ fn lock(addr: usize) -> &'static SeqLock {
     // stored at addresses that are multiples of 3. It'd be too bad if `LEN` was divisible by 3.
     // In order to protect from such cases, we simply choose a large prime number for `LEN`.
     const LEN: usize = 97;
+    #[allow(clippy::declare_interior_mutable_const)]
     const L: SeqLock = SeqLock::new();
     static LOCKS: [SeqLock; LEN] = [
         L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
