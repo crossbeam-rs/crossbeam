@@ -32,6 +32,7 @@ const NO_ATOMIC_64: &[&str] = &[
     "mipsel-unknown-none",
     "mipsisa32r6-unknown-linux-gnu",
     "mipsisa32r6el-unknown-linux-gnu",
+    "powerpc-unknown-freebsd",
     "powerpc-unknown-linux-gnu",
     "powerpc-unknown-linux-gnuspe",
     "powerpc-unknown-linux-musl",
