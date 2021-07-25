@@ -3,7 +3,6 @@
 #![allow(clippy::let_unit_value)]
 
 use crate::primitive::sync::atomic::{self, AtomicBool};
-use array_macro::array;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::mem;
@@ -684,8 +683,13 @@ fn lock(addr: usize) -> &'static SeqLock {
     // stored at addresses that are multiples of 3. It'd be too bad if `LEN` was divisible by 3.
     // In order to protect from such cases, we simply choose a large prime number for `LEN`.
     const LEN: usize = 97;
-
-    static LOCKS: [SeqLock; LEN] = array![_ => SeqLock::new(); LEN];
+    const L: SeqLock = SeqLock::new();
+    static LOCKS: [SeqLock; LEN] = [
+        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
+        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
+        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
+        L, L, L, L, L, L, L,
+    ];
 
     // If the modulus is a constant number, the compiler will use crazy math to transform this into
     // a sequence of cheap arithmetic operations rather than using the slow modulo instruction.
