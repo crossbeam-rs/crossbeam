@@ -1,3 +1,7 @@
+# Version 0.7.4
+
+- Fix deque steal race condition.
+
 # Version 0.7.3
 
 - Stop stealing from the same deque. (#448)
