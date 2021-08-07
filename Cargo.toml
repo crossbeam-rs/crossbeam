@@ -10,7 +10,6 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam"
-documentation = "https://docs.rs/crossbeam"
 description = "Tools for concurrent programming"
 keywords = ["atomic", "garbage", "non-blocking", "lock-free", "rcu"]
 categories = ["concurrency", "memory-management", "data-structures", "no-std"]

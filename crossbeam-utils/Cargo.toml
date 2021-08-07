@@ -10,7 +10,6 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils"
-documentation = "https://docs.rs/crossbeam-utils"
 description = "Utilities for concurrent programming"
 keywords = ["scoped", "thread", "atomic", "cache"]
 categories = ["algorithms", "concurrency", "data-structures", "no-std"]
