@@ -10,7 +10,6 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-queue"
-documentation = "https://docs.rs/crossbeam-queue"
 description = "Concurrent queues"
 keywords = ["queue", "mpmc", "lock-free", "producer", "consumer"]
 categories = ["concurrency", "data-structures", "no-std"]

@@ -10,7 +10,6 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-epoch"
-documentation = "https://docs.rs/crossbeam-epoch"
 description = "Epoch-based garbage collection"
 keywords = ["lock-free", "rcu", "atomic", "garbage"]
 categories = ["concurrency", "memory-management", "no-std"]

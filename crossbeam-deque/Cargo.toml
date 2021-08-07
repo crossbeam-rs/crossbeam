@@ -10,7 +10,6 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-deque"
-documentation = "https://docs.rs/crossbeam-deque"
 description = "Concurrent work-stealing deque"
 keywords = ["chase-lev", "lock-free", "scheduler", "scheduling"]
 categories = ["algorithms", "concurrency", "data-structures"]
