@@ -1158,6 +1158,8 @@ where
             if let Some(e) = e.pin() {
                 if e.remove(guard) {
                     return Some(e);
+                } else {
+                    e.release(guard);
                 }
             }
         }
@@ -1171,6 +1173,8 @@ where
             if let Some(e) = e.pin() {
                 if e.remove(guard) {
                     return Some(e);
+                } else {
+                    e.release(guard);
                 }
             }
         }
