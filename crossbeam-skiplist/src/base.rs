@@ -1725,8 +1725,12 @@ where
             }
         }
         if finished {
-            self.head = None;
-            self.tail = None;
+            if let Some(e) = mem::replace(&mut self.head, None) {
+                e.release(guard);
+            }
+            if let Some(e) = mem::replace(&mut self.tail, None) {
+                e.release(guard);
+            }
         }
         self.head.clone()
     }
@@ -1751,8 +1755,12 @@ where
             }
         }
         if finished {
-            self.head = None;
-            self.tail = None;
+            if let Some(e) = mem::replace(&mut self.head, None) {
+                e.release(guard);
+            }
+            if let Some(e) = mem::replace(&mut self.tail, None) {
+                e.release(guard);
+            }
         }
         self.tail.clone()
     }
