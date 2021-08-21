@@ -1708,53 +1708,64 @@ where
     /// Advances the iterator and returns the next value.
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
-        self.head = match self.head {
-            Some(ref e) => {
-                let next_head = e.next(guard);
+        let next_head = match &self.head {
+            Some(e) => e.next(guard),
+            None => try_pin_loop(|| self.parent.front(guard)),
+        };
+        match (&next_head, &self.tail) {
+            // The next key is larger than the latest tail key we observed with this iterator.
+            (Some(ref next), &Some(ref t)) if next.key() >= t.key() => {
                 unsafe {
-                    e.node.decrement(guard);
+                    next.node.decrement(guard);
+                }
+                None
+            }
+            (Some(_), _) => {
+                if let Some(e) = mem::replace(&mut self.head, next_head.clone()) {
+                    unsafe {
+                        e.node.decrement(guard);
+                    }
                 }
                 next_head
             }
-            None => try_pin_loop(|| self.parent.front(guard)),
-        };
-        let mut finished = false;
-        if let (&Some(ref h), &Some(ref t)) = (&self.head, &self.tail) {
-            if h.key() >= t.key() {
-                finished = true;
-            }
+            (None, _) => None,
         }
-        if finished {
-            self.head = None;
-            self.tail = None;
-        }
-        self.head.clone()
     }
 
     /// Removes and returns an element from the end of the iterator.
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
-        self.tail = match self.tail {
-            Some(ref e) => {
-                let next_tail = e.prev(guard);
+        let next_tail = match &self.tail {
+            Some(e) => e.prev(guard),
+            None => try_pin_loop(|| self.parent.back(guard)),
+        };
+        match (&self.head, &next_tail) {
+            // The prev key is smaller than the latest head key we observed with this iterator.
+            (&Some(ref h), Some(next)) if h.key() >= next.key() => {
                 unsafe {
-                    e.node.decrement(guard);
+                    next.node.decrement(guard);
+                }
+                None
+            }
+            (_, Some(_)) => {
+                if let Some(e) = mem::replace(&mut self.tail, next_tail.clone()) {
+                    unsafe {
+                        e.node.decrement(guard);
+                    }
                 }
                 next_tail
             }
-            None => try_pin_loop(|| self.parent.back(guard)),
-        };
-        let mut finished = false;
-        if let (&Some(ref h), &Some(ref t)) = (&self.head, &self.tail) {
-            if h.key() >= t.key() {
-                finished = true;
-            }
+            (_, None) => None,
         }
-        if finished {
-            self.head = None;
-            self.tail = None;
-        }
-        self.tail.clone()
+    }
+}
+
+impl<'a, K: 'a, V: 'a> RefIter<'a, K, V> {
+    /// Decrements the reference count of `RefEntry` owned by the iterator.
+    pub fn drop_impl(&mut self, guard: &Guard) {
+        self.parent.check_guard(guard);
+        self.head.as_ref().map(|e| unsafe { e.node.decrement(guard)} );
+        self.tail.as_ref().map(|e| unsafe { e.node.decrement(guard)} );
     }
 }
 
