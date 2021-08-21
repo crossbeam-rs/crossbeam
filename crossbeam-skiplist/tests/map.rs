@@ -124,6 +124,30 @@ fn concurrent_remove() {
 }
 
 #[test]
+fn next_memory_leak() {
+    let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+    let mut iter = map.iter();
+    let e = iter.next_back();
+    assert!(e.is_some());
+    let e = iter.next();
+    assert!(e.is_none());
+    map.remove(&1);
+}
+
+
+#[test]
+fn next_back_memory_leak() {
+    let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+    map.insert(1, 1);
+    let mut iter = map.iter();
+    let e = iter.next();
+    assert!(e.is_some());
+    let e = iter.next_back();
+    assert!(e.is_none());
+    map.remove(&1);
+}
+
+#[test]
 fn entry() {
     let s = SkipMap::new();
 
@@ -145,6 +169,33 @@ fn entry() {
     assert!(!e.move_next());
     assert!(e.move_prev());
     assert_eq!(*e.key(), 11);
+}
+
+#[test]
+fn ordered_iter() {
+    let s: SkipMap<i32, i32> = SkipMap::new();
+    s.insert(1, 1);
+
+    let mut iter = s.iter();
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    s.insert(2, 2);
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    s.insert(3, 3);
+    s.insert(4, 4);
+    s.insert(5, 5);
+    assert_eq!(*iter.next_back().unwrap().key(), 5);
+    assert_eq!(*iter.next().unwrap().key(), 3);
+    assert_eq!(*iter.next_back().unwrap().key(), 4);
+    assert!(iter.next().is_none());
+    assert!(iter.next_back().is_none());
+    assert!(iter.next().is_none());
+    assert!(iter.next_back().is_none());
 }
 
 #[test]
