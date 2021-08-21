@@ -124,6 +124,30 @@ fn concurrent_remove() {
 }
 
 #[test]
+fn next_memory_leak() {
+    let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+    let mut iter = map.iter();
+    let e = iter.next_back();
+    assert!(e.is_some());
+    let e = iter.next();
+    assert!(e.is_none());
+    map.remove(&1);
+}
+
+
+#[test]
+fn next_back_memory_leak() {
+    let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+    map.insert(1, 1);
+    let mut iter = map.iter();
+    let e = iter.next();
+    assert!(e.is_some());
+    let e = iter.next_back();
+    assert!(e.is_none());
+    map.remove(&1);
+}
+
+#[test]
 fn entry() {
     let s = SkipMap::new();
 
