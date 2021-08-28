@@ -43,6 +43,7 @@ const NO_ATOMIC_64: &[&str] = &[
     "riscv32gc-unknown-linux-gnu",
     "riscv32gc-unknown-linux-musl",
     "riscv32imac-unknown-none-elf",
+    "riscv32imc-esp-espidf",
     "thumbv7em-none-eabi",
     "thumbv7em-none-eabihf",
     "thumbv7m-none-eabi",
