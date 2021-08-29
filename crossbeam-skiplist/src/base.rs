@@ -1931,67 +1931,66 @@ where
     /// Advances the iterator and returns the next value.
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
-        self.head = match self.head {
-            Some(ref e) => {
-                let next_head = e.next(guard);
-                unsafe {
-                    e.node.decrement(guard);
-                }
-                next_head
-            }
+        let next_head = match self.head {
+            Some(ref e) => e.next(guard),
             None => try_pin_loop(|| self.parent.lower_bound(self.range.start_bound(), guard)),
         };
-        let mut finished = false;
-        if let Some(ref h) = self.head {
+
+        if let Some(ref h) = next_head {
             let bound = match self.tail {
                 Some(ref t) => Bound::Excluded(t.key().borrow()),
                 None => self.range.end_bound(),
             };
-            if !below_upper_bound(&bound, h.key().borrow()) {
-                finished = true;
+            if below_upper_bound(&bound, h.key().borrow()) {
+                self.head = next_head.clone();
+                next_head
+            } else {
                 unsafe {
                     h.node.decrement(guard);
                 }
+                None
             }
+        } else {
+            None
         }
-        if finished {
-            self.head = None;
-            self.tail = None;
-        }
-        self.head.clone()
     }
 
     /// Removes and returns an element from the end of the iterator.
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
-        self.tail = match self.tail {
-            Some(ref e) => {
-                let next_tail = e.prev(guard);
-                unsafe {
-                    e.node.decrement(guard);
-                }
-                next_tail
-            }
+        let next_tail = match self.tail {
+            Some(ref e) => e.prev(guard),
             None => try_pin_loop(|| self.parent.upper_bound(self.range.end_bound(), guard)),
         };
-        let mut finished = false;
-        if let Some(ref t) = self.tail {
+
+        if let Some(ref t) = next_tail {
             let bound = match self.head {
                 Some(ref h) => Bound::Excluded(h.key().borrow()),
                 None => self.range.start_bound(),
             };
-            if !above_lower_bound(&bound, t.key().borrow()) {
-                finished = true;
+            if above_lower_bound(&bound, t.key().borrow()) {
+                self.tail = next_tail.clone();
+                next_tail
+            } else {
                 unsafe {
                     t.node.decrement(guard);
                 }
+                None
             }
+        } else {
+            None
         }
-        if finished {
-            self.head = None;
-            self.tail = None;
+    }
+
+    /// Decrements a reference count owned by this iterator.
+    pub fn drop_impl(&mut self, guard: &Guard) {
+        self.parent.check_guard(guard);
+        if let Some(e) = mem::replace(&mut self.head, None) {
+            unsafe { e.node.decrement(guard) };
         }
-        self.tail.clone()
+        if let Some(e) = mem::replace(&mut self.tail, None) {
+            unsafe { e.node.decrement(guard) };
+        }
     }
 }
 

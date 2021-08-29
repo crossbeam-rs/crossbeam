@@ -740,3 +740,15 @@ where
             .finish()
     }
 }
+
+impl<Q, R, K, V> Drop for Range<'_, Q, R, K, V>
+where
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
+{
+    fn drop(&mut self) {
+        let guard = &epoch::pin();
+        self.inner.drop_impl(guard);
+    }
+}
