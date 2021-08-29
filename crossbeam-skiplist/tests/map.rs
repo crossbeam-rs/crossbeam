@@ -147,6 +147,17 @@ fn next_back_memory_leak() {
 }
 
 #[test]
+fn range_next_memory_leak() {
+    let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+    let mut iter = map.range(0..);
+    let e = iter.next();
+    assert!(e.is_some());
+    let e = iter.next_back();
+    assert!(e.is_none());
+    map.remove(&1);
+}
+
+#[test]
 fn entry() {
     let s = SkipMap::new();
 
@@ -197,6 +208,32 @@ fn ordered_iter() {
     assert!(iter.next_back().is_none());
 }
 
+#[test]
+fn ordered_range() {
+    let s: SkipMap<i32, i32> = SkipMap::new();
+    s.insert(1, 1);
+
+    let mut iter = s.range(0..);
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    s.insert(2, 2);
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    s.insert(3, 3);
+    s.insert(4, 4);
+    s.insert(5, 5);
+    assert_eq!(*iter.next_back().unwrap().key(), 5);
+    assert_eq!(*iter.next().unwrap().key(), 3);
+    assert_eq!(*iter.next_back().unwrap().key(), 4);
+    assert!(iter.next().is_none());
+    assert!(iter.next_back().is_none());
+    assert!(iter.next().is_none());
+    assert!(iter.next_back().is_none());
+}
 #[test]
 fn entry_remove() {
     let s = SkipMap::new();
@@ -579,6 +616,13 @@ fn iter_range() {
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+    );
+    assert_eq!(
+        s.range((Included(&0), Included(&60)))
+            .rev()
+            .map(|x| *x.value())
+            .collect::<Vec<_>>(),
+        vec![60, 50, 40, 30, 20, 10, 0]
     );
     assert_eq!(
         s.range((Excluded(&0), Unbounded))
