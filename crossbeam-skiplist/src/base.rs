@@ -1972,13 +1972,13 @@ where
                 }
                 next_tail
             }
-            None => try_pin_loop(|| self.parent.upper_bound(self.range.start_bound(), guard)),
+            None => try_pin_loop(|| self.parent.upper_bound(self.range.end_bound(), guard)),
         };
         let mut finished = false;
         if let Some(ref t) = self.tail {
             let bound = match self.head {
                 Some(ref h) => Bound::Excluded(h.key().borrow()),
-                None => self.range.end_bound(),
+                None => self.range.start_bound(),
             };
             if !above_lower_bound(&bound, t.key().borrow()) {
                 finished = true;
