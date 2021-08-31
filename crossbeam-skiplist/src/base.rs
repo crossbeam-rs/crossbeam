@@ -1764,8 +1764,12 @@ impl<'a, K: 'a, V: 'a> RefIter<'a, K, V> {
     /// Decrements the reference count of `RefEntry` owned by the iterator.
     pub fn drop_impl(&mut self, guard: &Guard) {
         self.parent.check_guard(guard);
-        mem::replace(&mut self.head, None).map(|e| unsafe { e.node.decrement(guard) });
-        mem::replace(&mut self.tail, None).map(|e| unsafe { e.node.decrement(guard) });
+        if let Some(e) = mem::replace(&mut self.head, None) {
+            unsafe { e.node.decrement(guard) };
+        }
+        if let Some(e) = mem::replace(&mut self.tail, None) {
+            unsafe { e.node.decrement(guard) };
+        }
     }
 }
 
