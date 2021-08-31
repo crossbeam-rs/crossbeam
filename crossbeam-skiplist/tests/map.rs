@@ -134,7 +134,6 @@ fn next_memory_leak() {
     map.remove(&1);
 }
 
-
 #[test]
 fn next_back_memory_leak() {
     let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
