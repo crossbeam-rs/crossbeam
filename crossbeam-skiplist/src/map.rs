@@ -682,6 +682,13 @@ impl<K, V> fmt::Debug for Iter<'_, K, V> {
     }
 }
 
+impl<'a, K, V> Drop for Iter<'a, K, V> {
+    fn drop(&mut self) {
+        let guard = &epoch::pin();
+        self.inner.drop_impl(guard);
+    }
+}
+
 /// An iterator over a subset of entries of a `SkipMap`.
 pub struct Range<'a, Q, R, K, V>
 where
