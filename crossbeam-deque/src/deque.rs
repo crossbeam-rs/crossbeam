@@ -375,7 +375,7 @@ impl<T> Worker<T> {
         b.wrapping_sub(f).max(0) as usize
     }
 
-    /// Pushes a task into the queue.
+    /// Pushes a task into the queue and returns the relative slot index written to.
     ///
     /// # Examples
     ///
@@ -386,7 +386,7 @@ impl<T> Worker<T> {
     /// w.push(1);
     /// w.push(2);
     /// ```
-    pub fn push(&self, task: T) {
+    pub fn push(&self, task: T) -> isize {
         // Load the back index, front index, and buffer.
         let b = self.inner.back.load(Ordering::Relaxed);
         let f = self.inner.front.load(Ordering::Acquire);
@@ -415,7 +415,7 @@ impl<T> Worker<T> {
         //
         // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
         // races because it doesn't understand fences.
-        self.inner.back.store(b.wrapping_add(1), Ordering::Release);
+        self.inner.back.swap(b.wrapping_add(1), Ordering::Release) - f
     }
 
     /// Pops a task from the queue.
