@@ -3,6 +3,7 @@
 use std::fmt;
 use std::iter::FusedIterator;
 use std::mem;
+use std::ops::Deref;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -720,6 +721,7 @@ impl<T> UnwindSafe for Receiver<T> {}
 impl<T> RefUnwindSafe for Receiver<T> {}
 
 impl<T> Receiver<T> {
+
     /// Attempts to receive a message from the channel without blocking.
     ///
     /// This method will either receive a message from the channel immediately or return an error
@@ -1504,5 +1506,40 @@ pub(crate) unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()
             mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
         }
         ReceiverFlavor::Never(chan) => chan.read(token),
+    }
+}
+
+
+/// An [unbounded] channel whose receiver is a [ReconnectableReceiver].
+pub fn unbounded_reconnectable<T>() -> (Sender<T>, ReconnectableReceiver<T>) {
+    let (s, r) = unbounded();
+    (s, ReconnectableReceiver(r))
+}
+
+/// A receiver that can survive periods of time where no [Sender]s
+/// are live. New senders may be created from the receiver directly
+/// ([Self::new_sender]). The channel is only deallocated when the
+/// last receiver dies. If there are live senders at that point, they
+/// start producing [SendError]s as usual.
+#[derive(Debug)]
+pub struct ReconnectableReceiver<T>(Receiver<T>);
+
+impl<T> ReconnectableReceiver<T> {
+    /// Returns a new sender for this receiver.
+    pub fn new_sender(&self) -> Sender<T> {
+        match &self.0.flavor {
+            ReceiverFlavor::Array(chan) => Sender { flavor: SenderFlavor::Array(chan.new_sender(|_| todo!())) },
+            ReceiverFlavor::List(chan) => Sender { flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())) },
+            ReceiverFlavor::Zero(chan) => Sender { flavor: SenderFlavor::Zero(chan.new_sender(|_| todo!())) },
+            _ => unreachable!("This type cannot be built with at/never/tick"),
+        }
+    }
+}
+
+impl<T> Deref for ReconnectableReceiver<T> {
+    type Target = Receiver<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }

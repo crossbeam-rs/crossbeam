@@ -94,6 +94,7 @@ pub(crate) struct Receiver<C> {
 }
 
 impl<C> Receiver<C> {
+
     /// Returns the internal `Counter`.
     fn counter(&self) -> &Counter<C> {
         unsafe { &*self.counter }
@@ -125,6 +126,19 @@ impl<C> Receiver<C> {
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
                 drop(Box::from_raw(self.counter));
             }
+        }
+    }
+
+
+    pub(crate) fn new_sender(&self, reconnect: impl FnOnce(&C) -> bool) -> Sender<C> {
+        if 0 == self.counter().senders.fetch_add(1, Ordering::SeqCst) {
+            // we're the first sender to be created
+            reconnect(&self.counter().chan);
+            self.counter().destroy.store(false, Ordering::Relaxed);
+        }
+
+        Sender {
+            counter: self.counter,
         }
     }
 }
