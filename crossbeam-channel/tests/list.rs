@@ -9,7 +9,7 @@ use std::{
 
 use crossbeam_channel::{
     Receiver, RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError,
-    select, unbounded,
+    reconnectable, select, unbounded,
 };
 use crossbeam_utils::thread::scope;
 
@@ -206,6 +206,23 @@ fn recv_after_disconnect() {
     assert_eq!(r.recv(), Ok(2));
     assert_eq!(r.recv(), Ok(3));
     assert_eq!(r.recv(), Err(RecvError));
+}
+
+#[test]
+fn zero_receiver_revival() {
+    let (s, r) = reconnectable::unbounded();
+
+    s.send(1).unwrap();
+
+    drop(s);
+
+    assert_eq!(r.recv(), Ok(1));
+    assert_eq!(r.recv(), Err(RecvError));
+
+    let s = r.new_sender();
+
+    s.send(1).unwrap();
+    assert_eq!(r.recv(), Ok(1));
 }
 
 #[test]

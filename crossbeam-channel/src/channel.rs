@@ -1561,3 +1561,78 @@ pub(crate) unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()
         }
     }
 }
+
+/// Channel flavors that are reconnectable, ie, may survive
+/// without senders.
+///
+pub mod reconnectable {
+    // note: we need separate types because the At/Tick/Never
+    // channel types do not support this, but they all use the
+    // same exact Receiver type as array and list flavours.
+
+    // The intended usage of this module is just to replace any `use crossbeam_channel::...`
+    // with `use crossbeam_channel::reconnectable::...` and have everything work out of the box.
+
+    // note: these re-exports omit
+    // at, tick, never: cannot be supported
+    // bounded: may be added later in this module
+    use std::ops::Deref;
+
+    use super::{Receiver as NormalReceiver, ReceiverFlavor, SenderFlavor};
+    pub use crate::{
+        Sender,
+        channel::{IntoIter, Iter, TryIter},
+        err::{
+            ReadyTimeoutError, RecvError, RecvTimeoutError, SelectTimeoutError, SendError,
+            SendTimeoutError, TryReadyError, TryRecvError, TrySelectError, TrySendError,
+        },
+        select::{Select, SelectedOperation},
+    };
+
+    /// An [unbounded](super::unbounded) channel whose receiver
+    /// also is reconnectable.
+    pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
+        let (s, r) = super::unbounded();
+        (s, Receiver(r))
+    }
+
+    /// A [receiver](super::Receiver) that can survive periods
+    /// of time where no [Sender]s are alive. New senders may
+    /// be created from the receiver directly ([Self::new_sender]).
+    /// The channel is only deallocated when the last receiver dies.
+    /// If there are live senders at that point, they start producing
+    /// [SendError]s as usual.
+    #[derive(Debug)]
+    pub struct Receiver<T>(NormalReceiver<T>);
+
+    impl<T> Receiver<T> {
+        /// Returns a new sender that communicates with this
+        /// receiver.
+        pub fn new_sender(&self) -> Sender<T> {
+            match &self.0.flavor {
+                ReceiverFlavor::Array(chan) => Sender {
+                    flavor: SenderFlavor::Array(
+                        chan.new_sender(|_| unimplemented!("but unreachable")),
+                    ),
+                },
+                ReceiverFlavor::List(chan) => Sender {
+                    flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())),
+                },
+                ReceiverFlavor::Zero(chan) => Sender {
+                    flavor: SenderFlavor::Zero(
+                        chan.new_sender(|_| unimplemented!("but unreachable")),
+                    ),
+                },
+                _ => unreachable!("This type cannot be built with at/never/tick"),
+            }
+        }
+    }
+
+    impl<T> Deref for self::Receiver<T> {
+        type Target = NormalReceiver<T>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+}
