@@ -72,26 +72,28 @@ fn allocs() {
     })
     .unwrap();
     let after = NUM_ALLOCS.load(Ordering::SeqCst);
+    assert_eq!(before, after);
     assert!(after < before + 500_000);
 
     let threads = num_cpus::get();
     let before = NUM_ALLOCS.load(Ordering::SeqCst);
     scope(|scope| {
-        for _ in 0..threads / 2 {
-            scope.spawn(|_| {
-                for i in 0..31 * 100_000 {
+        scope.spawn(|_| {
+            for i in 0..31 {
+                for _ in 0..(threads / 2) * 10_000 {
                     s.send(i as i32).unwrap();
+                    std::thread::yield_now();
                 }
-            });
-        }
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+            }
+        });
         for _ in 0..threads / 2 {
-            for _ in 0..31 * 100_000 {
+            for _ in 0..31 * 10_000 {
                 r.recv().unwrap();
             }
         }
     })
     .unwrap();
     let after = NUM_ALLOCS.load(Ordering::SeqCst);
-    assert!(after < before + ((threads / 4) * 100_000));
+    assert_eq!(before, after);
+    assert!(after < before + ((threads / 4) * 1_000_000));
 }
