@@ -2,9 +2,9 @@ use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
-use core::mem::MaybeUninit;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ptr;
-use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
@@ -20,6 +20,8 @@ const DESTROY: usize = 4;
 const LAP: usize = 32;
 // The maximum number of values a block can hold.
 const BLOCK_CAP: usize = LAP - 1;
+// The maximum number of blocks to retain in the block cache. Must be a power of two.
+const BLOCK_CACHE_SIZE: usize = 4;
 // How many lower bits are reserved for metadata.
 const SHIFT: usize = 1;
 // Indicates that the block is not the last one.
@@ -80,6 +82,107 @@ impl<T> Block<T> {
     }
 }
 
+#[cfg(target_pointer_width = "16")]
+type Uhalf = u8;
+#[cfg(target_pointer_width = "16")]
+type AtomicUhalf = std::sync::atomic::AtomicU8;
+
+#[cfg(target_pointer_width = "32")]
+type Uhalf = u16;
+#[cfg(target_pointer_width = "32")]
+type AtomicUhalf = std::sync::atomic::AtomicU16;
+
+#[cfg(target_pointer_width = "64")]
+type Uhalf = u32;
+#[cfg(target_pointer_width = "64")]
+type AtomicUhalf = std::sync::atomic::AtomicU32;
+
+#[repr(C)]
+#[cfg(target_endian = "little")]
+struct BlockCacheSplitIndices {
+    head: AtomicUhalf,
+    tail: AtomicUhalf,
+}
+
+#[repr(C)]
+#[cfg(target_endian = "big")]
+struct BlockCacheSplitIndices {
+    tail: AtomicUhalf,
+    head: AtomicUhalf,
+}
+
+#[repr(C)]
+union BlockCacheIndices {
+    both: ManuallyDrop<AtomicUsize>,
+    split: ManuallyDrop<BlockCacheSplitIndices>,
+}
+
+struct BlockCache<T> {
+    indices: BlockCacheIndices,
+    blocks: [AtomicPtr<Block<T>>; BLOCK_CACHE_SIZE],
+}
+
+impl<T> BlockCache<T> {
+    const fn new() -> Self {
+        // As far as I know, we are forced to hard-code the initialization of `blocks` here as
+        // `MaybeUninit::zeroed().assume_init()` cannot be used in const functions.
+        Self {
+            indices: BlockCacheIndices {
+                both: ManuallyDrop::new(AtomicUsize::new(0)),
+            },
+            blocks: [
+                AtomicPtr::new(ptr::null_mut()),
+                AtomicPtr::new(ptr::null_mut()),
+                AtomicPtr::new(ptr::null_mut()),
+                AtomicPtr::new(ptr::null_mut()),
+            ],
+        }
+    }
+
+    unsafe fn try_get(&self) -> *mut Block<T> {
+        loop {
+            let both = self.indices.both.load(Ordering::Relaxed);
+            let head = both as Uhalf;
+            let tail = (both >> std::mem::size_of::<Uhalf>()) as Uhalf;
+
+            if head == tail {
+                return ptr::null_mut();
+            }
+
+            if self
+                .indices
+                .split
+                .head
+                .compare_exchange_weak(head, head + 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                return self.blocks[head as usize & (BLOCK_CACHE_SIZE - 1)]
+                    .swap(ptr::null_mut(), Ordering::Acquire);
+            }
+        }
+    }
+
+    unsafe fn try_put(&self, block: *mut Block<T>) -> *mut Block<T> {
+        let both = self.indices.both.load(Ordering::Relaxed);
+        let head = both as Uhalf;
+        let tail = (both >> std::mem::size_of::<Uhalf>()) as Uhalf;
+
+        if tail - head == BLOCK_CACHE_SIZE as Uhalf {
+            return block;
+        }
+
+        *block = MaybeUninit::zeroed().assume_init();
+        let prev =
+            self.blocks[tail as usize & (BLOCK_CACHE_SIZE - 1)].swap(block, Ordering::Release);
+        self.indices
+            .split
+            .tail
+            .compare_exchange_weak(tail, tail + 1, Ordering::Relaxed, Ordering::Relaxed)
+            .ok();
+        prev
+    }
+}
+
 /// A position in a queue.
 struct Position<T> {
     /// The index in the queue.
@@ -119,8 +222,8 @@ pub struct SegQueue<T> {
     /// The tail of the queue.
     tail: CachePadded<Position<T>>,
 
-    /// Cache up to one block to avoid an allocation when possible.
-    cached_block: AtomicPtr<Block<T>>,
+    /// Cache some number of blocks to avoid allocations when possible.
+    block_cache: CachePadded<BlockCache<T>>,
 
     /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -149,7 +252,7 @@ impl<T> SegQueue<T> {
                 block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
             }),
-            cached_block: AtomicPtr::new(ptr::null_mut()),
+            block_cache: CachePadded::new(BlockCache::new()),
             _marker: PhantomData,
         }
     }
@@ -188,16 +291,12 @@ impl<T> SegQueue<T> {
             // it in advance in order to make the wait for other threads as
             // short as possible.
             if offset + 1 == BLOCK_CAP && next_block.is_none() {
-                if self.cached_block.load(Ordering::Relaxed).is_null() {
-                    next_block = Some(Box::new(Block::new()));
+                let p = unsafe { self.block_cache.try_get() };
+                next_block = if p.is_null() {
+                    Some(Box::new(Block::new()))
                 } else {
-                    let cached = self.cached_block.swap(ptr::null_mut(), Ordering::Acquire);
-                    next_block = if cached.is_null() {
-                        Some(Box::new(Block::new()))
-                    } else {
-                        Some(unsafe { Box::from_raw(cached) })
-                    };
-                }
+                    Some(unsafe { Box::from_raw(p) })
+                };
             }
 
             // If this is the first push operation, we need to allocate the first block.
@@ -273,17 +372,11 @@ impl<T> SegQueue<T> {
             }
         }
 
-        // No thread is using the block. Cache it for reuse if there isn't
-        // already a cached block, or deallocate it otherwise.
-        let cached = self.cached_block.load(Ordering::Relaxed);
-        if !cached.is_null() {
-            drop(Box::from_raw(this));
-        } else {
-            *this = MaybeUninit::zeroed().assume_init();
-            let prev = self.cached_block.swap(this, Ordering::Release);
-            if !prev.is_null() {
-                drop(Box::from_raw(prev));
-            }
+        // No thread is using the block. Try to cache it for reuse or deallocate
+        // it otherwise.
+        let p = self.block_cache.try_put(this);
+        if !p.is_null() {
+            drop(Box::from_raw(p));
         }
     }
 
@@ -465,7 +558,6 @@ impl<T> Drop for SegQueue<T> {
         let mut head = self.head.index.load(Ordering::Relaxed);
         let mut tail = self.tail.index.load(Ordering::Relaxed);
         let mut block = self.head.block.load(Ordering::Relaxed);
-        let cached = self.cached_block.load(Ordering::Relaxed);
 
         // Erase the lower bits.
         head &= !((1 << SHIFT) - 1);
@@ -491,13 +583,19 @@ impl<T> Drop for SegQueue<T> {
                 head = head.wrapping_add(1 << SHIFT);
             }
 
-            // Deallocate the last remaining block and the cached block, if any.
+            // Deallocate the last remaining block and any cached blocks.
             if !block.is_null() {
                 drop(Box::from_raw(block));
             }
-            if !cached.is_null() {
-                drop(Box::from_raw(cached));
-            }
+            self.block_cache
+                .blocks
+                .iter()
+                .map(|b| b.load(Ordering::Relaxed))
+                .for_each(|p| {
+                    if !p.is_null() {
+                        drop(Box::from_raw(p));
+                    }
+                });
         }
     }
 }

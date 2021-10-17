@@ -4,7 +4,7 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr;
-use std::sync::atomic::{self, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
@@ -32,7 +32,7 @@ const DESTROY: usize = 4;
 const LAP: usize = 32;
 // The maximum number of messages a block can hold.
 const BLOCK_CAP: usize = LAP - 1;
-// The maximum number of blocks to retain in the block cache.
+// The maximum number of blocks to retain in the block cache. Must be a power of two.
 const BLOCK_CACHE_SIZE: usize = 4;
 // How many lower bits are reserved for metadata.
 const SHIFT: usize = 1;
@@ -96,23 +96,38 @@ impl<T> Block<T> {
     }
 }
 
+#[cfg(target_pointer_width = "16")]
+type Uhalf = u8;
+#[cfg(target_pointer_width = "16")]
+type AtomicUhalf = std::sync::atomic::AtomicU8;
+
+#[cfg(target_pointer_width = "32")]
+type Uhalf = u16;
+#[cfg(target_pointer_width = "32")]
+type AtomicUhalf = std::sync::atomic::AtomicU16;
+
+#[cfg(target_pointer_width = "64")]
+type Uhalf = u32;
+#[cfg(target_pointer_width = "64")]
+type AtomicUhalf = std::sync::atomic::AtomicU32;
+
 #[repr(C)]
 #[cfg(target_endian = "little")]
 struct BlockCacheSplitIndices {
-    head: AtomicU32,
-    tail: AtomicU32,
+    head: AtomicUhalf,
+    tail: AtomicUhalf,
 }
 
 #[repr(C)]
 #[cfg(target_endian = "big")]
 struct BlockCacheSplitIndices {
-    tail: AtomicU32,
-    head: AtomicU32,
+    tail: AtomicUhalf,
+    head: AtomicUhalf,
 }
 
 #[repr(C)]
 union BlockCacheIndices {
-    both: ManuallyDrop<AtomicU64>,
+    both: ManuallyDrop<AtomicUsize>,
     split: ManuallyDrop<BlockCacheSplitIndices>,
 }
 
@@ -123,14 +138,17 @@ struct BlockCache<T> {
 
 impl<T> BlockCache<T> {
     fn new() -> Self {
+        // SAFETY: This is safe because:
+        //  [1] `BlockCache::indices` (BlockCacheIndices) may be safely zero initialized.
+        //  [2] `BlockCache::blocks` (AtomicPtr array) may be safely zero initialized.
         unsafe { MaybeUninit::zeroed().assume_init() }
     }
 
     unsafe fn try_get(&self) -> *mut Block<T> {
         loop {
             let both = self.indices.both.load(Ordering::Relaxed);
-            let head = both as u32;
-            let tail = (both >> 32) as u32;
+            let head = both as Uhalf;
+            let tail = (both >> std::mem::size_of::<Uhalf>()) as Uhalf;
 
             if head == tail {
                 return ptr::null_mut();
@@ -151,10 +169,10 @@ impl<T> BlockCache<T> {
 
     unsafe fn try_put(&self, block: *mut Block<T>) -> *mut Block<T> {
         let both = self.indices.both.load(Ordering::Relaxed);
-        let head = both as u32;
-        let tail = (both >> 32) as u32;
+        let head = both as Uhalf;
+        let tail = (both >> std::mem::size_of::<Uhalf>()) as Uhalf;
 
-        if tail - head == BLOCK_CACHE_SIZE as u32 {
+        if tail - head == BLOCK_CACHE_SIZE as Uhalf {
             return block;
         }
 

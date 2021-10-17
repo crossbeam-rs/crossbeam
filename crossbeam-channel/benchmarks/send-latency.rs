@@ -14,7 +14,12 @@ struct Stats {
 
 impl Stats {
     fn new() -> Self {
-        Self { min: f64::MAX, max: f64::MIN, mean: 0.0, _s: 0.0 }
+        Self {
+            min: f64::MAX,
+            max: f64::MIN,
+            mean: 0.0,
+            _s: 0.0,
+        }
     }
 
     fn update(&mut self, x: f64, i: usize) {
