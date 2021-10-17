@@ -358,9 +358,10 @@ cfg_if! {
         }
 
         pub use crate::channel::{after, at, never, tick};
-        pub use crate::channel::{bounded, unbounded, unbounded_reconnectable};
+        pub use crate::channel::{bounded, unbounded};
         pub use crate::channel::{IntoIter, Iter, TryIter};
-        pub use crate::channel::{Receiver, Sender, ReconnectableReceiver};
+        pub use crate::channel::{Receiver, Sender};
+        pub use crate::channel::reconnectable;
 
         pub use crate::select::{Select, SelectedOperation};
 

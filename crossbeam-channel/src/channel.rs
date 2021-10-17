@@ -1509,37 +1509,58 @@ pub(crate) unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()
     }
 }
 
+/// Channel flavors that are reconnectable, ie, may survive
+/// without senders.
+///
+pub mod reconnectable {
+    // note: we need separate types because the At/Tick/Never
+    // channel types do not support this, but they all use the
+    // same exact Receiver type as array and list flavours.
 
-/// An [unbounded] channel whose receiver is a [ReconnectableReceiver].
-pub fn unbounded_reconnectable<T>() -> (Sender<T>, ReconnectableReceiver<T>) {
-    let (s, r) = unbounded();
-    (s, ReconnectableReceiver(r))
-}
+    // The intended usage of this module is just to replace any `use crossbeam_channel::...`
+    // with `use crossbeam_channel::reconnectable::...` and have everything work out of the box.
 
-/// A receiver that can survive periods of time where no [Sender]s
-/// are live. New senders may be created from the receiver directly
-/// ([Self::new_sender]). The channel is only deallocated when the
-/// last receiver dies. If there are live senders at that point, they
-/// start producing [SendError]s as usual.
-#[derive(Debug)]
-pub struct ReconnectableReceiver<T>(Receiver<T>);
+    pub use crate::*;
+    use super::*;
 
-impl<T> ReconnectableReceiver<T> {
-    /// Returns a new sender for this receiver.
-    pub fn new_sender(&self) -> Sender<T> {
-        match &self.0.flavor {
-            ReceiverFlavor::Array(chan) => Sender { flavor: SenderFlavor::Array(chan.new_sender(|_| todo!())) },
-            ReceiverFlavor::List(chan) => Sender { flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())) },
-            ReceiverFlavor::Zero(chan) => Sender { flavor: SenderFlavor::Zero(chan.new_sender(|_| todo!())) },
-            _ => unreachable!("This type cannot be built with at/never/tick"),
+    use super::Receiver as NormalReceiver;
+
+    /// An [unbounded](super::unbounded) channel whose receiver
+    /// also is reconnectable.
+    pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
+        let (s, r) = super::unbounded();
+        (s, Receiver(r))
+    }
+
+    /// A [receiver](super::Receiver) that can survive periods
+    /// of time where no [Sender]s are alive. New senders may
+    /// be created from the receiver directly ([Self::new_sender]).
+    /// The channel is only deallocated when the last receiver dies.
+    /// If there are live senders at that point, they start producing
+    /// [SendError]s as usual.
+    #[derive(Debug)]
+    pub struct Receiver<T>(NormalReceiver<T>);
+
+    impl<T> Receiver<T> {
+
+        /// Returns a new sender that communicates with this
+        /// receiver.
+        pub fn new_sender(&self) -> Sender<T> {
+            match &self.0.flavor {
+                ReceiverFlavor::Array(chan) => Sender { flavor: SenderFlavor::Array(chan.new_sender(|_| todo!())) },
+                ReceiverFlavor::List(chan) => Sender { flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())) },
+                ReceiverFlavor::Zero(chan) => Sender { flavor: SenderFlavor::Zero(chan.new_sender(|_| todo!())) },
+                _ => unreachable!("This type cannot be built with at/never/tick"),
+            }
+        }
+    }
+
+    impl<T> Deref for self::Receiver<T> {
+        type Target = NormalReceiver<T>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
         }
     }
 }
 
-impl<T> Deref for ReconnectableReceiver<T> {
-    type Target = Receiver<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}

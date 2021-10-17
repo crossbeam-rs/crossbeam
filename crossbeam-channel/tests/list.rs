@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{select, unbounded, unbounded_reconnectable, Receiver};
+use crossbeam_channel::{select, unbounded, reconnectable, Receiver};
 use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
 use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
 use crossbeam_utils::thread::scope;
@@ -202,7 +202,7 @@ fn recv_after_disconnect() {
 
 #[test]
 fn zero_receiver_revival() {
-    let (s, r) = unbounded_reconnectable();
+    let (s, r) = reconnectable::unbounded();
 
     s.send(1).unwrap();
 
