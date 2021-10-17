@@ -4,7 +4,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{bounded, unbounded};
 use crossbeam_utils::thread::scope;
 
 struct Counter;
@@ -59,41 +59,27 @@ fn allocs() {
         assert_eq!(before, after);
     }
 
+    let (ready_s, ready_r) = bounded(1);
     let before = NUM_ALLOCS.load(Ordering::SeqCst);
     scope(|scope| {
         scope.spawn(|_| {
-            for i in 0..31 * 1_000_000 {
-                s.send(i as i32).unwrap();
-            }
-        });
-        for _ in 0..31 * 1_000_000 {
-            r.recv().unwrap();
-        }
-    })
-    .unwrap();
-    let after = NUM_ALLOCS.load(Ordering::SeqCst);
-    assert_eq!(before, after);
-    assert!(after < before + 500_000);
-
-    let threads = num_cpus::get();
-    let before = NUM_ALLOCS.load(Ordering::SeqCst);
-    scope(|scope| {
-        scope.spawn(|_| {
-            for i in 0..31 {
-                for _ in 0..(threads / 2) * 10_000 {
+            for i in 0..100_000 {
+                for _ in 0..31 {
                     s.send(i as i32).unwrap();
-                    std::thread::yield_now();
                 }
+                ready_r.recv().unwrap();
             }
         });
-        for _ in 0..threads / 2 {
-            for _ in 0..31 * 10_000 {
+        for _ in 0..100_000 {
+            for _ in 0..31 {
                 r.recv().unwrap();
             }
+            ready_s.send(()).unwrap();
         }
     })
     .unwrap();
     let after = NUM_ALLOCS.load(Ordering::SeqCst);
-    assert_eq!(before, after);
-    assert!(after < before + ((threads / 4) * 1_000_000));
+    // Exactly 19 allocations are made every time on my box. Let's say 50 to be
+    // safe.
+    assert!(before + 50 > after);
 }

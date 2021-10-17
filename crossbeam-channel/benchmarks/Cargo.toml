@@ -75,3 +75,8 @@ doc = false
 name = "mpmc"
 path = "mpmc.rs"
 doc = false
+
+[[bin]]
+name = "send-latency"
+path = "send-latency.rs"
+doc = false
