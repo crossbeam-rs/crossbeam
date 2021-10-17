@@ -1960,15 +1960,12 @@ impl<T> Drop for Injector<T> {
             if !block.is_null() {
                 drop(Box::from_raw(block));
             }
-            self.block_cache
-                .blocks
-                .iter()
-                .map(|b| b.load(Ordering::Relaxed))
-                .for_each(|p| {
-                    if !p.is_null() {
-                        drop(Box::from_raw(p));
-                    }
-                });
+            for b in &self.block_cache.blocks {
+                let p = b.load(Ordering::Relaxed);
+                if !p.is_null() {
+                    drop(Box::from_raw(p));
+                }
+            }
         }
     }
 }
