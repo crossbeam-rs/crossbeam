@@ -1222,7 +1222,7 @@ impl<T> BlockCache<T> {
         loop {
             let both = self.indices.both.load(Ordering::Relaxed);
             let head = both as Uhalf;
-            let tail = (both >> std::mem::size_of::<Uhalf>()) as Uhalf;
+            let tail = (both >> (mem::size_of::<Uhalf>() * 8)) as Uhalf;
 
             if head == tail {
                 return ptr::null_mut();
@@ -1244,7 +1244,7 @@ impl<T> BlockCache<T> {
     unsafe fn try_put(&self, block: *mut Block<T>) -> *mut Block<T> {
         let both = self.indices.both.load(Ordering::Relaxed);
         let head = both as Uhalf;
-        let tail = (both >> std::mem::size_of::<Uhalf>()) as Uhalf;
+        let tail = (both >> (mem::size_of::<Uhalf>() * 8)) as Uhalf;
 
         if tail - head == BLOCK_CACHE_SIZE as Uhalf {
             return block;
