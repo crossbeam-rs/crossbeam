@@ -1253,11 +1253,12 @@ impl<T> BlockCache<T> {
         *block = MaybeUninit::zeroed().assume_init();
         let prev =
             self.blocks[tail as usize & (BLOCK_CACHE_SIZE - 1)].swap(block, Ordering::Release);
-        self.indices
-            .split
-            .tail
-            .compare_exchange_weak(tail, tail + 1, Ordering::Relaxed, Ordering::Relaxed)
-            .ok();
+        let _ = self.indices.split.tail.compare_exchange_weak(
+            tail,
+            tail + 1,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        );
         prev
     }
 }

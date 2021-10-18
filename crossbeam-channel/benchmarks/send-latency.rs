@@ -2,8 +2,15 @@ use crossbeam::channel::unbounded;
 
 mod message;
 
-const MESSAGES: usize = 5_000_000;
+const MESSAGES: usize = 10_000_000;
 const THREADS: usize = 4;
+
+fn clock() -> f64 {
+    extern "C" {
+        pub fn clock() -> libc::clock_t;
+    }
+    unsafe { clock() as f64 }
+}
 
 struct Stats {
     min: f64,
@@ -26,7 +33,7 @@ impl Stats {
         self.min = self.min.min(x);
         self.max = self.max.max(x);
         let mean_prev = self.mean;
-        self.mean = self.mean + ((x - self.mean) / ((i + 1) as f64));
+        self.mean += (x - self.mean) / ((i + 1) as f64);
         self._s = self._s + ((x - mean_prev) * (x - self.mean));
     }
 
@@ -41,11 +48,11 @@ fn spsc() -> (f64, f64, f64, f64) {
     crossbeam::scope(|scope| {
         scope.spawn(|_| {
             for i in 0..MESSAGES / 1000 {
-                let before = std::time::Instant::now();
+                let before = clock();
                 for i in 0..1000 {
                     tx.send(message::new(i)).unwrap();
                 }
-                let elapsed = (std::time::Instant::now() - before).as_secs_f64();
+                let elapsed = clock() - before;
                 stats.update(elapsed, i)
             }
         });
@@ -71,11 +78,11 @@ fn mpsc() -> (f64, f64, f64, f64) {
         }
         scope.spawn(|_| {
             for i in 0..MESSAGES / THREADS / 1000 {
-                let before = std::time::Instant::now();
+                let before = clock();
                 for i in 0..1000 {
                     tx.send(message::new(i)).unwrap();
                 }
-                let elapsed = (std::time::Instant::now() - before).as_secs_f64();
+                let elapsed = clock() - before;
                 stats.update(elapsed, i)
             }
         });
@@ -94,11 +101,11 @@ fn spmc() -> (f64, f64, f64, f64) {
     crossbeam::scope(|scope| {
         scope.spawn(|_| {
             for i in 0..MESSAGES / 1000 {
-                let before = std::time::Instant::now();
+                let before = clock();
                 for i in 0..1000 {
                     tx.send(message::new(i)).unwrap();
                 }
-                let elapsed = (std::time::Instant::now() - before).as_secs_f64();
+                let elapsed = clock() - before;
                 stats.update(elapsed, i)
             }
         });
@@ -128,11 +135,11 @@ fn mpmc() -> (f64, f64, f64, f64) {
         }
         scope.spawn(|_| {
             for i in 0..MESSAGES / THREADS / 1000 {
-                let before = std::time::Instant::now();
+                let before = clock();
                 for i in 0..1000 {
                     tx.send(message::new(i)).unwrap();
                 }
-                let elapsed = (std::time::Instant::now() - before).as_secs_f64();
+                let elapsed = clock() - before;
                 stats.update(elapsed, i)
             }
         });
@@ -151,7 +158,7 @@ fn mpmc() -> (f64, f64, f64, f64) {
 
 fn run(name: &str, (min, max, mean, stddev): (f64, f64, f64, f64)) {
     println!(
-        "{} | min: {:.9}, max: {:.9}, mean: {:.9}, stddev: {:.9}",
+        "{} | min: {:10.3}, max: {:10.3}, mean: {:10.3}, stddev: {:10.3}",
         name, min, max, mean, stddev
     );
 }
