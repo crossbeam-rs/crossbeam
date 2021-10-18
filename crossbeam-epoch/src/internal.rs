@@ -101,7 +101,7 @@ impl Bag {
 
     /// Seals the bag with the given epoch.
     fn seal(self, epoch: Epoch) -> SealedBag {
-        SealedBag { epoch, bag: self }
+        SealedBag { epoch, _bag: self }
     }
 }
 
@@ -216,7 +216,7 @@ fn no_op_func() {}
 #[derive(Default, Debug)]
 struct SealedBag {
     epoch: Epoch,
-    bag: Bag,
+    _bag: Bag,
 }
 
 /// It is safe to share `SealedBag` because `is_expired` only inspects the epoch.
