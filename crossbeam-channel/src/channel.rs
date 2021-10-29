@@ -721,7 +721,6 @@ impl<T> UnwindSafe for Receiver<T> {}
 impl<T> RefUnwindSafe for Receiver<T> {}
 
 impl<T> Receiver<T> {
-
     /// Attempts to receive a message from the channel without blocking.
     ///
     /// This method will either receive a message from the channel immediately or return an error
@@ -1520,8 +1519,8 @@ pub mod reconnectable {
     // The intended usage of this module is just to replace any `use crossbeam_channel::...`
     // with `use crossbeam_channel::reconnectable::...` and have everything work out of the box.
 
-    pub use crate::*;
     use super::*;
+    pub use crate::*;
 
     use super::Receiver as NormalReceiver;
 
@@ -1542,14 +1541,19 @@ pub mod reconnectable {
     pub struct Receiver<T>(NormalReceiver<T>);
 
     impl<T> Receiver<T> {
-
         /// Returns a new sender that communicates with this
         /// receiver.
         pub fn new_sender(&self) -> Sender<T> {
             match &self.0.flavor {
-                ReceiverFlavor::Array(chan) => Sender { flavor: SenderFlavor::Array(chan.new_sender(|_| unreachable!())) },
-                ReceiverFlavor::List(chan) => Sender { flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())) },
-                ReceiverFlavor::Zero(chan) => Sender { flavor: SenderFlavor::Zero(chan.new_sender(|_| unreachable!())) },
+                ReceiverFlavor::Array(chan) => Sender {
+                    flavor: SenderFlavor::Array(chan.new_sender(|_| unreachable!())),
+                },
+                ReceiverFlavor::List(chan) => Sender {
+                    flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())),
+                },
+                ReceiverFlavor::Zero(chan) => Sender {
+                    flavor: SenderFlavor::Zero(chan.new_sender(|_| unreachable!())),
+                },
                 _ => unreachable!("This type cannot be built with at/never/tick"),
             }
         }
@@ -1563,4 +1567,3 @@ pub mod reconnectable {
         }
     }
 }
-

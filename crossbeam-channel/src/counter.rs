@@ -94,7 +94,6 @@ pub(crate) struct Receiver<C> {
 }
 
 impl<C> Receiver<C> {
-
     /// Returns the internal `Counter`.
     fn counter(&self) -> &Counter<C> {
         unsafe { &*self.counter }
@@ -128,7 +127,6 @@ impl<C> Receiver<C> {
             }
         }
     }
-
 
     pub(crate) fn new_sender(&self, reconnect: impl FnOnce(&C) -> bool) -> Sender<C> {
         if 0 == self.counter().senders.fetch_add(1, Ordering::SeqCst) {
