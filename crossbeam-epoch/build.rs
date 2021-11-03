@@ -30,11 +30,16 @@ fn main() {
         }
     };
 
+    let target_arch = target.split('-').next().unwrap_or_default();
+
     // Note that this is `no_*`, not `has_*`. This allows treating
     // `cfg(target_has_atomic = "ptr")` as true when the build script doesn't
     // run. This is needed for compatibility with non-cargo build systems that
     // don't run the build script.
-    if NO_ATOMIC_CAS.contains(&&*target) {
+    if NO_ATOMIC_CAS
+        .iter()
+        .any(|t| t.split('-').next().unwrap_or_default() == target_arch)
+    {
         println!("cargo:rustc-cfg=crossbeam_no_atomic_cas");
     }
 
