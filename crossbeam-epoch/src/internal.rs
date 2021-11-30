@@ -228,8 +228,7 @@ impl Global {
     /// `try_advance()` is annotated `#[cold]` because it is rarely called.
     #[cold]
     pub(crate) fn try_advance(&self, guard: &Guard) -> Epoch {
-        let global_epoch = self.epoch.load(Ordering::Relaxed);
-        atomic::fence(Ordering::SeqCst);
+        let global_epoch = unsafe { (*guard.local).epoch.load(Ordering::Relaxed).unpinned() };
 
         // TODO(stjepang): `Local`s are stored in a linked list because linked lists are fairly
         // easy to implement in a lock-free manner. However, traversal can be slow due to cache
