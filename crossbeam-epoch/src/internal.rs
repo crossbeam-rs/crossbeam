@@ -414,6 +414,10 @@ impl Local {
                 // differently from SC accesses), but experimental evidence suggests that this
                 // works fine.  Using inline assembly would be a viable (and correct) alternative,
                 // but alas, that is not possible on stable Rust.
+                //
+                // This optimization is also recommended by AMD's official optimization guide.
+                // See https://www.amd.com/system/files/TechDocs/47414_15h_sw_opt_guide.pdf
+                // 11.5.1 Locked Instructions as Memory Barriers.
                 let current = Epoch::starting();
                 let res = self.epoch.compare_exchange(
                     current,
