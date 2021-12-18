@@ -8,6 +8,7 @@ use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
 use core::mem::{self, MaybeUninit};
+use core::ptr;
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
@@ -430,5 +431,54 @@ impl<T> Drop for ArrayQueue<T> {
 impl<T> fmt::Debug for ArrayQueue<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("ArrayQueue { .. }")
+    }
+}
+
+impl<T> IntoIterator for ArrayQueue<T> {
+    type Item = T;
+
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { value: self }
+    }
+}
+
+#[derive(Debug)]
+pub struct IntoIter<T> {
+    value: ArrayQueue<T>,
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = &mut self.value;
+        let head = *value.head.get_mut();
+        if value.head.get_mut() != value.tail.get_mut() {
+            let index = head & (value.one_lap - 1);
+            let lap = head & !(value.one_lap - 1);
+            // SAFETY: We have mutable access to this, so we can read without
+            // worrying about concurrency. Furthermore, we know this is
+            // initialized because it is the value pointed at by `value.head`
+            // and this is a non-empty queue.
+            let val = unsafe {
+                let slot = &mut *value.buffer.add(index);
+                ptr::read(slot.value.get()).assume_init()
+            };
+            let new = if index + 1 < value.cap {
+                // Same lap, incremented index.
+                // Set to `{ lap: lap, index: index + 1 }`.
+                head + 1
+            } else {
+                // One lap forward, index wraps around to zero.
+                // Set to `{ lap: lap.wrapping_add(1), index: 0 }`.
+                lap.wrapping_add(value.one_lap)
+            };
+            *value.head.get_mut() = new;
+            Option::Some(val)
+        } else {
+            Option::None
+        }
     }
 }

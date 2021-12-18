@@ -161,3 +161,25 @@ fn drops() {
         assert_eq!(DROPS.load(Ordering::SeqCst), steps + additional);
     }
 }
+
+#[test]
+fn into_iter() {
+    let q = SegQueue::new();
+    for i in 0..100 {
+        q.push(i);
+    }
+    for (i, j) in q.into_iter().enumerate() {
+        assert_eq!(i, j);
+    }
+}
+
+#[test]
+fn into_iter_drop() {
+    let q = SegQueue::new();
+    for i in 0..100 {
+        q.push(i);
+    }
+    for (i, j) in q.into_iter().enumerate().take(50) {
+        assert_eq!(i, j);
+    }
+}
