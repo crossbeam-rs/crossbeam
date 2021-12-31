@@ -3,8 +3,6 @@
 cd "$(dirname "$0")"/..
 set -ex
 
-cargo install cargo-hack
-
 cargo tree
 cargo tree --duplicate
 cargo tree --duplicate || exit 1
