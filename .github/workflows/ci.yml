@@ -67,9 +67,7 @@ jobs:
       fail-fast: false
       matrix:
         rust:
-          # Some dependencies of benchmarks use the 2021 edition.
-          # TODO: Uncomment once https://github.com/taiki-e/cargo-hack/issues/135 implemented.
-          # - 1.36.0
+          - 1.36.0
           - nightly
     runs-on: ubuntu-latest
     steps:
