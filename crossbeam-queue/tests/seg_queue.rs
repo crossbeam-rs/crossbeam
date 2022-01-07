@@ -52,6 +52,7 @@ fn len() {
     assert_eq!(q.len(), 0);
 }
 
+#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn spsc() {
     const COUNT: usize = 100_000;
@@ -79,6 +80,7 @@ fn spsc() {
     .unwrap();
 }
 
+#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn mpmc() {
     const COUNT: usize = 25_000;
@@ -115,8 +117,11 @@ fn mpmc() {
     }
 }
 
+#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn drops() {
+    const RUNS: usize = 100;
+
     static DROPS: AtomicUsize = AtomicUsize::new(0);
 
     #[derive(Debug, PartialEq)]
@@ -130,7 +135,7 @@ fn drops() {
 
     let mut rng = thread_rng();
 
-    for _ in 0..100 {
+    for _ in 0..RUNS {
         let steps = rng.gen_range(0..10_000);
         let additional = rng.gen_range(0..1000);
 
