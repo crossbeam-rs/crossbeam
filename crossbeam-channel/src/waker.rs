@@ -1,5 +1,6 @@
 //! Waking mechanism for threads blocked on channel operations.
 
+use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, ThreadId};
 
@@ -13,7 +14,7 @@ pub(crate) struct Entry {
     pub(crate) oper: Operation,
 
     /// Optional packet.
-    pub(crate) packet: usize,
+    pub(crate) packet: *mut (),
 
     /// Context associated with the thread owning this operation.
     pub(crate) cx: Context,
@@ -44,12 +45,12 @@ impl Waker {
     /// Registers a select operation.
     #[inline]
     pub(crate) fn register(&mut self, oper: Operation, cx: &Context) {
-        self.register_with_packet(oper, 0, cx);
+        self.register_with_packet(oper, ptr::null_mut(), cx);
     }
 
     /// Registers a select operation and a packet.
     #[inline]
-    pub(crate) fn register_with_packet(&mut self, oper: Operation, packet: usize, cx: &Context) {
+    pub(crate) fn register_with_packet(&mut self, oper: Operation, packet: *mut (), cx: &Context) {
         self.selectors.push(Entry {
             oper,
             packet,
@@ -117,7 +118,7 @@ impl Waker {
     pub(crate) fn watch(&mut self, oper: Operation, cx: &Context) {
         self.observers.push(Entry {
             oper,
-            packet: 0,
+            packet: ptr::null_mut(),
             cx: cx.clone(),
         });
     }

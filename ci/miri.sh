@@ -18,8 +18,7 @@ MIRIFLAGS="-Zmiri-disable-isolation" \
         -p crossbeam-utils
 
 # -Zmiri-ignore-leaks is needed because we use detached threads in tests/docs: https://github.com/rust-lang/miri/issues/1371
-# When enable -Zmiri-tag-raw-pointers, miri reports stacked borrows violation: https://github.com/crossbeam-rs/crossbeam/issues/762
-MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-ignore-leaks" \
+MIRIFLAGS="-Zmiri-tag-raw-pointers -Zmiri-disable-isolation -Zmiri-ignore-leaks" \
     cargo miri test \
         -p crossbeam-channel
 
