@@ -22,9 +22,15 @@ MIRIFLAGS="-Zmiri-tag-raw-pointers -Zmiri-disable-isolation -Zmiri-ignore-leaks"
 MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-disable-stacked-borrows" \
     cargo miri test \
         -p crossbeam-epoch \
-        -p crossbeam-skiplist \
-        -p crossbeam
+        -p crossbeam-skiplist
 
-MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-disable-stacked-borrows -Zmiri-compare-exchange-weak-failure-rate=1.0" \
+# -Zmiri-ignore-leaks is needed for https://github.com/crossbeam-rs/crossbeam/issues/579
+# -Zmiri-disable-stacked-borrows is needed for https://github.com/crossbeam-rs/crossbeam/issues/545
+MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-disable-stacked-borrows -Zmiri-compare-exchange-weak-failure-rate=1.0" \
     cargo miri test \
         -p crossbeam-deque
+
+# -Zmiri-ignore-leaks is needed for https://github.com/crossbeam-rs/crossbeam/issues/579
+MIRIFLAGS="-Zmiri-ignore-leaks" \
+    cargo miri test \
+        -p crossbeam
