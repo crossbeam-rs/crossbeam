@@ -523,6 +523,8 @@ impl_arithmetic!(i64, fallback, "let a = AtomicCell::new(7i64);");
 // TODO: AtomicU128 is unstable
 // impl_arithmetic!(u128, atomic::AtomicU128, "let a = AtomicCell::new(7u128);");
 // impl_arithmetic!(i128, atomic::AtomicI128, "let a = AtomicCell::new(7i128);");
+impl_arithmetic!(u128, fallback, "let a = AtomicCell::new(7u128);");
+impl_arithmetic!(i128, fallback, "let a = AtomicCell::new(7i128);");
 
 impl_arithmetic!(
     usize,
