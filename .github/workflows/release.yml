@@ -1,0 +1,44 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - crossbeam-[0-9]+.*
+      - crossbeam-[a-z]+-[0-9]+.*
+
+env:
+  RUSTFLAGS: -Dwarnings
+  RUST_BACKTRACE: 1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  create-release:
+    if: github.repository_owner == 'crossbeam-rs'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          prefix: crossbeam(-[a-z]+)?
+          changelog: $prefix/CHANGELOG.md
+          title: $prefix $version
+          branch: master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: "!startsWith(github.ref_name, 'crossbeam-0')"
+      # Since the crossbeam crate is located at the root, we need to handle it differently.
+      # TODO: Consider moving crossbeam crate to a subdirectory.
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: CHANGELOG.md
+          title: crossbeam $version
+          branch: master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: startsWith(github.ref_name, 'crossbeam-0')
