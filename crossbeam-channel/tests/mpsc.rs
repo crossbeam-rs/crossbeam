@@ -20,6 +20,12 @@
 //!   - https://github.com/rust-lang/rust/blob/master/COPYRIGHT
 //!   - https://www.rust-lang.org/en-US/legal.html
 
+#![allow(
+    clippy::drop_copy,
+    clippy::match_single_binding,
+    clippy::redundant_clone
+)]
+
 use std::sync::mpsc::{RecvError, RecvTimeoutError, TryRecvError};
 use std::sync::mpsc::{SendError, TrySendError};
 use std::thread::JoinHandle;
@@ -344,10 +350,7 @@ mod channel_tests {
             for _ in 0..AMT * NTHREADS {
                 assert_eq!(rx.recv().unwrap(), 1);
             }
-            match rx.try_recv() {
-                Ok(..) => panic!(),
-                _ => {}
-            }
+            assert!(rx.try_recv().is_err());
         });
 
         let mut ts = Vec::with_capacity(NTHREADS as usize);
@@ -1203,10 +1206,7 @@ mod sync_channel_tests {
             for _ in 0..AMT * NTHREADS {
                 assert_eq!(rx.recv().unwrap(), 1);
             }
-            match rx.try_recv() {
-                Ok(..) => panic!(),
-                _ => {}
-            }
+            assert!(rx.try_recv().is_err());
             dtx.send(()).unwrap();
         });
 

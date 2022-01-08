@@ -425,8 +425,8 @@ mod test {
 
                     let mut vl2 = vl.clone();
                     let mut vr2 = vr.clone();
-                    vl2.sort();
-                    vr2.sort();
+                    vl2.sort_unstable();
+                    vr2.sort_unstable();
 
                     assert_eq!(vl, vl2);
                     assert_eq!(vr, vr2);

@@ -5,4 +5,4 @@ set -ex
 
 rustup component add clippy
 
-cargo clippy --all
+cargo clippy --all --tests --examples

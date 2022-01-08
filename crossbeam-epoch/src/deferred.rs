@@ -81,6 +81,8 @@ impl Deferred {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
+    #![allow(clippy::drop_copy)]
+
     use super::Deferred;
     use std::cell::Cell;
 

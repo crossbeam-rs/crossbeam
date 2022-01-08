@@ -8,7 +8,7 @@ use test::Bencher;
 
 #[bench]
 fn single_pin(b: &mut Bencher) {
-    b.iter(|| epoch::pin());
+    b.iter(epoch::pin);
 }
 
 #[bench]
