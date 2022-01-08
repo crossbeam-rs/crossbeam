@@ -1,5 +1,7 @@
 //! Tests for channel readiness using the `Select` struct.
 
+#![allow(clippy::drop_copy)]
+
 use std::any::Any;
 use std::cell::Cell;
 use std::thread;

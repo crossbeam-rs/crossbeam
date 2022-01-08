@@ -355,7 +355,7 @@ fn destructors() {
     {
         let mut v = dropped.lock().unwrap();
         assert_eq!(v.len(), rem);
-        v.sort();
+        v.sort_unstable();
         for pair in v.windows(2) {
             assert_eq!(pair[0] + 1, pair[1]);
         }

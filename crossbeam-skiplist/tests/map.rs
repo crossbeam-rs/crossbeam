@@ -1,3 +1,5 @@
+#![allow(clippy::mutex_atomic)]
+
 use std::{iter, ops::Bound, sync::Barrier};
 
 use crossbeam_skiplist::SkipMap;

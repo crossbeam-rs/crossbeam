@@ -3,11 +3,6 @@
 cd "$(dirname "$0")"/..
 set -ex
 
-toolchain=nightly-$(curl -s https://rust-lang.github.io/rustup-components-history/x86_64-unknown-linux-gnu/miri)
-rustup set profile minimal
-rustup default "$toolchain"
-rustup component add miri
-
 MIRIFLAGS="-Zmiri-tag-raw-pointers" \
     cargo miri test \
         -p crossbeam-queue

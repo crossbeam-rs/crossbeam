@@ -1,6 +1,7 @@
 //! Tests for the `select!` macro.
 
 #![forbid(unsafe_code)] // select! is safe.
+#![allow(clippy::drop_copy, clippy::match_single_binding)]
 
 use std::any::Any;
 use std::cell::Cell;
@@ -943,6 +944,7 @@ fn fairness_send() {
     assert!(hits.iter().all(|x| *x >= COUNT / 4));
 }
 
+#[allow(clippy::or_fun_call)] // This is intentional.
 #[test]
 fn references() {
     let (s, r) = unbounded::<i32>();
@@ -989,6 +991,7 @@ fn case_blocks() {
     drop(s);
 }
 
+#[allow(clippy::redundant_closure_call)] // This is intentional.
 #[test]
 fn move_handles() {
     let (s, r) = unbounded::<i32>();

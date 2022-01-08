@@ -9,6 +9,8 @@
 //!   - https://golang.org/LICENSE
 //!   - https://golang.org/PATENTS
 
+#![allow(clippy::mutex_atomic, clippy::redundant_clone)]
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::any::Any;
 use std::cell::Cell;
@@ -710,9 +712,7 @@ mod select2 {
         fn receiver(c: &Chan<i32>, dummy: &Chan<i32>, n: i32) {
             for _ in 0..n {
                 select! {
-                    recv(c.rx()) -> _ => {
-                        ()
-                    }
+                    recv(c.rx()) -> _ => {}
                     recv(dummy.rx()) -> _ => {
                         panic!("dummy");
                     }
