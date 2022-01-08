@@ -1,6 +1,10 @@
+# Version 0.3.3
+
+- Fix stacked borrows violation in `ArrayQueue`. (#763)
+
 # Version 0.3.2
 
-- Support targets that do not have atomic CAS on stable Rust (#698)
+- Support targets that do not have atomic CAS on stable Rust. (#698)
 
 # Version 0.3.1
 
