@@ -741,7 +741,6 @@ macro_rules! atomic {
     ($t:ty, $a:ident, $atomic_op:expr, $fallback_op:expr) => {
         loop {
             atomic!(@check, $t, AtomicUnit, $a, $atomic_op);
-            atomic!(@check, $t, atomic::AtomicUsize, $a, $atomic_op);
 
             atomic!(@check, $t, atomic::AtomicU8, $a, $atomic_op);
             atomic!(@check, $t, atomic::AtomicU16, $a, $atomic_op);
@@ -763,7 +762,6 @@ macro_rules! atomic {
 const fn atomic_is_lock_free<T>() -> bool {
     // HACK(taiki-e): This is equivalent to `atomic! { T, _a, true, false }`, but can be used in const fn even in Rust 1.36.
     let is_lock_free = can_transmute::<T, AtomicUnit>()
-        | can_transmute::<T, atomic::AtomicUsize>()
         | can_transmute::<T, atomic::AtomicU8>()
         | can_transmute::<T, atomic::AtomicU16>()
         | can_transmute::<T, atomic::AtomicU32>();
