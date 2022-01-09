@@ -9,6 +9,7 @@ on:
     branches:
       - staging
       - trying
+      - valgrind # WIP
   schedule:
     - cron: '0 1 * * *'
 
@@ -21,129 +22,129 @@ defaults:
     shell: bash
 
 jobs:
-  # Test crates on their minimum Rust versions and nightly Rust.
-  test:
-    env:
-      RUST_VERSION: ${{ matrix.rust }}
-      RUST_TARGET: ${{ matrix.target }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - rust: 1.36.0
-            os: ubuntu-latest
-          - rust: 1.36.0
-            os: windows-latest
-          - rust: stable
-            os: ubuntu-latest
-          - rust: stable
-            os: windows-latest
-          - rust: nightly
-            os: ubuntu-latest
-          # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
-          # - rust: nightly
-          #   os: macos-latest
-          - rust: nightly
-            os: windows-latest
-          - rust: nightly
-            os: ubuntu-latest
-            target: i686-unknown-linux-gnu
-          - rust: nightly
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
-        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
-      - name: Test
-        run: ./ci/test.sh
+  # # Test crates on their minimum Rust versions and nightly Rust.
+  # test:
+  #   env:
+  #     RUST_VERSION: ${{ matrix.rust }}
+  #     RUST_TARGET: ${{ matrix.target }}
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - rust: 1.36.0
+  #           os: ubuntu-latest
+  #         - rust: 1.36.0
+  #           os: windows-latest
+  #         - rust: stable
+  #           os: ubuntu-latest
+  #         - rust: stable
+  #           os: windows-latest
+  #         - rust: nightly
+  #           os: ubuntu-latest
+  #         # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
+  #         # - rust: nightly
+  #         #   os: macos-latest
+  #         - rust: nightly
+  #           os: windows-latest
+  #         - rust: nightly
+  #           os: ubuntu-latest
+  #           target: i686-unknown-linux-gnu
+  #         - rust: nightly
+  #           os: ubuntu-latest
+  #           target: aarch64-unknown-linux-gnu
+  #   runs-on: ${{ matrix.os }}
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
+  #       run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
+  #     - name: Test
+  #       run: ./ci/test.sh
 
-  # Check all feature combinations works properly.
-  features:
-    env:
-      RUST_VERSION: ${{ matrix.rust }}
-    strategy:
-      fail-fast: false
-      matrix:
-        rust:
-          - 1.36.0
-          - nightly
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
-      - name: Install cargo-hack
-        uses: taiki-e/install-action@cargo-hack
-      - name: Check features
-        run: ./ci/check-features.sh
+  # # Check all feature combinations works properly.
+  # features:
+  #   env:
+  #     RUST_VERSION: ${{ matrix.rust }}
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       rust:
+  #         - 1.36.0
+  #         - nightly
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+  #     - name: Install cargo-hack
+  #       uses: taiki-e/install-action@cargo-hack
+  #     - name: Check features
+  #       run: ./ci/check-features.sh
 
-  # Check for duplicate dependencies.
-  dependencies:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
-      - name: Install cargo-hack
-        uses: taiki-e/install-action@cargo-hack
-      - name: dependency tree check
-        run: ./ci/dependencies.sh
+  # # Check for duplicate dependencies.
+  # dependencies:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup update nightly && rustup default nightly
+  #     - name: Install cargo-hack
+  #       uses: taiki-e/install-action@cargo-hack
+  #     - name: dependency tree check
+  #       run: ./ci/dependencies.sh
 
-  # When this job failed, run ci/no_atomic.sh and commit result changes.
-  # TODO(taiki-e): Ideally, this should be automated using a bot that creates
-  #                PR when failed, but there is no bandwidth to implement it
-  #                right now...
-  codegen:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
-      - run: ci/no_atomic.sh
-      - run: git diff --exit-code
+  # # When this job failed, run ci/no_atomic.sh and commit result changes.
+  # # TODO(taiki-e): Ideally, this should be automated using a bot that creates
+  # #                PR when failed, but there is no bandwidth to implement it
+  # #                right now...
+  # codegen:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup update nightly && rustup default nightly
+  #     - run: ci/no_atomic.sh
+  #     - run: git diff --exit-code
 
-  # Check formatting.
-  fmt:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update stable
-      - name: rustfmt
-        run: ./ci/rustfmt.sh
+  # # Check formatting.
+  # fmt:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup update stable
+  #     - name: rustfmt
+  #       run: ./ci/rustfmt.sh
 
-  # Check clippy.
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update stable
-      - name: clippy
-        run: ./ci/clippy.sh
+  # # Check clippy.
+  # clippy:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup update stable
+  #     - name: clippy
+  #       run: ./ci/clippy.sh
 
-  # Run miri.
-  miri:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup toolchain install nightly --component miri && rustup default nightly
-      - name: miri
-        run: ./ci/miri.sh
+  # # Run miri.
+  # miri:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup toolchain install nightly --component miri && rustup default nightly
+  #     - name: miri
+  #       run: ./ci/miri.sh
 
-  # Run sanitizers.
-  san:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
-      - name: Run sanitizers
-        run: ./ci/san.sh
+  # # Run sanitizers.
+  # san:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup update nightly && rustup default nightly
+  #     - name: Run sanitizers
+  #       run: ./ci/san.sh
 
   # Run tests with valgrind.
   valgrind:
@@ -157,48 +158,48 @@ jobs:
       - name: valgrind
         run: ./ci/valgrind.sh
 
-  # Run loom tests.
-  loom:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update stable
-      - name: loom
-        run: ./ci/crossbeam-epoch-loom.sh
+  # # Run loom tests.
+  # loom:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup update stable
+  #     - name: loom
+  #       run: ./ci/crossbeam-epoch-loom.sh
 
-  # Check if the document can be generated without warning.
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
-      - name: docs
-        run: ./ci/docs.sh
+  # # Check if the document can be generated without warning.
+  # docs:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Install Rust
+  #       run: rustup update nightly && rustup default nightly
+  #     - name: docs
+  #       run: ./ci/docs.sh
 
-  # This job doesn't actually test anything, but they're used to tell bors the
-  # build completed, as there is no practical way to detect when a workflow is
-  # successful listening to webhooks only.
-  #
-  # ALL THE PREVIOUS JOBS NEEDS TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
+  # # This job doesn't actually test anything, but they're used to tell bors the
+  # # build completed, as there is no practical way to detect when a workflow is
+  # # successful listening to webhooks only.
+  # #
+  # # ALL THE PREVIOUS JOBS NEEDS TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
 
-  ci-success:
-    name: ci
-    if: github.event_name == 'push' && success()
-    needs:
-      - test
-      - features
-      - dependencies
-      - codegen
-      - fmt
-      - clippy
-      - miri
-      - san
-      - valgrind
-      - loom
-      - docs
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mark the job as a success
-        run: exit 0
+  # ci-success:
+  #   name: ci
+  #   if: github.event_name == 'push' && success()
+  #   needs:
+  #     - test
+  #     - features
+  #     - dependencies
+  #     - codegen
+  #     - fmt
+  #     - clippy
+  #     - miri
+  #     - san
+  #     - valgrind
+  #     - loom
+  #     - docs
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Mark the job as a success
+  #       run: exit 0
