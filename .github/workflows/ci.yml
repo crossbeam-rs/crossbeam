@@ -75,7 +75,8 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Rust
         run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
-      - uses: taiki-e/install-action@cargo-hack
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
       - name: Check features
         run: ./ci/check-features.sh
 
@@ -86,7 +87,8 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Rust
         run: rustup update nightly && rustup default nightly
-      - uses: taiki-e/install-action@cargo-hack
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
       - name: dependency tree check
         run: ./ci/dependencies.sh
 
@@ -104,7 +106,7 @@ jobs:
       - run: git diff --exit-code
 
   # Check formatting.
-  rustfmt:
+  fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -143,6 +145,18 @@ jobs:
       - name: Run sanitizers
         run: ./ci/san.sh
 
+  # Run tests with valgrind.
+  valgrind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update stable
+      - name: Install valgrind
+        uses: taiki-e/install-action@valgrind
+      - name: valgrind
+        run: ./ci/valgrind.sh
+
   # Run loom tests.
   loom:
     runs-on: ubuntu-latest
@@ -177,10 +191,11 @@ jobs:
       - features
       - dependencies
       - codegen
-      - rustfmt
+      - fmt
       - clippy
       - miri
       - san
+      - valgrind
       - loom
       - docs
     runs-on: ubuntu-latest
