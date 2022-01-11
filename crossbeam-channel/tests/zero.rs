@@ -187,9 +187,9 @@ fn send_timeout() {
 
 #[test]
 fn len() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 25_000;
 
     let (s, r) = bounded(0);
@@ -252,9 +252,9 @@ fn disconnect_wakes_receiver() {
 
 #[test]
 fn spsc() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 100_000;
 
     let (s, r) = bounded(0);
@@ -277,9 +277,9 @@ fn spsc() {
 
 #[test]
 fn mpmc() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
@@ -312,9 +312,9 @@ fn mpmc() {
 
 #[test]
 fn stress_oneshot() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     for _ in 0..COUNT {
@@ -444,9 +444,9 @@ fn drops() {
 
 #[test]
 fn fairness() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded::<()>(0);
@@ -478,9 +478,9 @@ fn fairness() {
 
 #[test]
 fn fairness_duplicates() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s, r) = bounded::<()>(0);
@@ -539,9 +539,9 @@ fn recv_in_send() {
 
 #[test]
 fn channel_through_channel() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 1000;
 
     type T = Box<dyn Any + Send>;

@@ -46,9 +46,9 @@ fn is_empty() {
 
 #[test]
 fn spsc() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 500;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 100_000;
 
     let q = Injector::new();
@@ -76,9 +76,9 @@ fn spsc() {
 
 #[test]
 fn mpmc() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 500;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
@@ -117,9 +117,9 @@ fn mpmc() {
 #[test]
 fn stampede() {
     const THREADS: usize = 8;
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 500;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 50_000;
 
     let q = Injector::new();
@@ -161,9 +161,9 @@ fn stampede() {
 #[test]
 fn stress() {
     const THREADS: usize = 8;
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 500;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 50_000;
 
     let q = Injector::new();

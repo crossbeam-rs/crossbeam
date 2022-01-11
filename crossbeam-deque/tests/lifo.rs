@@ -71,9 +71,9 @@ fn is_empty() {
 
 #[test]
 fn spsc() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const STEPS: usize = 500;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const STEPS: usize = 50_000;
 
     let w = Worker::new_lifo();
@@ -103,9 +103,9 @@ fn spsc() {
 #[test]
 fn stampede() {
     const THREADS: usize = 8;
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 500;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 50_000;
 
     let w = Worker::new_lifo();
@@ -147,9 +147,9 @@ fn stampede() {
 #[test]
 fn stress() {
     const THREADS: usize = 8;
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 500;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 50_000;
 
     let w = Worker::new_lifo();

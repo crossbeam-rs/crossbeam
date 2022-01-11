@@ -487,9 +487,9 @@ fn panic_receiver() {
 
 #[test]
 fn stress_recv() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = unbounded();
@@ -523,9 +523,9 @@ fn stress_recv() {
 
 #[test]
 fn stress_send() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded(0);
@@ -556,9 +556,9 @@ fn stress_send() {
 
 #[test]
 fn stress_mixed() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded(0);
@@ -692,9 +692,9 @@ fn matching_with_leftover() {
 
 #[test]
 fn channel_through_channel() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 1000;
 
     type T = Box<dyn Any + Send>;
@@ -740,9 +740,9 @@ fn channel_through_channel() {
 
 #[test]
 fn linearizable_default() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 100_000;
 
     for step in 0..2 {
@@ -787,9 +787,9 @@ fn linearizable_default() {
 
 #[test]
 fn linearizable_timeout() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 100_000;
 
     for step in 0..2 {
@@ -834,9 +834,9 @@ fn linearizable_timeout() {
 
 #[test]
 fn fairness1() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded::<()>(COUNT);
@@ -861,9 +861,9 @@ fn fairness1() {
 
 #[test]
 fn fairness2() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = unbounded::<()>();
@@ -901,9 +901,9 @@ fn fairness2() {
 
 #[test]
 fn fairness_recv() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded::<()>(COUNT);
@@ -926,9 +926,9 @@ fn fairness_recv() {
 
 #[test]
 fn fairness_send() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, _r1) = bounded::<()>(COUNT);

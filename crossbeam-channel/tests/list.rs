@@ -239,9 +239,9 @@ fn disconnect_wakes_receiver() {
 
 #[test]
 fn spsc() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 100_000;
 
     let (s, r) = unbounded();
@@ -264,9 +264,9 @@ fn spsc() {
 
 #[test]
 fn mpmc() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
@@ -301,9 +301,9 @@ fn mpmc() {
 
 #[test]
 fn stress_oneshot() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     for _ in 0..COUNT {
@@ -319,9 +319,9 @@ fn stress_oneshot() {
 
 #[test]
 fn stress_iter() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 100_000;
 
     let (request_s, request_r) = unbounded();
@@ -436,9 +436,9 @@ fn drops() {
 
 #[test]
 fn linearizable() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
@@ -459,9 +459,9 @@ fn linearizable() {
 
 #[test]
 fn fairness() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = unbounded::<()>();
@@ -484,9 +484,9 @@ fn fairness() {
 
 #[test]
 fn fairness_duplicates() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 10_000;
 
     let (s, r) = unbounded();
@@ -520,9 +520,9 @@ fn recv_in_send() {
 
 #[test]
 fn channel_through_channel() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 1000;
 
     type T = Box<dyn Any + Send>;

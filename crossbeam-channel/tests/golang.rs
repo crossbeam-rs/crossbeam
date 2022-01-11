@@ -234,9 +234,9 @@ macro_rules! go {
 mod doubleselect {
     use super::*;
 
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const ITERATIONS: i32 = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const ITERATIONS: i32 = 10_000;
 
     fn sender(n: i32, c1: Chan<i32>, c2: Chan<i32>, c3: Chan<i32>, c4: Chan<i32>) {
@@ -696,9 +696,9 @@ mod select {
 mod select2 {
     use super::*;
 
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const N: i32 = 1000;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const N: i32 = 100000;
 
     #[test]
@@ -924,9 +924,9 @@ mod chan_test {
 
     #[test]
     fn test_chan() {
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const N: i32 = 20;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const N: i32 = 200;
 
         for cap in 0..N {
@@ -1066,9 +1066,9 @@ mod chan_test {
 
     #[test]
     fn test_nonblock_recv_race() {
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const N: usize = 100;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const N: usize = 1000;
 
         for _ in 0..N {
@@ -1090,9 +1090,9 @@ mod chan_test {
 
     #[test]
     fn test_nonblock_select_race() {
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const N: usize = 100;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const N: usize = 1000;
 
         let done = make::<bool>(1);
@@ -1126,9 +1126,9 @@ mod chan_test {
 
     #[test]
     fn test_nonblock_select_race2() {
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const N: usize = 100;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const N: usize = 1000;
 
         let done = make::<bool>(1);
@@ -1165,9 +1165,9 @@ mod chan_test {
         // Ensure that send/recv on the same chan in select
         // does not crash nor deadlock.
 
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const N: usize = 100;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const N: usize = 1000;
 
         for &cap in &[0, 10] {
@@ -1208,9 +1208,9 @@ mod chan_test {
 
     #[test]
     fn test_select_stress() {
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const N: usize = 100;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const N: usize = 10000;
 
         let c = vec![
@@ -1317,9 +1317,9 @@ mod chan_test {
 
     #[test]
     fn test_select_fairness() {
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const TRIALS: usize = 100;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const TRIALS: usize = 10000;
 
         let c1 = make::<u8>(TRIALS + 1);
@@ -1403,9 +1403,9 @@ mod chan_test {
 
     #[test]
     fn test_pseudo_random_send() {
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const N: usize = 20;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const N: usize = 100;
 
         for cap in 0..N {
@@ -1449,9 +1449,9 @@ mod chan_test {
     #[test]
     fn test_multi_consumer() {
         const NWORK: usize = 23;
-        #[cfg(miri)]
+        #[cfg(reduce_test_iterations)]
         const NITER: usize = 100;
-        #[cfg(not(miri))]
+        #[cfg(not(reduce_test_iterations))]
         const NITER: usize = 271828;
 
         let pn = [2, 3, 7, 11, 13, 17, 19, 23, 27, 31];
@@ -1550,9 +1550,9 @@ mod chan1 {
     use super::*;
 
     // sent messages
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const N: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const N: usize = 1000;
     // receiving "goroutines"
     const M: usize = 10;

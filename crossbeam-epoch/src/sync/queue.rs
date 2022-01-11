@@ -259,9 +259,9 @@ mod test {
         }
     }
 
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const CONC_COUNT: i64 = 1000;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const CONC_COUNT: i64 = 1000000;
 
     #[test]

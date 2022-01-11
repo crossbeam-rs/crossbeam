@@ -21,9 +21,9 @@ fn smoke() {
 #[test]
 fn frob() {
     const N: u32 = 10;
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const M: usize = 100;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const M: usize = 1000;
 
     let r = Arc::new(ShardedLock::new(()));

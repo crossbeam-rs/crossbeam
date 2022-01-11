@@ -235,9 +235,9 @@ fn drops() {
 
 #[test]
 fn linearizable() {
-    #[cfg(miri)]
+    #[cfg(reduce_test_iterations)]
     const COUNT: usize = 500;
-    #[cfg(not(miri))]
+    #[cfg(not(reduce_test_iterations))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
