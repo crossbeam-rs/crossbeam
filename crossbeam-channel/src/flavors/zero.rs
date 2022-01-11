@@ -17,7 +17,7 @@ use crate::utils::Spinlock;
 use crate::waker::Waker;
 
 /// A pointer to a packet.
-pub struct ZeroToken(*mut ());
+pub(crate) struct ZeroToken(*mut ());
 
 impl Default for ZeroToken {
     fn default() -> Self {

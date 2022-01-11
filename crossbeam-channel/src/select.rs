@@ -22,12 +22,13 @@ use crate::utils;
 // This is a private API that is used by the select macro.
 #[derive(Debug, Default)]
 pub struct Token {
-    pub at: flavors::at::AtToken,
-    pub array: flavors::array::ArrayToken,
-    pub list: flavors::list::ListToken,
-    pub never: flavors::never::NeverToken,
-    pub tick: flavors::tick::TickToken,
-    pub zero: flavors::zero::ZeroToken,
+    pub(crate) at: flavors::at::AtToken,
+    pub(crate) array: flavors::array::ArrayToken,
+    pub(crate) list: flavors::list::ListToken,
+    #[allow(dead_code)]
+    pub(crate) never: flavors::never::NeverToken,
+    pub(crate) tick: flavors::tick::TickToken,
+    pub(crate) zero: flavors::zero::ZeroToken,
 }
 
 /// Identifier associated with an operation by a specific thread on a specific channel.
