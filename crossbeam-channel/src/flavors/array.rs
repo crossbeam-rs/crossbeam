@@ -33,7 +33,7 @@ struct Slot<T> {
 
 /// The token type for the array flavor.
 #[derive(Debug)]
-pub struct ArrayToken {
+pub(crate) struct ArrayToken {
     /// Slot to read from or write to.
     slot: *const u8,
 

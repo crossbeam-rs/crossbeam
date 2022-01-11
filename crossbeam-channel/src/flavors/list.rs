@@ -126,7 +126,7 @@ struct Position<T> {
 
 /// The token type for the list flavor.
 #[derive(Debug)]
-pub struct ListToken {
+pub(crate) struct ListToken {
     /// The block of slots.
     block: *const u8,
 
