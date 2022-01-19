@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
-use core::mem::{self, MaybeUninit};
+use core::mem::MaybeUninit;
 use core::ptr;
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
