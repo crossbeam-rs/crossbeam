@@ -13,7 +13,7 @@ mod unbounded {
 
     #[bench]
     fn create(b: &mut Bencher) {
-        b.iter(|| unbounded::<i32>());
+        b.iter(unbounded::<i32>);
     }
 
     #[bench]

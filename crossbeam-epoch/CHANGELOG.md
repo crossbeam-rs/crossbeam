@@ -1,12 +1,16 @@
+# Version 0.9.6
+
+- Add `Atomic::fetch_update`. (#706)
+
 # Version 0.9.5
 
-- Fix UB in `Pointable` impl of `[MaybeUninit<T>]` (#694)
-- Support targets that do not have atomic CAS on stable Rust (#698)
-- Fix breakage with nightly feature due to rust-lang/rust#84510 (#692)
+- Fix UB in `Pointable` impl of `[MaybeUninit<T>]`. (#694)
+- Support targets that do not have atomic CAS on stable Rust. (#698)
+- Fix breakage with nightly feature due to rust-lang/rust#84510. (#692)
 
 # Version 0.9.4
 
-- Fix UB in `<[MaybeUninit<T>] as Pointable>::init` when global allocator failed allocation (#690)
+- Fix UB in `<[MaybeUninit<T>] as Pointable>::init` when global allocator failed allocation. (#690)
 - Bump `loom` dependency to version 0.5. (#686)
 
 # Version 0.9.3

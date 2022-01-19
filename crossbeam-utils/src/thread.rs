@@ -446,7 +446,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
                     unsafe { mem::transmute(closure) };
 
                 // Finally, spawn the closure.
-                self.builder.spawn(move || closure())?
+                self.builder.spawn(closure)?
             };
 
             let thread = handle.thread().clone();

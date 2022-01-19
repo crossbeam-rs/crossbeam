@@ -1,5 +1,7 @@
 //! Tests for the array channel flavor.
 
+#![cfg(not(miri))] // TODO: many assertions failed due to Miri is slow
+
 use std::any::Any;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -43,38 +45,38 @@ fn len_empty_full() {
     let (s, r) = bounded(2);
 
     assert_eq!(s.len(), 0);
-    assert_eq!(s.is_empty(), true);
-    assert_eq!(s.is_full(), false);
+    assert!(s.is_empty());
+    assert!(!s.is_full());
     assert_eq!(r.len(), 0);
-    assert_eq!(r.is_empty(), true);
-    assert_eq!(r.is_full(), false);
+    assert!(r.is_empty());
+    assert!(!r.is_full());
 
     s.send(()).unwrap();
 
     assert_eq!(s.len(), 1);
-    assert_eq!(s.is_empty(), false);
-    assert_eq!(s.is_full(), false);
+    assert!(!s.is_empty());
+    assert!(!s.is_full());
     assert_eq!(r.len(), 1);
-    assert_eq!(r.is_empty(), false);
-    assert_eq!(r.is_full(), false);
+    assert!(!r.is_empty());
+    assert!(!r.is_full());
 
     s.send(()).unwrap();
 
     assert_eq!(s.len(), 2);
-    assert_eq!(s.is_empty(), false);
-    assert_eq!(s.is_full(), true);
+    assert!(!s.is_empty());
+    assert!(s.is_full());
     assert_eq!(r.len(), 2);
-    assert_eq!(r.is_empty(), false);
-    assert_eq!(r.is_full(), true);
+    assert!(!r.is_empty());
+    assert!(r.is_full());
 
     r.recv().unwrap();
 
     assert_eq!(s.len(), 1);
-    assert_eq!(s.is_empty(), false);
-    assert_eq!(s.is_full(), false);
+    assert!(!s.is_empty());
+    assert!(!s.is_full());
     assert_eq!(r.len(), 1);
-    assert_eq!(r.is_empty(), false);
-    assert_eq!(r.is_full(), false);
+    assert!(!r.is_empty());
+    assert!(!r.is_full());
 }
 
 #[test]

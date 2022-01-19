@@ -104,7 +104,7 @@ impl<T> ArrayQueue<T> {
         // Allocate a buffer of `cap` slots initialized
         // with stamps.
         let buffer = {
-            let mut boxed: Box<[Slot<T>]> = (0..cap)
+            let boxed: Box<[Slot<T>]> = (0..cap)
                 .map(|i| {
                     // Set the stamp to `{ lap: 0, index: i }`.
                     Slot {
@@ -113,9 +113,7 @@ impl<T> ArrayQueue<T> {
                     }
                 })
                 .collect();
-            let ptr = boxed.as_mut_ptr();
-            mem::forget(boxed);
-            ptr
+            Box::into_raw(boxed) as *mut Slot<T>
         };
 
         // One lap is the smallest power of two greater than `cap`.

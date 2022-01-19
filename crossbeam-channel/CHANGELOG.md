@@ -1,3 +1,7 @@
+# Version 0.5.2
+
+- Fix stacked borrows violations. (#763, #764)
+
 # Version 0.5.1
 
 - Fix memory leak in unbounded channel. (#669)

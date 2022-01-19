@@ -1,6 +1,7 @@
 //! Tests for the `select!` macro.
 
 #![forbid(unsafe_code)] // select! is safe.
+#![allow(clippy::drop_copy, clippy::match_single_binding)]
 
 use std::any::Any;
 use std::cell::Cell;
@@ -283,6 +284,7 @@ fn both_ready() {
     .unwrap();
 }
 
+#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn loop_try() {
     const RUNS: usize = 20;
@@ -485,6 +487,9 @@ fn panic_receiver() {
 
 #[test]
 fn stress_recv() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = unbounded();
@@ -518,6 +523,9 @@ fn stress_recv() {
 
 #[test]
 fn stress_send() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded(0);
@@ -548,6 +556,9 @@ fn stress_send() {
 
 #[test]
 fn stress_mixed() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded(0);
@@ -681,6 +692,9 @@ fn matching_with_leftover() {
 
 #[test]
 fn channel_through_channel() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 1000;
 
     type T = Box<dyn Any + Send>;
@@ -726,6 +740,9 @@ fn channel_through_channel() {
 
 #[test]
 fn linearizable_default() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
     for step in 0..2 {
@@ -770,6 +787,9 @@ fn linearizable_default() {
 
 #[test]
 fn linearizable_timeout() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
     for step in 0..2 {
@@ -814,6 +834,9 @@ fn linearizable_timeout() {
 
 #[test]
 fn fairness1() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded::<()>(COUNT);
@@ -838,6 +861,9 @@ fn fairness1() {
 
 #[test]
 fn fairness2() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = unbounded::<()>();
@@ -875,6 +901,9 @@ fn fairness2() {
 
 #[test]
 fn fairness_recv() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded::<()>(COUNT);
@@ -897,6 +926,9 @@ fn fairness_recv() {
 
 #[test]
 fn fairness_send() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s1, _r1) = bounded::<()>(COUNT);
@@ -912,6 +944,7 @@ fn fairness_send() {
     assert!(hits.iter().all(|x| *x >= COUNT / 4));
 }
 
+#[allow(clippy::or_fun_call)] // This is intentional.
 #[test]
 fn references() {
     let (s, r) = unbounded::<i32>();
@@ -958,6 +991,7 @@ fn case_blocks() {
     drop(s);
 }
 
+#[allow(clippy::redundant_closure_call)] // This is intentional.
 #[test]
 fn move_handles() {
     let (s, r) = unbounded::<i32>();

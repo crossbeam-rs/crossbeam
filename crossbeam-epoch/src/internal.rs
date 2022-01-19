@@ -101,7 +101,7 @@ impl Bag {
 
     /// Seals the bag with the given epoch.
     fn seal(self, epoch: Epoch) -> SealedBag {
-        SealedBag { epoch, bag: self }
+        SealedBag { epoch, _bag: self }
     }
 }
 
@@ -216,7 +216,7 @@ fn no_op_func() {}
 #[derive(Default, Debug)]
 struct SealedBag {
     epoch: Epoch,
-    bag: Bag,
+    _bag: Bag,
 }
 
 /// It is safe to share `SealedBag` because `is_expired` only inspects the epoch.
@@ -311,7 +311,7 @@ impl Global {
         // TODO(stjepang): `Local`s are stored in a linked list because linked lists are fairly
         // easy to implement in a lock-free manner. However, traversal can be slow due to cache
         // misses and data dependencies. We should experiment with other data structures as well.
-        for local in self.locals.iter(&guard) {
+        for local in self.locals.iter(guard) {
             match local {
                 Err(IterError::Stalled) => {
                     // A concurrent thread stalled this iteration. That thread might also try to

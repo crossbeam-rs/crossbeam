@@ -254,6 +254,39 @@ where
         Entry::new(self.inner.get_or_insert(key, value, guard))
     }
 
+    /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist,
+    /// where value is calculated with a function.
+    ///
+    ///
+    /// <b>Note:</b> Another thread may write key value first, leading to the result of this closure
+    /// discarded. If closure is modifying some other state (such as shared counters or shared
+    /// objects), it may lead to <u>undesired behaviour</u> such as counters being changed without
+    /// result of closure inserted
+    ////
+    /// This function returns an [`Entry`] which
+    /// can be used to access the key's associated value.
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let ages = SkipMap::new();
+    /// let gates_age = ages.get_or_insert_with("Bill Gates", || 64);
+    /// assert_eq!(*gates_age.value(), 64);
+    ///
+    /// ages.insert("Steve Jobs", 65);
+    /// let jobs_age = ages.get_or_insert_with("Steve Jobs", || -1);
+    /// assert_eq!(*jobs_age.value(), 65);
+    /// ```
+    pub fn get_or_insert_with<F>(&self, key: K, value_fn: F) -> Entry<'_, K, V>
+    where
+        F: FnOnce() -> V,
+    {
+        let guard = &epoch::pin();
+        Entry::new(self.inner.get_or_insert_with(key, value_fn, guard))
+    }
+
     /// Returns an iterator over all entries in the map,
     /// sorted by key.
     ///
@@ -649,6 +682,13 @@ impl<K, V> fmt::Debug for Iter<'_, K, V> {
     }
 }
 
+impl<'a, K, V> Drop for Iter<'a, K, V> {
+    fn drop(&mut self) {
+        let guard = &epoch::pin();
+        self.inner.drop_impl(guard);
+    }
+}
+
 /// An iterator over a subset of entries of a `SkipMap`.
 pub struct Range<'a, Q, R, K, V>
 where
@@ -698,5 +738,17 @@ where
             .field("head", &self.inner.head)
             .field("tail", &self.inner.tail)
             .finish()
+    }
+}
+
+impl<Q, R, K, V> Drop for Range<'_, Q, R, K, V>
+where
+    K: Ord + Borrow<Q>,
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized,
+{
+    fn drop(&mut self) {
+        let guard = &epoch::pin();
+        self.inner.drop_impl(guard);
     }
 }

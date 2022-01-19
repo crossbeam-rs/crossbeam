@@ -471,6 +471,21 @@ where
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
     pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
+        self.insert_internal(key, || value, false, guard)
+    }
+
+    /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist,
+    /// where value is calculated with a function.
+    ///
+    ///
+    /// <b>Note:</b> Another thread may write key value first, leading to the result of this closure
+    /// discarded. If closure is modifying some other state (such as shared counters or shared
+    /// objects), it may lead to <u>undesired behaviour</u> such as counters being changed without
+    /// result of closure inserted
+    pub fn get_or_insert_with<F>(&self, key: K, value: F, guard: &Guard) -> RefEntry<'_, K, V>
+    where
+        F: FnOnce() -> V,
+    {
         self.insert_internal(key, value, false, guard)
     }
 
@@ -831,13 +846,16 @@ where
     /// Inserts an entry with the specified `key` and `value`.
     ///
     /// If `replace` is `true`, then any existing entry with this key will first be removed.
-    fn insert_internal(
+    fn insert_internal<F>(
         &self,
         key: K,
-        value: V,
+        value: F,
         replace: bool,
         guard: &Guard,
-    ) -> RefEntry<'_, K, V> {
+    ) -> RefEntry<'_, K, V>
+    where
+        F: FnOnce() -> V,
+    {
         self.check_guard(guard);
 
         unsafe {
@@ -875,6 +893,9 @@ where
                     break;
                 }
             }
+
+            // create value before creating node, so extra allocation doesn't happen if value() function panics
+            let value = value();
 
             // Create a new node.
             let height = self.random_height();
@@ -1061,7 +1082,7 @@ where
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
     pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
-        self.insert_internal(key, value, true, guard)
+        self.insert_internal(key, || value, true, guard)
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
@@ -1137,6 +1158,8 @@ where
             if let Some(e) = e.pin() {
                 if e.remove(guard) {
                     return Some(e);
+                } else {
+                    e.release(guard);
                 }
             }
         }
@@ -1150,6 +1173,8 @@ where
             if let Some(e) = e.pin() {
                 if e.remove(guard) {
                     return Some(e);
+                } else {
+                    e.release(guard);
                 }
             }
         }
@@ -1687,53 +1712,68 @@ where
     /// Advances the iterator and returns the next value.
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
-        self.head = match self.head {
-            Some(ref e) => {
-                let next_head = e.next(guard);
+        let next_head = match &self.head {
+            Some(e) => e.next(guard),
+            None => try_pin_loop(|| self.parent.front(guard)),
+        };
+        match (&next_head, &self.tail) {
+            // The next key is larger than the latest tail key we observed with this iterator.
+            (Some(ref next), &Some(ref t)) if next.key() >= t.key() => {
                 unsafe {
-                    e.node.decrement(guard);
+                    next.node.decrement(guard);
+                }
+                None
+            }
+            (Some(_), _) => {
+                if let Some(e) = mem::replace(&mut self.head, next_head.clone()) {
+                    unsafe {
+                        e.node.decrement(guard);
+                    }
                 }
                 next_head
             }
-            None => try_pin_loop(|| self.parent.front(guard)),
-        };
-        let mut finished = false;
-        if let (&Some(ref h), &Some(ref t)) = (&self.head, &self.tail) {
-            if h.key() >= t.key() {
-                finished = true;
-            }
+            (None, _) => None,
         }
-        if finished {
-            self.head = None;
-            self.tail = None;
-        }
-        self.head.clone()
     }
 
     /// Removes and returns an element from the end of the iterator.
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
-        self.tail = match self.tail {
-            Some(ref e) => {
-                let next_tail = e.prev(guard);
+        let next_tail = match &self.tail {
+            Some(e) => e.prev(guard),
+            None => try_pin_loop(|| self.parent.back(guard)),
+        };
+        match (&self.head, &next_tail) {
+            // The prev key is smaller than the latest head key we observed with this iterator.
+            (&Some(ref h), Some(next)) if h.key() >= next.key() => {
                 unsafe {
-                    e.node.decrement(guard);
+                    next.node.decrement(guard);
+                }
+                None
+            }
+            (_, Some(_)) => {
+                if let Some(e) = mem::replace(&mut self.tail, next_tail.clone()) {
+                    unsafe {
+                        e.node.decrement(guard);
+                    }
                 }
                 next_tail
             }
-            None => try_pin_loop(|| self.parent.back(guard)),
-        };
-        let mut finished = false;
-        if let (&Some(ref h), &Some(ref t)) = (&self.head, &self.tail) {
-            if h.key() >= t.key() {
-                finished = true;
-            }
+            (_, None) => None,
         }
-        if finished {
-            self.head = None;
-            self.tail = None;
+    }
+}
+
+impl<'a, K: 'a, V: 'a> RefIter<'a, K, V> {
+    /// Decrements the reference count of `RefEntry` owned by the iterator.
+    pub fn drop_impl(&mut self, guard: &Guard) {
+        self.parent.check_guard(guard);
+        if let Some(e) = mem::replace(&mut self.head, None) {
+            unsafe { e.node.decrement(guard) };
         }
-        self.tail.clone()
+        if let Some(e) = mem::replace(&mut self.tail, None) {
+            unsafe { e.node.decrement(guard) };
+        }
     }
 }
 
@@ -1797,7 +1837,7 @@ where
         self.tail = match self.tail {
             Some(n) => self
                 .parent
-                .search_bound(Bound::Excluded(&n.key.borrow()), true, self.guard),
+                .search_bound(Bound::Excluded(n.key.borrow()), true, self.guard),
             None => self
                 .parent
                 .search_bound(self.range.end_bound(), true, self.guard),
@@ -1891,67 +1931,66 @@ where
     /// Advances the iterator and returns the next value.
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
-        self.head = match self.head {
-            Some(ref e) => {
-                let next_head = e.next(guard);
-                unsafe {
-                    e.node.decrement(guard);
-                }
-                next_head
-            }
+        let next_head = match self.head {
+            Some(ref e) => e.next(guard),
             None => try_pin_loop(|| self.parent.lower_bound(self.range.start_bound(), guard)),
         };
-        let mut finished = false;
-        if let Some(ref h) = self.head {
+
+        if let Some(ref h) = next_head {
             let bound = match self.tail {
                 Some(ref t) => Bound::Excluded(t.key().borrow()),
                 None => self.range.end_bound(),
             };
-            if !below_upper_bound(&bound, h.key().borrow()) {
-                finished = true;
+            if below_upper_bound(&bound, h.key().borrow()) {
+                self.head = next_head.clone();
+                next_head
+            } else {
                 unsafe {
                     h.node.decrement(guard);
                 }
+                None
             }
+        } else {
+            None
         }
-        if finished {
-            self.head = None;
-            self.tail = None;
-        }
-        self.head.clone()
     }
 
     /// Removes and returns an element from the end of the iterator.
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
         self.parent.check_guard(guard);
-        self.tail = match self.tail {
-            Some(ref e) => {
-                let next_tail = e.prev(guard);
-                unsafe {
-                    e.node.decrement(guard);
-                }
-                next_tail
-            }
-            None => try_pin_loop(|| self.parent.upper_bound(self.range.start_bound(), guard)),
+        let next_tail = match self.tail {
+            Some(ref e) => e.prev(guard),
+            None => try_pin_loop(|| self.parent.upper_bound(self.range.end_bound(), guard)),
         };
-        let mut finished = false;
-        if let Some(ref t) = self.tail {
+
+        if let Some(ref t) = next_tail {
             let bound = match self.head {
                 Some(ref h) => Bound::Excluded(h.key().borrow()),
-                None => self.range.end_bound(),
+                None => self.range.start_bound(),
             };
-            if !above_lower_bound(&bound, t.key().borrow()) {
-                finished = true;
+            if above_lower_bound(&bound, t.key().borrow()) {
+                self.tail = next_tail.clone();
+                next_tail
+            } else {
                 unsafe {
                     t.node.decrement(guard);
                 }
+                None
             }
+        } else {
+            None
         }
-        if finished {
-            self.head = None;
-            self.tail = None;
+    }
+
+    /// Decrements a reference count owned by this iterator.
+    pub fn drop_impl(&mut self, guard: &Guard) {
+        self.parent.check_guard(guard);
+        if let Some(e) = mem::replace(&mut self.head, None) {
+            unsafe { e.node.decrement(guard) };
         }
-        self.tail.clone()
+        if let Some(e) = mem::replace(&mut self.tail, None) {
+            unsafe { e.node.decrement(guard) };
+        }
     }
 }
 

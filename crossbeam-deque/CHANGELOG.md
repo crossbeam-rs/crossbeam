@@ -1,3 +1,8 @@
+# Version 0.8.1
+
+- Fix deque steal race condition. (#726)
+- Add `Stealer::len` method. (#708)
+
 # Version 0.8.0
 
 - Bump the minimum supported Rust version to 1.36.

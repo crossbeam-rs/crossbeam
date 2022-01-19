@@ -1,3 +1,5 @@
+#![allow(clippy::mutex_atomic)]
+
 use std::{iter, ops::Bound, sync::Barrier};
 
 use crossbeam_skiplist::SkipMap;
@@ -124,6 +126,40 @@ fn concurrent_remove() {
 }
 
 #[test]
+fn next_memory_leak() {
+    let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+    let mut iter = map.iter();
+    let e = iter.next_back();
+    assert!(e.is_some());
+    let e = iter.next();
+    assert!(e.is_none());
+    map.remove(&1);
+}
+
+#[test]
+fn next_back_memory_leak() {
+    let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+    map.insert(1, 1);
+    let mut iter = map.iter();
+    let e = iter.next();
+    assert!(e.is_some());
+    let e = iter.next_back();
+    assert!(e.is_none());
+    map.remove(&1);
+}
+
+#[test]
+fn range_next_memory_leak() {
+    let map: SkipMap<i32, i32> = iter::once((1, 1)).collect();
+    let mut iter = map.range(0..);
+    let e = iter.next();
+    assert!(e.is_some());
+    let e = iter.next_back();
+    assert!(e.is_none());
+    map.remove(&1);
+}
+
+#[test]
 fn entry() {
     let s = SkipMap::new();
 
@@ -147,6 +183,59 @@ fn entry() {
     assert_eq!(*e.key(), 11);
 }
 
+#[test]
+fn ordered_iter() {
+    let s: SkipMap<i32, i32> = SkipMap::new();
+    s.insert(1, 1);
+
+    let mut iter = s.iter();
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    s.insert(2, 2);
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    s.insert(3, 3);
+    s.insert(4, 4);
+    s.insert(5, 5);
+    assert_eq!(*iter.next_back().unwrap().key(), 5);
+    assert_eq!(*iter.next().unwrap().key(), 3);
+    assert_eq!(*iter.next_back().unwrap().key(), 4);
+    assert!(iter.next().is_none());
+    assert!(iter.next_back().is_none());
+    assert!(iter.next().is_none());
+    assert!(iter.next_back().is_none());
+}
+
+#[test]
+fn ordered_range() {
+    let s: SkipMap<i32, i32> = SkipMap::new();
+    s.insert(1, 1);
+
+    let mut iter = s.range(0..);
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    s.insert(2, 2);
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    s.insert(3, 3);
+    s.insert(4, 4);
+    s.insert(5, 5);
+    assert_eq!(*iter.next_back().unwrap().key(), 5);
+    assert_eq!(*iter.next().unwrap().key(), 3);
+    assert_eq!(*iter.next_back().unwrap().key(), 4);
+    assert!(iter.next().is_none());
+    assert!(iter.next_back().is_none());
+    assert!(iter.next().is_none());
+    assert!(iter.next_back().is_none());
+}
 #[test]
 fn entry_remove() {
     let s = SkipMap::new();
@@ -198,7 +287,7 @@ fn len() {
     assert_eq!(s.len(), 0);
 
     for (i, &x) in [4, 2, 12, 8, 7, 11, 5].iter().enumerate() {
-        s.insert(x, x * 1);
+        s.insert(x, x * 10);
         assert_eq!(s.len(), i + 1);
     }
 
@@ -371,6 +460,67 @@ fn get_or_insert() {
 }
 
 #[test]
+fn get_or_insert_with() {
+    let s = SkipMap::new();
+    s.insert(3, 3);
+    s.insert(5, 5);
+    s.insert(1, 1);
+    s.insert(4, 4);
+    s.insert(2, 2);
+
+    assert_eq!(*s.get(&4).unwrap().value(), 4);
+    assert_eq!(*s.insert(4, 40).value(), 40);
+    assert_eq!(*s.get(&4).unwrap().value(), 40);
+
+    assert_eq!(*s.get_or_insert_with(4, || 400).value(), 40);
+    assert_eq!(*s.get(&4).unwrap().value(), 40);
+    assert_eq!(*s.get_or_insert_with(6, || 600).value(), 600);
+}
+
+#[test]
+fn get_or_insert_with_panic() {
+    use std::panic;
+
+    let s = SkipMap::new();
+    let res = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        s.get_or_insert_with(4, || panic!());
+    }));
+    assert!(res.is_err());
+    assert!(s.is_empty());
+    assert_eq!(*s.get_or_insert_with(4, || 40).value(), 40);
+    assert_eq!(s.len(), 1);
+}
+
+#[test]
+fn get_or_insert_with_parallel_run() {
+    use std::sync::{Arc, Mutex};
+
+    let s = Arc::new(SkipMap::new());
+    let s2 = s.clone();
+    let called = Arc::new(Mutex::new(false));
+    let called2 = called.clone();
+    let handle = std::thread::spawn(move || {
+        assert_eq!(
+            *s2.get_or_insert_with(7, || {
+                *called2.lock().unwrap() = true;
+
+                // allow main thread to run before we return result
+                std::thread::sleep(std::time::Duration::from_secs(4));
+                70
+            })
+            .value(),
+            700
+        );
+    });
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // main thread writes the value first
+    assert_eq!(*s.get_or_insert(7, 700).value(), 700);
+    handle.join().unwrap();
+    assert!(*called.lock().unwrap());
+}
+
+#[test]
 fn get_next_prev() {
     let s = SkipMap::new();
     s.insert(3, 3);
@@ -468,6 +618,13 @@ fn iter_range() {
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+    );
+    assert_eq!(
+        s.range((Included(&0), Included(&60)))
+            .rev()
+            .map(|x| *x.value())
+            .collect::<Vec<_>>(),
+        vec![60, 50, 40, 30, 20, 10, 0]
     );
     assert_eq!(
         s.range((Excluded(&0), Unbounded))

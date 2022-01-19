@@ -1,7 +1,8 @@
 //! Thread-local context used in select.
 
 use std::cell::Cell;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::ptr;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
@@ -11,6 +12,7 @@ use crossbeam_utils::Backoff;
 use crate::select::Selected;
 
 /// Thread-local context used in select.
+// This is a private API that is used by the select macro.
 #[derive(Debug, Clone)]
 pub struct Context {
     inner: Arc<Inner>,
@@ -23,7 +25,7 @@ struct Inner {
     select: AtomicUsize,
 
     /// A slot into which another thread may store a pointer to its `Packet`.
-    packet: AtomicUsize,
+    packet: AtomicPtr<()>,
 
     /// Thread handle.
     thread: Thread,
@@ -45,7 +47,7 @@ impl Context {
         }
 
         let mut f = Some(f);
-        let mut f = move |cx: &Context| -> R {
+        let mut f = |cx: &Context| -> R {
             let f = f.take().unwrap();
             f(cx)
         };
@@ -69,7 +71,7 @@ impl Context {
         Context {
             inner: Arc::new(Inner {
                 select: AtomicUsize::new(Selected::Waiting.into()),
-                packet: AtomicUsize::new(0),
+                packet: AtomicPtr::new(ptr::null_mut()),
                 thread: thread::current(),
                 thread_id: thread::current().id(),
             }),
@@ -82,7 +84,7 @@ impl Context {
         self.inner
             .select
             .store(Selected::Waiting.into(), Ordering::Release);
-        self.inner.packet.store(0, Ordering::Release);
+        self.inner.packet.store(ptr::null_mut(), Ordering::Release);
     }
 
     /// Attempts to select an operation.
@@ -112,19 +114,19 @@ impl Context {
     ///
     /// This method must be called after `try_select` succeeds and there is a packet to provide.
     #[inline]
-    pub fn store_packet(&self, packet: usize) {
-        if packet != 0 {
+    pub fn store_packet(&self, packet: *mut ()) {
+        if !packet.is_null() {
             self.inner.packet.store(packet, Ordering::Release);
         }
     }
 
     /// Waits until a packet is provided and returns it.
     #[inline]
-    pub fn wait_packet(&self) -> usize {
+    pub fn wait_packet(&self) -> *mut () {
         let backoff = Backoff::new();
         loop {
             let packet = self.inner.packet.load(Ordering::Acquire);
-            if packet != 0 {
+            if !packet.is_null() {
                 return packet;
             }
             backoff.snooze();
