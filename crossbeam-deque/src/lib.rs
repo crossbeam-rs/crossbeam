@@ -95,6 +95,7 @@
     rust_2018_idioms,
     unreachable_pub
 )]
+#![allow(clippy::question_mark)] // https://github.com/rust-lang/rust-clippy/issues/8281
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use cfg_if::cfg_if;
