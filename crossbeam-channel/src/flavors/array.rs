@@ -9,7 +9,6 @@
 //!   - <https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub>
 
 use std::cell::UnsafeCell;
-use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::atomic::{self, AtomicUsize, Ordering};
@@ -72,7 +71,7 @@ pub(crate) struct Channel<T> {
     tail: CachePadded<AtomicUsize>,
 
     /// The buffer holding slots.
-    buffer: *mut Slot<T>,
+    buffer: Box<[Slot<T>]>,
 
     /// The channel capacity.
     cap: usize,
@@ -88,9 +87,6 @@ pub(crate) struct Channel<T> {
 
     /// Receivers waiting while the channel is empty and not disconnected.
     receivers: SyncWaker,
-
-    /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
-    _marker: PhantomData<T>,
 }
 
 impl<T> Channel<T> {
@@ -109,18 +105,15 @@ impl<T> Channel<T> {
 
         // Allocate a buffer of `cap` slots initialized
         // with stamps.
-        let buffer = {
-            let boxed: Box<[Slot<T>]> = (0..cap)
-                .map(|i| {
-                    // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
-                    Slot {
-                        stamp: AtomicUsize::new(i),
-                        msg: UnsafeCell::new(MaybeUninit::uninit()),
-                    }
-                })
-                .collect();
-            Box::into_raw(boxed) as *mut Slot<T>
-        };
+        let buffer: Box<[Slot<T>]> = (0..cap)
+            .map(|i| {
+                // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
+                Slot {
+                    stamp: AtomicUsize::new(i),
+                    msg: UnsafeCell::new(MaybeUninit::uninit()),
+                }
+            })
+            .collect();
 
         Channel {
             buffer,
@@ -131,7 +124,6 @@ impl<T> Channel<T> {
             tail: CachePadded::new(AtomicUsize::new(tail)),
             senders: SyncWaker::new(),
             receivers: SyncWaker::new(),
-            _marker: PhantomData,
         }
     }
 
@@ -163,7 +155,8 @@ impl<T> Channel<T> {
             let lap = tail & !(self.one_lap - 1);
 
             // Inspect the corresponding slot.
-            let slot = unsafe { &*self.buffer.add(index) };
+            debug_assert!(index < self.buffer.len());
+            let slot = unsafe { self.buffer.get_unchecked(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
             // If the tail and the stamp match, we may attempt to push.
@@ -245,7 +238,8 @@ impl<T> Channel<T> {
             let lap = head & !(self.one_lap - 1);
 
             // Inspect the corresponding slot.
-            let slot = unsafe { &*self.buffer.add(index) };
+            debug_assert!(index < self.buffer.len());
+            let slot = unsafe { self.buffer.get_unchecked(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
             // If the the stamp is ahead of the head by 1, we may attempt to pop.
@@ -540,22 +534,11 @@ impl<T> Drop for Channel<T> {
             };
 
             unsafe {
-                let p = {
-                    let slot = &mut *self.buffer.add(index);
-                    let msg = &mut *slot.msg.get();
-                    msg.as_mut_ptr()
-                };
-                p.drop_in_place();
+                debug_assert!(index < self.buffer.len());
+                let slot = self.buffer.get_unchecked_mut(index);
+                let msg = &mut *slot.msg.get();
+                msg.as_mut_ptr().drop_in_place();
             }
-        }
-
-        // Finally, deallocate the buffer, but don't run any destructors.
-        unsafe {
-            // Create a slice from the buffer to make
-            // a fat pointer. Then, use Box::from_raw
-            // to deallocate it.
-            let ptr = std::slice::from_raw_parts_mut(self.buffer, self.cap) as *mut [Slot<T>];
-            Box::from_raw(ptr);
         }
     }
 }
