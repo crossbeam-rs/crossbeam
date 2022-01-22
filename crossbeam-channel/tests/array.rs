@@ -1,7 +1,5 @@
 //! Tests for the array channel flavor.
 
-#![cfg(not(miri))] // TODO: many assertions failed due to Miri is slow
-
 use std::any::Any;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -254,7 +252,13 @@ fn recv_after_disconnect() {
 
 #[test]
 fn len() {
+    #[cfg(miri)]
+    const COUNT: usize = 250;
+    #[cfg(not(miri))]
     const COUNT: usize = 25_000;
+    #[cfg(miri)]
+    const CAP: usize = 100;
+    #[cfg(not(miri))]
     const CAP: usize = 1000;
 
     let (s, r) = bounded(CAP);
@@ -347,6 +351,9 @@ fn disconnect_wakes_receiver() {
 
 #[test]
 fn spsc() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
     let (s, r) = bounded(3);
@@ -369,6 +376,9 @@ fn spsc() {
 
 #[test]
 fn mpmc() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
@@ -401,6 +411,9 @@ fn mpmc() {
 
 #[test]
 fn stress_oneshot() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     for _ in 0..COUNT {
@@ -416,6 +429,9 @@ fn stress_oneshot() {
 
 #[test]
 fn stress_iter() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
     let (request_s, request_r) = bounded(1);
@@ -481,6 +497,7 @@ fn stress_timeout_two_threads() {
     .unwrap();
 }
 
+#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn drops() {
     const RUNS: usize = 100;
@@ -533,6 +550,9 @@ fn drops() {
 
 #[test]
 fn linearizable() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
 
@@ -553,6 +573,9 @@ fn linearizable() {
 
 #[test]
 fn fairness() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s1, r1) = bounded::<()>(COUNT);
@@ -575,6 +598,9 @@ fn fairness() {
 
 #[test]
 fn fairness_duplicates() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
     let (s, r) = bounded::<()>(COUNT);
@@ -619,6 +645,9 @@ fn recv_in_send() {
 
 #[test]
 fn channel_through_channel() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
     const COUNT: usize = 1000;
 
     type T = Box<dyn Any + Send>;
@@ -653,4 +682,57 @@ fn channel_through_channel() {
         });
     })
     .unwrap();
+}
+
+#[test]
+fn panic_on_drop() {
+    struct Msg1<'a>(&'a mut bool);
+    impl Drop for Msg1<'_> {
+        fn drop(&mut self) {
+            if *self.0 && !std::thread::panicking() {
+                panic!("double drop");
+            } else {
+                *self.0 = true;
+            }
+        }
+    }
+
+    struct Msg2<'a>(&'a mut bool);
+    impl Drop for Msg2<'_> {
+        fn drop(&mut self) {
+            if *self.0 {
+                panic!("double drop");
+            } else {
+                *self.0 = true;
+                panic!("first drop");
+            }
+        }
+    }
+
+    // normal
+    let (s, r) = bounded(2);
+    let (mut a, mut b) = (false, false);
+    s.send(Msg1(&mut a)).unwrap();
+    s.send(Msg1(&mut b)).unwrap();
+    drop(s);
+    drop(r);
+    assert!(a);
+    assert!(b);
+
+    // panic on drop
+    let (s, r) = bounded(2);
+    let (mut a, mut b) = (false, false);
+    s.send(Msg2(&mut a)).unwrap();
+    s.send(Msg2(&mut b)).unwrap();
+    drop(s);
+    let res = std::panic::catch_unwind(move || {
+        drop(r);
+    });
+    assert_eq!(
+        *res.unwrap_err().downcast_ref::<&str>().unwrap(),
+        "first drop"
+    );
+    assert!(a);
+    // Elements after the panicked element will leak.
+    assert!(!b);
 }
