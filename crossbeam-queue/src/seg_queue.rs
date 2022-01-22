@@ -484,3 +484,62 @@ impl<T> Default for SegQueue<T> {
         SegQueue::new()
     }
 }
+
+impl<T> IntoIterator for SegQueue<T> {
+    type Item = T;
+
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { value: self }
+    }
+}
+
+#[derive(Debug)]
+pub struct IntoIter<T> {
+    value: SegQueue<T>,
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = &mut self.value;
+        let head = *value.head.index.get_mut();
+        let tail = *value.tail.index.get_mut();
+        if head >> SHIFT == tail >> SHIFT {
+            None
+        } else {
+            let block = *value.head.block.get_mut();
+            let offset = (head >> SHIFT) % LAP;
+
+            // SAFETY: We have mutable access to this, so we can read without
+            // worrying about concurrency. Furthermore, we know this is
+            // initialized because it is the value pointed at by `value.head`
+            // and this is a non-empty queue.
+            let item = unsafe {
+                let slot = (*block).slots.get_unchecked(offset);
+                let p = &mut *slot.value.get();
+                p.as_mut_ptr().read()
+            };
+            if offset + 1 == BLOCK_CAP {
+                // Deallocate the block and move to the next one.
+                // SAFETY: The block is initialized because we've been reading
+                // from it this entire time. We can drop it b/c everything has
+                // been read out of it, so nothing is pointing to it anymore.
+                unsafe {
+                    let next = *(*block).next.get_mut();
+                    drop(Box::from_raw(block));
+                    *value.head.block.get_mut() = next;
+                }
+                // The last value in a block is empty, so skip it
+                *value.head.index.get_mut() = head.wrapping_add(2 << SHIFT);
+                // Double-check that we're pointing to the first item in a block.
+                debug_assert_eq!((*value.head.index.get_mut() >> SHIFT) % LAP, 0);
+            } else {
+                *value.head.index.get_mut() = head.wrapping_add(1 << SHIFT);
+            }
+            Some(item)
+        }
+    }
+}
