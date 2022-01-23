@@ -279,7 +279,10 @@ fn issue_748() {
     }
 
     assert_eq!(mem::size_of::<Test>(), 8);
-    assert!(AtomicCell::<Test>::is_lock_free());
+    assert_eq!(
+        AtomicCell::<Test>::is_lock_free(),
+        cfg!(not(crossbeam_no_atomic_64))
+    );
     let x = AtomicCell::new(Test::FieldLess);
     assert_eq!(x.load(), Test::FieldLess);
 }
