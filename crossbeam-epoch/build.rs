@@ -1,9 +1,3 @@
-#![warn(rust_2018_idioms)]
-
-use std::env;
-
-include!("no_atomic.rs");
-
 // The rustc-cfg listed below are considered public API, but it is *unstable*
 // and outside of the normal semver guarantees:
 //
@@ -13,10 +7,15 @@ include!("no_atomic.rs");
 //      need to enable it manually when building for custom targets or using
 //      non-cargo build systems that don't run the build script.
 //
-// With the exceptions mentioned above, the rustc-cfg strings below are
-// *not* public API. Please let us know by opening a GitHub issue if your build
-// environment requires some way to enable these cfgs other than by executing
-// our build script.
+// With the exceptions mentioned above, the rustc-cfg emitted by the build
+// script are *not* public API.
+
+#![warn(rust_2018_idioms)]
+
+use std::env;
+
+include!("no_atomic.rs");
+
 fn main() {
     let target = match env::var("TARGET") {
         Ok(target) => target,
