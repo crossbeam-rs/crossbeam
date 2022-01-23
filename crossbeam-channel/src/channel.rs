@@ -1546,13 +1546,13 @@ pub mod reconnectable {
         pub fn new_sender(&self) -> Sender<T> {
             match &self.0.flavor {
                 ReceiverFlavor::Array(chan) => Sender {
-                    flavor: SenderFlavor::Array(chan.new_sender(|_| unreachable!())),
+                    flavor: SenderFlavor::Array(chan.new_sender(|_| todo!("but unreachable"))),
                 },
                 ReceiverFlavor::List(chan) => Sender {
                     flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())),
                 },
                 ReceiverFlavor::Zero(chan) => Sender {
-                    flavor: SenderFlavor::Zero(chan.new_sender(|_| unreachable!())),
+                    flavor: SenderFlavor::Zero(chan.new_sender(|_| todo!("but unreachable"))),
                 },
                 _ => unreachable!("This type cannot be built with at/never/tick"),
             }
