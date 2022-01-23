@@ -172,6 +172,14 @@ jobs:
       - name: docs
         run: ./ci/docs.sh
 
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install shellcheck
+        uses: taiki-e/install-action@shellcheck
+      - run: shellcheck $(git ls-files '*.sh')
+
   # This job doesn't actually test anything, but they're used to tell bors the
   # build completed, as there is no practical way to detect when a workflow is
   # successful listening to webhooks only.

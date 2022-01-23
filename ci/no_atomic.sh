@@ -1,14 +1,12 @@
 #!/bin/bash
+set -euo pipefail
+IFS=$'\n\t'
+cd "$(dirname "$0")"/..
 
 # Update the list of targets that do not support atomic/CAS operations.
 #
 # Usage:
 #    ./ci/no_atomic.sh
-
-set -euo pipefail
-IFS=$'\n\t'
-
-cd "$(cd "$(dirname "$0")" && pwd)"/..
 
 file="no_atomic.rs"
 
