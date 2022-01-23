@@ -1519,10 +1519,19 @@ pub mod reconnectable {
     // The intended usage of this module is just to replace any `use crossbeam_channel::...`
     // with `use crossbeam_channel::reconnectable::...` and have everything work out of the box.
 
-    use super::*;
-    pub use crate::*;
+    // note: these re-exports omit
+    // at, tick, never: cannot be supported
+    // bounded: may be added later in this module
+    pub use crate::channel::{IntoIter, Iter, TryIter};
+    pub use crate::err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
+    pub use crate::err::{RecvError, RecvTimeoutError, TryRecvError};
+    pub use crate::err::{SendError, SendTimeoutError, TrySendError};
+    pub use crate::select::{Select, SelectedOperation};
+    pub use crate::Sender;
 
     use super::Receiver as NormalReceiver;
+    use super::{ReceiverFlavor, SenderFlavor};
+    use std::ops::Deref;
 
     /// An [unbounded](super::unbounded) channel whose receiver
     /// also is reconnectable.
