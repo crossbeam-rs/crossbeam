@@ -265,6 +265,41 @@ fn const_atomic_cell_new() {
     assert_eq!(CELL.load(), 1);
 }
 
+// https://github.com/crossbeam-rs/crossbeam/pull/767
+macro_rules! test_arithmetic {
+    ($test_name:ident, $ty:ident) => {
+        #[test]
+        fn $test_name() {
+            let a: AtomicCell<$ty> = AtomicCell::new(7);
+
+            assert_eq!(a.fetch_add(3), 7);
+            assert_eq!(a.load(), 10);
+
+            assert_eq!(a.fetch_sub(3), 10);
+            assert_eq!(a.load(), 7);
+
+            assert_eq!(a.fetch_and(3), 7);
+            assert_eq!(a.load(), 3);
+
+            assert_eq!(a.fetch_or(16), 3);
+            assert_eq!(a.load(), 19);
+
+            assert_eq!(a.fetch_xor(2), 19);
+            assert_eq!(a.load(), 17);
+        }
+    };
+}
+test_arithmetic!(arithmetic_u8, u8);
+test_arithmetic!(arithmetic_i8, i8);
+test_arithmetic!(arithmetic_u16, u16);
+test_arithmetic!(arithmetic_i16, i16);
+test_arithmetic!(arithmetic_u32, u32);
+test_arithmetic!(arithmetic_i32, i32);
+test_arithmetic!(arithmetic_u64, u64);
+test_arithmetic!(arithmetic_i64, i64);
+test_arithmetic!(arithmetic_u128, u128);
+test_arithmetic!(arithmetic_i128, i128);
+
 // https://github.com/crossbeam-rs/crossbeam/issues/748
 #[cfg_attr(miri, ignore)] // TODO
 #[rustversion::since(1.37)] // #[repr(align(N))] requires Rust 1.37
@@ -279,7 +314,10 @@ fn issue_748() {
     }
 
     assert_eq!(mem::size_of::<Test>(), 8);
-    assert!(AtomicCell::<Test>::is_lock_free());
+    assert_eq!(
+        AtomicCell::<Test>::is_lock_free(),
+        cfg!(not(crossbeam_no_atomic_64))
+    );
     let x = AtomicCell::new(Test::FieldLess);
     assert_eq!(x.load(), Test::FieldLess);
 }
