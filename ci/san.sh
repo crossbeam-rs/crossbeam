@@ -1,7 +1,7 @@
 #!/bin/bash
-
+set -euxo pipefail
+IFS=$'\n\t'
 cd "$(dirname "$0")"/..
-set -ex
 
 if [[ "$OSTYPE" != "linux"* ]]; then
     exit 0
@@ -45,7 +45,7 @@ RUSTFLAGS="-Dwarnings -Zsanitizer=memory --cfg crossbeam_sanitize" \
 cargo test -Zbuild-std --all --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
 
 # Run thread sanitizer
-export TSAN_OPTIONS="suppressions=$(pwd)/ci/tsan"
 cargo clean
+TSAN_OPTIONS="suppressions=$(pwd)/ci/tsan" \
 RUSTFLAGS="-Dwarnings -Zsanitizer=thread --cfg crossbeam_sanitize" \
 cargo test -Zbuild-std --all --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1

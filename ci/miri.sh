@@ -1,7 +1,7 @@
 #!/bin/bash
-
+set -euxo pipefail
+IFS=$'\n\t'
 cd "$(dirname "$0")"/..
-set -ex
 
 MIRIFLAGS="-Zmiri-tag-raw-pointers" \
     cargo miri test \

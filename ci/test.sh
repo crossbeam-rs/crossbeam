@@ -1,11 +1,11 @@
 #!/bin/bash
-
+set -euxo pipefail
+IFS=$'\n\t'
 cd "$(dirname "$0")"/..
-set -ex
 
 export RUSTFLAGS="-D warnings"
 
-if [[ -n "$RUST_TARGET" ]]; then
+if [[ -n "${RUST_TARGET:-}" ]]; then
     # If RUST_TARGET is specified, use cross for testing.
     cross test --all --target "$RUST_TARGET" --exclude benchmarks -- --test-threads=1
 

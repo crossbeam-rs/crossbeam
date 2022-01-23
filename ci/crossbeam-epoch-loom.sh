@@ -1,7 +1,7 @@
 #!/bin/bash
-
+set -euxo pipefail
+IFS=$'\n\t'
 cd "$(dirname "$0")"/../crossbeam-epoch
-set -ex
 
 export RUSTFLAGS="-D warnings --cfg crossbeam_loom --cfg crossbeam_sanitize"
 
