@@ -8,28 +8,28 @@ use crossbeam_utils::atomic::AtomicCell;
 use crossbeam_utils::thread;
 
 #[bench]
-fn load_u8(b: &mut test::Bencher) {
-    let a = AtomicCell::new(0u8);
+fn load_u128(b: &mut test::Bencher) {
+    let a = AtomicCell::new(0u128);
     let mut sum = 0;
     b.iter(|| sum += a.load());
     test::black_box(sum);
 }
 
 #[bench]
-fn store_u8(b: &mut test::Bencher) {
-    let a = AtomicCell::new(0u8);
+fn store_u128(b: &mut test::Bencher) {
+    let a = AtomicCell::new(0u128);
     b.iter(|| a.store(1));
 }
 
 #[bench]
-fn fetch_add_u8(b: &mut test::Bencher) {
-    let a = AtomicCell::new(0u8);
+fn fetch_add_u128(b: &mut test::Bencher) {
+    let a = AtomicCell::new(0u128);
     b.iter(|| a.fetch_add(1));
 }
 
 #[bench]
-fn compare_exchange_u8(b: &mut test::Bencher) {
-    let a = AtomicCell::new(0u8);
+fn compare_exchange_u128(b: &mut test::Bencher) {
+    let a = AtomicCell::new(0u128);
     let mut i = 0;
     b.iter(|| {
         let _ = a.compare_exchange(i, i.wrapping_add(1));
@@ -38,7 +38,7 @@ fn compare_exchange_u8(b: &mut test::Bencher) {
 }
 
 #[bench]
-fn concurrent_load_u8(b: &mut test::Bencher) {
+fn concurrent_load_u128(b: &mut test::Bencher) {
     const THREADS: usize = 2;
     const STEPS: usize = 1_000_000;
 
@@ -46,7 +46,7 @@ fn concurrent_load_u8(b: &mut test::Bencher) {
     let end = Barrier::new(THREADS + 1);
     let exit = AtomicCell::new(false);
 
-    let a = AtomicCell::new(0u8);
+    let a = AtomicCell::new(0u128);
 
     thread::scope(|scope| {
         for _ in 0..THREADS {
