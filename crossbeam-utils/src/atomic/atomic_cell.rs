@@ -1,6 +1,5 @@
 // Necessary for implementing atomic methods for `AtomicUnit`
 #![allow(clippy::unit_arg)]
-#![allow(clippy::let_unit_value)]
 
 use crate::primitive::sync::atomic::{self, AtomicBool};
 use core::cell::UnsafeCell;
@@ -733,7 +732,6 @@ impl AtomicUnit {
     #[inline]
     fn swap(&self, _val: (), _order: Ordering) {}
 
-    #[allow(clippy::unnecessary_wraps)] // This is intentional.
     #[inline]
     fn compare_exchange_weak(
         &self,
