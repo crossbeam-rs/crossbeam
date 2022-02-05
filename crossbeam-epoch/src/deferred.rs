@@ -18,7 +18,7 @@ type Data = [usize; DATA_WORDS];
 /// This is a handy way of keeping an unsized `FnOnce()` within a sized structure.
 pub(crate) struct Deferred {
     call: unsafe fn(*mut u8),
-    data: Data,
+    data: MaybeUninit<Data>,
     _marker: PhantomData<*mut ()>, // !Send + !Sync
 }
 
@@ -46,7 +46,7 @@ impl Deferred {
 
                 Deferred {
                     call: call::<F>,
-                    data: data.assume_init(),
+                    data,
                     _marker: PhantomData,
                 }
             } else {
@@ -64,7 +64,7 @@ impl Deferred {
 
                 Deferred {
                     call: call::<F>,
-                    data: data.assume_init(),
+                    data,
                     _marker: PhantomData,
                 }
             }
@@ -75,7 +75,7 @@ impl Deferred {
     #[inline]
     pub(crate) fn call(mut self) {
         let call = self.call;
-        unsafe { call(&mut self.data as *mut Data as *mut u8) };
+        unsafe { call(self.data.as_mut_ptr() as *mut u8) };
     }
 }
 
