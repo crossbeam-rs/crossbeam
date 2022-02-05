@@ -465,8 +465,24 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_add(&self, val: $t) -> $t {
-                let a = unsafe { &*(self.value.get() as *const $atomic) };
-                a.fetch_add(val, Ordering::AcqRel)
+                if can_transmute::<$t, $atomic>() {
+                    let a = unsafe { &*(self.value.get() as *const $atomic) };
+                    a.fetch_add(val, Ordering::AcqRel)
+                } else {
+                    #[cfg(crossbeam_loom)]
+                    {
+                        let _ = val;
+                        unimplemented!("loom does not support non-atomic atomic ops");
+                    }
+                    #[cfg(not(crossbeam_loom))]
+                    {
+                        let _guard = lock(self.value.get() as usize).write();
+                        let value = unsafe { &mut *(self.value.get()) };
+                        let old = *value;
+                        *value = value.wrapping_add(val);
+                        old
+                    }
+                }
             }
 
             /// Decrements the current value by `val` and returns the previous value.
@@ -485,8 +501,24 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_sub(&self, val: $t) -> $t {
-                let a = unsafe { &*(self.value.get() as *const $atomic) };
-                a.fetch_sub(val, Ordering::AcqRel)
+                if can_transmute::<$t, $atomic>() {
+                    let a = unsafe { &*(self.value.get() as *const $atomic) };
+                    a.fetch_sub(val, Ordering::AcqRel)
+                } else {
+                    #[cfg(crossbeam_loom)]
+                    {
+                        let _ = val;
+                        unimplemented!("loom does not support non-atomic atomic ops");
+                    }
+                    #[cfg(not(crossbeam_loom))]
+                    {
+                        let _guard = lock(self.value.get() as usize).write();
+                        let value = unsafe { &mut *(self.value.get()) };
+                        let old = *value;
+                        *value = value.wrapping_sub(val);
+                        old
+                    }
+                }
             }
 
             /// Applies bitwise "and" to the current value and returns the previous value.
@@ -503,8 +535,24 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_and(&self, val: $t) -> $t {
-                let a = unsafe { &*(self.value.get() as *const $atomic) };
-                a.fetch_and(val, Ordering::AcqRel)
+                if can_transmute::<$t, $atomic>() {
+                    let a = unsafe { &*(self.value.get() as *const $atomic) };
+                    a.fetch_and(val, Ordering::AcqRel)
+                } else {
+                    #[cfg(crossbeam_loom)]
+                    {
+                        let _ = val;
+                        unimplemented!("loom does not support non-atomic atomic ops");
+                    }
+                    #[cfg(not(crossbeam_loom))]
+                    {
+                        let _guard = lock(self.value.get() as usize).write();
+                        let value = unsafe { &mut *(self.value.get()) };
+                        let old = *value;
+                        *value &= val;
+                        old
+                    }
+                }
             }
 
             /// Applies bitwise "or" to the current value and returns the previous value.
@@ -521,8 +569,24 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_or(&self, val: $t) -> $t {
-                let a = unsafe { &*(self.value.get() as *const $atomic) };
-                a.fetch_or(val, Ordering::AcqRel)
+                if can_transmute::<$t, $atomic>() {
+                    let a = unsafe { &*(self.value.get() as *const $atomic) };
+                    a.fetch_or(val, Ordering::AcqRel)
+                } else {
+                    #[cfg(crossbeam_loom)]
+                    {
+                        let _ = val;
+                        unimplemented!("loom does not support non-atomic atomic ops");
+                    }
+                    #[cfg(not(crossbeam_loom))]
+                    {
+                        let _guard = lock(self.value.get() as usize).write();
+                        let value = unsafe { &mut *(self.value.get()) };
+                        let old = *value;
+                        *value |= val;
+                        old
+                    }
+                }
             }
 
             /// Applies bitwise "xor" to the current value and returns the previous value.
@@ -539,8 +603,24 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_xor(&self, val: $t) -> $t {
-                let a = unsafe { &*(self.value.get() as *const $atomic) };
-                a.fetch_xor(val, Ordering::AcqRel)
+                if can_transmute::<$t, $atomic>() {
+                    let a = unsafe { &*(self.value.get() as *const $atomic) };
+                    a.fetch_xor(val, Ordering::AcqRel)
+                } else {
+                    #[cfg(crossbeam_loom)]
+                    {
+                        let _ = val;
+                        unimplemented!("loom does not support non-atomic atomic ops");
+                    }
+                    #[cfg(not(crossbeam_loom))]
+                    {
+                        let _guard = lock(self.value.get() as usize).write();
+                        let value = unsafe { &mut *(self.value.get()) };
+                        let old = *value;
+                        *value ^= val;
+                        old
+                    }
+                }
             }
         }
     };
