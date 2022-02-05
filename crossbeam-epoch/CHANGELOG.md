@@ -1,3 +1,7 @@
+# Version 0.9.7
+
+- Fix Miri error when `-Zmiri-check-number-validity` is enabled. (#779)
+
 # Version 0.9.6
 
 - Add `Atomic::fetch_update`. (#706)

@@ -1,3 +1,9 @@
+# Version 0.8.7
+
+- Add `AtomicCell<{i*,u*}>::{fetch_max,fetch_min}`. (#785)
+- Add `AtomicCell<{i*,u*,bool}>::fetch_nand`. (#785)
+- Fix unsoundness of `AtomicCell<{i,u}64>` arithmetics on 32-bit targets that support `Atomic{I,U}64` (#781)
+
 # Version 0.8.6
 
 - Re-add `AtomicCell<{i,u}64>::{fetch_add,fetch_sub,fetch_and,fetch_or,fetch_xor}` that were accidentally removed in 0.8.0 on targets that do not support `Atomic{I,U}64`. (#767)
