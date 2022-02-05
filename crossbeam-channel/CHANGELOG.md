@@ -1,6 +1,6 @@
 # Version 0.5.2
 
-- Fix stacked borrows violations. (#763, #764)
+- Fix stacked borrows violations when `-Zmiri-tag-raw-pointers` is enabled. (#763, #764)
 
 # Version 0.5.1
 
