@@ -1468,3 +1468,14 @@ fn disconnect_wakes_receiver() {
     })
     .unwrap();
 }
+
+#[test]
+fn trailing_comma() {
+    let (s, r) = unbounded::<usize>();
+
+    select! {
+        send(s, 1,) -> _ => {},
+        recv(r,) -> _ => {},
+        default(ms(1000),) => {},
+    }
+}
