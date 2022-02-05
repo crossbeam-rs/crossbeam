@@ -65,7 +65,6 @@ impl<T> Channel<T> {
     }
 
     /// Returns the capacity of the channel.
-    #[allow(clippy::unnecessary_wraps)] // This is intentional.
     #[inline]
     pub(crate) fn capacity(&self) -> Option<usize> {
         Some(0)
