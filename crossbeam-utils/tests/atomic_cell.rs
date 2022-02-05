@@ -286,6 +286,15 @@ macro_rules! test_arithmetic {
 
             assert_eq!(a.fetch_xor(2), 19);
             assert_eq!(a.load(), 17);
+
+            assert_eq!(a.fetch_max(18), 17);
+            assert_eq!(a.load(), 18);
+
+            assert_eq!(a.fetch_min(17), 18);
+            assert_eq!(a.load(), 17);
+
+            assert_eq!(a.fetch_nand(7), 17);
+            assert_eq!(a.load(), !(17 & 7));
         }
     };
 }

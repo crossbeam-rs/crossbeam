@@ -3,6 +3,7 @@
 
 use crate::primitive::sync::atomic::{self, AtomicBool};
 use core::cell::UnsafeCell;
+use core::cmp;
 use core::fmt;
 use core::mem;
 use core::sync::atomic::Ordering;
@@ -387,6 +388,35 @@ macro_rules! impl_arithmetic {
                 }
             }
 
+            /// Applies bitwise "nand" to the current value and returns the previous value.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use crossbeam_utils::atomic::AtomicCell;
+            ///
+            #[doc = $example]
+            ///
+            /// assert_eq!(a.fetch_nand(3), 7);
+            /// assert_eq!(a.load(), !(7 & 3));
+            /// ```
+            #[inline]
+            pub fn fetch_nand(&self, val: $t) -> $t {
+                #[cfg(crossbeam_loom)]
+                {
+                    let _ = val;
+                    unimplemented!("loom does not support non-atomic atomic ops");
+                }
+                #[cfg(not(crossbeam_loom))]
+                {
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value = !(old & val);
+                    old
+                }
+            }
+
             /// Applies bitwise "or" to the current value and returns the previous value.
             ///
             /// # Examples
@@ -441,6 +471,66 @@ macro_rules! impl_arithmetic {
                     let value = unsafe { &mut *(self.value.get()) };
                     let old = *value;
                     *value ^= val;
+                    old
+                }
+            }
+
+            /// Compares and sets the maximum of the current value and `val`,
+            /// and returns the previous value.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use crossbeam_utils::atomic::AtomicCell;
+            ///
+            #[doc = $example]
+            ///
+            /// assert_eq!(a.fetch_max(2), 7);
+            /// assert_eq!(a.load(), 7);
+            /// ```
+            #[inline]
+            pub fn fetch_max(&self, val: $t) -> $t {
+                #[cfg(crossbeam_loom)]
+                {
+                    let _ = val;
+                    unimplemented!("loom does not support non-atomic atomic ops");
+                }
+                #[cfg(not(crossbeam_loom))]
+                {
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value = cmp::max(old, val);
+                    old
+                }
+            }
+
+            /// Compares and sets the minimum of the current value and `val`,
+            /// and returns the previous value.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use crossbeam_utils::atomic::AtomicCell;
+            ///
+            #[doc = $example]
+            ///
+            /// assert_eq!(a.fetch_min(2), 7);
+            /// assert_eq!(a.load(), 2);
+            /// ```
+            #[inline]
+            pub fn fetch_min(&self, val: $t) -> $t {
+                #[cfg(crossbeam_loom)]
+                {
+                    let _ = val;
+                    unimplemented!("loom does not support non-atomic atomic ops");
+                }
+                #[cfg(not(crossbeam_loom))]
+                {
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value = cmp::min(old, val);
                     old
                 }
             }
@@ -554,6 +644,40 @@ macro_rules! impl_arithmetic {
                 }
             }
 
+            /// Applies bitwise "nand" to the current value and returns the previous value.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use crossbeam_utils::atomic::AtomicCell;
+            ///
+            #[doc = $example]
+            ///
+            /// assert_eq!(a.fetch_nand(3), 7);
+            /// assert_eq!(a.load(), !(7 & 3));
+            /// ```
+            #[inline]
+            pub fn fetch_nand(&self, val: $t) -> $t {
+                if can_transmute::<$t, $atomic>() {
+                    let a = unsafe { &*(self.value.get() as *const $atomic) };
+                    a.fetch_nand(val, Ordering::AcqRel)
+                } else {
+                    #[cfg(crossbeam_loom)]
+                    {
+                        let _ = val;
+                        unimplemented!("loom does not support non-atomic atomic ops");
+                    }
+                    #[cfg(not(crossbeam_loom))]
+                    {
+                        let _guard = lock(self.value.get() as usize).write();
+                        let value = unsafe { &mut *(self.value.get()) };
+                        let old = *value;
+                        *value = !(old & val);
+                        old
+                    }
+                }
+            }
+
             /// Applies bitwise "or" to the current value and returns the previous value.
             ///
             /// # Examples
@@ -621,6 +745,76 @@ macro_rules! impl_arithmetic {
                     }
                 }
             }
+
+            /// Compares and sets the maximum of the current value and `val`,
+            /// and returns the previous value.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use crossbeam_utils::atomic::AtomicCell;
+            ///
+            #[doc = $example]
+            ///
+            /// assert_eq!(a.fetch_max(9), 7);
+            /// assert_eq!(a.load(), 9);
+            /// ```
+            #[inline]
+            pub fn fetch_max(&self, val: $t) -> $t {
+                if can_transmute::<$t, $atomic>() {
+                    // TODO: Atomic*::fetch_max requires Rust 1.45.
+                    self.fetch_update(|old| Some(cmp::max(old, val))).unwrap()
+                } else {
+                    #[cfg(crossbeam_loom)]
+                    {
+                        let _ = val;
+                        unimplemented!("loom does not support non-atomic atomic ops");
+                    }
+                    #[cfg(not(crossbeam_loom))]
+                    {
+                        let _guard = lock(self.value.get() as usize).write();
+                        let value = unsafe { &mut *(self.value.get()) };
+                        let old = *value;
+                        *value = cmp::max(old, val);
+                        old
+                    }
+                }
+            }
+
+            /// Compares and sets the minimum of the current value and `val`,
+            /// and returns the previous value.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use crossbeam_utils::atomic::AtomicCell;
+            ///
+            #[doc = $example]
+            ///
+            /// assert_eq!(a.fetch_min(2), 7);
+            /// assert_eq!(a.load(), 2);
+            /// ```
+            #[inline]
+            pub fn fetch_min(&self, val: $t) -> $t {
+                if can_transmute::<$t, $atomic>() {
+                    // TODO: Atomic*::fetch_min requires Rust 1.45.
+                    self.fetch_update(|old| Some(cmp::min(old, val))).unwrap()
+                } else {
+                    #[cfg(crossbeam_loom)]
+                    {
+                        let _ = val;
+                        unimplemented!("loom does not support non-atomic atomic ops");
+                    }
+                    #[cfg(not(crossbeam_loom))]
+                    {
+                        let _guard = lock(self.value.get() as usize).write();
+                        let value = unsafe { &mut *(self.value.get()) };
+                        let old = *value;
+                        *value = cmp::min(old, val);
+                        old
+                    }
+                }
+            }
         }
     };
 }
@@ -676,6 +870,30 @@ impl AtomicCell<bool> {
     pub fn fetch_and(&self, val: bool) -> bool {
         let a = unsafe { &*(self.value.get() as *const AtomicBool) };
         a.fetch_and(val, Ordering::AcqRel)
+    }
+
+    /// Applies logical "nand" to the current value and returns the previous value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_utils::atomic::AtomicCell;
+    ///
+    /// let a = AtomicCell::new(true);
+    ///
+    /// assert_eq!(a.fetch_nand(false), true);
+    /// assert_eq!(a.load(), true);
+    ///
+    /// assert_eq!(a.fetch_nand(true), true);
+    /// assert_eq!(a.load(), false);
+    ///
+    /// assert_eq!(a.fetch_nand(false), false);
+    /// assert_eq!(a.load(), true);
+    /// ```
+    #[inline]
+    pub fn fetch_nand(&self, val: bool) -> bool {
+        let a = unsafe { &*(self.value.get() as *const AtomicBool) };
+        a.fetch_nand(val, Ordering::AcqRel)
     }
 
     /// Applies logical "or" to the current value and returns the previous value.
