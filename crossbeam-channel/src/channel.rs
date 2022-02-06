@@ -3,7 +3,6 @@
 use std::fmt;
 use std::iter::FusedIterator;
 use std::mem;
-use std::ops::Deref;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
