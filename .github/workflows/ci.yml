@@ -111,7 +111,7 @@ jobs:
         run: rustup update nightly && rustup default nightly
       - run: ci/no_atomic.sh
       - run: git add -N . && git diff --exit-code
-        if: github.event_name != 'schedule' && !(github.event_name == 'push' && github.ref == 'refs/heads/main')
+        if: github.repository_owner != 'crossbeam-rs' || github.event_name != 'schedule'
       - id: diff
         run: |
           git config user.name "Taiki Endo"
@@ -122,7 +122,7 @@ jobs:
               git commit -m "Update no_atomic.rs"
               echo "::set-output name=success::false"
           fi
-        if: github.event_name == 'schedule' || github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule'
       - uses: taiki-e/create-pull-request@v3
         with:
           title: Update no_atomic.rs
@@ -131,9 +131,9 @@ jobs:
             [Please close and immediately reopen this pull request to run CI.][2]
 
             [1]: https://github.com/peter-evans/create-pull-request
-            [2]: https://github.com/peter-evans/create-pull-request/blob/main/docs/concepts-guidelines.md#workarounds-to-trigger-further-workflow-runs
-          branch: update-no-atomic-sh
-        if: (github.event_name == 'schedule' || github.event_name == 'push' && github.ref == 'refs/heads/main') && steps.diff.outputs.success == 'false'
+            [2]: https://github.com/peter-evans/create-pull-request/blob/HEAD/docs/concepts-guidelines.md#workarounds-to-trigger-further-workflow-runs
+          branch: update-no-atomic-rs
+        if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule' && steps.diff.outputs.success == 'false'
 
   # Check formatting.
   rustfmt:
