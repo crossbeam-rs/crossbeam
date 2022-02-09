@@ -8,13 +8,11 @@ use core::fmt;
 use core::mem;
 use core::sync::atomic::Ordering;
 
-#[cfg(not(crossbeam_loom))]
 use core::ptr;
 
 #[cfg(feature = "std")]
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
-#[cfg(not(crossbeam_loom))]
 use super::seq_lock::SeqLock;
 
 /// A thread-safe mutable memory location.
@@ -313,19 +311,11 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_add(&self, val: $t) -> $t {
-                #[cfg(crossbeam_loom)]
-                {
-                    let _ = val;
-                    unimplemented!("loom does not support non-atomic atomic ops");
-                }
-                #[cfg(not(crossbeam_loom))]
-                {
-                    let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value = value.wrapping_add(val);
-                    old
-                }
+                let _guard = lock(self.value.get() as usize).write();
+                let value = unsafe { &mut *(self.value.get()) };
+                let old = *value;
+                *value = value.wrapping_add(val);
+                old
             }
 
             /// Decrements the current value by `val` and returns the previous value.
@@ -344,19 +334,11 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_sub(&self, val: $t) -> $t {
-                #[cfg(crossbeam_loom)]
-                {
-                    let _ = val;
-                    unimplemented!("loom does not support non-atomic atomic ops");
-                }
-                #[cfg(not(crossbeam_loom))]
-                {
-                    let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value = value.wrapping_sub(val);
-                    old
-                }
+                let _guard = lock(self.value.get() as usize).write();
+                let value = unsafe { &mut *(self.value.get()) };
+                let old = *value;
+                *value = value.wrapping_sub(val);
+                old
             }
 
             /// Applies bitwise "and" to the current value and returns the previous value.
@@ -373,19 +355,11 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_and(&self, val: $t) -> $t {
-                #[cfg(crossbeam_loom)]
-                {
-                    let _ = val;
-                    unimplemented!("loom does not support non-atomic atomic ops");
-                }
-                #[cfg(not(crossbeam_loom))]
-                {
-                    let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value &= val;
-                    old
-                }
+                let _guard = lock(self.value.get() as usize).write();
+                let value = unsafe { &mut *(self.value.get()) };
+                let old = *value;
+                *value &= val;
+                old
             }
 
             /// Applies bitwise "nand" to the current value and returns the previous value.
@@ -402,19 +376,11 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_nand(&self, val: $t) -> $t {
-                #[cfg(crossbeam_loom)]
-                {
-                    let _ = val;
-                    unimplemented!("loom does not support non-atomic atomic ops");
-                }
-                #[cfg(not(crossbeam_loom))]
-                {
-                    let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value = !(old & val);
-                    old
-                }
+                let _guard = lock(self.value.get() as usize).write();
+                let value = unsafe { &mut *(self.value.get()) };
+                let old = *value;
+                *value = !(old & val);
+                old
             }
 
             /// Applies bitwise "or" to the current value and returns the previous value.
@@ -431,19 +397,11 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_or(&self, val: $t) -> $t {
-                #[cfg(crossbeam_loom)]
-                {
-                    let _ = val;
-                    unimplemented!("loom does not support non-atomic atomic ops");
-                }
-                #[cfg(not(crossbeam_loom))]
-                {
-                    let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value |= val;
-                    old
-                }
+                let _guard = lock(self.value.get() as usize).write();
+                let value = unsafe { &mut *(self.value.get()) };
+                let old = *value;
+                *value |= val;
+                old
             }
 
             /// Applies bitwise "xor" to the current value and returns the previous value.
@@ -460,19 +418,11 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_xor(&self, val: $t) -> $t {
-                #[cfg(crossbeam_loom)]
-                {
-                    let _ = val;
-                    unimplemented!("loom does not support non-atomic atomic ops");
-                }
-                #[cfg(not(crossbeam_loom))]
-                {
-                    let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value ^= val;
-                    old
-                }
+                let _guard = lock(self.value.get() as usize).write();
+                let value = unsafe { &mut *(self.value.get()) };
+                let old = *value;
+                *value ^= val;
+                old
             }
 
             /// Compares and sets the maximum of the current value and `val`,
@@ -490,19 +440,11 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_max(&self, val: $t) -> $t {
-                #[cfg(crossbeam_loom)]
-                {
-                    let _ = val;
-                    unimplemented!("loom does not support non-atomic atomic ops");
-                }
-                #[cfg(not(crossbeam_loom))]
-                {
-                    let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value = cmp::max(old, val);
-                    old
-                }
+                let _guard = lock(self.value.get() as usize).write();
+                let value = unsafe { &mut *(self.value.get()) };
+                let old = *value;
+                *value = cmp::max(old, val);
+                old
             }
 
             /// Compares and sets the minimum of the current value and `val`,
@@ -520,19 +462,11 @@ macro_rules! impl_arithmetic {
             /// ```
             #[inline]
             pub fn fetch_min(&self, val: $t) -> $t {
-                #[cfg(crossbeam_loom)]
-                {
-                    let _ = val;
-                    unimplemented!("loom does not support non-atomic atomic ops");
-                }
-                #[cfg(not(crossbeam_loom))]
-                {
-                    let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value = cmp::min(old, val);
-                    old
-                }
+                let _guard = lock(self.value.get() as usize).write();
+                let value = unsafe { &mut *(self.value.get()) };
+                let old = *value;
+                *value = cmp::min(old, val);
+                old
             }
         }
     };
@@ -558,19 +492,11 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const $atomic) };
                     a.fetch_add(val, Ordering::AcqRel)
                 } else {
-                    #[cfg(crossbeam_loom)]
-                    {
-                        let _ = val;
-                        unimplemented!("loom does not support non-atomic atomic ops");
-                    }
-                    #[cfg(not(crossbeam_loom))]
-                    {
-                        let _guard = lock(self.value.get() as usize).write();
-                        let value = unsafe { &mut *(self.value.get()) };
-                        let old = *value;
-                        *value = value.wrapping_add(val);
-                        old
-                    }
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value = value.wrapping_add(val);
+                    old
                 }
             }
 
@@ -594,19 +520,11 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const $atomic) };
                     a.fetch_sub(val, Ordering::AcqRel)
                 } else {
-                    #[cfg(crossbeam_loom)]
-                    {
-                        let _ = val;
-                        unimplemented!("loom does not support non-atomic atomic ops");
-                    }
-                    #[cfg(not(crossbeam_loom))]
-                    {
-                        let _guard = lock(self.value.get() as usize).write();
-                        let value = unsafe { &mut *(self.value.get()) };
-                        let old = *value;
-                        *value = value.wrapping_sub(val);
-                        old
-                    }
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value = value.wrapping_sub(val);
+                    old
                 }
             }
 
@@ -628,19 +546,11 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const $atomic) };
                     a.fetch_and(val, Ordering::AcqRel)
                 } else {
-                    #[cfg(crossbeam_loom)]
-                    {
-                        let _ = val;
-                        unimplemented!("loom does not support non-atomic atomic ops");
-                    }
-                    #[cfg(not(crossbeam_loom))]
-                    {
-                        let _guard = lock(self.value.get() as usize).write();
-                        let value = unsafe { &mut *(self.value.get()) };
-                        let old = *value;
-                        *value &= val;
-                        old
-                    }
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value &= val;
+                    old
                 }
             }
 
@@ -662,19 +572,11 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const $atomic) };
                     a.fetch_nand(val, Ordering::AcqRel)
                 } else {
-                    #[cfg(crossbeam_loom)]
-                    {
-                        let _ = val;
-                        unimplemented!("loom does not support non-atomic atomic ops");
-                    }
-                    #[cfg(not(crossbeam_loom))]
-                    {
-                        let _guard = lock(self.value.get() as usize).write();
-                        let value = unsafe { &mut *(self.value.get()) };
-                        let old = *value;
-                        *value = !(old & val);
-                        old
-                    }
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value = !(old & val);
+                    old
                 }
             }
 
@@ -696,19 +598,11 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const $atomic) };
                     a.fetch_or(val, Ordering::AcqRel)
                 } else {
-                    #[cfg(crossbeam_loom)]
-                    {
-                        let _ = val;
-                        unimplemented!("loom does not support non-atomic atomic ops");
-                    }
-                    #[cfg(not(crossbeam_loom))]
-                    {
-                        let _guard = lock(self.value.get() as usize).write();
-                        let value = unsafe { &mut *(self.value.get()) };
-                        let old = *value;
-                        *value |= val;
-                        old
-                    }
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value |= val;
+                    old
                 }
             }
 
@@ -730,19 +624,11 @@ macro_rules! impl_arithmetic {
                     let a = unsafe { &*(self.value.get() as *const $atomic) };
                     a.fetch_xor(val, Ordering::AcqRel)
                 } else {
-                    #[cfg(crossbeam_loom)]
-                    {
-                        let _ = val;
-                        unimplemented!("loom does not support non-atomic atomic ops");
-                    }
-                    #[cfg(not(crossbeam_loom))]
-                    {
-                        let _guard = lock(self.value.get() as usize).write();
-                        let value = unsafe { &mut *(self.value.get()) };
-                        let old = *value;
-                        *value ^= val;
-                        old
-                    }
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value ^= val;
+                    old
                 }
             }
 
@@ -765,19 +651,11 @@ macro_rules! impl_arithmetic {
                     // TODO: Atomic*::fetch_max requires Rust 1.45.
                     self.fetch_update(|old| Some(cmp::max(old, val))).unwrap()
                 } else {
-                    #[cfg(crossbeam_loom)]
-                    {
-                        let _ = val;
-                        unimplemented!("loom does not support non-atomic atomic ops");
-                    }
-                    #[cfg(not(crossbeam_loom))]
-                    {
-                        let _guard = lock(self.value.get() as usize).write();
-                        let value = unsafe { &mut *(self.value.get()) };
-                        let old = *value;
-                        *value = cmp::max(old, val);
-                        old
-                    }
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value = cmp::max(old, val);
+                    old
                 }
             }
 
@@ -800,19 +678,11 @@ macro_rules! impl_arithmetic {
                     // TODO: Atomic*::fetch_min requires Rust 1.45.
                     self.fetch_update(|old| Some(cmp::min(old, val))).unwrap()
                 } else {
-                    #[cfg(crossbeam_loom)]
-                    {
-                        let _ = val;
-                        unimplemented!("loom does not support non-atomic atomic ops");
-                    }
-                    #[cfg(not(crossbeam_loom))]
-                    {
-                        let _guard = lock(self.value.get() as usize).write();
-                        let value = unsafe { &mut *(self.value.get()) };
-                        let old = *value;
-                        *value = cmp::min(old, val);
-                        old
-                    }
+                    let _guard = lock(self.value.get() as usize).write();
+                    let value = unsafe { &mut *(self.value.get()) };
+                    let old = *value;
+                    *value = cmp::min(old, val);
+                    old
                 }
             }
         }
@@ -976,7 +846,6 @@ const fn can_transmute<A, B>() -> bool {
 /// scalability.
 #[inline]
 #[must_use]
-#[cfg(not(crossbeam_loom))]
 fn lock(addr: usize) -> &'static SeqLock {
     // The number of locks is a prime number because we want to make sure `addr % LEN` gets
     // dispersed across all locks.
@@ -1067,9 +936,6 @@ macro_rules! atomic {
             // TODO: AtomicU128 is unstable
             // atomic!(@check, $t, atomic::AtomicU128, $a, $atomic_op);
 
-            #[cfg(crossbeam_loom)]
-            unimplemented!("loom does not support non-atomic atomic ops");
-            #[cfg(not(crossbeam_loom))]
             break $fallback_op;
         }
     };
