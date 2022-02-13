@@ -81,12 +81,16 @@ fn concurrent_load_u128(b: &mut test::Bencher) {
     .unwrap();
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(C, align(8))]
+struct Align8<T>(T);
+
 #[bench]
 fn load_u8x2048(b: &mut test::Bencher) {
-    let a = AtomicCell::new(test::black_box([0u8; 2048]));
+    let a = AtomicCell::new(test::black_box(Align8([0u8; 2048])));
     let mut sum = 0;
     b.iter(|| {
-        for v in a.load() {
+        for v in a.load().0 {
             sum += v;
         }
     });
@@ -95,17 +99,17 @@ fn load_u8x2048(b: &mut test::Bencher) {
 
 #[bench]
 fn store_u8x2048(b: &mut test::Bencher) {
-    let a = AtomicCell::new(test::black_box([0u8; 2048]));
-    b.iter(|| a.store([1; 2048]));
+    let a = AtomicCell::new(test::black_box(Align8([0u8; 2048])));
+    b.iter(|| a.store(Align8([1; 2048])));
 }
 
 #[bench]
 fn compare_exchange_u8x2048(b: &mut test::Bencher) {
-    let a = AtomicCell::new(test::black_box([0u8; 2048]));
-    let mut i = [0u8; 2048];
+    let a = AtomicCell::new(test::black_box(Align8([0u8; 2048])));
+    let mut i = Align8([0u8; 2048]);
     b.iter(|| {
         let mut new = i;
-        for v in &mut new {
+        for v in &mut new.0 {
             *v = (*v).wrapping_add(1);
         }
         let _ = a.compare_exchange(i, new);
@@ -122,7 +126,7 @@ fn concurrent_load_u8x2048(b: &mut test::Bencher) {
     let end = Barrier::new(THREADS + 1);
     let exit = AtomicCell::new(false);
 
-    let a = AtomicCell::new(test::black_box([0u8; 2048]));
+    let a = AtomicCell::new(test::black_box(Align8([0u8; 2048])));
 
     thread::scope(|scope| {
         for _ in 0..THREADS {
@@ -131,7 +135,7 @@ fn concurrent_load_u8x2048(b: &mut test::Bencher) {
 
                 let mut sum = 0;
                 for _ in 0..STEPS {
-                    for v in a.load() {
+                    for v in a.load().0 {
                         sum += v;
                     }
                 }

@@ -493,9 +493,14 @@ macro_rules! impl_arithmetic {
                     a.fetch_add(val, Ordering::AcqRel)
                 } else {
                     let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value = value.wrapping_add(val);
+                    // SAFETY: the atomic operation is not required, because we hold the
+                    // lock to write so that other threads cannot perform concurrent write operations.
+                    let old = unsafe { self.value.get().read() };
+                    let new = old.wrapping_add(val);
+                    // SAFETY:
+                    // - we hold the lock to write so that other threads cannot perform concurrent write operations.
+                    // - There are no threads that perform concurrent non-atomic operations at the same time.
+                    unsafe { atomic_memcpy::atomic_store(self.value.get(), new, Ordering::Relaxed) }
                     old
                 }
             }
@@ -521,9 +526,14 @@ macro_rules! impl_arithmetic {
                     a.fetch_sub(val, Ordering::AcqRel)
                 } else {
                     let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value = value.wrapping_sub(val);
+                    // SAFETY: the atomic operation is not required, because we hold the
+                    // lock to write so that other threads cannot perform concurrent write operations.
+                    let old = unsafe { self.value.get().read() };
+                    let new = old.wrapping_sub(val);
+                    // SAFETY:
+                    // - we hold the lock to write so that other threads cannot perform concurrent write operations.
+                    // - There are no threads that perform concurrent non-atomic operations at the same time.
+                    unsafe { atomic_memcpy::atomic_store(self.value.get(), new, Ordering::Relaxed) }
                     old
                 }
             }
@@ -547,9 +557,14 @@ macro_rules! impl_arithmetic {
                     a.fetch_and(val, Ordering::AcqRel)
                 } else {
                     let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value &= val;
+                    // SAFETY: the atomic operation is not required, because we hold the
+                    // lock to write so that other threads cannot perform concurrent write operations.
+                    let old = unsafe { self.value.get().read() };
+                    let new = old & val;
+                    // SAFETY:
+                    // - we hold the lock to write so that other threads cannot perform concurrent write operations.
+                    // - There are no threads that perform concurrent non-atomic operations at the same time.
+                    unsafe { atomic_memcpy::atomic_store(self.value.get(), new, Ordering::Relaxed) }
                     old
                 }
             }
@@ -599,9 +614,14 @@ macro_rules! impl_arithmetic {
                     a.fetch_or(val, Ordering::AcqRel)
                 } else {
                     let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value |= val;
+                    // SAFETY: the atomic operation is not required, because we hold the
+                    // lock to write so that other threads cannot perform concurrent write operations.
+                    let old = unsafe { self.value.get().read() };
+                    let new = old | val;
+                    // SAFETY:
+                    // - we hold the lock to write so that other threads cannot perform concurrent write operations.
+                    // - There are no threads that perform concurrent non-atomic operations at the same time.
+                    unsafe { atomic_memcpy::atomic_store(self.value.get(), new, Ordering::Relaxed) }
                     old
                 }
             }
@@ -625,9 +645,14 @@ macro_rules! impl_arithmetic {
                     a.fetch_xor(val, Ordering::AcqRel)
                 } else {
                     let _guard = lock(self.value.get() as usize).write();
-                    let value = unsafe { &mut *(self.value.get()) };
-                    let old = *value;
-                    *value ^= val;
+                    // SAFETY: the atomic operation is not required, because we hold the
+                    // lock to write so that other threads cannot perform concurrent write operations.
+                    let old = unsafe { self.value.get().read() };
+                    let new = old ^ val;
+                    // SAFETY:
+                    // - we hold the lock to write so that other threads cannot perform concurrent write operations.
+                    // - There are no threads that perform concurrent non-atomic operations at the same time.
+                    unsafe { atomic_memcpy::atomic_store(self.value.get(), new, Ordering::Relaxed) }
                     old
                 }
             }
@@ -974,20 +999,41 @@ where
 
             // Try doing an optimistic read first.
             if let Some(stamp) = lock.optimistic_read() {
-                // We need a volatile read here because other threads might concurrently modify the
-                // value. In theory, data races are *always* UB, even if we use volatile reads and
-                // discard the data when a data race is detected. The proper solution would be to
-                // do atomic reads and atomic writes, but we can't atomically read and write all
-                // kinds of data since `AtomicU8` is not available on stable Rust yet.
-                let val = ptr::read_volatile(src);
+                // SAFETY:
+                // - There are no threads that perform non-atomic write operations at the same time.
+                // - There is no writer that updates the value using atomic operations of different granularity.
+                //
+                // If the atomic operation is not used here, it will cause a data race
+                // when atomic_store performs concurrent write operation.
+                // Such a data race is sometimes considered virtually unproblematic
+                // in SeqLock implementations:
+                //
+                // - https://github.com/Amanieu/seqlock/issues/2
+                // - https://github.com/crossbeam-rs/crossbeam/blob/85d0bdc95cdac6450ac1ba4ed587f362a5235e60/crossbeam-utils/src/atomic/atomic_cell.rs#L815-L820
+                // - https://rust-lang.zulipchat.com/#narrow/stream/136281-t-lang.2Fwg-unsafe-code-guidelines/topic/avoiding.20UB.20due.20to.20races.20by.20discarding.20result.3F
+                //
+                // However, in our use case, the implementation that loads/stores value as
+                // chunks of usize is enough fast and sound, so we use that implementation.
+                let val = atomic_memcpy::atomic_load(src, Ordering::Relaxed);
 
                 if lock.validate_read(stamp) {
-                    return val;
+                    // SAFETY: No write operation was performed during read val.
+                    return val.assume_init();
                 }
             }
 
             // Grab a regular write lock so that writers don't starve this load.
             let guard = lock.write();
+            // SAFETY: the atomic operation is not required, because we hold the
+            // lock to write so that other threads cannot perform concurrent write operations.
+            //
+            // Note: If the atomic load involves an atomic write (e.g.
+            // AtomicU128::load on x86_64 that uses cmpxchg16b), this can
+            // still cause a data race.
+            // However, according to atomic-memcpy's asm test, there seems
+            // to be no tier 1 or tier 2 platform that generates such code
+            // for a pointer-width relaxed load + acquire fence:
+            // https://github.com/taiki-e/atomic-memcpy/tree/a8e78b99710b3b35ab123c1d3144cb618ae61a57/tests/asm-test/asm
             let val = ptr::read(src);
             // The value hasn't been changed. Drop the guard without incrementing the stamp.
             guard.abort();
@@ -1010,7 +1056,10 @@ unsafe fn atomic_store<T>(dst: *mut T, val: T) {
         },
         {
             let _guard = lock(dst as usize).write();
-            ptr::write(dst, val);
+            // SAFETY:
+            // - we hold the lock to write so that other threads cannot perform concurrent write operations.
+            // - There are no threads that perform concurrent non-atomic operations at the same time.
+            atomic_memcpy::atomic_store(dst, val, Ordering::Relaxed);
         }
     }
 }
@@ -1030,7 +1079,14 @@ unsafe fn atomic_swap<T>(dst: *mut T, val: T) -> T {
         },
         {
             let _guard = lock(dst as usize).write();
-            ptr::replace(dst, val)
+            // SAFETY: the atomic operation is not required, because we hold the
+            // lock to write so that other threads cannot perform concurrent write operations.
+            let result = ptr::read(dst);
+            // SAFETY:
+            // - we hold the lock to write so that other threads cannot perform concurrent write operations.
+            // - There are no threads that perform concurrent non-atomic operations at the same time.
+            atomic_memcpy::atomic_store(dst, val, Ordering::Relaxed);
+            result
         }
     }
 }
@@ -1080,14 +1136,19 @@ where
         },
         {
             let guard = lock(dst as usize).write();
-
-            if T::eq(&*dst, &current) {
-                Ok(ptr::replace(dst, new))
+            // SAFETY: the atomic operation is not required, because we hold the
+            // lock to write so that other threads cannot perform concurrent write operations.
+            let result = ptr::read(dst);
+            if T::eq(&result, &current) {
+                // SAFETY:
+                // - we hold the lock to write so that other threads cannot perform concurrent write operations.
+                // - There are no threads that perform concurrent non-atomic operations at the same time.
+                atomic_memcpy::atomic_store(dst, new, Ordering::Relaxed);
+                Ok(result)
             } else {
-                let val = ptr::read(dst);
                 // The value hasn't been changed. Drop the guard without incrementing the stamp.
                 guard.abort();
-                Err(val)
+                Err(result)
             }
         }
     }

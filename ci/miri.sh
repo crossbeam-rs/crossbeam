@@ -8,7 +8,8 @@ MIRIFLAGS="-Zmiri-check-number-validity -Zmiri-symbolic-alignment-check -Zmiri-t
     -p crossbeam-queue
 
 # -Zmiri-tag-raw-pointers doesn't work with std::thread::Builder::name on Linux: https://github.com/rust-lang/miri/issues/1717
-MIRIFLAGS="-Zmiri-check-number-validity -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
+# Using atomic memcpy for types with padding is incompatible with -Zmiri-check-number-validity
+MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
     cargo miri test \
     -p crossbeam-utils
 
@@ -26,7 +27,8 @@ MIRIFLAGS="-Zmiri-check-number-validity -Zmiri-symbolic-alignment-check -Zmiri-d
 
 # -Zmiri-ignore-leaks is needed for https://github.com/crossbeam-rs/crossbeam/issues/579
 # -Zmiri-disable-stacked-borrows is needed for https://github.com/crossbeam-rs/crossbeam/issues/545
-MIRIFLAGS="-Zmiri-check-number-validity -Zmiri-symbolic-alignment-check -Zmiri-disable-stacked-borrows -Zmiri-ignore-leaks -Zmiri-compare-exchange-weak-failure-rate=1.0" \
+# Using atomic memcpy for types with padding is incompatible with -Zmiri-check-number-validity
+MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-stacked-borrows -Zmiri-ignore-leaks -Zmiri-compare-exchange-weak-failure-rate=1.0" \
     cargo miri test \
     -p crossbeam-deque
 

@@ -240,6 +240,7 @@ fn modular_usize() {
     assert_eq!(a.load().0, 15);
 }
 
+#[cfg_attr(miri, ignore)] // https://github.com/crossbeam-rs/crossbeam/issues/748#issuecomment-1037976514
 #[test]
 fn garbage_padding() {
     #[derive(Copy, Clone, Eq, PartialEq)]

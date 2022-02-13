@@ -3,13 +3,16 @@ use std::cmp;
 use std::fmt;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
-use std::mem::{self, MaybeUninit};
+use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::ptr;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use crate::epoch::{self, Atomic, Owned};
 use crate::utils::{Backoff, CachePadded};
+
+#[repr(C, align(8))]
+struct Aligned<T>(T);
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;
@@ -25,7 +28,7 @@ const FLUSH_THRESHOLD_BYTES: usize = 1 << 10;
 /// *not* deallocate the buffer.
 struct Buffer<T> {
     /// Pointer to the allocated memory.
-    ptr: *mut T,
+    ptr: *mut Aligned<T>,
 
     /// Capacity of the buffer. Always a power of two.
     cap: usize,
@@ -38,9 +41,8 @@ impl<T> Buffer<T> {
     fn alloc(cap: usize) -> Buffer<T> {
         debug_assert_eq!(cap, cap.next_power_of_two());
 
-        let mut v = Vec::with_capacity(cap);
+        let mut v = ManuallyDrop::new(Vec::with_capacity(cap));
         let ptr = v.as_mut_ptr();
-        mem::forget(v);
 
         Buffer { ptr, cap }
     }
@@ -51,29 +53,23 @@ impl<T> Buffer<T> {
     }
 
     /// Returns a pointer to the task at the specified `index`.
-    unsafe fn at(&self, index: isize) -> *mut T {
+    unsafe fn at(&self, index: isize) -> *mut Aligned<T> {
         // `self.cap` is always a power of two.
         self.ptr.offset(index & (self.cap - 1) as isize)
     }
 
     /// Writes `task` into the specified `index`.
     ///
-    /// This method might be concurrently called with another `read` at the same index, which is
-    /// technically speaking a data race and therefore UB. We should use an atomic store here, but
-    /// that would be more expensive and difficult to implement generically for all types `T`.
-    /// Hence, as a hack, we use a volatile write instead.
-    unsafe fn write(&self, index: isize, task: T) {
-        ptr::write_volatile(self.at(index), task)
+    /// This method might be concurrently called with another `read` at the same index.
+    unsafe fn write(&self, index: isize, task: Aligned<T>) {
+        atomic_memcpy::atomic_store(self.at(index), task, Ordering::Relaxed);
     }
 
     /// Reads a task from the specified `index`.
     ///
-    /// This method might be concurrently called with another `write` at the same index, which is
-    /// technically speaking a data race and therefore UB. We should use an atomic load here, but
-    /// that would be more expensive and difficult to implement generically for all types `T`.
-    /// Hence, as a hack, we use a volatile write instead.
-    unsafe fn read(&self, index: isize) -> T {
-        ptr::read_volatile(self.at(index))
+    /// This method might be concurrently called with another `write` at the same index.
+    unsafe fn read(&self, index: isize) -> MaybeUninit<Aligned<T>> {
+        atomic_memcpy::atomic_load(self.at(index), Ordering::Relaxed)
     }
 }
 
@@ -406,7 +402,7 @@ impl<T> Worker<T> {
 
         // Write `task` into the slot.
         unsafe {
-            buffer.write(b, task);
+            buffer.write(b, Aligned(task));
         }
 
         atomic::fence(Ordering::Release);
@@ -468,7 +464,7 @@ impl<T> Worker<T> {
                         self.resize(buffer.cap / 2);
                     }
 
-                    Some(task)
+                    Some(task.assume_init().0)
                 }
             }
 
@@ -524,7 +520,7 @@ impl<T> Worker<T> {
                         }
                     }
 
-                    task
+                    task.map(|t| unsafe { t.assume_init().0 })
                 }
             }
         }
@@ -666,7 +662,7 @@ impl<T> Stealer<T> {
         }
 
         // Return the stolen task.
-        Steal::Success(task)
+        Steal::Success(unsafe { task.assume_init().0 })
     }
 
     /// Steals a batch of tasks and pushes them into another worker.
@@ -744,7 +740,7 @@ impl<T> Stealer<T> {
                     Flavor::Fifo => {
                         for i in 0..batch_size {
                             unsafe {
-                                let task = buffer.deref().read(f.wrapping_add(i));
+                                let task = buffer.deref().read(f.wrapping_add(i)).assume_init();
                                 dest_buffer.write(dest_b.wrapping_add(i), task);
                             }
                         }
@@ -752,7 +748,7 @@ impl<T> Stealer<T> {
                     Flavor::Lifo => {
                         for i in 0..batch_size {
                             unsafe {
-                                let task = buffer.deref().read(f.wrapping_add(i));
+                                let task = buffer.deref().read(f.wrapping_add(i)).assume_init();
                                 dest_buffer.write(dest_b.wrapping_add(batch_size - 1 - i), task);
                             }
                         }
@@ -828,7 +824,7 @@ impl<T> Stealer<T> {
 
                     // Write the stolen task into the destination buffer.
                     unsafe {
-                        dest_buffer.write(dest_b, task);
+                        dest_buffer.write(dest_b, task.assume_init());
                     }
 
                     // Move the source front index and the destination back index one step forward.
@@ -847,8 +843,8 @@ impl<T> Stealer<T> {
                         unsafe {
                             let i1 = dest_b.wrapping_sub(batch_size - i);
                             let i2 = dest_b.wrapping_sub(i + 1);
-                            let t1 = dest_buffer.read(i1);
-                            let t2 = dest_buffer.read(i2);
+                            let t1 = dest_buffer.read(i1).assume_init();
+                            let t2 = dest_buffer.read(i2).assume_init();
                             dest_buffer.write(i1, t2);
                             dest_buffer.write(i2, t1);
                         }
@@ -945,7 +941,7 @@ impl<T> Stealer<T> {
                     Flavor::Fifo => {
                         for i in 0..batch_size {
                             unsafe {
-                                let task = buffer.deref().read(f.wrapping_add(i + 1));
+                                let task = buffer.deref().read(f.wrapping_add(i + 1)).assume_init();
                                 dest_buffer.write(dest_b.wrapping_add(i), task);
                             }
                         }
@@ -953,7 +949,7 @@ impl<T> Stealer<T> {
                     Flavor::Lifo => {
                         for i in 0..batch_size {
                             unsafe {
-                                let task = buffer.deref().read(f.wrapping_add(i + 1));
+                                let task = buffer.deref().read(f.wrapping_add(i + 1)).assume_init();
                                 dest_buffer.write(dest_b.wrapping_add(batch_size - 1 - i), task);
                             }
                         }
@@ -1044,7 +1040,7 @@ impl<T> Stealer<T> {
 
                     // Write the previously stolen task into the destination buffer.
                     unsafe {
-                        dest_buffer.write(dest_b, mem::replace(&mut task, tmp));
+                        dest_buffer.write(dest_b, mem::replace(&mut task, tmp).assume_init());
                     }
 
                     // Move the source front index and the destination back index one step forward.
@@ -1058,8 +1054,8 @@ impl<T> Stealer<T> {
                         unsafe {
                             let i1 = dest_b.wrapping_sub(batch_size - i);
                             let i2 = dest_b.wrapping_sub(i + 1);
-                            let t1 = dest_buffer.read(i1);
-                            let t2 = dest_buffer.read(i2);
+                            let t1 = dest_buffer.read(i1).assume_init();
+                            let t2 = dest_buffer.read(i2).assume_init();
                             dest_buffer.write(i1, t2);
                             dest_buffer.write(i2, t1);
                         }
@@ -1077,7 +1073,7 @@ impl<T> Stealer<T> {
         dest.inner.back.store(dest_b, Ordering::Release);
 
         // Return with success.
-        Steal::Success(task)
+        Steal::Success(unsafe { task.assume_init().0 })
     }
 }
 
@@ -1538,7 +1534,7 @@ impl<T> Injector<T> {
                         let task = slot.task.get().read().assume_init();
 
                         // Write it into the destination queue.
-                        dest_buffer.write(dest_b.wrapping_add(i as isize), task);
+                        dest_buffer.write(dest_b.wrapping_add(i as isize), Aligned(task));
                     }
                 }
 
@@ -1550,7 +1546,10 @@ impl<T> Injector<T> {
                         let task = slot.task.get().read().assume_init();
 
                         // Write it into the destination queue.
-                        dest_buffer.write(dest_b.wrapping_add((batch_size - 1 - i) as isize), task);
+                        dest_buffer.write(
+                            dest_b.wrapping_add((batch_size - 1 - i) as isize),
+                            Aligned(task),
+                        );
                     }
                 }
             }
@@ -1701,7 +1700,7 @@ impl<T> Injector<T> {
                         let task = slot.task.get().read().assume_init();
 
                         // Write it into the destination queue.
-                        dest_buffer.write(dest_b.wrapping_add(i as isize), task);
+                        dest_buffer.write(dest_b.wrapping_add(i as isize), Aligned(task));
                     }
                 }
 
@@ -1714,7 +1713,10 @@ impl<T> Injector<T> {
                         let task = slot.task.get().read().assume_init();
 
                         // Write it into the destination queue.
-                        dest_buffer.write(dest_b.wrapping_add((batch_size - 1 - i) as isize), task);
+                        dest_buffer.write(
+                            dest_b.wrapping_add((batch_size - 1 - i) as isize),
+                            Aligned(task),
+                        );
                     }
                 }
             }
