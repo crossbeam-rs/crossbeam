@@ -22,6 +22,8 @@
 
 # Version 0.4.3
 
+**Note**: This release has been yanked. See [CVE-2020-15254](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-v5m7-53cv-f3hx) for details.
+
 - Change license to "MIT OR Apache-2.0".
 
 # Version 0.4.2
