@@ -3,6 +3,8 @@ set -euxo pipefail
 IFS=$'\n\t'
 cd "$(dirname "$0")"/..
 
+export RUSTFLAGS="${RUSTFLAGS:-} -Z randomize-layout"
+
 MIRIFLAGS="-Zmiri-check-number-validity -Zmiri-symbolic-alignment-check -Zmiri-tag-raw-pointers" \
     cargo miri test \
     -p crossbeam-queue
