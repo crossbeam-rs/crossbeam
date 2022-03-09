@@ -27,12 +27,14 @@ std = ["alloc", "crossbeam-utils/std", "lazy_static"]
 # NOTE: Disabling both `std` *and* `alloc` features is not supported yet.
 alloc = []
 
+# These features are no longer used.
+# TODO: remove in the next major version.
 # Enable to use of unstable functionality.
 # This is disabled by default and requires recent nightly compiler.
 #
 # NOTE: This feature is outside of the normal semver guarantees and minor or
 # patch versions of crossbeam may make breaking changes to them at any time.
-nightly = ["crossbeam-utils/nightly", "const_fn"]
+nightly = ["crossbeam-utils/nightly"]
 
 # Enable the use of loom for concurrency testing.
 #
@@ -40,9 +42,11 @@ nightly = ["crossbeam-utils/nightly", "const_fn"]
 # patch versions of crossbeam may make breaking changes to them at any time.
 loom = ["loom-crate", "crossbeam-utils/loom"]
 
+[build-dependencies]
+autocfg = "1"
+
 [dependencies]
 cfg-if = "1"
-const_fn = { version = "0.4.4", optional = true }
 memoffset = "0.6"
 
 # Enable the use of loom for concurrency testing.
@@ -67,3 +71,4 @@ default-features = false
 
 [dev-dependencies]
 rand = "0.8"
+rustversion = "1"
