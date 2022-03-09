@@ -342,8 +342,16 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    ///
-    #[cfg_attr(all(feature = "nightly", not(crossbeam_loom)), const_fn::const_fn)]
+    #[cfg(all(crossbeam_const_fn_trait_bound, not(crossbeam_loom)))]
+    pub const fn null() -> Atomic<T> {
+        Self {
+            data: AtomicUsize::new(0),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Returns a new null atomic pointer.
+    #[cfg(not(all(crossbeam_const_fn_trait_bound, not(crossbeam_loom))))]
     pub fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
@@ -1594,7 +1602,7 @@ mod tests {
         Shared::<i64>::null().with_tag(7);
     }
 
-    #[cfg(feature = "nightly")]
+    #[rustversion::since(1.61)]
     #[test]
     fn const_atomic_null() {
         use super::Atomic;

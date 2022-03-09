@@ -146,6 +146,45 @@ fn spsc() {
 
 #[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
+fn spsc_ring_buffer() {
+    const COUNT: usize = 100_000;
+
+    let t = AtomicUsize::new(1);
+    let q = ArrayQueue::<usize>::new(3);
+    let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
+
+    scope(|scope| {
+        scope.spawn(|_| loop {
+            match t.load(Ordering::SeqCst) {
+                0 if q.is_empty() => break,
+
+                _ => {
+                    while let Some(n) = q.pop() {
+                        v[n].fetch_add(1, Ordering::SeqCst);
+                    }
+                }
+            }
+        });
+
+        scope.spawn(|_| {
+            for i in 0..COUNT {
+                if let Some(n) = q.force_push(i) {
+                    v[n].fetch_add(1, Ordering::SeqCst);
+                }
+            }
+
+            t.fetch_sub(1, Ordering::SeqCst);
+        });
+    })
+    .unwrap();
+
+    for c in v {
+        assert_eq!(c.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[cfg_attr(miri, ignore)] // Miri is too slow
+#[test]
 fn mpmc() {
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
@@ -171,6 +210,50 @@ fn mpmc() {
                 for i in 0..COUNT {
                     while q.push(i).is_err() {}
                 }
+            });
+        }
+    })
+    .unwrap();
+
+    for c in v {
+        assert_eq!(c.load(Ordering::SeqCst), THREADS);
+    }
+}
+
+#[cfg_attr(miri, ignore)] // Miri is too slow
+#[test]
+fn mpmc_ring_buffer() {
+    const COUNT: usize = 25_000;
+    const THREADS: usize = 4;
+
+    let t = AtomicUsize::new(THREADS);
+    let q = ArrayQueue::<usize>::new(3);
+    let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
+
+    scope(|scope| {
+        for _ in 0..THREADS {
+            scope.spawn(|_| loop {
+                match t.load(Ordering::SeqCst) {
+                    0 if q.is_empty() => break,
+
+                    _ => {
+                        while let Some(n) = q.pop() {
+                            v[n].fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                }
+            });
+        }
+
+        for _ in 0..THREADS {
+            scope.spawn(|_| {
+                for i in 0..COUNT {
+                    if let Some(n) = q.force_push(i) {
+                        v[n].fetch_add(1, Ordering::SeqCst);
+                    }
+                }
+
+                t.fetch_sub(1, Ordering::SeqCst);
             });
         }
     })
@@ -244,11 +327,19 @@ fn linearizable() {
     let q = ArrayQueue::new(THREADS);
 
     scope(|scope| {
-        for _ in 0..THREADS {
+        for _ in 0..THREADS / 2 {
             scope.spawn(|_| {
                 for _ in 0..COUNT {
                     while q.push(0).is_err() {}
                     q.pop().unwrap();
+                }
+            });
+
+            scope.spawn(|_| {
+                for _ in 0..COUNT {
+                    if q.force_push(0).is_none() {
+                        q.pop().unwrap();
+                    }
                 }
             });
         }

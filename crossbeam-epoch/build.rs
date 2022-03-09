@@ -29,12 +29,29 @@ fn main() {
         }
     };
 
+    let cfg = match autocfg::AutoCfg::new() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            println!(
+                "cargo:warning={}: unable to determine rustc version: {}",
+                env!("CARGO_PKG_NAME"),
+                e
+            );
+            return;
+        }
+    };
+
     // Note that this is `no_*`, not `has_*`. This allows treating
     // `cfg(target_has_atomic = "ptr")` as true when the build script doesn't
     // run. This is needed for compatibility with non-cargo build systems that
     // don't run the build script.
     if NO_ATOMIC_CAS.contains(&&*target) {
         println!("cargo:rustc-cfg=crossbeam_no_atomic_cas");
+    }
+
+    if cfg.probe_rustc_version(1, 61) {
+        // TODO: invert cfg once Rust 1.61 became stable.
+        println!("cargo:rustc-cfg=crossbeam_const_fn_trait_bound");
     }
 
     println!("cargo:rerun-if-changed=no_atomic.rs");
