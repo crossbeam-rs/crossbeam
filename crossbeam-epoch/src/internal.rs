@@ -230,6 +230,7 @@ impl Global {
     pub(crate) fn try_advance(&self, guard: &Guard) -> Epoch {
         let global_epoch = self.epoch.load(Ordering::Relaxed);
         // If pinned, no need to run fence again.
+        // TODO: can unprotected guard do try_advance?
         if guard.local.is_null() {
             atomic::fence(Ordering::SeqCst);
         }
