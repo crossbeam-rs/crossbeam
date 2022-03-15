@@ -1,3 +1,7 @@
+# Version 0.3.5
+
+- Add `ArrayQueue::force_push`. (#789)
+
 # Version 0.3.4
 
 - Implement `IntoIterator` for `ArrayQueue` and `SegQueue`. (#772)

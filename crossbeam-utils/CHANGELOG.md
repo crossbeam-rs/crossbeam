@@ -1,3 +1,7 @@
+# Version 0.8.8
+
+- Fix a bug when unstable `loom` support is enabled. (#787)
+
 # Version 0.8.7
 
 - Add `AtomicCell<{i*,u*}>::{fetch_max,fetch_min}`. (#785)
