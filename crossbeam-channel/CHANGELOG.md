@@ -1,3 +1,7 @@
+# Version 0.5.3
+
+- Fix panic on very large timeout. (#798)
+
 # Version 0.5.2
 
 - Fix stacked borrows violations when `-Zmiri-tag-raw-pointers` is enabled. (#763, #764)

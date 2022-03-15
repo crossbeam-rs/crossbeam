@@ -1,3 +1,7 @@
+# Version 0.9.8
+
+- Make `Atomic::null()` const function at 1.61+. (#797)
+
 # Version 0.9.7
 
 - Fix Miri error when `-Zmiri-check-number-validity` is enabled. (#779)
