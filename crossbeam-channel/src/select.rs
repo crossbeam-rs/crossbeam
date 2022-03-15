@@ -487,7 +487,7 @@ pub fn select_timeout<'a>(
     handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
     timeout: Duration,
 ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
-    select_deadline(handles, Instant::now() + timeout)
+    select_deadline(handles, utils::convert_timeout_to_deadline(timeout))
 }
 
 /// Blocks until a given deadline, or until one of the operations becomes ready and selects it.
@@ -1043,7 +1043,7 @@ impl<'a> Select<'a> {
     /// }
     /// ```
     pub fn ready_timeout(&mut self, timeout: Duration) -> Result<usize, ReadyTimeoutError> {
-        self.ready_deadline(Instant::now() + timeout)
+        self.ready_deadline(utils::convert_timeout_to_deadline(timeout))
     }
 
     /// Blocks until a given deadline, or until one of the operations becomes ready.
