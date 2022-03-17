@@ -77,11 +77,13 @@ impl Waker {
     /// Attempts to find another thread's entry, select the operation, and wake it up.
     #[inline]
     pub(crate) fn try_select(&mut self) -> Option<Entry> {
+        let thread_id = current_thread_id();
+
         self.selectors
             .iter()
             .position(|selector| {
                 // Does the entry belong to a different thread?
-                selector.cx.thread_id() != current_thread_id()
+                selector.cx.thread_id() != thread_id
                     && selector // Try selecting this operation.
                         .cx
                         .try_select(Selected::Operation(selector.oper))
