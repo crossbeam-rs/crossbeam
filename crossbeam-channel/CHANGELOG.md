@@ -1,3 +1,7 @@
+# Version 0.5.4
+
+- Workaround a bug in upstream related to TLS access on AArch64 Linux. (#802)
+
 # Version 0.5.3
 
 - Fix panic on very large timeout. (#798)
