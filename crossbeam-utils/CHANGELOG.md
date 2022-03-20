@@ -10,33 +10,33 @@
 
 # Version 0.8.6
 
-**Note**: This release has been yanked. See [#781](https://github.com/crossbeam-rs/crossbeam/issues/781) for details.
+**Note:** This release has been yanked. See [GHSA-qc84-gqf4-9926](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-qc84-gqf4-9926) for details.
 
 - Re-add `AtomicCell<{i,u}64>::{fetch_add,fetch_sub,fetch_and,fetch_or,fetch_xor}` that were accidentally removed in 0.8.0 on targets that do not support `Atomic{I,U}64`. (#767)
 - Re-add `AtomicCell<{i,u}128>::{fetch_add,fetch_sub,fetch_and,fetch_or,fetch_xor}` that were accidentally removed in 0.8.0. (#767)
 
 # Version 0.8.5
 
-**Note**: This release has been yanked. See [#781](https://github.com/crossbeam-rs/crossbeam/issues/781) for details.
+**Note:** This release has been yanked. See [GHSA-qc84-gqf4-9926](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-qc84-gqf4-9926) for details.
 
 - Add `AtomicCell::fetch_update`. (#704)
 - Support targets that do not have atomic CAS on stable Rust. (#698)
 
 # Version 0.8.4
 
-**Note**: This release has been yanked. See [#781](https://github.com/crossbeam-rs/crossbeam/issues/781) for details.
+**Note:** This release has been yanked. See [GHSA-qc84-gqf4-9926](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-qc84-gqf4-9926) for details.
 
 - Bump `loom` dependency to version 0.5. (#686)
 
 # Version 0.8.3
 
-**Note**: This release has been yanked. See [#781](https://github.com/crossbeam-rs/crossbeam/issues/781) for details.
+**Note:** This release has been yanked. See [GHSA-qc84-gqf4-9926](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-qc84-gqf4-9926) for details.
 
 - Make `loom` dependency optional. (#666)
 
 # Version 0.8.2
 
-**Note**: This release has been yanked. See [#781](https://github.com/crossbeam-rs/crossbeam/issues/781) for details.
+**Note:** This release has been yanked. See [GHSA-qc84-gqf4-9926](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-qc84-gqf4-9926) for details.
 
 - Deprecate `AtomicCell::compare_and_swap`. Use `AtomicCell::compare_exchange` instead. (#619)
 - Add `Parker::park_deadline`. (#563)
@@ -45,7 +45,7 @@
 
 # Version 0.8.1
 
-**Note**: This release has been yanked. See [#781](https://github.com/crossbeam-rs/crossbeam/issues/781) for details.
+**Note:** This release has been yanked. See [GHSA-qc84-gqf4-9926](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-qc84-gqf4-9926) for details.
 
 - Make `AtomicCell::is_lock_free` always const fn. (#600)
 - Fix a bug in `seq_lock_wide`. (#596)
@@ -54,7 +54,7 @@
 
 # Version 0.8.0
 
-**Note**: This release has been yanked. See [#781](https://github.com/crossbeam-rs/crossbeam/issues/781) for details.
+**Note:** This release has been yanked. See [GHSA-qc84-gqf4-9926](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-qc84-gqf4-9926) for details.
 
 - Bump the minimum supported Rust version to 1.36.
 - Remove deprecated `AtomicCell::get_mut()` and `Backoff::is_complete()` methods.

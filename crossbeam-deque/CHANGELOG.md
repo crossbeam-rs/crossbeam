@@ -5,7 +5,7 @@
 
 # Version 0.8.0
 
-**Note**: This release has been yanked. See [CVE-2021-32810](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
+**Note:** This release has been yanked. See [GHSA-pqqp-xmhj-wgcw](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
 
 - Bump the minimum supported Rust version to 1.36.
 - Add `Worker::len()` and `Injector::len()` methods.
@@ -17,27 +17,27 @@
 
 # Version 0.7.3
 
-**Note**: This release has been yanked. See [CVE-2021-32810](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
+**Note:** This release has been yanked. See [GHSA-pqqp-xmhj-wgcw](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
 
 - Stop stealing from the same deque. (#448)
 - Fix unsoundness issues by adopting `MaybeUninit`. (#458)
 
 # Version 0.7.2
 
-**Note**: This release has been yanked. See [CVE-2021-32810](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
+**Note:** This release has been yanked. See [GHSA-pqqp-xmhj-wgcw](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
 
 - Bump `crossbeam-epoch` to `0.8`.
 - Bump `crossbeam-utils` to `0.7`.
 
 # Version 0.7.1
 
-**Note**: This release has been yanked. See [CVE-2021-32810](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
+**Note:** This release has been yanked. See [GHSA-pqqp-xmhj-wgcw](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
 
 - Bump the minimum required version of `crossbeam-utils`.
 
 # Version 0.7.0
 
-**Note**: This release has been yanked. See [CVE-2021-32810](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
+**Note:** This release has been yanked. See [GHSA-pqqp-xmhj-wgcw](https://github.com/crossbeam-rs/crossbeam/security/advisories/GHSA-pqqp-xmhj-wgcw) for details.
 
 - Make `Worker::pop()` faster in the FIFO case.
 - Replace `fifo()` nad `lifo()` with `Worker::new_fifo()` and `Worker::new_lifo()`.
