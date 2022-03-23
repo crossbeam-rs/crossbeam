@@ -396,10 +396,16 @@ fn stress_timeout_two_threads() {
     .unwrap();
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn drops() {
+    #[cfg(miri)]
+    const RUNS: usize = 20;
+    #[cfg(not(miri))]
     const RUNS: usize = 100;
+    #[cfg(miri)]
+    const STEPS: usize = 500;
+    #[cfg(not(miri))]
+    const STEPS: usize = 10_000;
 
     static DROPS: AtomicUsize = AtomicUsize::new(0);
 
@@ -415,7 +421,7 @@ fn drops() {
     let mut rng = thread_rng();
 
     for _ in 0..RUNS {
-        let steps = rng.gen_range(0..3_000);
+        let steps = rng.gen_range(0..STEPS);
 
         DROPS.store(0, Ordering::SeqCst);
         let (s, r) = bounded::<DropCounter>(0);

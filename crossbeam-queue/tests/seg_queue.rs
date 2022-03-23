@@ -52,9 +52,11 @@ fn len() {
     assert_eq!(q.len(), 0);
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn spsc() {
+    #[cfg(miri)]
+    const COUNT: usize = 500;
+    #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
     let q = SegQueue::new();
@@ -67,6 +69,8 @@ fn spsc() {
                         assert_eq!(x, i);
                         break;
                     }
+                    #[cfg(miri)]
+                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
             }
             assert!(q.pop().is_none());
@@ -117,10 +121,16 @@ fn mpmc() {
     }
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn drops() {
+    #[cfg(miri)]
+    const RUNS: usize = 50;
+    #[cfg(not(miri))]
     const RUNS: usize = 100;
+    #[cfg(miri)]
+    const STEPS: usize = 500;
+    #[cfg(not(miri))]
+    const STEPS: usize = 10_000;
 
     static DROPS: AtomicUsize = AtomicUsize::new(0);
 
@@ -136,7 +146,7 @@ fn drops() {
     let mut rng = thread_rng();
 
     for _ in 0..RUNS {
-        let steps = rng.gen_range(0..10_000);
+        let steps = rng.gen_range(0..STEPS);
         let additional = rng.gen_range(0..1000);
 
         DROPS.store(0, Ordering::SeqCst);
@@ -145,7 +155,10 @@ fn drops() {
         scope(|scope| {
             scope.spawn(|_| {
                 for _ in 0..steps {
-                    while q.pop().is_none() {}
+                    while q.pop().is_none() {
+                        #[cfg(miri)]
+                        std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
+                    }
                 }
             });
 
