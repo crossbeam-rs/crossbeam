@@ -35,7 +35,7 @@ crossbeam-epoch = "0.9"
 
 Crossbeam Epoch supports stable Rust releases going back at least six months,
 and every time the minimum supported Rust version is increased, a new minor
-version is released. Currently, the minimum supported Rust version is 1.36.
+version is released. Currently, the minimum supported Rust version is 1.61.
 
 ## License
 
