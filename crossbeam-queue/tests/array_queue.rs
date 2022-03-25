@@ -57,10 +57,15 @@ fn len_empty_full() {
     assert!(!q.is_full());
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn len() {
+    #[cfg(miri)]
+    const COUNT: usize = 500;
+    #[cfg(not(miri))]
     const COUNT: usize = 25_000;
+    #[cfg(miri)]
+    const CAP: usize = 100;
+    #[cfg(not(miri))]
     const CAP: usize = 1000;
 
     let q = ArrayQueue::new(CAP);
@@ -97,6 +102,8 @@ fn len() {
                         assert_eq!(x, i);
                         break;
                     }
+                    #[cfg(miri)]
+                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
                 let len = q.len();
                 assert!(len <= CAP);
@@ -105,7 +112,10 @@ fn len() {
 
         scope.spawn(|_| {
             for i in 0..COUNT {
-                while q.push(i).is_err() {}
+                while q.push(i).is_err() {
+                    #[cfg(miri)]
+                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
+                }
                 let len = q.len();
                 assert!(len <= CAP);
             }
@@ -115,9 +125,11 @@ fn len() {
     assert_eq!(q.len(), 0);
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn spsc() {
+    #[cfg(miri)]
+    const COUNT: usize = 500;
+    #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
     let q = ArrayQueue::new(3);
@@ -130,6 +142,8 @@ fn spsc() {
                         assert_eq!(x, i);
                         break;
                     }
+                    #[cfg(miri)]
+                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
             }
             assert!(q.pop().is_none());
@@ -137,16 +151,21 @@ fn spsc() {
 
         scope.spawn(|_| {
             for i in 0..COUNT {
-                while q.push(i).is_err() {}
+                while q.push(i).is_err() {
+                    #[cfg(miri)]
+                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
+                }
             }
         });
     })
     .unwrap();
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn spsc_ring_buffer() {
+    #[cfg(miri)]
+    const COUNT: usize = 500;
+    #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
     let t = AtomicUsize::new(1);
@@ -164,6 +183,8 @@ fn spsc_ring_buffer() {
                     }
                 }
             }
+            #[cfg(miri)]
+            std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
         });
 
         scope.spawn(|_| {
@@ -264,10 +285,16 @@ fn mpmc_ring_buffer() {
     }
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn drops() {
+    #[cfg(miri)]
+    const RUNS: usize = 50;
+    #[cfg(not(miri))]
     const RUNS: usize = 100;
+    #[cfg(miri)]
+    const STEPS: usize = 500;
+    #[cfg(not(miri))]
+    const STEPS: usize = 10_000;
 
     static DROPS: AtomicUsize = AtomicUsize::new(0);
 
@@ -283,7 +310,7 @@ fn drops() {
     let mut rng = thread_rng();
 
     for _ in 0..RUNS {
-        let steps = rng.gen_range(0..10_000);
+        let steps = rng.gen_range(0..STEPS);
         let additional = rng.gen_range(0..50);
 
         DROPS.store(0, Ordering::SeqCst);
@@ -292,7 +319,10 @@ fn drops() {
         scope(|scope| {
             scope.spawn(|_| {
                 for _ in 0..steps {
-                    while q.pop().is_none() {}
+                    while q.pop().is_none() {
+                        #[cfg(miri)]
+                        std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
+                    }
                 }
             });
 
@@ -300,6 +330,8 @@ fn drops() {
                 for _ in 0..steps {
                     while q.push(DropCounter).is_err() {
                         DROPS.fetch_sub(1, Ordering::SeqCst);
+                        #[cfg(miri)]
+                        std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                     }
                 }
             });
