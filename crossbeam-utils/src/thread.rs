@@ -130,7 +130,8 @@ type SharedOption<T> = Arc<Mutex<Option<T>>>;
 /// All child threads that haven't been manually joined will be automatically joined just before
 /// this function invocation ends. If all joined threads have successfully completed, `Ok` is
 /// returned with the return value of `f`. If any of the joined threads has panicked, an `Err` is
-/// returned containing errors from panicked threads.
+/// returned containing errors from panicked threads. Note that if panics are implemented by
+/// aborting the process, no error is returned; see the notes of [std::panic::catch_unwind].
 ///
 /// # Examples
 ///
@@ -490,7 +491,8 @@ pub struct ScopedJoinHandle<'scope, T> {
 impl<T> ScopedJoinHandle<'_, T> {
     /// Waits for the thread to finish and returns its result.
     ///
-    /// If the child thread panics, an error is returned.
+    /// If the child thread panics, an error is returned. Note that if panics are implemented by
+    /// aborting the process, no error is returned; see the notes of [std::panic::catch_unwind].
     ///
     /// # Panics
     ///
