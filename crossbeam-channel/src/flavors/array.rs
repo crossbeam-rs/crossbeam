@@ -521,8 +521,11 @@ impl<T> Channel<T> {
 impl<T> Drop for Channel<T> {
     fn drop(&mut self) {
         // Get the index of the head.
-        let hix = *self.head.get_mut() & (self.mark_bit - 1);
-        let tix = *self.tail.get_mut() & (self.mark_bit - 1);
+        let head = *self.head.get_mut();
+        let tail = *self.tail.get_mut();
+
+        let hix = head & (self.mark_bit - 1);
+        let tix = tail & (self.mark_bit - 1);
 
         let len = if hix < tix {
             tix - hix
