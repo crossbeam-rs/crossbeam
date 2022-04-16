@@ -5,17 +5,13 @@ cd "$(dirname "$0")"/..
 
 export RUSTFLAGS="${RUSTFLAGS:-} -Z randomize-layout"
 
-MIRIFLAGS="-Zmiri-check-number-validity -Zmiri-symbolic-alignment-check -Zmiri-tag-raw-pointers" \
+MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
     cargo miri test \
-    -p crossbeam-queue
-
-# -Zmiri-tag-raw-pointers doesn't work with std::thread::Builder::name on Linux: https://github.com/rust-lang/miri/issues/1717
-MIRIFLAGS="-Zmiri-check-number-validity -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
-    cargo miri test \
+    -p crossbeam-queue \
     -p crossbeam-utils
 
 # -Zmiri-ignore-leaks is needed because we use detached threads in tests/docs: https://github.com/rust-lang/miri/issues/1371
-MIRIFLAGS="-Zmiri-check-number-validity -Zmiri-symbolic-alignment-check -Zmiri-tag-raw-pointers -Zmiri-disable-isolation -Zmiri-ignore-leaks" \
+MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-ignore-leaks" \
     cargo miri test \
     -p crossbeam-channel
 
