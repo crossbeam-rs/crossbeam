@@ -10,7 +10,7 @@ use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread::{self, ThreadId};
 
 use crate::CachePadded;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 /// The number of shards per sharded lock. Must be a power of two.
 const NUM_SHARDS: usize = 8;
@@ -583,13 +583,13 @@ struct ThreadIndices {
     next_index: usize,
 }
 
-lazy_static! {
-    static ref THREAD_INDICES: Mutex<ThreadIndices> = Mutex::new(ThreadIndices {
+static THREAD_INDICES: Lazy<Mutex<ThreadIndices>> = Lazy::new(|| {
+    Mutex::new(ThreadIndices {
         mapping: HashMap::new(),
         free_list: Vec::new(),
         next_index: 0,
-    });
-}
+    })
+});
 
 /// A registration of a thread with an index.
 ///
