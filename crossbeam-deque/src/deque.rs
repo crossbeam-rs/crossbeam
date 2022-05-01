@@ -8,8 +8,10 @@ use std::ptr;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use crossbeam_utils::{Backoff, CachePadded};
+
 use crate::epoch::{self, Atomic, Owned};
-use crate::utils::{Backoff, CachePadded};
+use crate::utils::AtomicU64;
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;
@@ -1105,13 +1107,13 @@ const READ: usize = 2;
 const DESTROY: usize = 4;
 
 // Each block covers one "lap" of indices.
-const LAP: usize = 64;
+const LAP: u64 = 64;
 // The maximum number of values a block can hold.
-const BLOCK_CAP: usize = LAP - 1;
+const BLOCK_CAP: usize = LAP as usize - 1;
 // How many lower bits are reserved for metadata.
-const SHIFT: usize = 1;
+const SHIFT: u64 = 1;
 // Indicates that the block is not the last one.
-const HAS_NEXT: usize = 1;
+const HAS_NEXT: u64 = 1;
 
 /// A slot in a block.
 struct Slot<T> {
@@ -1191,7 +1193,7 @@ impl<T> Block<T> {
 /// A position in a queue.
 struct Position<T> {
     /// The index in the queue.
-    index: AtomicUsize,
+    index: AtomicU64,
 
     /// The block in the linked list.
     block: AtomicPtr<Block<T>>,
@@ -1235,11 +1237,11 @@ impl<T> Default for Injector<T> {
         Self {
             head: CachePadded::new(Position {
                 block: AtomicPtr::new(block),
-                index: AtomicUsize::new(0),
+                index: AtomicU64::new(0),
             }),
             tail: CachePadded::new(Position {
                 block: AtomicPtr::new(block),
-                index: AtomicUsize::new(0),
+                index: AtomicU64::new(0),
             }),
             _marker: PhantomData,
         }
@@ -1279,7 +1281,7 @@ impl<T> Injector<T> {
 
         loop {
             // Calculate the offset of the index into the block.
-            let offset = (tail >> SHIFT) % LAP;
+            let offset = ((tail >> SHIFT) % LAP) as usize;
 
             // If we reached the end of the block, wait until the next one is installed.
             if offset == BLOCK_CAP {
@@ -1357,7 +1359,7 @@ impl<T> Injector<T> {
             block = self.head.block.load(Ordering::Acquire);
 
             // Calculate the offset of the index into the block.
-            offset = (head >> SHIFT) % LAP;
+            offset = ((head >> SHIFT) % LAP) as usize;
 
             // If we reached the end of the block, wait until the next one is installed.
             if offset == BLOCK_CAP {
@@ -1456,7 +1458,7 @@ impl<T> Injector<T> {
             block = self.head.block.load(Ordering::Acquire);
 
             // Calculate the offset of the index into the block.
-            offset = (head >> SHIFT) % LAP;
+            offset = ((head >> SHIFT) % LAP) as usize;
 
             // If we reached the end of the block, wait until the next one is installed.
             if offset == BLOCK_CAP {
@@ -1485,7 +1487,7 @@ impl<T> Injector<T> {
                 // We can steal all tasks till the end of the block.
                 advance = (BLOCK_CAP - offset).min(MAX_BATCH);
             } else {
-                let len = (tail - head) >> SHIFT;
+                let len = ((tail - head) >> SHIFT) as usize;
                 // Steal half of the available tasks.
                 advance = ((len + 1) / 2).min(MAX_BATCH);
             }
@@ -1494,7 +1496,7 @@ impl<T> Injector<T> {
             advance = (BLOCK_CAP - offset).min(MAX_BATCH);
         }
 
-        new_head += advance << SHIFT;
+        new_head += (advance as u64) << SHIFT;
         let new_offset = offset + advance;
 
         // Try moving the head index forward.
@@ -1615,7 +1617,7 @@ impl<T> Injector<T> {
             block = self.head.block.load(Ordering::Acquire);
 
             // Calculate the offset of the index into the block.
-            offset = (head >> SHIFT) % LAP;
+            offset = ((head >> SHIFT) % LAP) as usize;
 
             // If we reached the end of the block, wait until the next one is installed.
             if offset == BLOCK_CAP {
@@ -1643,7 +1645,7 @@ impl<T> Injector<T> {
                 // We can steal all tasks till the end of the block.
                 advance = (BLOCK_CAP - offset).min(MAX_BATCH + 1);
             } else {
-                let len = (tail - head) >> SHIFT;
+                let len = ((tail - head) >> SHIFT) as usize;
                 // Steal half of the available tasks.
                 advance = ((len + 1) / 2).min(MAX_BATCH + 1);
             }
@@ -1652,7 +1654,7 @@ impl<T> Injector<T> {
             advance = (BLOCK_CAP - offset).min(MAX_BATCH + 1);
         }
 
-        new_head += advance << SHIFT;
+        new_head += (advance as u64) << SHIFT;
         let new_offset = offset + advance;
 
         // Try moving the head index forward.
@@ -1812,7 +1814,7 @@ impl<T> Injector<T> {
                 head >>= SHIFT;
 
                 // Return the difference minus the number of blocks between tail and head.
-                return tail - head - tail / LAP;
+                return (tail - head - tail / LAP) as usize;
             }
         }
     }
@@ -1831,7 +1833,7 @@ impl<T> Drop for Injector<T> {
         unsafe {
             // Drop all values between `head` and `tail` and deallocate the heap-allocated blocks.
             while head != tail {
-                let offset = (head >> SHIFT) % LAP;
+                let offset = ((head >> SHIFT) % LAP) as usize;
 
                 if offset < BLOCK_CAP {
                     // Drop the task in the slot.

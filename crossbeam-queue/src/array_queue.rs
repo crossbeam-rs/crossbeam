@@ -7,9 +7,11 @@ use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::mem::MaybeUninit;
-use core::sync::atomic::{self, AtomicUsize, Ordering};
+use core::sync::atomic::{self, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
+
+use crate::utils::AtomicU64;
 
 /// A slot in a queue.
 struct Slot<T> {
@@ -17,7 +19,7 @@ struct Slot<T> {
     ///
     /// If the stamp equals the tail, this node will be next written to. If it equals head + 1,
     /// this node will be next read from.
-    stamp: AtomicUsize,
+    stamp: AtomicU64,
 
     /// The value in this slot.
     value: UnsafeCell<MaybeUninit<T>>,
@@ -50,18 +52,18 @@ pub struct ArrayQueue<T> {
     /// The head of the queue.
     ///
     /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
-    /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
+    /// single `u64`. The lower bits represent the index, while the upper bits represent the lap.
     ///
     /// Elements are popped from the head of the queue.
-    head: CachePadded<AtomicUsize>,
+    head: CachePadded<AtomicU64>,
 
     /// The tail of the queue.
     ///
     /// This value is a "stamp" consisting of an index into the buffer and a lap, but packed into a
-    /// single `usize`. The lower bits represent the index, while the upper bits represent the lap.
+    /// single `u64`. The lower bits represent the index, while the upper bits represent the lap.
     ///
     /// Elements are pushed into the tail of the queue.
-    tail: CachePadded<AtomicUsize>,
+    tail: CachePadded<AtomicU64>,
 
     /// The buffer holding slots.
     buffer: Box<[Slot<T>]>,
@@ -70,7 +72,7 @@ pub struct ArrayQueue<T> {
     cap: usize,
 
     /// A stamp with the value of `{ lap: 1, index: 0 }`.
-    one_lap: usize,
+    one_lap: u64,
 }
 
 unsafe impl<T: Send> Sync for ArrayQueue<T> {}
@@ -100,38 +102,38 @@ impl<T> ArrayQueue<T> {
 
         // Allocate a buffer of `cap` slots initialized
         // with stamps.
-        let buffer: Box<[Slot<T>]> = (0..cap)
+        let buffer: Box<[Slot<T>]> = (0..cap as u64)
             .map(|i| {
                 // Set the stamp to `{ lap: 0, index: i }`.
                 Slot {
-                    stamp: AtomicUsize::new(i),
+                    stamp: AtomicU64::new(i),
                     value: UnsafeCell::new(MaybeUninit::uninit()),
                 }
             })
             .collect();
 
         // One lap is the smallest power of two greater than `cap`.
-        let one_lap = (cap + 1).next_power_of_two();
+        let one_lap = (cap as u64 + 1).next_power_of_two();
 
         ArrayQueue {
             buffer,
             cap,
             one_lap,
-            head: CachePadded::new(AtomicUsize::new(head)),
-            tail: CachePadded::new(AtomicUsize::new(tail)),
+            head: CachePadded::new(AtomicU64::new(head)),
+            tail: CachePadded::new(AtomicU64::new(tail)),
         }
     }
 
     fn push_or_else<F>(&self, mut value: T, f: F) -> Result<(), T>
     where
-        F: Fn(T, usize, usize, &Slot<T>) -> Result<T, T>,
+        F: Fn(T, u64, u64, &Slot<T>) -> Result<T, T>,
     {
         let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
 
         loop {
             // Deconstruct the tail.
-            let index = tail & (self.one_lap - 1);
+            let index = (tail & (self.one_lap - 1)) as usize;
             let lap = tail & !(self.one_lap - 1);
 
             let new_tail = if index + 1 < self.cap {
@@ -278,7 +280,7 @@ impl<T> ArrayQueue<T> {
 
         loop {
             // Deconstruct the head.
-            let index = head & (self.one_lap - 1);
+            let index = (head & (self.one_lap - 1)) as usize;
             let lap = head & !(self.one_lap - 1);
 
             // Inspect the corresponding slot.
@@ -424,8 +426,8 @@ impl<T> ArrayQueue<T> {
 
             // If the tail didn't change, we've got consistent values to work with.
             if self.tail.load(Ordering::SeqCst) == tail {
-                let hix = head & (self.one_lap - 1);
-                let tix = tail & (self.one_lap - 1);
+                let hix = (head & (self.one_lap - 1)) as usize;
+                let tix = (tail & (self.one_lap - 1)) as usize;
 
                 return if hix < tix {
                     tix - hix
@@ -444,7 +446,7 @@ impl<T> ArrayQueue<T> {
 impl<T> Drop for ArrayQueue<T> {
     fn drop(&mut self) {
         // Get the index of the head.
-        let hix = self.head.load(Ordering::Relaxed) & (self.one_lap - 1);
+        let hix = (self.head.load(Ordering::Relaxed) & (self.one_lap - 1)) as usize;
 
         // Loop over all slots that hold a message and drop them.
         for i in 0..self.len() {
@@ -491,9 +493,9 @@ impl<T> Iterator for IntoIter<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let value = &mut self.value;
-        let head = *value.head.get_mut();
-        if value.head.get_mut() != value.tail.get_mut() {
-            let index = head & (value.one_lap - 1);
+        let head = value.head.load(Ordering::Relaxed);
+        if head != value.tail.load(Ordering::Relaxed) {
+            let index = (head & (value.one_lap - 1)) as usize;
             let lap = head & !(value.one_lap - 1);
             // SAFETY: We have mutable access to this, so we can read without
             // worrying about concurrency. Furthermore, we know this is
@@ -513,7 +515,7 @@ impl<T> Iterator for IntoIter<T> {
                 // Set to `{ lap: lap.wrapping_add(1), index: 0 }`.
                 lap.wrapping_add(value.one_lap)
             };
-            *value.head.get_mut() = new;
+            value.head.store(new, Ordering::Relaxed);
             Option::Some(val)
         } else {
             Option::None
