@@ -88,7 +88,6 @@ mod primitive {
         }
         pub(crate) use loom::sync::Arc;
     }
-    pub(crate) use loom::lazy_static;
     pub(crate) use loom::thread_local;
 }
 #[cfg(not(crossbeam_no_atomic_cas))]
@@ -135,9 +134,6 @@ mod primitive {
 
     #[cfg(feature = "std")]
     pub(crate) use std::thread_local;
-
-    #[cfg(feature = "std")]
-    pub(crate) use lazy_static::lazy_static;
 }
 
 #[cfg(not(crossbeam_no_atomic_cas))]

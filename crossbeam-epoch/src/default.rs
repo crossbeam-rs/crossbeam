@@ -6,9 +6,17 @@
 
 use crate::collector::{Collector, LocalHandle};
 use crate::guard::Guard;
-use crate::primitive::{lazy_static, thread_local};
+use crate::primitive::thread_local;
+#[cfg(not(crossbeam_loom))]
+use once_cell::sync::Lazy;
 
-lazy_static! {
+/// The global data for the default garbage collector.
+#[cfg(not(crossbeam_loom))]
+static COLLECTOR: Lazy<Collector> = Lazy::new(Collector::new);
+// FIXME: loom does not currently provide the equivalent of Lazy:
+// https://github.com/tokio-rs/loom/issues/263
+#[cfg(crossbeam_loom)]
+loom::lazy_static! {
     /// The global data for the default garbage collector.
     static ref COLLECTOR: Collector = Collector::new();
 }

@@ -19,7 +19,7 @@ default = ["std"]
 
 # Enable to use APIs that require `std`.
 # This is enabled by default.
-std = ["alloc", "crossbeam-utils/std", "lazy_static"]
+std = ["alloc", "crossbeam-utils/std", "once_cell"]
 
 # Enable to use APIs that require `alloc`.
 # This is enabled by default and also enabled if the `std` feature is enabled.
@@ -48,6 +48,8 @@ autocfg = "1"
 [dependencies]
 cfg-if = "1"
 memoffset = "0.6"
+once_cell = { version = "1", optional = true }
+scopeguard = { version = "1.1", default-features = false }
 
 # Enable the use of loom for concurrency testing.
 #
@@ -59,14 +61,6 @@ loom-crate = { package = "loom", version = "0.5", optional = true }
 [dependencies.crossbeam-utils]
 version = "0.8.5"
 path = "../crossbeam-utils"
-default-features = false
-
-[dependencies.lazy_static]
-version = "1.4.0"
-optional = true
-
-[dependencies.scopeguard]
-version = "1.1.0"
 default-features = false
 
 [dev-dependencies]
