@@ -135,14 +135,20 @@ impl<'a, T> IntoIterator for &'a Chan<T> {
 fn make<T>(cap: usize) -> Chan<T> {
     let (s, r) = bounded(cap);
     Chan {
-        inner: Arc::new(Mutex::new(ChanInner { s: Some(s), r: Some(r) })),
+        inner: Arc::new(Mutex::new(ChanInner {
+            s: Some(s),
+            r: Some(r),
+        })),
     }
 }
 
 fn make_unbounded<T>() -> Chan<T> {
     let (s, r) = unbounded();
     Chan {
-        inner: Arc::new(Mutex::new(ChanInner { s: Some(s), r: Some(r) })),
+        inner: Arc::new(Mutex::new(ChanInner {
+            s: Some(s),
+            r: Some(r),
+        })),
     }
 }
 
@@ -1755,6 +1761,7 @@ mod chan {
         change_nproc(-1, ctx.nproc());
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn sel(
         mut r0: ChanWithVals,
         mut r1: ChanWithVals,
@@ -1814,7 +1821,7 @@ mod chan {
         change_nproc(-1, ctx.nproc());
     }
 
-    fn get(vec: &Vec<ChanWithVals>, idx: usize) -> ChanWithVals {
+    fn get(vec: &[ChanWithVals], idx: usize) -> ChanWithVals {
         vec.get(idx).unwrap().clone()
     }
 
@@ -2037,8 +2044,6 @@ mod chan {
 
     #[test]
     fn main() {
-        assert!(MESSAGES_PER_CHANEL < MESSAGES_RANGE_LEN);
-
         let mut ctx = Context {
             nproc: Arc::new(Mutex::new(0)),
             cval: Arc::new(Mutex::new(0)),
