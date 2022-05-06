@@ -32,7 +32,7 @@ struct Chan<T> {
 
 struct ChanInner<T> {
     s: Option<Sender<T>>,
-    r: Receiver<T>,
+    r: Option<Receiver<T>>,
 }
 
 impl<T> Clone for Chan<T> {
@@ -57,12 +57,12 @@ impl<T> Chan<T> {
     }
 
     fn try_recv(&self) -> Option<T> {
-        let r = self.inner.lock().unwrap().r.clone();
+        let r = self.inner.lock().unwrap().r.as_ref().unwrap().clone();
         r.try_recv().ok()
     }
 
     fn recv(&self) -> Option<T> {
-        let r = self.inner.lock().unwrap().r.clone();
+        let r = self.inner.lock().unwrap().r.as_ref().unwrap().clone();
         r.recv().ok()
     }
 
@@ -76,7 +76,7 @@ impl<T> Chan<T> {
     }
 
     fn rx(&self) -> Receiver<T> {
-        self.inner.lock().unwrap().r.clone()
+        self.inner.lock().unwrap().r.as_ref().unwrap().clone()
     }
 
     fn tx(&self) -> Sender<T> {
@@ -111,16 +111,17 @@ impl<'a, T> IntoIterator for &'a Chan<T> {
 fn make<T>(cap: usize) -> Chan<T> {
     let (s, r) = bounded(cap);
     Chan {
-        inner: Arc::new(Mutex::new(ChanInner { s: Some(s), r })),
+        inner: Arc::new(Mutex::new(ChanInner { s: Some(s), r: Some(r) })),
     }
 }
 
 fn make_unbounded<T>() -> Chan<T> {
     let (s, r) = unbounded();
     Chan {
-        inner: Arc::new(Mutex::new(ChanInner { s: Some(s), r })),
+        inner: Arc::new(Mutex::new(ChanInner { s: Some(s), r: Some(r) })),
     }
 }
+
 #[derive(Clone)]
 struct WaitGroup(Arc<WaitGroupInner>);
 
