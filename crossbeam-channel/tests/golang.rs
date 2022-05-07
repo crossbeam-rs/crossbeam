@@ -20,7 +20,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, select, tick, unbounded, Receiver, Select, Sender};
+use crossbeam_channel::{bounded, never, select, tick, unbounded, Receiver, Select, Sender};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
@@ -33,6 +33,12 @@ struct Chan<T> {
 struct ChanInner<T> {
     s: Option<Sender<T>>,
     r: Option<Receiver<T>>,
+    // Receiver to use when r is None (Go blocks on receiving from nil)
+    nil_r: Receiver<T>,
+    // Sender to use when s is None (Go blocks on sending to nil)
+    nil_s: Sender<T>,
+    // Hold this receiver to prevent nil sender channel from disconnection
+    _nil_sr: Receiver<T>,
 }
 
 impl<T> Clone for Chan<T> {
@@ -93,23 +99,17 @@ impl<T> Chan<T> {
     }
 
     fn rx(&self) -> Receiver<T> {
-        match self.inner.lock().unwrap().r.as_ref() {
-            None => {
-                let (s, r) = bounded(0);
-                std::mem::forget(s);
-                r
-            }
+        let inner = self.inner.lock().unwrap();
+        match inner.r.as_ref() {
+            None => inner.nil_r.clone(),
             Some(r) => r.clone(),
         }
     }
 
     fn tx(&self) -> Sender<T> {
-        match self.inner.lock().unwrap().s.as_ref() {
-            None => {
-                let (s, r) = bounded(0);
-                std::mem::forget(r);
-                s
-            }
+        let inner = self.inner.lock().unwrap();
+        match inner.s.as_ref() {
+            None => inner.nil_s.clone(),
             Some(s) => s.clone(),
         }
     }
@@ -134,20 +134,28 @@ impl<'a, T> IntoIterator for &'a Chan<T> {
 
 fn make<T>(cap: usize) -> Chan<T> {
     let (s, r) = bounded(cap);
+    let (nil_s, _nil_sr) = bounded(0);
     Chan {
         inner: Arc::new(Mutex::new(ChanInner {
             s: Some(s),
             r: Some(r),
+            nil_r: never(),
+            nil_s,
+            _nil_sr,
         })),
     }
 }
 
 fn make_unbounded<T>() -> Chan<T> {
     let (s, r) = unbounded();
+    let (nil_s, _nil_sr) = bounded(0);
     Chan {
         inner: Arc::new(Mutex::new(ChanInner {
             s: Some(s),
             r: Some(r),
+            nil_r: never(),
+            nil_s,
+            _nil_sr,
         })),
     }
 }
