@@ -1584,7 +1584,10 @@ mod chan {
 
     use super::*;
 
-    const MESSAGES_PER_CHANEL: u32 = if cfg!(miri) { 2 } else { 76 };    // Miri is too slow on these tests
+    #[cfg(not(miri))]
+    const MESSAGES_PER_CHANEL: u32 = 76;
+    #[cfg(miri)]
+    const MESSAGES_PER_CHANEL: u32 = 2; // Miri is too slow on these tests
     const MESSAGES_RANGE_LEN: u32 = 100;
     const END: i32 = 10000;
 
