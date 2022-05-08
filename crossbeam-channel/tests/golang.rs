@@ -1584,7 +1584,7 @@ mod chan {
 
     use super::*;
 
-    const MESSAGES_PER_CHANEL: u32 = 76;
+    const MESSAGES_PER_CHANEL: u32 = if cfg!(miri) { 2 } else { 76 };    // Miri is too slow on these tests
     const MESSAGES_RANGE_LEN: u32 = 100;
     const END: i32 = 10000;
 
@@ -2067,9 +2067,9 @@ mod chan {
 
         #[rustfmt::skip]
         let t = 4 * // buffer sizes
-		            (4*4 + // tests 1,2,3,4 channels
-			                8 + // test 5 channels
-			                12) * // test 6 channels
+                    (4*4 + // tests 1,2,3,4 channels
+                            8 + // test 5 channels
+                            12) * // test 6 channels
                         MESSAGES_PER_CHANEL; // sends/recvs on a channel
 
         let tot = ctx.tot.lock().unwrap();
