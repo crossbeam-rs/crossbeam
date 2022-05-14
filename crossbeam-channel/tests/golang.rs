@@ -199,14 +199,6 @@ macro_rules! defer {
 }
 
 macro_rules! go {
-    (@parse ref $v:ident, $($tail:tt)*) => {{
-        let ref $v = $v;
-        go!(@parse $($tail)*)
-    }};
-    (@parse move $v:ident, $($tail:tt)*) => {{
-        let $v = $v;
-        go!(@parse $($tail)*)
-    }};
     (@parse $v:ident, $($tail:tt)*) => {{
         let $v = $v.clone();
         go!(@parse $($tail)*)
@@ -221,9 +213,6 @@ macro_rules! go {
                 ::std::process::abort();
             }
         })
-    };
-    (@parse $($tail:tt)*) => {
-        compile_error!("invalid `go!` syntax")
     };
     ($($tail:tt)*) => {{
         go!(@parse $($tail)*)
