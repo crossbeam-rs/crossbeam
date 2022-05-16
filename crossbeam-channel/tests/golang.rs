@@ -214,6 +214,9 @@ macro_rules! go {
             }
         })
     };
+    (@parse $($tail:tt)*) => {
+        compile_error!("invalid `go!` syntax")
+    };
     ($($tail:tt)*) => {{
         go!(@parse $($tail)*)
     }};
