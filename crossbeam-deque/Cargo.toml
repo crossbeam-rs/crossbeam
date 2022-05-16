@@ -33,7 +33,7 @@ default-features = false
 optional = true
 
 [dependencies.crossbeam-utils]
-version = "0.8"
+version = "0.8.6"
 path = "../crossbeam-utils"
 default-features = false
 optional = true

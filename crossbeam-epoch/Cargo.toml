@@ -59,7 +59,7 @@ scopeguard = { version = "1.1", default-features = false }
 loom-crate = { package = "loom", version = "0.5", optional = true }
 
 [dependencies.crossbeam-utils]
-version = "0.8.5"
+version = "0.8.6"
 path = "../crossbeam-utils"
 default-features = false
 

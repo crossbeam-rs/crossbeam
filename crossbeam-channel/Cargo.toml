@@ -27,7 +27,7 @@ std = ["crossbeam-utils/std"]
 cfg-if = "1"
 
 [dependencies.crossbeam-utils]
-version = "0.8"
+version = "0.8.6"
 path = "../crossbeam-utils"
 default-features = false
 optional = true

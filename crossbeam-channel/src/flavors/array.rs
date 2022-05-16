@@ -11,7 +11,7 @@
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
 use std::ptr;
-use std::sync::atomic::{self, AtomicUsize, Ordering};
+use std::sync::atomic::{self, Ordering};
 use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
@@ -19,12 +19,13 @@ use crossbeam_utils::{Backoff, CachePadded};
 use crate::context::Context;
 use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
+use crate::utils::AtomicU64;
 use crate::waker::SyncWaker;
 
 /// A slot in a channel.
 struct Slot<T> {
     /// The current stamp.
-    stamp: AtomicUsize,
+    stamp: AtomicU64,
 
     /// The message in this slot.
     msg: UnsafeCell<MaybeUninit<T>>,
@@ -37,7 +38,7 @@ pub(crate) struct ArrayToken {
     slot: *const u8,
 
     /// Stamp to store into the slot after reading or writing.
-    stamp: usize,
+    stamp: u64,
 }
 
 impl Default for ArrayToken {
@@ -55,20 +56,20 @@ pub(crate) struct Channel<T> {
     /// The head of the channel.
     ///
     /// This value is a "stamp" consisting of an index into the buffer, a mark bit, and a lap, but
-    /// packed into a single `usize`. The lower bits represent the index, while the upper bits
+    /// packed into a single `u64`. The lower bits represent the index, while the upper bits
     /// represent the lap. The mark bit in the head is always zero.
     ///
     /// Messages are popped from the head of the channel.
-    head: CachePadded<AtomicUsize>,
+    head: CachePadded<AtomicU64>,
 
     /// The tail of the channel.
     ///
     /// This value is a "stamp" consisting of an index into the buffer, a mark bit, and a lap, but
-    /// packed into a single `usize`. The lower bits represent the index, while the upper bits
+    /// packed into a single `u64`. The lower bits represent the index, while the upper bits
     /// represent the lap. The mark bit indicates that the channel is disconnected.
     ///
     /// Messages are pushed into the tail of the channel.
-    tail: CachePadded<AtomicUsize>,
+    tail: CachePadded<AtomicU64>,
 
     /// The buffer holding slots.
     buffer: Box<[Slot<T>]>,
@@ -77,10 +78,10 @@ pub(crate) struct Channel<T> {
     cap: usize,
 
     /// A stamp with the value of `{ lap: 1, mark: 0, index: 0 }`.
-    one_lap: usize,
+    one_lap: u64,
 
     /// If this bit is set in the tail, that means the channel is disconnected.
-    mark_bit: usize,
+    mark_bit: u64,
 
     /// Senders waiting while the channel is full.
     senders: SyncWaker,
@@ -95,7 +96,7 @@ impl<T> Channel<T> {
         assert!(cap > 0, "capacity must be positive");
 
         // Compute constants `mark_bit` and `one_lap`.
-        let mark_bit = (cap + 1).next_power_of_two();
+        let mark_bit = (cap as u64 + 1).next_power_of_two();
         let one_lap = mark_bit * 2;
 
         // Head is initialized to `{ lap: 0, mark: 0, index: 0 }`.
@@ -105,11 +106,11 @@ impl<T> Channel<T> {
 
         // Allocate a buffer of `cap` slots initialized
         // with stamps.
-        let buffer: Box<[Slot<T>]> = (0..cap)
+        let buffer: Box<[Slot<T>]> = (0..cap as u64)
             .map(|i| {
                 // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
                 Slot {
-                    stamp: AtomicUsize::new(i),
+                    stamp: AtomicU64::new(i),
                     msg: UnsafeCell::new(MaybeUninit::uninit()),
                 }
             })
@@ -120,8 +121,8 @@ impl<T> Channel<T> {
             cap,
             one_lap,
             mark_bit,
-            head: CachePadded::new(AtomicUsize::new(head)),
-            tail: CachePadded::new(AtomicUsize::new(tail)),
+            head: CachePadded::new(AtomicU64::new(head)),
+            tail: CachePadded::new(AtomicU64::new(tail)),
             senders: SyncWaker::new(),
             receivers: SyncWaker::new(),
         }
@@ -151,7 +152,7 @@ impl<T> Channel<T> {
             }
 
             // Deconstruct the tail.
-            let index = tail & (self.mark_bit - 1);
+            let index = (tail & (self.mark_bit - 1)) as usize;
             let lap = tail & !(self.one_lap - 1);
 
             // Inspect the corresponding slot.
@@ -234,7 +235,7 @@ impl<T> Channel<T> {
 
         loop {
             // Deconstruct the head.
-            let index = head & (self.mark_bit - 1);
+            let index = (head & (self.mark_bit - 1)) as usize;
             let lap = head & !(self.one_lap - 1);
 
             // Inspect the corresponding slot.
@@ -452,8 +453,8 @@ impl<T> Channel<T> {
 
             // If the tail didn't change, we've got consistent values to work with.
             if self.tail.load(Ordering::SeqCst) == tail {
-                let hix = head & (self.mark_bit - 1);
-                let tix = tail & (self.mark_bit - 1);
+                let hix = (head & (self.mark_bit - 1)) as usize;
+                let tix = (tail & (self.mark_bit - 1)) as usize;
 
                 return if hix < tix {
                     tix - hix
@@ -524,8 +525,8 @@ impl<T> Drop for Channel<T> {
         let head = *self.head.get_mut();
         let tail = *self.tail.get_mut();
 
-        let hix = head & (self.mark_bit - 1);
-        let tix = tail & (self.mark_bit - 1);
+        let hix = (head & (self.mark_bit - 1)) as usize;
+        let tix = (tail & (self.mark_bit - 1)) as usize;
 
         let len = if hix < tix {
             tix - hix

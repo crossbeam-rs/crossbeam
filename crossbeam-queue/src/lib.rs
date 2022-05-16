@@ -27,6 +27,7 @@ cfg_if::cfg_if! {
 
         mod array_queue;
         mod seg_queue;
+        mod utils;
 
         pub use self::array_queue::ArrayQueue;
         pub use self::seg_queue::SegQueue;

@@ -103,9 +103,10 @@ use cfg_if::cfg_if;
 cfg_if! {
     if #[cfg(feature = "std")] {
         use crossbeam_epoch as epoch;
-        use crossbeam_utils as utils;
 
         mod deque;
+        mod utils;
+
         pub use crate::deque::{Injector, Steal, Stealer, Worker};
     }
 }

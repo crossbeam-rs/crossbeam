@@ -8,6 +8,8 @@ use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
+use crate::utils::AtomicU64;
+
 // Bits indicating the state of a slot:
 // * If a value has been written into the slot, `WRITE` is set.
 // * If a value has been read from the slot, `READ` is set.
@@ -17,13 +19,13 @@ const READ: usize = 2;
 const DESTROY: usize = 4;
 
 // Each block covers one "lap" of indices.
-const LAP: usize = 32;
+const LAP: u64 = 32;
 // The maximum number of values a block can hold.
-const BLOCK_CAP: usize = LAP - 1;
+const BLOCK_CAP: usize = LAP as usize - 1;
 // How many lower bits are reserved for metadata.
-const SHIFT: usize = 1;
+const SHIFT: u64 = 1;
 // Indicates that the block is not the last one.
-const HAS_NEXT: usize = 1;
+const HAS_NEXT: u64 = 1;
 
 /// A slot in a block.
 struct Slot<T> {
@@ -52,7 +54,7 @@ struct Block<T> {
     next: AtomicPtr<Block<T>>,
 
     /// Slots for values.
-    slots: [Slot<T>; BLOCK_CAP],
+    slots: [Slot<T>; BLOCK_CAP as usize],
 }
 
 impl<T> Block<T> {
@@ -83,7 +85,7 @@ impl<T> Block<T> {
     unsafe fn destroy(this: *mut Block<T>, start: usize) {
         // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
         // begun destruction of the block.
-        for i in start..BLOCK_CAP - 1 {
+        for i in start..BLOCK_CAP as usize - 1 {
             let slot = (*this).slots.get_unchecked(i);
 
             // Mark the `DESTROY` bit if a thread is still using the slot.
@@ -103,7 +105,7 @@ impl<T> Block<T> {
 /// A position in a queue.
 struct Position<T> {
     /// The index in the queue.
-    index: AtomicUsize,
+    index: AtomicU64,
 
     /// The block in the linked list.
     block: AtomicPtr<Block<T>>,
@@ -160,11 +162,11 @@ impl<T> SegQueue<T> {
         SegQueue {
             head: CachePadded::new(Position {
                 block: AtomicPtr::new(ptr::null_mut()),
-                index: AtomicUsize::new(0),
+                index: AtomicU64::new(0),
             }),
             tail: CachePadded::new(Position {
                 block: AtomicPtr::new(ptr::null_mut()),
-                index: AtomicUsize::new(0),
+                index: AtomicU64::new(0),
             }),
             _marker: PhantomData,
         }
@@ -190,7 +192,7 @@ impl<T> SegQueue<T> {
 
         loop {
             // Calculate the offset of the index into the block.
-            let offset = (tail >> SHIFT) % LAP;
+            let offset = ((tail >> SHIFT) % LAP) as usize;
 
             // If we reached the end of the block, wait until the next one is installed.
             if offset == BLOCK_CAP {
@@ -284,7 +286,7 @@ impl<T> SegQueue<T> {
 
         loop {
             // Calculate the offset of the index into the block.
-            let offset = (head >> SHIFT) % LAP;
+            let offset = ((head >> SHIFT) % LAP) as usize;
 
             // If we reached the end of the block, wait until the next one is installed.
             if offset == BLOCK_CAP {
@@ -429,7 +431,7 @@ impl<T> SegQueue<T> {
                 head >>= SHIFT;
 
                 // Return the difference minus the number of blocks between tail and head.
-                return tail - head - tail / LAP;
+                return (tail - head - tail / LAP) as usize;
             }
         }
     }
@@ -448,7 +450,7 @@ impl<T> Drop for SegQueue<T> {
         unsafe {
             // Drop all values between `head` and `tail` and deallocate the heap-allocated blocks.
             while head != tail {
-                let offset = (head >> SHIFT) % LAP;
+                let offset = ((head >> SHIFT) % LAP) as usize;
 
                 if offset < BLOCK_CAP {
                     // Drop the value in the slot.
@@ -505,13 +507,13 @@ impl<T> Iterator for IntoIter<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let value = &mut self.value;
-        let head = *value.head.index.get_mut();
-        let tail = *value.tail.index.get_mut();
+        let head = value.head.index.load(Ordering::Relaxed);
+        let tail = value.tail.index.load(Ordering::Relaxed);
         if head >> SHIFT == tail >> SHIFT {
             None
         } else {
             let block = *value.head.block.get_mut();
-            let offset = (head >> SHIFT) % LAP;
+            let offset = ((head >> SHIFT) % LAP) as usize;
 
             // SAFETY: We have mutable access to this, so we can read without
             // worrying about concurrency. Furthermore, we know this is
@@ -533,11 +535,17 @@ impl<T> Iterator for IntoIter<T> {
                     *value.head.block.get_mut() = next;
                 }
                 // The last value in a block is empty, so skip it
-                *value.head.index.get_mut() = head.wrapping_add(2 << SHIFT);
+                value
+                    .head
+                    .index
+                    .store(head.wrapping_add(2 << SHIFT), Ordering::Relaxed);
                 // Double-check that we're pointing to the first item in a block.
-                debug_assert_eq!((*value.head.index.get_mut() >> SHIFT) % LAP, 0);
+                debug_assert_eq!((value.head.index.load(Ordering::Relaxed) >> SHIFT) % LAP, 0);
             } else {
-                *value.head.index.get_mut() = head.wrapping_add(1 << SHIFT);
+                value
+                    .head
+                    .index
+                    .store(head.wrapping_add(1 << SHIFT), Ordering::Relaxed);
             }
             Some(item)
         }
