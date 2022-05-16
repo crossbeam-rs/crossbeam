@@ -238,14 +238,6 @@ macro_rules! defer {
 }
 
 macro_rules! go {
-    (@parse ref $v:ident, $($tail:tt)*) => {{
-        let ref $v = $v;
-        go!(@parse $($tail)*)
-    }};
-    (@parse move $v:ident, $($tail:tt)*) => {{
-        let $v = $v;
-        go!(@parse $($tail)*)
-    }};
     (@parse $v:ident, $($tail:tt)*) => {{
         let $v = $v.clone();
         go!(@parse $($tail)*)
