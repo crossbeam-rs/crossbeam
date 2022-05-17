@@ -87,6 +87,8 @@ fn spsc() {
                         assert_eq!(i, v);
                         break;
                     }
+                    #[cfg(miri)]
+                    std::hint::spin_loop();
                 }
             }
 
