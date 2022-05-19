@@ -61,6 +61,8 @@ fn spsc() {
                         assert_eq!(i, v);
                         break;
                     }
+                    #[cfg(miri)]
+                    std::hint::spin_loop();
                 }
             }
 
@@ -102,6 +104,8 @@ fn mpmc() {
                             v[n].fetch_add(1, SeqCst);
                             break;
                         }
+                        #[cfg(miri)]
+                        std::hint::spin_loop();
                     }
                 }
             });

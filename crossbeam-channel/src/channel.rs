@@ -233,6 +233,8 @@ pub fn at(when: Instant) -> Receiver<Instant> {
 ///
 /// Using a `never` channel to optionally add a timeout to [`select!`]:
 ///
+/// [`select!`]: crate::select!
+///
 /// ```
 /// use std::thread;
 /// use std::time::Duration;

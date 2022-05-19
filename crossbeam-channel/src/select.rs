@@ -519,6 +519,8 @@ pub(crate) fn select_deadline<'a>(
 /// The [`select!`] macro is a convenience wrapper around `Select`. However, it cannot select over a
 /// dynamically created list of channel operations.
 ///
+/// [`select!`]: crate::select!
+///
 /// Once a list of operations has been built with `Select`, there are two different ways of
 /// proceeding:
 ///
