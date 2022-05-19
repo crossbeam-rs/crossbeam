@@ -993,7 +993,7 @@ macro_rules! crossbeam_channel_internal {
 /// An operation is considered to be ready if it doesn't have to block. Note that it is ready even
 /// when it will simply return an error because the channel is disconnected.
 ///
-/// The `select` macro is a convenience wrapper around [`Select`]. However, it cannot select over a
+/// The `select!` macro is a convenience wrapper around [`Select`]. However, it cannot select over a
 /// dynamically created list of channel operations.
 ///
 /// [`Select`]: super::Select
