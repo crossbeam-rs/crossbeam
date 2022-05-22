@@ -273,6 +273,7 @@ impl Drop for SyncWaker {
 }
 
 /// Returns the id of the current thread.
+#[cfg(not(all(target_arch = "aarch64", target_os = "linux")))]
 #[inline]
 fn current_thread_id() -> ThreadId {
     thread_local! {
@@ -283,4 +284,12 @@ fn current_thread_id() -> ThreadId {
     THREAD_ID
         .try_with(|id| *id)
         .unwrap_or_else(|_| thread::current().id())
+}
+// Do not cache thread id on aarch64 linux because is is buggy:
+// https://github.com/crossbeam-rs/crossbeam/pull/802
+/// Returns the id of the current thread.
+#[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+#[inline]
+fn current_thread_id() -> ThreadId {
+    thread::current().id()
 }
