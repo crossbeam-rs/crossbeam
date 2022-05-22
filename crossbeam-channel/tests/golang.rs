@@ -242,6 +242,10 @@ macro_rules! go {
         let $v = $v.clone();
         go!(@parse $($tail)*)
     }};
+    (@parse move $v:ident, $($tail:tt)*) => {{
+        let $v = $v;
+        go!(@parse $($tail)*)
+    }};
     (@parse $body:expr) => {
         ::std::thread::spawn(move || {
             let res = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
@@ -1568,7 +1572,118 @@ mod chanbarrier_test {
 
 // https://github.com/golang/go/blob/master/src/runtime/race/testdata/chan_test.go
 mod race_chan_test {
-    // TODO
+    use super::*;
+
+    #[test]
+    fn test_no_race_chan_sync() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded(0);
+        let go = go!(s, {
+            unsafe { V = 1 };
+            s.send(0).unwrap();
+        });
+        r.recv().unwrap();
+        unsafe { V = 2 };
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_sync_rev() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded(0);
+        let go = go!(s, {
+            s.send(0).unwrap();
+            unsafe { V = 2 };
+        });
+        unsafe { V = 1 };
+        r.recv().unwrap();
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_async() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded(10);
+        let go = go!(s, {
+            unsafe { V = 1 };
+            s.send(0).unwrap();
+        });
+        let _ = r.recv();
+        unsafe { V = 2 };
+        go.join().unwrap();
+    }
+
+    #[test]
+    #[ignore] // This test should fail but should_panic doesn't work here
+    fn test_race_chan_async_rev() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded(10);
+        let go = go!(s, {
+            s.send(0).unwrap();
+            unsafe { V = 1 };
+        });
+        unsafe { V = 2 };
+        r.recv().unwrap();
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_async_close_recv() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded::<i32>(10);
+        let go = go!(move s, {
+            unsafe { V = 1 };
+            drop(s);
+        });
+        let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+            let _ = r.recv();
+        }));
+        unsafe { V = 2 }
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_async_close_recv_2() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded::<i32>(10);
+        let go = go!(move s, {
+            unsafe { V = 1 };
+            drop(s);
+        });
+        let _ = r.recv();
+        unsafe { V = 2 }
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_async_close_recv_3() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded::<i32>(10);
+        let go = go!(move s, {
+            unsafe { V = 1 };
+            drop(s);
+        });
+        for _ in r.recv() {};
+        unsafe { V = 2 }
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_sync_close_recv() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded::<i32>(0);
+        let go = go!(move s, {
+            unsafe { V = 1 };
+            drop(s);
+        });
+        let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+            let _ = r.recv();
+        }));
+        unsafe { V = 2 }
+        go.join().unwrap();
+    }
+
+    // TODO: Add remaining tests
 }
 
 // https://github.com/golang/go/blob/master/test/ken/chan.go
