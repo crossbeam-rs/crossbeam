@@ -1,13 +1,9 @@
 //! Miscellaneous utilities.
 
-use std::cell::{Cell, UnsafeCell};
+use std::cell::Cell;
 use std::num::Wrapping;
-use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
-
-use crossbeam_utils::Backoff;
 
 /// Randomly shuffles a slice.
 pub(crate) fn shuffle<T>(v: &mut [T]) {
@@ -66,55 +62,5 @@ pub(crate) fn convert_timeout_to_deadline(timeout: Duration) -> Instant {
     match Instant::now().checked_add(timeout) {
         Some(deadline) => deadline,
         None => Instant::now() + Duration::from_secs(86400 * 365 * 30),
-    }
-}
-
-/// A simple spinlock.
-pub(crate) struct Spinlock<T> {
-    flag: AtomicBool,
-    value: UnsafeCell<T>,
-}
-
-impl<T> Spinlock<T> {
-    /// Returns a new spinlock initialized with `value`.
-    pub(crate) fn new(value: T) -> Spinlock<T> {
-        Spinlock {
-            flag: AtomicBool::new(false),
-            value: UnsafeCell::new(value),
-        }
-    }
-
-    /// Locks the spinlock.
-    pub(crate) fn lock(&self) -> SpinlockGuard<'_, T> {
-        let backoff = Backoff::new();
-        while self.flag.swap(true, Ordering::Acquire) {
-            backoff.snooze();
-        }
-        SpinlockGuard { parent: self }
-    }
-}
-
-/// A guard holding a spinlock locked.
-pub(crate) struct SpinlockGuard<'a, T> {
-    parent: &'a Spinlock<T>,
-}
-
-impl<T> Drop for SpinlockGuard<'_, T> {
-    fn drop(&mut self) {
-        self.parent.flag.store(false, Ordering::Release);
-    }
-}
-
-impl<T> Deref for SpinlockGuard<'_, T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        unsafe { &*self.parent.value.get() }
-    }
-}
-
-impl<T> DerefMut for SpinlockGuard<'_, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.parent.value.get() }
     }
 }

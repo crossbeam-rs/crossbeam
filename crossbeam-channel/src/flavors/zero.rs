@@ -5,6 +5,7 @@
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Instant;
 use std::{fmt, ptr};
 
@@ -13,7 +14,6 @@ use crossbeam_utils::Backoff;
 use crate::context::Context;
 use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
-use crate::utils::Spinlock;
 use crate::waker::Waker;
 
 /// A pointer to a packet.
@@ -95,7 +95,7 @@ struct Inner {
 /// Zero-capacity channel.
 pub(crate) struct Channel<T> {
     /// Inner representation of the channel.
-    inner: Spinlock<Inner>,
+    inner: Mutex<Inner>,
 
     /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -105,7 +105,7 @@ impl<T> Channel<T> {
     /// Constructs a new zero-capacity channel.
     pub(crate) fn new() -> Self {
         Channel {
-            inner: Spinlock::new(Inner {
+            inner: Mutex::new(Inner {
                 senders: Waker::new(),
                 receivers: Waker::new(),
                 is_disconnected: false,
@@ -126,7 +126,7 @@ impl<T> Channel<T> {
 
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token) -> bool {
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.lock().unwrap();
 
         // If there's a waiting receiver, pair up with it.
         if let Some(operation) = inner.receivers.try_select() {
@@ -155,7 +155,7 @@ impl<T> Channel<T> {
 
     /// Attempts to pair up with a sender.
     fn start_recv(&self, token: &mut Token) -> bool {
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.lock().unwrap();
 
         // If there's a waiting sender, pair up with it.
         if let Some(operation) = inner.senders.try_select() {
@@ -198,7 +198,7 @@ impl<T> Channel<T> {
     /// Attempts to send a message into the channel.
     pub(crate) fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let token = &mut Token::default();
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.lock().unwrap();
 
         // If there's a waiting receiver, pair up with it.
         if let Some(operation) = inner.receivers.try_select() {
@@ -222,7 +222,7 @@ impl<T> Channel<T> {
         deadline: Option<Instant>,
     ) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.lock().unwrap();
 
         // If there's a waiting receiver, pair up with it.
         if let Some(operation) = inner.receivers.try_select() {
@@ -254,12 +254,12 @@ impl<T> Channel<T> {
             match sel {
                 Selected::Waiting => unreachable!(),
                 Selected::Aborted => {
-                    self.inner.lock().senders.unregister(oper).unwrap();
+                    self.inner.lock().unwrap().senders.unregister(oper).unwrap();
                     let msg = unsafe { packet.msg.get().replace(None).unwrap() };
                     Err(SendTimeoutError::Timeout(msg))
                 }
                 Selected::Disconnected => {
-                    self.inner.lock().senders.unregister(oper).unwrap();
+                    self.inner.lock().unwrap().senders.unregister(oper).unwrap();
                     let msg = unsafe { packet.msg.get().replace(None).unwrap() };
                     Err(SendTimeoutError::Disconnected(msg))
                 }
@@ -275,7 +275,7 @@ impl<T> Channel<T> {
     /// Attempts to receive a message without blocking.
     pub(crate) fn try_recv(&self) -> Result<T, TryRecvError> {
         let token = &mut Token::default();
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.lock().unwrap();
 
         // If there's a waiting sender, pair up with it.
         if let Some(operation) = inner.senders.try_select() {
@@ -292,7 +292,7 @@ impl<T> Channel<T> {
     /// Receives a message from the channel.
     pub(crate) fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         let token = &mut Token::default();
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.lock().unwrap();
 
         // If there's a waiting sender, pair up with it.
         if let Some(operation) = inner.senders.try_select() {
@@ -325,11 +325,21 @@ impl<T> Channel<T> {
             match sel {
                 Selected::Waiting => unreachable!(),
                 Selected::Aborted => {
-                    self.inner.lock().receivers.unregister(oper).unwrap();
+                    self.inner
+                        .lock()
+                        .unwrap()
+                        .receivers
+                        .unregister(oper)
+                        .unwrap();
                     Err(RecvTimeoutError::Timeout)
                 }
                 Selected::Disconnected => {
-                    self.inner.lock().receivers.unregister(oper).unwrap();
+                    self.inner
+                        .lock()
+                        .unwrap()
+                        .receivers
+                        .unregister(oper)
+                        .unwrap();
                     Err(RecvTimeoutError::Disconnected)
                 }
                 Selected::Operation(_) => {
@@ -345,7 +355,7 @@ impl<T> Channel<T> {
     ///
     /// Returns `true` if this call disconnected the channel.
     pub(crate) fn disconnect(&self) -> bool {
-        let mut inner = self.inner.lock();
+        let mut inner = self.inner.lock().unwrap();
 
         if !inner.is_disconnected {
             inner.is_disconnected = true;
@@ -396,7 +406,7 @@ impl<T> SelectHandle for Receiver<'_, T> {
     fn register(&self, oper: Operation, cx: &Context) -> bool {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
-        let mut inner = self.0.inner.lock();
+        let mut inner = self.0.inner.lock().unwrap();
         inner
             .receivers
             .register_with_packet(oper, packet as *mut (), cx);
@@ -405,7 +415,7 @@ impl<T> SelectHandle for Receiver<'_, T> {
     }
 
     fn unregister(&self, oper: Operation) {
-        if let Some(operation) = self.0.inner.lock().receivers.unregister(oper) {
+        if let Some(operation) = self.0.inner.lock().unwrap().receivers.unregister(oper) {
             unsafe {
                 drop(Box::from_raw(operation.packet as *mut Packet<T>));
             }
@@ -418,18 +428,18 @@ impl<T> SelectHandle for Receiver<'_, T> {
     }
 
     fn is_ready(&self) -> bool {
-        let inner = self.0.inner.lock();
+        let inner = self.0.inner.lock().unwrap();
         inner.senders.can_select() || inner.is_disconnected
     }
 
     fn watch(&self, oper: Operation, cx: &Context) -> bool {
-        let mut inner = self.0.inner.lock();
+        let mut inner = self.0.inner.lock().unwrap();
         inner.receivers.watch(oper, cx);
         inner.senders.can_select() || inner.is_disconnected
     }
 
     fn unwatch(&self, oper: Operation) {
-        let mut inner = self.0.inner.lock();
+        let mut inner = self.0.inner.lock().unwrap();
         inner.receivers.unwatch(oper);
     }
 }
@@ -446,7 +456,7 @@ impl<T> SelectHandle for Sender<'_, T> {
     fn register(&self, oper: Operation, cx: &Context) -> bool {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
-        let mut inner = self.0.inner.lock();
+        let mut inner = self.0.inner.lock().unwrap();
         inner
             .senders
             .register_with_packet(oper, packet as *mut (), cx);
@@ -455,7 +465,7 @@ impl<T> SelectHandle for Sender<'_, T> {
     }
 
     fn unregister(&self, oper: Operation) {
-        if let Some(operation) = self.0.inner.lock().senders.unregister(oper) {
+        if let Some(operation) = self.0.inner.lock().unwrap().senders.unregister(oper) {
             unsafe {
                 drop(Box::from_raw(operation.packet as *mut Packet<T>));
             }
@@ -468,18 +478,18 @@ impl<T> SelectHandle for Sender<'_, T> {
     }
 
     fn is_ready(&self) -> bool {
-        let inner = self.0.inner.lock();
+        let inner = self.0.inner.lock().unwrap();
         inner.receivers.can_select() || inner.is_disconnected
     }
 
     fn watch(&self, oper: Operation, cx: &Context) -> bool {
-        let mut inner = self.0.inner.lock();
+        let mut inner = self.0.inner.lock().unwrap();
         inner.senders.watch(oper, cx);
         inner.receivers.can_select() || inner.is_disconnected
     }
 
     fn unwatch(&self, oper: Operation) {
-        let mut inner = self.0.inner.lock();
+        let mut inner = self.0.inner.lock().unwrap();
         inner.senders.unwatch(oper);
     }
 }
