@@ -140,7 +140,7 @@ impl<T> Channel<T> {
     /// Attempts to reserve a slot for sending a message.
     fn start_send(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
-        let mut tail = self.tail.load(Ordering::Relaxed);
+        let mut tail = self.tail.load(Ordering::SeqCst);
 
         loop {
             // Check if the channel is disconnected.
@@ -200,11 +200,11 @@ impl<T> Channel<T> {
                 }
 
                 backoff.spin();
-                tail = self.tail.load(Ordering::Relaxed);
+                tail = self.tail.load(Ordering::SeqCst);
             } else {
                 // Snooze because we need to wait for the stamp to get updated.
                 backoff.snooze();
-                tail = self.tail.load(Ordering::Relaxed);
+                tail = self.tail.load(Ordering::SeqCst);
             }
         }
     }
@@ -273,8 +273,7 @@ impl<T> Channel<T> {
                     }
                 }
             } else if stamp == head {
-                atomic::fence(Ordering::SeqCst);
-                let tail = self.tail.load(Ordering::Relaxed);
+                let tail = self.tail.load(Ordering::SeqCst);
 
                 // If the tail equals the head, that means the channel is empty.
                 if (tail & !self.mark_bit) == head {

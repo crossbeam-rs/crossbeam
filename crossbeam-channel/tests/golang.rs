@@ -1572,6 +1572,9 @@ mod chanbarrier_test {
 
 // https://github.com/golang/go/blob/master/src/runtime/race/testdata/chan_test.go
 mod race_chan_test {
+    // Tests `TestRace*` are not ported because they're designed to reproduce data races, but Rust's thread sanitizer
+    // doesn't allow to make such race-positive tests.
+
     use super::*;
 
     #[test]
@@ -1582,7 +1585,7 @@ mod race_chan_test {
             unsafe { V = 1 };
             s.send(0).unwrap();
         });
-        r.recv().unwrap();
+        let _ = r.recv();
         unsafe { V = 2 };
         go.join().unwrap();
     }
@@ -1596,7 +1599,7 @@ mod race_chan_test {
             unsafe { V = 2 };
         });
         unsafe { V = 1 };
-        r.recv().unwrap();
+        let _ = r.recv();
         go.join().unwrap();
     }
 
@@ -1610,20 +1613,6 @@ mod race_chan_test {
         });
         let _ = r.recv();
         unsafe { V = 2 };
-        go.join().unwrap();
-    }
-
-    #[test]
-    #[ignore] // This test should fail but should_panic doesn't work here
-    fn test_race_chan_async_rev() {
-        static mut V: u32 = 0;
-        let (s, r) = bounded(10);
-        let go = go!(s, {
-            s.send(0).unwrap();
-            unsafe { V = 1 };
-        });
-        unsafe { V = 2 };
-        r.recv().unwrap();
         go.join().unwrap();
     }
 
@@ -1663,7 +1652,7 @@ mod race_chan_test {
             unsafe { V = 1 };
             drop(s);
         });
-        for _ in r.recv() {};
+        while r.recv().is_ok() {}
         unsafe { V = 2 }
         go.join().unwrap();
     }
@@ -1681,6 +1670,189 @@ mod race_chan_test {
         }));
         unsafe { V = 2 }
         go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_sync_close_recv_2() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded::<i32>(0);
+        let go = go!(move s, {
+            unsafe { V = 1 };
+            drop(s);
+        });
+        let _ = r.recv();
+        unsafe { V = 2 }
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_sync_close_recv_3() {
+        static mut V: u32 = 0;
+        let (s, r) = bounded::<i32>(0);
+        let go = go!(move s, {
+            unsafe { V = 1 };
+            drop(s);
+        });
+        #[allow(clippy::for_loops_over_fallibles)]
+        while r.recv().is_ok() {}
+        unsafe { V = 2 }
+        go.join().unwrap();
+    }
+
+    #[test]
+    #[ignore]
+    fn test_no_race_chan_ptr() {
+        todo!()
+    }
+
+    #[test]
+    fn test_no_race_select_read_write_async() {
+        static mut X: u32 = 0;
+        let (done_s, done_r) = bounded(0);
+        let (s1, r1) = bounded::<u32>(0);
+        let (s2, _r2) = bounded::<u32>(0);
+        let go = go!(move s1, s2, done_s, {
+            select! {
+                send(s1, unsafe { X }) -> _ => {}, // read of X does not race with...
+                send(s2, 1) -> _ => {},
+            };
+            done_s.send(true).unwrap();
+        });
+        select! {
+            recv(r1) -> v => unsafe { X = v.unwrap() }, // ... write to X here
+            send(s2, 1) -> _ => {},
+        };
+        done_r.recv().unwrap();
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_read_write_async() {
+        static mut X: u32 = 0;
+        let (done_s, done_r) = bounded(0);
+        let (s, r) = bounded::<u32>(10);
+        let go = go!(move s, done_s, {
+            s.send(unsafe { X }).unwrap(); // read of X does not race with...
+            done_s.send(true).unwrap();
+        });
+        unsafe { X = r.recv().unwrap() }; // ... write to X here
+        done_r.recv().unwrap();
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_producer_consumer_unbuffered() {
+        struct Task {
+            f: fn() -> (),
+            done_s: Sender<bool>,
+        }
+
+        let (queue_s, queue_r) = bounded::<Task>(0);
+        let go = go!(move queue_r, {
+            let t = queue_r.recv().unwrap();
+            (t.f)();
+            t.done_s.send(true).unwrap();
+        });
+
+        let doit = |f: fn() -> ()| {
+            let (done_s, done_r) = bounded(1);
+            queue_s.send(Task { f, done_s }).unwrap();
+            done_r.recv().unwrap();
+        };
+
+        static mut X: u32 = 0;
+
+        fn f() {
+            unsafe { X = 1 }
+        }
+        doit(f);
+        let _ = unsafe { X };
+
+        go.join().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_close_len() {
+        let (c_s, _c_r) = bounded::<usize>(10);
+        let (r_s, r_r) = bounded(10);
+        let c_s_2 = c_s.clone();
+        let r_s_2 = r_s.clone();
+        go!(move r_s_2, c_s_2, {
+            r_s_2.send(c_s_2.len()).unwrap();
+        });
+        go!(move r_s, c_s, {
+            drop(c_s);
+            r_s.send(0).unwrap();
+        });
+        r_r.recv().unwrap();
+        r_r.recv().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_close_cap() {
+        let (c_s, _c_r) = bounded::<usize>(10);
+        let (r_s, r_r) = bounded(10);
+        let c_s_2 = c_s.clone();
+        let r_s_2 = r_s.clone();
+        go!(move r_s_2, c_s_2, {
+            r_s_2.send(c_s_2.capacity().unwrap()).unwrap();
+        });
+        go!(move r_s, c_s, {
+            drop(c_s);
+            r_s.send(0).unwrap();
+        });
+        r_r.recv().unwrap();
+        r_r.recv().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_chan_mutex() {
+        let (done_s, done_r) = bounded::<()>(0);
+        let (mtx_s, mtx_r) = bounded::<()>(1);
+        static mut DATA: u32 = 0;
+        let (mtx_s_2, mtx_r_2) = (mtx_s.clone(), mtx_r.clone());
+        go!(move mtx_s_2, mtx_r_2, done_s, {
+            mtx_s_2.send(()).unwrap();
+            unsafe { DATA = 42 }
+            mtx_r_2.recv().unwrap();
+            done_s.send(()).unwrap();
+        });
+        mtx_s.send(()).unwrap();
+        unsafe { DATA = 43 }
+        mtx_r.recv().unwrap();
+        done_r.recv().unwrap();
+    }
+
+    #[test]
+    fn test_no_race_select_mutex() {
+        let (done_s, done_r) = bounded::<()>(0);
+        let (mtx_s, mtx_r) = bounded::<()>(1);
+        let (_aux_s, aux_r) = bounded::<()>(0);
+        static mut DATA: u32 = 0;
+        let (mtx_s_2, mtx_r_2) = (mtx_s.clone(), mtx_r.clone());
+        let aux_r_2 = aux_r.clone();
+        go!(move mtx_s_2, mtx_r_2, aux_r_2, done_s, {
+            select! {
+                send(mtx_s_2, ()) -> _ => {},
+                recv(aux_r_2) -> _ => {},
+            }
+            unsafe { DATA = 42 }
+            select! {
+                recv(mtx_r_2) -> _ => {},
+                recv(aux_r_2) -> _ => {},
+            }
+            done_s.send(()).unwrap();
+        });
+        select! {
+            send(mtx_s, ()) -> _ => {},
+            recv(aux_r) -> _ => {},
+        }
+        unsafe { DATA = 43 }
+        select! {
+            recv(mtx_r) -> _ => {},
+            recv(aux_r) -> _ => {},
+        }
+        done_r.recv().unwrap();
     }
 
     // TODO: Add remaining tests
