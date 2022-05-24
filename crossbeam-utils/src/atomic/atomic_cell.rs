@@ -5,7 +5,7 @@ use crate::primitive::sync::atomic::{self, AtomicBool};
 use core::cell::UnsafeCell;
 use core::cmp;
 use core::fmt;
-use core::mem::{self, MaybeUninit};
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::sync::atomic::Ordering;
 
 use core::ptr;
@@ -39,6 +39,10 @@ pub struct AtomicCell<T> {
     ///
     /// Using MaybeUninit to prevent code outside the cell from observing partially initialized state:
     /// <https://github.com/crossbeam-rs/crossbeam/issues/833>
+    ///
+    /// Note:
+    /// - we'll never store uninitialized `T` due to our API only using initialized `T`.
+    /// - this `MaybeUninit` does *not* fix <https://github.com/crossbeam-rs/crossbeam/issues/315>.
     value: UnsafeCell<MaybeUninit<T>>,
 }
 
@@ -68,6 +72,9 @@ impl<T> AtomicCell<T> {
 
     /// Consumes the atomic and returns the contained value.
     ///
+    /// This is safe because passing `self` by value guarantees that no other threads are
+    /// concurrently accessing the atomic data.
+    ///
     /// # Examples
     ///
     /// ```
@@ -79,8 +86,13 @@ impl<T> AtomicCell<T> {
     /// assert_eq!(v, 7);
     /// ```
     pub fn into_inner(self) -> T {
-        // SAFETY: we'll never store uninitialized `T`
-        unsafe { self.value.into_inner().assume_init() }
+        let this = ManuallyDrop::new(self);
+        // SAFETY:
+        // - passing `self` by value guarantees that no other threads are concurrently
+        //   accessing the atomic data
+        // - the raw pointer passed in is valid because we got it from an owned value.
+        // - `ManuallyDrop` prevents double dropping `T`
+        unsafe { this.as_ptr().read() }
     }
 
     /// Returns `true` if operations on values of this type are lock-free.
@@ -291,6 +303,22 @@ impl<T: Copy + Eq> AtomicCell<T> {
             }
         }
         Err(prev)
+    }
+}
+
+// `MaybeUninit` prevents `T` from being dropped, so we need to implement `Drop`
+// for `AtomicCell` to avoid leaks of non-`Copy` types.
+impl<T> Drop for AtomicCell<T> {
+    fn drop(&mut self) {
+        if mem::needs_drop::<T>() {
+            // SAFETY:
+            // - the mutable reference guarantees that no other threads are concurrently accessing the atomic data
+            // - the raw pointer passed in is valid because we got it from a reference
+            // - `MaybeUninit` prevents double dropping `T`
+            unsafe {
+                self.as_ptr().drop_in_place();
+            }
+        }
     }
 }
 
