@@ -1693,16 +1693,9 @@ mod race_chan_test {
             unsafe { V = 1 };
             drop(s);
         });
-        #[allow(clippy::for_loops_over_fallibles)]
         while r.recv().is_ok() {}
         unsafe { V = 2 }
         go.join().unwrap();
-    }
-
-    #[test]
-    #[ignore]
-    fn test_no_race_chan_ptr() {
-        todo!()
     }
 
     #[test]
@@ -1855,7 +1848,105 @@ mod race_chan_test {
         done_r.recv().unwrap();
     }
 
-    // TODO: Add remaining tests
+    #[test]
+    fn test_no_race_chan_wait_group() {
+        const N: usize = 10;
+        static mut DATA: [i32; N] = [0; N];
+        let (wg_s, wg_r) = bounded(N / 2);
+        for i in 0..N {
+            wg_s.send(true).unwrap();
+            go!(i, wg_r, {
+                unsafe { DATA[i] = 42 }
+                wg_r.recv().unwrap();
+            });
+        }
+        for _ in 0..wg_s.capacity().unwrap() {
+            wg_s.send(true).unwrap();
+        }
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..N {
+            let _ = unsafe { DATA[i] };
+        }
+    }
+
+    #[test]
+    // Test that sender synchronizes with receiver even if the sender was blocked.
+    fn test_no_race_blocked_send_sync() {
+        let (s, r) = bounded(1);
+        s.send(0).unwrap();
+        go!(move s, {
+            s.send(42).unwrap();
+        });
+        // Give the sender time to actually block.
+        // This sleep is completely optional: race report must not be printed
+        // regardless of whether the sender actually blocks or not.
+        // It cannot lead to flakiness.
+        thread::sleep(Duration::from_millis(10));
+        r.recv().unwrap();
+        let p = r.recv().unwrap();
+        assert_eq!(p, 42, "Data race detected");
+    }
+
+    #[test]
+    // The same as test_no_race_blocked_send_sync above, but sender unblock happens in a select.
+    fn test_no_race_blocked_select_send_sync() {
+        let (s, r) = bounded(1);
+        s.send(0).unwrap();
+        go!(move s, {
+            s.send(42).unwrap();
+        });
+        thread::sleep(Duration::from_millis(10));
+        r.recv().unwrap();
+        select! {
+            recv(r) -> r => assert_eq!(r.unwrap(), 42, "Data race detected"),
+            recv(never::<u32>()) -> _ => {},
+        };
+    }
+
+    #[test]
+    // Test that close synchronizes with a read from the empty closed channel.
+    fn test_no_race_close_happens_before_read() {
+        static mut LOC: u32 = 0;
+        for _ in 0..100 {
+            let (write_s, write_r) = bounded::<()>(0);
+            let (read_s, read_r) = bounded::<()>(0);
+            go!(move read_s, write_r, {
+                select! {
+                    recv(write_r) -> _ => { let _ = unsafe { LOC }; },
+                    default() => {}
+                }
+                unsafe { LOC = 2 }
+                drop(read_s);
+            });
+            go!(move write_s, {
+                unsafe { LOC = 1 }
+                drop(write_s);
+            });
+            let _ = read_r.recv();
+        }
+    }
+
+    #[test]
+    fn test_no_race_element_size_0() {
+        static mut X: i32 = 0;
+        static mut Y: i32 = 0;
+        let (s, r) = bounded(2);
+        s.send(()).unwrap();
+        s.send(()).unwrap();
+        go!(r, {
+            unsafe { X += 1 };
+            r.recv().unwrap();
+        });
+        go!(r, {
+            unsafe { Y += 1 };
+            r.recv().unwrap();
+        });
+        thread::sleep(Duration::from_millis(10));
+        s.send(()).unwrap();
+        s.send(()).unwrap();
+        unsafe { X += 1 };
+        unsafe { Y += 1 };
+    }
 }
 
 // https://github.com/golang/go/blob/master/test/ken/chan.go
