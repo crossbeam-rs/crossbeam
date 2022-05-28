@@ -819,7 +819,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// # Safety
     ///
     /// This method may be called only if the pointer is valid and nobody else is holding a
-    /// reference to the same object, or the pointer is null..
+    /// reference to the same object, or the pointer is null.
     ///
     /// # Examples
     ///
