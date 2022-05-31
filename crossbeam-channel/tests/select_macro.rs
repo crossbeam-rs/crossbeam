@@ -488,7 +488,7 @@ fn panic_receiver() {
 #[test]
 fn stress_recv() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
