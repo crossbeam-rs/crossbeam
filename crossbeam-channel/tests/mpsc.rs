@@ -321,7 +321,7 @@ mod channel_tests {
     #[test]
     fn stress() {
         #[cfg(miri)]
-        const COUNT: usize = 500;
+        const COUNT: usize = 100;
         #[cfg(not(miri))]
         const COUNT: usize = 10000;
 
@@ -340,7 +340,7 @@ mod channel_tests {
     #[test]
     fn stress_shared() {
         #[cfg(miri)]
-        const AMT: u32 = 500;
+        const AMT: u32 = 100;
         #[cfg(not(miri))]
         const AMT: u32 = 10000;
         const NTHREADS: u32 = 8;
@@ -747,7 +747,7 @@ mod channel_tests {
     #[test]
     fn recv_a_lot() {
         #[cfg(miri)]
-        const N: usize = 100;
+        const N: usize = 50;
         #[cfg(not(miri))]
         const N: usize = 10000;
 

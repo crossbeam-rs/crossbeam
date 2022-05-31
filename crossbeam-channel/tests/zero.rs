@@ -188,7 +188,7 @@ fn send_timeout() {
 #[test]
 fn len() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 25_000;
 
@@ -253,7 +253,7 @@ fn disconnect_wakes_receiver() {
 #[test]
 fn spsc() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
@@ -278,7 +278,7 @@ fn spsc() {
 #[test]
 fn mpmc() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
@@ -313,7 +313,7 @@ fn mpmc() {
 #[test]
 fn stress_oneshot() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
@@ -451,7 +451,7 @@ fn drops() {
 #[test]
 fn fairness() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
@@ -485,7 +485,7 @@ fn fairness() {
 #[test]
 fn fairness_duplicates() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 
@@ -546,7 +546,7 @@ fn recv_in_send() {
 #[test]
 fn channel_through_channel() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 1000;
 

@@ -60,26 +60,27 @@ fn len_empty_full() {
 #[test]
 fn len() {
     #[cfg(miri)]
-    const COUNT: usize = 500;
+    const COUNT: usize = 30;
     #[cfg(not(miri))]
     const COUNT: usize = 25_000;
     #[cfg(miri)]
-    const CAP: usize = 100;
+    const CAP: usize = 40;
     #[cfg(not(miri))]
     const CAP: usize = 1000;
+    const ITERS: usize = CAP / 20;
 
     let q = ArrayQueue::new(CAP);
     assert_eq!(q.len(), 0);
 
     for _ in 0..CAP / 10 {
-        for i in 0..50 {
+        for i in 0..ITERS {
             q.push(i).unwrap();
             assert_eq!(q.len(), i + 1);
         }
 
-        for i in 0..50 {
+        for i in 0..ITERS {
             q.pop().unwrap();
-            assert_eq!(q.len(), 50 - i - 1);
+            assert_eq!(q.len(), ITERS - i - 1);
         }
     }
     assert_eq!(q.len(), 0);
@@ -128,7 +129,7 @@ fn len() {
 #[test]
 fn spsc() {
     #[cfg(miri)]
-    const COUNT: usize = 500;
+    const COUNT: usize = 100;
     #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
@@ -164,7 +165,7 @@ fn spsc() {
 #[test]
 fn spsc_ring_buffer() {
     #[cfg(miri)]
-    const COUNT: usize = 500;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 100_000;
 
@@ -288,11 +289,11 @@ fn mpmc_ring_buffer() {
 #[test]
 fn drops() {
     #[cfg(miri)]
-    const RUNS: usize = 50;
+    const RUNS: usize = 5;
     #[cfg(not(miri))]
     const RUNS: usize = 100;
     #[cfg(miri)]
-    const STEPS: usize = 500;
+    const STEPS: usize = 50;
     #[cfg(not(miri))]
     const STEPS: usize = 10_000;
 
@@ -351,7 +352,7 @@ fn drops() {
 #[test]
 fn linearizable() {
     #[cfg(miri)]
-    const COUNT: usize = 500;
+    const COUNT: usize = 100;
     #[cfg(not(miri))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
