@@ -132,8 +132,13 @@ fn recv_timeout() {
 
 #[test]
 fn try_send() {
+    #[cfg(miri)]
+    const COUNT: usize = 50;
+    #[cfg(not(miri))]
+    const COUNT: usize = 1000;
+
     let (s, r) = unbounded();
-    for i in 0..1000 {
+    for i in 0..COUNT {
         assert_eq!(s.try_send(i), Ok(()));
     }
 
@@ -143,8 +148,13 @@ fn try_send() {
 
 #[test]
 fn send() {
+    #[cfg(miri)]
+    const COUNT: usize = 50;
+    #[cfg(not(miri))]
+    const COUNT: usize = 1000;
+
     let (s, r) = unbounded();
-    for i in 0..1000 {
+    for i in 0..COUNT {
         assert_eq!(s.send(i), Ok(()));
     }
 
@@ -154,8 +164,13 @@ fn send() {
 
 #[test]
 fn send_timeout() {
+    #[cfg(miri)]
+    const COUNT: usize = 50;
+    #[cfg(not(miri))]
+    const COUNT: usize = 1000;
+
     let (s, r) = unbounded();
-    for i in 0..1000 {
+    for i in 0..COUNT {
         assert_eq!(s.send_timeout(i, ms(i as u64)), Ok(()));
     }
 
@@ -390,7 +405,7 @@ fn drops() {
     #[cfg(not(miri))]
     const RUNS: usize = 100;
     #[cfg(miri)]
-    const STEPS: usize = 500;
+    const STEPS: usize = 100;
     #[cfg(not(miri))]
     const STEPS: usize = 10_000;
 
@@ -409,7 +424,7 @@ fn drops() {
 
     for _ in 0..RUNS {
         let steps = rng.gen_range(0..STEPS);
-        let additional = rng.gen_range(0..1000);
+        let additional = rng.gen_range(0..STEPS / 10);
 
         DROPS.store(0, Ordering::SeqCst);
         let (s, r) = unbounded::<DropCounter>();

@@ -732,7 +732,7 @@ mod select2 {
     use super::*;
 
     #[cfg(miri)]
-    const N: i32 = 1000;
+    const N: i32 = 200;
     #[cfg(not(miri))]
     const N: i32 = 100000;
 
@@ -927,6 +927,9 @@ mod sieve1 {
             2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83,
             89, 97,
         ];
+        #[cfg(miri)]
+        let a = &a[..10];
+
         for item in a.iter() {
             let x = primes.recv().unwrap();
             if x != *item {
@@ -963,6 +966,11 @@ mod chan_test {
         const N: i32 = 20;
         #[cfg(not(miri))]
         const N: i32 = 200;
+
+        #[cfg(miri)]
+        const MESSAGES_COUNT: i32 = 20;
+        #[cfg(not(miri))]
+        const MESSAGES_COUNT: i32 = 100;
 
         for cap in 0..N {
             {
@@ -1070,15 +1078,15 @@ mod chan_test {
             }
 
             {
-                // Send 100 integers,
+                // Send many integers,
                 // ensure that we receive them non-corrupted in FIFO order.
                 let c = make::<i32>(cap as usize);
                 go!(c, {
-                    for i in 0..100 {
+                    for i in 0..MESSAGES_COUNT {
                         c.send(i);
                     }
                 });
-                for i in 0..100 {
+                for i in 0..MESSAGES_COUNT {
                     if c.recv() != Some(i) {
                         panic!();
                     }
@@ -1086,11 +1094,11 @@ mod chan_test {
 
                 // Same, but using recv2.
                 go!(c, {
-                    for i in 0..100 {
+                    for i in 0..MESSAGES_COUNT {
                         c.send(i);
                     }
                 });
-                for i in 0..100 {
+                for i in 0..MESSAGES_COUNT {
                     if c.recv() != Some(i) {
                         panic!();
                     }
@@ -1950,14 +1958,12 @@ mod race_chan_test {
 }
 
 // https://github.com/golang/go/blob/master/test/ken/chan.go
+#[cfg(not(miri))] // Miri is too slow
 mod chan {
 
     use super::*;
 
-    #[cfg(not(miri))]
     const MESSAGES_PER_CHANEL: u32 = 76;
-    #[cfg(miri)]
-    const MESSAGES_PER_CHANEL: u32 = 2; // Miri is too slow on these tests
     const MESSAGES_RANGE_LEN: u32 = 100;
     const END: i32 = 10000;
 
@@ -2458,7 +2464,7 @@ mod chan1 {
 
     // sent messages
     #[cfg(miri)]
-    const N: usize = 100;
+    const N: usize = 20;
     #[cfg(not(miri))]
     const N: usize = 1000;
     // receiving "goroutines"

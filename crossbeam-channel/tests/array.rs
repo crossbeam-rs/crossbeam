@@ -253,11 +253,11 @@ fn recv_after_disconnect() {
 #[test]
 fn len() {
     #[cfg(miri)]
-    const COUNT: usize = 250;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 25_000;
     #[cfg(miri)]
-    const CAP: usize = 100;
+    const CAP: usize = 50;
     #[cfg(not(miri))]
     const CAP: usize = 1000;
 
@@ -500,11 +500,11 @@ fn stress_timeout_two_threads() {
 #[test]
 fn drops() {
     #[cfg(miri)]
-    const RUNS: usize = 20;
+    const RUNS: usize = 10;
     #[cfg(not(miri))]
     const RUNS: usize = 100;
     #[cfg(miri)]
-    const STEPS: usize = 500;
+    const STEPS: usize = 100;
     #[cfg(not(miri))]
     const STEPS: usize = 10_000;
 
@@ -561,7 +561,7 @@ fn drops() {
 #[test]
 fn linearizable() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
