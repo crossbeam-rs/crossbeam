@@ -1,14 +1,19 @@
-use std::cell::{Cell, UnsafeCell};
+use std::cell::Cell;
 use std::cmp;
 use std::fmt;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
 use std::ptr;
-use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
-use std::sync::Arc;
 
 use crate::epoch::{self, Atomic, Owned};
+use crate::primitive::{
+    cell::UnsafeCell,
+    sync::{
+        atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
+        Arc,
+    },
+};
 use crate::utils::{Backoff, CachePadded};
 
 // Minimum buffer capacity.
@@ -1317,7 +1322,8 @@ impl<T> Injector<T> {
 
                     // Write the task into the slot.
                     let slot = (*block).slots.get_unchecked(offset);
-                    slot.task.get().write(MaybeUninit::new(task));
+                    slot.task
+                        .with_mut(|t| ptr::write(t, MaybeUninit::new(task)));
                     slot.state.fetch_or(WRITE, Ordering::Release);
 
                     return;
@@ -1410,7 +1416,7 @@ impl<T> Injector<T> {
             // Read the task.
             let slot = (*block).slots.get_unchecked(offset);
             slot.wait_write();
-            let task = slot.task.get().read().assume_init();
+            let task = slot.task.with(|t| ptr::read(t).assume_init());
 
             // Destroy the block if we've reached the end, or if another thread wanted to destroy
             // but couldn't because we were busy reading from the slot.
@@ -1535,7 +1541,7 @@ impl<T> Injector<T> {
                         // Read the task.
                         let slot = (*block).slots.get_unchecked(offset + i);
                         slot.wait_write();
-                        let task = slot.task.get().read().assume_init();
+                        let task = slot.task.with(|t| ptr::read(t).assume_init());
 
                         // Write it into the destination queue.
                         dest_buffer.write(dest_b.wrapping_add(i as isize), task);
@@ -1547,7 +1553,7 @@ impl<T> Injector<T> {
                         // Read the task.
                         let slot = (*block).slots.get_unchecked(offset + i);
                         slot.wait_write();
-                        let task = slot.task.get().read().assume_init();
+                        let task = slot.task.with(|t| ptr::read(t).assume_init());
 
                         // Write it into the destination queue.
                         dest_buffer.write(dest_b.wrapping_add((batch_size - 1 - i) as isize), task);
@@ -1689,7 +1695,7 @@ impl<T> Injector<T> {
             // Read the task.
             let slot = (*block).slots.get_unchecked(offset);
             slot.wait_write();
-            let task = slot.task.get().read().assume_init();
+            let task = slot.task.with(|t| ptr::read(t).assume_init());
 
             match dest.flavor {
                 Flavor::Fifo => {
@@ -1698,7 +1704,7 @@ impl<T> Injector<T> {
                         // Read the task.
                         let slot = (*block).slots.get_unchecked(offset + i + 1);
                         slot.wait_write();
-                        let task = slot.task.get().read().assume_init();
+                        let task = slot.task.with(|t| ptr::read(t).assume_init());
 
                         // Write it into the destination queue.
                         dest_buffer.write(dest_b.wrapping_add(i as isize), task);
@@ -1711,7 +1717,7 @@ impl<T> Injector<T> {
                         // Read the task.
                         let slot = (*block).slots.get_unchecked(offset + i + 1);
                         slot.wait_write();
-                        let task = slot.task.get().read().assume_init();
+                        let task = slot.task.with(|t| ptr::read(t).assume_init());
 
                         // Write it into the destination queue.
                         dest_buffer.write(dest_b.wrapping_add((batch_size - 1 - i) as isize), task);
@@ -1836,8 +1842,7 @@ impl<T> Drop for Injector<T> {
                 if offset < BLOCK_CAP {
                     // Drop the task in the slot.
                     let slot = (*block).slots.get_unchecked(offset);
-                    let p = &mut *slot.task.get();
-                    p.as_mut_ptr().drop_in_place();
+                    slot.task.with_mut(|t| (*t).as_mut_ptr().drop_in_place());
                 } else {
                     // Deallocate the block and move to the next one.
                     let next = (*block).next.load(Ordering::Relaxed);

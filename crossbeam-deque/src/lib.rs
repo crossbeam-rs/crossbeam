@@ -98,7 +98,78 @@
 #![allow(clippy::question_mark)] // https://github.com/rust-lang/rust-clippy/issues/8281
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(crossbeam_loom)]
+extern crate loom_crate as loom;
+
 use cfg_if::cfg_if;
+
+#[cfg(crossbeam_loom)]
+#[allow(unused_imports, dead_code)]
+mod primitive {
+    pub(crate) mod cell {
+        pub(crate) use loom::cell::UnsafeCell;
+    }
+    pub(crate) mod sync {
+        pub(crate) mod atomic {
+            pub(crate) use loom::sync::atomic::{
+                fence, AtomicIsize, AtomicPtr, AtomicUsize, Ordering,
+            };
+
+            // FIXME: loom does not support compiler_fence at the moment.
+            // https://github.com/tokio-rs/loom/issues/117
+            // we use fence as a stand-in for compiler_fence for the time being.
+            // this may miss some races since fence is stronger than compiler_fence,
+            // but it's the best we can do for the time being.
+            pub(crate) use self::fence as compiler_fence;
+        }
+        pub(crate) use loom::sync::Arc;
+    }
+    pub(crate) use loom::thread_local;
+}
+#[cfg(not(crossbeam_no_atomic_cas))]
+#[cfg(not(crossbeam_loom))]
+#[allow(unused_imports, dead_code)]
+mod primitive {
+    pub(crate) mod cell {
+        #[derive(Debug)]
+        #[repr(transparent)]
+        pub(crate) struct UnsafeCell<T>(::core::cell::UnsafeCell<T>);
+
+        // loom's UnsafeCell has a slightly different API than the standard library UnsafeCell.
+        // Since we want the rest of the code to be agnostic to whether it's running under loom or
+        // not, we write this small wrapper that provides the loom-supported API for the standard
+        // library UnsafeCell. This is also what the loom documentation recommends:
+        // https://github.com/tokio-rs/loom#handling-loom-api-differences
+        impl<T> UnsafeCell<T> {
+            #[inline]
+            pub(crate) fn new(data: T) -> UnsafeCell<T> {
+                UnsafeCell(::core::cell::UnsafeCell::new(data))
+            }
+
+            #[inline]
+            pub(crate) fn with<R>(&self, f: impl FnOnce(*const T) -> R) -> R {
+                f(self.0.get())
+            }
+
+            #[inline]
+            pub(crate) fn with_mut<R>(&self, f: impl FnOnce(*mut T) -> R) -> R {
+                f(self.0.get())
+            }
+        }
+    }
+    pub(crate) mod sync {
+        pub(crate) mod atomic {
+            pub(crate) use core::sync::atomic::{
+                compiler_fence, fence, AtomicIsize, AtomicPtr, AtomicUsize, Ordering,
+            };
+        }
+        #[cfg(feature = "std")]
+        pub(crate) use std::sync::Arc;
+    }
+
+    #[cfg(feature = "std")]
+    pub(crate) use std::thread_local;
+}
 
 cfg_if! {
     if #[cfg(feature = "std")] {
