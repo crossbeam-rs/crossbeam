@@ -1,3 +1,7 @@
+# Version 0.8.9
+
+- Replace lazy_static with once_cell. (#817)
+
 # Version 0.8.8
 
 - Fix a bug when unstable `loom` support is enabled. (#787)
