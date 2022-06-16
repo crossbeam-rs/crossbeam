@@ -1,3 +1,7 @@
+# Version 0.5.5
+
+- Replace Spinlock with Mutex. (#835)
+
 # Version 0.5.4
 
 - Workaround a bug in upstream related to TLS access on AArch64 Linux. (#802)

@@ -1,3 +1,7 @@
+# Version 0.9.9
+
+- Replace lazy_static with once_cell. (#817)
+
 # Version 0.9.8
 
 - Make `Atomic::null()` const function at 1.61+. (#797)
