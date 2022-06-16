@@ -160,8 +160,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      # TODO: unpin nightly toolchain once https://github.com/rust-lang/miri/issues/2223 fixed.
       - name: Install Rust
-        run: rustup toolchain install nightly --component miri && rustup default nightly
+        run: rustup toolchain install nightly-2022-06-08 --component miri && rustup default nightly-2022-06-08
       - name: miri
         run: ./ci/miri.sh
 
