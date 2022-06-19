@@ -136,7 +136,7 @@ Crossbeam, but keep in mind that some of the written information is now out of d
 #### Conduct
 
 The Crossbeam project adheres to the
-[Rust Code of Conduct](https://github.com/rust-lang/rust/blob/master/CODE_OF_CONDUCT.md).
+[Rust Code of Conduct](https://www.rust-lang.org/policies/code-of-conduct).
 This describes the minimum behavior expected from all contributors.
 
 ## License
