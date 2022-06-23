@@ -1,3 +1,8 @@
+# Version 0.8.10
+
+- Fix unsoundness of `AtomicCell` on types containing niches. (#834)
+  This fix contains breaking changes, but they are allowed because this is a soundness bug fix. See #834 for more.
+
 # Version 0.8.9
 
 - Replace lazy_static with once_cell. (#817)
