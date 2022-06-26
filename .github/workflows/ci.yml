@@ -183,7 +183,7 @@ jobs:
       - name: Install Rust
         run: rustup update stable
       - name: loom
-        run: ./ci/crossbeam-epoch-loom.sh
+        run: ./ci/loom.sh
 
   # Check if the document can be generated without warning.
   docs:
