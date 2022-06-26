@@ -103,8 +103,6 @@ fn len() {
                         assert_eq!(x, i);
                         break;
                     }
-                    #[cfg(miri)]
-                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
                 let len = q.len();
                 assert!(len <= CAP);
@@ -113,10 +111,7 @@ fn len() {
 
         scope.spawn(|_| {
             for i in 0..COUNT {
-                while q.push(i).is_err() {
-                    #[cfg(miri)]
-                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
-                }
+                while q.push(i).is_err() {}
                 let len = q.len();
                 assert!(len <= CAP);
             }
@@ -143,8 +138,6 @@ fn spsc() {
                         assert_eq!(x, i);
                         break;
                     }
-                    #[cfg(miri)]
-                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
             }
             assert!(q.pop().is_none());
@@ -152,10 +145,7 @@ fn spsc() {
 
         scope.spawn(|_| {
             for i in 0..COUNT {
-                while q.push(i).is_err() {
-                    #[cfg(miri)]
-                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
-                }
+                while q.push(i).is_err() {}
             }
         });
     })
@@ -184,8 +174,6 @@ fn spsc_ring_buffer() {
                     }
                 }
             }
-            #[cfg(miri)]
-            std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
         });
 
         scope.spawn(|_| {
@@ -320,10 +308,7 @@ fn drops() {
         scope(|scope| {
             scope.spawn(|_| {
                 for _ in 0..steps {
-                    while q.pop().is_none() {
-                        #[cfg(miri)]
-                        std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
-                    }
+                    while q.pop().is_none() {}
                 }
             });
 
@@ -331,8 +316,6 @@ fn drops() {
                 for _ in 0..steps {
                     while q.push(DropCounter).is_err() {
                         DROPS.fetch_sub(1, Ordering::SeqCst);
-                        #[cfg(miri)]
-                        std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                     }
                 }
             });

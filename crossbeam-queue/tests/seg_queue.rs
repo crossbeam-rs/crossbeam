@@ -69,8 +69,6 @@ fn spsc() {
                         assert_eq!(x, i);
                         break;
                     }
-                    #[cfg(miri)]
-                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
             }
             assert!(q.pop().is_none());
@@ -155,10 +153,7 @@ fn drops() {
         scope(|scope| {
             scope.spawn(|_| {
                 for _ in 0..steps {
-                    while q.pop().is_none() {
-                        #[cfg(miri)]
-                        std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
-                    }
+                    while q.pop().is_none() {}
                 }
             });
 
