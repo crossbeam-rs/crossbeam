@@ -53,6 +53,8 @@ impl<T> Buffer<T> {
     /// Returns a pointer to the task at the specified `index`.
     unsafe fn at(&self, index: isize) -> *mut T {
         // `self.cap` is always a power of two.
+        // We do all the loads at `MaybeUninit` because we might realize, after loading, that we
+        // don't actually have the right to access this memory.
         self.ptr.offset(index & (self.cap - 1) as isize)
     }
 
@@ -62,8 +64,8 @@ impl<T> Buffer<T> {
     /// technically speaking a data race and therefore UB. We should use an atomic store here, but
     /// that would be more expensive and difficult to implement generically for all types `T`.
     /// Hence, as a hack, we use a volatile write instead.
-    unsafe fn write(&self, index: isize, task: T) {
-        ptr::write_volatile(self.at(index), task)
+    unsafe fn write(&self, index: isize, task: MaybeUninit<T>) {
+        ptr::write_volatile(self.at(index) as *mut MaybeUninit<T>, task)
     }
 
     /// Reads a task from the specified `index`.
@@ -71,9 +73,9 @@ impl<T> Buffer<T> {
     /// This method might be concurrently called with another `write` at the same index, which is
     /// technically speaking a data race and therefore UB. We should use an atomic load here, but
     /// that would be more expensive and difficult to implement generically for all types `T`.
-    /// Hence, as a hack, we use a volatile write instead.
-    unsafe fn read(&self, index: isize) -> T {
-        ptr::read_volatile(self.at(index))
+    /// Hence, as a hack, we use a volatile load instead.
+    unsafe fn read(&self, index: isize) -> MaybeUninit<T> {
+        ptr::read_volatile(self.at(index) as *mut MaybeUninit<T>)
     }
 }
 
@@ -406,7 +408,7 @@ impl<T> Worker<T> {
 
         // Write `task` into the slot.
         unsafe {
-            buffer.write(b, task);
+            buffer.write(b, MaybeUninit::new(task));
         }
 
         atomic::fence(Ordering::Release);
@@ -461,7 +463,7 @@ impl<T> Worker<T> {
                 unsafe {
                     // Read the popped task.
                     let buffer = self.buffer.get();
-                    let task = buffer.read(f);
+                    let task = buffer.read(f).assume_init();
 
                     // Shrink the buffer if `len - 1` is less than one fourth of the capacity.
                     if buffer.cap > MIN_CAP && len <= buffer.cap as isize / 4 {
@@ -509,8 +511,8 @@ impl<T> Worker<T> {
                             )
                             .is_err()
                         {
-                            // Failed. We didn't pop anything.
-                            mem::forget(task.take());
+                            // Failed. We didn't pop anything. Reset to `None`.
+                            task.take();
                         }
 
                         // Restore the back index to the original task.
@@ -524,7 +526,7 @@ impl<T> Worker<T> {
                         }
                     }
 
-                    task
+                    task.map(|t| unsafe { t.assume_init() })
                 }
             }
         }
@@ -661,12 +663,11 @@ impl<T> Stealer<T> {
                 .is_err()
         {
             // We didn't steal this task, forget it.
-            mem::forget(task);
             return Steal::Retry;
         }
 
         // Return the stolen task.
-        Steal::Success(task)
+        Steal::Success(unsafe { task.assume_init() })
     }
 
     /// Steals a batch of tasks and pushes them into another worker.
@@ -821,7 +822,6 @@ impl<T> Stealer<T> {
                             .is_err()
                     {
                         // We didn't steal this task, forget it and break from the loop.
-                        mem::forget(task);
                         batch_size = i;
                         break;
                     }
@@ -975,7 +975,6 @@ impl<T> Stealer<T> {
                         .is_err()
                 {
                     // We didn't steal this task, forget it.
-                    mem::forget(task);
                     return Steal::Retry;
                 }
 
@@ -992,7 +991,6 @@ impl<T> Stealer<T> {
                     .is_err()
                 {
                     // We didn't steal this task, forget it.
-                    mem::forget(task);
                     return Steal::Retry;
                 }
 
@@ -1037,7 +1035,6 @@ impl<T> Stealer<T> {
                             .is_err()
                     {
                         // We didn't steal this task, forget it and break from the loop.
-                        mem::forget(tmp);
                         batch_size = i;
                         break;
                     }
@@ -1077,7 +1074,7 @@ impl<T> Stealer<T> {
         dest.inner.back.store(dest_b, Ordering::Release);
 
         // Return with success.
-        Steal::Success(task)
+        Steal::Success(unsafe { task.assume_init() })
     }
 }
 
@@ -1535,7 +1532,7 @@ impl<T> Injector<T> {
                         // Read the task.
                         let slot = (*block).slots.get_unchecked(offset + i);
                         slot.wait_write();
-                        let task = slot.task.get().read().assume_init();
+                        let task = slot.task.get().read();
 
                         // Write it into the destination queue.
                         dest_buffer.write(dest_b.wrapping_add(i as isize), task);
@@ -1547,7 +1544,7 @@ impl<T> Injector<T> {
                         // Read the task.
                         let slot = (*block).slots.get_unchecked(offset + i);
                         slot.wait_write();
-                        let task = slot.task.get().read().assume_init();
+                        let task = slot.task.get().read();
 
                         // Write it into the destination queue.
                         dest_buffer.write(dest_b.wrapping_add((batch_size - 1 - i) as isize), task);
@@ -1689,7 +1686,7 @@ impl<T> Injector<T> {
             // Read the task.
             let slot = (*block).slots.get_unchecked(offset);
             slot.wait_write();
-            let task = slot.task.get().read().assume_init();
+            let task = slot.task.get().read();
 
             match dest.flavor {
                 Flavor::Fifo => {
@@ -1698,7 +1695,7 @@ impl<T> Injector<T> {
                         // Read the task.
                         let slot = (*block).slots.get_unchecked(offset + i + 1);
                         slot.wait_write();
-                        let task = slot.task.get().read().assume_init();
+                        let task = slot.task.get().read();
 
                         // Write it into the destination queue.
                         dest_buffer.write(dest_b.wrapping_add(i as isize), task);
@@ -1711,7 +1708,7 @@ impl<T> Injector<T> {
                         // Read the task.
                         let slot = (*block).slots.get_unchecked(offset + i + 1);
                         slot.wait_write();
-                        let task = slot.task.get().read().assume_init();
+                        let task = slot.task.get().read();
 
                         // Write it into the destination queue.
                         dest_buffer.write(dest_b.wrapping_add((batch_size - 1 - i) as isize), task);
@@ -1744,7 +1741,7 @@ impl<T> Injector<T> {
                 }
             }
 
-            Steal::Success(task)
+            Steal::Success(task.assume_init())
         }
     }
 
