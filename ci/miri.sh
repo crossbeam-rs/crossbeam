@@ -27,7 +27,8 @@ MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-disab
 # -Zmiri-disable-stacked-borrows is needed for https://github.com/crossbeam-rs/crossbeam/issues/545
 # -Zmiri-compare-exchange-weak-failure-rate=0.0 is needed because some sequential tests (e.g.,
 # doctest of Stealer::steal) incorrectly assume that sequential weak CAS will never fail.
-MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-stacked-borrows -Zmiri-ignore-leaks -Zmiri-compare-exchange-weak-failure-rate=0.0" \
+# -Zmiri-preemption-rate=0 is needed because this code technically has UB and Miri catches that.
+MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-stacked-borrows -Zmiri-ignore-leaks -Zmiri-compare-exchange-weak-failure-rate=0.0 -Zmiri-preemption-rate=0" \
     cargo miri test \
     -p crossbeam-deque
 
