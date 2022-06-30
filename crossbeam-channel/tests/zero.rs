@@ -403,7 +403,7 @@ fn drops() {
     #[cfg(not(miri))]
     const RUNS: usize = 100;
     #[cfg(miri)]
-    const STEPS: usize = 500;
+    const STEPS: usize = 100;
     #[cfg(not(miri))]
     const STEPS: usize = 10_000;
 

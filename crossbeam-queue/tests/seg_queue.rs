@@ -121,14 +121,9 @@ fn mpmc() {
 
 #[test]
 fn drops() {
-    #[cfg(miri)]
-    const RUNS: usize = 5;
-    #[cfg(not(miri))]
-    const RUNS: usize = 100;
-    #[cfg(miri)]
-    const STEPS: usize = 50;
-    #[cfg(not(miri))]
-    const STEPS: usize = 10_000;
+    let runs: usize = if cfg!(miri) { 5 } else { 100 };
+    let steps: usize = if cfg!(miri) { 50 } else { 10_000 };
+    let additional: usize = if cfg!(miri) { 100 } else { 1_000 };
 
     static DROPS: AtomicUsize = AtomicUsize::new(0);
 
@@ -143,9 +138,9 @@ fn drops() {
 
     let mut rng = thread_rng();
 
-    for _ in 0..RUNS {
-        let steps = rng.gen_range(0..STEPS);
-        let additional = rng.gen_range(0..1000);
+    for _ in 0..runs {
+        let steps = rng.gen_range(0..steps);
+        let additional = rng.gen_range(0..additional);
 
         DROPS.store(0, Ordering::SeqCst);
         let q = SegQueue::new();

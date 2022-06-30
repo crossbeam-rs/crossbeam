@@ -959,7 +959,7 @@ mod chan_test {
     #[test]
     fn test_chan() {
         #[cfg(miri)]
-        const N: i32 = 20;
+        const N: i32 = 12;
         #[cfg(not(miri))]
         const N: i32 = 200;
 
@@ -1489,7 +1489,7 @@ mod chan_test {
     fn test_multi_consumer() {
         const NWORK: usize = 23;
         #[cfg(miri)]
-        const NITER: usize = 100;
+        const NITER: usize = 50;
         #[cfg(not(miri))]
         const NITER: usize = 271828;
 
