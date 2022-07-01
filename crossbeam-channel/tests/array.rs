@@ -377,7 +377,7 @@ fn spsc() {
 #[test]
 fn mpmc() {
     #[cfg(miri)]
-    const COUNT: usize = 100;
+    const COUNT: usize = 50;
     #[cfg(not(miri))]
     const COUNT: usize = 25_000;
     const THREADS: usize = 4;
@@ -532,16 +532,12 @@ fn drops() {
             scope.spawn(|_| {
                 for _ in 0..steps {
                     r.recv().unwrap();
-                    #[cfg(miri)]
-                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
             });
 
             scope.spawn(|_| {
                 for _ in 0..steps {
                     s.send(DropCounter).unwrap();
-                    #[cfg(miri)]
-                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
             });
         })

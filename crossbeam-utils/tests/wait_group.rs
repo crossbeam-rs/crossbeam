@@ -36,6 +36,7 @@ fn wait() {
 }
 
 #[test]
+#[cfg(not(miri))] // this test makes timing assumptions, but Miri is so slow it violates them
 fn wait_and_drop() {
     let wg = WaitGroup::new();
     let (tx, rx) = mpsc::channel();
@@ -51,8 +52,8 @@ fn wait_and_drop() {
         });
     }
 
-    // At this point, all spawned threads should be sleeping, so we shouldn't get anything from the
-    // channel.
+    // At this point, all spawned threads should be in `thread::sleep`, so we shouldn't get anything
+    // from the channel.
     assert!(rx.try_recv().is_err());
 
     wg.wait();

@@ -433,8 +433,6 @@ fn drops() {
             scope.spawn(|_| {
                 for _ in 0..steps {
                     r.recv().unwrap();
-                    #[cfg(miri)]
-                    std::thread::yield_now(); // https://github.com/rust-lang/miri/issues/1388
                 }
             });
 
