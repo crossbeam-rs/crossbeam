@@ -1072,6 +1072,7 @@ unsafe fn atomic_swap<T>(dst: *mut T, val: T) -> T {
 ///
 /// This operation uses the `AcqRel` ordering. If possible, an atomic instructions is used, and a
 /// global lock otherwise.
+#[allow(clippy::let_unit_value)]
 unsafe fn atomic_compare_exchange_weak<T>(dst: *mut T, mut current: T, new: T) -> Result<T, T>
 where
     T: Copy + Eq,
