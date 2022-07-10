@@ -23,6 +23,8 @@ default = ["std"]
 # NOTE: Disabling `std` feature is not supported yet.
 std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 
+epoch-reduced-collection-frequency = ["crossbeam-epoch/reduced-collection-frequency"]
+
 [dependencies]
 cfg-if = "1"
 
