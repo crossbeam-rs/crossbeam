@@ -1009,10 +1009,11 @@ where
                 // discard the data when a data race is detected. The proper solution would be to
                 // do atomic reads and atomic writes, but we can't atomically read and write all
                 // kinds of data since `AtomicU8` is not available on stable Rust yet.
-                let val = ptr::read_volatile(src);
+                // Load as `MaybeUninit` because we may load a value that is not valid as `T`.
+                let val = ptr::read_volatile(src as *mut MaybeUninit<T>);
 
                 if lock.validate_read(stamp) {
-                    return val;
+                    return val.assume_init();
                 }
             }
 

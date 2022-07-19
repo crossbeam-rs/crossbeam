@@ -328,9 +328,11 @@ fn stress_oneshot() {
     }
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn stress_iter() {
+    #[cfg(miri)]
+    const COUNT: usize = 50;
+    #[cfg(not(miri))]
     const COUNT: usize = 1000;
 
     let (request_s, request_r) = bounded(0);
@@ -485,7 +487,7 @@ fn fairness() {
 #[test]
 fn fairness_duplicates() {
     #[cfg(miri)]
-    const COUNT: usize = 50;
+    const COUNT: usize = 100;
     #[cfg(not(miri))]
     const COUNT: usize = 10_000;
 

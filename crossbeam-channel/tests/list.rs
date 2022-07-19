@@ -67,6 +67,7 @@ fn len_empty_full() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // this test makes timing assumptions, but Miri is so slow it violates them
 fn try_recv() {
     let (s, r) = unbounded();
 

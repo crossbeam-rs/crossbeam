@@ -1580,9 +1580,7 @@ mod race_chan_test {
 }
 
 // https://github.com/golang/go/blob/master/test/ken/chan.go
-#[cfg(not(miri))] // Miri is too slow
 mod chan {
-
     use super::*;
 
     const MESSAGES_PER_CHANEL: u32 = 76;
@@ -2052,6 +2050,7 @@ mod chan {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow
     fn main() {
         let mut ctx = Context {
             nproc: Arc::new(Mutex::new(0)),

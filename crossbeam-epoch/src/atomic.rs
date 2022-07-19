@@ -305,6 +305,7 @@ impl<T> Atomic<T> {
     /// use crossbeam_epoch::Atomic;
     ///
     /// let a = Atomic::new(1234);
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn new(init: T) -> Atomic<T> {
         Self::init(init)
@@ -320,6 +321,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// use crossbeam_epoch::Atomic;
     ///
     /// let a = Atomic::<i32>::init(1234);
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn init(init: T::Init) -> Atomic<T> {
         Self::from(Owned::init(init))
@@ -373,6 +375,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::new(1234);
     /// let guard = &epoch::pin();
     /// let p = a.load(SeqCst, guard);
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
         unsafe { Shared::from_usize(self.data.load(ord)) }
@@ -398,6 +401,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::new(1234);
     /// let guard = &epoch::pin();
     /// let p = a.load_consume(guard);
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn load_consume<'g>(&self, _: &'g Guard) -> Shared<'g, T> {
         unsafe { Shared::from_usize(self.data.load_consume()) }
@@ -415,8 +419,10 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// use std::sync::atomic::Ordering::SeqCst;
     ///
     /// let a = Atomic::new(1234);
+    /// # unsafe { drop(a.load(SeqCst, &crossbeam_epoch::pin()).into_owned()); } // avoid leak
     /// a.store(Shared::null(), SeqCst);
     /// a.store(Owned::new(1234), SeqCst);
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn store<P: Pointer<T>>(&self, new: P, ord: Ordering) {
         self.data.store(new.into_usize(), ord);
@@ -437,6 +443,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::new(1234);
     /// let guard = &epoch::pin();
     /// let p = a.swap(Shared::null(), SeqCst, guard);
+    /// # unsafe { drop(p.into_owned()); } // avoid leak
     /// ```
     pub fn swap<'g, P: Pointer<T>>(&self, new: P, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
         unsafe { Shared::from_usize(self.data.swap(new.into_usize(), ord)) }
@@ -471,6 +478,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let curr = a.load(SeqCst, guard);
     /// let res1 = a.compare_exchange(curr, Shared::null(), SeqCst, SeqCst, guard);
     /// let res2 = a.compare_exchange(curr, Owned::new(5678), SeqCst, SeqCst, guard);
+    /// # unsafe { drop(curr.into_owned()); } // avoid leak
     /// ```
     pub fn compare_exchange<'g, P>(
         &self,
@@ -526,6 +534,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let mut new = Owned::new(5678);
     /// let mut ptr = a.load(SeqCst, guard);
+    /// # unsafe { drop(a.load(SeqCst, guard).into_owned()); } // avoid leak
     /// loop {
     ///     match a.compare_exchange_weak(ptr, new, SeqCst, SeqCst, guard) {
     ///         Ok(p) => {
@@ -546,6 +555,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///         Err(err) => curr = err.current,
     ///     }
     /// }
+    /// # unsafe { drop(curr.into_owned()); } // avoid leak
     /// ```
     pub fn compare_exchange_weak<'g, P>(
         &self,
@@ -608,6 +618,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let res2 = a.fetch_update(SeqCst, SeqCst, guard, |x| None);
     /// assert!(res2.is_err());
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn fetch_update<'g, F>(
         &self,
@@ -666,6 +677,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let curr = a.load(SeqCst, guard);
     /// let res1 = a.compare_and_set(curr, Shared::null(), SeqCst, guard);
     /// let res2 = a.compare_and_set(curr, Owned::new(5678), SeqCst, guard);
+    /// # unsafe { drop(curr.into_owned()); } // avoid leak
     /// ```
     // TODO: remove in the next major version.
     #[allow(deprecated)]
@@ -723,6 +735,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let mut new = Owned::new(5678);
     /// let mut ptr = a.load(SeqCst, guard);
+    /// # unsafe { drop(a.load(SeqCst, guard).into_owned()); } // avoid leak
     /// loop {
     ///     match a.compare_and_set_weak(ptr, new, SeqCst, guard) {
     ///         Ok(p) => {
@@ -743,6 +756,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///         Err(err) => curr = err.current,
     ///     }
     /// }
+    /// # unsafe { drop(curr.into_owned()); } // avoid leak
     /// ```
     // TODO: remove in the next major version.
     #[allow(deprecated)]
@@ -925,6 +939,7 @@ impl<T: ?Sized + Pointable> From<Owned<T>> for Atomic<T> {
     /// use crossbeam_epoch::{Atomic, Owned};
     ///
     /// let a = Atomic::<i32>::from(Owned::new(1234));
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     fn from(owned: Owned<T>) -> Self {
         let data = owned.data;
@@ -1108,6 +1123,7 @@ impl<T: ?Sized + Pointable> Owned<T> {
     /// let o = Owned::new(1234);
     /// let guard = &epoch::pin();
     /// let p = o.into_shared(guard);
+    /// # unsafe { drop(p.into_owned()); } // avoid leak
     /// ```
     #[allow(clippy::needless_lifetimes)]
     pub fn into_shared<'g>(self, _: &'g Guard) -> Shared<'g, T> {
@@ -1291,6 +1307,7 @@ impl<'g, T> Shared<'g, T> {
     /// let guard = &epoch::pin();
     /// let p = a.load(SeqCst, guard);
     /// assert_eq!(p.as_raw(), raw);
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn as_raw(&self) -> *const T {
         let (raw, _) = decompose_tag::<T>(self.data);
@@ -1329,6 +1346,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// assert!(a.load(SeqCst, guard).is_null());
     /// a.store(Owned::new(1234), SeqCst);
     /// assert!(!a.load(SeqCst, guard).is_null());
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn is_null(&self) -> bool {
         let (raw, _) = decompose_tag::<T>(self.data);
@@ -1365,6 +1383,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// unsafe {
     ///     assert_eq!(p.deref(), &1234);
     /// }
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn deref(&self) -> &'g T {
         let (raw, _) = decompose_tag::<T>(self.data);
@@ -1406,6 +1425,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// unsafe {
     ///     assert_eq!(p.deref(), &vec![1, 2, 3, 4, 5]);
     /// }
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn deref_mut(&mut self) -> &'g mut T {
         let (raw, _) = decompose_tag::<T>(self.data);
@@ -1442,6 +1462,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// unsafe {
     ///     assert_eq!(p.as_ref(), Some(&1234));
     /// }
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn as_ref(&self) -> Option<&'g T> {
         let (raw, _) = decompose_tag::<T>(self.data);
@@ -1493,6 +1514,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// let guard = &epoch::pin();
     /// let p = a.load(SeqCst, guard);
     /// assert_eq!(p.tag(), 2);
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn tag(&self) -> usize {
         let (_, tag) = decompose_tag::<T>(self.data);
@@ -1516,6 +1538,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// assert_eq!(p1.tag(), 0);
     /// assert_eq!(p2.tag(), 2);
     /// assert_eq!(p1.as_raw(), p2.as_raw());
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn with_tag(&self, tag: usize) -> Shared<'g, T> {
         unsafe { Self::from_usize(compose_tag::<T>(self.data, tag)) }
@@ -1536,6 +1559,7 @@ impl<T> From<*const T> for Shared<'_, T> {
     ///
     /// let p = Shared::from(Box::into_raw(Box::new(1234)) as *const _);
     /// assert!(!p.is_null());
+    /// # unsafe { drop(p.into_owned()); } // avoid leak
     /// ```
     fn from(raw: *const T) -> Self {
         let raw = raw as usize;

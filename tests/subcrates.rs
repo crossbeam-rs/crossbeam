@@ -20,6 +20,7 @@ fn deque() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Miri ICE: https://github.com/crossbeam-rs/crossbeam/pull/870#issuecomment-1189209073
 fn epoch() {
     crossbeam::epoch::pin();
 }
