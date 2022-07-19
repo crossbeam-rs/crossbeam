@@ -111,7 +111,7 @@ impl fmt::Debug for LocalHandle {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
-    use std::mem;
+    use std::mem::ManuallyDrop;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crossbeam_utils::thread;
@@ -402,15 +402,13 @@ mod tests {
                 v.push(i as i32);
             }
 
-            let ptr = v.as_mut_ptr() as usize;
             let len = v.len();
+            let ptr = ManuallyDrop::new(v).as_mut_ptr() as usize;
             guard.defer_unchecked(move || {
                 drop(Vec::from_raw_parts(ptr as *const i32 as *mut i32, len, len));
                 DESTROYS.fetch_add(len, Ordering::Relaxed);
             });
             guard.flush();
-
-            mem::forget(v);
         }
 
         while DESTROYS.load(Ordering::Relaxed) < COUNT {
