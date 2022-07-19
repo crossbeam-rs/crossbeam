@@ -46,6 +46,7 @@ use crate::internal::Local;
 /// if let Some(num) = unsafe { p.as_ref() } {
 ///     println!("The number is {}.", num);
 /// }
+/// # unsafe { drop(a.into_owned()); } // avoid leak
 /// ```
 ///
 /// # Multiple guards
@@ -184,6 +185,7 @@ impl Guard {
     ///         });
     ///     }
     /// }
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn defer_unchecked<F, R>(&self, f: F)
     where
@@ -263,6 +265,7 @@ impl Guard {
     ///         guard.defer_destroy(p);
     ///     }
     /// }
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn defer_destroy<T>(&self, ptr: Shared<'_, T>) {
         self.defer_unchecked(move || ptr.into_owned());
@@ -320,6 +323,7 @@ impl Guard {
     ///     let p = a.load(SeqCst, &guard);
     ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
     /// }
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn repin(&mut self) {
         if let Some(local) = unsafe { self.local.as_ref() } {
@@ -356,6 +360,7 @@ impl Guard {
     ///     let p = a.load(SeqCst, &guard);
     ///     assert_eq!(unsafe { p.as_ref() }, Some(&777));
     /// }
+    /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn repin_after<F, R>(&mut self, f: F) -> R
     where
@@ -451,6 +456,7 @@ impl fmt::Debug for Guard {
 ///
 ///     // Dropping `dummy` doesn't affect the current thread - it's just a noop.
 /// }
+/// # unsafe { drop(a.into_owned()); } // avoid leak
 /// ```
 ///
 /// The most common use of this function is when constructing or destructing a data structure.
