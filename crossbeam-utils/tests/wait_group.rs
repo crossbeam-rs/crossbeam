@@ -36,7 +36,7 @@ fn wait() {
 }
 
 #[test]
-#[cfg(not(miri))] // this test makes timing assumptions, but Miri is so slow it violates them
+#[cfg_attr(miri, ignore)] // this test makes timing assumptions, but Miri is so slow it violates them
 fn wait_and_drop() {
     let wg = WaitGroup::new();
     let (tx, rx) = mpsc::channel();

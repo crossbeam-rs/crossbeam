@@ -408,7 +408,6 @@ fn both_ready() {
     .unwrap();
 }
 
-#[cfg_attr(miri, ignore)] // Miri is too slow
 #[test]
 fn loop_try() {
     const RUNS: usize = 20;
