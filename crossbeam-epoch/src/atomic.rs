@@ -344,7 +344,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
-    #[cfg(all(crossbeam_const_fn_trait_bound, not(crossbeam_loom)))]
+    #[cfg(all(not(crossbeam_no_const_fn_trait_bound), not(crossbeam_loom)))]
     pub const fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
@@ -353,7 +353,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     }
 
     /// Returns a new null atomic pointer.
-    #[cfg(not(all(crossbeam_const_fn_trait_bound, not(crossbeam_loom))))]
+    #[cfg(not(all(not(crossbeam_no_const_fn_trait_bound), not(crossbeam_loom))))]
     pub fn null() -> Atomic<T> {
         Self {
             data: AtomicUsize::new(0),
