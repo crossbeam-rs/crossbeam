@@ -468,7 +468,10 @@ impl Local {
             // Now we must store `new_epoch` into `self.epoch` and execute a `SeqCst` fence.
             // The fence makes sure that any future loads from `Atomic`s will not happen before
             // this store.
-            if cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
+            if cfg!(all(
+                any(target_arch = "x86", target_arch = "x86_64"),
+                not(miri)
+            )) {
                 // HACK(stjepang): On x86 architectures there are two different ways of executing
                 // a `SeqCst` fence.
                 //
