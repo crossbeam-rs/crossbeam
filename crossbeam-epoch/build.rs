@@ -41,17 +41,15 @@ fn main() {
         }
     };
 
-    // Note that this is `no_*`, not `has_*`. This allows treating
-    // `cfg(target_has_atomic = "ptr")` as true when the build script doesn't
-    // run. This is needed for compatibility with non-cargo build systems that
-    // don't run the build script.
+    // Note that this is `no_`*, not `has_*`. This allows treating as the latest
+    // stable rustc is used when the build script doesn't run. This is useful
+    // for non-cargo build systems that don't run the build script.
     if NO_ATOMIC_CAS.contains(&&*target) {
         println!("cargo:rustc-cfg=crossbeam_no_atomic_cas");
     }
 
-    if cfg.probe_rustc_version(1, 61) {
-        // TODO: invert cfg once Rust 1.61 became stable.
-        println!("cargo:rustc-cfg=crossbeam_const_fn_trait_bound");
+    if !cfg.probe_rustc_version(1, 61) {
+        println!("cargo:rustc-cfg=crossbeam_no_const_fn_trait_bound");
     }
 
     println!("cargo:rerun-if-changed=no_atomic.rs");
