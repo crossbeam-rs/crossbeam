@@ -836,7 +836,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///         // any Shared or & to it ourselves, but it may be null, so we have to be careful.
     ///         let old = mem::replace(&mut self.ptr, Atomic::null());
     ///         unsafe {
-    ///             if let Option::Some(x) = old.try_into_owned() {
+    ///             if let Some(x) = old.try_into_owned() {
     ///                 drop(x)
     ///             }
     ///         }
@@ -850,9 +850,9 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         #[cfg(not(crossbeam_loom))]
         let data = self.data.into_inner();
         if decompose_tag::<T>(data).0 == 0 {
-            Option::None
+            None
         } else {
-            Option::Some(Owned::from_usize(data))
+            Some(Owned::from_usize(data))
         }
     }
 }
@@ -1482,16 +1482,16 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// unsafe {
     ///     let guard = &epoch::unprotected();
     ///     let p = a.load(SeqCst, guard);
-    ///     if let Option::Some(x) = p.try_into_owned() {
+    ///     if let Some(x) = p.try_into_owned() {
     ///         drop(x);
     ///     }
     /// }
     /// ```
     pub unsafe fn try_into_owned(self) -> Option<Owned<T>> {
         if self.is_null() {
-            Option::None
+            None
         } else {
-            Option::Some(Owned::from_usize(self.data))
+            Some(Owned::from_usize(self.data))
         }
     }
 
