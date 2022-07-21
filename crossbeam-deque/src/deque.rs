@@ -116,8 +116,8 @@ struct Inner<T> {
 impl<T> Drop for Inner<T> {
     fn drop(&mut self) {
         // Load the back index, front index, and buffer.
-        let b = self.back.load(Ordering::Relaxed);
-        let f = self.front.load(Ordering::Relaxed);
+        let b = *self.back.get_mut();
+        let f = *self.front.get_mut();
 
         unsafe {
             let buffer = self.buffer.load(Ordering::Relaxed, epoch::unprotected());
@@ -1816,9 +1816,9 @@ impl<T> Injector<T> {
 
 impl<T> Drop for Injector<T> {
     fn drop(&mut self) {
-        let mut head = self.head.index.load(Ordering::Relaxed);
-        let mut tail = self.tail.index.load(Ordering::Relaxed);
-        let mut block = self.head.block.load(Ordering::Relaxed);
+        let mut head = *self.head.index.get_mut();
+        let mut tail = *self.tail.index.get_mut();
+        let mut block = *self.head.block.get_mut();
 
         // Erase the lower bits.
         head &= !((1 << SHIFT) - 1);
@@ -1836,7 +1836,7 @@ impl<T> Drop for Injector<T> {
                     p.as_mut_ptr().drop_in_place();
                 } else {
                     // Deallocate the block and move to the next one.
-                    let next = (*block).next.load(Ordering::Relaxed);
+                    let next = *(*block).next.get_mut();
                     drop(Box::from_raw(block));
                     block = next;
                 }
