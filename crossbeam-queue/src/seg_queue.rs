@@ -35,6 +35,11 @@ struct Slot<T> {
 }
 
 impl<T> Slot<T> {
+    const UNINIT: Self = Self {
+        value: UnsafeCell::new(MaybeUninit::uninit()),
+        state: AtomicUsize::new(0),
+    };
+
     /// Waits until a value is written into the slot.
     fn wait_write(&self) {
         let backoff = Backoff::new();
@@ -58,13 +63,10 @@ struct Block<T> {
 impl<T> Block<T> {
     /// Creates an empty block that starts at `start_index`.
     fn new() -> Block<T> {
-        // SAFETY: This is safe because:
-        //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
-        //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
-        //  [3] `Slot::value` (UnsafeCell) may be safely zero initialized because it
-        //       holds a MaybeUninit.
-        //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
-        unsafe { MaybeUninit::zeroed().assume_init() }
+        Self {
+            next: AtomicPtr::new(ptr::null_mut()),
+            slots: [Slot::UNINIT; BLOCK_CAP],
+        }
     }
 
     /// Waits until the next pointer is set.

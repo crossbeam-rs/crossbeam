@@ -29,6 +29,15 @@ impl fmt::Debug for Deferred {
 }
 
 impl Deferred {
+    pub(crate) const NO_OP: Self = {
+        fn no_op_call(_raw: *mut u8) {}
+        Self {
+            call: no_op_call,
+            data: MaybeUninit::uninit(),
+            _marker: PhantomData,
+        }
+    };
+
     /// Constructs a new `Deferred` from a `FnOnce()`.
     pub(crate) fn new<F: FnOnce()>(f: F) -> Self {
         let size = mem::size_of::<F>();

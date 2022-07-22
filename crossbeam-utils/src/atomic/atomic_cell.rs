@@ -902,12 +902,7 @@ fn lock(addr: usize) -> &'static SeqLock {
     const LEN: usize = 97;
     #[allow(clippy::declare_interior_mutable_const)]
     const L: SeqLock = SeqLock::new();
-    static LOCKS: [SeqLock; LEN] = [
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L,
-    ];
+    static LOCKS: [SeqLock; LEN] = [L; LEN];
 
     // If the modulus is a constant number, the compiler will use crazy math to transform this into
     // a sequence of cheap arithmetic operations rather than using the slow modulo instruction.
