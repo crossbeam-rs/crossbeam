@@ -1712,7 +1712,7 @@ mod tests {
     #[test]
     fn array_init() {
         let owned = Owned::<[MaybeUninit<usize>]>::init(10);
-        let arr: &[MaybeUninit<usize>] = &*owned;
+        let arr: &[MaybeUninit<usize>] = &owned;
         assert_eq!(arr.len(), 10);
     }
 }

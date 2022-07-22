@@ -1042,7 +1042,7 @@ where
                     }
 
                     // Installation failed. Decrement the reference count.
-                    (*n).refs_and_height
+                    n.refs_and_height
                         .fetch_sub(1 << HEIGHT_BITS, Ordering::Relaxed);
 
                     // We don't have the most up-to-date search results. Repeat the search.
