@@ -403,9 +403,9 @@ mod tests {
             }
 
             let len = v.len();
-            let ptr = ManuallyDrop::new(v).as_mut_ptr() as usize;
+            let ptr = ManuallyDrop::new(v).as_mut_ptr();
             guard.defer_unchecked(move || {
-                drop(Vec::from_raw_parts(ptr as *const i32 as *mut i32, len, len));
+                drop(Vec::from_raw_parts(ptr, len, len));
                 DESTROYS.fetch_add(len, Ordering::Relaxed);
             });
             guard.flush();

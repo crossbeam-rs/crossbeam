@@ -62,6 +62,7 @@
     unreachable_pub
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(miri, feature(strict_provenance_atomic_ptr))]
 
 #[cfg(crossbeam_loom)]
 extern crate loom_crate as loom;
@@ -77,7 +78,7 @@ mod primitive {
     pub(crate) mod sync {
         pub(crate) mod atomic {
             use core::sync::atomic::Ordering;
-            pub(crate) use loom::sync::atomic::{fence, AtomicUsize};
+            pub(crate) use loom::sync::atomic::{fence, AtomicPtr, AtomicUsize};
 
             // FIXME: loom does not support compiler_fence at the moment.
             // https://github.com/tokio-rs/loom/issues/117
@@ -127,7 +128,7 @@ mod primitive {
         pub(crate) mod atomic {
             pub(crate) use core::sync::atomic::compiler_fence;
             pub(crate) use core::sync::atomic::fence;
-            pub(crate) use core::sync::atomic::AtomicUsize;
+            pub(crate) use core::sync::atomic::{AtomicPtr, AtomicUsize};
         }
         pub(crate) use alloc::sync::Arc;
     }
