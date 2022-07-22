@@ -264,7 +264,7 @@ impl Unparker {
     /// # let _ = unsafe { Unparker::from_raw(raw) };
     /// ```
     pub fn into_raw(this: Unparker) -> *const () {
-        Arc::into_raw(this.inner) as *const ()
+        Arc::into_raw(this.inner).cast::<()>()
     }
 
     /// Converts a raw pointer into an `Unparker`.
@@ -286,7 +286,7 @@ impl Unparker {
     /// ```
     pub unsafe fn from_raw(ptr: *const ()) -> Unparker {
         Unparker {
-            inner: Arc::from_raw(ptr as *const Inner),
+            inner: Arc::from_raw(ptr.cast::<Inner>()),
         }
     }
 }

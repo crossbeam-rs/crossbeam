@@ -49,6 +49,11 @@ struct Slot<T> {
 }
 
 impl<T> Slot<T> {
+    const UNINIT: Self = Self {
+        msg: UnsafeCell::new(MaybeUninit::uninit()),
+        state: AtomicUsize::new(0),
+    };
+
     /// Waits until a message is written into the slot.
     fn wait_write(&self) {
         let backoff = Backoff::new();
@@ -72,13 +77,10 @@ struct Block<T> {
 impl<T> Block<T> {
     /// Creates an empty block.
     fn new() -> Block<T> {
-        // SAFETY: This is safe because:
-        //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
-        //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
-        //  [3] `Slot::msg` (UnsafeCell) may be safely zero initialized because it
-        //       holds a MaybeUninit.
-        //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
-        unsafe { MaybeUninit::zeroed().assume_init() }
+        Self {
+            next: AtomicPtr::new(ptr::null_mut()),
+            slots: [Slot::UNINIT; BLOCK_CAP],
+        }
     }
 
     /// Waits until the next pointer is set.
@@ -283,7 +285,7 @@ impl<T> Channel<T> {
         }
 
         // Write the message into the slot.
-        let block = token.list.block as *mut Block<T>;
+        let block = token.list.block.cast::<Block<T>>();
         let offset = token.list.offset;
         let slot = (*block).slots.get_unchecked(offset);
         slot.msg.get().write(MaybeUninit::new(msg));

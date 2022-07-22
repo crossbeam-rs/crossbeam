@@ -180,7 +180,7 @@ impl<T> AtomicCell<T> {
     /// ```
     #[inline]
     pub fn as_ptr(&self) -> *mut T {
-        self.value.get() as *mut T
+        self.value.get().cast::<T>()
     }
 }
 
@@ -902,12 +902,7 @@ fn lock(addr: usize) -> &'static SeqLock {
     const LEN: usize = 97;
     #[allow(clippy::declare_interior_mutable_const)]
     const L: SeqLock = SeqLock::new();
-    static LOCKS: [SeqLock; LEN] = [
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L, L,
-        L, L, L, L, L, L, L,
-    ];
+    static LOCKS: [SeqLock; LEN] = [L; LEN];
 
     // If the modulus is a constant number, the compiler will use crazy math to transform this into
     // a sequence of cheap arithmetic operations rather than using the slow modulo instruction.
@@ -973,7 +968,7 @@ macro_rules! atomic {
 
 /// Returns `true` if operations on `AtomicCell<T>` are lock-free.
 const fn atomic_is_lock_free<T>() -> bool {
-    // HACK(taiki-e): This is equivalent to `atomic! { T, _a, true, false }`, but can be used in const fn even in Rust 1.36.
+    // HACK(taiki-e): This is equivalent to `atomic! { T, _a, true, false }`, but can be used in const fn even in our MSRV (Rust 1.38).
     let is_lock_free = can_transmute::<T, AtomicUnit>()
         | can_transmute::<T, atomic::AtomicU8>()
         | can_transmute::<T, atomic::AtomicU16>()
@@ -1010,7 +1005,7 @@ where
                 // do atomic reads and atomic writes, but we can't atomically read and write all
                 // kinds of data since `AtomicU8` is not available on stable Rust yet.
                 // Load as `MaybeUninit` because we may load a value that is not valid as `T`.
-                let val = ptr::read_volatile(src as *mut MaybeUninit<T>);
+                let val = ptr::read_volatile(src.cast::<MaybeUninit<T>>());
 
                 if lock.validate_read(stamp) {
                     return val.assume_init();

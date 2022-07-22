@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-epoch#license)
 https://crates.io/crates/crossbeam-epoch)
 [![Documentation](https://docs.rs/crossbeam-epoch/badge.svg)](
 https://docs.rs/crossbeam-epoch)
-[![Rust 1.36+](https://img.shields.io/badge/rust-1.36+-lightgray.svg)](
+[![Rust 1.38+](https://img.shields.io/badge/rust-1.38+-lightgray.svg)](
 https://www.rust-lang.org)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.com/invite/JXYwgWZ)
 
@@ -35,7 +35,7 @@ crossbeam-epoch = "0.9"
 
 Crossbeam Epoch supports stable Rust releases going back at least six months,
 and every time the minimum supported Rust version is increased, a new minor
-version is released. Currently, the minimum supported Rust version is 1.36.
+version is released. Currently, the minimum supported Rust version is 1.38.
 
 ## License
 

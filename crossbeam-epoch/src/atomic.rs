@@ -252,7 +252,7 @@ impl<T> Pointable for [MaybeUninit<T>] {
         let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * len;
         let align = mem::align_of::<Array<T>>();
         let layout = alloc::Layout::from_size_align(size, align).unwrap();
-        let ptr = alloc::alloc(layout) as *mut Array<T>;
+        let ptr = alloc::alloc(layout).cast::<Array<T>>();
         if ptr.is_null() {
             alloc::handle_alloc_error(layout);
         }

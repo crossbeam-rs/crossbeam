@@ -190,7 +190,7 @@ impl<T> Channel<T> {
             // heap-allocated packet.
             packet.wait_ready();
             let msg = packet.msg.get().replace(None).unwrap();
-            drop(Box::from_raw(token.zero.0 as *mut Packet<T>));
+            drop(Box::from_raw(token.zero.0.cast::<Packet<T>>()));
             Ok(msg)
         }
     }
@@ -409,7 +409,7 @@ impl<T> SelectHandle for Receiver<'_, T> {
         let mut inner = self.0.inner.lock().unwrap();
         inner
             .receivers
-            .register_with_packet(oper, packet as *mut (), cx);
+            .register_with_packet(oper, packet.cast::<()>(), cx);
         inner.senders.notify();
         inner.senders.can_select() || inner.is_disconnected
     }
@@ -417,7 +417,7 @@ impl<T> SelectHandle for Receiver<'_, T> {
     fn unregister(&self, oper: Operation) {
         if let Some(operation) = self.0.inner.lock().unwrap().receivers.unregister(oper) {
             unsafe {
-                drop(Box::from_raw(operation.packet as *mut Packet<T>));
+                drop(Box::from_raw(operation.packet.cast::<Packet<T>>()));
             }
         }
     }
@@ -459,7 +459,7 @@ impl<T> SelectHandle for Sender<'_, T> {
         let mut inner = self.0.inner.lock().unwrap();
         inner
             .senders
-            .register_with_packet(oper, packet as *mut (), cx);
+            .register_with_packet(oper, packet.cast::<()>(), cx);
         inner.receivers.notify();
         inner.receivers.can_select() || inner.is_disconnected
     }
@@ -467,7 +467,7 @@ impl<T> SelectHandle for Sender<'_, T> {
     fn unregister(&self, oper: Operation) {
         if let Some(operation) = self.0.inner.lock().unwrap().senders.unregister(oper) {
             unsafe {
-                drop(Box::from_raw(operation.packet as *mut Packet<T>));
+                drop(Box::from_raw(operation.packet.cast::<Packet<T>>()));
             }
         }
     }

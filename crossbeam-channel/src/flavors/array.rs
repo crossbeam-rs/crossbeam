@@ -216,7 +216,7 @@ impl<T> Channel<T> {
             return Err(msg);
         }
 
-        let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
+        let slot: &Slot<T> = &*token.array.slot.cast::<Slot<T>>();
 
         // Write the message into the slot and update the stamp.
         slot.msg.get().write(MaybeUninit::new(msg));
@@ -307,7 +307,7 @@ impl<T> Channel<T> {
             return Err(());
         }
 
-        let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
+        let slot: &Slot<T> = &*token.array.slot.cast::<Slot<T>>();
 
         // Read the message from the slot and update the stamp.
         let msg = slot.msg.get().read().assume_init();

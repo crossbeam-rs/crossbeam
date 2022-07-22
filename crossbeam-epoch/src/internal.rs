@@ -106,87 +106,11 @@ impl Bag {
 }
 
 impl Default for Bag {
-    #[rustfmt::skip]
     fn default() -> Self {
-        // TODO: [no_op; MAX_OBJECTS] syntax blocked by https://github.com/rust-lang/rust/issues/49147
-        #[cfg(not(crossbeam_sanitize))]
-        return Bag {
+        Bag {
             len: 0,
-            deferreds: [
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-            ],
-        };
-        #[cfg(crossbeam_sanitize)]
-        return Bag {
-            len: 0,
-            deferreds: [
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-                Deferred::new(no_op_func),
-            ],
-        };
+            deferreds: [Deferred::NO_OP; MAX_OBJECTS],
+        }
     }
 }
 
@@ -194,7 +118,7 @@ impl Drop for Bag {
     fn drop(&mut self) {
         // Call all deferred functions.
         for deferred in &mut self.deferreds[..self.len] {
-            let no_op = Deferred::new(no_op_func);
+            let no_op = Deferred::NO_OP;
             let owned_deferred = mem::replace(deferred, no_op);
             owned_deferred.call();
         }
@@ -209,8 +133,6 @@ impl fmt::Debug for Bag {
             .finish()
     }
 }
-
-fn no_op_func() {}
 
 /// A pair of an epoch and a bag.
 #[derive(Default, Debug)]
