@@ -9,8 +9,7 @@ echo
 
 export RUSTFLAGS="${RUSTFLAGS:-} -Z randomize-layout"
 
-# -Zmiri-ignore-leaks is needed because we use detached threads in tests/docs: https://github.com/rust-lang/miri/issues/1371
-MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-ignore-leaks" \
+MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
     cargo miri test \
     -p crossbeam-queue \
     -p crossbeam-utils 2>&1 | ts -i '%.s  '

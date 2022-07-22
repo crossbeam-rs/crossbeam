@@ -44,6 +44,7 @@ use std::time::{Duration, Instant};
 ///
 /// // Wakes up when `u.unpark()` provides the token.
 /// p.park();
+/// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
 /// ```
 ///
 /// [`park`]: Parker::park
@@ -241,6 +242,7 @@ impl Unparker {
     ///
     /// // Wakes up when `u.unpark()` provides the token.
     /// p.park();
+    /// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
     /// ```
     ///
     /// [`park`]: Parker::park
