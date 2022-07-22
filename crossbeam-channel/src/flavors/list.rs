@@ -285,7 +285,7 @@ impl<T> Channel<T> {
         }
 
         // Write the message into the slot.
-        let block = token.list.block as *mut Block<T>;
+        let block = token.list.block.cast::<Block<T>>();
         let offset = token.list.offset;
         let slot = (*block).slots.get_unchecked(offset);
         slot.msg.get().write(MaybeUninit::new(msg));

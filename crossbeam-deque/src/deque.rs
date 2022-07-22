@@ -64,7 +64,7 @@ impl<T> Buffer<T> {
     /// that would be more expensive and difficult to implement generically for all types `T`.
     /// Hence, as a hack, we use a volatile write instead.
     unsafe fn write(&self, index: isize, task: MaybeUninit<T>) {
-        ptr::write_volatile(self.at(index) as *mut MaybeUninit<T>, task)
+        ptr::write_volatile(self.at(index).cast::<MaybeUninit<T>>(), task)
     }
 
     /// Reads a task from the specified `index`.
@@ -74,7 +74,7 @@ impl<T> Buffer<T> {
     /// that would be more expensive and difficult to implement generically for all types `T`.
     /// Hence, as a hack, we use a volatile load instead.
     unsafe fn read(&self, index: isize) -> MaybeUninit<T> {
-        ptr::read_volatile(self.at(index) as *mut MaybeUninit<T>)
+        ptr::read_volatile(self.at(index).cast::<MaybeUninit<T>>())
     }
 }
 

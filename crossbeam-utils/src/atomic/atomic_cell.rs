@@ -180,7 +180,7 @@ impl<T> AtomicCell<T> {
     /// ```
     #[inline]
     pub fn as_ptr(&self) -> *mut T {
-        self.value.get() as *mut T
+        self.value.get().cast::<T>()
     }
 }
 
@@ -1005,7 +1005,7 @@ where
                 // do atomic reads and atomic writes, but we can't atomically read and write all
                 // kinds of data since `AtomicU8` is not available on stable Rust yet.
                 // Load as `MaybeUninit` because we may load a value that is not valid as `T`.
-                let val = ptr::read_volatile(src as *mut MaybeUninit<T>);
+                let val = ptr::read_volatile(src.cast::<MaybeUninit<T>>());
 
                 if lock.validate_read(stamp) {
                     return val.assume_init();
