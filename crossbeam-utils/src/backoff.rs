@@ -201,6 +201,7 @@ impl Backoff {
     /// assert_eq!(ready.load(SeqCst), false);
     /// spin_wait(&ready);
     /// assert_eq!(ready.load(SeqCst), true);
+    /// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
     /// ```
     ///
     /// [`AtomicBool`]: std::sync::atomic::AtomicBool
@@ -269,6 +270,7 @@ impl Backoff {
     /// assert_eq!(ready.load(SeqCst), false);
     /// blocking_wait(&ready);
     /// assert_eq!(ready.load(SeqCst), true);
+    /// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
     /// ```
     ///
     /// [`AtomicBool`]: std::sync::atomic::AtomicBool
