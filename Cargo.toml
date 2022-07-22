@@ -4,7 +4,7 @@ name = "crossbeam"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-X.Y.Z" git tag
-version = "0.8.1"
+version = "0.8.2"
 edition = "2018"
 rust-version = "1.38"
 license = "MIT OR Apache-2.0"
@@ -13,7 +13,7 @@ homepage = "https://github.com/crossbeam-rs/crossbeam"
 description = "Tools for concurrent programming"
 keywords = ["atomic", "garbage", "non-blocking", "lock-free", "rcu"]
 categories = ["concurrency", "memory-management", "data-structures", "no-std"]
-exclude = ["/.github", "/ci"]
+exclude = ["/.*", "/ci", "/tools"]
 
 [features]
 default = ["std"]

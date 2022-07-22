@@ -1,3 +1,7 @@
+# Version 0.8.11
+
+- Bump the minimum supported Rust version to 1.38. (#877)
+
 # Version 0.8.10
 
 - Fix unsoundness of `AtomicCell` on types containing niches. (#834)

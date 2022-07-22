@@ -1,3 +1,7 @@
+# Version 0.3.6
+
+- Bump the minimum supported Rust version to 1.38. (#877)
+
 # Version 0.3.5
 
 - Add `ArrayQueue::force_push`. (#789)

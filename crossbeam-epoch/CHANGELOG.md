@@ -1,3 +1,9 @@
+# Version 0.9.10
+
+- Bump the minimum supported Rust version to 1.38. (#877)
+- Mitigate the risk of segmentation faults in buggy downstream implementations. (#879)
+- Add `{Atomic, Shared}::try_into_owned` (#701)
+
 # Version 0.9.9
 
 - Replace lazy_static with once_cell. (#817)
