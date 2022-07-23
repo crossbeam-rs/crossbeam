@@ -21,15 +21,6 @@ default = ["std"]
 # This is enabled by default.
 std = ["once_cell"]
 
-# These features are no longer used.
-# TODO: remove in the next major version.
-# Enable to use of unstable functionality.
-# This is disabled by default and requires recent nightly compiler.
-#
-# NOTE: This feature is outside of the normal semver guarantees and minor or
-# patch versions of crossbeam may make breaking changes to them at any time.
-nightly = []
-
 [dependencies]
 cfg-if = "1"
 once_cell = { version = "1", optional = true }

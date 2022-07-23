@@ -27,15 +27,6 @@ std = ["alloc", "crossbeam-utils/std", "once_cell"]
 # NOTE: Disabling both `std` *and* `alloc` features is not supported yet.
 alloc = []
 
-# These features are no longer used.
-# TODO: remove in the next major version.
-# Enable to use of unstable functionality.
-# This is disabled by default and requires recent nightly compiler.
-#
-# NOTE: This feature is outside of the normal semver guarantees and minor or
-# patch versions of crossbeam may make breaking changes to them at any time.
-nightly = ["crossbeam-utils/nightly"]
-
 # Enable the use of loom for concurrency testing.
 #
 # NOTE: This feature is outside of the normal semver guarantees and minor or

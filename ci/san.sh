@@ -35,7 +35,6 @@ RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=address --cfg crossbeam_sanitize" \
     cargo run \
     --release \
     --target x86_64-unknown-linux-gnu \
-    --features nightly \
     --example sanitize \
     --manifest-path crossbeam-epoch/Cargo.toml
 
