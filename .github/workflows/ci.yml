@@ -34,6 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # aarch64/x86_64 macOS and aarch64 linux are tested on Cirrus CI
         include:
           - rust: '1.38'
             os: ubuntu-latest
@@ -45,17 +46,11 @@ jobs:
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
-          # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
-          # - rust: nightly
-          #   os: macos-latest
           - rust: nightly
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
-          - rust: nightly
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
             os: ubuntu-latest
@@ -63,9 +58,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
-        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
       - name: Install cross
         uses: taiki-e/install-action@cross
         if: matrix.target != ''
@@ -85,8 +80,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Check features
@@ -97,10 +93,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
+      - name: Install cargo-minimal-versions
+        uses: taiki-e/install-action@cargo-minimal-versions
       - name: dependency tree check
         run: ./ci/dependencies.sh
 
@@ -112,8 +109,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - run: ci/no_atomic.sh
       - run: git add -N . && git diff --exit-code
         if: github.repository_owner != 'crossbeam-rs' || github.event_name != 'schedule'
@@ -145,8 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update stable
+      - uses: dtolnay/rust-toolchain@stable
       - name: rustfmt
         run: ./ci/rustfmt.sh
 
@@ -155,8 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update stable
+      - uses: dtolnay/rust-toolchain@stable
       - name: clippy
         run: ./ci/clippy.sh
 
@@ -165,8 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup toolchain install nightly --component miri && rustup default nightly
+      - uses: dtolnay/rust-toolchain@miri
       - name: miri
         run: ./ci/miri.sh
 
@@ -175,8 +168,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - name: Run sanitizers
         run: ./ci/san.sh
 
@@ -185,8 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update stable
+      - uses: dtolnay/rust-toolchain@stable
       - name: loom
         run: ./ci/crossbeam-epoch-loom.sh
 
@@ -195,8 +186,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - name: docs
         run: ./ci/docs.sh
 
@@ -228,6 +218,7 @@ jobs:
       - san
       - loom
       - docs
+      - shellcheck
     runs-on: ubuntu-latest
     steps:
       - name: Mark the job as a success
