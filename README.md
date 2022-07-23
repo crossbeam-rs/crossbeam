@@ -46,19 +46,19 @@ This crate provides a set of tools for concurrent programming:
 *Features marked with <sup>(alloc)</sup> can be used in `no_std` environments, but only if `alloc`
 feature is enabled.*
 
-[`AtomicCell`]: https://docs.rs/crossbeam/*/crossbeam/atomic/struct.AtomicCell.html
-[`AtomicConsume`]: https://docs.rs/crossbeam/*/crossbeam/atomic/trait.AtomicConsume.html
-[`deque`]: https://docs.rs/crossbeam/*/crossbeam/deque/index.html
-[`ArrayQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.ArrayQueue.html
-[`SegQueue`]: https://docs.rs/crossbeam/*/crossbeam/queue/struct.SegQueue.html
-[`channel`]: https://docs.rs/crossbeam/*/crossbeam/channel/index.html
-[`Parker`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.Parker.html
-[`ShardedLock`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.ShardedLock.html
-[`WaitGroup`]: https://docs.rs/crossbeam/*/crossbeam/sync/struct.WaitGroup.html
-[`epoch`]: https://docs.rs/crossbeam/*/crossbeam/epoch/index.html
-[`Backoff`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.Backoff.html
-[`CachePadded`]: https://docs.rs/crossbeam/*/crossbeam/utils/struct.CachePadded.html
-[`scope`]: https://docs.rs/crossbeam/*/crossbeam/fn.scope.html
+[`AtomicCell`]: https://docs.rs/crossbeam/latest/crossbeam/atomic/struct.AtomicCell.html
+[`AtomicConsume`]: https://docs.rs/crossbeam/latest/crossbeam/atomic/trait.AtomicConsume.html
+[`deque`]: https://docs.rs/crossbeam/latest/crossbeam/deque/index.html
+[`ArrayQueue`]: https://docs.rs/crossbeam/latest/crossbeam/queue/struct.ArrayQueue.html
+[`SegQueue`]: https://docs.rs/crossbeam/latest/crossbeam/queue/struct.SegQueue.html
+[`channel`]: https://docs.rs/crossbeam/latest/crossbeam/channel/index.html
+[`Parker`]: https://docs.rs/crossbeam/latest/crossbeam/sync/struct.Parker.html
+[`ShardedLock`]: https://docs.rs/crossbeam/latest/crossbeam/sync/struct.ShardedLock.html
+[`WaitGroup`]: https://docs.rs/crossbeam/latest/crossbeam/sync/struct.WaitGroup.html
+[`epoch`]: https://docs.rs/crossbeam/latest/crossbeam/epoch/index.html
+[`Backoff`]: https://docs.rs/crossbeam/latest/crossbeam/utils/struct.Backoff.html
+[`CachePadded`]: https://docs.rs/crossbeam/latest/crossbeam/utils/struct.CachePadded.html
+[`scope`]: https://docs.rs/crossbeam/latest/crossbeam/fn.scope.html
 
 ## Crates
 

@@ -25,15 +25,15 @@ Some highlights:
 * Channels use locks very sparingly for maximum [performance](benchmarks).
 
 [`std::sync::mpsc`]: https://doc.rust-lang.org/std/sync/mpsc/index.html
-[`Sender`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Sender.html
-[`Receiver`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Receiver.html
-[`bounded`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.bounded.html
-[`unbounded`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.unbounded.html
-[`after`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.after.html
-[`never`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.never.html
-[`tick`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/fn.tick.html
-[`select!`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/macro.select.html
-[`Select`]: https://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Select.html
+[`Sender`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/struct.Sender.html
+[`Receiver`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/struct.Receiver.html
+[`bounded`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/fn.bounded.html
+[`unbounded`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/fn.unbounded.html
+[`after`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/fn.after.html
+[`never`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/fn.never.html
+[`tick`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/fn.tick.html
+[`select!`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/macro.select.html
+[`Select`]: https://docs.rs/crossbeam-channel/latest/crossbeam_channel/struct.Select.html
 
 ## Usage
 

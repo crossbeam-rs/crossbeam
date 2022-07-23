@@ -33,14 +33,14 @@ This crate provides miscellaneous tools for concurrent programming:
 
 *Features marked with <sup>(no_std)</sup> can be used in `no_std` environments.*<br/>
 
-[`AtomicCell`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/atomic/struct.AtomicCell.html
-[`AtomicConsume`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/atomic/trait.AtomicConsume.html
-[`Parker`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/sync/struct.Parker.html
-[`ShardedLock`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/sync/struct.ShardedLock.html
-[`WaitGroup`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/sync/struct.WaitGroup.html
-[`Backoff`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/struct.Backoff.html
-[`CachePadded`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/struct.CachePadded.html
-[`scope`]: https://docs.rs/crossbeam-utils/*/crossbeam_utils/thread/fn.scope.html
+[`AtomicCell`]: https://docs.rs/crossbeam-utils/latest/crossbeam_utils/atomic/struct.AtomicCell.html
+[`AtomicConsume`]: https://docs.rs/crossbeam-utils/latest/crossbeam_utils/atomic/trait.AtomicConsume.html
+[`Parker`]: https://docs.rs/crossbeam-utils/latest/crossbeam_utils/sync/struct.Parker.html
+[`ShardedLock`]: https://docs.rs/crossbeam-utils/latest/crossbeam_utils/sync/struct.ShardedLock.html
+[`WaitGroup`]: https://docs.rs/crossbeam-utils/latest/crossbeam_utils/sync/struct.WaitGroup.html
+[`Backoff`]: https://docs.rs/crossbeam-utils/latest/crossbeam_utils/struct.Backoff.html
+[`CachePadded`]: https://docs.rs/crossbeam-utils/latest/crossbeam_utils/struct.CachePadded.html
+[`scope`]: https://docs.rs/crossbeam-utils/latest/crossbeam_utils/thread/fn.scope.html
 
 ## Usage
 
