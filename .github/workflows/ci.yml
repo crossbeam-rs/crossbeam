@@ -63,9 +63,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
-        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
       - name: Install cross
         uses: taiki-e/install-action@cross
         if: matrix.target != ''
@@ -85,8 +85,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Check features
@@ -97,8 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: dependency tree check
@@ -112,8 +112,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - run: ci/no_atomic.sh
       - run: git add -N . && git diff --exit-code
         if: github.repository_owner != 'crossbeam-rs' || github.event_name != 'schedule'
@@ -145,8 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update stable
+      - uses: dtolnay/rust-toolchain@stable
       - name: rustfmt
         run: ./ci/rustfmt.sh
 
@@ -155,8 +153,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update stable
+      - uses: dtolnay/rust-toolchain@stable
       - name: clippy
         run: ./ci/clippy.sh
 
@@ -165,8 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup toolchain install nightly --component miri && rustup default nightly
+      - uses: dtolnay/rust-toolchain@miri
       - name: miri
         run: ./ci/miri.sh
 
@@ -175,8 +171,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - name: Run sanitizers
         run: ./ci/san.sh
 
@@ -185,8 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update stable
+      - uses: dtolnay/rust-toolchain@stable
       - name: loom
         run: ./ci/crossbeam-epoch-loom.sh
 
@@ -195,8 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - name: docs
         run: ./ci/docs.sh
 
