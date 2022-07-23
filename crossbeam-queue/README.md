@@ -20,8 +20,8 @@ This crate provides concurrent queues that can be shared among threads:
 Everything in this crate can be used in `no_std` environments, provided that `alloc` feature is
 enabled.
 
-[`ArrayQueue`]: https://docs.rs/crossbeam-queue/*/crossbeam_queue/struct.ArrayQueue.html
-[`SegQueue`]: https://docs.rs/crossbeam-queue/*/crossbeam_queue/struct.SegQueue.html
+[`ArrayQueue`]: https://docs.rs/crossbeam-queue/latest/crossbeam_queue/struct.ArrayQueue.html
+[`SegQueue`]: https://docs.rs/crossbeam-queue/latest/crossbeam_queue/struct.SegQueue.html
 
 ## Usage
 
