@@ -48,8 +48,7 @@ fn spsc(cap: usize) {
                 }
             }
         }
-    })
-    .unwrap();
+    });
 }
 
 fn mpsc(cap: usize) {
@@ -79,8 +78,7 @@ fn mpsc(cap: usize) {
                 }
             }
         }
-    })
-    .unwrap();
+    });
 }
 
 fn mpmc(cap: usize) {
@@ -114,8 +112,7 @@ fn mpmc(cap: usize) {
                 }
             });
         }
-    })
-    .unwrap();
+    });
 }
 
 fn main() {

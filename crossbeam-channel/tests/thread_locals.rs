@@ -48,6 +48,5 @@ fn use_while_exiting() {
             thread::sleep(ms(100));
             s.send(()).unwrap();
         });
-    })
-    .unwrap();
+    });
 }

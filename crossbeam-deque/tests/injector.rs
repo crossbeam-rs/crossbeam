@@ -72,8 +72,7 @@ fn spsc() {
         for i in 0..COUNT {
             q.push(i);
         }
-    })
-    .unwrap();
+    });
 }
 
 #[test]
@@ -110,8 +109,7 @@ fn mpmc() {
                 }
             });
         }
-    })
-    .unwrap();
+    });
 
     for c in v {
         assert_eq!(c.load(SeqCst), THREADS);
@@ -158,8 +156,7 @@ fn stampede() {
                 remaining.fetch_sub(1, SeqCst);
             }
         }
-    })
-    .unwrap();
+    });
 }
 
 #[test]
@@ -220,8 +217,7 @@ fn stress() {
             }
         }
         done.store(true, SeqCst);
-    })
-    .unwrap();
+    });
 }
 
 #[cfg_attr(miri, ignore)] // Miri is too slow
@@ -280,8 +276,7 @@ fn no_starvation() {
             }
         }
         done.store(true, SeqCst);
-    })
-    .unwrap();
+    });
 }
 
 #[test]
@@ -350,8 +345,7 @@ fn destructors() {
                 remaining.fetch_sub(1, SeqCst);
             }
         }
-    })
-    .unwrap();
+    });
 
     let rem = remaining.load(SeqCst);
     assert!(rem > 0);

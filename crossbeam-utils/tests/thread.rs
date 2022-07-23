@@ -1,5 +1,4 @@
-use std::any::Any;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -21,8 +20,7 @@ fn join() {
             panic!("\"My honey is running out!\", said Pooh.");
         });
         assert!(panic_handle.join().is_err());
-    })
-    .unwrap();
+    });
 
     // There should be sufficient synchronization.
     assert_eq!(1, counter.load(Ordering::Relaxed));
@@ -37,8 +35,7 @@ fn counter() {
                 counter.fetch_add(1, Ordering::Relaxed);
             });
         }
-    })
-    .unwrap();
+    });
 
     assert_eq!(THREADS, counter.load(Ordering::Relaxed));
 }
@@ -57,8 +54,7 @@ fn counter_builder() {
                 })
                 .unwrap();
         }
-    })
-    .unwrap();
+    });
 
     assert_eq!(THREADS, counter.load(Ordering::Relaxed));
 }
@@ -66,26 +62,29 @@ fn counter_builder() {
 #[test]
 fn counter_panic() {
     let counter = AtomicUsize::new(0);
-    let result = thread::scope(|scope| {
-        scope.spawn(|_| {
-            panic!("\"My honey is running out!\", said Pooh.");
-        });
-        sleep(Duration::from_millis(100));
-
-        for _ in 0..THREADS {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        thread::scope(|scope| {
             scope.spawn(|_| {
-                counter.fetch_add(1, Ordering::Relaxed);
+                panic!("\"My honey is running out!\", said Pooh.");
             });
-        }
-    });
+            sleep(Duration::from_millis(100));
+
+            for _ in 0..THREADS {
+                scope.spawn(|_| {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                });
+            }
+        });
+    }));
 
     assert_eq!(THREADS, counter.load(Ordering::Relaxed));
     assert!(result.is_err());
 }
 
 #[test]
+#[should_panic = "2 scoped thread(s) panicked"]
 fn panic_twice() {
-    let result = thread::scope(|scope| {
+    thread::scope(|scope| {
         scope.spawn(|_| {
             sleep(Duration::from_millis(500));
             panic!("thread #1");
@@ -94,41 +93,16 @@ fn panic_twice() {
             panic!("thread #2");
         });
     });
-
-    let err = result.unwrap_err();
-    let vec = err
-        .downcast_ref::<Vec<Box<dyn Any + Send + 'static>>>()
-        .unwrap();
-    assert_eq!(2, vec.len());
-
-    let first = vec[0].downcast_ref::<&str>().unwrap();
-    let second = vec[1].downcast_ref::<&str>().unwrap();
-    assert_eq!("thread #1", *first);
-    assert_eq!("thread #2", *second)
 }
 
 #[test]
+#[should_panic = "3 scoped thread(s) panicked"]
 fn panic_many() {
-    let result = thread::scope(|scope| {
+    thread::scope(|scope| {
         scope.spawn(|_| panic!("deliberate panic #1"));
         scope.spawn(|_| panic!("deliberate panic #2"));
         scope.spawn(|_| panic!("deliberate panic #3"));
     });
-
-    let err = result.unwrap_err();
-    let vec = err
-        .downcast_ref::<Vec<Box<dyn Any + Send + 'static>>>()
-        .unwrap();
-    assert_eq!(3, vec.len());
-
-    for panic in vec.iter() {
-        let panic = panic.downcast_ref::<&str>().unwrap();
-        assert!(
-            *panic == "deliberate panic #1"
-                || *panic == "deliberate panic #2"
-                || *panic == "deliberate panic #3"
-        );
-    }
 }
 
 #[test]
@@ -159,8 +133,7 @@ fn nesting() {
                 wrapper.recurse(scope, 5);
             });
         });
-    })
-    .unwrap();
+    });
 }
 
 #[test]
@@ -174,13 +147,12 @@ fn join_nested() {
         });
 
         sleep(Duration::from_millis(100));
-    })
-    .unwrap();
+    });
 }
 
 #[test]
 fn scope_returns_ok() {
-    let result = thread::scope(|scope| scope.spawn(|_| 1234).join().unwrap()).unwrap();
+    let result = thread::scope(|scope| scope.spawn(|_| 1234).join().unwrap());
     assert_eq!(result, 1234);
 }
 
@@ -195,8 +167,7 @@ fn as_pthread_t() {
         });
         let _pthread_t = handle.as_pthread_t();
         handle.join().unwrap();
-    })
-    .unwrap();
+    });
 }
 
 #[cfg(windows)]
@@ -210,6 +181,23 @@ fn as_raw_handle() {
         });
         let _raw_handle = handle.as_raw_handle();
         handle.join().unwrap();
-    })
-    .unwrap();
+    });
+}
+
+// https://github.com/rust-lang/rust/pull/94644
+// https://github.com/crossbeam-rs/crossbeam/pull/844#issuecomment-1143288972
+#[test]
+fn test_scoped_threads_drop_result_before_join() {
+    let actually_finished = &AtomicBool::new(false);
+    struct X<'a>(&'a AtomicBool);
+    impl Drop for X<'_> {
+        fn drop(&mut self) {
+            std::thread::sleep(Duration::from_millis(100));
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
+    thread::scope(|s| {
+        s.spawn(move |_| X(actually_finished));
+    });
+    assert!(actually_finished.load(Ordering::Relaxed));
 }

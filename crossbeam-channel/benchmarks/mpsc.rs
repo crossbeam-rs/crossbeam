@@ -77,8 +77,7 @@ fn spsc_async() {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn spsc_sync(cap: usize) {
@@ -94,8 +93,7 @@ fn spsc_sync(cap: usize) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn mpsc_async() {
@@ -114,8 +112,7 @@ fn mpsc_async() {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn mpsc_sync(cap: usize) {
@@ -134,8 +131,7 @@ fn mpsc_sync(cap: usize) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn main() {

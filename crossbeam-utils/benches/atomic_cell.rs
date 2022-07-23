@@ -77,8 +77,7 @@ fn concurrent_load_u8(b: &mut test::Bencher) {
         start.wait();
         exit.store(true);
         end.wait();
-    })
-    .unwrap();
+    });
 }
 
 #[bench]
@@ -151,6 +150,5 @@ fn concurrent_load_usize(b: &mut test::Bencher) {
         start.wait();
         exit.store(true);
         end.wait();
-    })
-    .unwrap();
+    });
 }

@@ -22,8 +22,7 @@ fn nested_recv_iter() {
         s.send(2).unwrap();
         drop(s);
         assert_eq!(total_r.recv().unwrap(), 6);
-    })
-    .unwrap();
+    });
 }
 
 #[test]
@@ -50,8 +49,7 @@ fn recv_iter_break() {
         let _ = s.send(2);
         drop(s);
         assert_eq!(count_r.recv().unwrap(), 4);
-    })
-    .unwrap();
+    });
 }
 
 #[test]
@@ -78,8 +76,7 @@ fn recv_try_iter() {
                 break;
             }
         }
-    })
-    .unwrap();
+    });
 }
 
 #[test]

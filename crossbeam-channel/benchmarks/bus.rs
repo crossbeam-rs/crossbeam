@@ -31,8 +31,7 @@ fn spsc(cap: usize) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn main() {

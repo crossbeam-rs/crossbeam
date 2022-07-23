@@ -64,8 +64,7 @@ mod unbounded {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -93,8 +92,7 @@ mod unbounded {
                 r2.recv().unwrap();
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -129,8 +127,7 @@ mod unbounded {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -165,8 +162,7 @@ mod unbounded {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -208,8 +204,7 @@ mod unbounded {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 }
 
@@ -241,8 +236,7 @@ mod bounded_n {
                 r2.recv().unwrap();
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -277,8 +271,7 @@ mod bounded_n {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -313,8 +306,7 @@ mod bounded_n {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -347,8 +339,7 @@ mod bounded_n {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -391,8 +382,7 @@ mod bounded_n {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 }
 
@@ -438,8 +428,7 @@ mod bounded_1 {
                 r2.recv().unwrap();
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -474,8 +463,7 @@ mod bounded_1 {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -510,8 +498,7 @@ mod bounded_1 {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -553,8 +540,7 @@ mod bounded_1 {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 }
 
@@ -591,8 +577,7 @@ mod bounded_0 {
                 r2.recv().unwrap();
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -627,8 +612,7 @@ mod bounded_0 {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -663,8 +647,7 @@ mod bounded_0 {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 
     #[bench]
@@ -706,7 +689,6 @@ mod bounded_0 {
                 }
             });
             drop(s1);
-        })
-        .unwrap();
+        });
     }
 }

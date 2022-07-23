@@ -137,7 +137,7 @@
 //!     // Send a message and then receive one.
 //!     s.send(1).unwrap();
 //!     r.recv().unwrap();
-//! }).unwrap();
+//! });
 //! ```
 //!
 //! # Disconnection

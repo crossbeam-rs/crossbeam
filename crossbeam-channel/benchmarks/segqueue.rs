@@ -37,8 +37,7 @@ fn spsc() {
                 }
             }
         }
-    })
-    .unwrap();
+    });
 }
 
 fn mpsc() {
@@ -62,8 +61,7 @@ fn mpsc() {
                 }
             }
         }
-    })
-    .unwrap();
+    });
 }
 
 fn mpmc() {
@@ -91,8 +89,7 @@ fn mpmc() {
                 }
             });
         }
-    })
-    .unwrap();
+    });
 }
 
 fn main() {

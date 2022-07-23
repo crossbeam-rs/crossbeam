@@ -17,7 +17,7 @@
 //!             println!("Hello, {}!", person);
 //!         });
 //!     }
-//! }).unwrap();
+//! });
 //! ```
 //!
 //! # Why scoped threads?
@@ -108,7 +108,7 @@
 //!         // Yay, this works because we're using a fresh argument `s`! :)
 //!         s.spawn(|_| println!("nested thread"));
 //!     });
-//! }).unwrap();
+//! });
 //! ```
 
 use std::fmt;
@@ -116,14 +116,12 @@ use std::io;
 use std::marker::PhantomData;
 use std::mem;
 use std::panic;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::sync::WaitGroup;
 use cfg_if::cfg_if;
-
-type SharedVec<T> = Arc<Mutex<Vec<T>>>;
-type SharedOption<T> = Arc<Mutex<Option<T>>>;
 
 /// Creates a new scope for spawning threads.
 ///
@@ -144,15 +142,15 @@ type SharedOption<T> = Arc<Mutex<Option<T>>>;
 ///     s.spawn(|_| {
 ///         println!("A child thread borrowing `var`: {:?}", var);
 ///     });
-/// }).unwrap();
+/// });
 /// ```
-pub fn scope<'env, F, R>(f: F) -> thread::Result<R>
+pub fn scope<'env, F, R>(f: F) -> R
 where
     F: FnOnce(&Scope<'env>) -> R,
 {
     let wg = WaitGroup::new();
     let scope = Scope::<'env> {
-        handles: SharedVec::default(),
+        num_unhandled_panicked_threads: Arc::new(AtomicUsize::new(0)),
         wait_group: wg.clone(),
         _marker: PhantomData,
     };
@@ -164,36 +162,29 @@ where
     drop(scope.wait_group);
     wg.wait();
 
-    // Join all remaining spawned threads.
-    let panics: Vec<_> = scope
-        .handles
-        .lock()
-        .unwrap()
-        // Filter handles that haven't been joined, join them, and collect errors.
-        .drain(..)
-        .filter_map(|handle| handle.lock().unwrap().take())
-        .filter_map(|handle| handle.join().err())
-        .collect();
-
     // If `f` has panicked, resume unwinding.
     // If any of the child threads have panicked, return the panic errors.
     // Otherwise, everything is OK and return the result of `f`.
     match result {
         Err(err) => panic::resume_unwind(err),
         Ok(res) => {
-            if panics.is_empty() {
-                Ok(res)
-            } else {
-                Err(Box::new(panics))
+            let num_unhandled_panicked_threads =
+                scope.num_unhandled_panicked_threads.load(Ordering::Acquire);
+            if num_unhandled_panicked_threads != 0 {
+                panic!(
+                    "{} scoped thread(s) panicked",
+                    num_unhandled_panicked_threads
+                )
             }
+            res
         }
     }
 }
 
 /// A scope for spawning threads.
 pub struct Scope<'env> {
-    /// The list of the thread join handles.
-    handles: SharedVec<SharedOption<thread::JoinHandle<()>>>,
+    /// Number of unhandled panicked threads.
+    num_unhandled_panicked_threads: Arc<AtomicUsize>,
 
     /// Used to wait until all subscopes all dropped.
     wait_group: WaitGroup,
@@ -241,7 +232,7 @@ impl<'env> Scope<'env> {
     ///     // Join the thread and retrieve its result.
     ///     let res = handle.join().unwrap();
     ///     assert_eq!(res, 42);
-    /// }).unwrap();
+    /// });
     /// ```
     pub fn spawn<'scope, F, T>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
     where
@@ -265,7 +256,7 @@ impl<'env> Scope<'env> {
     ///     s.builder()
     ///         .spawn(|_| println!("A child thread is running"))
     ///         .unwrap();
-    /// }).unwrap();
+    /// });
     /// ```
     pub fn builder<'scope>(&'scope self) -> ScopedThreadBuilder<'scope, 'env> {
         ScopedThreadBuilder {
@@ -304,7 +295,7 @@ impl fmt::Debug for Scope<'_> {
 ///     s.builder()
 ///         .spawn(|_| println!("Running a child thread"))
 ///         .unwrap();
-/// }).unwrap();
+/// });
 /// ```
 ///
 /// [`name`]: ScopedThreadBuilder::name
@@ -338,7 +329,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     ///         .name("my thread".to_string())
     ///         .spawn(|_| assert_eq!(current().name(), Some("my thread")))
     ///         .unwrap();
-    /// }).unwrap();
+    /// });
     /// ```
     ///
     /// [naming-threads]: std::thread#naming-threads
@@ -363,7 +354,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     ///         .stack_size(32 * 1024)
     ///         .spawn(|_| println!("Running a child thread"))
     ///         .unwrap();
-    /// }).unwrap();
+    /// });
     /// ```
     ///
     /// [stack-size]: std::thread#stack-size
@@ -407,7 +398,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     ///     // Join the thread and retrieve its result.
     ///     let res = handle.join().unwrap();
     ///     assert_eq!(res, 42);
-    /// }).unwrap();
+    /// });
     /// ```
     pub fn spawn<F, T>(self, f: F) -> io::Result<ScopedJoinHandle<'scope, T>>
     where
@@ -416,7 +407,10 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
         T: Send + 'env,
     {
         // The result of `f` will be stored here.
-        let result = SharedOption::default();
+        let result = Arc::new(Mutex::new(ResultState::None));
+
+        let wait_group = self.scope.wait_group.clone();
+        let num_unhandled_panicked_threads = Arc::clone(&self.scope.num_unhandled_panicked_threads);
 
         // Spawn the thread and grab its join handle and thread handle.
         let (handle, thread) = {
@@ -424,7 +418,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
 
             // A clone of the scope that will be moved into the new thread.
             let scope = Scope::<'env> {
-                handles: Arc::clone(&self.scope.handles),
+                num_unhandled_panicked_threads: Arc::clone(&num_unhandled_panicked_threads),
                 wait_group: self.scope.wait_group.clone(),
                 _marker: PhantomData,
             };
@@ -432,14 +426,35 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
             // Spawn the thread.
             let handle = {
                 let closure = move || {
+                    struct IncrementOnPanic<'env>(Scope<'env>);
+                    impl Drop for IncrementOnPanic<'_> {
+                        fn drop(&mut self) {
+                            if thread::panicking() {
+                                // Always increment the counter here. If panic is handled
+                                // by `.join()`, the counter is decremented later.
+                                self.0
+                                    .num_unhandled_panicked_threads
+                                    .fetch_add(1, Ordering::Release);
+                            }
+                        }
+                    }
+
                     // Make sure the scope is inside the closure with the proper `'env` lifetime.
                     let scope: Scope<'env> = scope;
+                    let scope = IncrementOnPanic(scope);
 
                     // Run the closure.
-                    let res = f(&scope);
+                    let res = f(&scope.0);
 
-                    // Store the result if the closure didn't panic.
-                    *result.lock().unwrap() = Some(res);
+                    match &mut *result.lock().unwrap() {
+                        // If the thread is detached, the result must be dropped
+                        // before the WaitGroup is dropped.
+                        ResultState::ShouldDrop => drop(res),
+                        // Store the result if the closure didn't panic.
+                        result => *result = ResultState::Some(res),
+                    }
+
+                    drop(scope);
                 };
 
                 // Allocate `closure` on the heap and erase the `'env` bound.
@@ -452,19 +467,32 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
             };
 
             let thread = handle.thread().clone();
-            let handle = Arc::new(Mutex::new(Some(handle)));
             (handle, thread)
         };
 
-        // Add the handle to the shared list of join handles.
-        self.scope.handles.lock().unwrap().push(Arc::clone(&handle));
-
         Ok(ScopedJoinHandle {
-            handle,
+            handle: Some(handle),
+            num_unhandled_panicked_threads,
             result,
             thread,
+            _wait_group: wait_group,
             _marker: PhantomData,
         })
+    }
+}
+
+enum ResultState<T> {
+    None,
+    Some(T),
+    ShouldDrop,
+}
+
+impl<T> ResultState<T> {
+    fn take(&mut self) -> Option<T> {
+        match mem::replace(self, ResultState::None) {
+            ResultState::Some(v) => Some(v),
+            _ => None,
+        }
     }
 }
 
@@ -477,13 +505,18 @@ unsafe impl<T> Sync for ScopedJoinHandle<'_, T> {}
 /// [`ScopedThreadBuilder::spawn`] method.
 pub struct ScopedJoinHandle<'scope, T> {
     /// A join handle to the spawned thread.
-    handle: SharedOption<thread::JoinHandle<()>>,
+    handle: Option<thread::JoinHandle<()>>,
+
+    /// Number of unhandled panicked threads.
+    num_unhandled_panicked_threads: Arc<AtomicUsize>,
 
     /// Holds the result of the inner closure.
-    result: SharedOption<T>,
+    result: Arc<Mutex<ResultState<T>>>,
 
     /// A handle to the the spawned thread.
     thread: thread::Thread,
+
+    _wait_group: WaitGroup,
 
     /// Borrows the parent scope with lifetime `'scope`.
     _marker: PhantomData<&'scope ()>,
@@ -516,17 +549,23 @@ impl<T> ScopedJoinHandle<'_, T> {
     ///     // Join the second thread and verify that it panicked.
     ///     let res = handle2.join();
     ///     assert!(res.is_err());
-    /// }).unwrap();
+    /// });
     /// ```
-    pub fn join(self) -> thread::Result<T> {
+    pub fn join(mut self) -> thread::Result<T> {
         // Take out the handle. The handle will surely be available because the root scope waits
         // for nested scopes before joining remaining threads.
-        let handle = self.handle.lock().unwrap().take().unwrap();
+        let handle = self.handle.take().unwrap();
 
         // Join the thread and then take the result out of its inner closure.
-        handle
-            .join()
-            .map(|()| self.result.lock().unwrap().take().unwrap())
+        match handle.join() {
+            Ok(()) => Ok(self.result.lock().unwrap().take().unwrap()),
+            Err(e) => {
+                // Decrement the counter as we handled a panic from this handle.
+                self.num_unhandled_panicked_threads
+                    .fetch_sub(1, Ordering::Release);
+                Err(e)
+            }
+        }
     }
 
     /// Returns a handle to the underlying thread.
@@ -539,10 +578,19 @@ impl<T> ScopedJoinHandle<'_, T> {
     /// thread::scope(|s| {
     ///     let handle = s.spawn(|_| println!("A child thread is running"));
     ///     println!("The child thread ID: {:?}", handle.thread().id());
-    /// }).unwrap();
+    /// });
     /// ```
     pub fn thread(&self) -> &thread::Thread {
         &self.thread
+    }
+}
+
+impl<T> Drop for ScopedJoinHandle<'_, T> {
+    fn drop(&mut self) {
+        *self
+            .result
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = ResultState::ShouldDrop;
     }
 }
 
@@ -550,12 +598,12 @@ cfg_if! {
     if #[cfg(unix)] {
         use std::os::unix::thread::{JoinHandleExt, RawPthread};
 
+        // TODO: Use own unix::JoinHandleExt trait https://github.com/crossbeam-rs/crossbeam/issues/651
         impl<T> JoinHandleExt for ScopedJoinHandle<'_, T> {
             fn as_pthread_t(&self) -> RawPthread {
                 // Borrow the handle. The handle will surely be available because the root scope waits
                 // for nested scopes before joining remaining threads.
-                let handle = self.handle.lock().unwrap();
-                handle.as_ref().unwrap().as_pthread_t()
+                self.handle.as_ref().unwrap().as_pthread_t()
             }
             fn into_pthread_t(self) -> RawPthread {
                 self.as_pthread_t()
@@ -568,8 +616,7 @@ cfg_if! {
             fn as_raw_handle(&self) -> RawHandle {
                 // Borrow the handle. The handle will surely be available because the root scope waits
                 // for nested scopes before joining remaining threads.
-                let handle = self.handle.lock().unwrap();
-                handle.as_ref().unwrap().as_raw_handle()
+                self.handle.as_ref().unwrap().as_raw_handle()
             }
         }
 

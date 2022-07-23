@@ -353,8 +353,7 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
-        })
-        .unwrap();
+        });
     }
 
     #[test]
@@ -386,8 +385,7 @@ mod test {
                     q.push(i);
                 }
             });
-        })
-        .unwrap();
+        });
     }
 
     #[test]
@@ -432,8 +430,7 @@ mod test {
                     assert_eq!(vr, vr2);
                 });
             }
-        })
-        .unwrap();
+        });
     }
 
     #[test]
@@ -452,8 +449,7 @@ mod test {
             for i in 0..CONC_COUNT {
                 q.push(i)
             }
-        })
-        .unwrap();
+        });
         assert!(q.is_empty());
     }
 

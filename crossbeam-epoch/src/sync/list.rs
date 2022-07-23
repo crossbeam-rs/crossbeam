@@ -428,8 +428,7 @@ mod tests {
                     }
                 });
             }
-        })
-        .unwrap();
+        });
 
         let handle = collector.register();
         let guard = handle.pin();
@@ -475,8 +474,7 @@ mod tests {
                     }
                 });
             }
-        })
-        .unwrap();
+        });
 
         let handle = collector.register();
         let guard = handle.pin();

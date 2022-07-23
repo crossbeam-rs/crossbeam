@@ -35,7 +35,6 @@ fn park_timeout_unpark_called_other_thread() {
             });
 
             p.park_timeout(Duration::from_millis(u32::MAX as u64))
-        })
-        .unwrap();
+        });
     }
 }

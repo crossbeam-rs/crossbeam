@@ -37,11 +37,9 @@ fn utils() {
 
     crossbeam::scope(|scope| {
         scope.spawn(|_| ());
-    })
-    .unwrap();
+    });
 
     crossbeam::thread::scope(|scope| {
         scope.spawn(|_| ());
-    })
-    .unwrap();
+    });
 }

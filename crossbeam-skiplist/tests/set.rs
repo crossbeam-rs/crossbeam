@@ -97,8 +97,7 @@ fn concurrent_insert() {
                 barrier.wait();
                 set.insert(1);
             });
-        })
-        .unwrap();
+        });
     }
 }
 
@@ -117,8 +116,7 @@ fn concurrent_remove() {
                 barrier.wait();
                 set.remove(&1);
             });
-        })
-        .unwrap();
+        });
     }
 }
 

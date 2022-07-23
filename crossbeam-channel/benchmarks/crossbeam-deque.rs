@@ -43,8 +43,7 @@ fn spsc() {
                 }
             }
         });
-    })
-    .unwrap();
+    });
 }
 
 fn main() {

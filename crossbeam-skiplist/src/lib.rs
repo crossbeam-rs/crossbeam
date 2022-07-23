@@ -32,7 +32,7 @@
 //!         person_ages.insert("Bryon Conroy", 65);
 //!         person_ages.insert("Lauren Reilly", 2);
 //!     });
-//! }).unwrap();
+//! });
 //!
 //! assert!(person_ages.contains_key("Spike Garrett"));
 //! person_ages.remove("Rea Bryan");
@@ -64,7 +64,7 @@
 //!     // The other thread may remove the value
 //!     // before we perform this check.
 //!     assert!(numbers.contains(&5));
-//! }).unwrap();
+//! });
 //! ```
 //!
 //! In effect, a _single_ operation on the map, such as [`insert`],

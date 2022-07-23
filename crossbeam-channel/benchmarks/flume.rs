@@ -75,8 +75,7 @@ fn spsc_unbounded() {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn spsc_bounded(cap: usize) {
@@ -92,8 +91,7 @@ fn spsc_bounded(cap: usize) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn mpsc_unbounded() {
@@ -112,8 +110,7 @@ fn mpsc_unbounded() {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn mpsc_bounded(cap: usize) {
@@ -132,8 +129,7 @@ fn mpsc_bounded(cap: usize) {
         for _ in 0..MESSAGES {
             rx.recv().unwrap();
         }
-    })
-    .unwrap();
+    });
 }
 
 fn main() {
