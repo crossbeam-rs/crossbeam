@@ -218,6 +218,7 @@ jobs:
       - san
       - loom
       - docs
+      - shellcheck
     runs-on: ubuntu-latest
     steps:
       - name: Mark the job as a success

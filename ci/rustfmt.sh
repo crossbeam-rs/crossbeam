@@ -5,4 +5,4 @@ cd "$(dirname "$0")"/..
 
 rustup component add rustfmt
 
-cargo fmt --all -- --check
+cargo fmt --all --check
