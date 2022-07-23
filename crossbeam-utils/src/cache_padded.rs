@@ -39,9 +39,9 @@ use core::ops::{Deref, DerefMut};
 /// let addr1 = &*array[0] as *const i8 as usize;
 /// let addr2 = &*array[1] as *const i8 as usize;
 ///
-/// assert!(addr2 - addr1 >= 64);
-/// assert_eq!(addr1 % 64, 0);
-/// assert_eq!(addr2 % 64, 0);
+/// assert!(addr2 - addr1 >= 32);
+/// assert_eq!(addr1 % 32, 0);
+/// assert_eq!(addr2 % 32, 0);
 /// ```
 ///
 /// When building a concurrent queue with a head and a tail index, it is wise to place them in
