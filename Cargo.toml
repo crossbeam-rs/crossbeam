@@ -26,12 +26,13 @@ std = [
   "crossbeam-deque/std",
   "crossbeam-epoch/std",
   "crossbeam-queue/std",
+  "crossbeam-skiplist/std",
   "crossbeam-utils/std",
 ]
 
 # Enable to use APIs that require `alloc`.
 # This is enabled by default and also enabled if the `std` feature is enabled.
-alloc = ["crossbeam-epoch/alloc", "crossbeam-queue/alloc"]
+alloc = ["crossbeam-epoch/alloc", "crossbeam-queue/alloc", "crossbeam-skiplist/alloc"]
 
 [dependencies]
 cfg-if = "1"
@@ -57,6 +58,12 @@ optional = true
 [dependencies.crossbeam-queue]
 version = "0.3.2"
 path = "./crossbeam-queue"
+default-features = false
+optional = true
+
+[dependencies.crossbeam-skiplist]
+version = "0.1.0"
+path = "./crossbeam-skiplist"
 default-features = false
 optional = true
 

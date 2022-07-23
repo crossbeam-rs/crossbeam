@@ -74,6 +74,9 @@ cfg_if! {
 
         #[doc(inline)]
         pub use crossbeam_queue as queue;
+
+        #[doc(inline)]
+        pub use crossbeam_skiplist as skiplist;
     }
 }
 
