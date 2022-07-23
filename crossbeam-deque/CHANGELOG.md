@@ -1,3 +1,7 @@
+# Version 0.8.2
+
+- Bump the minimum supported Rust version to 1.38. (#877)
+
 # Version 0.8.1
 
 - Fix deque steal race condition. (#726)

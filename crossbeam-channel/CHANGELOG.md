@@ -1,3 +1,7 @@
+# Version 0.5.6
+
+- Bump the minimum supported Rust version to 1.38. (#877)
+
 # Version 0.5.5
 
 - Replace Spinlock with Mutex. (#835)

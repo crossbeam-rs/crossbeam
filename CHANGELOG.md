@@ -1,3 +1,7 @@
+# Version 0.8.2
+
+- Bump the minimum supported Rust version to 1.38. (#877)
+
 # Version 0.8.1
 
 - Support targets that do not have atomic CAS on stable Rust (#698)
