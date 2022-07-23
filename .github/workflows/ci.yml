@@ -101,6 +101,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
+      - name: Install cargo-minimal-versions
+        uses: taiki-e/install-action@cargo-minimal-versions
       - name: dependency tree check
         run: ./ci/dependencies.sh
 
