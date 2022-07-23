@@ -36,6 +36,7 @@ jobs:
       # TODO: Consider moving crossbeam crate to a subdirectory.
       - uses: taiki-e/create-gh-release-action@v1
         with:
+          prefix: crossbeam(-[a-z]+)?
           changelog: CHANGELOG.md
           title: crossbeam $version
           branch: master
