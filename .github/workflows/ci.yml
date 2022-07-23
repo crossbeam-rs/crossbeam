@@ -34,6 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # aarch64/x86_64 macOS and aarch64 linux are tested on Cirrus CI
         include:
           - rust: '1.38'
             os: ubuntu-latest
@@ -45,17 +46,11 @@ jobs:
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
-          # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
-          # - rust: nightly
-          #   os: macos-latest
           - rust: nightly
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
-          - rust: nightly
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
             os: ubuntu-latest
