@@ -9,10 +9,6 @@ on:
       - crossbeam-[0-9]+.*
       - crossbeam-[a-z]+-[0-9]+.*
 
-env:
-  RUSTFLAGS: -Dwarnings
-  RUST_BACKTRACE: 1
-
 defaults:
   run:
     shell: bash
