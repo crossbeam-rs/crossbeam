@@ -223,34 +223,6 @@ impl<T: Copy> AtomicCell<T> {
 impl<T: Copy + Eq> AtomicCell<T> {
     /// If the current value equals `current`, stores `new` into the atomic cell.
     ///
-    /// The return value is always the previous value. If it is equal to `current`, then the value
-    /// was updated.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # #![allow(deprecated)]
-    /// use crossbeam_utils::atomic::AtomicCell;
-    ///
-    /// let a = AtomicCell::new(1);
-    ///
-    /// assert_eq!(a.compare_and_swap(2, 3), 1);
-    /// assert_eq!(a.load(), 1);
-    ///
-    /// assert_eq!(a.compare_and_swap(1, 2), 1);
-    /// assert_eq!(a.load(), 2);
-    /// ```
-    // TODO: remove in the next major version.
-    #[deprecated(note = "Use `compare_exchange` instead")]
-    pub fn compare_and_swap(&self, current: T, new: T) -> T {
-        match self.compare_exchange(current, new) {
-            Ok(v) => v,
-            Err(v) => v,
-        }
-    }
-
-    /// If the current value equals `current`, stores `new` into the atomic cell.
-    ///
     /// The return value is a result indicating whether the new value was written and containing
     /// the previous value. On success this value is guaranteed to be equal to `current`.
     ///

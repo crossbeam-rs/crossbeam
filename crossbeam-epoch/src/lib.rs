@@ -156,9 +156,6 @@ cfg_if! {
         };
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard};
-
-        #[allow(deprecated)]
-        pub use self::atomic::{CompareAndSetError, CompareAndSetOrdering};
     }
 }
 
