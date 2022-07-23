@@ -156,6 +156,10 @@ cfg_if! {
         };
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard};
+
+        mod sealed {
+            pub trait Sealed {}
+        }
     }
 }
 

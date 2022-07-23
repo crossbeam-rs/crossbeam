@@ -891,8 +891,9 @@ impl<T> From<*const T> for Atomic<T> {
 }
 
 /// A trait for either `Owned` or `Shared` pointers.
-// TODO: seal this trait https://github.com/crossbeam-rs/crossbeam/issues/620
-pub trait Pointer<T: ?Sized + Pointable> {
+///
+/// This trait is sealed and cannot be implemented for types outside of `crossbeam-epoch`.
+pub trait Pointer<T: ?Sized + Pointable>: crate::sealed::Sealed {
     /// Returns the machine representation of the pointer.
     fn into_ptr(self) -> *mut ();
 
@@ -916,6 +917,7 @@ pub struct Owned<T: ?Sized + Pointable> {
     _marker: PhantomData<Box<T>>,
 }
 
+impl<T: ?Sized + Pointable> crate::sealed::Sealed for Owned<T> {}
 impl<T: ?Sized + Pointable> Pointer<T> for Owned<T> {
     #[inline]
     fn into_ptr(self) -> *mut () {
@@ -1176,6 +1178,7 @@ impl<T: ?Sized + Pointable> Clone for Shared<'_, T> {
 
 impl<T: ?Sized + Pointable> Copy for Shared<'_, T> {}
 
+impl<T: ?Sized + Pointable> crate::sealed::Sealed for Shared<'_, T> {}
 impl<T: ?Sized + Pointable> Pointer<T> for Shared<'_, T> {
     #[inline]
     fn into_ptr(self) -> *mut () {
