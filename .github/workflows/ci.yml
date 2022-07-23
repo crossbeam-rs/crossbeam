@@ -13,8 +13,13 @@ on:
     - cron: '0 1 * * *'
 
 env:
-  RUSTFLAGS: -Dwarnings
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  RUSTDOCFLAGS: -D warnings
+  RUSTFLAGS: -D warnings
+  RUSTUP_MAX_RETRIES: 10
 
 defaults:
   run:
