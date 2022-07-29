@@ -1,4 +1,4 @@
-#![allow(clippy::mutex_atomic, clippy::redundant_clone)]
+#![allow(clippy::redundant_clone)]
 
 use std::ops::Bound;
 use std::sync::atomic::{AtomicUsize, Ordering};

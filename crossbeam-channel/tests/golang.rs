@@ -9,7 +9,7 @@
 //!   - https://golang.org/LICENSE
 //!   - https://golang.org/PATENTS
 
-#![allow(clippy::mutex_atomic, clippy::redundant_clone)]
+#![allow(clippy::redundant_clone)]
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::any::Any;
