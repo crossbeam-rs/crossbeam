@@ -1,6 +1,3 @@
-// Necessary for using `Mutex<usize>` for conditional variables
-#![allow(clippy::mutex_atomic)]
-
 use crate::primitive::sync::{Arc, Condvar, Mutex};
 use std::fmt;
 
