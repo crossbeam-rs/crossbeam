@@ -82,4 +82,4 @@ members = [
 
 [patch.crates-io]
 # https://github.com/matklad/once_cell/pull/185
-once_cell = { git = "https://github.com/saethlin/once_cell.git", rev = "4aa5ac4aa30b9eed4a0848f3ad22a5eeb025760d" }
+once_cell = { git = "https://github.com/taiki-e/once_cell.git", branch = "provenance" }
