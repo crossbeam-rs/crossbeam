@@ -6,7 +6,7 @@
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::fmt;
-use core::mem::MaybeUninit;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
@@ -321,7 +321,7 @@ impl<T> ArrayQueue<T> {
         // If the tail and the stamp match, we may push.
         if tail == stamp {
             *self.tail.get_mut() = new_tail;
-            slot.value.get_mut().write(value);
+            unsafe { slot.value.get().write(MaybeUninit::new(value)) }
             *slot.stamp.get_mut() = tail + 1;
             Ok(())
         } else {
@@ -367,7 +367,7 @@ impl<T> ArrayQueue<T> {
     pub fn force_push_sync(&mut self, value: T) -> Option<T> {
         match self.try_push_sync(value) {
             Ok(()) => None,
-            Err((value, new_tail, index)) => {
+            Err((v, new_tail, index)) => {
                 // move the head and tail
                 *self.head.get_mut() = new_tail.wrapping_sub(self.one_lap);
                 let tail = *self.tail.get_mut();
@@ -378,8 +378,7 @@ impl<T> ArrayQueue<T> {
                 let slot = unsafe { self.buffer.get_unchecked_mut(index) };
 
                 // Swap the previous value.
-                let old =
-                    std::mem::replace(unsafe { slot.value.get_mut().assume_init_mut() }, value);
+                let old = unsafe { slot.value.get().replace(MaybeUninit::new(v)).assume_init() };
 
                 // Update the stamp.
                 *slot.stamp.get_mut() = tail + 1;
@@ -494,21 +493,22 @@ impl<T> ArrayQueue<T> {
         if cap > v.len() {
             // reserve_exact to optimise the `into_boxed_slice` call later
             v.reserve_exact(cap - v.len());
-            for (i, slot) in (v.len()..cap).zip(v.spare_capacity_mut()) {
-                slot.write(Slot {
+            let mut stamp = v.len();
+            v.resize_with(cap, || {
+                let i = stamp;
+                stamp += 1;
+                Slot {
                     // Set the stamp to `{ lap: 0, index: i }`.
                     stamp: AtomicUsize::new(i),
                     value: UnsafeCell::new(MaybeUninit::uninit()),
-                });
-            }
-            // Safety: we have just initialised these values
-            unsafe { v.set_len(cap) }
+                }
+            });
         } else {
             if *tail > cap {
                 // drop values
                 unsafe {
                     for slot in v.get_unchecked_mut(cap..*tail) {
-                        slot.value.get_mut().assume_init_drop();
+                        (*slot.value.get()).as_mut_ptr().drop_in_place();
                     }
                 }
                 *tail = self.one_lap; // tail wraps around
@@ -521,7 +521,8 @@ impl<T> ArrayQueue<T> {
         // we have used `reserve_exact` and `shrink_to_fit` which guarantee to call
         // the allocator with the `cap` we gave it.
         // This means that we are safe to give that memory to a box, because we can dealloc using that same cap
-        let b = unsafe { Box::from_raw(v.leak()) };
+        let ptr = ManuallyDrop::new(v).as_mut_ptr();
+        let b = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, cap)) };
 
         // move our new box back into the buffer, leaking the placeholder
         // (LLVM will probably assume it's not-empty)
