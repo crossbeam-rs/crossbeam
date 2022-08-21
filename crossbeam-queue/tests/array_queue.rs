@@ -69,29 +69,29 @@ fn len() {
     const CAP: usize = 1000;
     const ITERS: usize = CAP / 20;
 
-    let q = ArrayQueue::new(CAP);
+    let mut q = ArrayQueue::new(CAP);
     assert_eq!(q.len(), 0);
 
     for _ in 0..CAP / 10 {
         for i in 0..ITERS {
-            q.push(i).unwrap();
+            q.push_sync(i).unwrap();
             assert_eq!(q.len(), i + 1);
         }
 
         for i in 0..ITERS {
-            q.pop().unwrap();
+            q.pop_sync().unwrap();
             assert_eq!(q.len(), ITERS - i - 1);
         }
     }
     assert_eq!(q.len(), 0);
 
     for i in 0..CAP {
-        q.push(i).unwrap();
+        q.push_sync(i).unwrap();
         assert_eq!(q.len(), i + 1);
     }
 
     for _ in 0..CAP {
-        q.pop().unwrap();
+        q.pop_sync().unwrap();
     }
     assert_eq!(q.len(), 0);
 
@@ -364,11 +364,55 @@ fn linearizable() {
 
 #[test]
 fn into_iter() {
-    let q = ArrayQueue::new(100);
+    let mut q = ArrayQueue::new(100);
     for i in 0..100 {
-        q.push(i).unwrap();
+        q.push_sync(i).unwrap();
     }
     for (i, j) in q.into_iter().enumerate() {
+        assert_eq!(i, j);
+    }
+}
+
+#[test]
+fn shrink() {
+    let mut q = ArrayQueue::new(100);
+    for i in 0..100 {
+        q.push_sync(i).unwrap();
+    }
+    for _ in 0..50 {
+        q.pop_sync().unwrap();
+    }
+    for i in 0..25 {
+        q.push_sync(i + 100).unwrap();
+    }
+
+    q.resize(75);
+
+    for (i, j) in (50..125).zip(q) {
+        assert_eq!(i, j);
+    }
+}
+
+#[test]
+fn grow() {
+    let mut q = ArrayQueue::new(100);
+    for i in 0..100 {
+        q.push_sync(i).unwrap();
+    }
+    for _ in 0..50 {
+        q.pop_sync().unwrap();
+    }
+    for i in 0..25 {
+        q.push_sync(i + 100).unwrap();
+    }
+
+    q.resize(150);
+
+    for i in 0..75 {
+        q.push_sync(i + 125).unwrap();
+    }
+
+    for (i, j) in (50..200).zip(q) {
         assert_eq!(i, j);
     }
 }
