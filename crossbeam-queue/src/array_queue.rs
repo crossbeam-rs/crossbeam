@@ -486,7 +486,7 @@ impl<T> ArrayQueue<T> {
         self.cap = cap;
 
         // get our buffer as a vec (so we can resize it). Replacing it with an empty slice for now
-        let mut v = std::mem::replace(&mut self.buffer, Box::new([])).into_vec();
+        let mut v = core::mem::replace(&mut self.buffer, Box::new([])).into_vec();
 
         // if we want more space, reserve it and initialise
         // else, truncate and shrink
@@ -522,11 +522,11 @@ impl<T> ArrayQueue<T> {
         // the allocator with the `cap` we gave it.
         // This means that we are safe to give that memory to a box, because we can dealloc using that same cap
         let ptr = ManuallyDrop::new(v).as_mut_ptr();
-        let b = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, cap)) };
+        let b = unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, cap)) };
 
         // move our new box back into the buffer, leaking the placeholder
         // (LLVM will probably assume it's not-empty)
-        Box::leak(std::mem::replace(&mut self.buffer, b));
+        Box::leak(core::mem::replace(&mut self.buffer, b));
     }
 
     /// Returns the capacity of the queue.
