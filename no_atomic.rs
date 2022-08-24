@@ -2,6 +2,7 @@
 // It is not intended for manual editing.
 
 const NO_ATOMIC_CAS: &[&str] = &[
+    "armv4t-none-eabi",
     "avr-unknown-gnu-atmega328",
     "bpfeb-unknown-none",
     "bpfel-unknown-none",
@@ -18,6 +19,7 @@ const NO_ATOMIC_64: &[&str] = &[
     "arm-linux-androideabi",
     "armebv7r-none-eabi",
     "armebv7r-none-eabihf",
+    "armv4t-none-eabi",
     "armv4t-unknown-linux-gnueabi",
     "armv5te-unknown-linux-gnueabi",
     "armv5te-unknown-linux-musleabi",
