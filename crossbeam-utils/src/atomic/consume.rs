@@ -1,4 +1,9 @@
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(any(
+    target_arch = "arm",
+    target_arch = "aarch64",
+    target_arch = "powerpc",
+    target_arch = "powerpc64",
+))]
 use crate::primitive::sync::atomic::compiler_fence;
 #[cfg(not(crossbeam_no_atomic))]
 use core::sync::atomic::Ordering;
@@ -20,14 +25,19 @@ pub trait AtomicConsume {
     /// would expect in practice since a lot of software, especially the Linux
     /// kernel, rely on this behavior.
     ///
-    /// This is currently only implemented on ARM and AArch64, where a fence
-    /// can be avoided. On other architectures this will fall back to a simple
-    /// `load(Ordering::Acquire)`.
+    /// This is currently only implemented on ARM, AArch64, and PowerPC/PPC64,
+    /// where a fence can be avoided. On other architectures this will fall
+    /// back to a simple `load(Ordering::Acquire)`.
     fn load_consume(&self) -> Self::Val;
 }
 
 #[cfg(not(crossbeam_no_atomic))]
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(any(
+    target_arch = "arm",
+    target_arch = "aarch64",
+    target_arch = "powerpc",
+    target_arch = "powerpc64",
+))]
 macro_rules! impl_consume {
     () => {
         #[inline]
@@ -40,7 +50,12 @@ macro_rules! impl_consume {
 }
 
 #[cfg(not(crossbeam_no_atomic))]
-#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+#[cfg(not(any(
+    target_arch = "arm",
+    target_arch = "aarch64",
+    target_arch = "powerpc",
+    target_arch = "powerpc64",
+)))]
 macro_rules! impl_consume {
     () => {
         #[inline]
