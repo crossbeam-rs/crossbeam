@@ -16,9 +16,11 @@ use crate::flavors;
 use crate::select::{Operation, SelectHandle, Token};
 use crate::utils;
 
-/// Creates a channel of unbounded capacity.
+/// Creates a multi-producer multi-consumer channel of unbounded capacity.
 ///
 /// This channel has a growable buffer that can hold any number of messages at a time.
+///
+/// For more info on how to use it see [module level documentation](index.html).
 ///
 /// # Examples
 ///
@@ -54,12 +56,14 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
     (s, r)
 }
 
-/// Creates a channel of bounded capacity.
+/// Creates a multi-producer multi-consumer channel of bounded capacity.
 ///
 /// This channel has a buffer that can hold at most `cap` messages at a time.
 ///
 /// A special case is zero-capacity channel, which cannot hold any messages. Instead, send and
 /// receive operations must appear at the same time in order to pair up and pass the message over.
+///
+/// For more info on how to use it see [module level documentation](index.html).
 ///
 /// # Examples
 ///
