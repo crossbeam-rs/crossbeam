@@ -5,16 +5,15 @@ edition = "2018"
 publish = false
 
 [dependencies]
-atomicring = "1.1.1"
-bus = "2.0.1"
-chan = "0.1.23"
+atomicring = "1.2.9"
+bus = "2.3.0"
 crossbeam = { path = "../.." }
 crossbeam-channel = { path = ".." }
 crossbeam-deque = { path = "../../crossbeam-deque" }
 flume = "0.10"
 futures = { version = "0.3", features = ["thread-pool"] }
 lockfree = "0.5.1"
-mpmc = "0.1.5"
+mpmc = "0.1.6"
 
 [[bin]]
 name = "atomicring"
@@ -29,11 +28,6 @@ doc = false
 [[bin]]
 name = "bus"
 path = "bus.rs"
-doc = false
-
-[[bin]]
-name = "chan"
-path = "chan.rs"
 doc = false
 
 [[bin]]
