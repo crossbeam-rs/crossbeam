@@ -24,20 +24,20 @@ Runs benchmarks, stores results into `*.txt` files, and generates `plot.png`:
 
 Dependencies:
 
-- Rust (nightly)
+- Rust 
 - Go
 - Bash
-- Python 2
+- Python 
 - Matplotlib
 
 ### Results
 
-Machine: Intel(R) Core(TM) i7-5600U (2 physical cores, 4 logical cores)
+Machine: Intel(R) Core(TM) i7-5500U (2 physical cores, 4 logical cores)
 
-Rust: `rustc 1.33.0-nightly (a7be40c65 2018-12-26)`
+Rust: `rustc 1.63.0 (4b91a6ea7 2022-08-08)`
 
-Go: `go version go1.11.1 linux/amd64`
+Go: `go version go1.19 linux/amd64`
 
-Commit: `779bae9` (2018-12-30)
+Commit: `7070018` (2022-08-24)
 
-![Benchmark results](https://i.imgur.com/KFb9GvV.png)
+![Benchmark results](plot.png)
