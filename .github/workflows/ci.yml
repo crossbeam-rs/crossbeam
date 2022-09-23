@@ -64,6 +64,11 @@ jobs:
       - name: Install cross
         uses: taiki-e/install-action@cross
         if: matrix.target != ''
+      # TODO: remove dependency on once_cell or bump MSRV
+      - name: Downgrade dependencies on MSRV
+        run: |
+          cargo update -p once_cell --precise 1.14.0
+        if: matrix.rust == '1.38'
       - name: Test
         run: ./ci/test.sh
 
@@ -85,6 +90,11 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
+      # TODO: remove dependency on once_cell or bump MSRV
+      - name: Downgrade dependencies on MSRV
+        run: |
+          cargo update -p once_cell --precise 1.14.0
+        if: matrix.rust == '1.38'
       - name: Check features
         run: ./ci/check-features.sh
 
