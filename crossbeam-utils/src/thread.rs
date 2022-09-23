@@ -313,6 +313,7 @@ impl fmt::Debug for Scope<'_> {
 /// [`io::Result`]: std::io::Result
 /// [naming-threads]: std::thread#naming-threads
 /// [stack-size]: std::thread#stack-size
+#[must_use = "must eventually spawn the thread"]
 #[derive(Debug)]
 pub struct ScopedThreadBuilder<'scope, 'env> {
     scope: &'scope Scope<'env>,
