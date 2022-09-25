@@ -19,11 +19,10 @@ default = ["std"]
 
 # Enable to use APIs that require `std`.
 # This is enabled by default.
-std = ["once_cell"]
+std = []
 
 [dependencies]
 cfg-if = "1"
-once_cell = { version = "1", optional = true }
 
 # Enable the use of loom for concurrency testing.
 #
