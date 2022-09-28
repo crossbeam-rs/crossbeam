@@ -450,6 +450,19 @@ impl<T> Sender<T> {
         })
     }
 
+    pub fn send_buffered(&self, msg: T) -> Result<(), SendError<T>> {
+        match &self.flavor {
+            SenderFlavor::Array(chan) => chan.send_buffered(msg, None),
+            SenderFlavor::List(chan) => chan.send_buffered(msg, None),
+            // n/a duo to the synchronized req between senders and receivers.
+            SenderFlavor::Zero(chan) => chan.send(msg, None),
+        }
+        .map_err(|err| match err {
+            SendTimeoutError::Disconnected(msg) => SendError(msg),
+            SendTimeoutError::Timeout(_) => unreachable!(),
+        })
+    }
+
     /// Waits for a message to be sent into the channel, but only for a limited time.
     ///
     /// If the channel is full and not disconnected, this call will block until the send operation
@@ -1512,8 +1525,9 @@ impl<T> SelectHandle for Receiver<T> {
 /// Writes a message into the channel.
 pub(crate) unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Result<(), T> {
     match &s.flavor {
-        SenderFlavor::Array(chan) => chan.write(token, msg),
-        SenderFlavor::List(chan) => chan.write(token, msg),
+        SenderFlavor::Array(chan) => chan.write(token, msg, true),
+        SenderFlavor::List(chan) => chan.write(token, msg, true),
+        // n/a duo to the synchronized req between senders and receivers.
         SenderFlavor::Zero(chan) => chan.write(token, msg),
     }
 }

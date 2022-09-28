@@ -278,7 +278,7 @@ impl<T> Channel<T> {
     }
 
     /// Writes a message into the channel.
-    pub(crate) unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
+    pub(crate) unsafe fn write(&self, token: &mut Token, msg: T, notify_buffered: bool) -> Result<(), T> {
         // If there is no slot, the channel is disconnected.
         if token.list.block.is_null() {
             return Err(msg);
@@ -292,7 +292,9 @@ impl<T> Channel<T> {
         slot.state.fetch_or(WRITE, Ordering::Release);
 
         // Wake a sleeping receiver.
-        self.receivers.notify();
+        if notify_buffered {
+            self.receivers.notify();
+        }
         Ok(())
     }
 
@@ -423,7 +425,21 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         assert!(self.start_send(token));
         unsafe {
-            self.write(token, msg)
+            self.write(token, msg, true)
+                .map_err(SendTimeoutError::Disconnected)
+        }
+    }
+
+    /// Sends a message into the channel.
+    pub(crate) fn send_buffered(
+        &self,
+        msg: T,
+        _deadline: Option<Instant>,
+    ) -> Result<(), SendTimeoutError<T>> {
+        let token = &mut Token::default();
+        assert!(self.start_send(token));
+        unsafe {
+            self.write(token, msg, false)
                 .map_err(SendTimeoutError::Disconnected)
         }
     }
