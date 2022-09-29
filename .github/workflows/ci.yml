@@ -145,14 +145,16 @@ jobs:
       - name: rustfmt
         run: ./ci/rustfmt.sh
 
-  # Check clippy.
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - name: clippy
-        run: ./ci/clippy.sh
+  # This branch no longer actively developed. Most commits to this
+  # branch are backporting and should not be blocked by clippy.
+  # # Check clippy.
+  # clippy:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - name: clippy
+  #       run: ./ci/clippy.sh
 
   # Run miri.
   miri:
@@ -213,7 +215,7 @@ jobs:
       - dependencies
       - codegen
       - rustfmt
-      - clippy
+      # - clippy
       - miri
       - san
       - loom
