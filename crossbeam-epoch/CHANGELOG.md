@@ -1,3 +1,8 @@
+# Version 0.9.11
+
+- Removes the dependency on the `once_cell` crate to restore the MSRV. (#913)
+- Work around [rust-lang#98302](https://github.com/rust-lang/rust/issues/98302), which causes compile error on windows-gnu when LTO is enabled. (#913)
+
 # Version 0.9.10
 
 - Bump the minimum supported Rust version to 1.38. (#877)
