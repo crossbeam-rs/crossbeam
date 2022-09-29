@@ -2,6 +2,8 @@
 // It is not intended for manual editing.
 
 const NO_ATOMIC_CAS: &[&str] = &[
+    "armv4t-none-eabi",
+    "armv5te-none-eabi",
     "avr-unknown-gnu-atmega328",
     "bpfeb-unknown-none",
     "bpfel-unknown-none",
@@ -10,6 +12,7 @@ const NO_ATOMIC_CAS: &[&str] = &[
     "riscv32im-unknown-none-elf",
     "riscv32imc-unknown-none-elf",
     "thumbv4t-none-eabi",
+    "thumbv5te-none-eabi",
     "thumbv6m-none-eabi",
 ];
 
@@ -18,7 +21,9 @@ const NO_ATOMIC_64: &[&str] = &[
     "arm-linux-androideabi",
     "armebv7r-none-eabi",
     "armebv7r-none-eabihf",
+    "armv4t-none-eabi",
     "armv4t-unknown-linux-gnueabi",
+    "armv5te-none-eabi",
     "armv5te-unknown-linux-gnueabi",
     "armv5te-unknown-linux-musleabi",
     "armv5te-unknown-linux-uclibceabi",
@@ -55,6 +60,7 @@ const NO_ATOMIC_64: &[&str] = &[
     "riscv32imac-unknown-xous-elf",
     "riscv32imc-unknown-none-elf",
     "thumbv4t-none-eabi",
+    "thumbv5te-none-eabi",
     "thumbv6m-none-eabi",
     "thumbv7em-none-eabi",
     "thumbv7em-none-eabihf",

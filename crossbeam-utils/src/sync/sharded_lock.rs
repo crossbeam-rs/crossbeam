@@ -9,8 +9,8 @@ use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread::{self, ThreadId};
 
+use crate::sync::once_lock::OnceLock;
 use crate::CachePadded;
-use once_cell::sync::Lazy;
 
 /// The number of shards per sharded lock. Must be a power of two.
 const NUM_SHARDS: usize = 8;
@@ -583,13 +583,17 @@ struct ThreadIndices {
     next_index: usize,
 }
 
-static THREAD_INDICES: Lazy<Mutex<ThreadIndices>> = Lazy::new(|| {
-    Mutex::new(ThreadIndices {
-        mapping: HashMap::new(),
-        free_list: Vec::new(),
-        next_index: 0,
-    })
-});
+fn thread_indices() -> &'static Mutex<ThreadIndices> {
+    static THREAD_INDICES: OnceLock<Mutex<ThreadIndices>> = OnceLock::new();
+    fn init() -> Mutex<ThreadIndices> {
+        Mutex::new(ThreadIndices {
+            mapping: HashMap::new(),
+            free_list: Vec::new(),
+            next_index: 0,
+        })
+    }
+    THREAD_INDICES.get_or_init(init)
+}
 
 /// A registration of a thread with an index.
 ///
@@ -601,7 +605,7 @@ struct Registration {
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        let mut indices = THREAD_INDICES.lock().unwrap();
+        let mut indices = thread_indices().lock().unwrap();
         indices.mapping.remove(&self.thread_id);
         indices.free_list.push(self.index);
     }
@@ -610,7 +614,7 @@ impl Drop for Registration {
 thread_local! {
     static REGISTRATION: Registration = {
         let thread_id = thread::current().id();
-        let mut indices = THREAD_INDICES.lock().unwrap();
+        let mut indices = thread_indices().lock().unwrap();
 
         let index = match indices.free_list.pop() {
             Some(i) => i,

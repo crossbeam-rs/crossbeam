@@ -4,7 +4,7 @@ name = "crossbeam-utils"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-utils-X.Y.Z" git tag
-version = "0.8.11"
+version = "0.8.12"
 edition = "2018"
 rust-version = "1.38"
 license = "MIT OR Apache-2.0"
@@ -19,7 +19,7 @@ default = ["std"]
 
 # Enable to use APIs that require `std`.
 # This is enabled by default.
-std = ["once_cell"]
+std = []
 
 # These features are no longer used.
 # TODO: remove in the next major version.
@@ -32,7 +32,6 @@ nightly = []
 
 [dependencies]
 cfg-if = "1"
-once_cell = { version = "1", optional = true }
 
 # Enable the use of loom for concurrency testing.
 #
