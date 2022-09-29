@@ -24,7 +24,7 @@ jobs:
           prefix: crossbeam(-[a-z]+)?
           changelog: $prefix/CHANGELOG.md
           title: $prefix $version
-          branch: master
+          branch: v0.8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: "!startsWith(github.ref_name, 'crossbeam-0')"
@@ -35,7 +35,7 @@ jobs:
           prefix: crossbeam(-[a-z]+)?
           changelog: CHANGELOG.md
           title: crossbeam $version
-          branch: master
+          branch: v0.8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: startsWith(github.ref_name, 'crossbeam-0')

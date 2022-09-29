@@ -33,8 +33,8 @@ if gh release view "${tag}" &>/dev/null; then
     bail "tag '${tag}' has already been created and pushed"
 fi
 
-if ! git branch | grep -q '\* master'; then
-    bail "current branch is not 'master'"
+if ! git branch | grep -q '\* v0.8'; then
+    bail "current branch is not 'v0.8'"
 fi
 
 git tag "${tag}"
