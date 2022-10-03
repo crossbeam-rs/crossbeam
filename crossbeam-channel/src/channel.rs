@@ -256,8 +256,8 @@ pub fn at(when: Instant) -> Receiver<Instant> {
 ///
 /// // Create a channel that times out after the specified duration.
 /// let timeout = duration
-///     .map(|d| after(d))
-///     .unwrap_or(never());
+///     .map(after)
+///     .unwrap_or_else(never);
 ///
 /// select! {
 ///     recv(r) -> msg => assert_eq!(msg, Ok(1)),
