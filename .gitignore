@@ -2,3 +2,4 @@
 /crossbeam-channel/benchmarks/*.png
 target/
 Cargo.lock
+poetry.lock
