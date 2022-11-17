@@ -38,7 +38,7 @@ autocfg = "1"
 
 [dependencies]
 cfg-if = "1"
-memoffset = "0.6"
+memoffset = "0.7"
 scopeguard = { version = "1.1", default-features = false }
 
 # Enable the use of loom for concurrency testing.

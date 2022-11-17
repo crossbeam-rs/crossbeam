@@ -27,10 +27,11 @@
 use std::env;
 
 include!("no_atomic.rs");
+include!("build-common.rs");
 
 fn main() {
     let target = match env::var("TARGET") {
-        Ok(target) => target,
+        Ok(target) => convert_custom_linux_target(target),
         Err(e) => {
             println!(
                 "cargo:warning={}: unable to get TARGET environment variable: {}",
