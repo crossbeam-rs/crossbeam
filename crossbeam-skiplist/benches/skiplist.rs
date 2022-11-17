@@ -1,4 +1,5 @@
 #![feature(test)]
+#![allow(clippy::unit_arg)]
 
 extern crate test;
 
