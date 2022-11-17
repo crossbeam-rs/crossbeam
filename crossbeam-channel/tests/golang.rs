@@ -1047,10 +1047,10 @@ mod chan_test {
                     }
                 }
 
-                if c.recv() != None {
+                if c.recv().is_some() {
                     panic!();
                 }
-                if c.try_recv() != None {
+                if c.try_recv().is_some() {
                     panic!();
                 }
             }
