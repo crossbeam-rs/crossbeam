@@ -116,7 +116,7 @@ def plot(results, fig, subplot, title, prefix):
 
 def plot_all(results, descriptions, labels):
     fig = plt.figure(figsize=(10, 10))
-    # TODO support more number subplots
+    # TODO support more subplots
     subplot = [221, 222, 223, 224]
     for p, d, l in zip(subplot, descriptions, labels):
         plot(results, fig, p, d, l)
