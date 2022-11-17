@@ -2,7 +2,9 @@ use crate::primitive::sync::atomic;
 use core::cell::Cell;
 use core::fmt;
 
+/// Backoff will call yield_now between steps 0..=SPIN_LIMIT
 const SPIN_LIMIT: u32 = 6;
+/// Backoff will call yield_now between steps SPIN_LIMIT+1..=YIELD_LIMIT
 const YIELD_LIMIT: u32 = 10;
 
 /// Performs exponential backoff in spin loops.

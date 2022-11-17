@@ -27,8 +27,7 @@ Dependencies:
 - Rust (nightly)
 - Go
 - Bash
-- Python 2
-- Matplotlib
+- Poetry (https://python-poetry.org/)
 
 ### Results
 
