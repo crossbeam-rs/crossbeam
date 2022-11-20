@@ -1,3 +1,8 @@
+# Version 0.9.12
+
+- Update `memoffset` to 0.7. (#926)
+- Improve support for custom targets. (#922)
+
 # Version 0.9.11
 
 - Removes the dependency on the `once_cell` crate to restore the MSRV. (#913)
