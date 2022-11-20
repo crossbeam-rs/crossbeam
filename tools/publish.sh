@@ -43,7 +43,7 @@ git tag "${tag}"
     if [[ "${crate}" != "crossbeam" ]]; then
         cd "${crate}"
     fi
-    cargo publish
+    cargo +stable publish
 )
 
 git push origin --tags

@@ -1,3 +1,7 @@
+# Version 0.8.13
+
+- Improve support for custom targets. (#922)
+
 # Version 0.8.12
 
 - Removes the dependency on the `once_cell` crate to restore the MSRV. (#913)
