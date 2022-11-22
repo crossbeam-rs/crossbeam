@@ -5,8 +5,8 @@
 // so that mapping to rust standard targets happens correctly.
 fn convert_custom_linux_target(target: String) -> String {
     let mut parts: Vec<&str> = target.split('-').collect();
-    let system = parts[2];
-    if system == "linux" {
+    let system = parts.get(2);
+    if system == Some(&"linux") {
         parts[1] = "unknown";
     };
     parts.join("-")
