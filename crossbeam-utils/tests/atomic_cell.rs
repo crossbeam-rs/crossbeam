@@ -35,11 +35,7 @@ fn is_lock_free() {
     // of `AtomicU64` is `8`, so `AtomicCell<u64>` is not lock-free.
     assert_eq!(
         AtomicCell::<u64>::is_lock_free(),
-        cfg!(not(crossbeam_no_atomic_64))
-            && cfg!(any(
-                target_pointer_width = "64",
-                target_pointer_width = "128"
-            ))
+        cfg!(not(crossbeam_no_atomic_64)) && std::mem::align_of::<u64>() == 8
     );
     assert_eq!(mem::size_of::<U64Align8>(), 8);
     assert_eq!(mem::align_of::<U64Align8>(), 8);
