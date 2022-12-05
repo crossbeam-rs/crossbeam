@@ -38,6 +38,7 @@ const NO_ATOMIC_64: &[&str] = &[
     "mips-unknown-linux-uclibc",
     "mipsel-sony-psp",
     "mipsel-sony-psx",
+    "mipsel-unknown-linux",
     "mipsel-unknown-linux-gnu",
     "mipsel-unknown-linux-musl",
     "mipsel-unknown-linux-uclibc",
