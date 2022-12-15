@@ -36,7 +36,7 @@ impl<K, V> Index<usize> for Tower<K, V> {
     fn index(&self, index: usize) -> &Atomic<Node<K, V>> {
         // This implementation is actually unsafe since we don't check if the
         // index is in-bounds. But this is fine since this is only used internally.
-        unsafe { self.pointers.get_unchecked(index) }
+        unsafe { &*(&self.pointers as *const Atomic<Node<K, V>>).add(index) }
     }
 }
 
