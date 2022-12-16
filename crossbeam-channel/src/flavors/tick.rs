@@ -105,11 +105,7 @@ impl Channel {
     /// Returns the number of messages in the channel.
     #[inline]
     pub(crate) fn len(&self) -> usize {
-        if self.is_empty() {
-            0
-        } else {
-            1
-        }
+        usize::from(!self.is_empty())
     }
 
     /// Returns the capacity of the channel.
