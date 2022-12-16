@@ -36,7 +36,7 @@ impl<K, V> Index<usize> for Tower<K, V> {
     fn index(&self, index: usize) -> &Atomic<Node<K, V>> {
         // This implementation is actually unsafe since we don't check if the
         // index is in-bounds. But this is fine since this is only used internally.
-        unsafe { self.pointers.get_unchecked(index) }
+        unsafe { &*(&self.pointers as *const Atomic<Node<K, V>>).add(index) }
     }
 }
 
@@ -1718,7 +1718,7 @@ where
         };
         match (&next_head, &self.tail) {
             // The next key is larger than the latest tail key we observed with this iterator.
-            (Some(ref next), &Some(ref t)) if next.key() >= t.key() => {
+            (Some(ref next), Some(t)) if next.key() >= t.key() => {
                 unsafe {
                     next.node.decrement(guard);
                 }
@@ -1745,7 +1745,7 @@ where
         };
         match (&self.head, &next_tail) {
             // The prev key is smaller than the latest head key we observed with this iterator.
-            (&Some(ref h), Some(next)) if h.key() >= next.key() => {
+            (Some(h), Some(next)) if h.key() >= next.key() => {
                 unsafe {
                     next.node.decrement(guard);
                 }
