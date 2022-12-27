@@ -175,6 +175,18 @@ jobs:
       - name: miri
         run: ci/miri.sh
 
+  # Run cargo-careful.
+  careful:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup toolchain install nightly --component rust-src && rustup default nightly
+      - name: Install cargo-careful
+        run: cargo install cargo-careful --locked --debug
+      - name: Run cargo-careful
+        run: ./ci/careful.sh
+
   # Run sanitizers.
   san:
     runs-on: ubuntu-latest
@@ -233,6 +245,7 @@ jobs:
       - rustfmt
       # - clippy
       - miri
+      - careful
       - san
       - loom
       - docs
