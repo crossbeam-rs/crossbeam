@@ -28,6 +28,7 @@ const NO_ATOMIC_64: &[&str] = &[
     "armv5te-unknown-linux-musleabi",
     "armv5te-unknown-linux-uclibceabi",
     "armv6k-nintendo-3ds",
+    "armv7-sony-vita-newlibeabihf",
     "armv7r-none-eabi",
     "armv7r-none-eabihf",
     "avr-unknown-gnu-atmega328",
