@@ -5,8 +5,6 @@ const NO_ATOMIC_CAS: &[&str] = &[
     "armv4t-none-eabi",
     "armv5te-none-eabi",
     "avr-unknown-gnu-atmega328",
-    "bpfeb-unknown-none",
-    "bpfel-unknown-none",
     "msp430-none-elf",
     "riscv32i-unknown-none-elf",
     "riscv32im-unknown-none-elf",
