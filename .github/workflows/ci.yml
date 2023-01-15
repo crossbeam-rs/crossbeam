@@ -175,7 +175,9 @@ jobs:
       - name: Install Rust
         run: rustup toolchain install nightly --component rust-src && rustup default nightly
       - name: Install cargo-careful
-        run: cargo install cargo-careful --locked --debug
+        uses: taiki-e/cache-cargo-install-action@v1
+        with:
+          tool: cargo-careful
       - name: Run cargo-careful
         run: ./ci/careful.sh
 
