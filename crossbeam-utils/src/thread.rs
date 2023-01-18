@@ -133,6 +133,8 @@ type SharedOption<T> = Arc<Mutex<Option<T>>>;
 /// returned containing errors from panicked threads. Note that if panics are implemented by
 /// aborting the process, no error is returned; see the notes of [std::panic::catch_unwind].
 ///
+/// **Note:** Since Rust 1.63, this function is soft-deprecated in favor of the more efficient [`std::thread::scope`].
+///
 /// # Examples
 ///
 /// ```
