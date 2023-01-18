@@ -4,7 +4,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::context::Context;
 use crate::err::{RecvTimeoutError, TryRecvError};
@@ -31,11 +31,6 @@ impl Channel {
             delivery_time: when,
             received: AtomicBool::new(false),
         }
-    }
-    /// Creates a channel that delivers a message after a certain duration of time.
-    #[inline]
-    pub(crate) fn new_timeout(dur: Duration) -> Self {
-        Self::new_deadline(utils::convert_timeout_to_deadline(dur))
     }
 
     /// Attempts to receive a message without blocking.
