@@ -122,7 +122,10 @@ impl Parker {
     /// p.park_timeout(Duration::from_millis(500));
     /// ```
     pub fn park_timeout(&self, timeout: Duration) {
-        self.park_deadline(Instant::now() + timeout)
+        match Instant::now().checked_add(timeout) {
+            Some(deadline) => self.park_deadline(deadline),
+            None => self.park(),
+        }
     }
 
     /// Blocks the current thread until the token is made available, or until a certain deadline.

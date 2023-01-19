@@ -14,7 +14,6 @@ use crate::err::{
 };
 use crate::flavors;
 use crate::select::{Operation, SelectHandle, Token};
-use crate::utils;
 
 /// Creates a multi-producer multi-consumer channel of unbounded capacity.
 ///
@@ -176,8 +175,11 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// assert!(eq(Instant::now(), start + ms(500)));
 /// ```
 pub fn after(duration: Duration) -> Receiver<Instant> {
-    Receiver {
-        flavor: ReceiverFlavor::At(Arc::new(flavors::at::Channel::new_timeout(duration))),
+    match Instant::now().checked_add(duration) {
+        Some(deadline) => Receiver {
+            flavor: ReceiverFlavor::At(Arc::new(flavors::at::Channel::new_deadline(deadline))),
+        },
+        None => never(),
     }
 }
 
@@ -324,8 +326,14 @@ pub fn never<T>() -> Receiver<T> {
 /// assert!(eq(Instant::now(), start + ms(700)));
 /// ```
 pub fn tick(duration: Duration) -> Receiver<Instant> {
-    Receiver {
-        flavor: ReceiverFlavor::Tick(Arc::new(flavors::tick::Channel::new(duration))),
+    match Instant::now().checked_add(duration) {
+        Some(delivery_time) => Receiver {
+            flavor: ReceiverFlavor::Tick(Arc::new(flavors::tick::Channel::new(
+                delivery_time,
+                duration,
+            ))),
+        },
+        None => never(),
     }
 }
 
@@ -478,7 +486,10 @@ impl<T> Sender<T> {
     /// );
     /// ```
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
-        self.send_deadline(msg, utils::convert_timeout_to_deadline(timeout))
+        match Instant::now().checked_add(timeout) {
+            Some(deadline) => self.send_deadline(msg, deadline),
+            None => self.send(msg).map_err(SendTimeoutError::from),
+        }
     }
 
     /// Waits for a message to be sent into the channel, but only until a given deadline.
@@ -868,7 +879,10 @@ impl<T> Receiver<T> {
     /// );
     /// ```
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        self.recv_deadline(utils::convert_timeout_to_deadline(timeout))
+        match Instant::now().checked_add(timeout) {
+            Some(deadline) => self.recv_deadline(deadline),
+            None => self.recv().map_err(RecvTimeoutError::from),
+        }
     }
 
     /// Waits for a message to be received from the channel, but only before a given deadline.
