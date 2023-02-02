@@ -480,6 +480,7 @@ impl<T> From<T> for ShardedLock<T> {
 }
 
 /// A guard used to release the shared read access of a [`ShardedLock`] when dropped.
+#[clippy::has_significant_drop]
 pub struct ShardedLockReadGuard<'a, T: ?Sized> {
     lock: &'a ShardedLock<T>,
     _guard: RwLockReadGuard<'a, ()>,
@@ -511,6 +512,7 @@ impl<T: ?Sized + fmt::Display> fmt::Display for ShardedLockReadGuard<'_, T> {
 }
 
 /// A guard used to release the exclusive write access of a [`ShardedLock`] when dropped.
+#[clippy::has_significant_drop]
 pub struct ShardedLockWriteGuard<'a, T: ?Sized> {
     lock: &'a ShardedLock<T>,
     _marker: PhantomData<RwLockWriteGuard<'a, T>>,
