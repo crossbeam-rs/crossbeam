@@ -1,5 +1,8 @@
+only_if: $CIRRUS_TAG == '' && ($CIRRUS_PR != '' || $CIRRUS_BRANCH == 'master' || $CIRRUS_BRANCH == 'staging')
+auto_cancellation: $CIRRUS_BRANCH != 'master'
 env:
   CARGO_INCREMENTAL: '0'
+  CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
   CARGO_NET_RETRY: '10'
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: '1'
@@ -21,7 +24,7 @@ linux_task:
 
 macos_task:
   macos_instance:
-    image: ghcr.io/cirruslabs/macos-monterey-xcode:latest
+    image: ghcr.io/cirruslabs/macos-ventura-xcode:latest
   matrix:
     - name: test (aarch64-apple-darwin)
       env:
