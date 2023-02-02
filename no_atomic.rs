@@ -75,6 +75,8 @@ const NO_ATOMIC_64: &[&str] = &[
 #[allow(dead_code)] // Only crossbeam-utils uses this.
 const NO_ATOMIC: &[&str] = &[
     "avr-unknown-gnu-atmega328",
+    "bpfeb-unknown-none",
+    "bpfel-unknown-none",
     "mipsel-sony-psx",
     "msp430-none-elf",
     "riscv32i-unknown-none-elf",
