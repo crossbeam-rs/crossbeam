@@ -39,6 +39,7 @@ use crate::primitive::cell::UnsafeCell;
 use crate::sync::striped_refcount::StripedRefcount;
 use core::cell::Cell;
 use core::fmt;
+use core::mem::MaybeUninit;
 use core::num::Wrapping;
 use core::ops::IndexMut;
 use core::sync::atomic::Ordering;
@@ -60,16 +61,14 @@ enum PushResult {
 
 struct Segment {
     len: CachePadded<AtomicUsize>,
-    deferreds: Box<[UnsafeCell<Deferred>]>,
+    deferreds: Owned<[MaybeUninit<UnsafeCell<Deferred>>]>,
 }
 
 impl Segment {
     fn new(capacity: usize) -> Self {
         Self {
             len: CachePadded::new(AtomicUsize::new(0)),
-            deferreds: (0..capacity)
-                .map(|_| UnsafeCell::new(Deferred::NO_OP))
-                .collect(),
+            deferreds: Owned::init(capacity),
         }
     }
     fn capacity(&self) -> usize {
@@ -78,14 +77,18 @@ impl Segment {
     fn call(&mut self) {
         let end = self.capacity().min(self.len.load(Ordering::Relaxed));
         for deferred in self.deferreds.index_mut(..end) {
-            deferred.with_mut(|ptr| unsafe { ptr.read() }.call())
+            unsafe { deferred.assume_init_mut().with_mut(|ptr| ptr.read().call()) }
         }
         self.len.store(0, Ordering::Relaxed);
     }
     fn try_push(&self, deferred: Deferred) -> PushResult {
         let slot = self.len.fetch_add(1, Ordering::Relaxed);
         if slot < self.capacity() {
-            self.deferreds[slot].with_mut(|ptr| unsafe { ptr.write(deferred) });
+            unsafe {
+                self.deferreds[slot]
+                    .assume_init_ref()
+                    .with_mut(|ptr| ptr.write(deferred))
+            };
             if slot + 1 == self.capacity() {
                 PushResult::Full
             } else {
@@ -131,6 +134,7 @@ impl Bag {
             }
         }
         if let PushResult::Full = result {
+            // println!("{}", segment.deref().capacity() * 2);
             self.current.store(
                 Owned::new(Segment::new(segment.deref().capacity() * 2)),
                 Ordering::Release,
