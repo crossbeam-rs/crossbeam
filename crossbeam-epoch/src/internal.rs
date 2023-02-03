@@ -81,6 +81,7 @@ impl Segment {
         }
         self.len.store(0, Ordering::Relaxed);
     }
+    // #[inline(never)]
     fn try_push(&self, deferred: Deferred) -> PushResult {
         let slot = self.len.fetch_add(1, Ordering::Relaxed);
         if slot < self.capacity() {
@@ -119,6 +120,7 @@ impl Bag {
     }
 
     /// This must be synchronized with emptying the bag
+    // #[inline(never)]
     pub(crate) unsafe fn push(&self, mut deferred: Deferred, guard: &Guard) {
         let backoff = Backoff::new();
         let mut result;
@@ -183,7 +185,7 @@ pub(crate) struct Global {
     /// The number of threads pinned in each epoch, plus one for epochs that
     /// aren't allowed to be collected right now.
     pins: [StripedRefcount; 4],
-    garbage: [Bag; 4],
+    garbage: Box<[Box<[Bag]>]>,
 }
 
 impl Global {
@@ -197,7 +199,9 @@ impl Global {
                 StripedRefcount::new(),
                 StripedRefcount::new(),
             ],
-            garbage: [Bag::new(), Bag::new(), Bag::new(), Bag::new()],
+            garbage: (0..4)
+                .map(|_| (0..16).map(|_| Bag::new()).collect())
+                .collect(),
             epoch: CachePadded::new(AtomicUsize::new(0)),
         }
     }
@@ -209,7 +213,7 @@ impl Global {
     /// `pin()` rarely calls `collect()`, so we want the compiler to place that call on a cold
     /// path. In other words, we want the compiler to optimize branching for the case when
     /// `collect()` is not called.
-    #[cold]
+    // #[inline(never)]
     pub(crate) fn collect(&self, guard: &Guard) {
         if let Some(local) = guard.local.as_ref() {
             let next = (local.epoch() + 1) % 4;
@@ -224,7 +228,11 @@ impl Global {
                     .compare_exchange(local.epoch(), next, Ordering::Release, Ordering::Relaxed)
                     .is_ok()
             {
-                unsafe { self.garbage[previous2].call(guard) }
+                unsafe {
+                    self.garbage[previous2]
+                        .iter()
+                        .for_each(|bag| bag.call(guard))
+                }
             }
         }
     }
@@ -312,7 +320,8 @@ impl Local {
     /// It should be safe for another thread to execute the given function.
     pub(crate) unsafe fn defer(&self, deferred: Deferred, guard: &Guard) {
         // Safety: We are pinned to self.epoch at this point
-        self.global().garbage[self.epoch()].push(deferred, guard);
+        let bags = &self.global().garbage[self.epoch()];
+        bags[self.id % bags.len()].push(deferred, guard);
 
         // Increment the defer counter.
         let count = self.defer_count.get();
