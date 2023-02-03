@@ -145,7 +145,6 @@ cfg_if! {
         mod atomic;
         mod collector;
         mod deferred;
-        mod epoch;
         mod guard;
         mod internal;
         mod sync;

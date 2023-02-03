@@ -1,6 +1,6 @@
 use core::fmt;
-use core::mem;
 
+use alloc::rc::Rc;
 use scopeguard::defer;
 
 use crate::atomic::Shared;
@@ -69,7 +69,7 @@ use crate::internal::Local;
 ///
 /// [`pin`]: super::pin
 pub struct Guard {
-    pub(crate) local: *const Local,
+    pub(crate) local: Option<Rc<Local>>,
 }
 
 impl Guard {
@@ -292,7 +292,7 @@ impl Guard {
     /// guard.flush();
     /// ```
     pub fn flush(&self) {
-        if let Some(local) = unsafe { self.local.as_ref() } {
+        if let Some(local) = self.local.as_ref() {
             local.flush(self);
         }
     }
@@ -326,7 +326,7 @@ impl Guard {
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub fn repin(&mut self) {
-        if let Some(local) = unsafe { self.local.as_ref() } {
+        if let Some(local) = self.local.as_ref() {
             local.repin();
         }
     }
@@ -366,18 +366,14 @@ impl Guard {
     where
         F: FnOnce() -> R,
     {
-        if let Some(local) = unsafe { self.local.as_ref() } {
-            // We need to acquire a handle here to ensure the Local doesn't
-            // disappear from under us.
-            local.acquire_handle();
+        if let Some(local) = self.local.as_ref() {
             local.unpin();
         }
 
         // Ensure the Guard is re-pinned even if the function panics
         defer! {
-            if let Some(local) = unsafe { self.local.as_ref() } {
-                mem::forget(local.pin());
-                local.release_handle();
+            if let Some(local) = self.local.as_ref()  {
+                local.pin();
             }
         }
 
@@ -401,14 +397,14 @@ impl Guard {
     /// assert!(guard1.collector() == guard2.collector());
     /// ```
     pub fn collector(&self) -> Option<&Collector> {
-        unsafe { self.local.as_ref().map(|local| local.collector()) }
+        self.local.as_ref().map(|local| local.collector())
     }
 }
 
 impl Drop for Guard {
     #[inline]
     fn drop(&mut self) {
-        if let Some(local) = unsafe { self.local.as_ref() } {
+        if let Some(local) = self.local.as_ref() {
             local.unpin();
         }
     }
@@ -513,8 +509,6 @@ pub unsafe fn unprotected() -> &'static Guard {
     // a `static`
     struct GuardWrapper(Guard);
     unsafe impl Sync for GuardWrapper {}
-    static UNPROTECTED: GuardWrapper = GuardWrapper(Guard {
-        local: core::ptr::null(),
-    });
+    static UNPROTECTED: GuardWrapper = GuardWrapper(Guard { local: None });
     &UNPROTECTED.0
 }
