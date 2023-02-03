@@ -36,6 +36,7 @@
 //! destroyed as soon as the data structure gets dropped.
 
 use crate::primitive::cell::UnsafeCell;
+use crate::sync::striped_refcount::StripedRefcount;
 use core::cell::Cell;
 use core::fmt;
 use core::num::Wrapping;
@@ -177,7 +178,7 @@ pub(crate) struct Global {
     pub(crate) epoch: CachePadded<AtomicUsize>,
     /// The number of threads pinned in each epoch, plus one for epochs that
     /// aren't allowed to be collected right now.
-    pins: [CachePadded<AtomicUsize>; 4],
+    pins: [StripedRefcount; 4],
     garbage: [Bag; 4],
 }
 
@@ -187,10 +188,10 @@ impl Global {
     pub(crate) fn new() -> Self {
         Self {
             pins: [
-                CachePadded::new(AtomicUsize::new(0)),
-                CachePadded::new(AtomicUsize::new(0)),
-                CachePadded::new(AtomicUsize::new(0)),
-                CachePadded::new(AtomicUsize::new(0)),
+                StripedRefcount::new(),
+                StripedRefcount::new(),
+                StripedRefcount::new(),
+                StripedRefcount::new(),
             ],
             garbage: [Bag::new(), Bag::new(), Bag::new(), Bag::new()],
             epoch: CachePadded::new(AtomicUsize::new(0)),
@@ -227,6 +228,8 @@ impl Global {
 
 /// Participant for garbage collection.
 pub(crate) struct Local {
+    id: usize,
+
     /// The local epoch.
     epoch: Cell<usize>,
 
@@ -256,6 +259,8 @@ fn local_size() {
     // );
 }
 
+static LOCAL_ID: AtomicUsize = AtomicUsize::new(0);
+
 impl Local {
     /// Number of defers after which a participant will execute some deferred functions from the
     /// global queue.
@@ -264,6 +269,7 @@ impl Local {
     /// Registers a new `Local` in the provided `Global`.
     pub(crate) fn register(collector: &Collector) -> LocalHandle {
         let local = Rc::new(Local {
+            id: LOCAL_ID.fetch_add(1, Ordering::Relaxed),
             epoch: Cell::new(0),
             collector: collector.clone(),
             guard_count: Cell::new(0),
@@ -326,7 +332,7 @@ impl Local {
 
         if guard_count == 0 {
             self.epoch.set(self.global().epoch.load(Ordering::Acquire));
-            self.global().pins[self.epoch()].fetch_add(1, Ordering::Relaxed);
+            self.global().pins[self.epoch()].increment(self.id, Ordering::Relaxed);
         }
     }
 
@@ -337,7 +343,7 @@ impl Local {
         self.guard_count.set(guard_count - 1);
 
         if guard_count == 1 {
-            self.global().pins[self.epoch()].fetch_sub(1, Ordering::Release);
+            self.global().pins[self.epoch()].decrement(self.id, Ordering::Release);
         }
     }
 
@@ -350,8 +356,8 @@ impl Local {
         if guard_count == 1 {
             let new_epoch = self.global().epoch.load(Ordering::Acquire);
             if self.epoch() != new_epoch {
-                self.global().pins[self.epoch()].fetch_sub(1, Ordering::Release);
-                self.global().pins[new_epoch].fetch_add(1, Ordering::Relaxed);
+                self.global().pins[self.epoch()].decrement(self.id, Ordering::Release);
+                self.global().pins[new_epoch].increment(self.id, Ordering::Relaxed);
                 self.epoch.set(new_epoch);
             }
         }
