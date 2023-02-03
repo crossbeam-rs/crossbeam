@@ -177,8 +177,8 @@ pub(crate) struct Global {
     pub(crate) epoch: CachePadded<AtomicUsize>,
     /// The number of threads pinned in each epoch, plus one for epochs that
     /// aren't allowed to be collected right now.
-    pins: [CachePadded<AtomicUsize>; 3],
-    garbage: [Bag; 3],
+    pins: [CachePadded<AtomicUsize>; 4],
+    garbage: [Bag; 4],
 }
 
 impl Global {
@@ -187,11 +187,12 @@ impl Global {
     pub(crate) fn new() -> Self {
         Self {
             pins: [
-                CachePadded::new(AtomicUsize::new(1)),
-                CachePadded::new(AtomicUsize::new(1)),
+                CachePadded::new(AtomicUsize::new(0)),
+                CachePadded::new(AtomicUsize::new(0)),
+                CachePadded::new(AtomicUsize::new(0)),
                 CachePadded::new(AtomicUsize::new(0)),
             ],
-            garbage: [Bag::new(), Bag::new(), Bag::new()],
+            garbage: [Bag::new(), Bag::new(), Bag::new(), Bag::new()],
             epoch: CachePadded::new(AtomicUsize::new(0)),
         }
     }
@@ -206,21 +207,20 @@ impl Global {
     #[cold]
     pub(crate) fn collect(&self, guard: &Guard) {
         if let Some(local) = guard.local.as_ref() {
-            let next = (local.epoch() + 1) % 3;
-            let previous = (local.epoch() + 2) % 3;
-            // Lock out other calls, and sync with uses of garbage in previous epoch
-            if self.pins[previous]
-                .compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
-                .is_err()
+            let next = (local.epoch() + 1) % 4;
+            let previous2 = (local.epoch() + 2) % 4;
+            let previous = (local.epoch() + 3) % 4;
+            if
+            // Sync with uses of garbage in previous epoch
+            self.pins[previous].load(Ordering::Acquire) == 0
+            // Lock out other calls, and sync with next epoch
+                && self
+                    .epoch
+                    .compare_exchange(local.epoch(), next, Ordering::Release, Ordering::Relaxed)
+                    .is_ok()
             {
-                return;
+                unsafe { self.garbage[previous2].call(guard) }
             }
-            unsafe { self.garbage[next].call(guard) };
-            // Allow the current epoch to be collected again.
-            // We'll decrement this with release later anyway.
-            self.pins[local.epoch()].fetch_sub(1, Ordering::Relaxed);
-            // Sync with threads in `next` pushing new garbage
-            self.epoch.store(next, Ordering::Release);
         }
     }
 }

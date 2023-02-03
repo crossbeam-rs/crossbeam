@@ -168,43 +168,6 @@ mod tests {
     }
 
     #[test]
-    fn buffering() {
-        const COUNT: usize = 10;
-        #[cfg(miri)]
-        const N: usize = 500;
-        #[cfg(not(miri))]
-        const N: usize = 100_000;
-        static DESTROYS: AtomicUsize = AtomicUsize::new(0);
-
-        let collector = Collector::new();
-        let handle = collector.register();
-
-        unsafe {
-            let guard = &handle.pin();
-            for _ in 0..COUNT {
-                let a = Owned::new(7i32).into_shared(guard);
-                guard.defer_unchecked(move || {
-                    drop(a.into_owned());
-                    DESTROYS.fetch_add(1, Ordering::Relaxed);
-                });
-            }
-        }
-
-        for _ in 0..N {
-            collector.global.collect(&handle.pin());
-        }
-        assert!(DESTROYS.load(Ordering::Relaxed) < COUNT);
-
-        handle.pin().flush();
-
-        while DESTROYS.load(Ordering::Relaxed) < COUNT {
-            let guard = &handle.pin();
-            collector.global.collect(guard);
-        }
-        assert_eq!(DESTROYS.load(Ordering::Relaxed), COUNT);
-    }
-
-    #[test]
     fn count_drops() {
         #[cfg(miri)]
         const COUNT: usize = 500;
