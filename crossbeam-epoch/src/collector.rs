@@ -153,7 +153,7 @@ mod tests {
                         let guard = &handle.pin();
 
                         let before = collector.global.epoch.load(Ordering::Relaxed);
-                        collector.global.collect(guard);
+                        guard.flush();
                         let mut after = collector.global.epoch.load(Ordering::Relaxed);
 
                         if after < before {
@@ -198,7 +198,7 @@ mod tests {
 
         while DROPS.load(Ordering::Relaxed) < COUNT {
             let guard = &handle.pin();
-            collector.global.collect(guard);
+            guard.flush();
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT);
     }
@@ -229,7 +229,7 @@ mod tests {
 
         while DESTROYS.load(Ordering::Relaxed) < COUNT {
             let guard = &handle.pin();
-            collector.global.collect(guard);
+            guard.flush();
         }
         assert_eq!(DESTROYS.load(Ordering::Relaxed), COUNT);
     }
@@ -267,7 +267,7 @@ mod tests {
 
         while DROPS.load(Ordering::Relaxed) < COUNT {
             guard.repin();
-            collector.global.collect(&guard);
+            guard.flush();
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT);
     }
@@ -302,7 +302,7 @@ mod tests {
 
         while DESTROYS.load(Ordering::Relaxed) < COUNT {
             let guard = &handle.pin();
-            collector.global.collect(guard);
+            guard.flush();
         }
         assert_eq!(DESTROYS.load(Ordering::Relaxed), COUNT);
     }
@@ -343,10 +343,10 @@ mod tests {
         .unwrap();
 
         let handle = collector.register();
-        for _ in 0..COUNT {
-            if DROPS.load(Ordering::Relaxed) == COUNT * THREADS {
-                break;
-            }
+        for _ in 0..6 {
+            // if DROPS.load(Ordering::Relaxed) == COUNT * THREADS {
+            //     break;
+            // }
             handle.pin().flush();
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT * THREADS);

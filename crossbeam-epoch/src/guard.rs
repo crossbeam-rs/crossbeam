@@ -192,7 +192,7 @@ impl Guard {
         F: FnOnce() -> R,
     {
         if let Some(local) = self.local.as_ref() {
-            local.defer(Deferred::new(move || drop(f())), self);
+            local.defer(Deferred::new(move || drop(f())));
         } else {
             drop(f());
         }
@@ -293,7 +293,7 @@ impl Guard {
     /// ```
     pub fn flush(&self) {
         if let Some(local) = self.local.as_ref() {
-            local.flush(self);
+            local.flush();
         }
     }
 

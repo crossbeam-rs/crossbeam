@@ -40,63 +40,92 @@ use crate::sync::striped_refcount::StripedRefcount;
 use core::cell::Cell;
 use core::fmt;
 use core::mem::MaybeUninit;
-use core::num::Wrapping;
-use core::ops::IndexMut;
 use core::sync::atomic::Ordering;
 
 use alloc::rc::Rc;
-use crossbeam_utils::{Backoff, CachePadded};
+use crossbeam_utils::CachePadded;
 
-use crate::atomic::{Atomic, Owned};
 use crate::collector::{Collector, LocalHandle};
 use crate::deferred::Deferred;
-use crate::guard::Guard;
-use crate::primitive::sync::atomic::AtomicUsize;
+use crate::primitive::sync::atomic::{AtomicPtr, AtomicUsize};
 
 enum PushResult {
-    NotFull,
-    Full,
-    AlreadyFull(Deferred),
+    Done,
+    ShouldRealloc,
 }
 
 struct Segment {
     len: CachePadded<AtomicUsize>,
-    deferreds: Owned<[MaybeUninit<UnsafeCell<Deferred>>]>,
+    deferreds: Box<[MaybeUninit<UnsafeCell<Deferred>>]>,
+}
+
+// For some reason using Owned<> for this gives stacked borrows errors
+fn uninit_boxed_slice<T>(len: usize) -> Box<[MaybeUninit<T>]> {
+    unsafe {
+        let ptr = if len == 0 {
+            core::mem::align_of::<T>() as *mut MaybeUninit<T>
+        } else {
+            alloc::alloc::alloc(alloc::alloc::Layout::array::<T>(len).unwrap()) as _
+        };
+        Box::from_raw(core::slice::from_raw_parts_mut(ptr, len))
+    }
 }
 
 impl Segment {
+    #[cfg(crossbeam_loom)]
     fn new(capacity: usize) -> Self {
+        assert!(capacity > 0);
+        let mut deferreds = uninit_boxed_slice(capacity);
+        // Work around lack of UnsafeCell::raw_get (1.56)
+        deferreds.iter_mut().for_each(|uninit| {
+            uninit.write(UnsafeCell::new(Deferred::NO_OP));
+        });
         Self {
             len: CachePadded::new(AtomicUsize::new(0)),
-            deferreds: Owned::init(capacity),
+            deferreds,
+        }
+    }
+    #[cfg(not(crossbeam_loom))]
+    fn new(capacity: usize) -> Self {
+        assert!(capacity > 0);
+        Self {
+            len: CachePadded::new(AtomicUsize::new(0)),
+            deferreds: uninit_boxed_slice(capacity),
         }
     }
     fn capacity(&self) -> usize {
         self.deferreds.len()
     }
-    fn call(&mut self) {
+    fn call(&self) {
         let end = self.capacity().min(self.len.load(Ordering::Relaxed));
-        for deferred in self.deferreds.index_mut(..end) {
-            unsafe { deferred.assume_init_mut().with_mut(|ptr| ptr.read().call()) }
+        for deferred in &self.deferreds[..end] {
+            unsafe { deferred.assume_init_read().with(|ptr| ptr.read().call()) }
         }
         self.len.store(0, Ordering::Relaxed);
     }
-    // #[inline(never)]
-    fn try_push(&self, deferred: Deferred) -> PushResult {
-        let slot = self.len.fetch_add(1, Ordering::Relaxed);
-        if slot < self.capacity() {
-            unsafe {
-                self.deferreds[slot]
-                    .assume_init_ref()
-                    .with_mut(|ptr| ptr.write(deferred))
-            };
-            if slot + 1 == self.capacity() {
-                PushResult::Full
-            } else {
-                PushResult::NotFull
+    fn try_push(&self, deferred: &mut Vec<Deferred>) -> PushResult {
+        let slot = self.len.fetch_add(deferred.len(), Ordering::Relaxed);
+        if slot >= self.capacity() {
+            return PushResult::Done;
+        }
+        let end = slot + deferred.len();
+        let not_pushed = end.saturating_sub(self.capacity());
+        unsafe {
+            for (slot, deferred) in self.deferreds[slot..]
+                .iter()
+                .zip(deferred.drain(not_pushed..))
+            {
+                // Work around lack of UnsafeCell::raw_get (1.56)
+                #[cfg(crossbeam_loom)]
+                slot.assume_init_ref().with_mut(|slot| slot.write(deferred));
+                #[cfg(not(crossbeam_loom))]
+                core::ptr::write(slot.as_ptr() as *mut _, deferred);
             }
+        };
+        if end >= self.capacity() {
+            PushResult::ShouldRealloc
         } else {
-            PushResult::AlreadyFull(deferred)
+            PushResult::Done
         }
     }
 }
@@ -110,53 +139,32 @@ impl Drop for Segment {
 /// A bag of deferred functions.
 pub(crate) struct Bag {
     /// Stashed objects.
-    current: Atomic<Segment>,
+    current: AtomicPtr<Segment>,
 }
 
 impl Bag {
-    /// Returns a new, empty bag.
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     /// This must be synchronized with emptying the bag
-    // #[inline(never)]
-    pub(crate) unsafe fn push(&self, mut deferred: Deferred, guard: &Guard) {
-        let backoff = Backoff::new();
-        let mut result;
-        let mut segment;
-        loop {
-            segment = self.current.load(Ordering::Acquire, guard);
-            result = segment.deref().try_push(deferred);
-            if let PushResult::AlreadyFull(d) = result {
-                deferred = d;
-                backoff.snooze();
-            } else {
-                break;
-            }
-        }
-        if let PushResult::Full = result {
-            // println!("{}", segment.deref().capacity() * 2);
-            self.current.store(
-                Owned::new(Segment::new(segment.deref().capacity() * 2)),
-                Ordering::Release,
-            );
-            guard.defer_unchecked(move || segment.into_owned());
+    pub(crate) unsafe fn try_push(&self, deferred: &mut Vec<Deferred>) {
+        let segment = self.current.load(Ordering::Acquire);
+        if let PushResult::ShouldRealloc = (*segment).try_push(deferred) {
+            println!("{}", (*segment).capacity() * 2);
+            let next = Box::into_raw(Box::new(Segment::new((*segment).capacity() * 2)));
+            self.current.store(next, Ordering::Release);
+            deferred.push(Deferred::new(move || drop(Box::from_raw(segment))));
+            // We're potentially holding a lot of garbage now, make an attempt to get rid of it sooner
+            self.try_push(deferred)
         }
     }
 
-    pub(crate) unsafe fn call(&self, guard: &Guard) {
-        self.current
-            .load(Ordering::Relaxed, guard)
-            .deref_mut()
-            .call()
+    pub(crate) unsafe fn call(&self) {
+        (*self.current.load(Ordering::Relaxed)).call()
     }
 }
 
 impl Default for Bag {
     fn default() -> Self {
         Bag {
-            current: Atomic::new(Segment::new(16)),
+            current: AtomicPtr::new(Box::into_raw(Box::new(Segment::new(16)))),
         }
     }
 }
@@ -165,9 +173,8 @@ impl Drop for Bag {
     fn drop(&mut self) {
         unsafe {
             // Ordering is taken care of because `Global` is behind an `Arc`
-            let guard = &crate::unprotected();
-            self.call(guard);
-            self.current.load(Ordering::Relaxed, guard).into_owned();
+            self.call();
+            drop(Box::from_raw(self.current.load(Ordering::Relaxed)));
         }
     }
 }
@@ -179,31 +186,21 @@ impl fmt::Debug for Bag {
 }
 
 /// The global data for a garbage collector.
+#[derive(Default)]
 pub(crate) struct Global {
     /// The global epoch.
     pub(crate) epoch: CachePadded<AtomicUsize>,
     /// The number of threads pinned in each epoch, plus one for epochs that
     /// aren't allowed to be collected right now.
     pins: [StripedRefcount; 4],
-    garbage: Box<[Box<[Bag]>]>,
+    garbage: [Bag; 4],
 }
 
 impl Global {
     /// Creates a new global data for garbage collection.
     #[inline]
     pub(crate) fn new() -> Self {
-        Self {
-            pins: [
-                StripedRefcount::new(),
-                StripedRefcount::new(),
-                StripedRefcount::new(),
-                StripedRefcount::new(),
-            ],
-            garbage: (0..4)
-                .map(|_| (0..16).map(|_| Bag::new()).collect())
-                .collect(),
-            epoch: CachePadded::new(AtomicUsize::new(0)),
-        }
+        Default::default()
     }
 
     /// Attempt to collect global garbage and advance the epoch
@@ -213,27 +210,20 @@ impl Global {
     /// `pin()` rarely calls `collect()`, so we want the compiler to place that call on a cold
     /// path. In other words, we want the compiler to optimize branching for the case when
     /// `collect()` is not called.
-    // #[inline(never)]
-    pub(crate) fn collect(&self, guard: &Guard) {
-        if let Some(local) = guard.local.as_ref() {
-            let next = (local.epoch() + 1) % 4;
-            let previous2 = (local.epoch() + 2) % 4;
-            let previous = (local.epoch() + 3) % 4;
-            if
-            // Sync with uses of garbage in previous epoch
-            self.pins[previous].load(Ordering::Acquire) == 0
+    pub(crate) fn collect(&self, local: &Local) {
+        let next = (local.epoch() + 1) % 4;
+        let previous2 = (local.epoch() + 2) % 4;
+        let previous = (local.epoch() + 3) % 4;
+        if
+        // Sync with uses of garbage in previous epoch
+        self.pins[previous].load(Ordering::Acquire) == 0
             // Lock out other calls, and sync with next epoch
                 && self
                     .epoch
                     .compare_exchange(local.epoch(), next, Ordering::Release, Ordering::Relaxed)
                     .is_ok()
-            {
-                unsafe {
-                    self.garbage[previous2]
-                        .iter()
-                        .for_each(|bag| bag.call(guard))
-                }
-            }
+        {
+            unsafe { self.garbage[previous2].call() }
         }
     }
 }
@@ -253,10 +243,7 @@ pub(crate) struct Local {
     /// The number of guards keeping this participant pinned.
     guard_count: Cell<usize>,
 
-    /// Total number of pinnings performed.
-    ///
-    /// This is just an auxiliary counter that sometimes kicks off collection.
-    defer_count: Cell<Wrapping<usize>>,
+    buffer: UnsafeCell<Vec<Deferred>>,
 }
 
 // Make sure `Local` is less than or equal to 2048 bytes.
@@ -271,21 +258,25 @@ fn local_size() {
     // );
 }
 
+#[cfg(not(crossbeam_loom))]
 static LOCAL_ID: AtomicUsize = AtomicUsize::new(0);
 
 impl Local {
     /// Number of defers after which a participant will execute some deferred functions from the
     /// global queue.
-    const DEFERS_BETWEEN_COLLECT: usize = 4;
+    const DEFERS_BETWEEN_COLLECT: usize = 8;
 
     /// Registers a new `Local` in the provided `Global`.
     pub(crate) fn register(collector: &Collector) -> LocalHandle {
         let local = Rc::new(Local {
+            #[cfg(not(crossbeam_loom))]
             id: LOCAL_ID.fetch_add(1, Ordering::Relaxed),
+            #[cfg(crossbeam_loom)]
+            id: 0,
             epoch: Cell::new(0),
             collector: collector.clone(),
             guard_count: Cell::new(0),
-            defer_count: Cell::new(Wrapping(0)),
+            buffer: UnsafeCell::new(vec![]),
         });
         LocalHandle { local }
     }
@@ -318,23 +309,25 @@ impl Local {
     /// # Safety
     ///
     /// It should be safe for another thread to execute the given function.
-    pub(crate) unsafe fn defer(&self, deferred: Deferred, guard: &Guard) {
-        // Safety: We are pinned to self.epoch at this point
-        let bags = &self.global().garbage[self.epoch()];
-        bags[self.id % bags.len()].push(deferred, guard);
+    pub(crate) unsafe fn defer(&self, deferred: Deferred) {
+        // Safety: We are !Send and !Sync and not handing out &mut's
+        let buffered = self.buffer.with_mut(|b| {
+            (*b).push(deferred);
+            (*b).len()
+        });
 
-        // Increment the defer counter.
-        let count = self.defer_count.get();
-        self.defer_count.set(count + Wrapping(1));
         // After every `DEFERS_BETWEEN_COLLECT` try advancing the epoch and collecting
         // some garbage.
-        if count.0 % Self::DEFERS_BETWEEN_COLLECT == 0 {
-            self.flush(guard);
+        if buffered > Self::DEFERS_BETWEEN_COLLECT {
+            self.flush();
         }
     }
 
-    pub(crate) fn flush(&self, guard: &Guard) {
-        self.global().collect(guard);
+    pub(crate) fn flush(&self) {
+        // Safety: We are pinned to self.epoch at this point
+        let bag = &self.global().garbage[self.epoch()];
+        unsafe { self.buffer.with_mut(|buffer| bag.try_push(&mut *buffer)) };
+        self.global().collect(self);
     }
 
     /// Pins the `Local`.
@@ -377,6 +370,19 @@ impl Local {
     }
 }
 
+impl Drop for Local {
+    fn drop(&mut self) {
+        self.pin();
+        let bag = &self.global().garbage[self.epoch()];
+        self.buffer.with_mut(|buffer| unsafe {
+            while !(*buffer).is_empty() {
+                bag.try_push(&mut *buffer)
+            }
+        });
+        self.unpin();
+    }
+}
+
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -403,19 +409,19 @@ mod tests {
             FLAG.fetch_add(1, Ordering::Relaxed);
         }
 
-        let bag = Bag::new();
+        let bag = Bag::default();
+        let mut buffer1 = (0..3).map(|_| Deferred::new(incr)).collect();
+        let mut buffer2 = (0..18).map(|_| Deferred::new(incr)).collect();
 
-        let guard = unsafe { crate::unprotected() };
-
-        for _ in 0..15 {
-            unsafe { bag.push(Deferred::new(incr), guard) };
-            assert_eq!(FLAG.load(Ordering::Relaxed), 0);
-        }
-        unsafe { bag.push(Deferred::new(incr), guard) };
-        assert_eq!(FLAG.load(Ordering::Relaxed), 16);
-        unsafe { bag.push(Deferred::new(incr), guard) };
-        assert_eq!(FLAG.load(Ordering::Relaxed), 16);
+        unsafe { bag.try_push(&mut buffer1) };
+        assert_eq!(buffer1.len(), 0);
+        assert_eq!(FLAG.load(Ordering::Relaxed), 0);
+        unsafe { bag.call() };
+        assert_eq!(FLAG.load(Ordering::Relaxed), 3);
+        unsafe { bag.try_push(&mut buffer2) };
+        assert_eq!(buffer2.len(), 0);
+        assert_eq!(FLAG.load(Ordering::Relaxed), 3);
         drop(bag);
-        assert_eq!(FLAG.load(Ordering::Relaxed), 17);
+        assert_eq!(FLAG.load(Ordering::Relaxed), 21);
     }
 }

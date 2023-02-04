@@ -5,18 +5,12 @@ use crossbeam_utils::CachePadded;
 
 const STRIPES: usize = 16;
 
+#[derive(Default)]
 pub(crate) struct StripedRefcount {
     counts: [CachePadded<AtomicUsize>; STRIPES],
 }
 
 impl StripedRefcount {
-    pub(crate) fn new() -> Self {
-        const INIT: CachePadded<AtomicUsize> = CachePadded::new(AtomicUsize::new(0));
-        Self {
-            counts: [INIT; STRIPES],
-        }
-    }
-
     pub(crate) fn increment(&self, hint: usize, order: Ordering) {
         self.counts[hint % STRIPES].fetch_add(1, order);
     }
