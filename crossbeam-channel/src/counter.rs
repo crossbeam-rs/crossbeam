@@ -118,14 +118,18 @@ impl<C> Receiver<C> {
     /// Releases the receiver reference.
     ///
     /// Function `disconnect` will be called if this is the last receiver reference.
-    pub(crate) unsafe fn release<F: FnOnce(&C) -> bool>(&self, disconnect: F) {
+    pub(crate) unsafe fn release<T, F: FnOnce(&C) -> T>(&self, disconnect: F) -> Option<T> {
+        let mut from_callback = None;
+
         if self.counter().receivers.fetch_sub(1, Ordering::AcqRel) == 1 {
-            disconnect(&self.counter().chan);
+            from_callback = Some(disconnect(&self.counter().chan));
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
                 drop(Box::from_raw(self.counter));
             }
         }
+
+        from_callback
     }
 }
 

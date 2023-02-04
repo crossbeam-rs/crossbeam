@@ -549,10 +549,8 @@ impl<T> Channel<T> {
     /// Disconnects receivers.
     ///
     /// Returns `true` if this call disconnected the channel.
-    pub(crate) fn disconnect_receivers(&self) -> bool {
-        let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
-
-        if tail & MARK_BIT == 0 {
+    pub(crate) fn disconnect_receivers_and_discard_messages(&self) -> bool {
+        if self.disconnect_receivers() {
             // If receivers are dropped first, discard all messages to free
             // memory eagerly.
             self.discard_all_messages();
@@ -562,10 +560,15 @@ impl<T> Channel<T> {
         }
     }
 
+    pub(crate) fn disconnect_receivers(&self) -> bool {
+        let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
+        tail & MARK_BIT == 0
+    }
+
     /// Discards all messages.
     ///
     /// This method should only be called when all receivers are dropped.
-    fn discard_all_messages(&self) {
+    pub(crate) fn discard_all_messages(&self) {
         let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
         loop {
