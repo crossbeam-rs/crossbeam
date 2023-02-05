@@ -164,7 +164,7 @@ impl Bag {
 impl Default for Bag {
     fn default() -> Self {
         Bag {
-            current: AtomicPtr::new(Box::into_raw(Box::new(Segment::new(16)))),
+            current: AtomicPtr::new(Box::into_raw(Box::new(Segment::new(64)))),
         }
     }
 }
@@ -217,11 +217,11 @@ impl Global {
         if
         // Sync with uses of garbage in previous epoch
         self.pins[previous].load(Ordering::Acquire) == 0
-            // Lock out other calls, and sync with next epoch
-                && self
-                    .epoch
-                    .compare_exchange(local.epoch(), next, Ordering::Release, Ordering::Relaxed)
-                    .is_ok()
+        // Lock out other calls, and sync with next epoch
+        && self
+            .epoch
+            .compare_exchange(local.epoch(), next, Ordering::Release, Ordering::Relaxed)
+            .is_ok()
         {
             unsafe { self.garbage[previous2].call() }
         }
@@ -264,7 +264,7 @@ static LOCAL_ID: AtomicUsize = AtomicUsize::new(0);
 impl Local {
     /// Number of defers after which a participant will execute some deferred functions from the
     /// global queue.
-    const DEFERS_BETWEEN_COLLECT: usize = 8;
+    const DEFERS_BETWEEN_COLLECT: usize = 16;
 
     /// Registers a new `Local` in the provided `Global`.
     pub(crate) fn register(collector: &Collector) -> LocalHandle {
@@ -323,6 +323,7 @@ impl Local {
         }
     }
 
+    #[cold]
     pub(crate) fn flush(&self) {
         // Safety: We are pinned to self.epoch at this point
         let bag = &self.global().garbage[self.epoch()];
