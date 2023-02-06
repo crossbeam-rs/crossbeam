@@ -344,9 +344,6 @@ mod tests {
 
         let handle = collector.register();
         for _ in 0..6 {
-            // if DROPS.load(Ordering::Relaxed) == COUNT * THREADS {
-            //     break;
-            // }
             handle.pin().flush();
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT * THREADS);
