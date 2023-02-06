@@ -1,17 +1,9 @@
 //! The global data and participant for garbage collection.
 //!
-//! # Registration
-//!
-//! In order to track all participants in one place, we need some form of participant
-//! registration. When a participant is created, it is registered to a global lock-free
-//! singly-linked list of registries; and when a participant is leaving, it is unregistered from the
-//! list.
-//!
 //! # Pinning
 //!
-//! Every participant contains an integer that tells whether the participant is pinned and if so,
-//! what was the global epoch at the time it was pinned. Participants also hold a pin counter that
-//! aids in periodic global epoch advancement.
+//! When a participant is pinned, it increments a global counter for the current epoch. When it is
+//! unpinned, it decrements that counter.
 //!
 //! When a participant is pinned, a `Guard` is returned as a witness that the participant is pinned.
 //! Guards are necessary for performing atomic operations, and for freeing/dropping locations.
@@ -20,17 +12,26 @@
 //!
 //! Objects that get unlinked from concurrent data structures must be stashed away until the global
 //! epoch sufficiently advances so that they become safe for destruction. Pointers to such objects
-//! are pushed into a thread-local bag, and when it becomes full, the bag is marked with the current
-//! global epoch and pushed into the global queue of bags. We store objects in thread-local storages
-//! for amortizing the synchronization cost of pushing the garbages to a global queue.
+//! are pushed into a thread-local array, and when it becomes larger than a certain size, the items
+//! are moved to the global garbage pile for the current epock. We store objects in thread-local
+//! storage to reduce contention on the global data structure. Whenever objects are put on a global
+//! pile, the current thread also tries to advance the epoch.
 //!
-//! # Global queue
+//! # Ordering
 //!
-//! Whenever a bag is pushed into a queue, the objects in some bags in the queue are collected and
-//! destroyed along the way. This design reduces contention on data structures. The global queue
-//! cannot be explicitly accessed: the only way to interact with it is by calling functions
-//! `defer()` that adds an object to the thread-local bag, or `collect()` that manually triggers
-//! garbage collection.
+//! There may be threads pinned in up to two epochs at once. This is required for wait-freedom.
+//! A thread can advance the epoch once it sees that no threads are pinned in the epoch before it.
+//! This ensures that all pins in epoch n happen-before all pins in epoch n+2, and the thread that
+//! advances from n+1 to n+2 additionally happens-after all pins in n+1. The first condition means
+//! that if a thread pinned in n unlinks a pointer from the concurrent data structure, only pins in
+//! n+1 and earler could have found it, and thus the thread that advanced to n+2 may safely delete
+//! it.
+//!
+//! # Global piles
+//!
+//! Each epoch has its own global pile of garbage. The piles may be concurrently inserted into,
+//! but clearing them is not thread safe. Instead, we use four epochs. The pile filled in n is
+//! cleared during n+2, and everything in n+2 happens-before n+4, so n+4 can re-use n's pile.
 //!
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
@@ -54,6 +55,7 @@ enum PushResult {
     ShouldRealloc,
 }
 
+/// An array of [Deferred]
 struct Segment {
     len: CachePadded<AtomicUsize>,
     deferreds: Box<[MaybeUninit<UnsafeCell<Deferred>>]>,
@@ -93,62 +95,68 @@ impl Segment {
             deferreds: uninit_boxed_slice(capacity),
         }
     }
+
     fn capacity(&self) -> usize {
         self.deferreds.len()
     }
-    fn call(&self) {
-        let end = self.capacity().min(self.len.load(Ordering::Relaxed));
-        for deferred in &self.deferreds[..end] {
-            unsafe { deferred.assume_init_read().with(|ptr| ptr.read().call()) }
-        }
-        self.len.store(0, Ordering::Relaxed);
-    }
-    fn try_push(&self, deferred: &mut Vec<Deferred>) -> PushResult {
+
+    /// # Safety:
+    /// This must not be called concurrently with [call()].
+    unsafe fn try_push(&self, deferred: &mut Vec<Deferred>) -> PushResult {
         let slot = self.len.fetch_add(deferred.len(), Ordering::Relaxed);
         if slot >= self.capacity() {
             return PushResult::Done;
         }
         let end = slot + deferred.len();
         let not_pushed = end.saturating_sub(self.capacity());
-        unsafe {
-            for (slot, deferred) in self.deferreds[slot..]
-                .iter()
-                .zip(deferred.drain(not_pushed..))
-            {
-                // Work around lack of UnsafeCell::raw_get (1.56)
-                #[cfg(crossbeam_loom)]
-                slot.assume_init_ref().with_mut(|slot| slot.write(deferred));
-                #[cfg(not(crossbeam_loom))]
-                core::ptr::write(slot.as_ptr() as *mut _, deferred);
-            }
-        };
+        for (slot, deferred) in self.deferreds[slot..]
+            .iter()
+            .zip(deferred.drain(not_pushed..))
+        {
+            // Work around lack of UnsafeCell::raw_get (1.56)
+            #[cfg(crossbeam_loom)]
+            slot.assume_init_ref().with_mut(|slot| slot.write(deferred));
+            #[cfg(not(crossbeam_loom))]
+            core::ptr::write(slot.as_ptr() as *mut _, deferred);
+        }
         if end >= self.capacity() {
             PushResult::ShouldRealloc
         } else {
             PushResult::Done
         }
     }
+
+    /// # Safety:
+    /// This must not be called concurrently with [try_push()] or [call()].
+    unsafe fn call(&self) {
+        let end = self.capacity().min(self.len.load(Ordering::Relaxed));
+        for deferred in &self.deferreds[..end] {
+            deferred.assume_init_read().with(|ptr| ptr.read().call())
+        }
+        self.len.store(0, Ordering::Relaxed);
+    }
 }
 
 impl Drop for Segment {
     fn drop(&mut self) {
-        self.call()
+        unsafe { self.call() }
     }
 }
 
-/// A bag of deferred functions.
-pub(crate) struct Bag {
+/// A stack of garbage.
+struct Pile {
     /// Stashed objects.
     current: AtomicPtr<Segment>,
 }
 
-impl Bag {
-    /// This must be synchronized with emptying the bag
-    pub(crate) unsafe fn try_push(&self, deferred: &mut Vec<Deferred>) {
+impl Pile {
+    /// # Safety:
+    /// This must not be called concurrently with [call()].
+    unsafe fn try_push(&self, deferred: &mut Vec<Deferred>) {
         let segment = self.current.load(Ordering::Acquire);
         if let PushResult::ShouldRealloc = (*segment).try_push(deferred) {
-            println!("{}", (*segment).capacity() * 2);
             let next = Box::into_raw(Box::new(Segment::new((*segment).capacity() * 2)));
+            // Synchronize initialization of the Segment
             self.current.store(next, Ordering::Release);
             deferred.push(Deferred::new(move || drop(Box::from_raw(segment))));
             // We're potentially holding a lot of garbage now, make an attempt to get rid of it sooner
@@ -156,32 +164,33 @@ impl Bag {
         }
     }
 
-    pub(crate) unsafe fn call(&self) {
+    /// # Safety:
+    /// This must not be called concurrently with [try_push()] or [call()].
+    unsafe fn call(&self) {
         (*self.current.load(Ordering::Relaxed)).call()
     }
 }
 
-impl Default for Bag {
+impl Default for Pile {
     fn default() -> Self {
-        Bag {
+        Pile {
             current: AtomicPtr::new(Box::into_raw(Box::new(Segment::new(64)))),
         }
     }
 }
 
-impl Drop for Bag {
+impl Drop for Pile {
     fn drop(&mut self) {
         unsafe {
             // Ordering is taken care of because `Global` is behind an `Arc`
-            self.call();
             drop(Box::from_raw(self.current.load(Ordering::Relaxed)));
         }
     }
 }
 
-impl fmt::Debug for Bag {
+impl fmt::Debug for Pile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Bag").finish_non_exhaustive()
+        f.debug_struct("Pile").finish_non_exhaustive()
     }
 }
 
@@ -193,7 +202,7 @@ pub(crate) struct Global {
     /// The number of threads pinned in each epoch, plus one for epochs that
     /// aren't allowed to be collected right now.
     pins: [StripedRefcount; 4],
-    garbage: [Bag; 4],
+    garbage: [Pile; 4],
 }
 
 impl Global {
@@ -205,11 +214,7 @@ impl Global {
 
     /// Attempt to collect global garbage and advance the epoch
     ///
-    /// Note: This may itself produce garbage and in turn allocate new bags.
-    ///
-    /// `pin()` rarely calls `collect()`, so we want the compiler to place that call on a cold
-    /// path. In other words, we want the compiler to optimize branching for the case when
-    /// `collect()` is not called.
+    /// Note: This may itself produce garbage.
     pub(crate) fn collect(&self, local: &Local) {
         let next = (local.epoch() + 1) % 4;
         let previous2 = (local.epoch() + 2) % 4;
@@ -230,34 +235,34 @@ impl Global {
 
 /// Participant for garbage collection.
 pub(crate) struct Local {
-    id: usize,
-
-    /// The local epoch.
-    epoch: Cell<usize>,
-
     /// A reference to the global data.
     ///
     /// When all guards and handles get dropped, this reference is destroyed.
     collector: Collector,
 
+    /// The local epoch.
+    epoch: Cell<usize>,
+
     /// The number of guards keeping this participant pinned.
     guard_count: Cell<usize>,
 
+    /// Locally stored Deferred functions. Pushed in bulk to reduce contention.
     buffer: UnsafeCell<Vec<Deferred>>,
+
+    /// A different number for each Local. Used as a hint for the [StripedRefcount].
+    id: usize,
 }
 
 // Make sure `Local` is less than or equal to 2048 bytes.
-// https://github.com/crossbeam-rs/crossbeam/issues/551
-#[cfg(not(any(crossbeam_sanitize, miri)))] // `crossbeam_sanitize` and `miri` reduce the size of `Local`
 #[test]
 fn local_size() {
-    // TODO: https://github.com/crossbeam-rs/crossbeam/issues/869
-    // assert!(
-    //     core::mem::size_of::<Local>() <= 2048,
-    //     "An allocation of `Local` should be <= 2048 bytes."
-    // );
+    assert!(
+        core::mem::size_of::<Local>() <= 2048,
+        "An allocation of `Local` should be <= 2048 bytes."
+    );
 }
 
+// AtomicUsize::new is not const in Loom.
 #[cfg(not(crossbeam_loom))]
 static LOCAL_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -266,8 +271,8 @@ impl Local {
     /// global queue.
     const DEFERS_BETWEEN_COLLECT: usize = 16;
 
-    /// Registers a new `Local` in the provided `Global`.
-    pub(crate) fn register(collector: &Collector) -> LocalHandle {
+    /// Create a new [Local]
+    pub(crate) fn new(collector: &Collector) -> LocalHandle {
         let local = Rc::new(Local {
             #[cfg(not(crossbeam_loom))]
             id: LOCAL_ID.fetch_add(1, Ordering::Relaxed),
@@ -299,6 +304,7 @@ impl Local {
         self.guard_count.get() > 0
     }
 
+    /// Returns the most recent epoch the participant was pinned in.
     #[inline]
     pub(crate) fn epoch(&self) -> usize {
         self.epoch.get()
@@ -323,6 +329,9 @@ impl Local {
         }
     }
 
+    /// `defer()` rarely calls `flush()`, so we want the compiler to place that call on a
+    /// cold path. In other words, we want the compiler to optimize branching for the case
+    /// when `flush()` is not called.
     #[cold]
     pub(crate) fn flush(&self) {
         // Safety: We are pinned to self.epoch at this point
@@ -410,7 +419,7 @@ mod tests {
             FLAG.fetch_add(1, Ordering::Relaxed);
         }
 
-        let bag = Bag::default();
+        let bag = Pile::default();
         let mut buffer1 = (0..3).map(|_| Deferred::new(incr)).collect();
         let mut buffer2 = (0..18).map(|_| Deferred::new(incr)).collect();
 

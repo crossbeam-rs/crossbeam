@@ -44,7 +44,7 @@ impl Collector {
 
     /// Registers a new handle for the collector.
     pub fn register(&self) -> LocalHandle {
-        Local::register(self)
+        Local::new(self)
     }
 }
 
