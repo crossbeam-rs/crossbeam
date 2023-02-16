@@ -21,20 +21,13 @@ use crate::internal::{Global, Local};
 use crate::primitive::sync::Arc;
 
 /// An epoch-based garbage collector.
+#[derive(Clone, Default, Debug)]
 pub struct Collector {
     pub(crate) global: Arc<Global>,
 }
 
 unsafe impl Send for Collector {}
 unsafe impl Sync for Collector {}
-
-impl Default for Collector {
-    fn default() -> Self {
-        Self {
-            global: Arc::new(Global::new()),
-        }
-    }
-}
 
 impl Collector {
     /// Creates a new collector.
@@ -45,21 +38,6 @@ impl Collector {
     /// Registers a new handle for the collector.
     pub fn register(&self) -> LocalHandle {
         Local::new(self)
-    }
-}
-
-impl Clone for Collector {
-    /// Creates another reference to the same garbage collector.
-    fn clone(&self) -> Self {
-        Collector {
-            global: self.global.clone(),
-        }
-    }
-}
-
-impl fmt::Debug for Collector {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad("Collector { .. }")
     }
 }
 
@@ -196,9 +174,8 @@ mod tests {
             guard.flush();
         }
 
-        while DROPS.load(Ordering::Relaxed) < COUNT {
-            let guard = &handle.pin();
-            guard.flush();
+        for _ in 0..6 {
+            handle.pin().flush();
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT);
     }
@@ -227,9 +204,8 @@ mod tests {
             guard.flush();
         }
 
-        while DESTROYS.load(Ordering::Relaxed) < COUNT {
-            let guard = &handle.pin();
-            guard.flush();
+        for _ in 0..6 {
+            handle.pin().flush();
         }
         assert_eq!(DESTROYS.load(Ordering::Relaxed), COUNT);
     }
@@ -265,7 +241,7 @@ mod tests {
             guard.flush();
         }
 
-        while DROPS.load(Ordering::Relaxed) < COUNT {
+        for _ in 0..6 {
             guard.repin();
             guard.flush();
         }
@@ -300,9 +276,8 @@ mod tests {
             guard.flush();
         }
 
-        while DESTROYS.load(Ordering::Relaxed) < COUNT {
-            let guard = &handle.pin();
-            guard.flush();
+        for _ in 0..6 {
+            handle.pin().flush();
         }
         assert_eq!(DESTROYS.load(Ordering::Relaxed), COUNT);
     }

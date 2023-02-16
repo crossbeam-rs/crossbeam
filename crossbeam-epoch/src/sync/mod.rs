@@ -4,4 +4,4 @@
 #[cfg(not(crossbeam_loom))]
 pub(crate) mod once_lock;
 
-pub(crate) mod striped_refcount;
+pub(crate) mod rwlock;

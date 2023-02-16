@@ -37,7 +37,7 @@
 //! destroyed as soon as the data structure gets dropped.
 
 use crate::primitive::cell::UnsafeCell;
-use crate::sync::striped_refcount::StripedRefcount;
+use crate::sync::rwlock::RwLock;
 use core::cell::Cell;
 use core::fmt;
 use core::mem::MaybeUninit;
@@ -195,42 +195,14 @@ impl fmt::Debug for Pile {
 }
 
 /// The global data for a garbage collector.
-#[derive(Default)]
+#[derive(Debug)]
 pub(crate) struct Global {
     /// The global epoch.
     pub(crate) epoch: CachePadded<AtomicUsize>,
     /// The number of threads pinned in each epoch, plus one for epochs that
     /// aren't allowed to be collected right now.
-    pins: [StripedRefcount; 4],
-    garbage: [Pile; 4],
-}
-
-impl Global {
-    /// Creates a new global data for garbage collection.
-    #[inline]
-    pub(crate) fn new() -> Self {
-        Default::default()
-    }
-
-    /// Attempt to collect global garbage and advance the epoch
-    ///
-    /// Note: This may itself produce garbage.
-    pub(crate) fn collect(&self, local: &Local) {
-        let next = (local.epoch() + 1) % 4;
-        let previous2 = (local.epoch() + 2) % 4;
-        let previous = (local.epoch() + 3) % 4;
-        if
-        // Sync with uses of garbage in previous epoch
-        self.pins[previous].load(Ordering::Acquire) == 0
-        // Lock out other calls, and sync with next epoch
-        && self
-            .epoch
-            .compare_exchange(local.epoch(), next, Ordering::Release, Ordering::Relaxed)
-            .is_ok()
-        {
-            unsafe { self.garbage[previous2].call() }
-        }
-    }
+    pins: [RwLock; 3],
+    garbage: [Pile; 3],
 }
 
 /// Participant for garbage collection.
@@ -249,7 +221,7 @@ pub(crate) struct Local {
     /// Locally stored Deferred functions. Pushed in bulk to reduce contention.
     buffer: UnsafeCell<Vec<Deferred>>,
 
-    /// A different number for each Local. Used as a hint for the [StripedRefcount].
+    /// A different number for each Local. Used as a hint for the [RwLock].
     id: usize,
 }
 
@@ -262,9 +234,13 @@ fn local_size() {
     );
 }
 
-// AtomicUsize::new is not const in Loom.
 #[cfg(not(crossbeam_loom))]
 static LOCAL_ID: AtomicUsize = AtomicUsize::new(0);
+#[cfg(crossbeam_loom)]
+loom::lazy_static! {
+    // AtomicUsize::new is not const in Loom.
+    static ref LOCAL_ID: AtomicUsize = AtomicUsize::new(0);
+}
 
 impl Local {
     /// Number of defers after which a participant will execute some deferred functions from the
@@ -274,10 +250,7 @@ impl Local {
     /// Create a new [Local]
     pub(crate) fn new(collector: &Collector) -> LocalHandle {
         let local = Rc::new(Local {
-            #[cfg(not(crossbeam_loom))]
             id: LOCAL_ID.fetch_add(1, Ordering::Relaxed),
-            #[cfg(crossbeam_loom)]
-            id: 0,
             epoch: Cell::new(0),
             collector: collector.clone(),
             guard_count: Cell::new(0),
@@ -328,6 +301,56 @@ impl Local {
             self.flush();
         }
     }
+}
+
+impl Local {
+    /// Pins the `Local`.
+    #[inline]
+    pub(crate) fn pin(&self) {
+        let guard_count = self.guard_count.get();
+        self.guard_count.set(guard_count.checked_add(1).unwrap());
+
+        if guard_count == 0 {
+            let mut epoch = self.global().epoch.load(Ordering::Relaxed);
+            while !self.global().pins[epoch].try_rlock(self.id) {
+                epoch = (epoch + 1) % 3;
+            }
+            // println!("rlock({}, {})", epoch, self.id);
+            self.epoch.set(epoch);
+        }
+    }
+
+    /// Unpins the `Local`.
+    #[inline]
+    pub(crate) fn unpin(&self) {
+        let guard_count = self.guard_count.get();
+        self.guard_count.set(guard_count - 1);
+
+        if guard_count == 1 {
+            // println!("runlock({}, {})", self.epoch(), self.id);
+            self.global().pins[self.epoch()].runlock(self.id);
+        }
+    }
+
+    /// Unpins and then pins the `Local`.
+    #[inline]
+    pub(crate) fn repin(&self) {
+        let guard_count = self.guard_count.get();
+
+        // Update the local epoch only if there's only one guard.
+        if guard_count == 1 {
+            let mut new_epoch = self.global().epoch.load(Ordering::Relaxed);
+            if self.epoch() != new_epoch {
+                // println!("runlock({}, {})", self.epoch(), self.id);
+                self.global().pins[self.epoch()].runlock(self.id);
+                while !self.global().pins[new_epoch].try_rlock(self.id) {
+                    new_epoch = self.global().epoch.load(Ordering::Relaxed);
+                }
+                // println!("rlock({}, {})", new_epoch, self.id);
+                self.epoch.set(new_epoch);
+            }
+        }
+    }
 
     /// `defer()` rarely calls `flush()`, so we want the compiler to place that call on a
     /// cold path. In other words, we want the compiler to optimize branching for the case
@@ -339,43 +362,36 @@ impl Local {
         unsafe { self.buffer.with_mut(|buffer| bag.try_push(&mut *buffer)) };
         self.global().collect(self);
     }
+}
 
-    /// Pins the `Local`.
-    #[inline]
-    pub(crate) fn pin(&self) {
-        let guard_count = self.guard_count.get();
-        self.guard_count.set(guard_count.checked_add(1).unwrap());
-
-        if guard_count == 0 {
-            self.epoch.set(self.global().epoch.load(Ordering::Acquire));
-            self.global().pins[self.epoch()].increment(self.id, Ordering::Relaxed);
-        }
+impl Default for Global {
+    fn default() -> Self {
+        let result = Global {
+            epoch: Default::default(),
+            pins: Default::default(),
+            garbage: Default::default(),
+        };
+        result.pins[1].try_wlock();
+        result
     }
+}
 
-    /// Unpins the `Local`.
-    #[inline]
-    pub(crate) fn unpin(&self) {
-        let guard_count = self.guard_count.get();
-        self.guard_count.set(guard_count - 1);
-
-        if guard_count == 1 {
-            self.global().pins[self.epoch()].decrement(self.id, Ordering::Release);
-        }
-    }
-
-    /// Unpins and then pins the `Local`.
-    #[inline]
-    pub(crate) fn repin(&self) {
-        let guard_count = self.guard_count.get();
-
-        // Update the local epoch only if there's only one guard.
-        if guard_count == 1 {
-            let new_epoch = self.global().epoch.load(Ordering::Acquire);
-            if self.epoch() != new_epoch {
-                self.global().pins[self.epoch()].decrement(self.id, Ordering::Release);
-                self.global().pins[new_epoch].increment(self.id, Ordering::Relaxed);
-                self.epoch.set(new_epoch);
+impl Global {
+    /// Attempt to collect global garbage and advance the epoch
+    ///
+    /// Note: This may itself produce garbage.
+    pub(crate) fn collect(&self, local: &Local) {
+        let next = (local.epoch() + 1) % 3;
+        let previous = (local.epoch() + 2) % 3;
+        if self.pins[previous].try_wlock() {
+            // println!("wlock({previous})");
+            scopeguard::defer! {
+                // println!("wunlock({next})");
+                self.pins[next].wunlock();
+                self.epoch.store(next, Ordering::Relaxed);
+                // println!("epoch = {next}");
             }
+            unsafe { self.garbage[next].call() }
         }
     }
 }
