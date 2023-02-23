@@ -139,6 +139,7 @@ impl Segment {
 
 impl Drop for Segment {
     fn drop(&mut self) {
+        return;
         unsafe { self.call() }
     }
 }
@@ -315,7 +316,7 @@ impl Local {
             while !self.global().pins[epoch].try_rlock(self.id) {
                 epoch = (epoch + 1) % 3;
             }
-            // println!("rlock({}, {})", epoch, self.id);
+            println!("{}: rlock({})", self.id, epoch);
             self.epoch.set(epoch);
         }
     }
@@ -327,7 +328,7 @@ impl Local {
         self.guard_count.set(guard_count - 1);
 
         if guard_count == 1 {
-            // println!("runlock({}, {})", self.epoch(), self.id);
+            println!("{}: runlock({})", self.id, self.epoch());
             self.global().pins[self.epoch()].runlock(self.id);
         }
     }
@@ -341,12 +342,12 @@ impl Local {
         if guard_count == 1 {
             let mut new_epoch = self.global().epoch.load(Ordering::Relaxed);
             if self.epoch() != new_epoch {
-                // println!("runlock({}, {})", self.epoch(), self.id);
+                println!("{}: runlock({})", self.id, self.epoch());
                 self.global().pins[self.epoch()].runlock(self.id);
                 while !self.global().pins[new_epoch].try_rlock(self.id) {
-                    new_epoch = self.global().epoch.load(Ordering::Relaxed);
+                    new_epoch = (new_epoch + 1) % 3;
                 }
-                // println!("rlock({}, {})", new_epoch, self.id);
+                println!("{}: rlock({})", self.id, new_epoch);
                 self.epoch.set(new_epoch);
             }
         }
@@ -384,12 +385,12 @@ impl Global {
         let next = (local.epoch() + 1) % 3;
         let previous = (local.epoch() + 2) % 3;
         if self.pins[previous].try_wlock() {
-            // println!("wlock({previous})");
+            println!("{}: wlock({previous})", local.id);
             scopeguard::defer! {
-                // println!("wunlock({next})");
+                println!("{}: wunlock({next})", local.id);
                 self.pins[next].wunlock();
                 self.epoch.store(next, Ordering::Relaxed);
-                // println!("epoch = {next}");
+                println!("{}: epoch = {next}", local.id);
             }
             unsafe { self.garbage[next].call() }
         }
@@ -398,6 +399,7 @@ impl Global {
 
 impl Drop for Local {
     fn drop(&mut self) {
+        return;
         self.pin();
         let bag = &self.global().garbage[self.epoch()];
         self.buffer.with_mut(|buffer| unsafe {
