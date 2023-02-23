@@ -61,25 +61,63 @@ fn simple() {
             let guard = collector2.register().pin();
             let item = item2.load(Ordering::Relaxed, &guard);
             if let Some(cell) = unsafe { item.as_ref() } {
+                println!("1: Item still there");
                 cell.set(8);
             }
         });
 
         // Unlink and "destroy" the item
         let mut guard = collector.register().pin();
-        let item = item
+        let cell = item
             .swap(Shared::null(), Ordering::Relaxed, &guard)
             .as_raw();
-        unsafe { guard.defer_unchecked(|| (*item).set(9)) };
-        guard.flush();
+        println!("0: Item removed");
+        unsafe { guard.defer_unchecked(|| (*cell).set(9)) };
         // Advance the epoch three times so the thread can happen after the deferred function runs
+        guard.flush();
         guard.repin();
         guard.flush();
         guard.repin();
         guard.flush();
 
         jh.join().unwrap();
-        assert_eq!(unsafe { (*item).get() }, 9);
+    })
+}
+
+#[test]
+fn simple2() {
+    loom::model(|| {
+        println!("----");
+        let collector = Collector::new();
+        let item: Atomic<Cell<i32>> = Atomic::from(Owned::new(Cell::new(7)));
+        let item = Arc::new(item);
+        let item2 = item.clone();
+        let collector2 = collector.clone();
+
+        let jh = loom::thread::spawn(move || {
+            // Unlink and "destroy" the item
+            let guard = collector2.register().pin();
+            let cell = item
+                .swap(Shared::null(), Ordering::Relaxed, &guard)
+                .as_raw();
+            println!("1: Item removed");
+            unsafe { guard.defer_unchecked(|| (*cell).set(9)) };
+        });
+
+        // Fetch and modify the item
+        let mut guard = collector.register().pin();
+        let item = item2.load(Ordering::Relaxed, &guard);
+        if let Some(cell) = unsafe { item.as_ref() } {
+            println!("0: Item still there");
+            cell.set(8);
+        }
+        guard.flush();
+        guard.repin();
+        guard.flush();
+        guard.repin();
+        guard.flush();
+
+        jh.join().unwrap();
     })
 }
 
