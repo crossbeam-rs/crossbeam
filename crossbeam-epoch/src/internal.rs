@@ -219,7 +219,7 @@ pub(crate) struct Local {
     guard_count: Cell<usize>,
 
     /// Locally stored Deferred functions. Pushed in bulk to reduce contention.
-    buffer: UnsafeCell<Vec<Deferred>>,
+    buffer: Cell<Vec<Deferred>>,
 
     /// A different number for each Local. Used as a hint for the [RwLock].
     id: usize,
@@ -254,7 +254,7 @@ impl Local {
             epoch: Cell::new(0),
             collector: collector.clone(),
             guard_count: Cell::new(0),
-            buffer: UnsafeCell::new(vec![]),
+            buffer: Cell::new(vec![]),
         });
         LocalHandle { local }
     }
@@ -289,11 +289,10 @@ impl Local {
     ///
     /// It should be safe for another thread to execute the given function.
     pub(crate) unsafe fn defer(&self, deferred: Deferred) {
-        // Safety: We are !Send and !Sync and not handing out &mut's
-        let buffered = self.buffer.with_mut(|b| {
-            (*b).push(deferred);
-            (*b).len()
-        });
+        let mut buffer = self.buffer.replace(vec![]);
+        buffer.push(deferred);
+        let buffered = buffer.len();
+        self.buffer.set(buffer);
 
         // After every `DEFERS_BETWEEN_COLLECT` try advancing the epoch and collecting
         // some garbage.
@@ -357,9 +356,11 @@ impl Local {
     /// when `flush()` is not called.
     #[cold]
     pub(crate) fn flush(&self) {
-        // Safety: We are pinned to self.epoch at this point
         let bag = &self.global().garbage[self.epoch()];
-        unsafe { self.buffer.with_mut(|buffer| bag.try_push(&mut *buffer)) };
+        let mut buffer = self.buffer.replace(vec![]);
+        // Safety: We are pinned to self.epoch at this point
+        unsafe { bag.try_push(&mut buffer) };
+        self.buffer.set(buffer);
         self.global().collect(self);
     }
 }
@@ -398,16 +399,16 @@ impl Global {
 
 impl Drop for Local {
     fn drop(&mut self) {
-        self.buffer.with_mut(|buffer| unsafe {
-            if !(*buffer).is_empty() {
-                self.pin();
-                let bag = &self.global().garbage[self.epoch()];
-                while !(*buffer).is_empty() {
-                    bag.try_push(&mut *buffer)
-                }
-                self.unpin();
+        let mut buffer = self.buffer.replace(vec![]);
+        if !buffer.is_empty() {
+            self.pin();
+            let bag = &self.global().garbage[self.epoch()];
+            while !buffer.is_empty() {
+                // Safety: We are pinned to self.epoch at this point
+                unsafe { bag.try_push(&mut buffer) }
             }
-        });
+            self.unpin();
+        }
     }
 }
 
