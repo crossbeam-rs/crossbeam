@@ -23,7 +23,6 @@ impl RefCount {
         if state > MAX_FAILED_RLOCKS {
             panic!("Too many failed pins");
         }
-        // println!("Incremented state was {state:x}");
         return false;
     }
     pub(crate) fn done_read(&self, hint: usize) {

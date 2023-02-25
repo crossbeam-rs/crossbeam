@@ -23,17 +23,17 @@
 //! A thread can advance the epoch once it sees that no threads are pinned in the epoch before it.
 //! This ensures that all pins in epoch n happen-before all pins in epoch n+2, and the thread that
 //! advances from n+1 to n+2 additionally happens-after all pins in n+1. The first condition means
-//! that if a thread pinned in n unlinks a pointer from the concurrent data structure, only pins in
-//! n+1 and earler could have found it, and thus the thread that advanced to n+2 may safely delete
-//! it.
+//! that if a thread pinned in n unlinks a pointer from the concurrent data structure, only threads
+//! pinned in n+1 and earler could have found it, and the second additionally means that the thread
+//! that advanced to n+2 may safely delete that pointer.
 //!
 //! # Global piles
 //!
 //! Each epoch has its own global pile of garbage. The piles may be concurrently inserted into,
-//! but clearing them is not thread safe. Instead, we use four epochs. The pile filled in n is
-//! cleared during n+2, and everything in n+2 happens-before n+4, so n+4 can re-use n's pile.
+//! but clearing them is not thread safe. While it is being cleared, we lock the counter for its
+//! epoch, so no thread can pin itself there.
 //!
-//! Ideally each instance of concurrent data structure may have its own queue that gets fully
+//! Ideally each instance of concurrent data structure may have its own collector that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
 use crate::sync::{pile::Pile, refcount::RefCount};
@@ -177,7 +177,6 @@ impl Local {
             while !self.global().pins[epoch].try_read(self.id) {
                 epoch = (epoch + 1) % 3;
             }
-            // println!("{}: rlock({})", self.id, epoch);
             self.epoch.set(epoch);
         }
     }
@@ -189,7 +188,6 @@ impl Local {
         self.guard_count.set(guard_count - 1);
 
         if guard_count == 1 {
-            // println!("{}: runlock({})", self.id, self.epoch());
             self.global().pins[self.epoch()].done_read(self.id);
         }
     }
@@ -203,12 +201,10 @@ impl Local {
         if guard_count == 1 {
             let mut new_epoch = self.global().epoch.load(Ordering::Relaxed);
             if self.epoch() != new_epoch {
-                // println!("{}: runlock({})", self.id, self.epoch());
                 self.global().pins[self.epoch()].done_read(self.id);
                 while !self.global().pins[new_epoch].try_read(self.id) {
                     new_epoch = (new_epoch + 1) % 3;
                 }
-                // println!("{}: rlock({})", self.id, new_epoch);
                 self.epoch.set(new_epoch);
             }
         }
@@ -236,12 +232,10 @@ impl Global {
         let next = (local.epoch() + 1) % 3;
         let previous = (local.epoch() + 2) % 3;
         if self.pins[previous].try_write() {
-            // println!("{}: wlock({previous})", local.id);
             scopeguard::defer! {
-                // println!("{}: wunlock({next})", local.id);
+                // try_read() calls in next now happen-after done_read() calls in previous
                 self.pins[next].done_write();
                 self.epoch.store(next, Ordering::Relaxed);
-                // println!("{}: epoch = {next}", local.id);
             }
             unsafe { self.garbage[next].call() }
         }
