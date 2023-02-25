@@ -72,7 +72,7 @@ fn simple() {
             .swap(Shared::null(), Ordering::Relaxed, &guard)
             .as_raw();
         println!("0: Item removed");
-        unsafe { guard.defer_unchecked(|| (*cell).set(9)) };
+        unsafe { guard.defer_unchecked(move || (*cell).set(9)) };
         // Advance the epoch three times so the thread can happen after the deferred function runs
         guard.flush();
         guard.repin();
@@ -101,7 +101,7 @@ fn simple2() {
                 .swap(Shared::null(), Ordering::Relaxed, &guard)
                 .as_raw();
             println!("1: Item removed");
-            unsafe { guard.defer_unchecked(|| (*cell).set(9)) };
+            unsafe { guard.defer_unchecked(move || (*cell).set(9)) };
         });
 
         // Fetch and modify the item
