@@ -31,20 +31,20 @@ impl RwLock {
     }
 
     pub(crate) fn try_wlock(&self) -> bool {
-        if self.counts[0].load(Ordering::Acquire) != 0 {
+        if self.counts[0].load(Ordering::Relaxed) != 0 {
             return false;
         }
         for count in &self.counts[1..] {
             match count.load(Ordering::Acquire) {
                 HIGH_BIT => {}
                 0 if count
-                    .compare_exchange(0, HIGH_BIT, Ordering::Relaxed, Ordering::Relaxed)
+                    .compare_exchange(0, HIGH_BIT, Ordering::Acquire, Ordering::Relaxed)
                     .is_ok() => {}
                 _ => return false,
             }
         }
         return self.counts[0]
-            .compare_exchange(0, HIGH_BIT, Ordering::Relaxed, Ordering::Relaxed)
+            .compare_exchange(0, HIGH_BIT, Ordering::Acquire, Ordering::Relaxed)
             .is_ok();
     }
     pub(crate) fn wunlock(&self) {
