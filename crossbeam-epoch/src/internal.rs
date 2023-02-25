@@ -36,7 +36,7 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use crate::sync::{pile::Pile, rwlock::RwLock};
+use crate::sync::{pile::Pile, refcount::RefCount};
 use core::cell::Cell;
 use core::sync::atomic::Ordering;
 
@@ -52,10 +52,20 @@ use crate::primitive::sync::atomic::AtomicUsize;
 pub(crate) struct Global {
     /// The global epoch.
     pub(crate) epoch: CachePadded<AtomicUsize>,
-    /// The number of threads pinned in each epoch, plus one for epochs that
-    /// aren't allowed to be collected right now.
-    pins: [RwLock; 3],
+    pins: [RefCount; 3],
     garbage: [Pile; 3],
+}
+
+impl Default for Global {
+    fn default() -> Self {
+        let result = Global {
+            epoch: Default::default(),
+            pins: Default::default(),
+            garbage: Default::default(),
+        };
+        result.pins[1].try_write();
+        result
+    }
 }
 
 /// Participant for garbage collection.
@@ -74,7 +84,7 @@ pub(crate) struct Local {
     /// Locally stored Deferred functions. Pushed in bulk to reduce contention.
     buffer: Cell<Vec<Deferred>>,
 
-    /// A different number for each Local. Used as a hint for the [RwLock].
+    /// A different number for each Local. Used as a hint for the [RefCount].
     id: usize,
 }
 
@@ -164,7 +174,7 @@ impl Local {
 
         if guard_count == 0 {
             let mut epoch = self.global().epoch.load(Ordering::Relaxed);
-            while !self.global().pins[epoch].try_rlock(self.id) {
+            while !self.global().pins[epoch].try_read(self.id) {
                 epoch = (epoch + 1) % 3;
             }
             // println!("{}: rlock({})", self.id, epoch);
@@ -180,7 +190,7 @@ impl Local {
 
         if guard_count == 1 {
             // println!("{}: runlock({})", self.id, self.epoch());
-            self.global().pins[self.epoch()].runlock(self.id);
+            self.global().pins[self.epoch()].done_read(self.id);
         }
     }
 
@@ -194,8 +204,8 @@ impl Local {
             let mut new_epoch = self.global().epoch.load(Ordering::Relaxed);
             if self.epoch() != new_epoch {
                 // println!("{}: runlock({})", self.id, self.epoch());
-                self.global().pins[self.epoch()].runlock(self.id);
-                while !self.global().pins[new_epoch].try_rlock(self.id) {
+                self.global().pins[self.epoch()].done_read(self.id);
+                while !self.global().pins[new_epoch].try_read(self.id) {
                     new_epoch = (new_epoch + 1) % 3;
                 }
                 // println!("{}: rlock({})", self.id, new_epoch);
@@ -218,18 +228,6 @@ impl Local {
     }
 }
 
-impl Default for Global {
-    fn default() -> Self {
-        let result = Global {
-            epoch: Default::default(),
-            pins: Default::default(),
-            garbage: Default::default(),
-        };
-        result.pins[1].try_wlock();
-        result
-    }
-}
-
 impl Global {
     /// Attempt to collect global garbage and advance the epoch
     ///
@@ -237,11 +235,11 @@ impl Global {
     pub(crate) fn collect(&self, local: &Local) {
         let next = (local.epoch() + 1) % 3;
         let previous = (local.epoch() + 2) % 3;
-        if self.pins[previous].try_wlock() {
+        if self.pins[previous].try_write() {
             // println!("{}: wlock({previous})", local.id);
             scopeguard::defer! {
                 // println!("{}: wunlock({next})", local.id);
-                self.pins[next].wunlock();
+                self.pins[next].done_write();
                 self.epoch.store(next, Ordering::Relaxed);
                 // println!("{}: epoch = {next}", local.id);
             }

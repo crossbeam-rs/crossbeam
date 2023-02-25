@@ -8,19 +8,24 @@ use crossbeam_utils::CachePadded;
 use crate::deferred::Deferred;
 use crate::primitive::sync::atomic::{AtomicPtr, AtomicUsize};
 
-pub(crate) enum PushResult {
+enum PushResult {
     Done,
     ShouldRealloc,
 }
 
 /// An array of [Deferred]
-pub(crate) struct Segment {
-    pub(crate) len: CachePadded<AtomicUsize>,
-    pub(crate) deferreds: Box<[MaybeUninit<UnsafeCell<Deferred>>]>,
+struct Segment {
+    len: CachePadded<AtomicUsize>,
+    // Work around lack of UnsafeCell::raw_get (1.56)
+    #[cfg(crossbeam_loom)]
+    deferreds: Box<[UnsafeCell<Deferred>]>,
+    #[cfg(not(crossbeam_loom))]
+    deferreds: Box<[MaybeUninit<UnsafeCell<Deferred>>]>,
 }
 
 // For some reason using Owned<> for this gives stacked borrows errors
-pub(crate) fn uninit_boxed_slice<T>(len: usize) -> Box<[MaybeUninit<T>]> {
+#[cfg_attr(crossbeam_loom, allow(dead_code))]
+fn uninit_boxed_slice<T>(len: usize) -> Box<[MaybeUninit<T>]> {
     unsafe {
         let ptr = if len == 0 {
             core::mem::align_of::<T>() as *mut MaybeUninit<T>
@@ -33,34 +38,30 @@ pub(crate) fn uninit_boxed_slice<T>(len: usize) -> Box<[MaybeUninit<T>]> {
 
 impl Segment {
     #[cfg(crossbeam_loom)]
-    pub(crate) fn new(capacity: usize) -> Self {
-        assert!(capacity > 0);
-        let mut deferreds = uninit_boxed_slice(capacity);
-        // Work around lack of UnsafeCell::raw_get (1.56)
-        deferreds.iter_mut().for_each(|uninit| {
-            uninit.write(UnsafeCell::new(Deferred::NO_OP));
-        });
+    fn new(capacity: usize) -> Self {
+        let deferreds = (0..capacity)
+            .map(|_| UnsafeCell::new(Deferred::NO_OP))
+            .collect();
         Self {
             len: CachePadded::new(AtomicUsize::new(0)),
             deferreds,
         }
     }
     #[cfg(not(crossbeam_loom))]
-    pub(crate) fn new(capacity: usize) -> Self {
-        assert!(capacity > 0);
+    fn new(capacity: usize) -> Self {
         Self {
             len: CachePadded::new(AtomicUsize::new(0)),
             deferreds: uninit_boxed_slice(capacity),
         }
     }
 
-    pub(crate) fn capacity(&self) -> usize {
+    fn capacity(&self) -> usize {
         self.deferreds.len()
     }
 
     /// # Safety:
     /// This must not be called concurrently with [call()].
-    pub(crate) unsafe fn try_push(&self, deferred: &mut Vec<Deferred>) -> PushResult {
+    unsafe fn try_push(&self, deferred: &mut Vec<Deferred>) -> PushResult {
         let slot = self.len.fetch_add(deferred.len(), Ordering::Relaxed);
         if slot >= self.capacity() {
             return PushResult::Done;
@@ -73,7 +74,7 @@ impl Segment {
         {
             // Work around lack of UnsafeCell::raw_get (1.56)
             #[cfg(crossbeam_loom)]
-            slot.assume_init_ref().with_mut(|slot| slot.write(deferred));
+            slot.with_mut(|slot| slot.write(deferred));
             #[cfg(not(crossbeam_loom))]
             core::ptr::write(slot.as_ptr() as *mut _, deferred);
         }
@@ -86,9 +87,12 @@ impl Segment {
 
     /// # Safety:
     /// This must not be called concurrently with [try_push()] or [call()].
-    pub(crate) unsafe fn call(&self) {
+    unsafe fn call(&self) {
         let end = self.capacity().min(self.len.load(Ordering::Relaxed));
         for deferred in &self.deferreds[..end] {
+            #[cfg(crossbeam_loom)]
+            deferred.with(|ptr| ptr.read().call());
+            #[cfg(not(crossbeam_loom))]
             deferred.assume_init_read().with(|ptr| ptr.read().call())
         }
         self.len.store(0, Ordering::Relaxed);
@@ -104,7 +108,7 @@ impl Drop for Segment {
 /// A stack of garbage.
 pub(crate) struct Pile {
     /// Stashed objects.
-    pub(crate) current: AtomicPtr<Segment>,
+    current: AtomicPtr<Segment>,
 }
 
 impl Pile {
