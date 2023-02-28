@@ -18,6 +18,7 @@ for target in $(rustc --print target-list); do
     res=$(jq <<<"${target_spec}" -r 'select(."atomic-cas" == false)')
     [[ -z "${res}" ]] || no_atomic_cas+=("${target}")
     max_atomic_width=$(jq <<<"${target_spec}" -r '."max-atomic-width"')
+    min_atomic_width=$(jq <<<"${target_spec}" -r '."min-atomic-width"')
     case "${max_atomic_width}" in
         # It is not clear exactly what `"max-atomic-width" == null` means, but they
         # actually seem to have the same max-atomic-width as the target-pointer-width.
@@ -34,6 +35,10 @@ for target in $(rustc --print target-list); do
         64 | 128) ;;
         # There is no `"max-atomic-width" == 16` or `"max-atomic-width" == 8` targets.
         *) exit 1 ;;
+    esac
+    case "${min_atomic_width}" in
+        8 | null)  ;;
+        *) no_atomic+=("${target}") ;;
     esac
 done
 
