@@ -1,3 +1,7 @@
+# Version 0.5.7
+
+- Improve handling of very large timeout. (#953)
+
 # Version 0.5.6
 
 - Bump the minimum supported Rust version to 1.38. (#877)

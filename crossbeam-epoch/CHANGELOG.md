@@ -1,3 +1,7 @@
+# Version 0.9.14
+
+- Update `memoffset` to 0.8. (#955)
+
 # Version 0.9.13
 
 - Fix build script bug introduced in 0.9.12. (#932)
