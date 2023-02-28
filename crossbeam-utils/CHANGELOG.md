@@ -1,3 +1,9 @@
+# Version 0.8.15
+
+- Add `#[clippy::has_significant_drop]` to `ShardedLock{Read,Write}Guard`. (#958)
+- Improve handling of very large timeout. (#953)
+- Soft-deprecate `thread::scope()` in favor of the more efficient `std::thread::scope` that stabilized on Rust 1.63. (#954)
+
 # Version 0.8.14
 
 - Fix build script bug introduced in 0.8.13. (#932)

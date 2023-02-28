@@ -56,11 +56,3 @@ pub(crate) fn sleep_until(deadline: Option<Instant>) {
         }
     }
 }
-
-// https://github.com/crossbeam-rs/crossbeam/issues/795
-pub(crate) fn convert_timeout_to_deadline(timeout: Duration) -> Instant {
-    match Instant::now().checked_add(timeout) {
-        Some(deadline) => deadline,
-        None => Instant::now() + Duration::from_secs(86400 * 365 * 30),
-    }
-}

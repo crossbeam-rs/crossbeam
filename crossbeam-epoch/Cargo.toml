@@ -4,7 +4,7 @@ name = "crossbeam-epoch"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-epoch-X.Y.Z" git tag
-version = "0.9.13"
+version = "0.9.14"
 edition = "2018"
 rust-version = "1.38"
 license = "MIT OR Apache-2.0"
@@ -47,7 +47,7 @@ autocfg = "1"
 
 [dependencies]
 cfg-if = "1"
-memoffset = "0.7"
+memoffset = "0.8"
 scopeguard = { version = "1.1", default-features = false }
 
 # Enable the use of loom for concurrency testing.

@@ -10,7 +10,6 @@ use crossbeam_utils::atomic::AtomicCell;
 use crate::context::Context;
 use crate::err::{RecvTimeoutError, TryRecvError};
 use crate::select::{Operation, SelectHandle, Token};
-use crate::utils;
 
 /// Result of a receive operation.
 pub(crate) type TickToken = Option<Instant>;
@@ -27,9 +26,9 @@ pub(crate) struct Channel {
 impl Channel {
     /// Creates a channel that delivers messages periodically.
     #[inline]
-    pub(crate) fn new(dur: Duration) -> Self {
+    pub(crate) fn new(delivery_time: Instant, dur: Duration) -> Self {
         Channel {
-            delivery_time: AtomicCell::new(utils::convert_timeout_to_deadline(dur)),
+            delivery_time: AtomicCell::new(delivery_time),
             duration: dur,
         }
     }
