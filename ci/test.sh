@@ -3,10 +3,10 @@ set -euxo pipefail
 IFS=$'\n\t'
 cd "$(dirname "$0")"/..
 
+# shellcheck disable=SC2086
 if [[ -n "${RUST_TARGET:-}" ]]; then
-    # If RUST_TARGET is specified, use cross for testing.
-    cross test --all --target "$RUST_TARGET" --exclude benchmarks -- --test-threads=1
-    cross test --all --target "$RUST_TARGET" --exclude benchmarks --release -- --test-threads=1
+    cargo test --all --target "$RUST_TARGET" --exclude benchmarks ${DOCTEST_XCOMPILE:-} -- --test-threads=1
+    cargo test --all --target "$RUST_TARGET" --exclude benchmarks --release ${DOCTEST_XCOMPILE:-} -- --test-threads=1
 
     # For now, the non-host target only runs tests.
     exit 0
