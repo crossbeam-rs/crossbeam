@@ -56,6 +56,9 @@ jobs:
           - rust: nightly
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
+          - rust: nightly
+            os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
             os: ubuntu-latest
@@ -67,8 +70,9 @@ jobs:
       - name: Install Rust
         # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
         run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
-      - name: Install cross
-        uses: taiki-e/install-action@cross
+      - uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
         if: matrix.target != ''
       - name: Test
         run: ci/test.sh
