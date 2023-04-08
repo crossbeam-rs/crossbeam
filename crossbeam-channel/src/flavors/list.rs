@@ -236,6 +236,7 @@ impl<T> Channel<T> {
                     .compare_exchange(block, new, Ordering::Release, Ordering::Relaxed)
                     .is_ok()
                 {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
                     self.head.block.store(new, Ordering::Release);
                     block = new;
                 } else {
