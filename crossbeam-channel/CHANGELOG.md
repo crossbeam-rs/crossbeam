@@ -1,16 +1,28 @@
+# Version 0.5.8
+
+- Fix race condition in unbounded channel. (#972)
+
 # Version 0.5.7
+
+**Note:** This release has been yanked due to bug fixed in 0.5.8.
 
 - Improve handling of very large timeout. (#953)
 
 # Version 0.5.6
 
+**Note:** This release has been yanked due to bug fixed in 0.5.8.
+
 - Bump the minimum supported Rust version to 1.38. (#877)
 
 # Version 0.5.5
 
+**Note:** This release has been yanked due to bug fixed in 0.5.8.
+
 - Replace Spinlock with Mutex. (#835)
 
 # Version 0.5.4
+
+**Note:** This release has been yanked due to bug fixed in 0.5.8.
 
 - Workaround a bug in upstream related to TLS access on AArch64 Linux. (#802)
 
@@ -27,6 +39,8 @@
 - Fix stacked borrows violations when `-Zmiri-tag-raw-pointers` is enabled. (#763, #764)
 
 # Version 0.5.1
+
+**Note:** This release has been yanked due to bug fixed in 0.5.8.
 
 - Fix memory leak in unbounded channel. (#669)
 
