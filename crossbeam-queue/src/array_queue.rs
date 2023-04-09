@@ -528,9 +528,9 @@ impl<T> Iterator for IntoIter<T> {
                 lap.wrapping_add(value.one_lap)
             };
             *value.head.get_mut() = new;
-            Option::Some(val)
+            Some(val)
         } else {
-            Option::None
+            None
         }
     }
 }
