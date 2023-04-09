@@ -1,3 +1,5 @@
+#![allow(clippy::redundant_clone)]
+
 use std::time::Duration;
 
 use crossbeam_channel::{after, bounded, never, tick, unbounded};
