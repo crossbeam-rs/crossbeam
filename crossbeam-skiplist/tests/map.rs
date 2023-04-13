@@ -49,6 +49,34 @@ fn insert() {
 }
 
 #[test]
+fn compare_and_insert() {
+    let insert = [0, 4, 2, 12, 8, 7, 11, 5];
+    let not_present = [1, 3, 6, 9, 10];
+    let s = SkipMap::new();
+
+    for &x in &insert {
+        s.insert(x, x * 10);
+    }
+
+    for &x in &insert {
+        let value = x * 5;
+        let old_value = *s.get(&x).unwrap().value();
+        s.compare_insert(x, value, |x| x < &value);
+        assert_eq!(*s.get(&x).unwrap().value(), old_value);
+    }
+
+    for &x in &insert {
+        let value = x * 15;
+        s.compare_insert(x, value, |x| x < &value);
+        assert_eq!(*s.get(&x).unwrap().value(), value);
+    }
+
+    for &x in &not_present {
+        assert!(s.get(&x).is_none());
+    }
+}
+
+#[test]
 fn remove() {
     let insert = [0, 4, 2, 12, 8, 7, 11, 5];
     let not_present = [1, 3, 6, 9, 10];
@@ -101,6 +129,25 @@ fn concurrent_insert() {
         })
         .unwrap();
     }
+}
+
+#[test]
+fn concurrent_compare_and_insert() {
+    let set: SkipMap<i32, i32> = SkipMap::new();
+    let set = std::sync::Arc::new(set);
+    let len = 100;
+    let mut handlers = Vec::with_capacity(len as usize);
+    for i in 0..len {
+        let set = set.clone();
+        let handler = std::thread::spawn(move || {
+            set.compare_insert(1, i, |j| j < &i);
+        });
+        handlers.push(handler);
+    }
+    for handler in handlers {
+        handler.join().unwrap();
+    }
+    assert_eq!(*set.get(&1).unwrap().value(), len - 1);
 }
 
 // https://github.com/crossbeam-rs/crossbeam/issues/672
