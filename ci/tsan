@@ -10,4 +10,4 @@ race:crossbeam_deque*push
 race:crossbeam_deque*steal
 
 # Non-lock-free AtomicCell uses SeqLock which uses fences.
-race:crossbeam_utils::atomic::atomic_cell::AtomicCell<T>::compare_exchange
+race:crossbeam_utils::atomic::atomic_cell::atomic_compare_exchange_weak
