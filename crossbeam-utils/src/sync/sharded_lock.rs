@@ -356,7 +356,7 @@ impl<T: ?Sized> ShardedLock<T> {
             for shard in self.shards[0..i].iter().rev() {
                 unsafe {
                     let dest: *mut _ = shard.write_guard.get();
-                    let guard = mem::replace(&mut *dest, None);
+                    let guard = (*dest).take();
                     drop(guard);
                 }
             }
@@ -526,7 +526,7 @@ impl<T: ?Sized> Drop for ShardedLockWriteGuard<'_, T> {
         for shard in self.lock.shards.iter().rev() {
             unsafe {
                 let dest: *mut _ = shard.write_guard.get();
-                let guard = mem::replace(&mut *dest, None);
+                let guard = (*dest).take();
                 drop(guard);
             }
         }

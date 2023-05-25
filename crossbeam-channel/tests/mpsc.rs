@@ -21,7 +21,7 @@
 //!   - https://www.rust-lang.org/en-US/legal.html
 
 #![allow(
-    clippy::drop_copy,
+    dropping_copy_types,
     clippy::match_single_binding,
     clippy::redundant_clone
 )]
