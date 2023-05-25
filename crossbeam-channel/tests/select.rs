@@ -1,6 +1,6 @@
 //! Tests for channel selection using the `Select` struct.
 
-#![allow(clippy::drop_copy)]
+#![allow(dropping_copy_types)]
 
 use std::any::Any;
 use std::cell::Cell;

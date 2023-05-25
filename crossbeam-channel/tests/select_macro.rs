@@ -1,7 +1,7 @@
 //! Tests for the `select!` macro.
 
 #![forbid(unsafe_code)] // select! is safe.
-#![allow(clippy::drop_copy, clippy::match_single_binding)]
+#![allow(dropping_copy_types, clippy::match_single_binding)]
 
 use std::any::Any;
 use std::cell::Cell;
