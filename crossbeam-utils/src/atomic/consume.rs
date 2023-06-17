@@ -1,5 +1,3 @@
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use crate::primitive::sync::atomic::compiler_fence;
 #[cfg(not(crossbeam_no_atomic))]
 use core::sync::atomic::Ordering;
 
@@ -27,11 +25,17 @@ pub trait AtomicConsume {
 }
 
 #[cfg(not(crossbeam_no_atomic))]
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+// Miri doesn't support "consume" ordering and ThreadSanitizer doesn't treat
+// load(Relaxed) + compiler_fence(Acquire) as "consume" load.
+#[cfg(all(
+    any(target_arch = "arm", target_arch = "aarch64"),
+    not(any(miri, crossbeam_sanitize_thread)),
+))]
 macro_rules! impl_consume {
     () => {
         #[inline]
         fn load_consume(&self) -> Self::Val {
+            use crate::primitive::sync::atomic::compiler_fence;
             let result = self.load(Ordering::Relaxed);
             compiler_fence(Ordering::Acquire);
             result
@@ -40,7 +44,10 @@ macro_rules! impl_consume {
 }
 
 #[cfg(not(crossbeam_no_atomic))]
-#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+#[cfg(not(all(
+    any(target_arch = "arm", target_arch = "aarch64"),
+    not(any(miri, crossbeam_sanitize_thread)),
+)))]
 macro_rules! impl_consume {
     () => {
         #[inline]
