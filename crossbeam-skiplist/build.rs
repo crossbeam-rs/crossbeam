@@ -18,6 +18,8 @@ include!("no_atomic.rs");
 include!("build-common.rs");
 
 fn main() {
+    println!("cargo:rerun-if-changed=no_atomic.rs");
+
     let target = match env::var("TARGET") {
         Ok(target) => convert_custom_linux_target(target),
         Err(e) => {
@@ -36,6 +38,4 @@ fn main() {
     if NO_ATOMIC_CAS.contains(&&*target) {
         println!("cargo:rustc-cfg=crossbeam_no_atomic_cas");
     }
-
-    println!("cargo:rerun-if-changed=no_atomic.rs");
 }

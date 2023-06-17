@@ -30,6 +30,8 @@ include!("no_atomic.rs");
 include!("build-common.rs");
 
 fn main() {
+    println!("cargo:rerun-if-changed=no_atomic.rs");
+
     let target = match env::var("TARGET") {
         Ok(target) => convert_custom_linux_target(target),
         Err(e) => {
@@ -57,5 +59,9 @@ fn main() {
         // Otherwise, assuming `"max-atomic-width" == 64` or `"max-atomic-width" == 128`.
     }
 
-    println!("cargo:rerun-if-changed=no_atomic.rs");
+    // `cfg(sanitize = "..")` is not stabilized.
+    let sanitize = env::var("CARGO_CFG_SANITIZE").unwrap_or_default();
+    if sanitize.contains("thread") {
+        println!("cargo:rustc-cfg=crossbeam_sanitize_thread");
+    }
 }
