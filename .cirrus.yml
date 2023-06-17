@@ -22,22 +22,6 @@ aarch64_linux_task:
     - cargo test --all --all-features --exclude benchmarks -- --test-threads=1
     - cargo test --all --all-features --exclude benchmarks --release -- --test-threads=1
 
-arm_linux_task:
-  name: test ($TARGET)
-  env:
-    TARGET: armv7-unknown-linux-gnueabihf
-  arm_container:
-    image: rust:latest
-  setup_script:
-    - rustup toolchain add nightly --no-self-update --component rust-src && rustup default nightly
-    - rustup target add "$TARGET"
-    - dpkg --add-architecture armhf
-    - apt-get -o Acquire::Retries=10 -qq update && apt-get -o Acquire::Retries=10 -qq install -y --no-install-recommends gcc-arm-linux-gnueabihf libc6-dev-armhf-cross libc6:armhf
-  test_script:
-    - export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc
-    - cargo test --all --all-features --exclude benchmarks --target "$TARGET" -Z doctest-xcompile -- --test-threads=1
-    - cargo test --all --all-features --exclude benchmarks --target "$TARGET" -Z doctest-xcompile --release -- --test-threads=1
-
 macos_task:
   name: test ($TARGET)
   macos_instance:
