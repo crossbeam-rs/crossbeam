@@ -1169,10 +1169,7 @@ pub struct Shared<'g, T: 'g + ?Sized + Pointable> {
 
 impl<T: ?Sized + Pointable> Clone for Shared<'_, T> {
     fn clone(&self) -> Self {
-        Self {
-            data: self.data,
-            _marker: PhantomData,
-        }
+        *self
     }
 }
 
