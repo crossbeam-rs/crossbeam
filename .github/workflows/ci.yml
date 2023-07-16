@@ -61,7 +61,7 @@ jobs:
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
             os: ubuntu-latest
-            target: mips-unknown-linux-gnu
+            target: armv5te-unknown-linux-gnueabi
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
