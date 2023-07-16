@@ -55,7 +55,7 @@ scopeguard = { version = "1.1", default-features = false }
 # NOTE: This feature is outside of the normal semver guarantees and minor or
 # patch versions of crossbeam may make breaking changes to them at any time.
 [target.'cfg(crossbeam_loom)'.dependencies]
-loom-crate = { package = "loom", version = "0.5", optional = true }
+loom-crate = { package = "loom", version = "0.6", optional = true }
 
 [dependencies.crossbeam-utils]
 version = "0.8.5"
