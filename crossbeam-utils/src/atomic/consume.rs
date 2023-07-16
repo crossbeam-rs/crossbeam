@@ -25,11 +25,15 @@ pub trait AtomicConsume {
 }
 
 #[cfg(not(crossbeam_no_atomic))]
-// Miri doesn't support "consume" ordering and ThreadSanitizer doesn't treat
+// Miri and Loom don't support "consume" ordering and ThreadSanitizer doesn't treat
 // load(Relaxed) + compiler_fence(Acquire) as "consume" load.
+// LLVM generates machine code equivalent to fence(Acquire) in compiler_fence(Acquire)
+// on PowerPC, MIPS, etc. (https://godbolt.org/z/hffvjvW7h), so for now the fence
+// can be actually avoided here only on ARM and AArch64. See also
+// https://github.com/rust-lang/rust/issues/62256.
 #[cfg(all(
     any(target_arch = "arm", target_arch = "aarch64"),
-    not(any(miri, crossbeam_sanitize_thread)),
+    not(any(miri, crossbeam_loom, crossbeam_sanitize_thread)),
 ))]
 macro_rules! impl_consume {
     () => {
@@ -46,7 +50,7 @@ macro_rules! impl_consume {
 #[cfg(not(crossbeam_no_atomic))]
 #[cfg(not(all(
     any(target_arch = "arm", target_arch = "aarch64"),
-    not(any(miri, crossbeam_sanitize_thread)),
+    not(any(miri, crossbeam_loom, crossbeam_sanitize_thread)),
 )))]
 macro_rules! impl_consume {
     () => {
