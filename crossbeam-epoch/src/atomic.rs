@@ -1551,7 +1551,7 @@ impl<T: ?Sized + Pointable> Eq for Shared<'_, T> {}
 
 impl<'g, T: ?Sized + Pointable> PartialOrd<Shared<'g, T>> for Shared<'g, T> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.data.partial_cmp(&other.data)
+        Some(self.data.cmp(&other.data))
     }
 }
 
