@@ -182,10 +182,7 @@ jobs:
       - uses: actions/checkout@v3
       - name: Install Rust
         run: rustup toolchain install nightly --component rust-src && rustup default nightly
-      - name: Install cargo-careful
-        uses: taiki-e/cache-cargo-install-action@v1
-        with:
-          tool: cargo-careful
+      - uses: taiki-e/install-action@cargo-careful
       - name: Run cargo-careful
         run: ./ci/careful.sh
 
