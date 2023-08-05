@@ -447,8 +447,8 @@ impl fmt::Debug for Guard {
 ///     // Load `a` without pinning the current thread.
 ///     a.load(Relaxed, epoch::unprotected());
 ///
-///     // It's possible to create more dummy guards by calling `clone()`.
-///     let dummy = &epoch::unprotected().clone();
+///     // It's possible to create more dummy guards.
+///     let dummy = epoch::unprotected();
 ///
 ///     dummy.defer(move || {
 ///         println!("This gets executed immediately.");
