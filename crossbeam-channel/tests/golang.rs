@@ -1215,7 +1215,6 @@ mod chan_test {
             let c = make::<i32>(cap);
 
             for p in 0..2 {
-                let p = p;
                 go!(wg, p, c, {
                     defer! { wg.done() }
                     for i in 0..N {
