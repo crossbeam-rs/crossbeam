@@ -62,7 +62,6 @@
     unreachable_pub
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(miri, feature(strict_provenance_atomic_ptr))]
 
 #[cfg(crossbeam_loom)]
 extern crate loom_crate as loom;
