@@ -76,7 +76,6 @@ mod primitive {
     }
     pub(crate) mod sync {
         pub(crate) mod atomic {
-            use core::sync::atomic::Ordering;
             pub(crate) use loom::sync::atomic::{fence, AtomicPtr, AtomicUsize};
 
             // FIXME: loom does not support compiler_fence at the moment.
@@ -94,7 +93,6 @@ mod primitive {
 #[cfg(not(crossbeam_loom))]
 #[allow(unused_imports, dead_code)]
 mod primitive {
-    #[cfg(feature = "alloc")]
     pub(crate) mod cell {
         #[derive(Debug)]
         #[repr(transparent)]
@@ -122,13 +120,11 @@ mod primitive {
             }
         }
     }
-    #[cfg(feature = "alloc")]
     pub(crate) mod sync {
         pub(crate) mod atomic {
-            pub(crate) use core::sync::atomic::compiler_fence;
-            pub(crate) use core::sync::atomic::fence;
-            pub(crate) use core::sync::atomic::{AtomicPtr, AtomicUsize};
+            pub(crate) use core::sync::atomic::{compiler_fence, fence, AtomicPtr, AtomicUsize};
         }
+        #[cfg(feature = "alloc")]
         pub(crate) use alloc::sync::Arc;
     }
 
