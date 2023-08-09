@@ -1,4 +1,4 @@
-only_if: $CIRRUS_TAG == '' && ($CIRRUS_PR != '' || $CIRRUS_BRANCH == 'master' || $CIRRUS_BRANCH == 'staging')
+only_if: $CIRRUS_TAG == '' && ($CIRRUS_PR != '' || $CIRRUS_BRANCH == 'staging')
 auto_cancellation: $CIRRUS_BRANCH != 'master'
 env:
   CARGO_INCREMENTAL: '0'
