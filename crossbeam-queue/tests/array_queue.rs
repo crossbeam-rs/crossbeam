@@ -169,7 +169,9 @@ fn spsc_ring_buffer() {
                 0 if q.is_empty() => break,
 
                 _ => {
+                    q.peek();
                     while let Some(n) = q.pop() {
+                        q.peek();
                         v[n].fetch_add(1, Ordering::SeqCst);
                     }
                 }
@@ -209,7 +211,9 @@ fn mpmc() {
             scope.spawn(|_| {
                 for _ in 0..COUNT {
                     let n = loop {
+                        q.peek();
                         if let Some(x) = q.pop() {
+                            q.peek();
                             break x;
                         }
                     };
@@ -251,7 +255,9 @@ fn mpmc_ring_buffer() {
                     0 if q.is_empty() => break,
 
                     _ => {
+                        q.peek();
                         while let Some(n) = q.pop() {
+                            q.peek();
                             v[n].fetch_add(1, Ordering::SeqCst);
                         }
                     }

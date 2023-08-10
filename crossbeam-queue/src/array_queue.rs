@@ -440,6 +440,69 @@ impl<T> ArrayQueue<T> {
         }
     }
 }
+impl<T> ArrayQueue<T>
+where
+    T: Copy,
+{
+    /// Attempts to peek at the element at the head of the queue.
+    ///
+    /// If the queue is empty, `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::ArrayQueue;
+    ///
+    /// let q = ArrayQueue::new(1);
+    /// assert_eq!(q.push(10), Ok(()));
+    ///
+    /// assert_eq!(q.peek(), Some(10));
+    /// assert_eq!(q.pop(), Some(10));
+    /// assert!(q.pop().is_none());
+    /// assert!(q.peek().is_none());
+    /// ```
+    pub fn peek(&self) -> Option<T> {
+        let backoff = Backoff::new();
+        let mut head = self.head.load(Ordering::Relaxed);
+
+        loop {
+            // Deconstruct the head.
+            let index = head & (self.one_lap - 1);
+
+            // Inspect the corresponding slot.
+            debug_assert!(index < self.buffer.len());
+            let slot = unsafe { self.buffer.get_unchecked(index) };
+            let stamp = slot.stamp.load(Ordering::Acquire);
+
+            // If the the stamp is ahead of the head by 1, we attempt to peek.
+            if head + 1 == stamp {
+                let msg = unsafe { slot.value.get().read().assume_init() };
+                let h = self.head.load(Ordering::Relaxed);
+                if head == h {
+                    return Some(msg);
+                } else {
+                    head = h;
+                    backoff.spin();
+                }
+            } else if stamp == head {
+                atomic::fence(Ordering::SeqCst);
+                let tail = self.tail.load(Ordering::Relaxed);
+
+                // If the tail equals the head, that means the channel is empty.
+                if tail == head {
+                    return None;
+                }
+
+                backoff.spin();
+                head = self.head.load(Ordering::Relaxed);
+            } else {
+                // Snooze because we need to wait for the stamp to get updated.
+                backoff.snooze();
+                head = self.head.load(Ordering::Relaxed);
+            }
+        }
+    }
+}
 
 impl<T> Drop for ArrayQueue<T> {
     fn drop(&mut self) {
