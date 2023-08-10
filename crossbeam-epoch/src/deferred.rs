@@ -29,6 +29,7 @@ impl fmt::Debug for Deferred {
 }
 
 impl Deferred {
+    #[cfg(crossbeam_loom)]
     pub(crate) const NO_OP: Self = {
         fn no_op_call(_raw: *mut u8) {}
         Self {
