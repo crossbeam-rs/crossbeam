@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::mem::MaybeUninit;
-use core::sync::atomic::{self, AtomicUsize, Ordering};
+use core::sync::atomic::{self, AtomicI32, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
@@ -21,6 +21,11 @@ struct Slot<T> {
 
     /// The value in this slot.
     value: UnsafeCell<MaybeUninit<T>>,
+
+    /// Allows us to ensure that the peeked value is not written to.
+    /// Write-Write contention is 0
+    /// Read-Write contention is possible when you have a sequence of `.peek()` and `.push()`'s where the buffer has wrapped.
+    peek_lock: AtomicI32,
 }
 
 /// A bounded multi-producer multi-consumer queue.
@@ -106,6 +111,7 @@ impl<T> ArrayQueue<T> {
                 Slot {
                     stamp: AtomicUsize::new(i),
                     value: UnsafeCell::new(MaybeUninit::uninit()),
+                    peek_lock: AtomicI32::new(0),
                 }
             })
             .collect();
@@ -159,12 +165,30 @@ impl<T> ArrayQueue<T> {
                     Ordering::Relaxed,
                 ) {
                     Ok(_) => {
-                        // Write the value into the slot and update the stamp.
-                        unsafe {
-                            slot.value.get().write(MaybeUninit::new(value));
+                        loop {
+                            match slot.peek_lock.compare_exchange_weak(
+                                0,
+                                -1,
+                                Ordering::SeqCst,
+                                Ordering::Relaxed,
+                            ) {
+                                Ok(_) => {
+                                    // Write the value into the slot and update the stamp.
+                                    unsafe {
+                                        slot.value.get().write(MaybeUninit::new(value));
+                                    }
+
+                                    slot.peek_lock.store(0, Ordering::Release);
+
+                                    slot.stamp.store(tail + 1, Ordering::Release);
+                                    return Ok(());
+                                }
+                                Err(_) => {
+                                    backoff.spin();
+                                    continue;
+                                }
+                            }
                         }
-                        slot.stamp.store(tail + 1, Ordering::Release);
-                        return Ok(());
                     }
                     Err(t) => {
                         tail = t;
@@ -244,7 +268,24 @@ impl<T> ArrayQueue<T> {
                 self.tail.store(new_tail, Ordering::SeqCst);
 
                 // Swap the previous value.
-                let old = unsafe { slot.value.get().replace(MaybeUninit::new(v)).assume_init() };
+
+                let old = loop {
+                    match slot.peek_lock.compare_exchange_weak(
+                        0,
+                        -1,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => unsafe {
+                            let b = slot.value.get().replace(MaybeUninit::new(v)).assume_init();
+                            slot.peek_lock.store(0, Ordering::Release);
+                            break b;
+                        },
+                        Err(_) => {
+                            continue;
+                        }
+                    }
+                };
 
                 // Update the stamp.
                 slot.stamp.store(tail + 1, Ordering::Release);
@@ -465,7 +506,7 @@ where
         let backoff = Backoff::new();
         let mut head = self.head.load(Ordering::Relaxed);
 
-        loop {
+        'head: loop {
             // Deconstruct the head.
             let index = head & (self.one_lap - 1);
 
@@ -476,13 +517,41 @@ where
 
             // If the the stamp is ahead of the head by 1, we attempt to peek.
             if head + 1 == stamp {
-                let msg = unsafe { slot.value.get().read().assume_init() };
-                let h = self.head.load(Ordering::Relaxed);
-                if head == h {
-                    return Some(msg);
-                } else {
-                    head = h;
-                    backoff.spin();
+                let mut pl = slot.peek_lock.load(Ordering::Acquire);
+                'pl: loop {
+                    if pl < 0 {
+                        backoff.snooze();
+                        pl = slot.peek_lock.load(Ordering::Acquire);
+                        continue 'pl;
+                    }
+
+                    match slot.peek_lock.compare_exchange_weak(
+                        pl,
+                        pl + 1,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => {
+                            let msg = unsafe { slot.value.get().read().assume_init() }.clone();
+
+                            slot.peek_lock.fetch_sub(1, Ordering::SeqCst);
+
+                            // verify we were at the head when we read the slot val
+                            let h = self.head.load(Ordering::Acquire);
+                            if head == h {
+                                return Some(msg);
+                            } else {
+                                head = h;
+                                backoff.spin();
+                                continue 'head;
+                            }
+                        }
+                        Err(x) => {
+                            backoff.spin();
+                            pl = x;
+                            continue 'pl;
+                        }
+                    }
                 }
             } else if stamp == head {
                 atomic::fence(Ordering::SeqCst);
