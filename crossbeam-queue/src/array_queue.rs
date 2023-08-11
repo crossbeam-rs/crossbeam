@@ -532,7 +532,7 @@ where
                         Ordering::Relaxed,
                     ) {
                         Ok(_) => {
-                            let msg = unsafe { slot.value.get().read().assume_init() }.clone();
+                            let msg = unsafe { slot.value.get().read().assume_init() };
 
                             slot.peek_lock.fetch_sub(1, Ordering::SeqCst);
 
