@@ -16,11 +16,11 @@ use core::fmt;
 
 use crate::guard::Guard;
 use crate::internal::{Global, Local};
-use crate::primitive::sync::Arc;
+use crate::primitive::sync::Rc;
 
 /// An epoch-based garbage collector.
 pub struct Collector {
-    pub(crate) global: Arc<Global>,
+    pub(crate) global: Rc<Global>,
 }
 
 unsafe impl Send for Collector {}
@@ -29,7 +29,7 @@ unsafe impl Sync for Collector {}
 impl Default for Collector {
     fn default() -> Self {
         Self {
-            global: Arc::new(Global::new()),
+            global: Rc::new(Global::new()),
         }
     }
 }
@@ -64,7 +64,7 @@ impl fmt::Debug for Collector {
 impl PartialEq for Collector {
     /// Checks if both handles point to the same collector.
     fn eq(&self, rhs: &Collector) -> bool {
-        Arc::ptr_eq(&self.global, &rhs.global)
+        Rc::ptr_eq(&self.global, &rhs.global)
     }
 }
 impl Eq for Collector {}

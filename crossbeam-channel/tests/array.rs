@@ -636,7 +636,7 @@ fn recv_in_send() {
     #[allow(unreachable_code)]
     {
         select! {
-            send(s, panic!()) -> _ => panic!(),
+            send(s, ()) -> _ => panic!(),
             default => {}
         }
     }
