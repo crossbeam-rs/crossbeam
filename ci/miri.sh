@@ -24,13 +24,8 @@ MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disab
 MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-tree-borrows" \
     cargo miri test \
     -p crossbeam-epoch \
+    -p crossbeam-skiplist \
     -p crossbeam 2>&1 | ts -i '%.s  '
-
-# Use Tree Borrows instead of Stacked Borrows because epoch is not compatible with Stacked Borrows: https://github.com/crossbeam-rs/crossbeam/issues/545#issuecomment-1192785003
-# -Zmiri-ignore-leaks is needed for https://github.com/crossbeam-rs/crossbeam/issues/614
-MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-tree-borrows -Zmiri-ignore-leaks" \
-    cargo miri test \
-    -p crossbeam-skiplist 2>&1 | ts -i '%.s  '
 
 # Use Tree Borrows instead of Stacked Borrows because epoch is not compatible with Stacked Borrows: https://github.com/crossbeam-rs/crossbeam/issues/545#issuecomment-1192785003
 # -Zmiri-compare-exchange-weak-failure-rate=0.0 is needed because some sequential tests (e.g.,
