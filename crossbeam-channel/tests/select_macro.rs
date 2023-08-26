@@ -9,7 +9,7 @@ use std::ops::Deref;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{after, bounded, select, tick, unbounded};
+use crossbeam_channel::{after, bounded, never, select, tick, unbounded};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender, TryRecvError};
 use crossbeam_utils::thread::scope;
 
@@ -467,7 +467,7 @@ fn panic_sender() {
     #[allow(unreachable_code)]
     {
         select! {
-            send(get(), 0) -> _ => {}
+            send(get(), panic!()) -> _ => {}
         }
     }
 }
@@ -956,11 +956,11 @@ fn references() {
         recv(&&&&r) -> _ => {}
     }
     select! {
-        recv(&r) -> _ => {},
+        recv(Some(&r).unwrap_or(&never())) -> _ => {},
         default => {}
     }
     select! {
-        recv(r) -> _ => {},
+        recv(Some(r).unwrap_or(never())) -> _ => {},
         default => {}
     }
 }

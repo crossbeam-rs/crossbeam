@@ -1090,6 +1090,7 @@ where
     ///
     /// If there is an existing entry with this key and compare(entry.value) returns true,
     /// it will be removed before inserting the new one.
+    /// The closure will not be called if the key is not present.
     pub fn compare_insert<F>(
         &self,
         key: K,
