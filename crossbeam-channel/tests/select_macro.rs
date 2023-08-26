@@ -464,7 +464,7 @@ fn panic_sender() {
         panic!("send panicked")
     }
 
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, clippy::diverging_sub_expression)]
     {
         select! {
             send(get(), panic!()) -> _ => {}
@@ -943,7 +943,7 @@ fn fairness_send() {
     assert!(hits.iter().all(|x| *x >= COUNT / 4));
 }
 
-#[allow(clippy::or_fun_call)] // This is intentional.
+#[allow(clippy::or_fun_call, clippy::unnecessary_literal_unwrap)] // This is intentional.
 #[test]
 fn references() {
     let (s, r) = unbounded::<i32>();

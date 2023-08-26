@@ -27,6 +27,7 @@ unsafe impl Send for Collector {}
 unsafe impl Sync for Collector {}
 
 impl Default for Collector {
+    #[allow(clippy::arc_with_non_send_sync)] // https://github.com/rust-lang/rust-clippy/issues/11382
     fn default() -> Self {
         Self {
             global: Arc::new(Global::new()),
