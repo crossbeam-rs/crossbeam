@@ -1,7 +1,7 @@
 //! Tests for the `select!` macro.
 
 #![forbid(unsafe_code)] // select! is safe.
-#![allow(clippy::drop_copy, clippy::match_single_binding)]
+#![allow(clippy::match_single_binding)]
 
 use std::any::Any;
 use std::cell::Cell;
@@ -1212,32 +1212,32 @@ fn result_types() {
     let (_, r) = bounded::<i32>(0);
 
     select! {
-        recv(r) -> res => drop::<Result<i32, RecvError>>(res),
+        recv(r) -> res => { let _: Result<i32, RecvError> = res; },
     }
     select! {
-        recv(r) -> res => drop::<Result<i32, RecvError>>(res),
+        recv(r) -> res =>  { let _: Result<i32, RecvError> = res; },
         default => {}
     }
     select! {
-        recv(r) -> res => drop::<Result<i32, RecvError>>(res),
+        recv(r) -> res =>  { let _: Result<i32, RecvError> = res; },
         default(ms(0)) => {}
     }
 
     select! {
-        send(s, 0) -> res => drop::<Result<(), SendError<i32>>>(res),
+        send(s, 0) -> res => { let _: Result<(), SendError<i32>> = res; },
     }
     select! {
-        send(s, 0) -> res => drop::<Result<(), SendError<i32>>>(res),
+        send(s, 0) -> res =>  { let _: Result<(), SendError<i32>> = res; },
         default => {}
     }
     select! {
-        send(s, 0) -> res => drop::<Result<(), SendError<i32>>>(res),
+        send(s, 0) -> res =>  { let _: Result<(), SendError<i32>> = res; },
         default(ms(0)) => {}
     }
 
     select! {
-        send(s, 0) -> res => drop::<Result<(), SendError<i32>>>(res),
-        recv(r) -> res => drop::<Result<i32, RecvError>>(res),
+        send(s, 0) -> res =>  { let _: Result<(), SendError<i32>> = res; },
+        recv(r) -> res => { let _: Result<i32, RecvError> = res; },
     }
 }
 

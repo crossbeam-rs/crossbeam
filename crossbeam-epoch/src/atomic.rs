@@ -16,6 +16,19 @@ use crate::primitive::sync::atomic::AtomicPtr;
 use crate::primitive::sync::atomic::AtomicUsize;
 use crossbeam_utils::atomic::AtomicConsume;
 
+/// Given ordering for the success case in a compare-exchange operation, returns the strongest
+/// appropriate ordering for the failure case.
+#[cfg(miri)]
+#[inline]
+fn strongest_failure_ordering(order: Ordering) -> Ordering {
+    use Ordering::*;
+    match order {
+        Relaxed | Release => Relaxed,
+        Acquire | AcqRel => Acquire,
+        _ => SeqCst,
+    }
+}
+
 /// The error returned on failed compare-and-swap operation.
 pub struct CompareExchangeError<'g, T: ?Sized + Pointable, P: Pointer<T>> {
     /// The value in the atomic pointer at the time of the failed operation.
@@ -323,8 +336,8 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let p = a.load(SeqCst, guard);
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
-    pub fn load<'g>(&self, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_ptr(self.data.load(ord)) }
+    pub fn load<'g>(&self, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_ptr(self.data.load(order)) }
     }
 
     /// Loads a `Shared` from the atomic pointer using a "consume" memory ordering.
@@ -370,8 +383,8 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// a.store(Owned::new(1234), SeqCst);
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
-    pub fn store<P: Pointer<T>>(&self, new: P, ord: Ordering) {
-        self.data.store(new.into_ptr(), ord);
+    pub fn store<P: Pointer<T>>(&self, new: P, order: Ordering) {
+        self.data.store(new.into_ptr(), order);
     }
 
     /// Stores a `Shared` or `Owned` pointer into the atomic pointer, returning the previous
@@ -391,8 +404,8 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let p = a.swap(Shared::null(), SeqCst, guard);
     /// # unsafe { drop(p.into_owned()); } // avoid leak
     /// ```
-    pub fn swap<'g, P: Pointer<T>>(&self, new: P, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
-        unsafe { Shared::from_ptr(self.data.swap(new.into_ptr(), ord)) }
+    pub fn swap<'g, P: Pointer<T>>(&self, new: P, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        unsafe { Shared::from_ptr(self.data.swap(new.into_ptr(), order)) }
     }
 
     /// Stores the pointer `new` (either `Shared` or `Owned`) into the atomic pointer if the current
@@ -605,20 +618,30 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.fetch_and(2, SeqCst, guard).tag(), 3);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
-    pub fn fetch_and<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+    pub fn fetch_and<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable.
+        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
+        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
+        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            Shared::from_ptr(self.data.fetch_and(val | !low_bits::<T>(), ord))
+            let val = val | !low_bits::<T>();
+            let fetch_order = strongest_failure_ordering(order);
+            Shared::from_ptr(
+                self.data
+                    .fetch_update(order, fetch_order, |x| {
+                        Some(int_to_ptr_with_provenance(x as usize & val, x))
+                    })
+                    .unwrap(),
+            )
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
                 (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_and(val | !low_bits::<T>(), ord) as *mut (),
+                    .fetch_and(val | !low_bits::<T>(), order) as *mut (),
             )
         }
     }
@@ -642,20 +665,30 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.fetch_or(2, SeqCst, guard).tag(), 1);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 3);
     /// ```
-    pub fn fetch_or<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+    pub fn fetch_or<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable.
+        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
+        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
+        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            Shared::from_ptr(self.data.fetch_or(val & low_bits::<T>(), ord))
+            let val = val & low_bits::<T>();
+            let fetch_order = strongest_failure_ordering(order);
+            Shared::from_ptr(
+                self.data
+                    .fetch_update(order, fetch_order, |x| {
+                        Some(int_to_ptr_with_provenance(x as usize | val, x))
+                    })
+                    .unwrap(),
+            )
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
                 (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_or(val & low_bits::<T>(), ord) as *mut (),
+                    .fetch_or(val & low_bits::<T>(), order) as *mut (),
             )
         }
     }
@@ -679,20 +712,30 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.fetch_xor(3, SeqCst, guard).tag(), 1);
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
-    pub fn fetch_xor<'g>(&self, val: usize, ord: Ordering, _: &'g Guard) -> Shared<'g, T> {
+    pub fn fetch_xor<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable.
+        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
+        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
+        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            Shared::from_ptr(self.data.fetch_xor(val & low_bits::<T>(), ord))
+            let val = val & low_bits::<T>();
+            let fetch_order = strongest_failure_ordering(order);
+            Shared::from_ptr(
+                self.data
+                    .fetch_update(order, fetch_order, |x| {
+                        Some(int_to_ptr_with_provenance(x as usize ^ val, x))
+                    })
+                    .unwrap(),
+            )
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
                 (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_xor(val & low_bits::<T>(), ord) as *mut (),
+                    .fetch_xor(val & low_bits::<T>(), order) as *mut (),
             )
         }
     }
@@ -1169,10 +1212,7 @@ pub struct Shared<'g, T: 'g + ?Sized + Pointable> {
 
 impl<T: ?Sized + Pointable> Clone for Shared<'_, T> {
     fn clone(&self) -> Self {
-        Self {
-            data: self.data,
-            _marker: PhantomData,
-        }
+        *self
     }
 }
 
@@ -1511,7 +1551,7 @@ impl<T: ?Sized + Pointable> Eq for Shared<'_, T> {}
 
 impl<'g, T: ?Sized + Pointable> PartialOrd<Shared<'g, T>> for Shared<'g, T> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.data.partial_cmp(&other.data)
+        Some(self.data.cmp(&other.data))
     }
 }
 

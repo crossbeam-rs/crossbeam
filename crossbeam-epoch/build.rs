@@ -18,6 +18,8 @@ include!("no_atomic.rs");
 include!("build-common.rs");
 
 fn main() {
+    println!("cargo:rerun-if-changed=no_atomic.rs");
+
     let target = match env::var("TARGET") {
         Ok(target) => convert_custom_linux_target(target),
         Err(e) => {
@@ -52,6 +54,4 @@ fn main() {
     if !cfg.probe_rustc_version(1, 61) {
         println!("cargo:rustc-cfg=crossbeam_no_const_fn_trait_bound");
     }
-
-    println!("cargo:rerun-if-changed=no_atomic.rs");
 }

@@ -376,14 +376,14 @@ where
     }
 
     /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
-    /// 
+    ///
     /// If there is an existing entry with this key and compare(entry.value) returns true,
     /// it will be removed before inserting the new one.
     /// The closure will not be called if the key is not present.
     ///
     /// This function returns an [`Entry`] which
     /// can be used to access the inserted key's associated value.
-    /// 
+    ///
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;

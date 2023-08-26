@@ -28,12 +28,10 @@ for target in $(rustc --print target-list); do
         # for now.
         32 | null) no_atomic_64+=("${target}") ;;
         # `"max-atomic-width" == 0` means that atomic is not supported at all.
-        0)
-            no_atomic_64+=("${target}")
-            no_atomic+=("${target}")
-            ;;
+        # We do not have a cfg for targets with {8,16}-bit atomic only, so
+        # for now we treat them the same as targets that do not support atomic.
+        0 | 8 | 16) no_atomic+=("${target}") ;;
         64 | 128) ;;
-        # There is no `"max-atomic-width" == 16` or `"max-atomic-width" == 8` targets.
         *) exit 1 ;;
     esac
     case "${min_atomic_width}" in

@@ -4,7 +4,7 @@ name = "crossbeam-utils"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-utils-X.Y.Z" git tag
-version = "0.8.15"
+version = "0.8.16"
 edition = "2018"
 rust-version = "1.38"
 license = "MIT OR Apache-2.0"
@@ -29,7 +29,7 @@ cfg-if = "1"
 # NOTE: This feature is outside of the normal semver guarantees and minor or
 # patch versions of crossbeam may make breaking changes to them at any time.
 [target.'cfg(crossbeam_loom)'.dependencies]
-loom = { version = "0.5", optional = true }
+loom = { version = "0.7", optional = true }
 
 [dev-dependencies]
 rand = "0.8"

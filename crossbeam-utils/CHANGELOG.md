@@ -1,3 +1,7 @@
+# Version 0.8.16
+
+- Improve implementation of `CachePadded`. (#967)
+
 # Version 0.8.15
 
 - Add `#[clippy::has_significant_drop]` to `ShardedLock{Read,Write}Guard`. (#958)

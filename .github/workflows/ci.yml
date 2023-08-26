@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # aarch64/x86_64 macOS and aarch64/arm linux are tested on Cirrus CI
+        # aarch64/x86_64 macOS and aarch64 Linux are tested on Cirrus CI
         include:
           - rust: '1.38'
             os: ubuntu-latest
@@ -55,10 +55,13 @@ jobs:
           - rust: nightly
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
+          - rust: nightly
+            os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
             os: ubuntu-latest
-            target: mips-unknown-linux-gnu
+            target: armv5te-unknown-linux-gnueabi
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -130,7 +133,7 @@ jobs:
               echo "::set-output name=success::false"
           fi
         if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule'
-      - uses: taiki-e/create-pull-request@v3
+      - uses: peter-evans/create-pull-request@v5
         with:
           title: Update no_atomic.rs
           body: |
@@ -179,10 +182,7 @@ jobs:
       - uses: actions/checkout@v3
       - name: Install Rust
         run: rustup toolchain install nightly --component rust-src && rustup default nightly
-      - name: Install cargo-careful
-        uses: taiki-e/cache-cargo-install-action@v1
-        with:
-          tool: cargo-careful
+      - uses: taiki-e/install-action@cargo-careful
       - name: Run cargo-careful
         run: ./ci/careful.sh
 
