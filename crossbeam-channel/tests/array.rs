@@ -633,7 +633,7 @@ fn recv_in_send() {
     let (s, _r) = bounded(1);
     s.send(()).unwrap();
 
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, clippy::diverging_sub_expression)]
     {
         select! {
             send(s, panic!()) -> _ => panic!(),

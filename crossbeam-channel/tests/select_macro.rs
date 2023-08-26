@@ -464,7 +464,7 @@ fn panic_sender() {
         panic!("send panicked")
     }
 
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, clippy::diverging_sub_expression)]
     {
         select! {
             send(get(), panic!()) -> _ => {}
