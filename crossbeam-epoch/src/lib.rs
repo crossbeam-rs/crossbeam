@@ -125,8 +125,6 @@ mod primitive {
             pub(crate) use core::sync::atomic::{compiler_fence, fence, AtomicPtr, AtomicUsize};
         }
         #[cfg(feature = "alloc")]
-        pub(crate) use alloc::rc::Rc;
-        #[cfg(feature = "alloc")]
         pub(crate) use alloc::sync::Arc;
     }
 

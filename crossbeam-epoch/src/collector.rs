@@ -16,11 +16,11 @@ use core::fmt;
 
 use crate::guard::Guard;
 use crate::internal::{Global, Local};
-use crate::primitive::sync::Rc;
+use crate::primitive::sync::Arc;
 
 /// An epoch-based garbage collector.
 pub struct Collector {
-    pub(crate) global: Rc<Global>,
+    pub(crate) global: Arc<Global>,
 }
 
 unsafe impl Send for Collector {}
@@ -29,7 +29,8 @@ unsafe impl Sync for Collector {}
 impl Default for Collector {
     fn default() -> Self {
         Self {
-            global: Rc::new(Global::new()),
+            #[allow(clippy::arc_with_non_send_sync)]
+            global: Arc::new(Global::new()),
         }
     }
 }
@@ -64,7 +65,7 @@ impl fmt::Debug for Collector {
 impl PartialEq for Collector {
     /// Checks if both handles point to the same collector.
     fn eq(&self, rhs: &Collector) -> bool {
-        Rc::ptr_eq(&self.global, &rhs.global)
+        Arc::ptr_eq(&self.global, &rhs.global)
     }
 }
 impl Eq for Collector {}
