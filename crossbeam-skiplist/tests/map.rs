@@ -77,6 +77,20 @@ fn compare_and_insert() {
 }
 
 #[test]
+fn compare_insert_with_absent_key() {
+    let insert = [0, 4, 2, 12, 8, 7, 11, 5];
+    let s = SkipMap::new();
+
+    // The closure will not be called if the key is not present,
+    // so the key-value will be inserted into the map
+    for &x in &insert {
+        let value = x * 15;
+        s.compare_insert(x, value, |_| false);
+        assert_eq!(*s.get(&x).unwrap().value(), value);
+    }
+}
+
+#[test]
 fn remove() {
     let insert = [0, 4, 2, 12, 8, 7, 11, 5];
     let not_present = [1, 3, 6, 9, 10];

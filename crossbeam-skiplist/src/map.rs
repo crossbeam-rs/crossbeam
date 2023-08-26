@@ -376,13 +376,14 @@ where
     }
 
     /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
-    ///
+    /// 
     /// If there is an existing entry with this key and compare(entry.value) returns true,
     /// it will be removed before inserting the new one.
+    /// The closure will not be called if the key is not present.
     ///
     /// This function returns an [`Entry`] which
     /// can be used to access the inserted key's associated value.
-    ///
+    /// 
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;
@@ -393,6 +394,8 @@ where
     /// assert_eq!(*map.get("key").unwrap().value(), 1);
     /// map.compare_insert("key", 2, |x| x < &2);
     /// assert_eq!(*map.get("key").unwrap().value(), 2);
+    /// map.compare_insert("absent_key", 0, |_| false);
+    /// assert_eq!(*map.get("absent_key").unwrap().value(), 0);
     /// ```
     pub fn compare_insert<F>(&self, key: K, value: V, compare_fn: F) -> Entry<'_, K, V>
     where
