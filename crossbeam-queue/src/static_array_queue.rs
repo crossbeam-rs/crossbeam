@@ -48,7 +48,7 @@ impl<T, const N: usize> StaticArrayQueue<T, N> {
     pub const fn new() -> StaticArrayQueue<T, N> {
         assert!(N > 0, "capacity must be non-zero");
 
-        let mut buffer: [MaybeUninit<Slot<T>>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut buffer = [const { MaybeUninit::<Slot<T>>::uninit() }; N];
 
         {
             // const for's are not stabilized yet, so use a loop
