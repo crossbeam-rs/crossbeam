@@ -5,6 +5,8 @@
 //! * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
 //! * [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
 
+#![feature(maybe_uninit_array_assume_init)]
+#![feature(const_maybe_uninit_array_assume_init)]
 #![doc(test(
     no_crate_inject,
     attr(
@@ -32,3 +34,8 @@ cfg_if::cfg_if! {
         pub use self::seg_queue::SegQueue;
     }
 }
+
+#[cfg(not(crossbeam_no_atomic_cas))]
+mod static_array_queue;
+#[cfg(not(crossbeam_no_atomic_cas))]
+pub use self::static_array_queue::StaticArrayQueue;
