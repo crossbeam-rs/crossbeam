@@ -5,9 +5,6 @@
 //! * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
 //! * [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
 
-#![feature(inline_const)]
-#![feature(maybe_uninit_array_assume_init)]
-#![feature(const_maybe_uninit_array_assume_init)]
 #![doc(test(
     no_crate_inject,
     attr(

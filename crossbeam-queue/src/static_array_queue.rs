@@ -1,5 +1,5 @@
 use core::fmt;
-use core::mem::MaybeUninit;
+use core::mem::{ManuallyDrop, MaybeUninit};
 
 use super::array_queue_impl::{ArrayQueueImpl, IntoIterImpl, Slot};
 
@@ -48,8 +48,9 @@ impl<T, const N: usize> StaticArrayQueue<T, N> {
     pub const fn new() -> StaticArrayQueue<T, N> {
         assert!(N > 0, "capacity must be non-zero");
 
-        let mut buffer = [const { MaybeUninit::<Slot<T>>::uninit() }; N];
-
+        // Allocate a buffer of `cap` slots initialized
+        // with stamps.
+        let mut buffer: [MaybeUninit<Slot<T>>; N] = unsafe { MaybeUninit::uninit().assume_init() };
         {
             // const for's are not stabilized yet, so use a loop
             let mut i = 0;
@@ -61,9 +62,21 @@ impl<T, const N: usize> StaticArrayQueue<T, N> {
             }
         }
 
-        // Allocate a buffer of `cap` slots initialized
-        // with stamps.
-        let buffer: [Slot<T>; N] = unsafe { MaybeUninit::array_assume_init(buffer) };
+        // Ideally, one would use:
+        //
+        // let buffer: [Slot<T>; N] = unsafe { MaybeUninit::array_assume_init(buffer) };
+        //
+        // This isn't stabilized yet, though. So we use this workaround with `union`:
+
+        #[repr(C)]
+        union SlotArray<T, const N: usize> {
+            uninit: ManuallyDrop<[MaybeUninit<Slot<T>>; N]>,
+            init: ManuallyDrop<[Slot<T>; N]>,
+        }
+        let slot_array = SlotArray {
+            uninit: ManuallyDrop::new(buffer),
+        };
+        let buffer = ManuallyDrop::into_inner(unsafe { slot_array.init });
 
         StaticArrayQueue {
             queue: ArrayQueueImpl::new(buffer, N),
