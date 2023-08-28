@@ -23,6 +23,15 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(crossbeam_no_atomic_cas))]
+mod array_queue_impl;
+
+#[cfg(not(crossbeam_no_atomic_cas))]
+mod static_array_queue;
+
+#[cfg(not(crossbeam_no_atomic_cas))]
+pub use self::static_array_queue::StaticArrayQueue;
+
+#[cfg(not(crossbeam_no_atomic_cas))]
 cfg_if::cfg_if! {
     if #[cfg(feature = "alloc")] {
         extern crate alloc;
@@ -34,8 +43,3 @@ cfg_if::cfg_if! {
         pub use self::seg_queue::SegQueue;
     }
 }
-
-#[cfg(not(crossbeam_no_atomic_cas))]
-mod static_array_queue;
-#[cfg(not(crossbeam_no_atomic_cas))]
-pub use self::static_array_queue::StaticArrayQueue;

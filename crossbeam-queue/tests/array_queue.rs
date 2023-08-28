@@ -372,3 +372,11 @@ fn into_iter() {
         assert_eq!(i, j);
     }
 }
+
+#[test]
+fn send_and_sync() {
+    fn is_send_and_sync<T: Send + Sync>() {}
+
+    // Cell is only Send, but not Sync.
+    is_send_and_sync::<ArrayQueue<core::cell::Cell<i32>>>();
+}
