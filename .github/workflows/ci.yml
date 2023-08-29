@@ -40,9 +40,9 @@ jobs:
       matrix:
         # aarch64/x86_64 macOS and aarch64 Linux are tested on Cirrus CI
         include:
-          - rust: '1.56'
+          - rust: '1.57'
             os: ubuntu-latest
-          - rust: '1.56'
+          - rust: '1.57'
             os: windows-latest
           - rust: stable
             os: ubuntu-latest
@@ -83,7 +83,7 @@ jobs:
       fail-fast: false
       matrix:
         rust:
-          - '1.56'
+          - '1.57'
           - nightly
     runs-on: ubuntu-latest
     steps:
