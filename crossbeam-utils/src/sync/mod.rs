@@ -11,7 +11,7 @@ mod parker;
 mod sharded_lock;
 mod wait_group;
 
-pub use self::parker::{Parker, Unparker};
+pub use self::parker::{Parker, UnparkReason, Unparker};
 #[cfg(not(crossbeam_loom))]
 pub use self::sharded_lock::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 pub use self::wait_group::WaitGroup;
