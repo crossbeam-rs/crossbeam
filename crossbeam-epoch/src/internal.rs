@@ -273,9 +273,6 @@ pub(crate) struct Local {
     /// A node in the intrusive linked list of `Local`s.
     entry: Entry,
 
-    /// The local epoch.
-    epoch: AtomicEpoch,
-
     /// A reference to the global data.
     ///
     /// When all guards and handles get dropped, this reference is destroyed.
@@ -294,6 +291,9 @@ pub(crate) struct Local {
     ///
     /// This is just an auxiliary counter that sometimes kicks off collection.
     pin_count: Cell<Wrapping<usize>>,
+
+    /// The local epoch.
+    epoch: CachePadded<AtomicEpoch>,
 }
 
 // Make sure `Local` is less than or equal to 2048 bytes.
@@ -320,12 +320,12 @@ impl Local {
 
             let local = Owned::new(Local {
                 entry: Entry::default(),
-                epoch: AtomicEpoch::new(Epoch::starting()),
                 collector: UnsafeCell::new(ManuallyDrop::new(collector.clone())),
                 bag: UnsafeCell::new(Bag::new()),
                 guard_count: Cell::new(0),
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
+                epoch: CachePadded::new(AtomicEpoch::new(Epoch::starting())),
             })
             .into_shared(unprotected());
             collector.global.locals.insert(local, unprotected());
