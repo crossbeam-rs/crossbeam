@@ -1,8 +1,7 @@
-only_if: $CIRRUS_TAG == '' && ($CIRRUS_PR != '' || $CIRRUS_BRANCH == 'staging')
-auto_cancellation: $CIRRUS_BRANCH != 'master'
+only_if: $CIRRUS_TAG == '' && ($CIRRUS_PR != '' || $CIRRUS_BRANCH == 'master')
+auto_cancellation: $CIRRUS_PR != ''
 env:
   CARGO_INCREMENTAL: '0'
-  CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
   CARGO_NET_RETRY: '10'
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: '1'
@@ -15,27 +14,22 @@ aarch64_linux_task:
   env:
     TARGET: aarch64-unknown-linux-gnu
   arm_container:
-    image: rust:latest
+    image: rust
   setup_script:
     - rustup toolchain add nightly && rustup default nightly
   test_script:
     - cargo test --all --all-features --exclude benchmarks -- --test-threads=1
     - cargo test --all --all-features --exclude benchmarks --release -- --test-threads=1
 
-macos_task:
+aarch64_macos_task:
   name: test ($TARGET)
+  env:
+    TARGET: aarch64-apple-darwin
   macos_instance:
-    image: ghcr.io/cirruslabs/macos-ventura-xcode:latest
-  matrix:
-    - env:
-        TARGET: aarch64-apple-darwin
-    - env:
-        TARGET: x86_64-apple-darwin
+    image: ghcr.io/cirruslabs/macos-ventura-xcode
   setup_script:
-    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-    - source $HOME/.cargo/env
-    - rustup toolchain add nightly-$TARGET && rustup default nightly-$TARGET
+    - curl --proto '=https' --tlsv1.2 -fsSL --retry 10 --retry-connrefused https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly --no-modify-path
   test_script:
-    - source $HOME/.cargo/env
+    - . "$HOME/.cargo/env"
     - cargo test --all --all-features --exclude benchmarks -- --test-threads=1
     - cargo test --all --all-features --exclude benchmarks --release -- --test-threads=1
