@@ -775,17 +775,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
-        #[cfg(crossbeam_loom)]
-        {
-            // FIXME: loom does not yet support into_inner, so we use unsync_load for now,
-            // which should have the same synchronization properties:
-            // https://github.com/tokio-rs/loom/issues/117
-            Owned::from_ptr(self.data.unsync_load())
-        }
-        #[cfg(not(crossbeam_loom))]
-        {
-            Owned::from_ptr(self.data.into_inner())
-        }
+        Owned::from_ptr(self.data.into_inner())
     }
 
     /// Takes ownership of the pointee if it is non-null.
@@ -822,10 +812,6 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// }
     /// ```
     pub unsafe fn try_into_owned(self) -> Option<Owned<T>> {
-        // FIXME: See self.into_owned()
-        #[cfg(crossbeam_loom)]
-        let data = self.data.unsync_load();
-        #[cfg(not(crossbeam_loom))]
         let data = self.data.into_inner();
         if decompose_tag::<T>(data).0.is_null() {
             None
