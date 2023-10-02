@@ -1,7 +1,0 @@
-status = [
-    "ci",
-    "test (aarch64-unknown-linux-gnu)",
-    "test (aarch64-apple-darwin)",
-    "test (x86_64-apple-darwin)",
-]
-timeout_sec = 7200
