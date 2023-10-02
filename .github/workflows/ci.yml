@@ -7,7 +7,7 @@ on:
   pull_request:
   push:
     branches:
-      - staging
+      - master
   schedule:
     - cron: '0 1 * * *'
 
@@ -223,30 +223,3 @@ jobs:
       - name: Install shellcheck
         uses: taiki-e/install-action@shellcheck
       - run: shellcheck $(git ls-files '*.sh')
-
-  # This job doesn't actually test anything, but they're used to tell bors the
-  # build completed, as there is no practical way to detect when a workflow is
-  # successful listening to webhooks only.
-  #
-  # ALL THE PREVIOUS JOBS NEEDS TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
-
-  ci-success:
-    name: ci
-    if: github.event_name == 'push' && success()
-    needs:
-      - test
-      - features
-      - dependencies
-      - codegen
-      - rustfmt
-      - clippy
-      - miri
-      - careful
-      - san
-      - loom
-      - docs
-      - shellcheck
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mark the job as a success
-        run: exit 0
