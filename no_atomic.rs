@@ -27,6 +27,7 @@ const NO_ATOMIC_64: &[&str] = &[
     "armv5te-unknown-linux-uclibceabi",
     "armv6k-nintendo-3ds",
     "csky-unknown-linux-gnuabiv2",
+    "csky-unknown-linux-gnuabiv2hf",
     "hexagon-unknown-linux-musl",
     "m68k-unknown-linux-gnu",
     "mips-unknown-linux-gnu",
