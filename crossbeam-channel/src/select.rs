@@ -791,10 +791,12 @@ impl<'a> Select<'a> {
     /// let (s1, r1) = unbounded();
     /// let (s2, r2) = unbounded();
     ///
+    /// # let t1 =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s1.send(10).unwrap();
     /// });
+    /// # let t2 =
     /// thread::spawn(move || s2.send(20).unwrap());
     ///
     /// let mut sel = Select::new();
@@ -808,6 +810,8 @@ impl<'a> Select<'a> {
     ///     i if i == oper2 => assert_eq!(oper.recv(&r2), Ok(20)),
     ///     _ => unreachable!(),
     /// }
+    /// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+    /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn select(&mut self) -> SelectedOperation<'a> {
         select(&mut self.handles)
@@ -835,10 +839,12 @@ impl<'a> Select<'a> {
     /// let (s1, r1) = unbounded();
     /// let (s2, r2) = unbounded();
     ///
+    /// # let t1 =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s1.send(10).unwrap();
     /// });
+    /// # let t2 =
     /// thread::spawn(move || s2.send(20).unwrap());
     ///
     /// let mut sel = Select::new();
@@ -855,6 +861,8 @@ impl<'a> Select<'a> {
     ///         _ => unreachable!(),
     ///     }
     /// }
+    /// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+    /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn select_timeout(
         &mut self,
@@ -885,10 +893,12 @@ impl<'a> Select<'a> {
     /// let (s1, r1) = unbounded();
     /// let (s2, r2) = unbounded();
     ///
+    /// # let t1 =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s1.send(10).unwrap();
     /// });
+    /// # let t2 =
     /// thread::spawn(move || s2.send(20).unwrap());
     ///
     /// let mut sel = Select::new();
@@ -907,6 +917,8 @@ impl<'a> Select<'a> {
     ///         _ => unreachable!(),
     ///     }
     /// }
+    /// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+    /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn select_deadline(
         &mut self,
@@ -982,10 +994,12 @@ impl<'a> Select<'a> {
     /// let (s1, r1) = unbounded();
     /// let (s2, r2) = unbounded();
     ///
+    /// # let t1 =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s1.send(10).unwrap();
     /// });
+    /// # let t2 =
     /// thread::spawn(move || s2.send(20).unwrap());
     ///
     /// let mut sel = Select::new();
@@ -998,6 +1012,8 @@ impl<'a> Select<'a> {
     ///     i if i == oper2 => assert_eq!(r2.try_recv(), Ok(20)),
     ///     _ => unreachable!(),
     /// }
+    /// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+    /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn ready(&mut self) -> usize {
         if self.handles.is_empty() {
@@ -1029,10 +1045,12 @@ impl<'a> Select<'a> {
     /// let (s1, r1) = unbounded();
     /// let (s2, r2) = unbounded();
     ///
+    /// # let t1 =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s1.send(10).unwrap();
     /// });
+    /// # let t2 =
     /// thread::spawn(move || s2.send(20).unwrap());
     ///
     /// let mut sel = Select::new();
@@ -1046,6 +1064,8 @@ impl<'a> Select<'a> {
     ///     Ok(i) if i == oper2 => assert_eq!(r2.try_recv(), Ok(20)),
     ///     Ok(_) => unreachable!(),
     /// }
+    /// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+    /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn ready_timeout(&mut self, timeout: Duration) -> Result<usize, ReadyTimeoutError> {
         match Instant::now().checked_add(timeout) {
@@ -1078,10 +1098,12 @@ impl<'a> Select<'a> {
     /// let (s1, r1) = unbounded();
     /// let (s2, r2) = unbounded();
     ///
+    /// # let t1 =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_secs(1));
     ///     s1.send(10).unwrap();
     /// });
+    /// # let t2 =
     /// thread::spawn(move || s2.send(20).unwrap());
     ///
     /// let mut sel = Select::new();
@@ -1095,6 +1117,8 @@ impl<'a> Select<'a> {
     ///     Ok(i) if i == oper2 => assert_eq!(r2.try_recv(), Ok(20)),
     ///     Ok(_) => unreachable!(),
     /// }
+    /// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+    /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn ready_deadline(&mut self, deadline: Instant) -> Result<usize, ReadyTimeoutError> {
         match run_ready(&mut self.handles, Timeout::At(deadline)) {

@@ -330,7 +330,7 @@ mod channel_tests {
         for _ in 0..COUNT {
             assert_eq!(rx.recv().unwrap(), 1);
         }
-        t.join().ok().unwrap();
+        t.join().unwrap();
     }
 
     #[test]
@@ -357,7 +357,7 @@ mod channel_tests {
             ts.push(t);
         }
         drop(tx);
-        t.join().ok().unwrap();
+        t.join().unwrap();
         for t in ts {
             t.join().unwrap();
         }
@@ -379,8 +379,8 @@ mod channel_tests {
                 tx2.send(1).unwrap();
             }
         });
-        t1.join().ok().unwrap();
-        t2.join().ok().unwrap();
+        t1.join().unwrap();
+        t2.join().unwrap();
     }
 
     #[test]
@@ -394,7 +394,7 @@ mod channel_tests {
         for _ in 0..40 {
             tx.send(1).unwrap();
         }
-        t.join().ok().unwrap();
+        t.join().unwrap();
     }
 
     #[test]
@@ -409,8 +409,8 @@ mod channel_tests {
             tx1.send(1).unwrap();
             assert_eq!(rx2.recv().unwrap(), 2);
         });
-        t1.join().ok().unwrap();
-        t2.join().ok().unwrap();
+        t1.join().unwrap();
+        t2.join().unwrap();
     }
 
     #[test]

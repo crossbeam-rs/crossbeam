@@ -36,6 +36,7 @@ use std::time::{Duration, Instant};
 /// // Wakes up immediately and consumes the token.
 /// p.park();
 ///
+/// # let t =
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_millis(500));
 ///     u.unpark();
@@ -43,7 +44,7 @@ use std::time::{Duration, Instant};
 ///
 /// // Wakes up when `u.unpark()` provides the token.
 /// p.park();
-/// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
+/// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// ```
 ///
 /// [`park`]: Parker::park
@@ -240,6 +241,7 @@ impl Unparker {
     /// let p = Parker::new();
     /// let u = p.unparker().clone();
     ///
+    /// # let t =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_millis(500));
     ///     u.unpark();
@@ -247,7 +249,7 @@ impl Unparker {
     ///
     /// // Wakes up when `u.unpark()` provides the token.
     /// p.park();
-    /// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
+    /// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     ///
     /// [`park`]: Parker::park

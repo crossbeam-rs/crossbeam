@@ -273,7 +273,9 @@
 //! let (s1, r1) = unbounded();
 //! let (s2, r2) = unbounded();
 //!
+//! # let t1 =
 //! thread::spawn(move || s1.send(10).unwrap());
+//! # let t2 =
 //! thread::spawn(move || s2.send(20).unwrap());
 //!
 //! // At most one of these two receive operations will be executed.
@@ -282,6 +284,8 @@
 //!     recv(r2) -> msg => assert_eq!(msg, Ok(20)),
 //!     default(Duration::from_secs(1)) => println!("timed out"),
 //! }
+//! # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+//! # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 //! ```
 //!
 //! If you need to select over a dynamically created list of channel operations, use [`Select`]

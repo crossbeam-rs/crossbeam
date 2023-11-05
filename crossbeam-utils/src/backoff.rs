@@ -190,6 +190,7 @@ impl Backoff {
     /// let ready = Arc::new(AtomicBool::new(false));
     /// let ready2 = ready.clone();
     ///
+    /// # let t =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_millis(100));
     ///     ready2.store(true, SeqCst);
@@ -198,7 +199,7 @@ impl Backoff {
     /// assert_eq!(ready.load(SeqCst), false);
     /// spin_wait(&ready);
     /// assert_eq!(ready.load(SeqCst), true);
-    /// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
+    /// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     ///
     /// [`AtomicBool`]: std::sync::atomic::AtomicBool
@@ -252,6 +253,7 @@ impl Backoff {
     /// let ready2 = ready.clone();
     /// let waiter = thread::current();
     ///
+    /// # let t =
     /// thread::spawn(move || {
     ///     thread::sleep(Duration::from_millis(100));
     ///     ready2.store(true, SeqCst);
@@ -261,7 +263,7 @@ impl Backoff {
     /// assert_eq!(ready.load(SeqCst), false);
     /// blocking_wait(&ready);
     /// assert_eq!(ready.load(SeqCst), true);
-    /// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
+    /// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     ///
     /// [`AtomicBool`]: std::sync::atomic::AtomicBool

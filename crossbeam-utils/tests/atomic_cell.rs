@@ -370,5 +370,5 @@ fn issue_833() {
     }
 
     FINISHED.store(true, Ordering::Relaxed);
-    handle.join().unwrap();
+    handle.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 }

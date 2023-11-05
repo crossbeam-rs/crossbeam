@@ -158,7 +158,7 @@ impl<T: ?Sized> ShardedLock<T> {
     /// let lock = Arc::new(ShardedLock::new(0));
     /// let c_lock = lock.clone();
     ///
-    /// let _ = thread::spawn(move || {
+    /// let _: Result<(), _> = thread::spawn(move || {
     ///     let _lock = c_lock.write().unwrap();
     ///     panic!(); // the lock gets poisoned
     /// }).join();

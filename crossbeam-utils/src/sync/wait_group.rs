@@ -39,7 +39,7 @@ use std::fmt;
 ///
 /// // Block until all threads have finished their work.
 /// wg.wait();
-/// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
+/// # if cfg!(miri) { std::thread::sleep(std::time::Duration::from_millis(500)); } // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
 /// ```
 ///
 /// [`Barrier`]: std::sync::Barrier
@@ -88,6 +88,7 @@ impl WaitGroup {
     ///
     /// let wg = WaitGroup::new();
     ///
+    /// # let t =
     /// thread::spawn({
     ///     let wg = wg.clone();
     ///     move || {
@@ -98,7 +99,7 @@ impl WaitGroup {
     ///
     /// // Block until both threads have reached `wait()`.
     /// wg.wait();
-    /// # std::thread::sleep(std::time::Duration::from_millis(500)); // wait for background threads closed: https://github.com/rust-lang/miri/issues/1371
+    /// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn wait(self) {
         if *self.inner.count.lock().unwrap() == 1 {

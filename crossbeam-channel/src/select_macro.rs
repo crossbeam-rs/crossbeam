@@ -1029,10 +1029,12 @@ macro_rules! crossbeam_channel_internal {
 /// let (s1, r1) = unbounded();
 /// let (s2, r2) = unbounded();
 ///
+/// # let t1 =
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_secs(1));
 ///     s1.send(10).unwrap();
 /// });
+/// # let t2 =
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_millis(500));
 ///     s2.send(20).unwrap();
@@ -1044,6 +1046,8 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r2) -> msg => panic!(),
 ///     default => println!("not ready"),
 /// }
+/// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+/// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// ```
 ///
 /// Select over a set of operations with a timeout:
@@ -1056,10 +1060,12 @@ macro_rules! crossbeam_channel_internal {
 /// let (s1, r1) = unbounded();
 /// let (s2, r2) = unbounded();
 ///
+/// # let t1 =
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_secs(1));
 ///     s1.send(10).unwrap();
 /// });
+/// # let t2 =
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_millis(500));
 ///     s2.send(20).unwrap();
@@ -1071,6 +1077,8 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r2) -> msg => panic!(),
 ///     default(Duration::from_millis(100)) => println!("timed out"),
 /// }
+/// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+/// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// ```
 ///
 /// Optionally add a receive operation to `select!` using [`never`]:
@@ -1083,10 +1091,12 @@ macro_rules! crossbeam_channel_internal {
 /// let (s1, r1) = unbounded();
 /// let (s2, r2) = unbounded();
 ///
+/// # let t1 =
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_secs(1));
 ///     s1.send(10).unwrap();
 /// });
+/// # let t2 =
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_millis(500));
 ///     s2.send(20).unwrap();
@@ -1100,6 +1110,8 @@ macro_rules! crossbeam_channel_internal {
 ///     recv(r1) -> msg => panic!(),
 ///     recv(r2.unwrap_or(&never())) -> msg => assert_eq!(msg, Ok(20)),
 /// }
+/// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+/// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// ```
 ///
 /// To optionally add a timeout to `select!`, see the [example] for [`never`].
