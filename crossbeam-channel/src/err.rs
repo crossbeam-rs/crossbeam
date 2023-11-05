@@ -200,18 +200,12 @@ impl<T> TrySendError<T> {
 
     /// Returns `true` if the send operation failed because the channel is full.
     pub fn is_full(&self) -> bool {
-        match self {
-            TrySendError::Full(_) => true,
-            _ => false,
-        }
+        matches!(self, TrySendError::Full(_))
     }
 
     /// Returns `true` if the send operation failed because the channel is disconnected.
     pub fn is_disconnected(&self) -> bool {
-        match self {
-            TrySendError::Disconnected(_) => true,
-            _ => false,
-        }
+        matches!(self, TrySendError::Disconnected(_))
     }
 }
 
@@ -264,18 +258,12 @@ impl<T> SendTimeoutError<T> {
 
     /// Returns `true` if the send operation timed out.
     pub fn is_timeout(&self) -> bool {
-        match self {
-            SendTimeoutError::Timeout(_) => true,
-            _ => false,
-        }
+        matches!(self, SendTimeoutError::Timeout(_))
     }
 
     /// Returns `true` if the send operation failed because the channel is disconnected.
     pub fn is_disconnected(&self) -> bool {
-        match self {
-            SendTimeoutError::Disconnected(_) => true,
-            _ => false,
-        }
+        matches!(self, SendTimeoutError::Disconnected(_))
     }
 }
 
@@ -309,18 +297,12 @@ impl From<RecvError> for TryRecvError {
 impl TryRecvError {
     /// Returns `true` if the receive operation failed because the channel is empty.
     pub fn is_empty(&self) -> bool {
-        match self {
-            TryRecvError::Empty => true,
-            _ => false,
-        }
+        matches!(self, TryRecvError::Empty)
     }
 
     /// Returns `true` if the receive operation failed because the channel is disconnected.
     pub fn is_disconnected(&self) -> bool {
-        match self {
-            TryRecvError::Disconnected => true,
-            _ => false,
-        }
+        matches!(self, TryRecvError::Disconnected)
     }
 }
 
@@ -346,18 +328,12 @@ impl From<RecvError> for RecvTimeoutError {
 impl RecvTimeoutError {
     /// Returns `true` if the receive operation timed out.
     pub fn is_timeout(&self) -> bool {
-        match self {
-            RecvTimeoutError::Timeout => true,
-            _ => false,
-        }
+        matches!(self, RecvTimeoutError::Timeout)
     }
 
     /// Returns `true` if the receive operation failed because the channel is disconnected.
     pub fn is_disconnected(&self) -> bool {
-        match self {
-            RecvTimeoutError::Disconnected => true,
-            _ => false,
-        }
+        matches!(self, RecvTimeoutError::Disconnected)
     }
 }
 
