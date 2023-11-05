@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-deque#license)
 https://crates.io/crates/crossbeam-deque)
 [![Documentation](https://docs.rs/crossbeam-deque/badge.svg)](
 https://docs.rs/crossbeam-deque)
-[![Rust 1.38+](https://img.shields.io/badge/rust-1.38+-lightgray.svg)](
+[![Rust 1.61+](https://img.shields.io/badge/rust-1.61+-lightgray.svg)](
 https://www.rust-lang.org)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.com/invite/JXYwgWZ)
 
@@ -28,7 +28,7 @@ crossbeam-deque = "0.8"
 
 Crossbeam Deque supports stable Rust releases going back at least six months,
 and every time the minimum supported Rust version is increased, a new minor
-version is released. Currently, the minimum supported Rust version is 1.38.
+version is released. Currently, the minimum supported Rust version is 1.61.
 
 ## License
 
