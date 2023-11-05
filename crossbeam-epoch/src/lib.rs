@@ -89,7 +89,7 @@ mod primitive {
     }
     pub(crate) use loom::thread_local;
 }
-#[cfg(not(crossbeam_no_atomic_cas))]
+#[cfg(target_has_atomic = "ptr")]
 #[cfg(not(crossbeam_loom))]
 #[allow(unused_imports, dead_code)]
 mod primitive {
@@ -132,7 +132,7 @@ mod primitive {
     pub(crate) use std::thread_local;
 }
 
-#[cfg(not(crossbeam_no_atomic_cas))]
+#[cfg(target_has_atomic = "ptr")]
 cfg_if! {
     if #[cfg(feature = "alloc")] {
         extern crate alloc;

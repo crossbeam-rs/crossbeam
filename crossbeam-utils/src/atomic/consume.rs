@@ -83,11 +83,19 @@ impl_atomic!(AtomicU8, u8);
 impl_atomic!(AtomicI8, i8);
 impl_atomic!(AtomicU16, u16);
 impl_atomic!(AtomicI16, i16);
+#[cfg(any(target_has_atomic = "32", not(target_pointer_width = "16")))]
 impl_atomic!(AtomicU32, u32);
+#[cfg(any(target_has_atomic = "32", not(target_pointer_width = "16")))]
 impl_atomic!(AtomicI32, i32);
-#[cfg(not(crossbeam_no_atomic_64))]
+#[cfg(any(
+    target_has_atomic = "64",
+    not(any(target_pointer_width = "16", target_pointer_width = "32")),
+))]
 impl_atomic!(AtomicU64, u64);
-#[cfg(not(crossbeam_no_atomic_64))]
+#[cfg(any(
+    target_has_atomic = "64",
+    not(any(target_pointer_width = "16", target_pointer_width = "32")),
+))]
 impl_atomic!(AtomicI64, i64);
 
 #[cfg(not(crossbeam_no_atomic))]

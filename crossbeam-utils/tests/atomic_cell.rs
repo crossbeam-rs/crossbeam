@@ -35,13 +35,13 @@ fn is_lock_free() {
     // of `AtomicU64` is `8`, so `AtomicCell<u64>` is not lock-free.
     assert_eq!(
         AtomicCell::<u64>::is_lock_free(),
-        cfg!(not(crossbeam_no_atomic_64)) && std::mem::align_of::<u64>() == 8
+        cfg!(target_has_atomic = "64") && std::mem::align_of::<u64>() == 8
     );
     assert_eq!(mem::size_of::<U64Align8>(), 8);
     assert_eq!(mem::align_of::<U64Align8>(), 8);
     assert_eq!(
         AtomicCell::<U64Align8>::is_lock_free(),
-        cfg!(not(crossbeam_no_atomic_64))
+        cfg!(target_has_atomic = "64")
     );
 
     // AtomicU128 is unstable
@@ -307,7 +307,6 @@ test_arithmetic!(arithmetic_i128, i128);
 
 // https://github.com/crossbeam-rs/crossbeam/issues/748
 #[cfg_attr(miri, ignore)] // TODO
-#[rustversion::since(1.37)] // #[repr(align(N))] requires Rust 1.37
 #[test]
 fn issue_748() {
     #[allow(dead_code)]
@@ -321,14 +320,13 @@ fn issue_748() {
     assert_eq!(mem::size_of::<Test>(), 8);
     assert_eq!(
         AtomicCell::<Test>::is_lock_free(),
-        cfg!(not(crossbeam_no_atomic_64))
+        cfg!(target_has_atomic = "64")
     );
     let x = AtomicCell::new(Test::FieldLess);
     assert_eq!(x.load(), Test::FieldLess);
 }
 
 // https://github.com/crossbeam-rs/crossbeam/issues/833
-#[rustversion::since(1.40)] // const_constructor requires Rust 1.40
 #[test]
 fn issue_833() {
     use std::num::NonZeroU128;

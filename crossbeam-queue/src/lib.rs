@@ -20,7 +20,7 @@
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(not(crossbeam_no_atomic_cas))]
+#[cfg(target_has_atomic = "ptr")]
 cfg_if::cfg_if! {
     if #[cfg(feature = "alloc")] {
         extern crate alloc;

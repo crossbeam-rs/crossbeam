@@ -72,10 +72,16 @@ mod primitive {
             pub(crate) use core::sync::atomic::spin_loop_hint;
             #[cfg(not(crossbeam_no_atomic))]
             pub(crate) use core::sync::atomic::{
-                AtomicBool, AtomicI16, AtomicI32, AtomicI8, AtomicIsize, AtomicU16, AtomicU32,
-                AtomicU8, AtomicUsize,
+                AtomicBool, AtomicI16, AtomicI8, AtomicIsize, AtomicU16, AtomicU8, AtomicUsize,
             };
-            #[cfg(not(crossbeam_no_atomic_64))]
+            #[cfg(not(crossbeam_no_atomic))]
+            #[cfg(any(target_has_atomic = "32", not(target_pointer_width = "16")))]
+            pub(crate) use core::sync::atomic::{AtomicI32, AtomicU32};
+            #[cfg(not(crossbeam_no_atomic))]
+            #[cfg(any(
+                target_has_atomic = "64",
+                not(any(target_pointer_width = "16", target_pointer_width = "32")),
+            ))]
             pub(crate) use core::sync::atomic::{AtomicI64, AtomicU64};
         }
 
