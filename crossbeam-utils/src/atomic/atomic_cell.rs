@@ -705,8 +705,8 @@ macro_rules! impl_arithmetic {
                 atomic! {
                     $t, _a,
                     {
-                        // TODO: Atomic*::fetch_max requires Rust 1.45.
-                        self.fetch_update(|old| Some(cmp::max(old, val))).unwrap()
+                        let a = unsafe { &*(self.as_ptr() as *const atomic::$atomic) };
+                        a.fetch_max(val, Ordering::AcqRel)
                     },
                     {
                         let _guard = lock(self.as_ptr() as usize).write();
@@ -736,8 +736,8 @@ macro_rules! impl_arithmetic {
                 atomic! {
                     $t, _a,
                     {
-                        // TODO: Atomic*::fetch_min requires Rust 1.45.
-                        self.fetch_update(|old| Some(cmp::min(old, val))).unwrap()
+                        let a = unsafe { &*(self.as_ptr() as *const atomic::$atomic) };
+                        a.fetch_min(val, Ordering::AcqRel)
                     },
                     {
                         let _guard = lock(self.as_ptr() as usize).write();
