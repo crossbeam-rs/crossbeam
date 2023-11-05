@@ -302,7 +302,16 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///
     /// let a = Atomic::<i32>::null();
     /// ```
+    #[cfg(not(crossbeam_loom))]
     pub const fn null() -> Atomic<T> {
+        Self {
+            data: AtomicPtr::new(ptr::null_mut()),
+            _marker: PhantomData,
+        }
+    }
+    /// Returns a new null atomic pointer.
+    #[cfg(crossbeam_loom)]
+    pub fn null() -> Atomic<T> {
         Self {
             data: AtomicPtr::new(ptr::null_mut()),
             _marker: PhantomData,
