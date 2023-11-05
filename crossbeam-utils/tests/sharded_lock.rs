@@ -141,7 +141,7 @@ fn arc() {
 fn arc_access_in_unwind() {
     let arc = Arc::new(ShardedLock::new(1));
     let arc2 = arc.clone();
-    let _ = thread::spawn(move || {
+    let _: Result<(), _> = thread::spawn(move || {
         struct Unwinder {
             i: Arc<ShardedLock<isize>>,
         }
@@ -214,7 +214,7 @@ fn test_into_inner_drop() {
 fn test_into_inner_poison() {
     let m = Arc::new(ShardedLock::new(NonCopy(10)));
     let m2 = m.clone();
-    let _ = thread::spawn(move || {
+    let _: Result<(), _> = thread::spawn(move || {
         let _lock = m2.write().unwrap();
         panic!("test panic in inner thread to poison ShardedLock");
     })
@@ -238,7 +238,7 @@ fn test_get_mut() {
 fn test_get_mut_poison() {
     let m = Arc::new(ShardedLock::new(NonCopy(10)));
     let m2 = m.clone();
-    let _ = thread::spawn(move || {
+    let _: Result<(), _> = thread::spawn(move || {
         let _lock = m2.write().unwrap();
         panic!("test panic in inner thread to poison ShardedLock");
     })

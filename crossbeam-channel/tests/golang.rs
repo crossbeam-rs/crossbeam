@@ -767,7 +767,7 @@ mod select2 {
         assert!(
             !(ALLOCATED.load(SeqCst) > alloc
                 && (ALLOCATED.load(SeqCst) - alloc) > (N as usize + 10000))
-        )
+        );
     }
 }
 
@@ -869,6 +869,11 @@ mod select7 {
 
     #[test]
     fn main() {
+        // https://github.com/rust-lang/miri/issues/1371
+        if option_env!("MIRI_LEAK_CHECK").is_some() {
+            return;
+        }
+
         send1(recv1);
         send2(recv1);
         send3(recv1);
@@ -916,6 +921,11 @@ mod sieve1 {
 
     #[test]
     fn main() {
+        // https://github.com/rust-lang/miri/issues/1371
+        if option_env!("MIRI_LEAK_CHECK").is_some() {
+            return;
+        }
+
         let primes = make::<i32>(1);
         go!(primes, sieve(primes));
 
@@ -2125,6 +2135,11 @@ mod chan1 {
 
     #[test]
     fn main() {
+        // https://github.com/rust-lang/miri/issues/1371
+        if option_env!("MIRI_LEAK_CHECK").is_some() {
+            return;
+        }
+
         let h = Arc::new(Mutex::new([0usize; N]));
         let c = make::<usize>(W);
         for m in 0..M {

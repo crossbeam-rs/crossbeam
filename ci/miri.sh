@@ -11,14 +11,16 @@ export RUSTFLAGS="${RUSTFLAGS:-} -Z randomize-layout"
 export RUSTDOCFLAGS="${RUSTDOCFLAGS:-} -Z randomize-layout"
 
 MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation" \
+    MIRI_LEAK_CHECK='1' \
     cargo miri test \
+    -p crossbeam-channel \
     -p crossbeam-queue \
     -p crossbeam-utils 2>&1 | ts -i '%.s  '
 
-# -Zmiri-ignore-leaks is needed because we use detached threads in tests/docs: https://github.com/rust-lang/miri/issues/1371
+# -Zmiri-ignore-leaks is needed because we use detached threads in tests in tests/golang.rs: https://github.com/rust-lang/miri/issues/1371
 MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-ignore-leaks" \
     cargo miri test \
-    -p crossbeam-channel 2>&1 | ts -i '%.s  '
+    -p crossbeam-channel --test golang 2>&1 | ts -i '%.s  '
 
 # Use Tree Borrows instead of Stacked Borrows because epoch is not compatible with Stacked Borrows: https://github.com/crossbeam-rs/crossbeam/issues/545#issuecomment-1192785003
 MIRIFLAGS="-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-tree-borrows" \

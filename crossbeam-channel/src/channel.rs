@@ -248,6 +248,7 @@ pub fn at(when: Instant) -> Receiver<Instant> {
 ///
 /// let (s, r) = unbounded();
 ///
+/// # let t =
 /// thread::spawn(move || {
 ///     thread::sleep(Duration::from_secs(1));
 ///     s.send(1).unwrap();
@@ -265,6 +266,7 @@ pub fn at(when: Instant) -> Receiver<Instant> {
 ///     recv(r) -> msg => assert_eq!(msg, Ok(1)),
 ///     recv(timeout) -> _ => println!("timed out"),
 /// }
+/// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// ```
 pub fn never<T>() -> Receiver<T> {
     Receiver {
@@ -1103,6 +1105,7 @@ impl<T> Receiver<T> {
     ///
     /// let (s, r) = unbounded::<i32>();
     ///
+    /// # let t =
     /// thread::spawn(move || {
     ///     s.send(1).unwrap();
     ///     thread::sleep(Duration::from_secs(1));
@@ -1118,6 +1121,7 @@ impl<T> Receiver<T> {
     /// let v: Vec<_> = r.try_iter().collect();
     ///
     /// assert_eq!(v, [1, 2]);
+    /// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn try_iter(&self) -> TryIter<'_, T> {
         TryIter { receiver: self }
@@ -1269,6 +1273,7 @@ impl<T> fmt::Debug for Iter<'_, T> {
 ///
 /// let (s, r) = unbounded::<i32>();
 ///
+/// # let t =
 /// thread::spawn(move || {
 ///     s.send(1).unwrap();
 ///     thread::sleep(Duration::from_secs(1));
@@ -1284,6 +1289,7 @@ impl<T> fmt::Debug for Iter<'_, T> {
 /// let v: Vec<_> = r.try_iter().collect();
 ///
 /// assert_eq!(v, [1, 2]);
+/// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// ```
 pub struct TryIter<'a, T> {
     receiver: &'a Receiver<T>,
