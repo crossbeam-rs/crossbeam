@@ -2056,10 +2056,7 @@ impl<T> Steal<T> {
     /// assert!(Empty::<i32>.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        match self {
-            Steal::Empty => true,
-            _ => false,
-        }
+        matches!(self, Steal::Empty)
     }
 
     /// Returns `true` if at least one task was stolen.
@@ -2075,10 +2072,7 @@ impl<T> Steal<T> {
     /// assert!(Success(7).is_success());
     /// ```
     pub fn is_success(&self) -> bool {
-        match self {
-            Steal::Success(_) => true,
-            _ => false,
-        }
+        matches!(self, Steal::Success(_))
     }
 
     /// Returns `true` if the steal operation needs to be retried.
@@ -2094,10 +2088,7 @@ impl<T> Steal<T> {
     /// assert!(Retry::<i32>.is_retry());
     /// ```
     pub fn is_retry(&self) -> bool {
-        match self {
-            Steal::Retry => true,
-            _ => false,
-        }
+        matches!(self, Steal::Retry)
     }
 
     /// Returns the result of the operation, if successful.

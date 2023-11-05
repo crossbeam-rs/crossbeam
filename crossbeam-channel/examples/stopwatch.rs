@@ -18,7 +18,7 @@ fn main() {
     // Creates a channel that gets a message every time `SIGINT` is signalled.
     fn sigint_notifier() -> io::Result<Receiver<()>> {
         let (s, r) = bounded(100);
-        let mut signals = Signals::new(&[SIGINT])?;
+        let mut signals = Signals::new([SIGINT])?;
 
         thread::spawn(move || {
             for _ in signals.forever() {

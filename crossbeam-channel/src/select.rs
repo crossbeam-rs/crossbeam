@@ -79,10 +79,10 @@ impl From<usize> for Selected {
     }
 }
 
-impl Into<usize> for Selected {
+impl From<Selected> for usize {
     #[inline]
-    fn into(self) -> usize {
-        match self {
+    fn from(val: Selected) -> Self {
+        match val {
             Selected::Waiting => 0,
             Selected::Aborted => 1,
             Selected::Disconnected => 2,

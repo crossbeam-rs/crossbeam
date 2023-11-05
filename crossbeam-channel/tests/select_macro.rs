@@ -965,6 +965,7 @@ fn references() {
     }
 }
 
+#[allow(clippy::never_loop)] // This is intentional.
 #[test]
 fn case_blocks() {
     let (s, r) = unbounded::<i32>();
