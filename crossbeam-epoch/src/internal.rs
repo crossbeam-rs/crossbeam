@@ -36,11 +36,10 @@
 //! destroyed as soon as the data structure gets dropped.
 
 use crate::primitive::cell::UnsafeCell;
-use crate::primitive::sync::atomic;
+use crate::primitive::sync::atomic::{self, Ordering};
 use core::cell::Cell;
 use core::mem::{self, ManuallyDrop};
 use core::num::Wrapping;
-use core::sync::atomic::Ordering;
 use core::{fmt, ptr};
 
 use crossbeam_utils::CachePadded;

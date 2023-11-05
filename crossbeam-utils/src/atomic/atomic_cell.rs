@@ -1,12 +1,11 @@
 // Necessary for implementing atomic methods for `AtomicUnit`
 #![allow(clippy::unit_arg)]
 
-use crate::primitive::sync::atomic::{self, AtomicBool};
+use crate::primitive::sync::atomic::{self, AtomicBool, Ordering};
 use core::cell::UnsafeCell;
 use core::cmp;
 use core::fmt;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
-use core::sync::atomic::Ordering;
 
 use core::ptr;
 
@@ -940,16 +939,7 @@ macro_rules! atomic {
 
 /// Returns `true` if operations on `AtomicCell<T>` are lock-free.
 const fn atomic_is_lock_free<T>() -> bool {
-    // HACK(taiki-e): This is equivalent to `atomic! { T, _a, true, false }`, but can be used in const fn even in our MSRV (Rust 1.61).
-    let is_lock_free = can_transmute::<T, AtomicUnit>()
-        | can_transmute::<T, atomic::AtomicU8>()
-        | can_transmute::<T, atomic::AtomicU16>()
-        | can_transmute::<T, atomic::AtomicU32>();
-    #[cfg(target_has_atomic = "64")]
-    let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU64>();
-    // TODO: AtomicU128 is unstable
-    // let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU128>();
-    is_lock_free
+    atomic! { T, _a, true, false }
 }
 
 /// Atomically reads data from `src`.
