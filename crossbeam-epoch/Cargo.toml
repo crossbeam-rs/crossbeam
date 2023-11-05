@@ -64,4 +64,3 @@ default-features = false
 
 [dev-dependencies]
 rand = "0.8"
-rustversion = "1"
