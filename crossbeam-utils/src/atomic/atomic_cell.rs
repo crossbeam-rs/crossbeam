@@ -697,13 +697,13 @@ impl_arithmetic!(u16, atomic::AtomicU16, "let a = AtomicCell::new(7u16);");
 impl_arithmetic!(i16, atomic::AtomicI16, "let a = AtomicCell::new(7i16);");
 impl_arithmetic!(u32, atomic::AtomicU32, "let a = AtomicCell::new(7u32);");
 impl_arithmetic!(i32, atomic::AtomicI32, "let a = AtomicCell::new(7i32);");
-#[cfg(not(crossbeam_no_atomic_64))]
+#[cfg(target_has_atomic = "64")]
 impl_arithmetic!(u64, atomic::AtomicU64, "let a = AtomicCell::new(7u64);");
-#[cfg(not(crossbeam_no_atomic_64))]
+#[cfg(target_has_atomic = "64")]
 impl_arithmetic!(i64, atomic::AtomicI64, "let a = AtomicCell::new(7i64);");
-#[cfg(crossbeam_no_atomic_64)]
+#[cfg(not(target_has_atomic = "64"))]
 impl_arithmetic!(u64, fallback, "let a = AtomicCell::new(7u64);");
-#[cfg(crossbeam_no_atomic_64)]
+#[cfg(not(target_has_atomic = "64"))]
 impl_arithmetic!(i64, fallback, "let a = AtomicCell::new(7i64);");
 // TODO: AtomicU128 is unstable
 // impl_arithmetic!(u128, atomic::AtomicU128, "let a = AtomicCell::new(7u128);");
@@ -928,7 +928,7 @@ macro_rules! atomic {
             atomic!(@check, $t, atomic::AtomicU8, $a, $atomic_op);
             atomic!(@check, $t, atomic::AtomicU16, $a, $atomic_op);
             atomic!(@check, $t, atomic::AtomicU32, $a, $atomic_op);
-            #[cfg(not(crossbeam_no_atomic_64))]
+            #[cfg(target_has_atomic = "64")]
             atomic!(@check, $t, atomic::AtomicU64, $a, $atomic_op);
             // TODO: AtomicU128 is unstable
             // atomic!(@check, $t, atomic::AtomicU128, $a, $atomic_op);
@@ -945,7 +945,7 @@ const fn atomic_is_lock_free<T>() -> bool {
         | can_transmute::<T, atomic::AtomicU8>()
         | can_transmute::<T, atomic::AtomicU16>()
         | can_transmute::<T, atomic::AtomicU32>();
-    #[cfg(not(crossbeam_no_atomic_64))]
+    #[cfg(target_has_atomic = "64")]
     let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU64>();
     // TODO: AtomicU128 is unstable
     // let is_lock_free = is_lock_free | can_transmute::<T, atomic::AtomicU128>();
