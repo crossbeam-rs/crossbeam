@@ -5,12 +5,11 @@ use core::marker::PhantomData;
 use core::mem::{self, MaybeUninit};
 use core::ops::{Deref, DerefMut};
 use core::slice;
-use core::sync::atomic::Ordering;
 
 use crate::alloc::alloc;
 use crate::alloc::boxed::Box;
 use crate::guard::Guard;
-use crate::primitive::sync::atomic::AtomicUsize;
+use crate::primitive::sync::atomic::{AtomicUsize, Ordering};
 use crossbeam_utils::atomic::AtomicConsume;
 
 /// Given ordering for the success case in a compare-exchange operation, returns the strongest
