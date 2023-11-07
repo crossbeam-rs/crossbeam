@@ -3,7 +3,8 @@ use core::cell::Cell;
 use core::fmt;
 
 const SPIN_LIMIT: u32 = 6;
-const YIELD_LIMIT: u32 = 10;
+const PRE_SNOOZE_SPIN_LIMIT: u32 = 3;
+const YIELD_LIMIT: u32 = 6;
 
 /// Performs exponential backoff in spin loops.
 ///
@@ -205,7 +206,7 @@ impl Backoff {
     /// [`AtomicBool`]: std::sync::atomic::AtomicBool
     #[inline]
     pub fn snooze(&self) {
-        if self.step.get() <= SPIN_LIMIT {
+        if self.step.get() <= PRE_SNOOZE_SPIN_LIMIT {
             for _ in 0..1 << self.step.get() {
                 hint::spin_loop();
             }
