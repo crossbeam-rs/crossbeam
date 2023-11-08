@@ -12,6 +12,7 @@ crossbeam-channel = { path = ".." }
 crossbeam-deque = { path = "../../crossbeam-deque" }
 flume = "0.10"
 futures = { version = "0.3", features = ["thread-pool"] }
+libc = "0.2"
 lockfree = "0.5.1"
 mpmc = "0.1.6"
 
@@ -68,4 +69,14 @@ doc = false
 [[bin]]
 name = "mpmc"
 path = "mpmc.rs"
+doc = false
+
+[[bin]]
+name = "send-latency"
+path = "send-latency.rs"
+doc = false
+
+[[bin]]
+name = "unbounded-alloc"
+path = "unbounded-alloc.rs"
 doc = false
