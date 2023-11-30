@@ -498,7 +498,7 @@ impl<T> Sender<T> {
     ///     // This sleep is crucial; otherwise `.recv()` could block indefinitely!
     ///     thread::sleep(Duration::from_secs(1));
     ///     assert_eq!(r.recv(), Ok(1));
-    /// });
+    /// }).join().unwrap();
     /// ```
     pub fn send_unnotified(&self, msg: T) -> Result<(), SendError<T>> {
         match &self.flavor {
