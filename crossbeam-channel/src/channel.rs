@@ -415,6 +415,13 @@ impl<T> Sender<T> {
     /// This method will either send a message into the channel immediately or return an error if
     /// the channel is full or disconnected. The returned error contains the original message.
     ///
+    /// Omitting notification makes the send operation complete faster. However, this means
+    /// receiver won't be notified about the existence of new message immediately. This means the
+    /// sole use of this call for a given channel could cause receivers to be blocked indefinitely.
+    /// Thus, this call must be accompanied with some explicit mechanism to wake up the receiver
+    /// like mixed use of notifying send operations or receive operations with retry or
+    /// timeout/deadline.
+    ///
     /// If called on a zero-capacity channel, this method will send the message only if there
     /// happens to be a receive operation on the other side of the channel at the same time. This
     /// means this is equivalent to the [send](Sender::send) operation.
