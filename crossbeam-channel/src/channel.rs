@@ -424,7 +424,7 @@ impl<T> Sender<T> {
     ///
     /// If called on a zero-capacity channel, this method will send the message only if there
     /// happens to be a receive operation on the other side of the channel at the same time. This
-    /// means this is equivalent to the [send](Sender::send) operation.
+    /// means this is equivalent to the [try_send](Sender::try_send) operation.
     pub fn try_send_unnotified(&self, msg: T) -> Result<(), TrySendError<T>> {
         match &self.flavor {
             SenderFlavor::Array(chan) => chan.try_send(msg, false),
@@ -579,7 +579,7 @@ impl<T> Sender<T> {
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel. This means this is equivalent to the
-    /// [send](Sender::send) operation.
+    /// [send_timeout](Sender::send_timeout) operation.
     pub fn send_timeout_unnotified(
         &self,
         msg: T,
@@ -649,7 +649,7 @@ impl<T> Sender<T> {
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel. This means this is equivalent to the
-    /// [send](Sender::send) operation.
+    /// [send_deadline](Sender::send_deadline) operation.
     pub fn send_deadline_unnotified(
         &self,
         msg: T,
