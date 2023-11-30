@@ -324,7 +324,10 @@ impl<T> Channel<T> {
     pub(crate) fn try_send(&self, msg: T, notify: bool) -> Result<(), TrySendError<T>> {
         let token = &mut Token::default();
         if self.start_send(token) {
-            unsafe { self.write(token, msg, notify).map_err(TrySendError::Disconnected) }
+            unsafe {
+                self.write(token, msg, notify)
+                    .map_err(TrySendError::Disconnected)
+            }
         } else {
             Err(TrySendError::Full(msg))
         }

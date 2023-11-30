@@ -573,13 +573,16 @@ impl<T> Sender<T> {
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel. This means this is equivalent to the
     /// [send](Sender::send) operation.
-    pub fn send_timeout_unnotified(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
+    pub fn send_timeout_unnotified(
+        &self,
+        msg: T,
+        timeout: Duration,
+    ) -> Result<(), SendTimeoutError<T>> {
         match Instant::now().checked_add(timeout) {
             Some(deadline) => self.send_internal(msg, deadline, false),
             None => self.send(msg).map_err(SendTimeoutError::from),
         }
     }
-
 
     /// Waits for a message to be sent into the channel, but only until a given deadline.
     ///
@@ -640,11 +643,20 @@ impl<T> Sender<T> {
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel. This means this is equivalent to the
     /// [send](Sender::send) operation.
-    pub fn send_deadline_unnotified(&self, msg: T, deadline: Instant) -> Result<(), SendTimeoutError<T>> {
+    pub fn send_deadline_unnotified(
+        &self,
+        msg: T,
+        deadline: Instant,
+    ) -> Result<(), SendTimeoutError<T>> {
         self.send_internal(msg, deadline, false)
     }
 
-    fn send_internal(&self, msg: T, deadline: Instant, notify: bool) -> Result<(), SendTimeoutError<T>> {
+    fn send_internal(
+        &self,
+        msg: T,
+        deadline: Instant,
+        notify: bool,
+    ) -> Result<(), SendTimeoutError<T>> {
         match &self.flavor {
             SenderFlavor::Array(chan) => chan.send(msg, Some(deadline), notify),
             SenderFlavor::List(chan) => chan.send(msg, Some(deadline), notify),
