@@ -404,8 +404,24 @@ impl<T> Sender<T> {
     /// ```
     pub fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         match &self.flavor {
-            SenderFlavor::Array(chan) => chan.try_send(msg),
-            SenderFlavor::List(chan) => chan.try_send(msg),
+            SenderFlavor::Array(chan) => chan.try_send(msg, true),
+            SenderFlavor::List(chan) => chan.try_send(msg, true),
+            SenderFlavor::Zero(chan) => chan.try_send(msg),
+        }
+    }
+
+    /// Attempts to send a message into the channel without blocking and notifying receiver.
+    ///
+    /// This method will either send a message into the channel immediately or return an error if
+    /// the channel is full or disconnected. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will send the message only if there
+    /// happens to be a receive operation on the other side of the channel at the same time. This
+    /// means this is equivalent to the [send](Sender::send) operation.
+    pub fn try_send_unnotified(&self, msg: T) -> Result<(), TrySendError<T>> {
+        match &self.flavor {
+            SenderFlavor::Array(chan) => chan.try_send(msg, false),
+            SenderFlavor::List(chan) => chan.try_send(msg, false),
             SenderFlavor::Zero(chan) => chan.try_send(msg),
         }
     }
@@ -440,8 +456,8 @@ impl<T> Sender<T> {
     /// ```
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         match &self.flavor {
-            SenderFlavor::Array(chan) => chan.send(msg, None),
-            SenderFlavor::List(chan) => chan.send(msg, None),
+            SenderFlavor::Array(chan) => chan.send(msg, None, true),
+            SenderFlavor::List(chan) => chan.send(msg, None, true),
             SenderFlavor::Zero(chan) => chan.send(msg, None),
         }
         .map_err(|err| match err {
@@ -450,11 +466,44 @@ impl<T> Sender<T> {
         })
     }
 
-    pub fn send_buffered(&self, msg: T) -> Result<(), SendError<T>> {
+    /// Blocks the current thread until a message is sent without notifying receiver or the
+    /// channel is disconnected.
+    ///
+    /// Omitting notification makes the send operation complete faster. However, this means
+    /// receiver won't be notified about the existence of new message immediately. This means the
+    /// sole use of this call for a given channel could cause receivers to be blocked indefinitely.
+    /// Thus, this call must be accompanied with some explicit mechanism to wake up the receiver
+    /// like mixed use of notifying send operations or receive operations with retry or
+    /// timeout/deadline.
+    ///
+    /// If the channel is full and not disconnected, this call will block until the send operation
+    /// can proceed. If the channel becomes disconnected, this call will wake up and return an
+    /// error. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel. This means this is equivalent to the
+    /// [send](Sender::send) operation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::thread;
+    /// use std::time::Duration;
+    /// use crossbeam_channel::bounded;
+    ///
+    /// let (s, r) = bounded(1);
+    /// assert_eq!(s.send_unnotified(1), Ok(()));
+    ///
+    /// thread::spawn(move || {
+    ///     // This sleep is crucial; otherwise `.recv()` could block indefinitely!
+    ///     thread::sleep(Duration::from_secs(1));
+    ///     assert_eq!(r.recv(), Ok(1));
+    /// });
+    /// ```
+    pub fn send_unnotified(&self, msg: T) -> Result<(), SendError<T>> {
         match &self.flavor {
-            SenderFlavor::Array(chan) => chan.send_buffered(msg, None),
-            SenderFlavor::List(chan) => chan.send_buffered(msg, None),
-            // n/a duo to the synchronized req between senders and receivers.
+            SenderFlavor::Array(chan) => chan.send(msg, None, false),
+            SenderFlavor::List(chan) => chan.send(msg, None, false),
             SenderFlavor::Zero(chan) => chan.send(msg, None),
         }
         .map_err(|err| match err {
@@ -502,10 +551,35 @@ impl<T> Sender<T> {
     /// ```
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
         match Instant::now().checked_add(timeout) {
-            Some(deadline) => self.send_deadline(msg, deadline),
+            Some(deadline) => self.send_internal(msg, deadline, true),
             None => self.send(msg).map_err(SendTimeoutError::from),
         }
     }
+
+    /// Waits for a message to be sent into the channel without notifying receiver, but only for a
+    /// limited time.
+    ///
+    /// Omitting notification makes the send operation complete faster. However, this means
+    /// receiver won't be notified about the existence of new message immediately. This means the
+    /// sole use of this call for a given channel could cause receivers to be blocked indefinitely.
+    /// Thus, this call must be accompanied with some explicit mechanism to wake up the receiver
+    /// like mixed use of notifying send operations or receive operations with retry or
+    /// timeout/deadline.
+    ///
+    /// If the channel is full and not disconnected, this call will block until the send operation
+    /// can proceed or the operation times out. If the channel becomes disconnected, this call will
+    /// wake up and return an error. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel. This means this is equivalent to the
+    /// [send](Sender::send) operation.
+    pub fn send_timeout_unnotified(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
+        match Instant::now().checked_add(timeout) {
+            Some(deadline) => self.send_internal(msg, deadline, false),
+            None => self.send(msg).map_err(SendTimeoutError::from),
+        }
+    }
+
 
     /// Waits for a message to be sent into the channel, but only until a given deadline.
     ///
@@ -547,9 +621,33 @@ impl<T> Sender<T> {
     /// );
     /// ```
     pub fn send_deadline(&self, msg: T, deadline: Instant) -> Result<(), SendTimeoutError<T>> {
+        self.send_internal(msg, deadline, true)
+    }
+
+    /// Waits for a message to be sent into the channel without notifying receiver, but only until a given deadline.
+    ///
+    /// Omitting notification makes the send operation complete faster. However, this means
+    /// receiver won't be notified about the existence of new message immediately. This means the
+    /// sole use of this call for a given channel could cause receivers to be blocked indefinitely.
+    /// Thus, this call must be accompanied with some explicit mechanism to wake up the receiver
+    /// like mixed use of notifying send operations or receive operations with retry or
+    /// timeout/deadline.
+    ///
+    /// If the channel is full and not disconnected, this call will block until the send operation
+    /// can proceed or the operation times out. If the channel becomes disconnected, this call will
+    /// wake up and return an error. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will wait for a receive operation to
+    /// appear on the other side of the channel. This means this is equivalent to the
+    /// [send](Sender::send) operation.
+    pub fn send_deadline_unnotified(&self, msg: T, deadline: Instant) -> Result<(), SendTimeoutError<T>> {
+        self.send_internal(msg, deadline, false)
+    }
+
+    fn send_internal(&self, msg: T, deadline: Instant, notify: bool) -> Result<(), SendTimeoutError<T>> {
         match &self.flavor {
-            SenderFlavor::Array(chan) => chan.send(msg, Some(deadline)),
-            SenderFlavor::List(chan) => chan.send(msg, Some(deadline)),
+            SenderFlavor::Array(chan) => chan.send(msg, Some(deadline), notify),
+            SenderFlavor::List(chan) => chan.send(msg, Some(deadline), notify),
             SenderFlavor::Zero(chan) => chan.send(msg, Some(deadline)),
         }
     }
@@ -1527,7 +1625,6 @@ pub(crate) unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Resul
     match &s.flavor {
         SenderFlavor::Array(chan) => chan.write(token, msg, true),
         SenderFlavor::List(chan) => chan.write(token, msg, true),
-        // n/a duo to the synchronized req between senders and receivers.
         SenderFlavor::Zero(chan) => chan.write(token, msg),
     }
 }

@@ -210,7 +210,7 @@ impl<T> Channel<T> {
     }
 
     /// Writes a message into the channel.
-    pub(crate) unsafe fn write(&self, token: &mut Token, msg: T, notify_buffered: bool) -> Result<(), T> {
+    pub(crate) unsafe fn write(&self, token: &mut Token, msg: T, notify: bool) -> Result<(), T> {
         // If there is no slot, the channel is disconnected.
         if token.array.slot.is_null() {
             return Err(msg);
@@ -223,7 +223,7 @@ impl<T> Channel<T> {
         slot.stamp.store(token.array.stamp, Ordering::Release);
 
         // Wake a sleeping receiver.
-        if notify_buffered {
+        if notify {
             self.receivers.notify();
         }
         Ok(())
@@ -321,20 +321,21 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to send a message into the channel.
-    pub(crate) fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+    pub(crate) fn try_send(&self, msg: T, notify: bool) -> Result<(), TrySendError<T>> {
         let token = &mut Token::default();
         if self.start_send(token) {
-            unsafe { self.write(token, msg, true).map_err(TrySendError::Disconnected) }
+            unsafe { self.write(token, msg, notify).map_err(TrySendError::Disconnected) }
         } else {
             Err(TrySendError::Full(msg))
         }
     }
 
-    fn send_internal(
+    /// Sends a message into the channel.
+    pub(crate) fn send(
         &self,
         msg: T,
         deadline: Option<Instant>,
-        notify_buffered: bool,
+        notify: bool,
     ) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
         loop {
@@ -342,7 +343,7 @@ impl<T> Channel<T> {
             let backoff = Backoff::new();
             loop {
                 if self.start_send(token) {
-                    let res = unsafe { self.write(token, msg, notify_buffered) };
+                    let res = unsafe { self.write(token, msg, notify) };
                     return res.map_err(SendTimeoutError::Disconnected);
                 }
 
@@ -382,25 +383,6 @@ impl<T> Channel<T> {
             });
         }
     }
-
-    /// Sends a message into the channel.
-    pub(crate) fn send(
-        &self,
-        msg: T,
-        deadline: Option<Instant>,
-    ) -> Result<(), SendTimeoutError<T>> {
-        self.send_internal(msg, deadline, true)
-    }
-
-    /// Sends a message into the channel.
-    pub(crate) fn send_buffered(
-        &self,
-        msg: T,
-        deadline: Option<Instant>,
-    ) -> Result<(), SendTimeoutError<T>> {
-        self.send_internal(msg, deadline, false)
-    }
-
 
     /// Attempts to receive a message without blocking.
     pub(crate) fn try_recv(&self) -> Result<T, TryRecvError> {
