@@ -51,7 +51,7 @@ fn treiber_stack() {
     ///
     /// Usable with any number of producers and consumers.
     #[derive(Debug)]
-    pub struct TreiberStack<T> {
+    struct TreiberStack<T> {
         head: Atomic<Node<T>>,
     }
 
@@ -63,14 +63,14 @@ fn treiber_stack() {
 
     impl<T> TreiberStack<T> {
         /// Creates a new, empty stack.
-        pub fn new() -> Self {
+        fn new() -> Self {
             Self {
                 head: Atomic::null(),
             }
         }
 
         /// Pushes a value on top of the stack.
-        pub fn push(&self, t: T) {
+        fn push(&self, t: T) {
             let mut n = Owned::new(Node {
                 data: ManuallyDrop::new(t),
                 next: Atomic::null(),
@@ -95,7 +95,7 @@ fn treiber_stack() {
         /// Attempts to pop the top element from the stack.
         ///
         /// Returns `None` if the stack is empty.
-        pub fn pop(&self) -> Option<T> {
+        fn pop(&self) -> Option<T> {
             let guard = epoch::pin();
             loop {
                 let head = self.head.load(Acquire, &guard);
@@ -121,7 +121,7 @@ fn treiber_stack() {
         }
 
         /// Returns `true` if the stack is empty.
-        pub fn is_empty(&self) -> bool {
+        fn is_empty(&self) -> bool {
             let guard = epoch::pin();
             self.head.load(Acquire, &guard).is_null()
         }
