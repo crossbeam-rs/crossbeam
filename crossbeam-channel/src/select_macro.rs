@@ -685,7 +685,7 @@ macro_rules! crossbeam_channel_internal {
         $default:tt
     ) => {{
         const _LEN: usize = $crate::crossbeam_channel_internal!(@count ($($cases)*));
-        let _handle: &$crate::internal::SelectHandle = &$crate::never::<()>();
+        let _handle: &dyn $crate::internal::SelectHandle = &$crate::never::<()>();
 
         #[allow(unused_mut)]
         let mut _sel = [(_handle, 0, ::std::ptr::null()); _LEN];
