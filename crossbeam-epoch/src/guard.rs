@@ -1,8 +1,6 @@
 use core::fmt;
 use core::mem;
 
-use scopeguard::defer;
-
 use crate::atomic::Shared;
 use crate::collector::Collector;
 use crate::deferred::Deferred;
@@ -366,6 +364,17 @@ impl Guard {
     where
         F: FnOnce() -> R,
     {
+        // Ensure the Guard is re-pinned even if the function panics
+        struct ScopeGuard(*const Local);
+        impl Drop for ScopeGuard {
+            fn drop(&mut self) {
+                if let Some(local) = unsafe { self.0.as_ref() } {
+                    mem::forget(local.pin());
+                    local.release_handle();
+                }
+            }
+        }
+
         if let Some(local) = unsafe { self.local.as_ref() } {
             // We need to acquire a handle here to ensure the Local doesn't
             // disappear from under us.
@@ -373,13 +382,7 @@ impl Guard {
             local.unpin();
         }
 
-        // Ensure the Guard is re-pinned even if the function panics
-        defer! {
-            if let Some(local) = unsafe { self.local.as_ref() } {
-                mem::forget(local.pin());
-                local.release_handle();
-            }
-        }
+        let _guard = ScopeGuard(self.local);
 
         f()
     }
