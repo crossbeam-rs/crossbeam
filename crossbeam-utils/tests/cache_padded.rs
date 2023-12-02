@@ -69,7 +69,7 @@ fn drops() {
 
     struct Foo<'a>(&'a Cell<usize>);
 
-    impl<'a> Drop for Foo<'a> {
+    impl Drop for Foo<'_> {
         fn drop(&mut self) {
             self.0.set(self.0.get() + 1);
         }

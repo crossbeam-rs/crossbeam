@@ -1345,7 +1345,7 @@ impl<'a: 'g, 'g, K: 'a, V: 'a> Entry<'a, 'g, K, V> {
     }
 }
 
-impl<'a: 'g, 'g, K, V> Entry<'a, 'g, K, V>
+impl<K, V> Entry<'_, '_, K, V>
 where
     K: Ord + Send + 'static,
     V: Send + 'static,

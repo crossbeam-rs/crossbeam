@@ -87,4 +87,5 @@ members = [
 [workspace.lints.rust]
 missing_debug_implementations = "warn"
 rust_2018_idioms = "warn"
+single_use_lifetimes = "warn"
 unreachable_pub = "warn"

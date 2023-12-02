@@ -123,7 +123,7 @@ impl<T> Iterator for Chan<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a Chan<T> {
+impl<T> IntoIterator for &Chan<T> {
     type Item = T;
     type IntoIter = Chan<T>;
 
