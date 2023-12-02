@@ -45,8 +45,8 @@ struct Packet<T> {
 
 impl<T> Packet<T> {
     /// Creates an empty packet on the stack.
-    fn empty_on_stack() -> Packet<T> {
-        Packet {
+    fn empty_on_stack() -> Self {
+        Self {
             on_stack: true,
             ready: AtomicBool::new(false),
             msg: UnsafeCell::new(None),
@@ -54,8 +54,8 @@ impl<T> Packet<T> {
     }
 
     /// Creates an empty packet on the heap.
-    fn empty_on_heap() -> Box<Packet<T>> {
-        Box::new(Packet {
+    fn empty_on_heap() -> Box<Self> {
+        Box::new(Self {
             on_stack: false,
             ready: AtomicBool::new(false),
             msg: UnsafeCell::new(None),
@@ -63,8 +63,8 @@ impl<T> Packet<T> {
     }
 
     /// Creates a packet on the stack, containing a message.
-    fn message_on_stack(msg: T) -> Packet<T> {
-        Packet {
+    fn message_on_stack(msg: T) -> Self {
+        Self {
             on_stack: true,
             ready: AtomicBool::new(false),
             msg: UnsafeCell::new(Some(msg)),
@@ -104,7 +104,7 @@ pub(crate) struct Channel<T> {
 impl<T> Channel<T> {
     /// Constructs a new zero-capacity channel.
     pub(crate) fn new() -> Self {
-        Channel {
+        Self {
             inner: Mutex::new(Inner {
                 senders: Waker::new(),
                 receivers: Waker::new(),

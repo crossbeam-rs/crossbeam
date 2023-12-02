@@ -42,12 +42,12 @@ impl Operation {
     /// reference should point to a variable that is specific to the thread and the operation,
     /// and is alive for the entire duration of select or blocking operation.
     #[inline]
-    pub fn hook<T>(r: &mut T) -> Operation {
+    pub fn hook<T>(r: &mut T) -> Self {
         let val = r as *mut T as usize;
         // Make sure that the pointer address doesn't equal the numerical representation of
         // `Selected::{Waiting, Aborted, Disconnected}`.
         assert!(val > 2);
-        Operation(val)
+        Self(val)
     }
 }
 
@@ -69,12 +69,12 @@ pub enum Selected {
 
 impl From<usize> for Selected {
     #[inline]
-    fn from(val: usize) -> Selected {
+    fn from(val: usize) -> Self {
         match val {
-            0 => Selected::Waiting,
-            1 => Selected::Aborted,
-            2 => Selected::Disconnected,
-            oper => Selected::Operation(Operation(oper)),
+            0 => Self::Waiting,
+            1 => Self::Aborted,
+            2 => Self::Disconnected,
+            oper => Self::Operation(Operation(oper)),
         }
     }
 }
@@ -618,8 +618,8 @@ impl<'a> Select<'a> {
     /// // The list of operations is empty, which means no operation can be selected.
     /// assert!(sel.try_select().is_err());
     /// ```
-    pub fn new() -> Select<'a> {
-        Select {
+    pub fn new() -> Self {
+        Self {
             handles: Vec::with_capacity(4),
             next_index: 0,
         }
@@ -1128,18 +1128,18 @@ impl<'a> Select<'a> {
     }
 }
 
-impl<'a> Clone for Select<'a> {
-    fn clone(&self) -> Select<'a> {
-        Select {
+impl Clone for Select<'_> {
+    fn clone(&self) -> Self {
+        Self {
             handles: self.handles.clone(),
             next_index: self.next_index,
         }
     }
 }
 
-impl<'a> Default for Select<'a> {
-    fn default() -> Select<'a> {
-        Select::new()
+impl Default for Select<'_> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

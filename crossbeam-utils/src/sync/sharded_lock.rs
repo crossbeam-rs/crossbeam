@@ -97,8 +97,8 @@ impl<T> ShardedLock<T> {
     ///
     /// let lock = ShardedLock::new(5);
     /// ```
-    pub fn new(value: T) -> ShardedLock<T> {
-        ShardedLock {
+    pub fn new(value: T) -> Self {
+        Self {
             shards: (0..NUM_SHARDS)
                 .map(|_| {
                     CachePadded::new(Shard {
@@ -468,14 +468,14 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLock<T> {
 }
 
 impl<T: Default> Default for ShardedLock<T> {
-    fn default() -> ShardedLock<T> {
-        ShardedLock::new(Default::default())
+    fn default() -> Self {
+        Self::new(Default::default())
     }
 }
 
 impl<T> From<T> for ShardedLock<T> {
     fn from(t: T) -> Self {
-        ShardedLock::new(t)
+        Self::new(t)
     }
 }
 

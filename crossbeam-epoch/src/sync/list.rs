@@ -302,12 +302,12 @@ mod tests {
     use crossbeam_utils::thread;
     use std::sync::Barrier;
 
-    impl IsElement<Entry> for Entry {
-        fn entry_of(entry: &Entry) -> &Entry {
+    impl IsElement<Self> for Entry {
+        fn entry_of(entry: &Self) -> &Entry {
             entry
         }
 
-        unsafe fn element_of(entry: &Entry) -> &Entry {
+        unsafe fn element_of(entry: &Entry) -> &Self {
             entry
         }
 

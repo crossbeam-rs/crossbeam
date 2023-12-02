@@ -39,7 +39,7 @@ impl Context {
     #[inline]
     pub fn with<F, R>(f: F) -> R
     where
-        F: FnOnce(&Context) -> R,
+        F: FnOnce(&Self) -> R,
     {
         thread_local! {
             /// Cached thread-local context.
@@ -47,14 +47,14 @@ impl Context {
         }
 
         let mut f = Some(f);
-        let mut f = |cx: &Context| -> R {
+        let mut f = |cx: &Self| -> R {
             let f = f.take().unwrap();
             f(cx)
         };
 
         CONTEXT
             .try_with(|cell| match cell.take() {
-                None => f(&Context::new()),
+                None => f(&Self::new()),
                 Some(cx) => {
                     cx.reset();
                     let res = f(&cx);
@@ -62,13 +62,13 @@ impl Context {
                     res
                 }
             })
-            .unwrap_or_else(|_| f(&Context::new()))
+            .unwrap_or_else(|_| f(&Self::new()))
     }
 
     /// Creates a new `Context`.
     #[cold]
-    fn new() -> Context {
-        Context {
+    fn new() -> Self {
+        Self {
             inner: Arc::new(Inner {
                 select: AtomicUsize::new(Selected::Waiting.into()),
                 packet: AtomicPtr::new(ptr::null_mut()),

@@ -100,8 +100,8 @@ mod primitive {
         // https://github.com/tokio-rs/loom#handling-loom-api-differences
         impl<T> UnsafeCell<T> {
             #[inline]
-            pub(crate) const fn new(data: T) -> UnsafeCell<T> {
-                UnsafeCell(::core::cell::UnsafeCell::new(data))
+            pub(crate) const fn new(data: T) -> Self {
+                Self(::core::cell::UnsafeCell::new(data))
             }
 
             #[inline]

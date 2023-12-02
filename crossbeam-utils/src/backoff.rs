@@ -93,7 +93,7 @@ impl Backoff {
     /// ```
     #[inline]
     pub fn new() -> Self {
-        Backoff { step: Cell::new(0) }
+        Self { step: Cell::new(0) }
     }
 
     /// Resets the `Backoff`.
@@ -283,7 +283,7 @@ impl fmt::Debug for Backoff {
 }
 
 impl Default for Backoff {
-    fn default() -> Backoff {
-        Backoff::new()
+    fn default() -> Self {
+        Self::new()
     }
 }

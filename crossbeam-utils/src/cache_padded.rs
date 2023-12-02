@@ -160,8 +160,8 @@ impl<T> CachePadded<T> {
     ///
     /// let padded_value = CachePadded::new(1);
     /// ```
-    pub const fn new(t: T) -> CachePadded<T> {
-        CachePadded::<T> { value: t }
+    pub const fn new(t: T) -> Self {
+        Self { value: t }
     }
 
     /// Returns the inner value.
@@ -204,6 +204,6 @@ impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
 
 impl<T> From<T> for CachePadded<T> {
     fn from(t: T) -> Self {
-        CachePadded::new(t)
+        Self::new(t)
     }
 }

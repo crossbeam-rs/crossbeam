@@ -62,7 +62,7 @@ struct Block<T> {
 
 impl<T> Block<T> {
     /// Creates an empty block that starts at `start_index`.
-    fn new() -> Block<T> {
+    fn new() -> Self {
         Self {
             next: AtomicPtr::new(ptr::null_mut()),
             slots: [Slot::UNINIT; BLOCK_CAP],
@@ -70,7 +70,7 @@ impl<T> Block<T> {
     }
 
     /// Waits until the next pointer is set.
-    fn wait_next(&self) -> *mut Block<T> {
+    fn wait_next(&self) -> *mut Self {
         let backoff = Backoff::new();
         loop {
             let next = self.next.load(Ordering::Acquire);
@@ -82,7 +82,7 @@ impl<T> Block<T> {
     }
 
     /// Sets the `DESTROY` bit in slots starting from `start` and destroys the block.
-    unsafe fn destroy(this: *mut Block<T>, start: usize) {
+    unsafe fn destroy(this: *mut Self, start: usize) {
         // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
         // begun destruction of the block.
         for i in start..BLOCK_CAP - 1 {
@@ -158,8 +158,8 @@ impl<T> SegQueue<T> {
     ///
     /// let q = SegQueue::<i32>::new();
     /// ```
-    pub const fn new() -> SegQueue<T> {
-        SegQueue {
+    pub const fn new() -> Self {
+        Self {
             head: CachePadded::new(Position {
                 block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
@@ -482,8 +482,8 @@ impl<T> fmt::Debug for SegQueue<T> {
 }
 
 impl<T> Default for SegQueue<T> {
-    fn default() -> SegQueue<T> {
-        SegQueue::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 

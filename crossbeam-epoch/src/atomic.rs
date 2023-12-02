@@ -265,7 +265,7 @@ impl<T> Atomic<T> {
     /// let a = Atomic::new(1234);
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
-    pub fn new(init: T) -> Atomic<T> {
+    pub fn new(init: T) -> Self {
         Self::init(init)
     }
 }
@@ -281,7 +281,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::<i32>::init(1234);
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
-    pub fn init(init: T::Init) -> Atomic<T> {
+    pub fn init(init: T::Init) -> Self {
         Self::from(Owned::init(init))
     }
 
@@ -303,7 +303,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// let a = Atomic::<i32>::null();
     /// ```
     #[cfg(not(crossbeam_loom))]
-    pub const fn null() -> Atomic<T> {
+    pub const fn null() -> Self {
         Self {
             data: AtomicPtr::new(ptr::null_mut()),
             _marker: PhantomData,
@@ -311,7 +311,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     }
     /// Returns a new null atomic pointer.
     #[cfg(crossbeam_loom)]
-    pub fn null() -> Atomic<T> {
+    pub fn null() -> Self {
         Self {
             data: AtomicPtr::new(ptr::null_mut()),
             _marker: PhantomData,
@@ -846,13 +846,13 @@ impl<T: ?Sized + Pointable> Clone for Atomic<T> {
     /// atomics or fences.
     fn clone(&self) -> Self {
         let data = self.data.load(Ordering::Relaxed);
-        Atomic::from_ptr(data)
+        Self::from_ptr(data)
     }
 }
 
 impl<T: ?Sized + Pointable> Default for Atomic<T> {
     fn default() -> Self {
-        Atomic::null()
+        Self::null()
     }
 }
 
@@ -991,7 +991,7 @@ impl<T> Owned<T> {
     ///
     /// let o = unsafe { Owned::from_raw(Box::into_raw(Box::new(1234))) };
     /// ```
-    pub unsafe fn from_raw(raw: *mut T) -> Owned<T> {
+    pub unsafe fn from_raw(raw: *mut T) -> Self {
         let raw = raw.cast::<()>();
         ensure_aligned::<T>(raw);
         Self::from_ptr(raw)
@@ -1023,7 +1023,7 @@ impl<T> Owned<T> {
     ///
     /// let o = Owned::new(1234);
     /// ```
-    pub fn new(init: T) -> Owned<T> {
+    pub fn new(init: T) -> Self {
         Self::init(init)
     }
 }
@@ -1038,7 +1038,7 @@ impl<T: ?Sized + Pointable> Owned<T> {
     ///
     /// let o = Owned::<i32>::init(1234);
     /// ```
-    pub fn init(init: T::Init) -> Owned<T> {
+    pub fn init(init: T::Init) -> Self {
         unsafe { Self::from_ptr(T::init(init)) }
     }
 
@@ -1086,7 +1086,7 @@ impl<T: ?Sized + Pointable> Owned<T> {
     /// let o = o.with_tag(2);
     /// assert_eq!(o.tag(), 2);
     /// ```
-    pub fn with_tag(self, tag: usize) -> Owned<T> {
+    pub fn with_tag(self, tag: usize) -> Self {
         let data = self.into_ptr();
         unsafe { Self::from_ptr(compose_tag::<T>(data, tag)) }
     }
@@ -1114,7 +1114,7 @@ impl<T: ?Sized + Pointable> fmt::Debug for Owned<T> {
 
 impl<T: Clone> Clone for Owned<T> {
     fn clone(&self) -> Self {
-        Owned::new((**self).clone()).with_tag(self.tag())
+        Self::new((**self).clone()).with_tag(self.tag())
     }
 }
 
@@ -1136,7 +1136,7 @@ impl<T: ?Sized + Pointable> DerefMut for Owned<T> {
 
 impl<T> From<T> for Owned<T> {
     fn from(t: T) -> Self {
-        Owned::new(t)
+        Self::new(t)
     }
 }
 
@@ -1253,8 +1253,8 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// let p = Shared::<i32>::null();
     /// assert!(p.is_null());
     /// ```
-    pub fn null() -> Shared<'g, T> {
-        Shared {
+    pub fn null() -> Self {
+        Self {
             data: ptr::null_mut(),
             _marker: PhantomData,
         }
@@ -1564,7 +1564,7 @@ impl<T: ?Sized + Pointable> fmt::Pointer for Shared<'_, T> {
 
 impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
     fn default() -> Self {
-        Shared::null()
+        Self::null()
     }
 }
 

@@ -45,7 +45,7 @@ impl<C> Sender<C> {
     }
 
     /// Acquires another sender reference.
-    pub(crate) fn acquire(&self) -> Sender<C> {
+    pub(crate) fn acquire(&self) -> Self {
         let count = self.counter().senders.fetch_add(1, Ordering::Relaxed);
 
         // Cloning senders and calling `mem::forget` on the clones could potentially overflow the
@@ -55,7 +55,7 @@ impl<C> Sender<C> {
             process::abort();
         }
 
-        Sender {
+        Self {
             counter: self.counter,
         }
     }
@@ -83,7 +83,7 @@ impl<C> ops::Deref for Sender<C> {
 }
 
 impl<C> PartialEq for Sender<C> {
-    fn eq(&self, other: &Sender<C>) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.counter == other.counter
     }
 }
@@ -100,7 +100,7 @@ impl<C> Receiver<C> {
     }
 
     /// Acquires another receiver reference.
-    pub(crate) fn acquire(&self) -> Receiver<C> {
+    pub(crate) fn acquire(&self) -> Self {
         let count = self.counter().receivers.fetch_add(1, Ordering::Relaxed);
 
         // Cloning receivers and calling `mem::forget` on the clones could potentially overflow the
@@ -110,7 +110,7 @@ impl<C> Receiver<C> {
             process::abort();
         }
 
-        Receiver {
+        Self {
             counter: self.counter,
         }
     }
@@ -138,7 +138,7 @@ impl<C> ops::Deref for Receiver<C> {
 }
 
 impl<C> PartialEq for Receiver<C> {
-    fn eq(&self, other: &Receiver<C>) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.counter == other.counter
     }
 }

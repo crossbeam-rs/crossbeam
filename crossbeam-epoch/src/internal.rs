@@ -107,7 +107,7 @@ impl Bag {
 
 impl Default for Bag {
     fn default() -> Self {
-        Bag {
+        Self {
             len: 0,
             deferreds: [Deferred::NO_OP; MAX_OBJECTS],
         }
@@ -317,7 +317,7 @@ impl Local {
         unsafe {
             // Since we dereference no pointers in this block, it is safe to use `unprotected`.
 
-            let local = Owned::new(Local {
+            let local = Owned::new(Self {
                 entry: Entry::default(),
                 collector: UnsafeCell::new(ManuallyDrop::new(collector.clone())),
                 bag: UnsafeCell::new(Bag::new()),
@@ -534,20 +534,20 @@ impl Local {
     }
 }
 
-impl IsElement<Local> for Local {
-    fn entry_of(local: &Local) -> &Entry {
+impl IsElement<Self> for Local {
+    fn entry_of(local: &Self) -> &Entry {
         unsafe {
-            let entry_ptr = (local as *const Local as *const u8)
+            let entry_ptr = (local as *const Self as *const u8)
                 .add(offset_of!(Local, entry))
                 .cast::<Entry>();
             &*entry_ptr
         }
     }
 
-    unsafe fn element_of(entry: &Entry) -> &Local {
+    unsafe fn element_of(entry: &Entry) -> &Self {
         let local_ptr = (entry as *const Entry as *const u8)
             .sub(offset_of!(Local, entry))
-            .cast::<Local>();
+            .cast::<Self>();
         &*local_ptr
     }
 

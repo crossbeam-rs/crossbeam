@@ -40,8 +40,8 @@ impl<T> Sender<T> {
 }
 
 impl<T> Clone for Sender<T> {
-    fn clone(&self) -> Sender<T> {
-        Sender {
+    fn clone(&self) -> Self {
+        Self {
             inner: self.inner.clone(),
         }
     }
@@ -65,8 +65,8 @@ impl<T> SyncSender<T> {
 }
 
 impl<T> Clone for SyncSender<T> {
-    fn clone(&self) -> SyncSender<T> {
-        SyncSender {
+    fn clone(&self) -> Self {
+        Self {
             inner: self.inner.clone(),
         }
     }

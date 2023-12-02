@@ -99,10 +99,10 @@ fn runs_custom_clone() {
 
     struct Foo<'a>(&'a Cell<usize>);
 
-    impl<'a> Clone for Foo<'a> {
-        fn clone(&self) -> Foo<'a> {
+    impl Clone for Foo<'_> {
+        fn clone(&self) -> Self {
             self.0.set(self.0.get() + 1);
-            Foo::<'a>(self.0)
+            Self(self.0)
         }
     }
 

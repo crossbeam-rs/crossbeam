@@ -29,8 +29,8 @@ impl<K, V> SkipMap<K, V> {
     ///
     /// let map: SkipMap<i32, &str> = SkipMap::new();
     /// ```
-    pub fn new() -> SkipMap<K, V> {
-        SkipMap {
+    pub fn new() -> Self {
+        Self {
             inner: base::SkipList::new(epoch::default_collector().clone()),
         }
     }
@@ -505,8 +505,8 @@ where
 }
 
 impl<K, V> Default for SkipMap<K, V> {
-    fn default() -> SkipMap<K, V> {
-        SkipMap::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -547,11 +547,11 @@ impl<K, V> FromIterator<(K, V)> for SkipMap<K, V>
 where
     K: Ord,
 {
-    fn from_iter<I>(iter: I) -> SkipMap<K, V>
+    fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = (K, V)>,
     {
-        let s = SkipMap::new();
+        let s = Self::new();
         for (k, v) in iter {
             s.get_or_insert(k, v);
         }
@@ -565,8 +565,8 @@ pub struct Entry<'a, K, V> {
 }
 
 impl<'a, K, V> Entry<'a, K, V> {
-    fn new(inner: base::RefEntry<'a, K, V>) -> Entry<'a, K, V> {
-        Entry {
+    fn new(inner: base::RefEntry<'a, K, V>) -> Self {
+        Self {
             inner: ManuallyDrop::new(inner),
         }
     }
@@ -638,9 +638,9 @@ where
     }
 }
 
-impl<'a, K, V> Clone for Entry<'a, K, V> {
-    fn clone(&self) -> Entry<'a, K, V> {
-        Entry {
+impl<K, V> Clone for Entry<'_, K, V> {
+    fn clone(&self) -> Self {
+        Self {
             inner: self.inner.clone(),
         }
     }

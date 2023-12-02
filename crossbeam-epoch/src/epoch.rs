@@ -45,16 +45,16 @@ impl Epoch {
 
     /// Returns the same epoch, but marked as pinned.
     #[inline]
-    pub(crate) fn pinned(self) -> Epoch {
-        Epoch {
+    pub(crate) fn pinned(self) -> Self {
+        Self {
             data: self.data | 1,
         }
     }
 
     /// Returns the same epoch, but marked as unpinned.
     #[inline]
-    pub(crate) fn unpinned(self) -> Epoch {
-        Epoch {
+    pub(crate) fn unpinned(self) -> Self {
+        Self {
             data: self.data & !1,
         }
     }
@@ -63,8 +63,8 @@ impl Epoch {
     ///
     /// The returned epoch will be marked as pinned only if the previous one was as well.
     #[inline]
-    pub(crate) fn successor(self) -> Epoch {
-        Epoch {
+    pub(crate) fn successor(self) -> Self {
+        Self {
             data: self.data.wrapping_add(2),
         }
     }
@@ -83,7 +83,7 @@ impl AtomicEpoch {
     #[inline]
     pub(crate) fn new(epoch: Epoch) -> Self {
         let data = AtomicUsize::new(epoch.data);
-        AtomicEpoch { data }
+        Self { data }
     }
 
     /// Loads a value from the atomic epoch.

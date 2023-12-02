@@ -84,7 +84,7 @@ impl Parker {
     /// let p = Parker::new();
     /// ```
     ///
-    pub fn new() -> Parker {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -184,7 +184,7 @@ impl Parker {
     /// let raw = Parker::into_raw(p);
     /// # let _ = unsafe { Parker::from_raw(raw) };
     /// ```
-    pub fn into_raw(this: Parker) -> *const () {
+    pub fn into_raw(this: Self) -> *const () {
         Unparker::into_raw(this.unparker)
     }
 
@@ -203,8 +203,8 @@ impl Parker {
     /// let raw = Parker::into_raw(p);
     /// let p = unsafe { Parker::from_raw(raw) };
     /// ```
-    pub unsafe fn from_raw(ptr: *const ()) -> Parker {
-        Parker {
+    pub unsafe fn from_raw(ptr: *const ()) -> Self {
+        Self {
             unparker: Unparker::from_raw(ptr),
             _marker: PhantomData,
         }
@@ -270,7 +270,7 @@ impl Unparker {
     /// let raw = Unparker::into_raw(u);
     /// # let _ = unsafe { Unparker::from_raw(raw) };
     /// ```
-    pub fn into_raw(this: Unparker) -> *const () {
+    pub fn into_raw(this: Self) -> *const () {
         Arc::into_raw(this.inner).cast::<()>()
     }
 
@@ -291,8 +291,8 @@ impl Unparker {
     /// let raw = Unparker::into_raw(u);
     /// let u = unsafe { Unparker::from_raw(raw) };
     /// ```
-    pub unsafe fn from_raw(ptr: *const ()) -> Unparker {
-        Unparker {
+    pub unsafe fn from_raw(ptr: *const ()) -> Self {
+        Self {
             inner: Arc::from_raw(ptr.cast::<Inner>()),
         }
     }
@@ -305,8 +305,8 @@ impl fmt::Debug for Unparker {
 }
 
 impl Clone for Unparker {
-    fn clone(&self) -> Unparker {
-        Unparker {
+    fn clone(&self) -> Self {
+        Self {
             inner: self.inner.clone(),
         }
     }

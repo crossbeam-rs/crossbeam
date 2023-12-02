@@ -27,8 +27,8 @@ impl<T> SkipSet<T> {
     ///
     /// let set: SkipSet<i32> = SkipSet::new();
     /// ```
-    pub fn new() -> SkipSet<T> {
-        SkipSet {
+    pub fn new() -> Self {
+        Self {
             inner: map::SkipMap::new(),
         }
     }
@@ -391,8 +391,8 @@ where
 }
 
 impl<T> Default for SkipSet<T> {
-    fn default() -> SkipSet<T> {
-        SkipSet::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -432,11 +432,11 @@ impl<T> FromIterator<T> for SkipSet<T>
 where
     T: Ord,
 {
-    fn from_iter<I>(iter: I) -> SkipSet<T>
+    fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = T>,
     {
-        let s = SkipSet::new();
+        let s = Self::new();
         for t in iter {
             s.get_or_insert(t);
         }
@@ -450,8 +450,8 @@ pub struct Entry<'a, T> {
 }
 
 impl<'a, T> Entry<'a, T> {
-    fn new(inner: map::Entry<'a, T, ()>) -> Entry<'a, T> {
-        Entry { inner }
+    fn new(inner: map::Entry<'a, T, ()>) -> Self {
+        Self { inner }
     }
 
     /// Returns a reference to the value.
@@ -502,9 +502,9 @@ where
     }
 }
 
-impl<'a, T> Clone for Entry<'a, T> {
-    fn clone(&self) -> Entry<'a, T> {
-        Entry {
+impl<T> Clone for Entry<'_, T> {
+    fn clone(&self) -> Self {
+        Self {
             inner: self.inner.clone(),
         }
     }
