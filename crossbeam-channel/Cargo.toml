@@ -36,3 +36,6 @@ optional = true
 num_cpus = "1.13.0"
 rand = "0.8"
 signal-hook = "0.3"
+
+[lints]
+workspace = true

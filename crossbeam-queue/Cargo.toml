@@ -37,3 +37,6 @@ default-features = false
 
 [dev-dependencies]
 rand = "0.8"
+
+[lints]
+workspace = true

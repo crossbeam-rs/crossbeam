@@ -69,3 +69,6 @@ doc = false
 name = "mpmc"
 path = "mpmc.rs"
 doc = false
+
+[lints]
+workspace = true

@@ -68,6 +68,9 @@ default-features = false
 [dev-dependencies]
 rand = "0.8"
 
+[lints]
+workspace = true
+
 [workspace]
 resolver = "2"
 members = [
@@ -80,3 +83,8 @@ members = [
   "crossbeam-skiplist",
   "crossbeam-utils",
 ]
+
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+rust_2018_idioms = "warn"
+unreachable_pub = "warn"

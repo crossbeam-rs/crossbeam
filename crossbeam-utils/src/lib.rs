@@ -31,12 +31,7 @@
         allow(dead_code, unused_assignments, unused_variables)
     )
 ))]
-#![warn(
-    missing_docs,
-    missing_debug_implementations,
-    rust_2018_idioms,
-    unreachable_pub
-)]
+#![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(crossbeam_loom)]

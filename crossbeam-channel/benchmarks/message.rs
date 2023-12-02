@@ -3,7 +3,7 @@ use std::fmt;
 const LEN: usize = 1;
 
 #[derive(Clone, Copy)]
-pub struct Message(pub [usize; LEN]);
+pub(crate) struct Message(pub(crate) [usize; LEN]);
 
 impl fmt::Debug for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -12,6 +12,6 @@ impl fmt::Debug for Message {
 }
 
 #[inline]
-pub fn new(num: usize) -> Message {
+pub(crate) fn new(num: usize) -> Message {
     Message([num; LEN])
 }
