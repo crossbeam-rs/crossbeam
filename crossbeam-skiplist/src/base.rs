@@ -937,9 +937,13 @@ where
                 // We failed. Let's search for the key and try again.
                 {
                     // Create a guard that destroys the new node in case search panics.
-                    let sg = scopeguard::guard((), |_| {
-                        Node::finalize(node.as_raw());
-                    });
+                    struct ScopeGuard<K, V>(*const Node<K, V>);
+                    impl<K, V> Drop for ScopeGuard<K, V> {
+                        fn drop(&mut self) {
+                            unsafe { Node::finalize(self.0) }
+                        }
+                    }
+                    let sg = ScopeGuard(node.as_raw());
                     search = self.search_position(&n.key, guard);
                     mem::forget(sg);
                 }
