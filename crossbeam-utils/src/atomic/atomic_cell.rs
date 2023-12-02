@@ -6,11 +6,8 @@ use core::cell::UnsafeCell;
 use core::cmp;
 use core::fmt;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
-
+use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr;
-
-#[cfg(feature = "std")]
-use std::panic::{RefUnwindSafe, UnwindSafe};
 
 use super::seq_lock::SeqLock;
 
@@ -48,9 +45,7 @@ pub struct AtomicCell<T> {
 unsafe impl<T: Send> Send for AtomicCell<T> {}
 unsafe impl<T: Send> Sync for AtomicCell<T> {}
 
-#[cfg(feature = "std")]
 impl<T> UnwindSafe for AtomicCell<T> {}
-#[cfg(feature = "std")]
 impl<T> RefUnwindSafe for AtomicCell<T> {}
 
 impl<T> AtomicCell<T> {
