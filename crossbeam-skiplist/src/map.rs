@@ -2,7 +2,6 @@
 
 use std::borrow::Borrow;
 use std::fmt;
-use std::iter::FromIterator;
 use std::mem::ManuallyDrop;
 use std::ops::{Bound, RangeBounds};
 use std::ptr;
