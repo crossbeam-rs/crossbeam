@@ -152,6 +152,15 @@ pub fn scope<'env, F, R>(f: F) -> thread::Result<R>
 where
     F: FnOnce(&Scope<'env>) -> R,
 {
+    struct AbortOnPanic;
+    impl Drop for AbortOnPanic {
+        fn drop(&mut self) {
+            if thread::panicking() {
+                std::process::abort();
+            }
+        }
+    }
+
     let wg = WaitGroup::new();
     let scope = Scope::<'env> {
         handles: SharedVec::default(),
@@ -161,6 +170,10 @@ where
 
     // Execute the scoped function, but catch any panics.
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| f(&scope)));
+
+    // If an unwinding panic occurs before all threads are joined
+    // promote it to an aborting panic to prevent any threads from escaping the scope.
+    let guard = AbortOnPanic;
 
     // Wait until all nested scopes are dropped.
     drop(scope.wait_group);
@@ -176,6 +189,8 @@ where
         .filter_map(|handle| handle.lock().unwrap().take())
         .filter_map(|handle| handle.join().err())
         .collect();
+
+    mem::forget(guard);
 
     // If `f` has panicked, resume unwinding.
     // If any of the child threads have panicked, return the panic errors.
