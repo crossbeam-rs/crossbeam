@@ -90,7 +90,7 @@ impl<T> ArrayQueue<T> {
     ///
     /// let q = ArrayQueue::<i32>::new(100);
     /// ```
-    pub fn new(cap: usize) -> ArrayQueue<T> {
+    pub fn new(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be non-zero");
 
         // Head is initialized to `{ lap: 0, index: 0 }`.
@@ -113,7 +113,7 @@ impl<T> ArrayQueue<T> {
         // One lap is the smallest power of two greater than `cap`.
         let one_lap = (cap + 1).next_power_of_two();
 
-        ArrayQueue {
+        Self {
             buffer,
             cap,
             one_lap,

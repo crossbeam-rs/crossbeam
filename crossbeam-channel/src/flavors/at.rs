@@ -27,7 +27,7 @@ impl Channel {
     /// Creates a channel that delivers a message at a certain instant in time.
     #[inline]
     pub(crate) fn new_deadline(when: Instant) -> Self {
-        Channel {
+        Self {
             delivery_time: when,
             received: AtomicBool::new(false),
         }

@@ -58,8 +58,8 @@ impl<T> AtomicCell<T> {
     ///
     /// let a = AtomicCell::new(7);
     /// ```
-    pub const fn new(val: T) -> AtomicCell<T> {
-        AtomicCell {
+    pub const fn new(val: T) -> Self {
+        Self {
             value: UnsafeCell::new(MaybeUninit::new(val)),
         }
     }
@@ -911,15 +911,15 @@ impl AtomicCell<bool> {
 }
 
 impl<T: Default> Default for AtomicCell<T> {
-    fn default() -> AtomicCell<T> {
-        AtomicCell::new(T::default())
+    fn default() -> Self {
+        Self::new(T::default())
     }
 }
 
 impl<T> From<T> for AtomicCell<T> {
     #[inline]
-    fn from(val: T) -> AtomicCell<T> {
-        AtomicCell::new(val)
+    fn from(val: T) -> Self {
+        Self::new(val)
     }
 }
 

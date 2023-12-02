@@ -42,8 +42,8 @@ struct ChanInner<T> {
 }
 
 impl<T> Clone for Chan<T> {
-    fn clone(&self) -> Chan<T> {
-        Chan {
+    fn clone(&self) -> Self {
+        Self {
             inner: self.inner.clone(),
         }
     }
@@ -169,8 +169,8 @@ struct WaitGroupInner {
 }
 
 impl WaitGroup {
-    fn new() -> WaitGroup {
-        WaitGroup(Arc::new(WaitGroupInner {
+    fn new() -> Self {
+        Self(Arc::new(WaitGroupInner {
             cond: Condvar::new(),
             count: Mutex::new(0),
         }))
@@ -1621,7 +1621,7 @@ mod chan {
 
     impl ChanWithVals {
         fn with_capacity(capacity: usize) -> Self {
-            ChanWithVals {
+            Self {
                 chan: make(capacity),
                 sv: Arc::new(AtomicI32::new(0)),
                 rv: Arc::new(AtomicI32::new(0)),
@@ -1629,7 +1629,7 @@ mod chan {
         }
 
         fn closed() -> Self {
-            let ch = ChanWithVals::with_capacity(0);
+            let ch = Self::with_capacity(0);
             ch.chan.close_r();
             ch.chan.close_s();
             ch
@@ -1674,7 +1674,7 @@ mod chan {
 
     impl Clone for ChanWithVals {
         fn clone(&self) -> Self {
-            ChanWithVals {
+            Self {
                 chan: self.chan.clone(),
                 sv: self.sv.clone(),
                 rv: self.rv.clone(),
@@ -1702,7 +1702,7 @@ mod chan {
 
     impl Clone for Context {
         fn clone(&self) -> Self {
-            Context {
+            Self {
                 nproc: self.nproc.clone(),
                 cval: self.cval.clone(),
                 tot: self.tot.clone(),

@@ -27,7 +27,7 @@ impl Channel {
     /// Creates a channel that delivers messages periodically.
     #[inline]
     pub(crate) fn new(delivery_time: Instant, dur: Duration) -> Self {
-        Channel {
+        Self {
             delivery_time: AtomicCell::new(delivery_time),
             duration: dur,
         }

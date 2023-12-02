@@ -22,7 +22,7 @@ impl<T> Channel<T> {
     /// Creates a channel that never delivers messages.
     #[inline]
     pub(crate) fn new() -> Self {
-        Channel {
+        Self {
             _marker: PhantomData,
         }
     }

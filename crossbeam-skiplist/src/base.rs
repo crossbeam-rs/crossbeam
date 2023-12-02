@@ -52,9 +52,9 @@ struct Head<K, V> {
 impl<K, V> Head<K, V> {
     /// Initializes a `Head`.
     #[inline]
-    fn new() -> Head<K, V> {
+    fn new() -> Self {
         // Initializing arrays in rust is a pain...
-        Head {
+        Self {
             pointers: Default::default(),
         }
     }
@@ -256,7 +256,7 @@ impl<K, V> Node<K, V> {
         ptr::drop_in_place(&mut (*ptr).value);
 
         // Finally, deallocate the memory occupied by the node.
-        Node::dealloc(ptr);
+        Self::dealloc(ptr);
     }
 }
 
@@ -332,8 +332,8 @@ unsafe impl<K: Send + Sync, V: Send + Sync> Sync for SkipList<K, V> {}
 
 impl<K, V> SkipList<K, V> {
     /// Returns a new, empty skip list.
-    pub fn new(collector: Collector) -> SkipList<K, V> {
-        SkipList {
+    pub fn new(collector: Collector) -> Self {
+        Self {
             head: Head::new(),
             collector,
             hot_data: CachePadded::new(HotData {
@@ -1370,9 +1370,9 @@ where
     }
 }
 
-impl<'a: 'g, 'g, K, V> Clone for Entry<'a, 'g, K, V> {
-    fn clone(&self) -> Entry<'a, 'g, K, V> {
-        Entry {
+impl<K, V> Clone for Entry<'_, '_, K, V> {
+    fn clone(&self) -> Self {
+        Self {
             parent: self.parent,
             node: self.node,
             guard: self.guard,
@@ -1538,13 +1538,13 @@ where
     }
 }
 
-impl<'a, K, V> Clone for RefEntry<'a, K, V> {
-    fn clone(&self) -> RefEntry<'a, K, V> {
+impl<K, V> Clone for RefEntry<'_, K, V> {
+    fn clone(&self) -> Self {
         unsafe {
             // Incrementing will always succeed since we're already holding a reference to the node.
             Node::try_increment(self.node);
         }
-        RefEntry {
+        Self {
             parent: self.parent,
             node: self.node,
         }

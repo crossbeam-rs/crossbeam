@@ -648,7 +648,7 @@ impl<T> Sender<T> {
     /// let (s3, _) = unbounded();
     /// assert!(!s.same_channel(&s3));
     /// ```
-    pub fn same_channel(&self, other: &Sender<T>) -> bool {
+    pub fn same_channel(&self, other: &Self) -> bool {
         match (&self.flavor, &other.flavor) {
             (SenderFlavor::Array(ref a), SenderFlavor::Array(ref b)) => a == b,
             (SenderFlavor::List(ref a), SenderFlavor::List(ref b)) => a == b,
@@ -678,7 +678,7 @@ impl<T> Clone for Sender<T> {
             SenderFlavor::Zero(chan) => SenderFlavor::Zero(chan.acquire()),
         };
 
-        Sender { flavor }
+        Self { flavor }
     }
 }
 
@@ -1142,7 +1142,7 @@ impl<T> Receiver<T> {
     /// let (_, r3) = unbounded();
     /// assert!(!r.same_channel(&r3));
     /// ```
-    pub fn same_channel(&self, other: &Receiver<T>) -> bool {
+    pub fn same_channel(&self, other: &Self) -> bool {
         match (&self.flavor, &other.flavor) {
             (ReceiverFlavor::Array(a), ReceiverFlavor::Array(b)) => a == b,
             (ReceiverFlavor::List(a), ReceiverFlavor::List(b)) => a == b,
@@ -1181,7 +1181,7 @@ impl<T> Clone for Receiver<T> {
             ReceiverFlavor::Never(_) => ReceiverFlavor::Never(flavors::never::Channel::new()),
         };
 
-        Receiver { flavor }
+        Self { flavor }
     }
 }
 

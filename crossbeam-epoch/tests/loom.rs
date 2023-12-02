@@ -63,8 +63,8 @@ fn treiber_stack() {
 
     impl<T> TreiberStack<T> {
         /// Creates a new, empty stack.
-        pub fn new() -> TreiberStack<T> {
-            TreiberStack {
+        pub fn new() -> Self {
+            Self {
                 head: Atomic::null(),
             }
         }

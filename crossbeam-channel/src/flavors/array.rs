@@ -43,7 +43,7 @@ pub(crate) struct ArrayToken {
 impl Default for ArrayToken {
     #[inline]
     fn default() -> Self {
-        ArrayToken {
+        Self {
             slot: ptr::null(),
             stamp: 0,
         }
@@ -115,7 +115,7 @@ impl<T> Channel<T> {
             })
             .collect();
 
-        Channel {
+        Self {
             buffer,
             cap,
             one_lap,

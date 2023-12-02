@@ -36,7 +36,7 @@ impl Waker {
     /// Creates a new `Waker`.
     #[inline]
     pub(crate) fn new() -> Self {
-        Waker {
+        Self {
             selectors: Vec::new(),
             observers: Vec::new(),
         }
@@ -186,7 +186,7 @@ impl SyncWaker {
     /// Creates a new `SyncWaker`.
     #[inline]
     pub(crate) fn new() -> Self {
-        SyncWaker {
+        Self {
             inner: Mutex::new(Waker::new()),
             is_empty: AtomicBool::new(true),
         }

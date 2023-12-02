@@ -34,13 +34,13 @@ unsafe impl<T> Send for Buffer<T> {}
 
 impl<T> Buffer<T> {
     /// Allocates a new buffer with the specified capacity.
-    fn alloc(cap: usize) -> Buffer<T> {
+    fn alloc(cap: usize) -> Self {
         debug_assert_eq!(cap, cap.next_power_of_two());
 
         let mut v = ManuallyDrop::new(Vec::with_capacity(cap));
         let ptr = v.as_mut_ptr();
 
-        Buffer { ptr, cap }
+        Self { ptr, cap }
     }
 
     /// Deallocates the buffer.
@@ -78,7 +78,7 @@ impl<T> Buffer<T> {
 }
 
 impl<T> Clone for Buffer<T> {
-    fn clone(&self) -> Buffer<T> {
+    fn clone(&self) -> Self {
         *self
     }
 }
@@ -209,7 +209,7 @@ impl<T> Worker<T> {
     ///
     /// let w = Worker::<i32>::new_fifo();
     /// ```
-    pub fn new_fifo() -> Worker<T> {
+    pub fn new_fifo() -> Self {
         let buffer = Buffer::alloc(MIN_CAP);
 
         let inner = Arc::new(CachePadded::new(Inner {
@@ -218,7 +218,7 @@ impl<T> Worker<T> {
             buffer: CachePadded::new(Atomic::new(buffer)),
         }));
 
-        Worker {
+        Self {
             inner,
             buffer: Cell::new(buffer),
             flavor: Flavor::Fifo,
@@ -237,7 +237,7 @@ impl<T> Worker<T> {
     ///
     /// let w = Worker::<i32>::new_lifo();
     /// ```
-    pub fn new_lifo() -> Worker<T> {
+    pub fn new_lifo() -> Self {
         let buffer = Buffer::alloc(MIN_CAP);
 
         let inner = Arc::new(CachePadded::new(Inner {
@@ -246,7 +246,7 @@ impl<T> Worker<T> {
             buffer: CachePadded::new(Atomic::new(buffer)),
         }));
 
-        Worker {
+        Self {
             inner,
             buffer: Cell::new(buffer),
             flavor: Flavor::Lifo,
@@ -1154,8 +1154,8 @@ impl<T> Stealer<T> {
 }
 
 impl<T> Clone for Stealer<T> {
-    fn clone(&self) -> Stealer<T> {
-        Stealer {
+    fn clone(&self) -> Self {
+        Self {
             inner: self.inner.clone(),
             flavor: self.flavor,
         }
@@ -1222,7 +1222,7 @@ struct Block<T> {
 
 impl<T> Block<T> {
     /// Creates an empty block that starts at `start_index`.
-    fn new() -> Block<T> {
+    fn new() -> Self {
         Self {
             next: AtomicPtr::new(ptr::null_mut()),
             slots: [Slot::UNINIT; BLOCK_CAP],
@@ -1230,7 +1230,7 @@ impl<T> Block<T> {
     }
 
     /// Waits until the next pointer is set.
-    fn wait_next(&self) -> *mut Block<T> {
+    fn wait_next(&self) -> *mut Self {
         let backoff = Backoff::new();
         loop {
             let next = self.next.load(Ordering::Acquire);
@@ -1242,7 +1242,7 @@ impl<T> Block<T> {
     }
 
     /// Sets the `DESTROY` bit in slots starting from `start` and destroys the block.
-    unsafe fn destroy(this: *mut Block<T>, count: usize) {
+    unsafe fn destroy(this: *mut Self, count: usize) {
         // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
         // begun destruction of the block.
         for i in (0..count).rev() {
@@ -1330,7 +1330,7 @@ impl<T> Injector<T> {
     ///
     /// let q = Injector::<i32>::new();
     /// ```
-    pub fn new() -> Injector<T> {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -2055,7 +2055,7 @@ impl<T> Steal<T> {
     /// assert!(Empty::<i32>.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        matches!(self, Steal::Empty)
+        matches!(self, Self::Empty)
     }
 
     /// Returns `true` if at least one task was stolen.
@@ -2071,7 +2071,7 @@ impl<T> Steal<T> {
     /// assert!(Success(7).is_success());
     /// ```
     pub fn is_success(&self) -> bool {
-        matches!(self, Steal::Success(_))
+        matches!(self, Self::Success(_))
     }
 
     /// Returns `true` if the steal operation needs to be retried.
@@ -2087,7 +2087,7 @@ impl<T> Steal<T> {
     /// assert!(Retry::<i32>.is_retry());
     /// ```
     pub fn is_retry(&self) -> bool {
-        matches!(self, Steal::Retry)
+        matches!(self, Self::Retry)
     }
 
     /// Returns the result of the operation, if successful.
@@ -2104,7 +2104,7 @@ impl<T> Steal<T> {
     /// ```
     pub fn success(self) -> Option<T> {
         match self {
-            Steal::Success(res) => Some(res),
+            Self::Success(res) => Some(res),
             _ => None,
         }
     }
@@ -2130,18 +2130,18 @@ impl<T> Steal<T> {
     ///
     /// assert_eq!(Empty.or_else(|| Empty), Empty::<i32>);
     /// ```
-    pub fn or_else<F>(self, f: F) -> Steal<T>
+    pub fn or_else<F>(self, f: F) -> Self
     where
-        F: FnOnce() -> Steal<T>,
+        F: FnOnce() -> Self,
     {
         match self {
-            Steal::Empty => f(),
-            Steal::Success(_) => self,
-            Steal::Retry => {
-                if let Steal::Success(res) = f() {
-                    Steal::Success(res)
+            Self::Empty => f(),
+            Self::Success(_) => self,
+            Self::Retry => {
+                if let Self::Success(res) = f() {
+                    Self::Success(res)
                 } else {
-                    Steal::Retry
+                    Self::Retry
                 }
             }
         }
@@ -2151,35 +2151,35 @@ impl<T> Steal<T> {
 impl<T> fmt::Debug for Steal<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Steal::Empty => f.pad("Empty"),
-            Steal::Success(_) => f.pad("Success(..)"),
-            Steal::Retry => f.pad("Retry"),
+            Self::Empty => f.pad("Empty"),
+            Self::Success(_) => f.pad("Success(..)"),
+            Self::Retry => f.pad("Retry"),
         }
     }
 }
 
-impl<T> FromIterator<Steal<T>> for Steal<T> {
+impl<T> FromIterator<Self> for Steal<T> {
     /// Consumes items until a `Success` is found and returns it.
     ///
     /// If no `Success` was found, but there was at least one `Retry`, then returns `Retry`.
     /// Otherwise, `Empty` is returned.
-    fn from_iter<I>(iter: I) -> Steal<T>
+    fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = Steal<T>>,
+        I: IntoIterator<Item = Self>,
     {
         let mut retry = false;
         for s in iter {
             match &s {
-                Steal::Empty => {}
-                Steal::Success(_) => return s,
-                Steal::Retry => retry = true,
+                Self::Empty => {}
+                Self::Success(_) => return s,
+                Self::Retry => retry = true,
             }
         }
 
         if retry {
-            Steal::Retry
+            Self::Retry
         } else {
-            Steal::Empty
+            Self::Empty
         }
     }
 }

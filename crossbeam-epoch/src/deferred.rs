@@ -53,7 +53,7 @@ impl Deferred {
                     f();
                 }
 
-                Deferred {
+                Self {
                     call: call::<F>,
                     data,
                     _marker: PhantomData,
@@ -70,7 +70,7 @@ impl Deferred {
                     (*b)();
                 }
 
-                Deferred {
+                Self {
                     call: call::<F>,
                     data,
                     _marker: PhantomData,

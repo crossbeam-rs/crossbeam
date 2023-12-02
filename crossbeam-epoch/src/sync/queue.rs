@@ -42,8 +42,8 @@ unsafe impl<T: Send> Send for Queue<T> {}
 
 impl<T> Queue<T> {
     /// Create a new, empty queue.
-    pub(crate) fn new() -> Queue<T> {
-        let q = Queue {
+    pub(crate) fn new() -> Self {
+        let q = Self {
             head: CachePadded::new(Atomic::null()),
             tail: CachePadded::new(Atomic::null()),
         };
@@ -226,8 +226,8 @@ mod test {
     }
 
     impl<T> Queue<T> {
-        pub(crate) fn new() -> Queue<T> {
-            Queue {
+        pub(crate) fn new() -> Self {
+            Self {
                 queue: super::Queue::new(),
             }
         }

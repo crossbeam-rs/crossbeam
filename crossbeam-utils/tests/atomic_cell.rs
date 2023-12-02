@@ -63,9 +63,9 @@ fn drops_unit() {
     struct Foo();
 
     impl Foo {
-        fn new() -> Foo {
+        fn new() -> Self {
             CNT.fetch_add(1, SeqCst);
-            Foo()
+            Self()
         }
     }
 
@@ -76,8 +76,8 @@ fn drops_unit() {
     }
 
     impl Default for Foo {
-        fn default() -> Foo {
-            Foo::new()
+        fn default() -> Self {
+            Self::new()
         }
     }
 
@@ -105,9 +105,9 @@ fn drops_u8() {
     struct Foo(u8);
 
     impl Foo {
-        fn new(val: u8) -> Foo {
+        fn new(val: u8) -> Self {
             CNT.fetch_add(1, SeqCst);
-            Foo(val)
+            Self(val)
         }
     }
 
@@ -118,8 +118,8 @@ fn drops_u8() {
     }
 
     impl Default for Foo {
-        fn default() -> Foo {
-            Foo::new(0)
+        fn default() -> Self {
+            Self::new(0)
         }
     }
 
@@ -151,9 +151,9 @@ fn drops_usize() {
     struct Foo(usize);
 
     impl Foo {
-        fn new(val: usize) -> Foo {
+        fn new(val: usize) -> Self {
             CNT.fetch_add(1, SeqCst);
-            Foo(val)
+            Self(val)
         }
     }
 
@@ -164,8 +164,8 @@ fn drops_usize() {
     }
 
     impl Default for Foo {
-        fn default() -> Foo {
-            Foo::new(0)
+        fn default() -> Self {
+            Self::new(0)
         }
     }
 
@@ -194,7 +194,7 @@ fn modular_u8() {
     struct Foo(u8);
 
     impl PartialEq for Foo {
-        fn eq(&self, other: &Foo) -> bool {
+        fn eq(&self, other: &Self) -> bool {
             self.0 % 5 == other.0 % 5
         }
     }
@@ -218,7 +218,7 @@ fn modular_usize() {
     struct Foo(usize);
 
     impl PartialEq for Foo {
-        fn eq(&self, other: &Foo) -> bool {
+        fn eq(&self, other: &Self) -> bool {
             self.0 % 5 == other.0 % 5
         }
     }
