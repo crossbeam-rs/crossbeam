@@ -84,7 +84,7 @@
 //! tricky because argument `s` lives *inside* the invocation of `thread::scope()` and as such
 //! cannot be borrowed by scoped threads:
 //!
-//! ```compile_fail,E0373,E0521
+//! ```compile_fail,E0521
 //! use crossbeam_utils::thread;
 //!
 //! thread::scope(|s| {
