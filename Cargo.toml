@@ -69,6 +69,7 @@ default-features = false
 rand = "0.8"
 
 [workspace]
+resolver = "2"
 members = [
   ".",
   "crossbeam-channel",
