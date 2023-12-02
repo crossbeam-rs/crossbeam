@@ -33,3 +33,6 @@ loom = { version = "0.7.1", optional = true }
 
 [dev-dependencies]
 rand = "0.8"
+
+[lints]
+workspace = true

@@ -10,8 +10,6 @@
 // With the exceptions mentioned above, the rustc-cfg emitted by the build
 // script are *not* public API.
 
-#![warn(rust_2018_idioms)]
-
 use std::env;
 
 include!("no_atomic.rs");

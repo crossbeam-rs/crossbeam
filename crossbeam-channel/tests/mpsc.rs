@@ -29,12 +29,12 @@ use std::time::Duration;
 
 use crossbeam_channel as cc;
 
-pub struct Sender<T> {
-    pub inner: cc::Sender<T>,
+struct Sender<T> {
+    inner: cc::Sender<T>,
 }
 
 impl<T> Sender<T> {
-    pub fn send(&self, t: T) -> Result<(), SendError<T>> {
+    fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.inner.send(t).map_err(|cc::SendError(m)| SendError(m))
     }
 }
@@ -47,16 +47,16 @@ impl<T> Clone for Sender<T> {
     }
 }
 
-pub struct SyncSender<T> {
-    pub inner: cc::Sender<T>,
+struct SyncSender<T> {
+    inner: cc::Sender<T>,
 }
 
 impl<T> SyncSender<T> {
-    pub fn send(&self, t: T) -> Result<(), SendError<T>> {
+    fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.inner.send(t).map_err(|cc::SendError(m)| SendError(m))
     }
 
-    pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+    fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
         self.inner.try_send(t).map_err(|err| match err {
             cc::TrySendError::Full(m) => TrySendError::Full(m),
             cc::TrySendError::Disconnected(m) => TrySendError::Disconnected(m),
@@ -72,34 +72,34 @@ impl<T> Clone for SyncSender<T> {
     }
 }
 
-pub struct Receiver<T> {
-    pub inner: cc::Receiver<T>,
+struct Receiver<T> {
+    inner: cc::Receiver<T>,
 }
 
 impl<T> Receiver<T> {
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+    fn try_recv(&self) -> Result<T, TryRecvError> {
         self.inner.try_recv().map_err(|err| match err {
             cc::TryRecvError::Empty => TryRecvError::Empty,
             cc::TryRecvError::Disconnected => TryRecvError::Disconnected,
         })
     }
 
-    pub fn recv(&self) -> Result<T, RecvError> {
+    fn recv(&self) -> Result<T, RecvError> {
         self.inner.recv().map_err(|_| RecvError)
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
+    fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         self.inner.recv_timeout(timeout).map_err(|err| match err {
             cc::RecvTimeoutError::Timeout => RecvTimeoutError::Timeout,
             cc::RecvTimeoutError::Disconnected => RecvTimeoutError::Disconnected,
         })
     }
 
-    pub fn iter(&self) -> Iter<T> {
+    fn iter(&self) -> Iter<'_, T> {
         Iter { inner: self }
     }
 
-    pub fn try_iter(&self) -> TryIter<T> {
+    fn try_iter(&self) -> TryIter<'_, T> {
         TryIter { inner: self }
     }
 }
@@ -122,7 +122,7 @@ impl<T> IntoIterator for Receiver<T> {
     }
 }
 
-pub struct TryIter<'a, T: 'a> {
+struct TryIter<'a, T> {
     inner: &'a Receiver<T>,
 }
 
@@ -134,7 +134,7 @@ impl<'a, T> Iterator for TryIter<'a, T> {
     }
 }
 
-pub struct Iter<'a, T: 'a> {
+struct Iter<'a, T> {
     inner: &'a Receiver<T>,
 }
 
@@ -146,7 +146,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-pub struct IntoIter<T> {
+struct IntoIter<T> {
     inner: Receiver<T>,
 }
 
@@ -158,14 +158,14 @@ impl<T> Iterator for IntoIter<T> {
     }
 }
 
-pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
+fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let (s, r) = cc::unbounded();
     let s = Sender { inner: s };
     let r = Receiver { inner: r };
     (s, r)
 }
 
-pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
+fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
     let (s, r) = cc::bounded(bound);
     let s = SyncSender { inner: s };
     let r = Receiver { inner: r };
@@ -195,7 +195,7 @@ mod channel_tests {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    pub fn stress_factor() -> usize {
+    fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
             Ok(val) => val.parse().unwrap(),
             Err(..) => 1,
@@ -971,7 +971,7 @@ mod sync_channel_tests {
     use std::thread;
     use std::time::Duration;
 
-    pub fn stress_factor() -> usize {
+    fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
             Ok(val) => val.parse().unwrap(),
             Err(..) => 1,
