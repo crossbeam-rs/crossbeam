@@ -5,7 +5,7 @@ name = "crossbeam-queue"
 # - Update README.md
 # - Create "crossbeam-queue-X.Y.Z" git tag
 version = "0.3.9"
-edition = "2018"
+edition = "2021"
 rust-version = "1.61"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
