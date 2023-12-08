@@ -356,7 +356,7 @@ cfg_if! {
             pub use crate::select::{select, select_timeout, try_select};
         }
 
-        pub use crate::channel::{after, at, never, tick};
+        pub use crate::channel::{after, at, never, disconnected, tick};
         pub use crate::channel::{bounded, unbounded};
         pub use crate::channel::{IntoIter, Iter, TryIter};
         pub use crate::channel::{Receiver, Sender};
