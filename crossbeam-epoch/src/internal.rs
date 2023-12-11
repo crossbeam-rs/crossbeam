@@ -310,7 +310,14 @@ fn local_size() {
 impl Local {
     /// Number of pinnings after which a participant will execute some deferred functions from the
     /// global queue.
+    #[cfg(not(feature = "reduced-collection-frequency"))]
     const PINNINGS_BETWEEN_COLLECT: usize = 128;
+
+    #[cfg(feature = "reduced-collection-frequency")]
+    // ~10% collection overhead is observed with the normal 128 frequency with rayon under
+    // 1000-2000 threads including inactive ones. Reduce by ~100x factor to attain
+    // <1% overhead by large margin.
+    const PINNINGS_BETWEEN_COLLECT: usize = 128 * 128;
 
     /// Registers a new `Local` in the provided `Global`.
     pub(crate) fn register(collector: &Collector) -> LocalHandle {

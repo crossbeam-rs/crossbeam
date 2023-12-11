@@ -33,6 +33,14 @@ alloc = []
 # patch versions of crossbeam may make breaking changes to them at any time.
 loom = ["loom-crate", "crossbeam-utils/loom"]
 
+# Reduce collection frequency
+#
+# NOTE: This feature is to avoid the O(N) overhead, which only manifests under
+# the situation where excessive number of threads (= N) are all accessing to
+# the shared Global inside a single process space. This feature might introduce
+# a potential slow memory reclamation as a trade-off.
+reduced-collection-frequency = []
+
 [build-dependencies]
 autocfg = "1"
 
