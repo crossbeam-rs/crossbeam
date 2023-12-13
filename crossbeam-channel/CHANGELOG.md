@@ -1,3 +1,7 @@
+# Version 0.5.9
+
+- Bump the minimum supported Rust version to 1.61. (#1037)
+
 # Version 0.5.8
 
 - Fix race condition in unbounded channel. (#972)

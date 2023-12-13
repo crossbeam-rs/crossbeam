@@ -1,3 +1,7 @@
+# Version 0.8.4
+
+- Bump the minimum supported Rust version to 1.61. (#1037)
+
 # Version 0.8.3
 
 - Add `Stealer::{steal_batch_with_limit, steal_batch_with_limit_and_pop}` methods. (#903)
