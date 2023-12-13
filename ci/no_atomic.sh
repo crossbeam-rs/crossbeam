@@ -11,7 +11,7 @@ cd "$(dirname "$0")"/..
 file="no_atomic.rs"
 
 no_atomic=()
-for target_spec in $(rustc -Z unstable-options --print all-target-specs-json | jq -c '. | to_entries | .[]'); do
+for target_spec in $(RUSTC_BOOTSTRAP=1 rustc +stable -Z unstable-options --print all-target-specs-json | jq -c '. | to_entries | .[]'); do
     target=$(jq <<<"${target_spec}" -r '.key')
     target_spec=$(jq <<<"${target_spec}" -c '.value')
     res=$(jq <<<"${target_spec}" -r 'select(."atomic-cas" == false)')
