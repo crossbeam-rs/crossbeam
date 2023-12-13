@@ -1,3 +1,13 @@
+# Version 0.8.17
+
+- Bump the minimum supported Rust version to 1.61. (#1037)
+- Improve support for targets without atomic CAS or 64-bit atomic. (#1037)
+- Always implement `{,Ref}UnwindSafe` for AtomicCell. (#1045)
+- Improve compatibility with Miri, TSan, and loom. (#995, #1003)
+- Improve compatibility with unstable `oom=panic`. (#1045)
+- Improve implementation of `CachePadded`. (#1014, #1025)
+- Update `loom` dependency to 0.7.
+
 # Version 0.8.16
 
 - Improve implementation of `CachePadded`. (#967)
