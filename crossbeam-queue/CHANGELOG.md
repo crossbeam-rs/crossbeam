@@ -1,3 +1,9 @@
+# Version 0.3.9
+
+- Bump the minimum supported Rust version to 1.61. (#1037)
+- Improve support for targets without atomic CAS. (#1037)
+- Remove build script. (#1037)
+
 # Version 0.3.8
 
 - Fix build script bug introduced in 0.3.7. (#932)
