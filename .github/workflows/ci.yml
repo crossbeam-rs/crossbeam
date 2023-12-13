@@ -110,7 +110,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        run: rustup update stable
       - run: ci/no_atomic.sh
       - run: git add -N . && git diff --exit-code
         if: github.repository_owner != 'crossbeam-rs' || github.event_name != 'schedule'
