@@ -4,7 +4,7 @@ name = "crossbeam-epoch"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-epoch-X.Y.Z" git tag
-version = "0.9.15"
+version = "0.9.16"
 edition = "2021"
 rust-version = "1.61"
 license = "MIT OR Apache-2.0"
@@ -48,7 +48,7 @@ memoffset = "0.9"
 loom-crate = { package = "loom", version = "0.7.1", optional = true }
 
 [dependencies.crossbeam-utils]
-version = "0.8.5"
+version = "0.8.17"
 path = "../crossbeam-utils"
 default-features = false
 

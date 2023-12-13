@@ -4,7 +4,7 @@ name = "crossbeam-channel"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-channel-X.Y.Z" git tag
-version = "0.5.8"
+version = "0.5.9"
 edition = "2021"
 rust-version = "1.61"
 license = "MIT OR Apache-2.0"
@@ -27,7 +27,7 @@ std = ["crossbeam-utils/std"]
 cfg-if = "1"
 
 [dependencies.crossbeam-utils]
-version = "0.8"
+version = "0.8.17"
 path = "../crossbeam-utils"
 default-features = false
 optional = true
