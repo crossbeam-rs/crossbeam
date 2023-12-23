@@ -6,7 +6,7 @@ name = "crossbeam-channel"
 # - Create "crossbeam-channel-X.Y.Z" git tag
 version = "0.5.9"
 edition = "2021"
-rust-version = "1.61"
+rust-version = "1.60"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-channel"
