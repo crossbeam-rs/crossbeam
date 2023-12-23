@@ -604,8 +604,7 @@ impl<T> Channel<T> {
                     // Drop the message in the slot.
                     let slot = (*block).slots.get_unchecked(offset);
                     slot.wait_write();
-                    let p = &mut *slot.msg.get();
-                    p.as_mut_ptr().drop_in_place();
+                    (*slot.msg.get()).assume_init_drop();
                 } else {
                     (*block).wait_next();
                     // Deallocate the block and move to the next one.
@@ -663,8 +662,7 @@ impl<T> Drop for Channel<T> {
                 if offset < BLOCK_CAP {
                     // Drop the message in the slot.
                     let slot = (*block).slots.get_unchecked(offset);
-                    let p = &mut *slot.msg.get();
-                    p.as_mut_ptr().drop_in_place();
+                    (*slot.msg.get()).assume_init_drop();
                 } else {
                     // Deallocate the block and move to the next one.
                     let next = *(*block).next.get_mut();
