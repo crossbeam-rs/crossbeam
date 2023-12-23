@@ -38,7 +38,6 @@ autocfg = "1"
 
 [dependencies]
 cfg-if = "1"
-memoffset = "0.9"
 
 # Enable the use of loom for concurrency testing.
 #
