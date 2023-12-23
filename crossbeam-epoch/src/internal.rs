@@ -43,7 +43,6 @@ use core::num::Wrapping;
 use core::{fmt, ptr};
 
 use crossbeam_utils::CachePadded;
-use memoffset::offset_of;
 
 use crate::atomic::{Owned, Shared};
 use crate::collector::{Collector, LocalHandle};
@@ -268,6 +267,7 @@ impl Global {
 }
 
 /// Participant for garbage collection.
+#[repr(C)] // Note: `entry` must be the first field
 pub(crate) struct Local {
     /// A node in the intrusive linked list of `Local`s.
     entry: Entry,
@@ -534,16 +534,18 @@ impl Local {
     }
 }
 
-impl IsElement<Local> for Local {
-    fn entry_of(local: &Local) -> &Entry {
-        let entry_ptr = (local as *const Local as usize + offset_of!(Local, entry)) as *const Entry;
-        unsafe { &*entry_ptr }
+impl IsElement<Self> for Local {
+    fn entry_of(local: &Self) -> &Entry {
+        // SAFETY: `Local` is `repr(C)` and `entry` is the first field of it.
+        unsafe {
+            let entry_ptr = (local as *const Self).cast::<Entry>();
+            &*entry_ptr
+        }
     }
 
-    unsafe fn element_of(entry: &Entry) -> &Local {
-        // offset_of! macro uses unsafe, but it's unnecessary in this context.
-        #[allow(unused_unsafe)]
-        let local_ptr = (entry as *const Entry as usize - offset_of!(Local, entry)) as *const Local;
+    unsafe fn element_of(entry: &Entry) -> &Self {
+        // SAFETY: `Local` is `repr(C)` and `entry` is the first field of it.
+        let local_ptr = (entry as *const Entry).cast::<Self>();
         &*local_ptr
     }
 
