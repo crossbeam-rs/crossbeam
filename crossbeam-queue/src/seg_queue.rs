@@ -3,6 +3,7 @@ use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
+use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr;
 use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 
@@ -147,6 +148,9 @@ pub struct SegQueue<T> {
 
 unsafe impl<T: Send> Send for SegQueue<T> {}
 unsafe impl<T: Send> Sync for SegQueue<T> {}
+
+impl<T> UnwindSafe for SegQueue<T> {}
+impl<T> RefUnwindSafe for SegQueue<T> {}
 
 impl<T> SegQueue<T> {
     /// Creates a new unbounded queue.
