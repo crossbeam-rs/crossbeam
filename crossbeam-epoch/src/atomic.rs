@@ -1,3 +1,5 @@
+use alloc::boxed::Box;
+use core::alloc::Layout;
 use core::borrow::{Borrow, BorrowMut};
 use core::cmp;
 use core::fmt;
@@ -7,8 +9,6 @@ use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::slice;
 
-use crate::alloc::alloc;
-use crate::alloc::boxed::Box;
 use crate::guard::Guard;
 #[cfg(not(miri))]
 use crate::primitive::sync::atomic::AtomicUsize;
@@ -191,14 +191,21 @@ impl<T> Pointable for T {
 ///
 /// Elements are not present in the type, but they will be in the allocation.
 /// ```
-///
-// TODO(@jeehoonkang): once we bump the minimum required Rust version to 1.44 or newer, use
-// [`alloc::alloc::Layout::extend`] instead.
 #[repr(C)]
 struct Array<T> {
     /// The number of elements (not the number of bytes).
     len: usize,
     elements: [MaybeUninit<T>; 0],
+}
+
+impl<T> Array<T> {
+    fn layout(len: usize) -> Layout {
+        Layout::new::<Self>()
+            .extend(Layout::array::<MaybeUninit<T>>(len).unwrap())
+            .unwrap()
+            .0
+            .pad_to_align()
+    }
 }
 
 impl<T> Pointable for [MaybeUninit<T>] {
@@ -207,15 +214,13 @@ impl<T> Pointable for [MaybeUninit<T>] {
     type Init = usize;
 
     unsafe fn init(len: Self::Init) -> *mut () {
-        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * len;
-        let align = mem::align_of::<Array<T>>();
-        let layout = alloc::Layout::from_size_align(size, align).unwrap();
+        let layout = Array::<T>::layout(len);
         unsafe {
-            let ptr = alloc::alloc(layout).cast::<Array<T>>();
+            let ptr = alloc::alloc::alloc(layout).cast::<Array<T>>();
             if ptr.is_null() {
-                alloc::handle_alloc_error(layout);
+                alloc::alloc::handle_alloc_error(layout);
             }
-            (*ptr).len = len;
+            ptr::addr_of_mut!((*ptr).len).write(len);
             ptr.cast::<()>()
         }
     }
@@ -236,11 +241,9 @@ impl<T> Pointable for [MaybeUninit<T>] {
 
     unsafe fn drop(ptr: *mut ()) {
         unsafe {
-            let array = &*ptr.cast::<Array<T>>();
-            let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * array.len;
-            let align = mem::align_of::<Array<T>>();
-            let layout = alloc::Layout::from_size_align(size, align).unwrap();
-            alloc::dealloc(ptr.cast::<u8>(), layout);
+            let len = (*ptr.cast::<Array<T>>()).len;
+            let layout = Array::<T>::layout(len);
+            alloc::alloc::dealloc(ptr.cast::<u8>(), layout);
         }
     }
 }
