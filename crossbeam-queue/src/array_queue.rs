@@ -7,6 +7,7 @@ use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::mem::MaybeUninit;
+use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::sync::atomic::{self, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
@@ -75,6 +76,9 @@ pub struct ArrayQueue<T> {
 
 unsafe impl<T: Send> Sync for ArrayQueue<T> {}
 unsafe impl<T: Send> Send for ArrayQueue<T> {}
+
+impl<T> UnwindSafe for ArrayQueue<T> {}
+impl<T> RefUnwindSafe for ArrayQueue<T> {}
 
 impl<T> ArrayQueue<T> {
     /// Creates a new bounded queue with the given capacity.
