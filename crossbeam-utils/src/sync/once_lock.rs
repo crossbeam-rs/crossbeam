@@ -74,7 +74,7 @@ impl<T> OnceLock<T> {
     /// The value must be initialized
     unsafe fn get_unchecked(&self) -> &T {
         debug_assert!(self.once.is_completed());
-        &*self.value.get().cast::<T>()
+        unsafe { (*self.value.get()).assume_init_ref() }
     }
 }
 

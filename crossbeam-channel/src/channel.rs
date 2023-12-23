@@ -1511,25 +1511,29 @@ impl<T> SelectHandle for Receiver<T> {
 
 /// Writes a message into the channel.
 pub(crate) unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Result<(), T> {
-    match &s.flavor {
-        SenderFlavor::Array(chan) => chan.write(token, msg),
-        SenderFlavor::List(chan) => chan.write(token, msg),
-        SenderFlavor::Zero(chan) => chan.write(token, msg),
+    unsafe {
+        match &s.flavor {
+            SenderFlavor::Array(chan) => chan.write(token, msg),
+            SenderFlavor::List(chan) => chan.write(token, msg),
+            SenderFlavor::Zero(chan) => chan.write(token, msg),
+        }
     }
 }
 
 /// Reads a message from the channel.
 pub(crate) unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()> {
-    match &r.flavor {
-        ReceiverFlavor::Array(chan) => chan.read(token),
-        ReceiverFlavor::List(chan) => chan.read(token),
-        ReceiverFlavor::Zero(chan) => chan.read(token),
-        ReceiverFlavor::At(chan) => {
-            mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
+    unsafe {
+        match &r.flavor {
+            ReceiverFlavor::Array(chan) => chan.read(token),
+            ReceiverFlavor::List(chan) => chan.read(token),
+            ReceiverFlavor::Zero(chan) => chan.read(token),
+            ReceiverFlavor::At(chan) => {
+                mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
+            }
+            ReceiverFlavor::Tick(chan) => {
+                mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
+            }
+            ReceiverFlavor::Never(chan) => chan.read(token),
         }
-        ReceiverFlavor::Tick(chan) => {
-            mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
-        }
-        ReceiverFlavor::Never(chan) => chan.read(token),
     }
 }

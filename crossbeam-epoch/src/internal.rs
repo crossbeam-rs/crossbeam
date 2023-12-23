@@ -358,9 +358,9 @@ impl Local {
     ///
     /// It should be safe for another thread to execute the given function.
     pub(crate) unsafe fn defer(&self, mut deferred: Deferred, guard: &Guard) {
-        let bag = self.bag.with_mut(|b| &mut *b);
+        let bag = self.bag.with_mut(|b| unsafe { &mut *b });
 
-        while let Err(d) = bag.try_push(deferred) {
+        while let Err(d) = unsafe { bag.try_push(deferred) } {
             self.global().push_bag(bag, guard);
             deferred = d;
         }
@@ -545,12 +545,14 @@ impl IsElement<Self> for Local {
 
     unsafe fn element_of(entry: &Entry) -> &Self {
         // SAFETY: `Local` is `repr(C)` and `entry` is the first field of it.
-        let local_ptr = (entry as *const Entry).cast::<Self>();
-        &*local_ptr
+        unsafe {
+            let local_ptr = (entry as *const Entry).cast::<Self>();
+            &*local_ptr
+        }
     }
 
     unsafe fn finalize(entry: &Entry, guard: &Guard) {
-        guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _));
+        unsafe { guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _)) }
     }
 }
 

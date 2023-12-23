@@ -49,7 +49,7 @@ impl Deferred {
                 ptr::write(data.as_mut_ptr().cast::<F>(), f);
 
                 unsafe fn call<F: FnOnce()>(raw: *mut u8) {
-                    let f: F = ptr::read(raw.cast::<F>());
+                    let f: F = unsafe { ptr::read(raw.cast::<F>()) };
                     f();
                 }
 
@@ -66,7 +66,7 @@ impl Deferred {
                 unsafe fn call<F: FnOnce()>(raw: *mut u8) {
                     // It's safe to cast `raw` from `*mut u8` to `*mut Box<F>`, because `raw` is
                     // originally derived from `*mut Box<F>`.
-                    let b: Box<F> = ptr::read(raw.cast::<Box<F>>());
+                    let b: Box<F> = unsafe { ptr::read(raw.cast::<Box<F>>()) };
                     (*b)();
                 }
 

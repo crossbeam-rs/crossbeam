@@ -159,15 +159,15 @@ impl<T> Pointable for T {
     }
 
     unsafe fn deref<'a>(ptr: *mut ()) -> &'a Self {
-        &*(ptr as *const T)
+        unsafe { &*(ptr as *const T) }
     }
 
     unsafe fn deref_mut<'a>(ptr: *mut ()) -> &'a mut Self {
-        &mut *ptr.cast::<T>()
+        unsafe { &mut *ptr.cast::<T>() }
     }
 
     unsafe fn drop(ptr: *mut ()) {
-        drop(Box::from_raw(ptr.cast::<T>()));
+        drop(unsafe { Box::from_raw(ptr.cast::<T>()) });
     }
 }
 
@@ -210,30 +210,38 @@ impl<T> Pointable for [MaybeUninit<T>] {
         let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * len;
         let align = mem::align_of::<Array<T>>();
         let layout = alloc::Layout::from_size_align(size, align).unwrap();
-        let ptr = alloc::alloc(layout).cast::<Array<T>>();
-        if ptr.is_null() {
-            alloc::handle_alloc_error(layout);
+        unsafe {
+            let ptr = alloc::alloc(layout).cast::<Array<T>>();
+            if ptr.is_null() {
+                alloc::handle_alloc_error(layout);
+            }
+            (*ptr).len = len;
+            ptr.cast::<()>()
         }
-        (*ptr).len = len;
-        ptr.cast::<()>()
     }
 
     unsafe fn deref<'a>(ptr: *mut ()) -> &'a Self {
-        let array = &*(ptr as *const Array<T>);
-        slice::from_raw_parts(array.elements.as_ptr(), array.len)
+        unsafe {
+            let array = &*(ptr as *const Array<T>);
+            slice::from_raw_parts(array.elements.as_ptr(), array.len)
+        }
     }
 
     unsafe fn deref_mut<'a>(ptr: *mut ()) -> &'a mut Self {
-        let array = &mut *ptr.cast::<Array<T>>();
-        slice::from_raw_parts_mut(array.elements.as_mut_ptr(), array.len)
+        unsafe {
+            let array = &mut *ptr.cast::<Array<T>>();
+            slice::from_raw_parts_mut(array.elements.as_mut_ptr(), array.len)
+        }
     }
 
     unsafe fn drop(ptr: *mut ()) {
-        let array = &*ptr.cast::<Array<T>>();
-        let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * array.len;
-        let align = mem::align_of::<Array<T>>();
-        let layout = alloc::Layout::from_size_align(size, align).unwrap();
-        alloc::dealloc(ptr.cast::<u8>(), layout);
+        unsafe {
+            let array = &*ptr.cast::<Array<T>>();
+            let size = mem::size_of::<Array<T>>() + mem::size_of::<MaybeUninit<T>>() * array.len;
+            let align = mem::align_of::<Array<T>>();
+            let layout = alloc::Layout::from_size_align(size, align).unwrap();
+            alloc::dealloc(ptr.cast::<u8>(), layout);
+        }
     }
 }
 
@@ -773,7 +781,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// }
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
-        Owned::from_ptr(self.data.into_inner())
+        unsafe { Owned::from_ptr(self.data.into_inner()) }
     }
 
     /// Takes ownership of the pointee if it is non-null.
@@ -814,7 +822,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         if decompose_tag::<T>(data).0.is_null() {
             None
         } else {
-            Some(Owned::from_ptr(data))
+            Some(unsafe { Owned::from_ptr(data) })
         }
     }
 }
@@ -994,7 +1002,7 @@ impl<T> Owned<T> {
     pub unsafe fn from_raw(raw: *mut T) -> Self {
         let raw = raw.cast::<()>();
         ensure_aligned::<T>(raw);
-        Self::from_ptr(raw)
+        unsafe { Self::from_ptr(raw) }
     }
 
     /// Converts the owned pointer into a `Box`.
@@ -1314,7 +1322,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// ```
     pub unsafe fn deref(&self) -> &'g T {
         let (raw, _) = decompose_tag::<T>(self.data);
-        T::deref(raw)
+        unsafe { T::deref(raw) }
     }
 
     /// Dereferences the pointer.
@@ -1356,7 +1364,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// ```
     pub unsafe fn deref_mut(&mut self) -> &'g mut T {
         let (raw, _) = decompose_tag::<T>(self.data);
-        T::deref_mut(raw)
+        unsafe { T::deref_mut(raw) }
     }
 
     /// Converts the pointer to a reference.
@@ -1396,7 +1404,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
         if raw.is_null() {
             None
         } else {
-            Some(T::deref(raw))
+            Some(unsafe { T::deref(raw) })
         }
     }
 
@@ -1426,7 +1434,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// ```
     pub unsafe fn into_owned(self) -> Owned<T> {
         debug_assert!(!self.is_null(), "converting a null `Shared` into `Owned`");
-        Owned::from_ptr(self.data)
+        unsafe { Owned::from_ptr(self.data) }
     }
 
     /// Takes ownership of the pointee if it is not null.
@@ -1455,7 +1463,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
         if self.is_null() {
             None
         } else {
-            Some(Owned::from_ptr(self.data))
+            Some(unsafe { Owned::from_ptr(self.data) })
         }
     }
 
