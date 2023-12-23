@@ -549,8 +549,7 @@ impl<T> Drop for Channel<T> {
             unsafe {
                 debug_assert!(index < self.buffer.len());
                 let slot = self.buffer.get_unchecked_mut(index);
-                let msg = &mut *slot.msg.get();
-                msg.as_mut_ptr().drop_in_place();
+                (*slot.msg.get()).assume_init_drop();
             }
         }
     }
