@@ -83,13 +83,14 @@ jobs:
       fail-fast: false
       matrix:
         rust:
-          - '1.61'
+          - msrv
           - nightly
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
         run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+        if: matrix.rust != 'msrv'
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Check features
