@@ -68,7 +68,7 @@ impl<C> Sender<C> {
             disconnect(&self.counter().chan);
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
-                drop(Box::from_raw(self.counter));
+                drop(unsafe { Box::from_raw(self.counter) });
             }
         }
     }
@@ -123,7 +123,7 @@ impl<C> Receiver<C> {
             disconnect(&self.counter().chan);
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
-                drop(Box::from_raw(self.counter));
+                drop(unsafe { Box::from_raw(self.counter) });
             }
         }
     }

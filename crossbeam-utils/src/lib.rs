@@ -31,7 +31,7 @@
         allow(dead_code, unused_assignments, unused_variables)
     )
 ))]
-#![warn(missing_docs)]
+#![warn(missing_docs, unsafe_op_in_unsafe_fn)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(crossbeam_loom)]

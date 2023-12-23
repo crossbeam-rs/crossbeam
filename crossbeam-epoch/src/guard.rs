@@ -189,10 +189,12 @@ impl Guard {
     where
         F: FnOnce() -> R,
     {
-        if let Some(local) = self.local.as_ref() {
-            local.defer(Deferred::new(move || drop(f())), self);
-        } else {
-            drop(f());
+        unsafe {
+            if let Some(local) = self.local.as_ref() {
+                local.defer(Deferred::new(move || drop(f())), self);
+            } else {
+                drop(f());
+            }
         }
     }
 
@@ -266,7 +268,7 @@ impl Guard {
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn defer_destroy<T>(&self, ptr: Shared<'_, T>) {
-        self.defer_unchecked(move || ptr.into_owned());
+        unsafe { self.defer_unchecked(move || ptr.into_owned()) }
     }
 
     /// Clears up the thread-local cache of deferred functions by executing them or moving into the

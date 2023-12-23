@@ -98,27 +98,31 @@ impl<K, V> Node<K, V> {
     /// with null pointers. However, the key and the value will be left uninitialized, and that is
     /// why this function is unsafe.
     unsafe fn alloc(height: usize, ref_count: usize) -> *mut Self {
-        let layout = Self::get_layout(height);
-        let ptr = alloc(layout).cast::<Self>();
-        if ptr.is_null() {
-            handle_alloc_error(layout);
-        }
+        unsafe {
+            let layout = Self::get_layout(height);
+            let ptr = alloc(layout).cast::<Self>();
+            if ptr.is_null() {
+                handle_alloc_error(layout);
+            }
 
-        ptr::write(
-            &mut (*ptr).refs_and_height,
-            AtomicUsize::new((height - 1) | ref_count << HEIGHT_BITS),
-        );
-        ptr::write_bytes((*ptr).tower.pointers.as_mut_ptr(), 0, height);
-        ptr
+            ptr::write(
+                &mut (*ptr).refs_and_height,
+                AtomicUsize::new((height - 1) | ref_count << HEIGHT_BITS),
+            );
+            ptr::write_bytes((*ptr).tower.pointers.as_mut_ptr(), 0, height);
+            ptr
+        }
     }
 
     /// Deallocates a node.
     ///
     /// This function will not run any destructors.
     unsafe fn dealloc(ptr: *mut Self) {
-        let height = (*ptr).height();
-        let layout = Self::get_layout(height);
-        dealloc(ptr.cast::<u8>(), layout);
+        unsafe {
+            let height = (*ptr).height();
+            let layout = Self::get_layout(height);
+            dealloc(ptr.cast::<u8>(), layout);
+        }
     }
 
     /// Returns the layout of a node with the given `height`.
@@ -129,7 +133,7 @@ impl<K, V> Node<K, V> {
         let align_self = mem::align_of::<Self>();
         let size_pointer = mem::size_of::<Atomic<Self>>();
 
-        Layout::from_size_align_unchecked(size_self + size_pointer * height, align_self)
+        unsafe { Layout::from_size_align_unchecked(size_self + size_pointer * height, align_self) }
     }
 
     /// Returns the height of this node's tower.
@@ -222,7 +226,7 @@ impl<K, V> Node<K, V> {
             == 1
         {
             fence(Ordering::Acquire);
-            guard.defer_unchecked(move || Self::finalize(self));
+            unsafe { guard.defer_unchecked(move || Self::finalize(self)) }
         }
     }
 
@@ -242,7 +246,7 @@ impl<K, V> Node<K, V> {
             fence(Ordering::Acquire);
             let guard = &pin();
             parent.check_guard(guard);
-            guard.defer_unchecked(move || Self::finalize(self));
+            unsafe { guard.defer_unchecked(move || Self::finalize(self)) }
         }
     }
 
@@ -251,12 +255,14 @@ impl<K, V> Node<K, V> {
     unsafe fn finalize(ptr: *const Self) {
         let ptr = ptr as *mut Self;
 
-        // Call destructors: drop the key and the value.
-        ptr::drop_in_place(&mut (*ptr).key);
-        ptr::drop_in_place(&mut (*ptr).value);
+        unsafe {
+            // Call destructors: drop the key and the value.
+            ptr::drop_in_place(&mut (*ptr).key);
+            ptr::drop_in_place(&mut (*ptr).value);
 
-        // Finally, deallocate the memory occupied by the node.
-        Self::dealloc(ptr);
+            // Finally, deallocate the memory occupied by the node.
+            Self::dealloc(ptr);
+        }
     }
 }
 
@@ -615,7 +621,7 @@ where
             guard,
         ) {
             Ok(_) => {
-                curr.decrement(guard);
+                unsafe { curr.decrement(guard) }
                 Some(succ.with_tag(0))
             }
             Err(_) => None,
@@ -1501,13 +1507,13 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
         parent: &'a SkipList<K, V>,
         node: &Node<K, V>,
     ) -> Option<RefEntry<'a, K, V>> {
-        if node.try_increment() {
+        if unsafe { node.try_increment() } {
             Some(RefEntry {
                 parent,
 
                 // We re-bind the lifetime of the node here to that of the skip
                 // list since we now hold a reference to it.
-                node: &*(node as *const _),
+                node: unsafe { &*(node as *const _) },
             })
         } else {
             None

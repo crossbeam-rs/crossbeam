@@ -147,8 +147,8 @@ impl<T> Channel<T> {
             return Err(msg);
         }
 
-        let packet = &*(token.zero.0 as *const Packet<T>);
-        packet.msg.get().write(Some(msg));
+        let packet = unsafe { &*(token.zero.0 as *const Packet<T>) };
+        unsafe { packet.msg.get().write(Some(msg)) }
         packet.ready.store(true, Ordering::Release);
         Ok(())
     }
@@ -176,21 +176,21 @@ impl<T> Channel<T> {
             return Err(());
         }
 
-        let packet = &*(token.zero.0 as *const Packet<T>);
+        let packet = unsafe { &*(token.zero.0 as *const Packet<T>) };
 
         if packet.on_stack {
             // The message has been in the packet from the beginning, so there is no need to wait
             // for it. However, after reading the message, we need to set `ready` to `true` in
             // order to signal that the packet can be destroyed.
-            let msg = packet.msg.get().replace(None).unwrap();
+            let msg = unsafe { packet.msg.get().replace(None).unwrap() };
             packet.ready.store(true, Ordering::Release);
             Ok(msg)
         } else {
             // Wait until the message becomes available, then read it and destroy the
             // heap-allocated packet.
             packet.wait_ready();
-            let msg = packet.msg.get().replace(None).unwrap();
-            drop(Box::from_raw(token.zero.0.cast::<Packet<T>>()));
+            let msg = unsafe { packet.msg.get().replace(None).unwrap() };
+            drop(unsafe { Box::from_raw(token.zero.0.cast::<Packet<T>>()) });
             Ok(msg)
         }
     }
