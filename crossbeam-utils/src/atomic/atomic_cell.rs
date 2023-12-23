@@ -2,6 +2,7 @@
 #![allow(clippy::unit_arg)]
 
 use crate::primitive::sync::atomic::{self, Ordering};
+use crate::CachePadded;
 use core::cell::UnsafeCell;
 use core::cmp;
 use core::fmt;
@@ -998,10 +999,10 @@ fn lock(addr: usize) -> &'static SeqLock {
     // Now, if we have a slice of type `&[Foo]`, it is possible that field `a` in all items gets
     // stored at addresses that are multiples of 3. It'd be too bad if `LEN` was divisible by 3.
     // In order to protect from such cases, we simply choose a large prime number for `LEN`.
-    const LEN: usize = 97;
+    const LEN: usize = 67;
     #[allow(clippy::declare_interior_mutable_const)]
-    const L: SeqLock = SeqLock::new();
-    static LOCKS: [SeqLock; LEN] = [L; LEN];
+    const L: CachePadded<SeqLock> = CachePadded::new(SeqLock::new());
+    static LOCKS: [CachePadded<SeqLock>; LEN] = [L; LEN];
 
     // If the modulus is a constant number, the compiler will use crazy math to transform this into
     // a sequence of cheap arithmetic operations rather than using the slow modulo instruction.
