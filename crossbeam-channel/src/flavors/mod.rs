@@ -6,11 +6,13 @@
 //! 2. `array` - Bounded channel based on a preallocated array.
 //! 3. `list` - Unbounded channel implemented as a linked list.
 //! 4. `never` - Channel that never delivers messages.
+//! 5. `disconnected` - Channel that is always disconnected.
 //! 5. `tick` - Channel that delivers messages periodically.
 //! 6. `zero` - Zero-capacity channel.
 
 pub(crate) mod array;
 pub(crate) mod at;
+pub(crate) mod disconnected;
 pub(crate) mod list;
 pub(crate) mod never;
 pub(crate) mod tick;
