@@ -104,11 +104,11 @@ impl<K, V> Node<K, V> {
             handle_alloc_error(layout);
         }
 
-        ptr::write(
-            &mut (*ptr).refs_and_height,
-            AtomicUsize::new((height - 1) | ref_count << HEIGHT_BITS),
-        );
-        ptr::write_bytes((*ptr).tower.pointers.as_mut_ptr(), 0, height);
+        ptr::addr_of_mut!((*ptr).refs_and_height)
+            .write(AtomicUsize::new((height - 1) | ref_count << HEIGHT_BITS));
+        ptr::addr_of_mut!((*ptr).tower.pointers)
+            .cast::<Atomic<Self>>()
+            .write_bytes(0, height);
         ptr
     }
 
@@ -122,14 +122,14 @@ impl<K, V> Node<K, V> {
     }
 
     /// Returns the layout of a node with the given `height`.
-    unsafe fn get_layout(height: usize) -> Layout {
+    fn get_layout(height: usize) -> Layout {
         assert!((1..=MAX_HEIGHT).contains(&height));
 
-        let size_self = mem::size_of::<Self>();
-        let align_self = mem::align_of::<Self>();
-        let size_pointer = mem::size_of::<Atomic<Self>>();
-
-        Layout::from_size_align_unchecked(size_self + size_pointer * height, align_self)
+        Layout::new::<Self>()
+            .extend(Layout::array::<Atomic<Self>>(height).unwrap())
+            .unwrap()
+            .0
+            .pad_to_align()
     }
 
     /// Returns the height of this node's tower.
@@ -906,8 +906,8 @@ where
                 let n = Node::<K, V>::alloc(height, 2);
 
                 // Write the key and the value into the node.
-                ptr::write(&mut (*n).key, key);
-                ptr::write(&mut (*n).value, value);
+                ptr::addr_of_mut!((*n).key).write(key);
+                ptr::addr_of_mut!((*n).value).write(value);
 
                 (Shared::<Node<K, V>>::from(n as *const _), &*n)
             };
