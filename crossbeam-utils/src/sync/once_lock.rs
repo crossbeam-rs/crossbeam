@@ -61,13 +61,11 @@ impl<T> OnceLock<T> {
     where
         F: FnOnce() -> T,
     {
-        let slot = self.value.get().cast::<T>();
+        let slot = self.value.get();
 
         self.once.call_once(|| {
             let value = f();
-            unsafe {
-                slot.write(value);
-            }
+            unsafe { slot.write(MaybeUninit::new(value)) }
         });
     }
 
@@ -84,7 +82,7 @@ impl<T> Drop for OnceLock<T> {
     fn drop(&mut self) {
         if self.once.is_completed() {
             // SAFETY: The inner value has been initialized
-            unsafe { self.value.get().cast::<T>().drop_in_place() };
+            unsafe { (*self.value.get()).assume_init_drop() };
         }
     }
 }

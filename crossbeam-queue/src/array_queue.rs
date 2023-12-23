@@ -472,8 +472,7 @@ impl<T> Drop for ArrayQueue<T> {
             unsafe {
                 debug_assert!(index < self.buffer.len());
                 let slot = self.buffer.get_unchecked_mut(index);
-                let value = &mut *slot.value.get();
-                value.as_mut_ptr().drop_in_place();
+                (*slot.value.get()).assume_init_drop();
             }
         }
     }

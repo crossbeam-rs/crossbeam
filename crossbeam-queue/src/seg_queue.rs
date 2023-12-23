@@ -455,8 +455,7 @@ impl<T> Drop for SegQueue<T> {
                 if offset < BLOCK_CAP {
                     // Drop the value in the slot.
                     let slot = (*block).slots.get_unchecked(offset);
-                    let p = &mut *slot.value.get();
-                    p.as_mut_ptr().drop_in_place();
+                    (*slot.value.get()).assume_init_drop();
                 } else {
                     // Deallocate the block and move to the next one.
                     let next = *(*block).next.get_mut();
@@ -521,8 +520,7 @@ impl<T> Iterator for IntoIter<T> {
             // and this is a non-empty queue.
             let item = unsafe {
                 let slot = (*block).slots.get_unchecked(offset);
-                let p = &mut *slot.value.get();
-                p.as_mut_ptr().read()
+                slot.value.get().read().assume_init()
             };
             if offset + 1 == BLOCK_CAP {
                 // Deallocate the block and move to the next one.
