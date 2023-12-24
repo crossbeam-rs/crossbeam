@@ -1,3 +1,8 @@
+# Version 0.5.10
+
+- Relax the minimum supported Rust version to 1.60. (#1056)
+- Optimize `Drop` implementation of bounded channel. (#1057)
+
 # Version 0.5.9
 
 - Bump the minimum supported Rust version to 1.61. (#1037)
