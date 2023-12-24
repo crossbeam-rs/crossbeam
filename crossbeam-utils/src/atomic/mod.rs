@@ -4,7 +4,11 @@
 //! * [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.
 
 #[cfg(target_has_atomic = "ptr")]
+// We cannot provide AtomicCell under cfg(crossbeam_loom) because loom's atomic
+// types have a different in-memory representation than the underlying type.
+// TODO: The latest loom supports fences, so fallback using seqlock may be available.
 #[cfg(not(crossbeam_loom))]
+atomic_maybe_uninit::cfg_has_atomic_cas! {
 cfg_if::cfg_if! {
     // Use "wide" sequence lock if the pointer width <= 32 for preventing its counter against wrap
     // around.
@@ -23,15 +27,9 @@ cfg_if::cfg_if! {
     }
 }
 
-#[cfg(target_has_atomic = "ptr")]
-// We cannot provide AtomicCell under cfg(crossbeam_loom) because loom's atomic
-// types have a different in-memory representation than the underlying type.
-// TODO: The latest loom supports fences, so fallback using seqlock may be available.
-#[cfg(not(crossbeam_loom))]
 mod atomic_cell;
-mod consume;
-
-#[cfg(target_has_atomic = "ptr")]
-#[cfg(not(crossbeam_loom))]
 pub use self::atomic_cell::AtomicCell;
+}
+
+mod consume;
 pub use self::consume::AtomicConsume;

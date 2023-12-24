@@ -42,4 +42,7 @@ fn main() {
     if sanitize.contains("thread") {
         println!("cargo:rustc-cfg=crossbeam_sanitize_thread");
     }
+    if !sanitize.is_empty() {
+        println!("cargo:rustc-cfg=crossbeam_atomic_cell_force_fallback");
+    }
 }
