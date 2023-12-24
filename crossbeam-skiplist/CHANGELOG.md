@@ -1,3 +1,11 @@
+# Version 0.1.2
+
+- Bump the minimum supported Rust version to 1.61. (#1037)
+- Add `compare_insert`. (#976)
+- Improve support for targets without atomic CAS. (#1037)
+- Remove build script. (#1037)
+- Remove dependency on `scopeguard`. (#1045)
+
 # Version 0.1.1
 
 - Fix `get_unchecked` panic by raw pointer calculation. (#940)
