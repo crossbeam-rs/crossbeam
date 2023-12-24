@@ -4,7 +4,7 @@ name = "crossbeam-epoch"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-epoch-X.Y.Z" git tag
-version = "0.9.16"
+version = "0.9.17"
 edition = "2021"
 rust-version = "1.61"
 license = "MIT OR Apache-2.0"
@@ -37,6 +37,8 @@ loom = ["loom-crate", "crossbeam-utils/loom"]
 autocfg = "1"
 
 [dependencies]
+crossbeam-utils = { version = "0.8.18", path = "../crossbeam-utils", default-features = false }
+
 cfg-if = "1"
 
 # Enable the use of loom for concurrency testing.
@@ -45,11 +47,6 @@ cfg-if = "1"
 # patch versions of crossbeam may make breaking changes to them at any time.
 [target.'cfg(crossbeam_loom)'.dependencies]
 loom-crate = { package = "loom", version = "0.7.1", optional = true }
-
-[dependencies.crossbeam-utils]
-version = "0.8.17"
-path = "../crossbeam-utils"
-default-features = false
 
 [dev-dependencies]
 rand = "0.8"
