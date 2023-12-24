@@ -1,3 +1,9 @@
+# Version 0.3.10
+
+- Relax the minimum supported Rust version to 1.60. (#1056)
+- Implement `UnwindSafe` and `RefUnwindSafe` for `ArrayQueue` and `SegQueue`. (#1053)
+- Optimize `Drop` implementation of `ArrayQueue`. (#1057)
+
 # Version 0.3.9
 
 - Bump the minimum supported Rust version to 1.61. (#1037)
