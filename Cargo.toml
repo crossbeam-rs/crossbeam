@@ -4,7 +4,7 @@ name = "crossbeam"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-X.Y.Z" git tag
-version = "0.8.2"
+version = "0.8.3"
 edition = "2021"
 rust-version = "1.61"
 license = "MIT OR Apache-2.0"
@@ -41,36 +41,13 @@ alloc = ["crossbeam-epoch/alloc", "crossbeam-queue/alloc"]
 nightly = ["crossbeam-epoch/nightly", "crossbeam-utils/nightly", "crossbeam-queue/nightly"]
 
 [dependencies]
+crossbeam-channel = { version = "0.5.10", path = "crossbeam-channel", default-features = false, optional = true }
+crossbeam-deque = { version = "0.8.4", path = "crossbeam-deque", default-features = false, optional = true }
+crossbeam-epoch = { version = "0.9.17", path = "crossbeam-epoch", default-features = false, optional = true }
+crossbeam-queue = { version = "0.3.10", path = "crossbeam-queue", default-features = false, optional = true }
+crossbeam-utils = { version = "0.8.18", path = "crossbeam-utils", default-features = false }
+
 cfg-if = "1"
-
-[dependencies.crossbeam-channel]
-version = "0.5.9"
-path = "./crossbeam-channel"
-default-features = false
-optional = true
-
-[dependencies.crossbeam-deque]
-version = "0.8.4"
-path = "./crossbeam-deque"
-default-features = false
-optional = true
-
-[dependencies.crossbeam-epoch]
-version = "0.9.16"
-path = "./crossbeam-epoch"
-default-features = false
-optional = true
-
-[dependencies.crossbeam-queue]
-version = "0.3.9"
-path = "./crossbeam-queue"
-default-features = false
-optional = true
-
-[dependencies.crossbeam-utils]
-version = "0.8.17"
-path = "./crossbeam-utils"
-default-features = false
 
 [dev-dependencies]
 rand = "0.8"
