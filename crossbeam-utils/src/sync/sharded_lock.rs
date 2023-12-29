@@ -1,3 +1,4 @@
+use core::mem::MaybeUninit;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -8,6 +9,7 @@ use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread::{self, ThreadId};
+use std::ptr;
 
 use crate::sync::once_lock::OnceLock;
 use crate::CachePadded;
@@ -98,17 +100,20 @@ impl<T> ShardedLock<T> {
     /// let lock = ShardedLock::new(5);
     /// ```
     pub fn new(value: T) -> Self {
+        let shards = {
+            let mut data: [MaybeUninit<CachePadded<Shard>>; NUM_SHARDS] = unsafe { MaybeUninit::uninit().assume_init() };
+
+            for elem in &mut data[..] {
+                unsafe { ptr::write(elem.as_mut_ptr(), CachePadded::new(Shard {
+                    lock: RwLock::new(()),
+                    write_guard: UnsafeCell::new(None),
+                })); }
+            }
+        
+            unsafe { mem::transmute::<_, [CachePadded<Shard>; NUM_SHARDS]>(data) }
+        };
         Self {
-            shards: (0..NUM_SHARDS)
-                .map(|_| {
-                    CachePadded::new(Shard {
-                        lock: RwLock::new(()),
-                        write_guard: UnsafeCell::new(None),
-                    })
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap_or_else(|_| unreachable!()),
+            shards,
             value: UnsafeCell::new(value),
         }
     }
