@@ -98,13 +98,17 @@ impl<T> ShardedLock<T> {
     /// let lock = ShardedLock::new(5);
     /// ```
     pub fn new(value: T) -> Self {
-        const CACHE_PADDED: CachePadded<Shard> = CachePadded::new(Shard {
-            lock: RwLock::new(()),
-            write_guard: UnsafeCell::new(None),
-        });
-
         Self {
-            shards: [CACHE_PADDED; NUM_SHARDS],
+            shards: (0..NUM_SHARDS)
+                .map(|_| {
+                    CachePadded::new(Shard {
+                        lock: RwLock::new(()),
+                        write_guard: UnsafeCell::new(None),
+                    })
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap_or_else(|_| unreachable!()),
             value: UnsafeCell::new(value),
         }
     }
