@@ -75,7 +75,7 @@ struct Shard {
 /// [`RwLock`]: std::sync::RwLock
 pub struct ShardedLock<T: ?Sized> {
     /// A list of locks protecting the internal data.
-    shards: Box<[CachePadded<Shard>]>,
+    shards: [CachePadded<Shard>; NUM_SHARDS],
 
     /// The internal data.
     value: UnsafeCell<T>,
@@ -98,15 +98,13 @@ impl<T> ShardedLock<T> {
     /// let lock = ShardedLock::new(5);
     /// ```
     pub fn new(value: T) -> Self {
+        const CACHE_PADDED: CachePadded<Shard> = CachePadded::new(Shard {
+            lock: RwLock::new(()),
+            write_guard: UnsafeCell::new(None),
+        });
+
         Self {
-            shards: (0..NUM_SHARDS)
-                .map(|_| {
-                    CachePadded::new(Shard {
-                        lock: RwLock::new(()),
-                        write_guard: UnsafeCell::new(None),
-                    })
-                })
-                .collect::<Box<[_]>>(),
+            shards: [CACHE_PADDED; NUM_SHARDS],
             value: UnsafeCell::new(value),
         }
     }
