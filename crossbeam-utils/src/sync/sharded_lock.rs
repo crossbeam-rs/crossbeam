@@ -6,10 +6,10 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
+use std::ptr;
 use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread::{self, ThreadId};
-use std::ptr;
 
 use crate::sync::once_lock::OnceLock;
 use crate::CachePadded;
@@ -101,15 +101,21 @@ impl<T> ShardedLock<T> {
     /// ```
     pub fn new(value: T) -> Self {
         let shards = {
-            let mut data: [MaybeUninit<CachePadded<Shard>>; NUM_SHARDS] = unsafe { MaybeUninit::uninit().assume_init() };
+            let mut data: [MaybeUninit<CachePadded<Shard>>; NUM_SHARDS] =
+                unsafe { MaybeUninit::uninit().assume_init() };
 
             for elem in &mut data[..] {
-                unsafe { ptr::write(elem.as_mut_ptr(), CachePadded::new(Shard {
-                    lock: RwLock::new(()),
-                    write_guard: UnsafeCell::new(None),
-                })); }
+                unsafe {
+                    ptr::write(
+                        elem.as_mut_ptr(),
+                        CachePadded::new(Shard {
+                            lock: RwLock::new(()),
+                            write_guard: UnsafeCell::new(None),
+                        }),
+                    );
+                }
             }
-        
+
             unsafe { mem::transmute::<_, [CachePadded<Shard>; NUM_SHARDS]>(data) }
         };
         Self {
