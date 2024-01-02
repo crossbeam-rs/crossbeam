@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::mem;
 
-use crossbeam_utils::CachePadded;
+use crossbeam_cachepadded::CachePadded;
 
 #[test]
 fn default() {

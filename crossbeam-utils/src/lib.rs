@@ -88,8 +88,7 @@ mod primitive {
 
 pub mod atomic;
 
-mod cache_padded;
-pub use crate::cache_padded::CachePadded;
+pub use crossbeam_cachepadded::CachePadded;
 
 mod backoff;
 pub use crate::backoff::Backoff;

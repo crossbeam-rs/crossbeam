@@ -24,6 +24,8 @@ std = []
 [dependencies]
 cfg-if = "1"
 
+crossbeam-cachepadded = { version = "0.0", path = "../crossbeam-cachepadded", default-features = false }
+
 # Enable the use of loom for concurrency testing.
 #
 # NOTE: This feature is outside of the normal semver guarantees and minor or

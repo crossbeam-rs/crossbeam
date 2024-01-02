@@ -1,3 +1,20 @@
+//! TODO
+
+#![doc(test(
+    no_crate_inject,
+    attr(
+        deny(warnings, rust_2018_idioms),
+        allow(dead_code, unused_assignments, unused_variables)
+    )
+))]
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    rust_2018_idioms,
+    unreachable_pub
+)]
+#![no_std]
+
 use core::fmt;
 use core::ops::{Deref, DerefMut};
 
@@ -34,7 +51,7 @@ use core::ops::{Deref, DerefMut};
 /// Alignment and padding:
 ///
 /// ```
-/// use crossbeam_utils::CachePadded;
+/// use crossbeam_cachepadded::CachePadded;
 ///
 /// let array = [CachePadded::new(1i8), CachePadded::new(2i8)];
 /// let addr1 = &*array[0] as *const i8 as usize;
@@ -50,7 +67,7 @@ use core::ops::{Deref, DerefMut};
 /// each other's cache lines:
 ///
 /// ```
-/// use crossbeam_utils::CachePadded;
+/// use crossbeam_cachepadded::CachePadded;
 /// use std::sync::atomic::AtomicUsize;
 ///
 /// struct Queue<T> {
@@ -156,7 +173,7 @@ impl<T> CachePadded<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_utils::CachePadded;
+    /// use crossbeam_cachepadded::CachePadded;
     ///
     /// let padded_value = CachePadded::new(1);
     /// ```
@@ -169,7 +186,7 @@ impl<T> CachePadded<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_utils::CachePadded;
+    /// use crossbeam_cachepadded::CachePadded;
     ///
     /// let padded_value = CachePadded::new(7);
     /// let value = padded_value.into_inner();

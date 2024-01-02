@@ -1,0 +1,16 @@
+[package]
+name = "crossbeam-cachepadded"
+# When publishing a new version:
+# - Update CHANGELOG.md
+# - Update README.md
+# - Create "crossbeam-cachepadded-X.Y.Z" git tag
+version = "0.0.0"
+authors = ["The Crossbeam Project Developers"]
+edition = "2018"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/crossbeam-rs/crossbeam"
+homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-cachepadded"
+documentation = "https://docs.rs/crossbeam-cachepadded"
+description = "Prevent false sharing by padding and aligning to the length of a cache line"
+keywords = ["cache", "padding", "lock-free", "atomic"]
+categories = ["concurrency", "no-std"]

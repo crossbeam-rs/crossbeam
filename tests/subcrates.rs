@@ -45,3 +45,8 @@ fn utils() {
     })
     .unwrap();
 }
+
+#[test]
+fn cachepadded() {
+    crossbeam::utils::CachePadded::new(7);
+}

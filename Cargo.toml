@@ -34,6 +34,7 @@ std = [
 alloc = ["crossbeam-epoch/alloc", "crossbeam-queue/alloc"]
 
 [dependencies]
+crossbeam-cachepadded = { version = "0.0", path = "crossbeam-cachepadded", default-features = false, optional = true }
 crossbeam-channel = { version = "0.5.10", path = "crossbeam-channel", default-features = false, optional = true }
 crossbeam-deque = { version = "0.8.4", path = "crossbeam-deque", default-features = false, optional = true }
 crossbeam-epoch = { version = "0.9.17", path = "crossbeam-epoch", default-features = false, optional = true }
@@ -52,6 +53,7 @@ workspace = true
 resolver = "2"
 members = [
   ".",
+  "crossbeam-cachepadded",
   "crossbeam-channel",
   "crossbeam-channel/benchmarks",
   "crossbeam-deque",
