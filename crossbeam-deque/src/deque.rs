@@ -2,8 +2,9 @@ use std::cell::{Cell, UnsafeCell};
 use std::cmp;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem::{self, ManuallyDrop, MaybeUninit};
+use std::mem::{self, MaybeUninit};
 use std::ptr;
+use std::slice;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -37,15 +38,22 @@ impl<T> Buffer<T> {
     fn alloc(cap: usize) -> Buffer<T> {
         debug_assert_eq!(cap, cap.next_power_of_two());
 
-        let mut v = ManuallyDrop::new(Vec::with_capacity(cap));
-        let ptr = v.as_mut_ptr();
+        let ptr = Box::into_raw(
+            (0..cap)
+                .map(|_| MaybeUninit::<T>::uninit())
+                .collect::<Box<[_]>>(),
+        )
+        .cast::<T>();
 
         Buffer { ptr, cap }
     }
 
     /// Deallocates the buffer.
     unsafe fn dealloc(self) {
-        drop(Vec::from_raw_parts(self.ptr, 0, self.cap));
+        drop(Box::from_raw(slice::from_raw_parts_mut(
+            self.ptr.cast::<MaybeUninit<T>>(),
+            self.cap,
+        )));
     }
 
     /// Returns a pointer to the task at the specified `index`.
