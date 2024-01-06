@@ -73,7 +73,7 @@ jobs:
           target: ${{ matrix.target }}
         if: matrix.target != ''
       - name: Test
-        run: ./ci/test.sh
+        run: ci/test.sh
 
   # Check all feature combinations works properly.
   features:
@@ -94,7 +94,7 @@ jobs:
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Check features
-        run: ./ci/check-features.sh
+        run: ci/check-features.sh
 
   # Check for duplicate dependencies.
   dependencies:
@@ -108,7 +108,7 @@ jobs:
       - name: Install cargo-minimal-versions
         uses: taiki-e/install-action@cargo-minimal-versions
       - name: dependency tree check
-        run: ./ci/dependencies.sh
+        run: ci/dependencies.sh
 
   # When this job failed, run ci/no_atomic.sh and commit result changes.
   codegen:
@@ -154,7 +154,7 @@ jobs:
       - name: Install Rust
         run: rustup update stable
       - name: rustfmt
-        run: ./ci/rustfmt.sh
+        run: cargo fmt --all --check
 
   # Check clippy.
   clippy:
@@ -164,7 +164,7 @@ jobs:
       - name: Install Rust
         run: rustup update stable
       - name: clippy
-        run: ./ci/clippy.sh
+        run: cargo clippy --all --tests --examples
 
   # Run miri.
   miri:
@@ -174,7 +174,7 @@ jobs:
       - name: Install Rust
         run: rustup toolchain install nightly --component miri && rustup default nightly
       - name: miri
-        run: ./ci/miri.sh
+        run: ci/miri.sh
 
   # Run cargo-careful.
   careful:
@@ -185,7 +185,7 @@ jobs:
         run: rustup toolchain install nightly --component rust-src && rustup default nightly
       - uses: taiki-e/install-action@cargo-careful
       - name: Run cargo-careful
-        run: ./ci/careful.sh
+        run: ci/careful.sh
 
   # Run sanitizers.
   san:
@@ -195,7 +195,7 @@ jobs:
       - name: Install Rust
         run: rustup update nightly && rustup default nightly
       - name: Run sanitizers
-        run: ./ci/san.sh
+        run: ci/san.sh
 
   # Run loom tests.
   loom:
@@ -205,7 +205,7 @@ jobs:
       - name: Install Rust
         run: rustup update stable
       - name: loom
-        run: ./ci/crossbeam-epoch-loom.sh
+        run: ci/crossbeam-epoch-loom.sh
 
   # Check if the document can be generated without warning.
   docs:
@@ -215,7 +215,7 @@ jobs:
       - name: Install Rust
         run: rustup update nightly && rustup default nightly
       - name: docs
-        run: ./ci/docs.sh
+        run: cargo doc --no-deps --all --all-features
 
   shellcheck:
     runs-on: ubuntu-latest
