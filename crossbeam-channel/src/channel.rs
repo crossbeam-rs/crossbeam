@@ -1153,6 +1153,32 @@ impl<T> Receiver<T> {
             _ => false,
         }
     }
+
+    /// Disconnects this from the channel.
+    ///
+    /// If this is the last one connected to the channel, sender start to fail and
+    /// the returned iterator can be used to drain any remaining sent messages. Otherwise, it
+    /// always returns [`None`].
+    pub fn disconnect(self) -> DisconnectIter<T> {
+        let was_last = unsafe {
+            match &self.flavor {
+                ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect_receivers()),
+                _ => {
+                    panic!();
+                }
+            }
+        };
+        if let Some(true) = was_last {
+            DisconnectIter {
+                last_receiver: Some(self),
+            }
+        } else {
+            std::mem::forget(self);
+            DisconnectIter {
+                last_receiver: None,
+            }
+        }
+    }
 }
 
 impl<T> Drop for Receiver<T> {
@@ -1160,12 +1186,14 @@ impl<T> Drop for Receiver<T> {
         unsafe {
             match &self.flavor {
                 ReceiverFlavor::Array(chan) => chan.release(|c| c.disconnect()),
-                ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect_receivers()),
+                ReceiverFlavor::List(chan) => {
+                    chan.release(|c| c.disconnect_receivers_and_discard_messages())
+                }
                 ReceiverFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
-                ReceiverFlavor::At(_) => {}
-                ReceiverFlavor::Tick(_) => {}
-                ReceiverFlavor::Never(_) => {}
-            }
+                ReceiverFlavor::At(_) => None,
+                ReceiverFlavor::Tick(_) => None,
+                ReceiverFlavor::Never(_) => None,
+            };
         }
     }
 }
@@ -1295,6 +1323,39 @@ pub struct TryIter<'a, T> {
     receiver: &'a Receiver<T>,
 }
 
+/// A non-blocking draining iterator over unreceived messages after channel termination.
+///
+/// Each call to [`next`] returns a message if there is still more to be received. The iterator
+/// never blocks waiting for the next message as the channel don't allow sending anymore.
+///
+/// [`next`]: Iterator::next
+pub struct DisconnectIter<T> {
+    last_receiver: Option<Receiver<T>>,
+}
+
+impl<T> FusedIterator for DisconnectIter<T> {}
+
+impl<T> Iterator for DisconnectIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.last_receiver
+            .as_ref()
+            .and_then(|r| match r.try_recv() {
+                Ok(msg) => Some(msg),
+                Err(TryRecvError::Disconnected) => None,
+                Err(TryRecvError::Empty) => unreachable!(),
+            })
+    }
+}
+
+impl<T> DisconnectIter<T> {
+    /// Returns true if this was returned from the last receiver's disconnection.
+    pub fn is_last_receiver(&self) -> bool {
+        self.last_receiver.is_some()
+    }
+}
+
 impl<T> Iterator for TryIter<'_, T> {
     type Item = T;
 
@@ -1306,6 +1367,26 @@ impl<T> Iterator for TryIter<'_, T> {
 impl<T> fmt::Debug for TryIter<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad("TryIter { .. }")
+    }
+}
+
+impl<T> fmt::Debug for DisconnectIter<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad("DisconnectIter { .. }")
+    }
+}
+
+impl<T> Drop for DisconnectIter<T> {
+    fn drop(&mut self) {
+        if let Some(last_receiver) = self.last_receiver.take() {
+            match &last_receiver.flavor {
+                ReceiverFlavor::List(chan) => chan.discard_all_messages(),
+                _ => {
+                    panic!();
+                }
+            }
+            std::mem::forget(last_receiver);
+        }
     }
 }
 
