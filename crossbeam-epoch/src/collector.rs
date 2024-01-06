@@ -404,9 +404,10 @@ mod tests {
             }
 
             let len = v.len();
+            let cap = v.capacity();
             let ptr = ManuallyDrop::new(v).as_mut_ptr();
             guard.defer_unchecked(move || {
-                drop(Vec::from_raw_parts(ptr, len, len));
+                drop(Vec::from_raw_parts(ptr, len, cap));
                 DESTROYS.fetch_add(len, Ordering::Relaxed);
             });
             guard.flush();
