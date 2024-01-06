@@ -6,11 +6,11 @@ use crossbeam_utils::atomic::AtomicCell;
 
 #[test]
 fn is_lock_free() {
-    struct UsizeWrap(usize);
-    struct U8Wrap(bool);
-    struct I16Wrap(i16);
+    struct UsizeWrap(#[allow(dead_code)] usize);
+    struct U8Wrap(#[allow(dead_code)] bool);
+    struct I16Wrap(#[allow(dead_code)] i16);
     #[repr(align(8))]
-    struct U64Align8(u64);
+    struct U64Align8(#[allow(dead_code)] u64);
 
     assert!(AtomicCell::<usize>::is_lock_free());
     assert!(AtomicCell::<isize>::is_lock_free());

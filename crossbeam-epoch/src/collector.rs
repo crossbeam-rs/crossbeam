@@ -287,7 +287,7 @@ mod tests {
         const COUNT: usize = 100_000;
         static DROPS: AtomicUsize = AtomicUsize::new(0);
 
-        struct Elem(i32);
+        struct Elem(#[allow(dead_code)] i32);
 
         impl Drop for Elem {
             fn drop(&mut self) {
@@ -351,7 +351,7 @@ mod tests {
         const COUNT: usize = 700;
         static DROPS: AtomicUsize = AtomicUsize::new(0);
 
-        struct Elem(i32);
+        struct Elem(#[allow(dead_code)] i32);
 
         impl Drop for Elem {
             fn drop(&mut self) {
@@ -428,7 +428,7 @@ mod tests {
         const COUNT: usize = 100_000;
         static DROPS: AtomicUsize = AtomicUsize::new(0);
 
-        struct Elem(i32);
+        struct Elem(#[allow(dead_code)] i32);
 
         impl Drop for Elem {
             fn drop(&mut self) {
