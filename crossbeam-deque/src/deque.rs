@@ -41,7 +41,7 @@ impl<T> Buffer<T> {
         let ptr = Box::into_raw(
             (0..cap)
                 .map(|_| MaybeUninit::<T>::uninit())
-                .collect::<Box<_>>(),
+                .collect::<Box<[_]>>(),
         )
         .cast::<T>();
 
