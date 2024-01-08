@@ -1,3 +1,7 @@
+# Version 0.8.5
+
+- Remove dependency on `cfg-if`. (#1072)
+
 # Version 0.8.4
 
 - Bump the minimum supported Rust version to 1.61. (#1037)

@@ -1,3 +1,7 @@
+# Version 0.8.19
+
+- Remove dependency on `cfg-if`. (#1072)
+
 # Version 0.8.18
 
 - Relax the minimum supported Rust version to 1.60. (#1056)
