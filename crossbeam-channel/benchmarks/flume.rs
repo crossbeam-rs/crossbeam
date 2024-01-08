@@ -13,7 +13,7 @@ pub fn shuffle<T>(v: &mut [T]) {
     }
 
     thread_local! {
-        static RNG: Cell<Wrapping<u32>> = Cell::new(Wrapping(1));
+        static RNG: Cell<Wrapping<u32>> = const { Cell::new(Wrapping(1)) };
     }
 
     RNG.with(|rng| {
