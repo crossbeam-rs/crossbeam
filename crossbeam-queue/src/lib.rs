@@ -20,15 +20,13 @@
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(target_has_atomic = "ptr")]
-cfg_if::cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+extern crate alloc;
 
-        mod array_queue;
-        mod seg_queue;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod array_queue;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod seg_queue;
 
-        pub use self::array_queue::ArrayQueue;
-        pub use self::seg_queue::SegQueue;
-    }
-}
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+pub use crate::{array_queue::ArrayQueue, seg_queue::SegQueue};

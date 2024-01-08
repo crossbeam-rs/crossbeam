@@ -65,32 +65,17 @@ pub mod utils {
     pub use crossbeam_utils::CachePadded;
 }
 
-use cfg_if::cfg_if;
+#[cfg(feature = "alloc")]
+#[doc(inline)]
+pub use {crossbeam_epoch as epoch, crossbeam_queue as queue};
 
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        #[doc(inline)]
-        pub use crossbeam_epoch as epoch;
+#[cfg(feature = "std")]
+#[doc(inline)]
+pub use {
+    crossbeam_channel as channel, crossbeam_channel::select, crossbeam_deque as deque,
+    crossbeam_utils::sync,
+};
 
-        #[doc(inline)]
-        pub use crossbeam_queue as queue;
-    }
-}
-
-cfg_if! {
-    if #[cfg(feature = "std")] {
-        #[doc(inline)]
-        pub use crossbeam_deque as deque;
-
-        #[doc(inline)]
-        pub use crossbeam_channel as channel;
-        pub use crossbeam_channel::select;
-
-        pub use crossbeam_utils::sync;
-
-        #[cfg(not(crossbeam_loom))]
-        pub use crossbeam_utils::thread;
-        #[cfg(not(crossbeam_loom))]
-        pub use crossbeam_utils::thread::scope;
-    }
-}
+#[cfg(feature = "std")]
+#[cfg(not(crossbeam_loom))]
+pub use crossbeam_utils::thread::{self, scope};

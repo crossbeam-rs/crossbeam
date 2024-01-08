@@ -7,7 +7,7 @@ use std::ops::{Bound, RangeBounds};
 use std::ptr;
 
 use crate::base::{self, try_pin_loop};
-use crate::epoch;
+use crossbeam_epoch as epoch;
 
 /// An ordered map based on a lock-free skip list.
 ///

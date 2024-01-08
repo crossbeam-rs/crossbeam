@@ -66,8 +66,6 @@
 #[cfg(crossbeam_loom)]
 extern crate loom_crate as loom;
 
-use cfg_if::cfg_if;
-
 #[cfg(crossbeam_loom)]
 #[allow(unused_imports, dead_code)]
 mod primitive {
@@ -134,34 +132,35 @@ mod primitive {
     pub(crate) use std::thread_local;
 }
 
-#[cfg(target_has_atomic = "ptr")]
-cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+extern crate alloc;
 
-        mod atomic;
-        mod collector;
-        mod deferred;
-        mod epoch;
-        mod guard;
-        mod internal;
-        mod sync;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod atomic;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod collector;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod deferred;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod epoch;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod guard;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod internal;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod sync;
 
-        pub use self::atomic::{
-            Pointable, Atomic, CompareExchangeError,
-            Owned, Pointer, Shared,
-        };
-        pub use self::collector::{Collector, LocalHandle};
-        pub use self::guard::{unprotected, Guard};
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+#[allow(deprecated)]
+pub use crate::atomic::{CompareAndSetError, CompareAndSetOrdering};
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+pub use crate::{
+    atomic::{Atomic, CompareExchangeError, Owned, Pointable, Pointer, Shared},
+    collector::{Collector, LocalHandle},
+    guard::{unprotected, Guard},
+};
 
-        #[allow(deprecated)]
-        pub use self::atomic::{CompareAndSetError, CompareAndSetOrdering};
-    }
-}
-
-cfg_if! {
-    if #[cfg(feature = "std")] {
-        mod default;
-        pub use self::default::{default_collector, is_pinned, pin};
-    }
-}
+#[cfg(feature = "std")]
+mod default;
+#[cfg(feature = "std")]
+pub use crate::default::{default_collector, is_pinned, pin};

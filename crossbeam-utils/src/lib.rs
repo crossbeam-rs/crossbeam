@@ -99,13 +99,9 @@ pub use crate::cache_padded::CachePadded;
 mod backoff;
 pub use crate::backoff::Backoff;
 
-use cfg_if::cfg_if;
+#[cfg(feature = "std")]
+pub mod sync;
 
-cfg_if! {
-    if #[cfg(feature = "std")] {
-        pub mod sync;
-
-        #[cfg(not(crossbeam_loom))]
-        pub mod thread;
-    }
-}
+#[cfg(feature = "std")]
+#[cfg(not(crossbeam_loom))]
+pub mod thread;

@@ -336,36 +336,40 @@
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use cfg_if::cfg_if;
+#[cfg(feature = "std")]
+mod channel;
+#[cfg(feature = "std")]
+mod context;
+#[cfg(feature = "std")]
+mod counter;
+#[cfg(feature = "std")]
+mod err;
+#[cfg(feature = "std")]
+mod flavors;
+#[cfg(feature = "std")]
+mod select;
+#[cfg(feature = "std")]
+mod select_macro;
+#[cfg(feature = "std")]
+mod utils;
+#[cfg(feature = "std")]
+mod waker;
 
-cfg_if! {
-    if #[cfg(feature = "std")] {
-        mod channel;
-        mod context;
-        mod counter;
-        mod err;
-        mod flavors;
-        mod select;
-        mod select_macro;
-        mod utils;
-        mod waker;
-
-        /// Crate internals used by the `select!` macro.
-        #[doc(hidden)]
-        pub mod internal {
-            pub use crate::select::SelectHandle;
-            pub use crate::select::{select, select_timeout, try_select};
-        }
-
-        pub use crate::channel::{after, at, never, tick};
-        pub use crate::channel::{bounded, unbounded};
-        pub use crate::channel::{IntoIter, Iter, TryIter};
-        pub use crate::channel::{Receiver, Sender};
-
-        pub use crate::select::{Select, SelectedOperation};
-
-        pub use crate::err::{ReadyTimeoutError, SelectTimeoutError, TryReadyError, TrySelectError};
-        pub use crate::err::{RecvError, RecvTimeoutError, TryRecvError};
-        pub use crate::err::{SendError, SendTimeoutError, TrySendError};
-    }
+/// Crate internals used by the `select!` macro.
+#[doc(hidden)]
+#[cfg(feature = "std")]
+pub mod internal {
+    pub use crate::select::{select, select_timeout, try_select, SelectHandle};
 }
+
+#[cfg(feature = "std")]
+pub use crate::{
+    channel::{
+        after, at, bounded, never, tick, unbounded, IntoIter, Iter, Receiver, Sender, TryIter,
+    },
+    err::{
+        ReadyTimeoutError, RecvError, RecvTimeoutError, SelectTimeoutError, SendError,
+        SendTimeoutError, TryReadyError, TryRecvError, TrySelectError, TrySendError,
+    },
+    select::{Select, SelectedOperation},
+};
