@@ -31,7 +31,6 @@ std = []
 nightly = []
 
 [dependencies]
-cfg-if = "1"
 
 # Enable the use of loom for concurrency testing.
 #

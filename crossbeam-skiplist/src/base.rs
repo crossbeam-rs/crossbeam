@@ -10,8 +10,8 @@ use core::ops::{Bound, Deref, Index, RangeBounds};
 use core::ptr;
 use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
-use crate::epoch::{self, Atomic, Collector, Guard, Shared};
-use crate::utils::CachePadded;
+use crossbeam_epoch::{self as epoch, Atomic, Collector, Guard, Shared};
+use crossbeam_utils::CachePadded;
 
 /// Number of bits needed to store height.
 const HEIGHT_BITS: usize = 5;
