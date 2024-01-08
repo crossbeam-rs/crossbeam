@@ -4,7 +4,7 @@ name = "crossbeam-utils"
 # - Update CHANGELOG.md
 # - Update README.md
 # - Create "crossbeam-utils-X.Y.Z" git tag
-version = "0.8.18"
+version = "0.8.19"
 edition = "2021"
 rust-version = "1.60"
 license = "MIT OR Apache-2.0"
