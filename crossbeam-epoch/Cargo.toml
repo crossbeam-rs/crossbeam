@@ -42,9 +42,6 @@ nightly = ["crossbeam-utils/nightly"]
 # patch versions of crossbeam may make breaking changes to them at any time.
 loom = ["loom-crate", "crossbeam-utils/loom"]
 
-[build-dependencies]
-autocfg = "1"
-
 [dependencies]
 crossbeam-utils = { version = "0.8.18", path = "../crossbeam-utils", default-features = false }
 
