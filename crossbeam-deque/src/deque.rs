@@ -8,8 +8,8 @@ use std::slice;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use crate::epoch::{self, Atomic, Owned};
-use crate::utils::{Backoff, CachePadded};
+use crossbeam_epoch::{self as epoch, Atomic, Owned};
+use crossbeam_utils::{Backoff, CachePadded};
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;

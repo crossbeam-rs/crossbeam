@@ -40,8 +40,6 @@ crossbeam-epoch = { version = "0.9.17", path = "crossbeam-epoch", default-featur
 crossbeam-queue = { version = "0.3.10", path = "crossbeam-queue", default-features = false, optional = true }
 crossbeam-utils = { version = "0.8.18", path = "crossbeam-utils", default-features = false }
 
-cfg-if = "1"
-
 [dev-dependencies]
 rand = "0.8"
 
