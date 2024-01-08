@@ -548,6 +548,17 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Reconnects senders. There is no need to notify threads
+    /// as nobody is currently blocking, since we were in an
+    /// idle phase.
+    ///
+    /// Returns `true` if this call reconnected the channel.
+    pub(crate) fn reconnect_senders(&self) -> bool {
+        let tail = self.tail.index.fetch_and(!MARK_BIT, Ordering::SeqCst);
+
+        tail & MARK_BIT == 0
+    }
+
     /// Disconnects receivers.
     ///
     /// Returns `true` if this call disconnected the channel.

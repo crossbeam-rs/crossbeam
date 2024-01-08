@@ -127,6 +127,18 @@ impl<C> Receiver<C> {
             }
         }
     }
+
+    pub(crate) fn new_sender(&self, reconnect: impl FnOnce(&C) -> bool) -> Sender<C> {
+        if 0 == self.counter().senders.fetch_add(1, Ordering::SeqCst) {
+            // we're the first sender to be created
+            reconnect(&self.counter().chan);
+            self.counter().destroy.store(false, Ordering::Relaxed);
+        }
+
+        Sender {
+            counter: self.counter,
+        }
+    }
 }
 
 impl<C> ops::Deref for Receiver<C> {
