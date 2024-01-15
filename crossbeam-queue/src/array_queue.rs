@@ -67,9 +67,6 @@ pub struct ArrayQueue<T> {
     /// The buffer holding slots.
     buffer: Box<[Slot<T>]>,
 
-    /// The queue capacity.
-    cap: usize,
-
     /// A stamp with the value of `{ lap: 1, index: 0 }`.
     one_lap: usize,
 }
@@ -119,7 +116,6 @@ impl<T> ArrayQueue<T> {
 
         Self {
             buffer,
-            cap,
             one_lap,
             head: CachePadded::new(AtomicUsize::new(head)),
             tail: CachePadded::new(AtomicUsize::new(tail)),
@@ -138,7 +134,7 @@ impl<T> ArrayQueue<T> {
             let index = tail & (self.one_lap - 1);
             let lap = tail & !(self.one_lap - 1);
 
-            let new_tail = if index + 1 < self.cap {
+            let new_tail = if index + 1 < self.capacity() {
                 // Same lap, incremented index.
                 // Set to `{ lap: lap, index: index + 1 }`.
                 tail + 1
@@ -292,7 +288,7 @@ impl<T> ArrayQueue<T> {
 
             // If the the stamp is ahead of the head by 1, we may attempt to pop.
             if head + 1 == stamp {
-                let new = if index + 1 < self.cap {
+                let new = if index + 1 < self.capacity() {
                     // Same lap, incremented index.
                     // Set to `{ lap: lap, index: index + 1 }`.
                     head + 1
@@ -351,8 +347,9 @@ impl<T> ArrayQueue<T> {
     ///
     /// assert_eq!(q.capacity(), 100);
     /// ```
+    #[inline]
     pub fn capacity(&self) -> usize {
-        self.cap
+        self.buffer.len()
     }
 
     /// Returns `true` if the queue is empty.
@@ -434,11 +431,11 @@ impl<T> ArrayQueue<T> {
                 return if hix < tix {
                     tix - hix
                 } else if hix > tix {
-                    self.cap - hix + tix
+                    self.capacity() - hix + tix
                 } else if tail == head {
                     0
                 } else {
-                    self.cap
+                    self.capacity()
                 };
             }
         }
@@ -458,20 +455,20 @@ impl<T> Drop for ArrayQueue<T> {
             let len = if hix < tix {
                 tix - hix
             } else if hix > tix {
-                self.cap - hix + tix
+                self.capacity() - hix + tix
             } else if tail == head {
                 0
             } else {
-                self.cap
+                self.capacity()
             };
 
             // Loop over all slots that hold a message and drop them.
             for i in 0..len {
                 // Compute the index of the next slot holding a message.
-                let index = if hix + i < self.cap {
+                let index = if hix + i < self.capacity() {
                     hix + i
                 } else {
-                    hix + i - self.cap
+                    hix + i - self.capacity()
                 };
 
                 unsafe {
@@ -523,7 +520,7 @@ impl<T> Iterator for IntoIter<T> {
                 let slot = value.buffer.get_unchecked_mut(index);
                 slot.value.get().read().assume_init()
             };
-            let new = if index + 1 < value.cap {
+            let new = if index + 1 < value.capacity() {
                 // Same lap, incremented index.
                 // Set to `{ lap: lap, index: index + 1 }`.
                 head + 1
