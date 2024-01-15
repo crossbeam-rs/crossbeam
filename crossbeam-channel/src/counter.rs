@@ -3,6 +3,7 @@
 use std::isize;
 use std::ops;
 use std::process;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// Reference counter internals.
@@ -22,12 +23,12 @@ struct Counter<C> {
 
 /// Wraps a channel into the reference counter.
 pub(crate) fn new<C>(chan: C) -> (Sender<C>, Receiver<C>) {
-    let counter = Box::into_raw(Box::new(Counter {
+    let counter = NonNull::from(Box::leak(Box::new(Counter {
         senders: AtomicUsize::new(1),
         receivers: AtomicUsize::new(1),
         destroy: AtomicBool::new(false),
         chan,
-    }));
+    })));
     let s = Sender { counter };
     let r = Receiver { counter };
     (s, r)
@@ -35,13 +36,13 @@ pub(crate) fn new<C>(chan: C) -> (Sender<C>, Receiver<C>) {
 
 /// The sending side.
 pub(crate) struct Sender<C> {
-    counter: *mut Counter<C>,
+    counter: NonNull<Counter<C>>,
 }
 
 impl<C> Sender<C> {
     /// Returns the internal `Counter`.
     fn counter(&self) -> &Counter<C> {
-        unsafe { &*self.counter }
+        unsafe { self.counter.as_ref() }
     }
 
     /// Acquires another sender reference.
@@ -68,7 +69,7 @@ impl<C> Sender<C> {
             disconnect(&self.counter().chan);
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
-                drop(unsafe { Box::from_raw(self.counter) });
+                drop(unsafe { Box::from_raw(self.counter.as_ptr()) });
             }
         }
     }
@@ -90,13 +91,13 @@ impl<C> PartialEq for Sender<C> {
 
 /// The receiving side.
 pub(crate) struct Receiver<C> {
-    counter: *mut Counter<C>,
+    counter: NonNull<Counter<C>>,
 }
 
 impl<C> Receiver<C> {
     /// Returns the internal `Counter`.
     fn counter(&self) -> &Counter<C> {
-        unsafe { &*self.counter }
+        unsafe { self.counter.as_ref() }
     }
 
     /// Acquires another receiver reference.
@@ -123,7 +124,7 @@ impl<C> Receiver<C> {
             disconnect(&self.counter().chan);
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
-                drop(unsafe { Box::from_raw(self.counter) });
+                drop(unsafe { Box::from_raw(self.counter.as_ptr()) });
             }
         }
     }
