@@ -754,8 +754,6 @@ mod select2 {
         let c = make_unbounded::<i32>();
         let dummy = make_unbounded::<i32>();
 
-        ALLOCATED.store(0, SeqCst);
-
         go!(c, sender(&c, N));
         receiver(&c, &dummy, N);
 
@@ -764,10 +762,9 @@ mod select2 {
         go!(c, sender(&c, N));
         receiver(&c, &dummy, N);
 
-        assert!(
-            !(ALLOCATED.load(SeqCst) > alloc
-                && (ALLOCATED.load(SeqCst) - alloc) > (N as usize + 10000))
-        );
+        let final_alloc = ALLOCATED.load(SeqCst);
+
+        assert!(!(final_alloc > alloc && final_alloc - alloc > N as usize + 10000));
     }
 }
 
