@@ -73,9 +73,6 @@ pub(crate) struct Channel<T> {
     /// The buffer holding slots.
     buffer: Box<[Slot<T>]>,
 
-    /// The channel capacity.
-    cap: usize,
-
     /// A stamp with the value of `{ lap: 1, mark: 0, index: 0 }`.
     one_lap: usize,
 
@@ -117,7 +114,6 @@ impl<T> Channel<T> {
 
         Self {
             buffer,
-            cap,
             one_lap,
             mark_bit,
             head: CachePadded::new(AtomicUsize::new(head)),
@@ -161,7 +157,7 @@ impl<T> Channel<T> {
 
             // If the tail and the stamp match, we may attempt to push.
             if tail == stamp {
-                let new_tail = if index + 1 < self.cap {
+                let new_tail = if index + 1 < self.cap() {
                     // Same lap, incremented index.
                     // Set to `{ lap: lap, mark: 0, index: index + 1 }`.
                     tail + 1
@@ -244,7 +240,7 @@ impl<T> Channel<T> {
 
             // If the the stamp is ahead of the head by 1, we may attempt to pop.
             if head + 1 == stamp {
-                let new = if index + 1 < self.cap {
+                let new = if index + 1 < self.cap() {
                     // Same lap, incremented index.
                     // Set to `{ lap: lap, mark: 0, index: index + 1 }`.
                     head + 1
@@ -458,19 +454,25 @@ impl<T> Channel<T> {
                 return if hix < tix {
                     tix - hix
                 } else if hix > tix {
-                    self.cap - hix + tix
+                    self.cap() - hix + tix
                 } else if (tail & !self.mark_bit) == head {
                     0
                 } else {
-                    self.cap
+                    self.cap()
                 };
             }
         }
     }
 
     /// Returns the capacity of the channel.
+    #[inline]
+    fn cap(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Returns the capacity of the channel.
     pub(crate) fn capacity(&self) -> Option<usize> {
-        Some(self.cap)
+        Some(self.cap())
     }
 
     /// Disconnects the channel and wakes up all blocked senders and receivers.
@@ -531,20 +533,20 @@ impl<T> Drop for Channel<T> {
             let len = if hix < tix {
                 tix - hix
             } else if hix > tix {
-                self.cap - hix + tix
+                self.cap() - hix + tix
             } else if (tail & !self.mark_bit) == head {
                 0
             } else {
-                self.cap
+                self.cap()
             };
 
             // Loop over all slots that hold a message and drop them.
             for i in 0..len {
                 // Compute the index of the next slot holding a message.
-                let index = if hix + i < self.cap {
+                let index = if hix + i < self.cap() {
                     hix + i
                 } else {
-                    hix + i - self.cap
+                    hix + i - self.cap()
                 };
 
                 unsafe {
