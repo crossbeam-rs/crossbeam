@@ -1,38 +1,56 @@
 #!/usr/bin/env python3
-import random
+
+from __future__ import annotations
+
 import sys
-import matplotlib.pyplot as plt
+from dataclasses import dataclass
+from math import ceil
+from pathlib import Path
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+COLUMN_LENGTH = 2
 
 
-def read_data(files):
-    results = []
-    for f in files:
-        with open(f) as f:
-            for line in f.readlines():
-                test, lang, impl, secs, _ = line.split()
-                splt = test.split("_")
-                results.append((splt[0], "_".join(splt[1:]), lang, impl, float(secs)))
+Pre = str
+Test = str
+Lang = str
+Impl = str
+Secs = float
+BenchResult = tuple[Pre, Test, Lang, Impl, Secs]
+
+
+@dataclass
+class Label:
+    name: Pre
+    description: str
+
+
+def read_data(files: list[str]) -> list[BenchResult]:
+    results: list[BenchResult] = []
+    for file in files:
+        with Path(file).open() as f:
+            for line in f:
+                temp, lang, impl, secs, _ = line.split()
+                pre, test = temp.split("_", maxsplit=1)
+                results.append(
+                    (Pre(pre), Test(test), Lang(lang), Impl(impl), Secs(secs)),
+                )
     return results
 
 
-def get_runs(results, prefix):
-    runs = set()
+def get_scores(results: list[BenchResult], label: Label) -> dict[str, dict[Test, Secs]]:
+    scores: dict[str, dict[Test, Secs]] = {}
     for pre, test, lang, impl, secs in results:
-        if pre == prefix:
-            runs.add(test)
-    result = list(runs)
-    result.sort()
-    return result
+        if pre != label.name:
+            continue
+        name = impl if lang == "Rust" else f"{impl} ({lang})"
+        scores.setdefault(name, {})[test] = secs
+    return scores
 
 
-def find(s, x):
-    for i in range(len(s)):
-        if s[i] == x:
-            return i
-    return None
-
-
-color_set = {
+color_set: dict[str, str] = {
     "aqua": "#00ffff",
     "azure": "#f0ffff",
     "beige": "#f5f5dc",
@@ -73,80 +91,81 @@ color_set = {
     "purple": "#800080",
     "red": "#ff0000",
 }
-saved_color = {}
+saved_color: dict[str, tuple[str, str]] = {}
 
 
-def get_color(name):
+def get_color(name: str) -> str:
     if name not in saved_color:
         color = color_set.popitem()
         saved_color[name] = color
     return saved_color[name][1]
 
 
-def plot(results, fig, subplot, title, prefix):
-    runs = get_runs(results, prefix)
-
-    ys = [len(runs) * (i + 1) for i in range(len(runs))]
-
-    ax = fig.add_subplot(subplot)
-    ax.set_title(title)
-    ax.set_yticks(ys)
-    ax.set_yticklabels(runs)
-    ax.tick_params(which="major", length=0)
-    ax.set_xlabel("seconds")
-
-    scores = {}
-
-    for pre, test, lang, impl, secs in results:
-        if pre == prefix:
-            name = impl if lang == "Rust" else impl + f" ({lang})"
-            if name not in scores:
-                scores[name] = [0] * len(runs)
-            scores[name][find(runs, test)] = secs
-
-    opts = dict(height=0.8, align="center")
-    x_max = max(max(scores.values(), key=lambda x: max(x)))
-    for i, (name, score) in enumerate(scores.items()):
-        yy = [y + i - len(runs) // 2 + 0.2 for y in ys]
-        ax.barh(yy, score, color=get_color(name), **opts)
-        for xxx, yyy in zip(score, yy):
-            if xxx:
-                ax.text(
-                    min(x_max - len(name) * 0.018 * x_max, xxx),
-                    yyy - 0.25,
-                    name,
-                    fontsize=9,
-                )
+def plot(
+    scores: dict[str, dict[Test, Secs]],
+    fig: go.Figure,
+    row: int,
+    column: int,
+) -> None:
+    for key, value in scores.items():
+        tests: list[Test] = []
+        secs: list[Secs] = []
+        for inner_key, inner_value in value.items():
+            tests.append(inner_key)
+            secs.append(inner_value)
+        fig.add_trace(
+            go.Bar(
+                name=key,
+                x=secs,
+                y=tests,
+                marker_color=get_color(key),
+                orientation="h",
+                text=key,
+                constraintext="none",
+                textposition="auto",
+            ),
+            row=row,
+            col=column,
+        )
 
 
-def plot_all(results, descriptions, labels):
-    fig = plt.figure(figsize=(10, 10))
-    # TODO support more subplots
-    subplot = [221, 222, 223, 224]
-    for p, d, l in zip(subplot, descriptions, labels):
-        plot(results, fig, p, d, l)
-    plt.subplots_adjust(
-        top=0.95,
-        bottom=0.05,
-        left=0.1,
-        right=0.95,
-        wspace=0.3,
-        hspace=0.2,
+def plot_all(results: list[BenchResult], labels: list[Label]) -> None:
+    rows = ceil(len(labels) / COLUMN_LENGTH)
+    titles = [i.description for i in labels]
+    fig = make_subplots(
+        rows=rows,
+        cols=COLUMN_LENGTH,
+        subplot_titles=titles,
+        horizontal_spacing=0.1,
+        vertical_spacing=0.1,
     )
-    plt.savefig("plot.png")
-    # plt.show()
+    max_length = 0
+    for i, label in enumerate(labels):
+        row, column = divmod(i, COLUMN_LENGTH)
+        (row, column) = (row + 1, column + 1)
+        scores: dict[str, dict[Test, Secs]] = get_scores(results, label)
+        max_length = max(max_length, len(scores))
+        plot(scores, fig, row, column)
+        fig.update_xaxes(title_text="seconds", row=row, col=column)
+    fig.update_layout(
+        showlegend=False,
+        barmode="group",
+        width=COLUMN_LENGTH * 1024,
+        height=rows * max_length * 128,
+    )
+    fig.update_yaxes(categoryorder="category ascending")
+    fig.write_image("plot.png")
 
 
-def main():
-    results = read_data(sys.argv[1:])
-    descriptions = [
-        "Bounded channel of capacity 0",
-        "Bounded channel of capacity 1",
-        "Bounded channel of capacity N",
-        "Unbounded channel",
+def main() -> None:
+    labels: list[Label] = [
+        Label(Pre("bounded0"), description="Bounded channel of capacity 0"),
+        Label(Pre("bounded1"), description="Bounded channel of capacity 1"),
+        Label(Pre("bounded"), description="Bounded channel of capacity N"),
+        Label(Pre("unbounded"), description="Unbounded channel"),
     ]
-    labels = ["bounded0", "bounded1", "bounded", "unbounded"]
-    plot_all(results, descriptions, labels)
+    results: list[BenchResult] = read_data(sys.argv[1:])
+    plot_all(results, labels)
 
 
 if __name__ == "__main__":

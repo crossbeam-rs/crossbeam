@@ -28,7 +28,7 @@ Dependencies:
 - Go
 - Bash
 - Python 
-- Matplotlib
+- Plotly
 
 ### Results
 
