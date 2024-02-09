@@ -6,7 +6,4 @@ const NO_ATOMIC: &[&str] = &[
     "bpfel-unknown-none",
     "mipsel-sony-psx",
     "msp430-none-elf",
-    "riscv32i-unknown-none-elf",
-    "riscv32im-unknown-none-elf",
-    "riscv32imc-unknown-none-elf",
 ];
