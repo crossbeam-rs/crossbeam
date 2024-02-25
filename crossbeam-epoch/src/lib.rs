@@ -48,6 +48,7 @@
 //! For majority of use cases, just use the default garbage collector by invoking [`pin`]. If you
 //! want to create your own garbage collector, use the [`Collector`] API.
 
+#![no_std]
 #![doc(test(
     no_crate_inject,
     attr(
@@ -61,10 +62,11 @@
     rust_2018_idioms,
     unreachable_pub
 )]
-#![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(crossbeam_loom)]
 extern crate loom_crate as loom;
+#[cfg(feature = "std")]
+extern crate std;
 
 #[cfg(crossbeam_loom)]
 #[allow(unused_imports, dead_code)]

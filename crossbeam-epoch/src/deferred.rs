@@ -90,8 +90,11 @@ impl Deferred {
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
     use super::Deferred;
+    use std::boxed::Box;
     use std::cell::Cell;
     use std::convert::identity;
+    use std::string::ToString;
+    use std::vec;
 
     #[test]
     fn on_stack() {

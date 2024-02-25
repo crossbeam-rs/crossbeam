@@ -76,7 +76,7 @@ mod tests {
             }
         }
 
-        thread_local! {
+        std::thread_local! {
             static FOO: Foo = const { Foo };
         }
 
