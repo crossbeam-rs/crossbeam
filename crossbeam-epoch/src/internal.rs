@@ -556,7 +556,7 @@ impl IsElement<Self> for Local {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
 
     use super::*;
 

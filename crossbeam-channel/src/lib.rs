@@ -321,6 +321,7 @@
 //! [`iter`]: Receiver::iter
 //! [`try_iter`]: Receiver::try_iter
 
+#![no_std]
 #![doc(test(
     no_crate_inject,
     attr(
@@ -334,7 +335,9 @@
     rust_2018_idioms,
     unreachable_pub
 )]
-#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "std")]
+extern crate std;
 
 #[cfg(feature = "std")]
 mod channel;

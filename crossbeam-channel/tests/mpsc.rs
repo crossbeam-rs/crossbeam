@@ -193,7 +193,7 @@ mod channel_tests {
 
     use std::env;
     use std::thread;
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     pub fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
@@ -969,7 +969,6 @@ mod sync_channel_tests {
 
     use std::env;
     use std::thread;
-    use std::time::Duration;
 
     pub fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {

@@ -113,6 +113,7 @@ impl fmt::Debug for LocalHandle {
 mod tests {
     use std::mem::ManuallyDrop;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::vec::Vec;
 
     use crossbeam_utils::thread;
 
