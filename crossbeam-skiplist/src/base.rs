@@ -364,7 +364,7 @@ impl<K, V> SkipList<K, V> {
 
         // Due to the relaxed memory ordering, the length counter may sometimes
         // underflow and produce a very large value. We treat such values as 0.
-        if len > isize::max_value() as usize {
+        if len > isize::MAX as usize {
             0
         } else {
             len
