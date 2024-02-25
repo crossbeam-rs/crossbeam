@@ -12,7 +12,7 @@ pub(crate) fn shuffle<T>(v: &mut [T]) {
         return;
     }
 
-    thread_local! {
+    std::thread_local! {
         static RNG: Cell<Wrapping<u32>> = const { Cell::new(Wrapping(1_406_868_647)) };
     }
 

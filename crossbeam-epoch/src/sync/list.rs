@@ -301,6 +301,7 @@ mod tests {
     use crate::{Collector, Owned};
     use crossbeam_utils::thread;
     use std::sync::Barrier;
+    use std::vec::Vec;
 
     impl IsElement<Self> for Entry {
         fn entry_of(entry: &Self) -> &Entry {

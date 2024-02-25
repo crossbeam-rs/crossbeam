@@ -4,6 +4,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
 use std::time::{Duration, Instant};
+use std::vec::Vec;
 
 use crossbeam_utils::Backoff;
 

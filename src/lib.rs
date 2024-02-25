@@ -38,6 +38,7 @@
 //! [`Backoff`]: utils::Backoff
 //! [`CachePadded`]: utils::CachePadded
 
+#![no_std]
 #![doc(test(
     no_crate_inject,
     attr(
@@ -46,7 +47,9 @@
     )
 ))]
 #![warn(missing_docs, unsafe_op_in_unsafe_fn)]
-#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "std")]
+extern crate std;
 
 pub use crossbeam_utils::atomic;
 

@@ -4,6 +4,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread::{self, ThreadId};
+use std::vec::Vec;
 
 use crate::context::Context;
 use crate::select::{Operation, Selected};
@@ -275,7 +276,7 @@ impl Drop for SyncWaker {
 /// Returns the id of the current thread.
 #[inline]
 fn current_thread_id() -> ThreadId {
-    thread_local! {
+    std::thread_local! {
         /// Cached thread-local id.
         static THREAD_ID: ThreadId = thread::current().id();
     }

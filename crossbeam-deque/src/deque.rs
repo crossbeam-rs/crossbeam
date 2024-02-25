@@ -1,3 +1,4 @@
+use std::boxed::Box;
 use std::cell::{Cell, UnsafeCell};
 use std::cmp;
 use std::fmt;
