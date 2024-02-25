@@ -1,6 +1,5 @@
 use std::thread::sleep;
 use std::time::Duration;
-use std::u32;
 
 use crossbeam_utils::sync::{Parker, UnparkReason};
 use crossbeam_utils::thread;
