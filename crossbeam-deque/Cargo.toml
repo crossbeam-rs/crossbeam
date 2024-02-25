@@ -2,8 +2,8 @@
 name = "crossbeam-deque"
 # When publishing a new version:
 # - Update CHANGELOG.md
-# - Update README.md
-# - Create "crossbeam-deque-X.Y.Z" git tag
+# - Update README.md (when increasing major or minor version)
+# - Run './tools/publish.sh crossbeam-deque <version>'
 version = "0.8.5"
 edition = "2021"
 rust-version = "1.61"
