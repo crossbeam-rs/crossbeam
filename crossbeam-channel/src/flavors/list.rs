@@ -585,7 +585,7 @@ impl<T> Channel<T> {
         }
 
         let mut head = self.head.index.load(Ordering::Acquire);
-        let mut block = self.head.block.load(Ordering::Acquire);
+        let mut block = self.head.block.swap(ptr::null_mut(), Ordering::AcqRel);
 
         // If we're going to be dropping messages we need to synchronize with initialization
         if head >> SHIFT != tail >> SHIFT {
@@ -598,6 +598,7 @@ impl<T> Channel<T> {
                 block = self.head.block.load(Ordering::Acquire);
             }
         }
+
         unsafe {
             // Drop all messages between head and tail and deallocate the heap-allocated blocks.
             while head >> SHIFT != tail >> SHIFT {
@@ -625,7 +626,6 @@ impl<T> Channel<T> {
             }
         }
         head &= !MARK_BIT;
-        self.head.block.store(ptr::null_mut(), Ordering::Release);
         self.head.index.store(head, Ordering::Release);
     }
 
