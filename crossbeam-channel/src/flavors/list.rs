@@ -1,5 +1,6 @@
 //! Unbounded channel implemented as a linked list.
 
+use std::boxed::Box;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;

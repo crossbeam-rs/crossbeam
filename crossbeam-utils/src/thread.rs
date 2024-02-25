@@ -111,13 +111,16 @@
 //! }).unwrap();
 //! ```
 
+use std::boxed::Box;
 use std::fmt;
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
 use std::panic;
+use std::string::String;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::vec::Vec;
 
 use crate::sync::WaitGroup;
 

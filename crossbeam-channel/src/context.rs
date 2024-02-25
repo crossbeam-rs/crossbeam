@@ -41,7 +41,7 @@ impl Context {
     where
         F: FnOnce(&Self) -> R,
     {
-        thread_local! {
+        std::thread_local! {
             /// Cached thread-local context.
             static CONTEXT: Cell<Option<Context>> = Cell::new(Some(Context::new()));
         }

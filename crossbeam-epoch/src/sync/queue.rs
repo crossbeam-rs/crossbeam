@@ -219,6 +219,7 @@ mod test {
     use super::*;
     use crate::pin;
     use crossbeam_utils::thread;
+    use std::vec;
 
     struct Queue<T> {
         queue: super::Queue<T>,
