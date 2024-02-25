@@ -2,8 +2,8 @@
 name = "crossbeam-queue"
 # When publishing a new version:
 # - Update CHANGELOG.md
-# - Update README.md
-# - Create "crossbeam-queue-X.Y.Z" git tag
+# - Update README.md (when increasing major or minor version)
+# - Run './tools/publish.sh crossbeam-queue <version>'
 version = "0.3.11"
 edition = "2021"
 rust-version = "1.60"
