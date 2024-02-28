@@ -1,3 +1,7 @@
+# Version 0.5.12
+
+- Fix memory leak in unbounded channel. (#1084)
+
 # Version 0.5.11
 
 - Remove dependency on `cfg-if`. (#1072)
