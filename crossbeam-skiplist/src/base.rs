@@ -2128,6 +2128,8 @@ pub struct RefCountedEntry<K, V> {
     node: *const Node<K, V>,
 }
 
+unsafe impl<K, V> Send for RefCountedEntry<K, V> {}
+
 impl<K, V> Drop for RefCountedEntry<K, V> {
     fn drop(&mut self) {
         let guard = &epoch::pin();

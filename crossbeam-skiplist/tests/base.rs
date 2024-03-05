@@ -125,14 +125,18 @@ fn remove2() {
         s.remove(x, guard).unwrap().release(guard);
     }
 
-    let mut v = vec![];
     let mut iter = s.iter();
-    iter.seek_to_first();
-    while iter.valid() {
-        v.push(*iter.key());
-        iter.next();
-    }
-    assert_eq!(v, remaining);
+    let h = std::thread::spawn(move || {
+        let mut v = vec![];
+        iter.seek_to_first();
+        while iter.valid() {
+            v.push(*iter.key());
+            iter.next();
+        }
+        assert_eq!(v, remaining);
+    });
+
+    h.join().unwrap();
 }
 
 #[test]
