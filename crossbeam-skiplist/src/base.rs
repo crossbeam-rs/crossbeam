@@ -1,6 +1,7 @@
 //! A lock-free skip list. See [`SkipList`].
 
 use alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+use alloc::sync::Arc;
 use core::borrow::Borrow;
 use core::cmp;
 use core::fmt;
@@ -2119,5 +2120,252 @@ fn below_upper_bound<T: Ord + ?Sized>(bound: &Bound<&T>, other: &T) -> bool {
         Bound::Unbounded => true,
         Bound::Included(key) => other <= key,
         Bound::Excluded(key) => other < key,
+    }
+}
+
+/// A reference-counted entry in a skip list.
+pub struct RefCountedEntry<K, V> {
+    node: *const Node<K, V>,
+}
+
+impl<K, V> Drop for RefCountedEntry<K, V> {
+    fn drop(&mut self) {
+        let guard = &epoch::pin();
+        unsafe { (*self.node).decrement(guard) }
+    }
+}
+
+impl<K, V> RefCountedEntry<K, V> {
+    /// Tries to create a new `RefCountedEntry` by incrementing the reference count of
+    /// a node.
+    fn try_acquire(node: &Node<K, V>) -> Option<RefCountedEntry<K, V>> {
+        if unsafe { node.try_increment() } {
+            Some(RefCountedEntry {
+                node: node as *const _,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the key.
+    pub fn key(&self) -> &K {
+        unsafe { &(*self.node).key }
+    }
+
+    /// Returns a reference to the value.
+    pub fn value(&self) -> &V {
+        unsafe { &(*self.node).value }
+    }
+}
+
+/// A lock-free skip list.
+pub struct ConcurrentSkipList<K, V> {
+    /// The underlying skip list
+    list: Arc<SkipList<K, V>>,
+}
+
+impl<K, V> ConcurrentSkipList<K, V> {
+    /// Returns a new, empty skip list.
+    pub fn new(collector: Collector) -> Self {
+        Self {
+            list: Arc::new(SkipList::new(collector)),
+        }
+    }
+}
+
+impl<K, V> Deref for ConcurrentSkipList<K, V>
+where
+    K: Ord + Send + 'static,
+    V: Send + 'static,
+{
+    type Target = SkipList<K, V>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.list
+    }
+}
+
+impl<K, V> Clone for ConcurrentSkipList<K, V>
+where
+    K: Ord,
+{
+    fn clone(&self) -> Self {
+        Self {
+            list: self.list.clone(),
+        }
+    }
+}
+
+impl<K, V> ConcurrentSkipList<K, V>
+where
+    K: Ord,
+{
+    /// Search the first node that we acquire successfully.
+    fn search_bound_for_node<Q>(
+        &self,
+        bound: Bound<&Q>,
+        upper_bound: bool,
+        guard: &Guard,
+    ) -> Option<RefCountedEntry<K, V>>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        loop {
+            let node = self.list.search_bound(bound, upper_bound, guard)?;
+            if let Some(e) = RefCountedEntry::try_acquire(node) {
+                return Some(e);
+            }
+        }
+    }
+
+    /// Returns the successor of a node.
+    ///
+    /// This will keep searching until a non-deleted node is found. If a deleted
+    /// node is reached then a search is performed using the given key.
+    fn next_node(
+        &self,
+        pred: &Tower<K, V>,
+        lower_bound: Bound<&K>,
+        guard: &Guard,
+    ) -> Option<RefCountedEntry<K, V>> {
+        unsafe {
+            // Load the level 0 successor of the current node.
+            let mut curr = pred[0].load_consume(guard);
+
+            // If `curr` is marked, that means `pred` is removed and we have to use
+            // a key search.
+            if curr.tag() == 1 {
+                return self.search_bound_for_node(lower_bound, false, guard);
+            }
+
+            while let Some(c) = curr.as_ref() {
+                let succ = c.tower[0].load_consume(guard);
+
+                if succ.tag() == 1 {
+                    if let Some(c) = self.list.help_unlink(&pred[0], c, succ, guard) {
+                        // On success, continue searching through the current level.
+                        curr = c;
+                        continue;
+                    } else {
+                        // On failure, we cannot do anything reasonable to continue
+                        // searching from the current position. Restart the search.
+                        return self.search_bound_for_node(lower_bound, false, guard);
+                    }
+                }
+
+                if let Some(e) = RefCountedEntry::try_acquire(c) {
+                    return Some(e);
+                }
+
+                // acquire failed which means the node has been deleted
+                curr = succ;
+            }
+
+            None
+        }
+    }
+
+    /// Return a iterator of the skip list
+    pub fn iter(&self) -> IterRef<ConcurrentSkipList<K, V>, K, V> {
+        IterRef {
+            list: self.clone(),
+            cursor: None,
+        }
+    }
+}
+
+impl<K, V> AsRef<ConcurrentSkipList<K, V>> for ConcurrentSkipList<K, V>
+where
+    K: Ord,
+{
+    fn as_ref(&self) -> &ConcurrentSkipList<K, V> {
+        self
+    }
+}
+
+/// A iterator with a clone of the concurrent skip list
+pub struct IterRef<T, K, V>
+where
+    T: AsRef<ConcurrentSkipList<K, V>>,
+{
+    list: T,
+    cursor: Option<RefCountedEntry<K, V>>,
+}
+
+impl<K, V, T: AsRef<ConcurrentSkipList<K, V>>> IterRef<T, K, V>
+where
+    K: Ord,
+{
+    /// Return whether the iterator is valid
+    pub fn valid(&self) -> bool {
+        self.cursor.is_some()
+    }
+
+    /// Returns a reference to the key.
+    pub fn key(&self) -> &K {
+        assert!(self.valid());
+        self.cursor.as_ref().unwrap().key()
+    }
+
+    /// Returns a reference to the value.
+    pub fn value(&self) -> &V {
+        assert!(self.valid());
+        self.cursor.as_ref().unwrap().value()
+    }
+
+    /// Move iterator to point to the next element
+    pub fn next(&mut self) {
+        assert!(self.valid());
+        let guard = &epoch::pin();
+        self.cursor = match &self.cursor {
+            Some(n) => self.list.as_ref().next_node(
+                unsafe { &(*n.node).tower },
+                Bound::Excluded(n.key()),
+                guard,
+            ),
+            None => unreachable!(),
+        }
+    }
+
+    /// Move iterator to point to the previous element
+    pub fn prev(&mut self) {
+        assert!(self.valid());
+        let guard = &epoch::pin();
+        self.cursor = match &self.cursor {
+            Some(n) => {
+                self.list
+                    .as_ref()
+                    .search_bound_for_node(Bound::Excluded(n.key()), true, guard)
+            }
+            None => None,
+        };
+    }
+
+    /// Make iterator point to the element whose key is larger or equal to the target
+    pub fn seek(&mut self, target: &K) {
+        let guard = &epoch::pin();
+        self.cursor =
+            self.list
+                .as_ref()
+                .search_bound_for_node(Bound::Included(target), false, guard);
+    }
+
+    /// Make iterator point to the element whose key is less than the target
+    pub fn seek_for_prev(&mut self, target: &K) {
+        let guard = &epoch::pin();
+        self.cursor =
+            self.list
+                .as_ref()
+                .search_bound_for_node(Bound::Included(target), true, guard);
+    }
+
+    /// Make iterator point to the first element
+    pub fn seek_to_first(&mut self) {
+        let guard = &epoch::pin();
+        self.list.as_ref().list.check_guard(guard);
+        let pred = &self.list.as_ref().list.head;
+        self.cursor = self.list.as_ref().next_node(pred, Bound::Unbounded, guard);
     }
 }
