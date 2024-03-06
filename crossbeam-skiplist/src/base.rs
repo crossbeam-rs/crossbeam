@@ -2198,8 +2198,12 @@ fn below_upper_bound<T: Ord + ?Sized>(bound: &Bound<&T>, other: &T) -> bool {
 }
 
 /// An entry where the node is ref counted in a skip list.
+///
+/// You *must* call `release` to free this type, otherwise the node will be
+/// leaked. This is because releasing the entry requires a `Guard`.
 pub struct OwnedEntry<K, V> {
     node: *const Node<K, V>,
+    released: bool,
 }
 
 impl<K, V> OwnedEntry<K, V> {
@@ -2209,6 +2213,7 @@ impl<K, V> OwnedEntry<K, V> {
         if unsafe { node.try_increment() } {
             Some(OwnedEntry {
                 node: node as *const _,
+                released: false,
             })
         } else {
             None
@@ -2223,6 +2228,12 @@ impl<K, V> OwnedEntry<K, V> {
     /// Returns a reference to the value.
     pub fn value(&self) -> &V {
         unsafe { &(*self.node).value }
+    }
+
+    /// Releases the reference on the entry.
+    pub fn release(mut self, guard: &Guard) {
+        self.released = true;
+        unsafe { (*self.node).decrement(guard) }
     }
 }
 
@@ -2243,8 +2254,7 @@ unsafe impl<K, V> Send for OwnedEntry<K, V> {}
 
 impl<K, V> Drop for OwnedEntry<K, V> {
     fn drop(&mut self) {
-        let guard = &epoch::pin();
-        unsafe { (*self.node).decrement(guard) }
+        assert!(self.released);
     }
 }
 
@@ -2295,36 +2305,47 @@ where
     }
 
     /// Move iterator to point to the next element
-    pub fn next(&mut self) {
+    pub fn next(&mut self, guard: &Guard) {
         assert!(self.valid());
-        let guard = &epoch::pin();
-        self.cursor = match &self.cursor {
-            Some(n) => self.list.as_ref().next_node_acquire(
-                unsafe { &(*n.node).tower },
-                Bound::Excluded(n.key()),
-                guard,
-            ),
+        self.list.as_ref().check_guard(guard);
+        self.cursor = match self.cursor.take() {
+            Some(n) => {
+                let next_node = self.list.as_ref().next_node_acquire(
+                    unsafe { &(*n.node).tower },
+                    Bound::Excluded(n.key()),
+                    guard,
+                );
+                n.release(guard);
+                next_node
+            }
             None => unreachable!(),
         }
     }
 
     /// Move iterator to point to the previous element
-    pub fn prev(&mut self) {
+    pub fn prev(&mut self, guard: &Guard) {
         assert!(self.valid());
-        let guard = &epoch::pin();
-        self.cursor = match &self.cursor {
-            Some(n) => self.list.as_ref().search_bound_for_node_acquire(
-                Bound::Excluded(n.key()),
-                true,
-                guard,
-            ),
+        self.list.as_ref().check_guard(guard);
+        self.cursor = match self.cursor.take() {
+            Some(n) => {
+                let next_node = self.list.as_ref().search_bound_for_node_acquire(
+                    Bound::Excluded(n.key()),
+                    true,
+                    guard,
+                );
+                n.release(guard);
+                next_node
+            }
             None => None,
         };
     }
 
     /// Make iterator point to the element whose key is larger or equal to the target
-    pub fn seek(&mut self, target: &K) {
-        let guard = &epoch::pin();
+    pub fn seek(&mut self, target: &K, guard: &Guard) {
+        self.list.as_ref().check_guard(guard);
+        if let Some(n) = self.cursor.take() {
+            n.release(guard);
+        }
         self.cursor =
             self.list
                 .as_ref()
@@ -2332,8 +2353,11 @@ where
     }
 
     /// Make iterator point to the element whose key is less than the target
-    pub fn seek_for_prev(&mut self, target: &K) {
-        let guard = &epoch::pin();
+    pub fn seek_for_prev(&mut self, target: &K, guard: &Guard) {
+        self.list.as_ref().check_guard(guard);
+        if let Some(n) = self.cursor.take() {
+            n.release(guard);
+        }
         self.cursor =
             self.list
                 .as_ref()
@@ -2341,9 +2365,11 @@ where
     }
 
     /// Make iterator point to the first element
-    pub fn seek_to_first(&mut self) {
-        let guard = &epoch::pin();
+    pub fn seek_to_first(&mut self, guard: &Guard) {
         self.list.as_ref().check_guard(guard);
+        if let Some(n) = self.cursor.take() {
+            n.release(guard);
+        }
         let pred = &self.list.as_ref().head;
         self.cursor = self
             .list

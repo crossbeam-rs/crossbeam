@@ -128,10 +128,11 @@ fn remove2() {
     let mut iter = s.owned_iter();
     let h = std::thread::spawn(move || {
         let mut v = vec![];
-        iter.seek_to_first();
+        let guard = &epoch::pin();
+        iter.seek_to_first(guard);
         while iter.valid() {
             v.push(*iter.key());
-            iter.next();
+            iter.next(guard);
         }
         assert_eq!(v, remaining);
     });
