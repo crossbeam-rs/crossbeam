@@ -516,7 +516,7 @@ where
         }
     }
 
-    /// Returns an iterator over all entries in the skip list and clone a reference to the skiplist.
+    /// Returns an iterator over all entries in the skip list who owns a reference to the skiplist.
     pub fn owned_iter(self: &Arc<Self>) -> OwnedIter<Arc<Self>, K, V> {
         OwnedIter {
             list: self.clone(),
@@ -2202,15 +2202,6 @@ pub struct OwnedEntry<K, V> {
     node: *const Node<K, V>,
 }
 
-unsafe impl<K, V> Send for OwnedEntry<K, V> {}
-
-impl<K, V> Drop for OwnedEntry<K, V> {
-    fn drop(&mut self) {
-        let guard = &epoch::pin();
-        unsafe { (*self.node).decrement(guard) }
-    }
-}
-
 impl<K, V> OwnedEntry<K, V> {
     /// Tries to create a new `RefCountedEntry` by incrementing the reference count of
     /// a node.
@@ -2235,6 +2226,28 @@ impl<K, V> OwnedEntry<K, V> {
     }
 }
 
+impl<K, V> fmt::Debug for OwnedEntry<K, V>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("OwnedEntry")
+            .field(self.key())
+            .field(self.value())
+            .finish()
+    }
+}
+
+unsafe impl<K, V> Send for OwnedEntry<K, V> {}
+
+impl<K, V> Drop for OwnedEntry<K, V> {
+    fn drop(&mut self) {
+        let guard = &epoch::pin();
+        unsafe { (*self.node).decrement(guard) }
+    }
+}
+
 /// A iterator with a clone of the concurrent skip list
 pub struct OwnedIter<T, K, V>
 where
@@ -2242,6 +2255,22 @@ where
 {
     list: T,
     cursor: Option<OwnedEntry<K, V>>,
+}
+
+impl<T, K, V> fmt::Debug for OwnedIter<T, K, V>
+where
+    T: AsRef<SkipList<K, V>>,
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut d = f.debug_struct("OwnedIter");
+        match &self.cursor {
+            None => d.field("cursor", &None::<(&K, &V)>),
+            Some(e) => d.field("cursor", &(e.key(), e.value())),
+        };
+        d.finish()
+    }
 }
 
 impl<K, V, T: AsRef<SkipList<K, V>>> OwnedIter<T, K, V>
