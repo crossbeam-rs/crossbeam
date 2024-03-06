@@ -2,9 +2,9 @@
 
 use std::ops::Bound;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use crossbeam_epoch as epoch;
-use crossbeam_skiplist::base::ConcurrentSkipList;
 use crossbeam_skiplist::{base, SkipList};
 
 fn ref_entry<'a, K, V>(e: impl Into<Option<base::RefEntry<'a, K, V>>>) -> Entry<'a, K, V> {
@@ -113,7 +113,7 @@ fn remove2() {
     let remove = [2, 12, 8];
     let remaining = [0, 4, 5, 7, 11];
 
-    let s = ConcurrentSkipList::new(epoch::default_collector().clone());
+    let s = Arc::new(SkipList::new(epoch::default_collector().clone()));
 
     for &x in &insert {
         s.insert(x, x * 10, guard).release(guard);
@@ -125,7 +125,7 @@ fn remove2() {
         s.remove(x, guard).unwrap().release(guard);
     }
 
-    let mut iter = s.iter();
+    let mut iter = s.owned_iter();
     let h = std::thread::spawn(move || {
         let mut v = vec![];
         iter.seek_to_first();
