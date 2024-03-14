@@ -517,7 +517,7 @@ where
     }
 
     /// Returns an iterator over all entries in the skip list who owns a reference to the skiplist.
-    pub fn owned_iter(self: &Arc<Self>) -> OwnedIter<Arc<Self>, K, V> {
+    pub fn owned_iter(self: &Arc<Self>) -> OwnedIter<K, V> {
         OwnedIter {
             list: self.clone(),
             cursor: None,
@@ -2259,17 +2259,13 @@ impl<K, V> Drop for OwnedEntry<K, V> {
 }
 
 /// A iterator with a clone of the concurrent skip list
-pub struct OwnedIter<T, K, V>
-where
-    T: AsRef<SkipList<K, V>>,
-{
-    list: T,
+pub struct OwnedIter<K, V> {
+    list: Arc<SkipList<K, V>>,
     cursor: Option<OwnedEntry<K, V>>,
 }
 
-impl<T, K, V> fmt::Debug for OwnedIter<T, K, V>
+impl<K, V> fmt::Debug for OwnedIter<K, V>
 where
-    T: AsRef<SkipList<K, V>>,
     K: fmt::Debug,
     V: fmt::Debug,
 {
@@ -2283,7 +2279,7 @@ where
     }
 }
 
-impl<K, V, T: AsRef<SkipList<K, V>>> OwnedIter<T, K, V>
+impl<K, V> OwnedIter<K, V>
 where
     K: Ord,
 {
@@ -2341,7 +2337,11 @@ where
     }
 
     /// Make iterator point to the element whose key is larger or equal to the target
-    pub fn seek(&mut self, target: &K, guard: &Guard) {
+    pub fn seek<Q>(&mut self, target: &Q, guard: &Guard)
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
         self.list.as_ref().check_guard(guard);
         if let Some(n) = self.cursor.take() {
             n.release(guard);
@@ -2353,7 +2353,11 @@ where
     }
 
     /// Make iterator point to the element whose key is less than the target
-    pub fn seek_for_prev(&mut self, target: &K, guard: &Guard) {
+    pub fn seek_for_prev<Q>(&mut self, target: &Q, guard: &Guard)
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
         self.list.as_ref().check_guard(guard);
         if let Some(n) = self.cursor.take() {
             n.release(guard);
