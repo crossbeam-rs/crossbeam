@@ -2201,7 +2201,7 @@ fn below_upper_bound<T: Ord + ?Sized>(bound: &Bound<&T>, other: &T) -> bool {
 ///
 /// You *must* call `release` to free this type, otherwise the node will be
 /// leaked. This is because releasing the entry requires a `Guard`.
-pub struct OwnedEntry<K, V> {
+struct OwnedEntry<K, V> {
     node: *const Node<K, V>,
     released: bool,
 }
@@ -2221,17 +2221,17 @@ impl<K, V> OwnedEntry<K, V> {
     }
 
     /// Returns a reference to the key.
-    pub fn key(&self) -> &K {
+    fn key(&self) -> &K {
         unsafe { &(*self.node).key }
     }
 
     /// Returns a reference to the value.
-    pub fn value(&self) -> &V {
+    fn value(&self) -> &V {
         unsafe { &(*self.node).value }
     }
 
     /// Releases the reference on the entry.
-    pub fn release(mut self, guard: &Guard) {
+    fn release(mut self, guard: &Guard) {
         self.released = true;
         unsafe { (*self.node).decrement(guard) }
     }
@@ -2276,6 +2276,15 @@ where
             Some(e) => d.field("cursor", &(e.key(), e.value())),
         };
         d.finish()
+    }
+}
+
+impl<K, V> Drop for OwnedIter<K, V> {
+    fn drop(&mut self) {
+        if let Some(cursor) = self.cursor.take() {
+            let guard = &epoch::pin();
+            cursor.release(guard);
+        }
     }
 }
 
