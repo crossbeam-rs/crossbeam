@@ -181,7 +181,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        # TODO: LLVM bug https://github.com/rust-lang/rust/issues/122476
+        run: rustup update nightly-2024-03-13 && rustup default nightly-2024-03-13
       - name: Run sanitizers
         run: ci/san.sh
 
