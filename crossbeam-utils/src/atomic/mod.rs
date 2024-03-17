@@ -11,7 +11,7 @@
 // In narrow architectures (pointer width <= 16), the counter is still <= 32-bit and may be
 // vulnerable to wrap around. But it's mostly okay, since in such a primitive hardware, the
 // counter will not be increased that fast.
-// Note that Rust (and C99) pointers must be at least 16-bits: https://github.com/rust-lang/rust/pull/49305
+// Note that Rust (and C99) pointers must be at least 16-bit (i.e., 8-bit targets are impossible): https://github.com/rust-lang/rust/pull/49305
 #[cfg_attr(
     any(target_pointer_width = "16", target_pointer_width = "32"),
     path = "seq_lock_wide.rs"
