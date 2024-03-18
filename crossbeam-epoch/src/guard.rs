@@ -273,7 +273,7 @@ impl Guard {
     /// global cache.
     ///
     /// Call this method after deferring execution of a function if you want to get it executed as
-    /// soon as possible. Flushing will make sure it is residing in in the global cache, so that
+    /// soon as possible. Flushing will make sure it is residing in the global cache, so that
     /// any thread has a chance of taking the function and executing it.
     ///
     /// If this method is called from an [`unprotected`] guard, it is a no-op (nothing happens).
