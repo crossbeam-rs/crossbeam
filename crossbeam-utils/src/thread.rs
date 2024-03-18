@@ -501,7 +501,7 @@ pub struct ScopedJoinHandle<'scope, T> {
     /// Holds the result of the inner closure.
     result: SharedOption<T>,
 
-    /// A handle to the the spawned thread.
+    /// A handle to the spawned thread.
     thread: thread::Thread,
 
     /// Borrows the parent scope with lifetime `'scope`.
