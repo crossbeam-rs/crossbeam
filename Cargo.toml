@@ -50,6 +50,7 @@ workspace = true
 resolver = "2"
 members = [
   ".",
+  "crossbeam-cachepadded",
   "crossbeam-channel",
   "crossbeam-channel/benchmarks",
   "crossbeam-deque",
