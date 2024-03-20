@@ -292,7 +292,9 @@ pub(crate) struct Local {
     pin_count: Cell<Wrapping<usize>>,
 
     /// The local epoch.
-    epoch: CachePadded<AtomicEpoch>,
+    // TODO
+    // epoch: CachePadded<AtomicEpoch>,
+    epoch: AtomicEpoch,
 }
 
 // Make sure `Local` is less than or equal to 2048 bytes.
@@ -324,7 +326,9 @@ impl Local {
                 guard_count: Cell::new(0),
                 handle_count: Cell::new(1),
                 pin_count: Cell::new(Wrapping(0)),
-                epoch: CachePadded::new(AtomicEpoch::new(Epoch::starting())),
+                // TODO
+                // epoch: CachePadded::new(AtomicEpoch::new(Epoch::starting())),
+                epoch: AtomicEpoch::new(Epoch::starting()),
             })
             .into_shared(unprotected());
             collector.global.locals.insert(local, unprotected());
@@ -535,24 +539,18 @@ impl Local {
 }
 
 impl IsElement<Self> for Local {
-    fn entry_of(local: &Self) -> &Entry {
+    fn entry_of(local: *const Self) -> *const Entry {
         // SAFETY: `Local` is `repr(C)` and `entry` is the first field of it.
-        unsafe {
-            let entry_ptr = (local as *const Self).cast::<Entry>();
-            &*entry_ptr
-        }
+        local.cast::<Entry>()
     }
 
-    unsafe fn element_of(entry: &Entry) -> &Self {
+    unsafe fn element_of(entry: *const Entry) -> *const Self {
         // SAFETY: `Local` is `repr(C)` and `entry` is the first field of it.
-        unsafe {
-            let local_ptr = (entry as *const Entry).cast::<Self>();
-            &*local_ptr
-        }
+        entry.cast::<Self>()
     }
 
-    unsafe fn finalize(entry: &Entry, guard: &Guard) {
-        unsafe { guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _)) }
+    unsafe fn finalize(entry: *const Entry, guard: &Guard) {
+        unsafe { guard.defer_destroy(Shared::from(Self::element_of(entry))) }
     }
 }
 
