@@ -62,7 +62,7 @@ jobs:
             target: armv5te-unknown-linux-gnueabi
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
         run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
@@ -84,7 +84,7 @@ jobs:
           - nightly
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
         if: matrix.rust != 'msrv'
@@ -97,7 +97,7 @@ jobs:
   dependencies:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         run: rustup update nightly && rustup default nightly
       - name: Install cargo-hack
@@ -114,7 +114,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         run: rustup update stable
       - run: ci/no_atomic.sh
@@ -147,7 +147,7 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         run: rustup update stable
       - name: rustfmt
@@ -159,7 +159,7 @@ jobs:
   # clippy:
   #   runs-on: ubuntu-latest
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: taiki-e/checkout-action@v1
   #     - name: Install Rust
   #       run: rustup update stable
   #     - name: clippy
@@ -169,7 +169,7 @@ jobs:
   miri:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         run: rustup toolchain install nightly --component miri && rustup default nightly
       - name: miri
@@ -179,7 +179,7 @@ jobs:
   careful:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         run: rustup toolchain install nightly --component rust-src && rustup default nightly
       - name: Install cargo-careful
@@ -191,7 +191,7 @@ jobs:
   san:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         # TODO: LLVM bug https://github.com/rust-lang/rust/issues/122476
         run: rustup update nightly-2024-03-13 && rustup default nightly-2024-03-13
@@ -204,7 +204,7 @@ jobs:
   loom:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         run: rustup update stable
       - name: loom
@@ -214,7 +214,7 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         run: rustup update nightly && rustup default nightly
       - name: docs
@@ -223,7 +223,7 @@ jobs:
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: taiki-e/checkout-action@v1
       - name: Install shellcheck
         uses: taiki-e/install-action@shellcheck
       - run: shellcheck $(git ls-files '*.sh')
