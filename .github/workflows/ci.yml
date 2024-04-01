@@ -193,8 +193,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        # TODO: LLVM bug https://github.com/rust-lang/rust/issues/122476
-        run: rustup update nightly-2024-03-13 && rustup default nightly-2024-03-13
+        run: rustup update nightly && rustup default nightly
       # https://github.com/google/sanitizers/issues/1716 / https://github.com/actions/runner-images/issues/9491
       - run: sudo sysctl vm.mmap_rnd_bits=28
       - name: Run sanitizers
