@@ -210,6 +210,6 @@ impl<T> From<T> for CachePadded<T> {
 
 impl<T: fmt::Display> fmt::Display for CachePadded<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Cache padding with length {}", &self.value)
+        fmt::Display::fmt(&self.value, f)
     }
 }
