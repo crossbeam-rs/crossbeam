@@ -207,3 +207,9 @@ impl<T> From<T> for CachePadded<T> {
         CachePadded::new(t)
     }
 }
+
+impl<T: fmt::Display> fmt::Display for CachePadded<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.value, f)
+    }
+}
