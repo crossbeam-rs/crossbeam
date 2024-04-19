@@ -920,3 +920,24 @@ fn clear() {
     assert!(s.is_empty());
     assert_eq!(s.len(), 0);
 }
+
+// https://github.com/crossbeam-rs/crossbeam/issues/1023
+#[test]
+fn concurrent_insert_get_same_key() {
+    use std::sync::Arc;
+    let map: Arc<SkipMap<u32, ()>> = Arc::new(SkipMap::new());
+    let len = 10_0000;
+    let key = 0;
+    map.insert(0, ());
+
+    let getter = map.clone();
+    let handle = std::thread::spawn(move || {
+        for _ in 0..len {
+            map.insert(0, ());
+        }
+    });
+    for _ in 0..len {
+        assert!(getter.get(&key).is_some());
+    }
+    handle.join().unwrap()
+}
