@@ -284,6 +284,28 @@ impl<T> Worker<T> {
         }
     }
 
+    /// Checks if the worker and the provided stealer are pointing to the same underlying queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Worker;
+    ///
+    /// let w_1 = Worker::<i32>::new_lifo();
+    /// let w_2 = Worker::<i32>::new_fifo();
+    ///
+    /// let s_1 = w.stealer();
+    /// let s_2 = w.stealer();
+    ///
+    /// assert!(w_1.is_same_as(&s_1));
+    /// assert!(w_2.is_same_as(&s_2));
+    /// assert!(!w_1.is_same_as(&s_2));
+    /// assert!(!w_2.is_same_as(&s_1));
+    /// ```
+    pub fn is_same_as(&self, stealer: &Stealer<T>) -> bool {
+        Arc::ptr_eq(&self.inner, &stealer.inner)
+    }
+
     /// Resizes the internal buffer to the new capacity of `new_cap`.
     #[cold]
     unsafe fn resize(&self, new_cap: usize) {
