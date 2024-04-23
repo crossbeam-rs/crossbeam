@@ -294,8 +294,8 @@ impl<T> Worker<T> {
     /// let w_1 = Worker::<i32>::new_lifo();
     /// let w_2 = Worker::<i32>::new_fifo();
     ///
-    /// let s_1 = w.stealer();
-    /// let s_2 = w.stealer();
+    /// let s_1 = w_1.stealer();
+    /// let s_2 = w_2.stealer();
     ///
     /// assert!(w_1.is_same_as(&s_1));
     /// assert!(w_2.is_same_as(&s_2));
