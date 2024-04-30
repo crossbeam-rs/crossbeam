@@ -427,6 +427,7 @@ fn stress_oneshot() {
     }
 }
 
+// TODO: failing sometimes
 #[test]
 fn stress_iter() {
     #[cfg(miri)]

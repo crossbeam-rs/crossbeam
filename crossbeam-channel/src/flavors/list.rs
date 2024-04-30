@@ -168,6 +168,18 @@ pub(crate) struct Channel<T> {
     _marker: PhantomData<T>,
 }
 
+/// The status of the channel after calling `start_recv`.
+#[derive(PartialEq, Eq)]
+enum Status {
+    /// The channel has a message ready to read.
+    Ready,
+    /// There is currently a send in progress holding up the queue.
+    /// Both `recv` and `try_recv` must block to preserve linearizability.
+    InProgress,
+    /// The channel is empty.
+    Empty,
+}
+
 impl<T> Channel<T> {
     /// Creates a new unbounded channel.
     pub(crate) fn new() -> Self {
@@ -298,7 +310,7 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to reserve a slot for receiving a message.
-    fn start_recv(&self, token: &mut Token) -> bool {
+    fn start_recv(&self, token: &mut Token) -> Status {
         let backoff = Backoff::new();
         let mut head = self.head.index.load(Ordering::Acquire);
         let mut block = self.head.block.load(Ordering::Acquire);
@@ -307,8 +319,14 @@ impl<T> Channel<T> {
             // Calculate the offset of the index into the block.
             let offset = (head >> SHIFT) % LAP;
 
-            // If we reached the end of the block, wait until the next one is installed.
+            // We reached the end of the block but the block is not installed yet, meaning
+            // the last send on previous block is still in progress. The send is likely to
+            // be soon so we spin here before falling back to blocking.
             if offset == BLOCK_CAP {
+                if backoff.is_completed() {
+                    return Status::InProgress;
+                }
+
                 backoff.snooze();
                 head = self.head.index.load(Ordering::Acquire);
                 block = self.head.block.load(Ordering::Acquire);
@@ -327,10 +345,10 @@ impl<T> Channel<T> {
                     if tail & MARK_BIT != 0 {
                         // ...then receive an error.
                         token.list.block = ptr::null();
-                        return true;
+                        return Status::Ready;
                     } else {
                         // Otherwise, the receive operation is not ready.
-                        return false;
+                        return Status::Empty;
                     }
                 }
 
@@ -340,9 +358,14 @@ impl<T> Channel<T> {
                 }
             }
 
-            // The block can be null here only if the first message is being sent into the channel.
-            // In that case, just wait until it gets initialized.
+            // The block can be null here only if the first message sent into the channel is
+            // in progress. The send is likely to complete soon so we spin here before falling
+            // back to blocking.
             if block.is_null() {
+                if backoff.is_completed() {
+                    return Status::InProgress;
+                }
+
                 backoff.snooze();
                 head = self.head.index.load(Ordering::Acquire);
                 block = self.head.block.load(Ordering::Acquire);
@@ -371,7 +394,7 @@ impl<T> Channel<T> {
 
                     token.list.block = block as *const u8;
                     token.list.offset = offset;
-                    return true;
+                    return Status::Ready;
                 },
                 Err(h) => {
                     head = h;
@@ -433,26 +456,42 @@ impl<T> Channel<T> {
 
     /// Attempts to receive a message without blocking.
     pub(crate) fn try_recv(&self) -> Result<T, TryRecvError> {
-        let token = &mut Token::default();
-
-        if self.start_recv(token) {
-            unsafe { self.read(token).map_err(|_| TryRecvError::Disconnected) }
-        } else {
-            Err(TryRecvError::Empty)
+        match self.recv_blocking(None, false) {
+            Ok(Some(value)) => Ok(value),
+            Ok(None) => Err(TryRecvError::Empty),
+            Err(RecvTimeoutError::Disconnected) => Err(TryRecvError::Disconnected),
+            Err(RecvTimeoutError::Timeout) => {
+                unreachable!("called recv_blocking with deadline: None")
+            }
         }
     }
 
     /// Receives a message from the channel.
     pub(crate) fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+        self.recv_blocking(deadline, true)
+            .map(|value| value.expect("called recv_blocking with block: true"))
+    }
+
+    /// Receives a message from the channel.
+    pub(crate) fn recv_blocking(
+        &self,
+        deadline: Option<Instant>,
+        block: bool,
+    ) -> Result<Option<T>, RecvTimeoutError> {
         let token = &mut Token::default();
+
+        let mut state = self.receivers.start();
         loop {
             // Try receiving a message several times.
             let backoff = Backoff::new();
             loop {
-                if self.start_recv(token) {
-                    unsafe {
-                        return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
+                match self.start_recv(token) {
+                    Status::Ready => {
+                        let res = unsafe { self.read(token) };
+                        return res.map(Some).map_err(|_| RecvTimeoutError::Disconnected);
                     }
+                    Status::Empty if !block => return Ok(None),
+                    _ => {}
                 }
 
                 if backoff.is_completed() {
@@ -471,7 +510,7 @@ impl<T> Channel<T> {
             // Prepare for blocking until a sender wakes us up.
             Context::with(|cx| {
                 let oper = Operation::hook(token);
-                self.receivers.register(oper, cx);
+                self.receivers.register2(oper, cx, &state);
 
                 // Has the channel become ready just now?
                 if !self.is_empty() || self.is_disconnected() {
@@ -490,6 +529,8 @@ impl<T> Channel<T> {
                     }
                     Selected::Operation(_) => {}
                 }
+
+                state.unpark();
             });
         }
     }
@@ -695,7 +736,7 @@ pub(crate) struct Sender<'a, T>(&'a Channel<T>);
 
 impl<T> SelectHandle for Receiver<'_, T> {
     fn try_select(&self, token: &mut Token) -> bool {
-        self.0.start_recv(token)
+        self.0.start_recv(token) == Status::Ready
     }
 
     fn deadline(&self) -> Option<Instant> {
