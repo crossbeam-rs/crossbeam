@@ -233,9 +233,9 @@ impl SyncWaker {
 
     /// Registers an operation waiting to be ready.
     #[inline]
-    pub(crate) fn watch(&self, oper: Operation, cx: &Context) {
+    pub(crate) fn watch(&self, oper: Operation, cx: &Context, state: &BlockingState<'_>) {
         self.inner.lock().unwrap().watch(oper, cx);
-        self.state.park(false);
+        self.state.park(state.is_waker);
     }
 
     /// Unregisters an operation waiting to be ready.
@@ -262,7 +262,8 @@ impl Drop for SyncWaker {
 
 /// A guard that manages the state of a blocking operation.
 #[derive(Clone)]
-struct BlockingState<'a> {
+#[allow(missing_debug_implementations)]
+pub struct BlockingState<'a> {
     /// True if this thread is the waker thread, meaning it must
     /// try to notify waiters after it completes.
     is_waker: bool,
@@ -275,12 +276,6 @@ impl BlockingState<'_> {
     #[inline]
     pub(crate) fn unpark(&mut self) {
         self.is_waker = self.waker.state.unpark();
-    }
-
-    /// Reset the state of an observer after waking up from parking.
-    #[inline]
-    pub(crate) fn unpark_observer(&mut self) {
-        self.waker.state.unpark_observer();
     }
 }
 
@@ -316,7 +311,7 @@ impl WakerState {
 
         // if a notification is already set, the waker thread will take care
         // of further notifications. otherwise we have to notify if there are waiters
-        if ((state >> NOTIFIED) & (state & NOTIFIED)) > 0 {
+        if (state >> WAKER) > 0 && (state & NOTIFIED == 0) {
             return self
                 .state
                 .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |state| {
@@ -340,14 +335,6 @@ impl WakerState {
         // notification to allow other waiters to be notified after we park
         let update = (1_u32 << WAKER).wrapping_sub(u32::from(waker));
         self.state.fetch_add(update, Ordering::SeqCst);
-    }
-
-    /// Remove an observer from the waker state after it was unparked.
-    ///
-    /// Observers never become the waking thread because if there were waiters, they
-    /// are also woken up along with any observers.
-    fn unpark_observer(&self) {
-        self.state.fetch_sub(1_u32 << WAKER, Ordering::SeqCst);
     }
 
     /// Remove this waiter from the waker state after it was unparked.

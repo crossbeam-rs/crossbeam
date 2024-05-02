@@ -20,7 +20,7 @@ use crossbeam_utils::{Backoff, CachePadded};
 use crate::context::Context;
 use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
-use crate::waker::SyncWaker;
+use crate::waker::{BlockingState, SyncWaker};
 
 /// A slot in a channel.
 struct Slot<T> {
@@ -401,7 +401,7 @@ impl<T> Channel<T> {
             Context::with(|cx| {
                 // Prepare for blocking until a receiver wakes us up.
                 let oper = Operation::hook(token);
-                self.senders.register2(oper, cx, &state);
+                self.senders.register(oper, cx, &state);
 
                 // Has the channel become ready just now?
                 if !self.is_full() || self.is_disconnected() {
@@ -478,7 +478,7 @@ impl<T> Channel<T> {
             Context::with(|cx| {
                 // Prepare for blocking until a sender wakes us up.
                 let oper = Operation::hook(token);
-                self.receivers.register2(oper, cx, &mut state);
+                self.receivers.register(oper, cx, &state);
 
                 // Has the channel become ready just now?
                 if !self.is_empty() || self.is_disconnected() {
@@ -629,7 +629,18 @@ pub(crate) struct Receiver<'a, T>(&'a Channel<T>);
 /// Sender handle to a channel.
 pub(crate) struct Sender<'a, T>(&'a Channel<T>);
 
+impl<'a, T> Receiver<'a, T> {
+    /// Same as `SelectHandle::start`, but with a more specific lifetime.
+    pub(crate) fn start_ref(&self) -> Option<BlockingState<'a>> {
+        Some(self.0.receivers.start())
+    }
+}
+
 impl<T> SelectHandle for Receiver<'_, T> {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        self.start_ref()
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
         self.0.start_recv(token) == Status::Ready
     }
@@ -638,8 +649,9 @@ impl<T> SelectHandle for Receiver<'_, T> {
         None
     }
 
-    fn register(&self, oper: Operation, cx: &Context) -> bool {
-        self.0.receivers.register(oper, cx);
+    fn register(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
+        let state = state.expect("Receiver::start returns blocking state");
+        self.0.receivers.register(oper, cx, state);
         self.is_ready()
     }
 
@@ -655,8 +667,9 @@ impl<T> SelectHandle for Receiver<'_, T> {
         !self.0.is_empty() || self.0.is_disconnected()
     }
 
-    fn watch(&self, oper: Operation, cx: &Context) -> bool {
-        self.0.receivers.watch(oper, cx);
+    fn watch(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
+        let state = state.expect("Receiver::start returns blocking state");
+        self.0.receivers.watch(oper, cx, state);
         self.is_ready()
     }
 
@@ -665,7 +678,18 @@ impl<T> SelectHandle for Receiver<'_, T> {
     }
 }
 
+impl<'a, T> Sender<'a, T> {
+    /// Same as `SelectHandle::start`, but with a more specific lifetime.
+    pub(crate) fn start_ref(&self) -> Option<BlockingState<'a>> {
+        Some(self.0.senders.start())
+    }
+}
+
 impl<T> SelectHandle for Sender<'_, T> {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        self.start_ref()
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
         self.0.start_send(token) == Status::Ready
     }
@@ -674,8 +698,9 @@ impl<T> SelectHandle for Sender<'_, T> {
         None
     }
 
-    fn register(&self, oper: Operation, cx: &Context) -> bool {
-        self.0.senders.register(oper, cx);
+    fn register(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
+        let state = state.expect("Sender::start returns blocking state");
+        self.0.senders.register(oper, cx, state);
         self.is_ready()
     }
 
@@ -691,8 +716,9 @@ impl<T> SelectHandle for Sender<'_, T> {
         !self.0.is_full() || self.0.is_disconnected()
     }
 
-    fn watch(&self, oper: Operation, cx: &Context) -> bool {
-        self.0.senders.watch(oper, cx);
+    fn watch(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
+        let state = state.expect("Sender::start returns blocking state");
+        self.0.senders.watch(oper, cx, state);
         self.is_ready()
     }
 

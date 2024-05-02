@@ -362,6 +362,7 @@ mod waker;
 #[cfg(feature = "std")]
 pub mod internal {
     pub use crate::select::{select, select_timeout, try_select, SelectHandle};
+    pub use crate::waker::BlockingState;
 }
 
 #[cfg(feature = "std")]

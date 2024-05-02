@@ -685,10 +685,16 @@ macro_rules! crossbeam_channel_internal {
         $default:tt
     ) => {{
         const _LEN: usize = $crate::crossbeam_channel_internal!(@count ($($cases)*));
-        let _handle: &dyn $crate::internal::SelectHandle = &$crate::never::<()>();
+
+        const _STATE: (
+            &'static dyn $crate::internal::SelectHandle,
+            ::core::option::Option<$crate::internal::BlockingState<'static>>,
+            usize,
+            *const u8
+        ) = (&(), None, 0, ::std::ptr::null());
 
         #[allow(unused_mut)]
-        let mut _sel = [(_handle, 0, ::std::ptr::null()); _LEN];
+        let mut _sel = [_STATE; _LEN];
 
         $crate::crossbeam_channel_internal!(
             @add
@@ -852,7 +858,7 @@ macro_rules! crossbeam_channel_internal {
                     }
                     unbind(_r)
                 };
-                $sel[$i] = ($var, $i, $var as *const $crate::Receiver<_> as *const u8);
+                $sel[$i] = ($var, $crate::internal::SelectHandle::start($var), $i, $var as *const $crate::Receiver<_> as *const u8);
 
                 $crate::crossbeam_channel_internal!(
                     @add
@@ -884,7 +890,7 @@ macro_rules! crossbeam_channel_internal {
                     }
                     unbind(_s)
                 };
-                $sel[$i] = ($var, $i, $var as *const $crate::Sender<_> as *const u8);
+                $sel[$i] = ($var, $crate::internal::SelectHandle::start($var), $i, $var as *const $crate::Sender<_> as *const u8);
 
                 $crate::crossbeam_channel_internal!(
                     @add

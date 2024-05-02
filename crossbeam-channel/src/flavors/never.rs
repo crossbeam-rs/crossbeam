@@ -9,6 +9,7 @@ use crate::context::Context;
 use crate::err::{RecvTimeoutError, TryRecvError};
 use crate::select::{Operation, SelectHandle, Token};
 use crate::utils;
+use crate::waker::BlockingState;
 
 /// This flavor doesn't need a token.
 pub(crate) type NeverToken = ();
@@ -72,6 +73,10 @@ impl<T> Channel<T> {
 }
 
 impl<T> SelectHandle for Channel<T> {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        None
+    }
+
     #[inline]
     fn try_select(&self, _token: &mut Token) -> bool {
         false
@@ -83,7 +88,12 @@ impl<T> SelectHandle for Channel<T> {
     }
 
     #[inline]
-    fn register(&self, _oper: Operation, _cx: &Context) -> bool {
+    fn register(
+        &self,
+        _oper: Operation,
+        _cx: &Context,
+        _state: Option<&BlockingState<'_>>,
+    ) -> bool {
         self.is_ready()
     }
 
@@ -101,7 +111,7 @@ impl<T> SelectHandle for Channel<T> {
     }
 
     #[inline]
-    fn watch(&self, _oper: Operation, _cx: &Context) -> bool {
+    fn watch(&self, _oper: Operation, _cx: &Context, _state: Option<&BlockingState<'_>>) -> bool {
         self.is_ready()
     }
 

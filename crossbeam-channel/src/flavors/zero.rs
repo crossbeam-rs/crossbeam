@@ -15,7 +15,7 @@ use crossbeam_utils::Backoff;
 use crate::context::Context;
 use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
-use crate::waker::Waker;
+use crate::waker::{BlockingState, Waker};
 
 /// A pointer to a packet.
 pub(crate) struct ZeroToken(*mut ());
@@ -387,6 +387,10 @@ impl<T> Channel<T> {
     pub(crate) fn is_full(&self) -> bool {
         true
     }
+
+    pub(crate) fn start(&self) -> Option<BlockingState<'_>> {
+        None
+    }
 }
 
 /// Receiver handle to a channel.
@@ -396,6 +400,10 @@ pub(crate) struct Receiver<'a, T>(&'a Channel<T>);
 pub(crate) struct Sender<'a, T>(&'a Channel<T>);
 
 impl<T> SelectHandle for Receiver<'_, T> {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        None
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
         self.0.start_recv(token)
     }
@@ -404,7 +412,7 @@ impl<T> SelectHandle for Receiver<'_, T> {
         None
     }
 
-    fn register(&self, oper: Operation, cx: &Context) -> bool {
+    fn register(&self, oper: Operation, cx: &Context, _state: Option<&BlockingState<'_>>) -> bool {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock().unwrap();
@@ -433,7 +441,7 @@ impl<T> SelectHandle for Receiver<'_, T> {
         inner.senders.can_select() || inner.is_disconnected
     }
 
-    fn watch(&self, oper: Operation, cx: &Context) -> bool {
+    fn watch(&self, oper: Operation, cx: &Context, _state: Option<&BlockingState<'_>>) -> bool {
         let mut inner = self.0.inner.lock().unwrap();
         inner.receivers.watch(oper, cx);
         inner.senders.can_select() || inner.is_disconnected
@@ -445,7 +453,11 @@ impl<T> SelectHandle for Receiver<'_, T> {
     }
 }
 
-impl<T> SelectHandle for Sender<'_, T> {
+impl<'a, T> SelectHandle for Sender<'a, T> {
+    fn start(&self) -> Option<BlockingState<'a>> {
+        None
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
         self.0.start_send(token)
     }
@@ -454,7 +466,7 @@ impl<T> SelectHandle for Sender<'_, T> {
         None
     }
 
-    fn register(&self, oper: Operation, cx: &Context) -> bool {
+    fn register(&self, oper: Operation, cx: &Context, _state: Option<&BlockingState<'_>>) -> bool {
         let packet = Box::into_raw(Packet::<T>::empty_on_heap());
 
         let mut inner = self.0.inner.lock().unwrap();
@@ -483,7 +495,7 @@ impl<T> SelectHandle for Sender<'_, T> {
         inner.receivers.can_select() || inner.is_disconnected
     }
 
-    fn watch(&self, oper: Operation, cx: &Context) -> bool {
+    fn watch(&self, oper: Operation, cx: &Context, _state: Option<&BlockingState<'_>>) -> bool {
         let mut inner = self.0.inner.lock().unwrap();
         inner.senders.watch(oper, cx);
         inner.receivers.can_select() || inner.is_disconnected

@@ -15,6 +15,7 @@ use crate::err::{RecvError, SendError};
 use crate::err::{SelectTimeoutError, TrySelectError};
 use crate::flavors;
 use crate::utils;
+use crate::waker::BlockingState;
 
 /// Temporary data that gets initialized during select or a blocking operation, and is consumed by
 /// `read` or `write`.
@@ -98,6 +99,9 @@ impl From<Selected> for usize {
 /// appropriate deadline for blocking, etc.
 // This is a private API (exposed inside crossbeam_channel::internal module) that is used by the select macro.
 pub trait SelectHandle {
+    /// Returns a guard that manages the state of the operation.
+    fn start(&self) -> Option<BlockingState<'_>>;
+
     /// Attempts to select an operation and returns `true` on success.
     fn try_select(&self, token: &mut Token) -> bool;
 
@@ -105,7 +109,7 @@ pub trait SelectHandle {
     fn deadline(&self) -> Option<Instant>;
 
     /// Registers an operation for execution and returns `true` if it is now ready.
-    fn register(&self, oper: Operation, cx: &Context) -> bool;
+    fn register(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool;
 
     /// Unregisters an operation for execution.
     fn unregister(&self, oper: Operation);
@@ -117,13 +121,17 @@ pub trait SelectHandle {
     fn is_ready(&self) -> bool;
 
     /// Registers an operation for readiness notification and returns `true` if it is now ready.
-    fn watch(&self, oper: Operation, cx: &Context) -> bool;
+    fn watch(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool;
 
     /// Unregisters an operation for readiness notification.
     fn unwatch(&self, oper: Operation);
 }
 
 impl<T: SelectHandle> SelectHandle for &T {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        (**self).start()
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
         (**self).try_select(token)
     }
@@ -132,8 +140,8 @@ impl<T: SelectHandle> SelectHandle for &T {
         (**self).deadline()
     }
 
-    fn register(&self, oper: Operation, cx: &Context) -> bool {
-        (**self).register(oper, cx)
+    fn register(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
+        (**self).register(oper, cx, state)
     }
 
     fn unregister(&self, oper: Operation) {
@@ -148,13 +156,53 @@ impl<T: SelectHandle> SelectHandle for &T {
         (**self).is_ready()
     }
 
-    fn watch(&self, oper: Operation, cx: &Context) -> bool {
-        (**self).watch(oper, cx)
+    fn watch(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
+        (**self).watch(oper, cx, state)
     }
 
     fn unwatch(&self, oper: Operation) {
         (**self).unwatch(oper)
     }
+}
+
+// A dummy handle used to initialize the handles array by the select! macro.
+impl SelectHandle for () {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        None
+    }
+
+    fn try_select(&self, _token: &mut Token) -> bool {
+        false
+    }
+
+    fn deadline(&self) -> Option<Instant> {
+        None
+    }
+
+    fn register(
+        &self,
+        _oper: Operation,
+        _cx: &Context,
+        _state: Option<&BlockingState<'_>>,
+    ) -> bool {
+        false
+    }
+
+    fn unregister(&self, _oper: Operation) {}
+
+    fn accept(&self, _token: &mut Token, _cx: &Context) -> bool {
+        false
+    }
+
+    fn is_ready(&self) -> bool {
+        false
+    }
+
+    fn watch(&self, _oper: Operation, _cx: &Context, _state: Option<&BlockingState<'_>>) -> bool {
+        false
+    }
+
+    fn unwatch(&self, _oper: Operation) {}
 }
 
 /// Determines when a select operation should time out.
@@ -175,7 +223,12 @@ enum Timeout {
 /// Successful receive operations will have to be followed up by `channel::read()` and successful
 /// send operations by `channel::write()`.
 fn run_select(
-    handles: &mut [(&dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(
+        &dyn SelectHandle,
+        Option<BlockingState<'_>>,
+        usize,
+        *const u8,
+    )],
     timeout: Timeout,
 ) -> Option<(Token, usize, *const u8)> {
     if handles.is_empty() {
@@ -202,7 +255,7 @@ fn run_select(
     let mut token = Token::default();
 
     // Try selecting one of the operations without blocking.
-    for &(handle, i, ptr) in handles.iter() {
+    for &(handle, _, i, ptr) in handles.iter() {
         if handle.try_select(&mut token) {
             return Some((token, i, ptr));
         }
@@ -220,11 +273,15 @@ fn run_select(
             }
 
             // Register all operations.
-            for (handle, i, _) in handles.iter_mut() {
+            for (handle, state, i, _) in handles.iter_mut() {
                 registered_count += 1;
 
                 // If registration returns `false`, that means the operation has just become ready.
-                if handle.register(Operation::hook::<&dyn SelectHandle>(handle), cx) {
+                if handle.register(
+                    Operation::hook::<&dyn SelectHandle>(handle),
+                    cx,
+                    state.as_ref(),
+                ) {
                     // Try aborting select.
                     sel = match cx.try_select(Selected::Aborted) {
                         Ok(()) => {
@@ -251,7 +308,7 @@ fn run_select(
                     Timeout::Never => None,
                     Timeout::At(when) => Some(when),
                 };
-                for &(handle, _, _) in handles.iter() {
+                for &(handle, _, _, _) in handles.iter() {
                     if let Some(x) = handle.deadline() {
                         deadline = deadline.map(|y| x.min(y)).or(Some(x));
                     }
@@ -262,8 +319,12 @@ fn run_select(
             }
 
             // Unregister all registered operations.
-            for (handle, _, _) in handles.iter_mut().take(registered_count) {
+            for (handle, state, _, _) in handles.iter_mut().take(registered_count) {
                 handle.unregister(Operation::hook::<&dyn SelectHandle>(handle));
+
+                if let Some(state) = state {
+                    state.unpark();
+                }
             }
 
             match sel {
@@ -271,7 +332,7 @@ fn run_select(
                 Selected::Aborted => {
                     // If an operation became ready during registration, try selecting it.
                     if let Some(index_ready) = index_ready {
-                        for &(handle, i, ptr) in handles.iter() {
+                        for &(handle, _, i, ptr) in handles.iter() {
                             if i == index_ready && handle.try_select(&mut token) {
                                 return Some((i, ptr));
                             }
@@ -281,7 +342,7 @@ fn run_select(
                 Selected::Disconnected => {}
                 Selected::Operation(_) => {
                     // Find the selected operation.
-                    for (handle, i, ptr) in handles.iter_mut() {
+                    for (handle, _, i, ptr) in handles.iter_mut() {
                         // Is this the selected operation?
                         if sel == Selected::Operation(Operation::hook::<&dyn SelectHandle>(handle))
                         {
@@ -303,7 +364,7 @@ fn run_select(
         }
 
         // Try selecting one of the operations without blocking.
-        for &(handle, i, ptr) in handles.iter() {
+        for &(handle, _, i, ptr) in handles.iter() {
             if handle.try_select(&mut token) {
                 return Some((token, i, ptr));
             }
@@ -323,7 +384,12 @@ fn run_select(
 
 /// Runs until one of the operations becomes ready, potentially blocking the current thread.
 fn run_ready(
-    handles: &mut [(&dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(
+        &dyn SelectHandle,
+        Option<BlockingState<'_>>,
+        usize,
+        *const u8,
+    )],
     timeout: Timeout,
 ) -> Option<usize> {
     if handles.is_empty() {
@@ -348,7 +414,7 @@ fn run_ready(
         let backoff = Backoff::new();
         loop {
             // Check operations for readiness.
-            for &(handle, i, _) in handles.iter() {
+            for &(handle, _, i, _) in handles.iter() {
                 if handle.is_ready() {
                     return Some(i);
                 }
@@ -378,12 +444,12 @@ fn run_ready(
             let mut registered_count = 0;
 
             // Begin watching all operations.
-            for (handle, _, _) in handles.iter_mut() {
+            for (handle, state, _, _) in handles.iter_mut() {
                 registered_count += 1;
                 let oper = Operation::hook::<&dyn SelectHandle>(handle);
 
                 // If registration returns `false`, that means the operation has just become ready.
-                if handle.watch(oper, cx) {
+                if handle.watch(oper, cx, state.as_ref()) {
                     sel = match cx.try_select(Selected::Operation(oper)) {
                         Ok(()) => Selected::Operation(oper),
                         Err(s) => s,
@@ -406,7 +472,7 @@ fn run_ready(
                     Timeout::Never => None,
                     Timeout::At(when) => Some(when),
                 };
-                for &(handle, _, _) in handles.iter() {
+                for &(handle, _, _, _) in handles.iter() {
                     if let Some(x) = handle.deadline() {
                         deadline = deadline.map(|y| x.min(y)).or(Some(x));
                     }
@@ -417,8 +483,11 @@ fn run_ready(
             }
 
             // Unwatch all operations.
-            for (handle, _, _) in handles.iter_mut().take(registered_count) {
+            for (handle, state, _, _) in handles.iter_mut().take(registered_count) {
                 handle.unwatch(Operation::hook::<&dyn SelectHandle>(handle));
+                if let Some(state) = state {
+                    state.unpark();
+                }
             }
 
             match sel {
@@ -426,7 +495,7 @@ fn run_ready(
                 Selected::Aborted => {}
                 Selected::Disconnected => {}
                 Selected::Operation(_) => {
-                    for (handle, i, _) in handles.iter_mut() {
+                    for (handle, _, i, _) in handles.iter_mut() {
                         let oper = Operation::hook::<&dyn SelectHandle>(handle);
                         if sel == Selected::Operation(oper) {
                             return Some(*i);
@@ -449,7 +518,12 @@ fn run_ready(
 // This is a private API (exposed inside crossbeam_channel::internal module) that is used by the select macro.
 #[inline]
 pub fn try_select<'a>(
-    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(
+        &'a dyn SelectHandle,
+        Option<BlockingState<'_>>,
+        usize,
+        *const u8,
+    )],
 ) -> Result<SelectedOperation<'a>, TrySelectError> {
     match run_select(handles, Timeout::Now) {
         None => Err(TrySelectError),
@@ -466,7 +540,12 @@ pub fn try_select<'a>(
 // This is a private API (exposed inside crossbeam_channel::internal module) that is used by the select macro.
 #[inline]
 pub fn select<'a>(
-    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(
+        &'a dyn SelectHandle,
+        Option<BlockingState<'_>>,
+        usize,
+        *const u8,
+    )],
 ) -> SelectedOperation<'a> {
     if handles.is_empty() {
         panic!("no operations have been added to `Select`");
@@ -485,7 +564,12 @@ pub fn select<'a>(
 // This is a private API (exposed inside crossbeam_channel::internal module) that is used by the select macro.
 #[inline]
 pub fn select_timeout<'a>(
-    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(
+        &'a dyn SelectHandle,
+        Option<BlockingState<'_>>,
+        usize,
+        *const u8,
+    )],
     timeout: Duration,
 ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
     match Instant::now().checked_add(timeout) {
@@ -497,7 +581,12 @@ pub fn select_timeout<'a>(
 /// Blocks until a given deadline, or until one of the operations becomes ready and selects it.
 #[inline]
 pub(crate) fn select_deadline<'a>(
-    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(
+        &'a dyn SelectHandle,
+        Option<BlockingState<'_>>,
+        usize,
+        *const u8,
+    )],
     deadline: Instant,
 ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
     match run_select(handles, Timeout::At(deadline)) {
@@ -597,7 +686,12 @@ pub(crate) fn select_deadline<'a>(
 /// [`ready_timeout`]: Select::ready_timeout
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
-    handles: Vec<(&'a dyn SelectHandle, usize, *const u8)>,
+    handles: Vec<(
+        &'a dyn SelectHandle,
+        Option<BlockingState<'a>>,
+        usize,
+        *const u8,
+    )>,
 
     /// The next index to assign to an operation.
     next_index: usize,
@@ -643,7 +737,8 @@ impl<'a> Select<'a> {
     pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
         let i = self.next_index;
         let ptr = s as *const Sender<_> as *const u8;
-        self.handles.push((s, i, ptr));
+        let state = s.start();
+        self.handles.push((s, state, i, ptr));
         self.next_index += 1;
         i
     }
@@ -665,7 +760,8 @@ impl<'a> Select<'a> {
     pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
         let i = self.next_index;
         let ptr = r as *const Receiver<_> as *const u8;
-        self.handles.push((r, i, ptr));
+        let state = r.start();
+        self.handles.push((r, state, i, ptr));
         self.next_index += 1;
         i
     }
@@ -718,7 +814,7 @@ impl<'a> Select<'a> {
             .handles
             .iter()
             .enumerate()
-            .find(|(_, (_, i, _))| *i == index)
+            .find(|(_, (_, _, i, _))| *i == index)
             .expect("no operation with this index")
             .0;
 

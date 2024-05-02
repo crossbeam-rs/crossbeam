@@ -14,6 +14,7 @@ use crate::err::{
 };
 use crate::flavors;
 use crate::select::{Operation, SelectHandle, Token};
+use crate::waker::BlockingState;
 
 /// Creates a multi-producer multi-consumer channel of unbounded capacity.
 ///
@@ -1358,6 +1359,14 @@ impl<T> fmt::Debug for IntoIter<T> {
 }
 
 impl<T> SelectHandle for Sender<T> {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        match &self.flavor {
+            SenderFlavor::Array(chan) => chan.sender().start_ref(),
+            SenderFlavor::List(chan) => chan.sender().start_ref(),
+            SenderFlavor::Zero(chan) => chan.start(),
+        }
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
         match &self.flavor {
             SenderFlavor::Array(chan) => chan.sender().try_select(token),
@@ -1370,11 +1379,11 @@ impl<T> SelectHandle for Sender<T> {
         None
     }
 
-    fn register(&self, oper: Operation, cx: &Context) -> bool {
+    fn register(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
         match &self.flavor {
-            SenderFlavor::Array(chan) => chan.sender().register(oper, cx),
-            SenderFlavor::List(chan) => chan.sender().register(oper, cx),
-            SenderFlavor::Zero(chan) => chan.sender().register(oper, cx),
+            SenderFlavor::Array(chan) => chan.sender().register(oper, cx, state),
+            SenderFlavor::List(chan) => chan.sender().register(oper, cx, state),
+            SenderFlavor::Zero(chan) => chan.sender().register(oper, cx, state),
         }
     }
 
@@ -1402,11 +1411,11 @@ impl<T> SelectHandle for Sender<T> {
         }
     }
 
-    fn watch(&self, oper: Operation, cx: &Context) -> bool {
+    fn watch(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
         match &self.flavor {
-            SenderFlavor::Array(chan) => chan.sender().watch(oper, cx),
-            SenderFlavor::List(chan) => chan.sender().watch(oper, cx),
-            SenderFlavor::Zero(chan) => chan.sender().watch(oper, cx),
+            SenderFlavor::Array(chan) => chan.sender().watch(oper, cx, state),
+            SenderFlavor::List(chan) => chan.sender().watch(oper, cx, state),
+            SenderFlavor::Zero(chan) => chan.sender().watch(oper, cx, state),
         }
     }
 
@@ -1420,6 +1429,17 @@ impl<T> SelectHandle for Sender<T> {
 }
 
 impl<T> SelectHandle for Receiver<T> {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        match &self.flavor {
+            ReceiverFlavor::Array(chan) => chan.receiver().start_ref(),
+            ReceiverFlavor::List(chan) => chan.receiver().start_ref(),
+            ReceiverFlavor::Zero(chan) => chan.start(),
+            ReceiverFlavor::At(chan) => chan.start(),
+            ReceiverFlavor::Tick(chan) => chan.start(),
+            ReceiverFlavor::Never(chan) => chan.start(),
+        }
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
         match &self.flavor {
             ReceiverFlavor::Array(chan) => chan.receiver().try_select(token),
@@ -1442,14 +1462,14 @@ impl<T> SelectHandle for Receiver<T> {
         }
     }
 
-    fn register(&self, oper: Operation, cx: &Context) -> bool {
+    fn register(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
         match &self.flavor {
-            ReceiverFlavor::Array(chan) => chan.receiver().register(oper, cx),
-            ReceiverFlavor::List(chan) => chan.receiver().register(oper, cx),
-            ReceiverFlavor::Zero(chan) => chan.receiver().register(oper, cx),
-            ReceiverFlavor::At(chan) => chan.register(oper, cx),
-            ReceiverFlavor::Tick(chan) => chan.register(oper, cx),
-            ReceiverFlavor::Never(chan) => chan.register(oper, cx),
+            ReceiverFlavor::Array(chan) => chan.receiver().register(oper, cx, state),
+            ReceiverFlavor::List(chan) => chan.receiver().register(oper, cx, state),
+            ReceiverFlavor::Zero(chan) => chan.receiver().register(oper, cx, state),
+            ReceiverFlavor::At(chan) => chan.register(oper, cx, state),
+            ReceiverFlavor::Tick(chan) => chan.register(oper, cx, state),
+            ReceiverFlavor::Never(chan) => chan.register(oper, cx, state),
         }
     }
 
@@ -1486,14 +1506,14 @@ impl<T> SelectHandle for Receiver<T> {
         }
     }
 
-    fn watch(&self, oper: Operation, cx: &Context) -> bool {
+    fn watch(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
         match &self.flavor {
-            ReceiverFlavor::Array(chan) => chan.receiver().watch(oper, cx),
-            ReceiverFlavor::List(chan) => chan.receiver().watch(oper, cx),
-            ReceiverFlavor::Zero(chan) => chan.receiver().watch(oper, cx),
-            ReceiverFlavor::At(chan) => chan.watch(oper, cx),
-            ReceiverFlavor::Tick(chan) => chan.watch(oper, cx),
-            ReceiverFlavor::Never(chan) => chan.watch(oper, cx),
+            ReceiverFlavor::Array(chan) => chan.receiver().watch(oper, cx, state),
+            ReceiverFlavor::List(chan) => chan.receiver().watch(oper, cx, state),
+            ReceiverFlavor::Zero(chan) => chan.receiver().watch(oper, cx, state),
+            ReceiverFlavor::At(chan) => chan.watch(oper, cx, state),
+            ReceiverFlavor::Tick(chan) => chan.watch(oper, cx, state),
+            ReceiverFlavor::Never(chan) => chan.watch(oper, cx, state),
         }
     }
 
