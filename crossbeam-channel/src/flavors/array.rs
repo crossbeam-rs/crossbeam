@@ -210,7 +210,7 @@ impl<T> Channel<T> {
 
                 // The head was advanced but the stamp hasn't been updated yet,
                 // meaning a receive is in-progress. Spin for a bit waiting for
-                // the receive to complete before falling back to parking.
+                // the receive to complete before falling back to blocking.
                 if backoff.is_completed() {
                     return Status::InProgress;
                 }
@@ -308,7 +308,7 @@ impl<T> Channel<T> {
 
                 // The tail was advanced but the stamp hasn't been updated yet,
                 // meaning a send is in-progress. Spin for a bit waiting for
-                // the send to complete before falling back to parking.
+                // the send to complete before falling back to blocking.
                 if backoff.is_completed() {
                     return Status::InProgress;
                 }
