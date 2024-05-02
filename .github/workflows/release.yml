@@ -17,6 +17,7 @@ jobs:
   create-release:
     if: github.repository_owner == 'crossbeam-rs'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - uses: taiki-e/create-gh-release-action@v1
