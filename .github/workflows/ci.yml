@@ -61,6 +61,7 @@ jobs:
             os: ubuntu-latest
             target: armv5te-unknown-linux-gnueabi
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -83,6 +84,7 @@ jobs:
           - msrv
           - nightly
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -96,6 +98,7 @@ jobs:
   # Check for duplicate dependencies.
   dependencies:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -113,6 +116,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -146,6 +150,7 @@ jobs:
   # Check formatting.
   rustfmt:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -158,6 +163,7 @@ jobs:
   # # Check clippy.
   # clippy:
   #   runs-on: ubuntu-latest
+  #   timeout-minutes: 60
   #   steps:
   #     - uses: taiki-e/checkout-action@v1
   #     - name: Install Rust
@@ -168,6 +174,7 @@ jobs:
   # Run miri.
   miri:
     runs-on: ubuntu-latest
+    timeout-minutes: 120 # TODO
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -178,6 +185,7 @@ jobs:
   # Run cargo-careful.
   careful:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -190,6 +198,7 @@ jobs:
   # Run sanitizers.
   san:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -202,6 +211,7 @@ jobs:
   # Run loom tests.
   loom:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -212,6 +222,7 @@ jobs:
   # Check if the document can be generated without warning.
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -221,6 +232,7 @@ jobs:
 
   shellcheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install shellcheck
