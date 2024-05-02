@@ -1955,7 +1955,7 @@ where
                 None => self.range.end_bound(),
             };
             if below_upper_bound(&bound, h.key().borrow()) {
-                self.head = next_head.clone();
+                self.head.clone_from(&next_head);
                 next_head
             } else {
                 unsafe {
@@ -1982,7 +1982,7 @@ where
                 None => self.range.start_bound(),
             };
             if above_lower_bound(&bound, t.key().borrow()) {
-                self.tail = next_tail.clone();
+                self.tail.clone_from(&next_tail);
                 next_tail
             } else {
                 unsafe {
