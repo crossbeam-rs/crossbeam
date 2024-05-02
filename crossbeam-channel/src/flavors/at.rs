@@ -10,6 +10,7 @@ use crate::context::Context;
 use crate::err::{RecvTimeoutError, TryRecvError};
 use crate::select::{Operation, SelectHandle, Token};
 use crate::utils;
+use crate::waker::BlockingState;
 
 /// Result of a receive operation.
 pub(crate) type AtToken = Option<Instant>;
@@ -140,6 +141,10 @@ impl Channel {
 }
 
 impl SelectHandle for Channel {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        None
+    }
+
     #[inline]
     fn try_select(&self, token: &mut Token) -> bool {
         match self.try_recv() {
@@ -166,7 +171,12 @@ impl SelectHandle for Channel {
     }
 
     #[inline]
-    fn register(&self, _oper: Operation, _cx: &Context) -> bool {
+    fn register(
+        &self,
+        _oper: Operation,
+        _cx: &Context,
+        _state: Option<&BlockingState<'_>>,
+    ) -> bool {
         self.is_ready()
     }
 
@@ -184,7 +194,7 @@ impl SelectHandle for Channel {
     }
 
     #[inline]
-    fn watch(&self, _oper: Operation, _cx: &Context) -> bool {
+    fn watch(&self, _oper: Operation, _cx: &Context, _state: Option<&BlockingState<'_>>) -> bool {
         self.is_ready()
     }
 

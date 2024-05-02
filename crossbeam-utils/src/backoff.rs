@@ -269,7 +269,16 @@ impl Backoff {
     /// [`AtomicBool`]: std::sync::atomic::AtomicBool
     #[inline]
     pub fn is_completed(&self) -> bool {
-        self.step.get() > YIELD_LIMIT
+        #[cfg(not(test))]
+        {
+            self.step.get() > YIELD_LIMIT
+        }
+
+        // avoid spinning during tests, which can hide bugs in the waker
+        #[cfg(test)]
+        {
+            true
+        }
     }
 }
 

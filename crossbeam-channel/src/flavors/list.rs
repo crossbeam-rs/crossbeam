@@ -4,7 +4,7 @@ use std::boxed::Box;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use std::ptr;
+use std::ptr::{self, NonNull};
 use std::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 use std::time::Instant;
 
@@ -13,7 +13,7 @@ use crossbeam_utils::{Backoff, CachePadded};
 use crate::context::Context;
 use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
-use crate::waker::SyncWaker;
+use crate::waker::{BlockingState, SyncWaker};
 
 // TODO(stjepang): Once we bump the minimum required Rust version to 1.28 or newer, re-apply the
 // following changes by @kleimkuhler:
@@ -56,10 +56,48 @@ impl<T> Slot<T> {
     };
 
     /// Waits until a message is written into the slot.
-    fn wait_write(&self) {
-        let backoff = Backoff::new();
-        while self.state.load(Ordering::Acquire) & WRITE == 0 {
-            backoff.snooze();
+    fn wait_write(&self, receivers: &SyncWaker, token: &mut Token) {
+        let mut state = receivers.start();
+
+        loop {
+            // Try reading the message several times.
+            let backoff = Backoff::new();
+            loop {
+                if self.state.load(Ordering::Acquire) & WRITE != 0 {
+                    return;
+                }
+
+                if backoff.is_completed() {
+                    break;
+                } else {
+                    backoff.snooze();
+                }
+            }
+
+            // Prepare for blocking until a sender wakes us up.
+            Context::with(|cx| {
+                let oper = Operation::hook(token);
+                // Register to be notified after any message is sent.
+                receivers.watch(oper, cx, &state);
+
+                // Was the emssage just sent?
+                if self.state.load(Ordering::Acquire) & WRITE != 0 {
+                    let _ = cx.try_select(Selected::Aborted);
+                }
+
+                // Block the current thread.
+                let sel = cx.wait_until(None);
+
+                match sel {
+                    Selected::Waiting => unreachable!(),
+                    Selected::Aborted | Selected::Disconnected => {
+                        receivers.unwatch(oper);
+                    }
+                    Selected::Operation(_) => {}
+                }
+
+                state.unpark();
+            });
         }
     }
 }
@@ -85,14 +123,47 @@ impl<T> Block<T> {
     }
 
     /// Waits until the next pointer is set.
-    fn wait_next(&self) -> *mut Self {
-        let backoff = Backoff::new();
+    fn wait_next(&self, receivers: &SyncWaker, token: &mut Token) -> *mut Self {
+        let mut state = receivers.start();
         loop {
-            let next = self.next.load(Ordering::Acquire);
-            if !next.is_null() {
-                return next;
+            // Try reading the message several times.
+            let backoff = Backoff::new();
+            loop {
+                if let Some(next) = NonNull::new(self.next.load(Ordering::Acquire)) {
+                    return next.as_ptr();
+                }
+
+                if backoff.is_completed() {
+                    break;
+                } else {
+                    backoff.snooze();
+                }
             }
-            backoff.snooze();
+
+            // Prepare for blocking until a sender wakes us up.
+            Context::with(|cx| {
+                let oper = Operation::hook(token);
+                // Register to be notified after any message is sent.
+                receivers.watch(oper, cx, &state);
+
+                // Was the next pointer just written?
+                if !self.next.load(Ordering::Acquire).is_null() {
+                    let _ = cx.try_select(Selected::Aborted);
+                }
+
+                // Block the current thread.
+                let sel = cx.wait_until(None);
+
+                match sel {
+                    Selected::Waiting => unreachable!(),
+                    Selected::Aborted | Selected::Disconnected => {
+                        receivers.unwatch(oper);
+                    }
+                    Selected::Operation(_) => {}
+                }
+
+                state.unpark();
+            });
         }
     }
 
@@ -168,6 +239,18 @@ pub(crate) struct Channel<T> {
     _marker: PhantomData<T>,
 }
 
+/// The status of the channel after calling `start_recv`.
+#[derive(PartialEq, Eq)]
+enum Status {
+    /// The channel has a message ready to read.
+    Ready,
+    /// There is currently a send in progress holding up the queue.
+    /// Both `recv` and `try_recv` must block to preserve linearizability.
+    InProgress,
+    /// The channel is empty.
+    Empty,
+}
+
 impl<T> Channel<T> {
     /// Creates a new unbounded channel.
     pub(crate) fn new() -> Self {
@@ -196,7 +279,7 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to reserve a slot for sending a message.
-    fn start_send(&self, token: &mut Token) -> bool {
+    fn start_send(&self, token: &mut Token) -> Status {
         let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
         let mut block = self.tail.block.load(Ordering::Acquire);
@@ -206,14 +289,19 @@ impl<T> Channel<T> {
             // Check if the channel is disconnected.
             if tail & MARK_BIT != 0 {
                 token.list.block = ptr::null();
-                return true;
+                return Status::Ready;
             }
 
             // Calculate the offset of the index into the block.
             let offset = (tail >> SHIFT) % LAP;
 
             // If we reached the end of the block, wait until the next one is installed.
+            // If we've been waiting for too long, fallback to blocking.
             if offset == BLOCK_CAP {
+                if backoff.is_completed() {
+                    return Status::InProgress;
+                }
+
                 backoff.snooze();
                 tail = self.tail.index.load(Ordering::Acquire);
                 block = self.tail.block.load(Ordering::Acquire);
@@ -267,7 +355,7 @@ impl<T> Channel<T> {
 
                     token.list.block = block as *const u8;
                     token.list.offset = offset;
-                    return true;
+                    return Status::Ready;
                 },
                 Err(t) => {
                     tail = t;
@@ -298,7 +386,7 @@ impl<T> Channel<T> {
     }
 
     /// Attempts to reserve a slot for receiving a message.
-    fn start_recv(&self, token: &mut Token) -> bool {
+    fn start_recv(&self, token: &mut Token) -> Status {
         let backoff = Backoff::new();
         let mut head = self.head.index.load(Ordering::Acquire);
         let mut block = self.head.block.load(Ordering::Acquire);
@@ -307,8 +395,14 @@ impl<T> Channel<T> {
             // Calculate the offset of the index into the block.
             let offset = (head >> SHIFT) % LAP;
 
-            // If we reached the end of the block, wait until the next one is installed.
+            // We reached the end of the block but the block is not installed yet, meaning
+            // the last send on the previous block is still in progress. The send is likely to
+            // be soon so we spin here before falling back to blocking.
             if offset == BLOCK_CAP {
+                if backoff.is_completed() {
+                    return Status::InProgress;
+                }
+
                 backoff.snooze();
                 head = self.head.index.load(Ordering::Acquire);
                 block = self.head.block.load(Ordering::Acquire);
@@ -327,10 +421,10 @@ impl<T> Channel<T> {
                     if tail & MARK_BIT != 0 {
                         // ...then receive an error.
                         token.list.block = ptr::null();
-                        return true;
+                        return Status::Ready;
                     } else {
                         // Otherwise, the receive operation is not ready.
-                        return false;
+                        return Status::Empty;
                     }
                 }
 
@@ -340,9 +434,14 @@ impl<T> Channel<T> {
                 }
             }
 
-            // The block can be null here only if the first message is being sent into the channel.
-            // In that case, just wait until it gets initialized.
+            // The block can be null here only if the first message sent into the channel is
+            // in progress. The send is likely to complete soon so we spin here before falling
+            // back to blocking.
             if block.is_null() {
+                if backoff.is_completed() {
+                    return Status::InProgress;
+                }
+
                 backoff.snooze();
                 head = self.head.index.load(Ordering::Acquire);
                 block = self.head.block.load(Ordering::Acquire);
@@ -359,7 +458,7 @@ impl<T> Channel<T> {
                 Ok(_) => unsafe {
                     // If we've reached the end of the block, move to the next one.
                     if offset + 1 == BLOCK_CAP {
-                        let next = (*block).wait_next();
+                        let next = (*block).wait_next(&self.receivers, token);
                         let mut next_index = (new_head & !MARK_BIT).wrapping_add(1 << SHIFT);
                         if !(*next).next.load(Ordering::Relaxed).is_null() {
                             next_index |= MARK_BIT;
@@ -371,7 +470,7 @@ impl<T> Channel<T> {
 
                     token.list.block = block as *const u8;
                     token.list.offset = offset;
-                    return true;
+                    return Status::Ready;
                 },
                 Err(h) => {
                     head = h;
@@ -393,7 +492,7 @@ impl<T> Channel<T> {
         let block = token.list.block as *mut Block<T>;
         let offset = token.list.offset;
         let slot = unsafe { (*block).slots.get_unchecked(offset) };
-        slot.wait_write();
+        slot.wait_write(&self.receivers, token);
         let msg = unsafe { slot.msg.get().read().assume_init() };
 
         // Destroy the block if we've reached the end, or if another thread wanted to destroy but
@@ -424,35 +523,96 @@ impl<T> Channel<T> {
         _deadline: Option<Instant>,
     ) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
-        assert!(self.start_send(token));
-        unsafe {
-            self.write(token, msg)
-                .map_err(SendTimeoutError::Disconnected)
+
+        // It's possible that we can't proceed because of the sender that
+        // is supposed to install the next block lagging, so we might have to
+        // block for a message to be sent.
+        let mut state = self.receivers.start();
+        let mut succeeded = false;
+        loop {
+            // Try sending a message several times.
+            let backoff = Backoff::new();
+            loop {
+                if succeeded || self.start_send(token) == Status::Ready {
+                    return unsafe {
+                        self.write(token, msg)
+                            .map_err(SendTimeoutError::Disconnected)
+                    };
+                }
+
+                if backoff.is_completed() {
+                    break;
+                } else {
+                    backoff.snooze();
+                }
+            }
+
+            // Prepare for blocking until a sender wakes us up.
+            Context::with(|cx| {
+                let oper = Operation::hook(token);
+                // Register to be notified after any message is sent.
+                self.receivers.watch(oper, cx, &state);
+
+                // Has the channel become ready just now?
+                if self.start_send(token) == Status::Ready {
+                    succeeded = true;
+                    let _ = cx.try_select(Selected::Aborted);
+                }
+
+                // Block the current thread.
+                let sel = cx.wait_until(None);
+
+                match sel {
+                    Selected::Waiting => unreachable!(),
+                    Selected::Aborted | Selected::Disconnected => {
+                        self.receivers.unwatch(oper);
+                    }
+                    Selected::Operation(_) => {}
+                }
+
+                state.unpark();
+            });
         }
     }
 
     /// Attempts to receive a message without blocking.
     pub(crate) fn try_recv(&self) -> Result<T, TryRecvError> {
-        let token = &mut Token::default();
-
-        if self.start_recv(token) {
-            unsafe { self.read(token).map_err(|_| TryRecvError::Disconnected) }
-        } else {
-            Err(TryRecvError::Empty)
+        match self.recv_blocking(None, false) {
+            Ok(Some(value)) => Ok(value),
+            Ok(None) => Err(TryRecvError::Empty),
+            Err(RecvTimeoutError::Disconnected) => Err(TryRecvError::Disconnected),
+            Err(RecvTimeoutError::Timeout) => {
+                unreachable!("called recv_blocking with deadline: None")
+            }
         }
     }
 
     /// Receives a message from the channel.
     pub(crate) fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+        self.recv_blocking(deadline, true)
+            .map(|value| value.expect("called recv_blocking with block: true"))
+    }
+
+    /// Receives a message from the channel.
+    pub(crate) fn recv_blocking(
+        &self,
+        deadline: Option<Instant>,
+        block: bool,
+    ) -> Result<Option<T>, RecvTimeoutError> {
         let token = &mut Token::default();
+
+        let mut state = self.receivers.start();
         loop {
             // Try receiving a message several times.
             let backoff = Backoff::new();
             loop {
-                if self.start_recv(token) {
-                    unsafe {
-                        return self.read(token).map_err(|_| RecvTimeoutError::Disconnected);
+                match self.start_recv(token) {
+                    Status::Ready => {
+                        let res = unsafe { self.read(token) };
+                        return res.map(Some).map_err(|_| RecvTimeoutError::Disconnected);
                     }
+                    Status::Empty if !block => return Ok(None),
+                    _ => {}
                 }
 
                 if backoff.is_completed() {
@@ -471,7 +631,7 @@ impl<T> Channel<T> {
             // Prepare for blocking until a sender wakes us up.
             Context::with(|cx| {
                 let oper = Operation::hook(token);
-                self.receivers.register(oper, cx);
+                self.receivers.register(oper, cx, &state);
 
                 // Has the channel become ready just now?
                 if !self.is_empty() || self.is_disconnected() {
@@ -490,6 +650,8 @@ impl<T> Channel<T> {
                     }
                     Selected::Operation(_) => {}
                 }
+
+                state.unpark();
             });
         }
     }
@@ -569,6 +731,7 @@ impl<T> Channel<T> {
     ///
     /// This method should only be called when all receivers are dropped.
     fn discard_all_messages(&self) {
+        let token = &mut Token::default();
         let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
         loop {
@@ -610,10 +773,10 @@ impl<T> Channel<T> {
                 if offset < BLOCK_CAP {
                     // Drop the message in the slot.
                     let slot = (*block).slots.get_unchecked(offset);
-                    slot.wait_write();
+                    slot.wait_write(&self.receivers, token);
                     (*slot.msg.get()).assume_init_drop();
                 } else {
-                    (*block).wait_next();
+                    (*block).wait_next(&self.receivers, token);
                     // Deallocate the block and move to the next one.
                     let next = (*block).next.load(Ordering::Acquire);
                     drop(Box::from_raw(block));
@@ -693,17 +856,29 @@ pub(crate) struct Receiver<'a, T>(&'a Channel<T>);
 /// Sender handle to a channel.
 pub(crate) struct Sender<'a, T>(&'a Channel<T>);
 
+impl<'a, T> Receiver<'a, T> {
+    /// Same as `SelectHandle::start`, but with a more specific lifetime.
+    pub(crate) fn start_ref(&self) -> Option<BlockingState<'a>> {
+        Some(self.0.receivers.start())
+    }
+}
+
 impl<T> SelectHandle for Receiver<'_, T> {
+    fn start(&self) -> Option<BlockingState<'_>> {
+        self.start_ref()
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
-        self.0.start_recv(token)
+        self.0.start_recv(token) == Status::Ready
     }
 
     fn deadline(&self) -> Option<Instant> {
         None
     }
 
-    fn register(&self, oper: Operation, cx: &Context) -> bool {
-        self.0.receivers.register(oper, cx);
+    fn register(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
+        let state = state.expect("Receiver::start returns blocking state");
+        self.0.receivers.register(oper, cx, state);
         self.is_ready()
     }
 
@@ -719,8 +894,9 @@ impl<T> SelectHandle for Receiver<'_, T> {
         !self.0.is_empty() || self.0.is_disconnected()
     }
 
-    fn watch(&self, oper: Operation, cx: &Context) -> bool {
-        self.0.receivers.watch(oper, cx);
+    fn watch(&self, oper: Operation, cx: &Context, state: Option<&BlockingState<'_>>) -> bool {
+        let state = state.expect("Receiver::start returns blocking state");
+        self.0.receivers.watch(oper, cx, state);
         self.is_ready()
     }
 
@@ -729,16 +905,32 @@ impl<T> SelectHandle for Receiver<'_, T> {
     }
 }
 
-impl<T> SelectHandle for Sender<'_, T> {
+impl<'a, T> Sender<'a, T> {
+    /// Same as `SelectHandle::start`, but with a more specific lifetime.
+    pub(crate) fn start_ref(&self) -> Option<BlockingState<'a>> {
+        None
+    }
+}
+
+impl<'a, T> SelectHandle for Sender<'a, T> {
+    fn start(&self) -> Option<BlockingState<'a>> {
+        None
+    }
+
     fn try_select(&self, token: &mut Token) -> bool {
-        self.0.start_send(token)
+        self.0.start_send(token) == Status::Ready
     }
 
     fn deadline(&self) -> Option<Instant> {
         None
     }
 
-    fn register(&self, _oper: Operation, _cx: &Context) -> bool {
+    fn register(
+        &self,
+        _oper: Operation,
+        _cx: &Context,
+        _state: Option<&BlockingState<'_>>,
+    ) -> bool {
         self.is_ready()
     }
 
@@ -752,7 +944,7 @@ impl<T> SelectHandle for Sender<'_, T> {
         true
     }
 
-    fn watch(&self, _oper: Operation, _cx: &Context) -> bool {
+    fn watch(&self, _oper: Operation, _cx: &Context, _state: Option<&BlockingState<'_>>) -> bool {
         self.is_ready()
     }
 
