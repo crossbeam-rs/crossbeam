@@ -952,17 +952,20 @@ fn unfairness() {
 
     let (s1, r1) = unbounded::<()>();
     let (s2, r2) = unbounded::<()>();
+    let (s3, r3) = unbounded::<()>();
 
     for _ in 0..COUNT {
         s1.send(()).unwrap();
         s2.send(()).unwrap();
     }
+    s3.send(()).unwrap();
 
     let mut hits = [0usize; 2];
     for _ in 0..COUNT {
         select_biased! {
             recv(r1) -> _ => hits[0] += 1,
             recv(r2) -> _ => hits[1] += 1,
+            recv(r3) -> _ => unreachable!(),
         }
     }
     assert_eq!(hits, [COUNT, 0]);
@@ -971,6 +974,7 @@ fn unfairness() {
         select_biased! {
             recv(r1) -> _ => hits[0] += 1,
             recv(r2) -> _ => hits[1] += 1,
+            recv(r3) -> _ => unreachable!(),
         }
     }
     assert_eq!(hits, [COUNT, COUNT]);
