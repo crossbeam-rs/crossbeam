@@ -8,6 +8,7 @@
 //!   - <http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue>
 //!   - <https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub>
 
+use std::boxed::Box;
 use std::cell::UnsafeCell;
 use std::mem::{self, MaybeUninit};
 use std::ptr;
@@ -238,7 +239,7 @@ impl<T> Channel<T> {
             let slot = unsafe { self.buffer.get_unchecked(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
-            // If the the stamp is ahead of the head by 1, we may attempt to pop.
+            // If the stamp is ahead of the head by 1, we may attempt to pop.
             if head + 1 == stamp {
                 let new = if index + 1 < self.cap() {
                     // Same lap, incremented index.

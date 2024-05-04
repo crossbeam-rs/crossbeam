@@ -2,9 +2,9 @@
 name = "crossbeam-channel"
 # When publishing a new version:
 # - Update CHANGELOG.md
-# - Update README.md
-# - Create "crossbeam-channel-X.Y.Z" git tag
-version = "0.5.11"
+# - Update README.md (when increasing major or minor version)
+# - Run './tools/publish.sh crossbeam-channel <version>'
+version = "0.5.12"
 edition = "2021"
 rust-version = "1.60"
 license = "MIT OR Apache-2.0"

@@ -2,8 +2,8 @@
 name = "crossbeam"
 # When publishing a new version:
 # - Update CHANGELOG.md
-# - Update README.md
-# - Create "crossbeam-X.Y.Z" git tag
+# - Update README.md (when increasing major or minor version)
+# - Run './tools/publish.sh crossbeam <version>'
 version = "0.8.4"
 edition = "2021"
 rust-version = "1.61"
@@ -64,3 +64,4 @@ missing_debug_implementations = "warn"
 rust_2018_idioms = "warn"
 single_use_lifetimes = "warn"
 unreachable_pub = "warn"
+# unsafe_op_in_unsafe_fn = "warn" # Set at crate-level instead since https://github.com/rust-lang/rust/pull/100081 is not available on MSRV

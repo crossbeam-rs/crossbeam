@@ -2,8 +2,8 @@
 name = "crossbeam-epoch"
 # When publishing a new version:
 # - Update CHANGELOG.md
-# - Update README.md
-# - Create "crossbeam-epoch-X.Y.Z" git tag
+# - Update README.md (when increasing major or minor version)
+# - Run './tools/publish.sh crossbeam-epoch <version>'
 version = "0.9.18"
 edition = "2021"
 rust-version = "1.61"

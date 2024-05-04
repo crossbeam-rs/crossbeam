@@ -1,6 +1,6 @@
 //! Reference counter for channels.
 
-use std::isize;
+use std::boxed::Box;
 use std::ops;
 use std::process;
 use std::ptr::NonNull;

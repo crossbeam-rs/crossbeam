@@ -1,3 +1,4 @@
+use std::boxed::Box;
 use std::cell::{Cell, UnsafeCell};
 use std::cmp;
 use std::fmt;
@@ -733,7 +734,7 @@ impl<T> Stealer<T> {
     /// // Setting a large limit does not guarantee that all elements will be popped. In this case,
     /// // half of the elements are currently popped, but the number of popped elements is considered
     /// // an implementation detail that may be changed in the future.
-    /// let _ = s.steal_batch_with_limit(&w2, std::usize::MAX);
+    /// let _ = s.steal_batch_with_limit(&w2, usize::MAX);
     /// assert_eq!(w2.len(), 3);
     /// ```
     pub fn steal_batch_with_limit(&self, dest: &Worker<T>, limit: usize) -> Steal<()> {
@@ -970,7 +971,7 @@ impl<T> Stealer<T> {
     /// // Setting a large limit does not guarantee that all elements will be popped. In this case,
     /// // half of the elements are currently popped, but the number of popped elements is considered
     /// // an implementation detail that may be changed in the future.
-    /// assert_eq!(s.steal_batch_with_limit_and_pop(&w2, std::usize::MAX), Steal::Success(3));
+    /// assert_eq!(s.steal_batch_with_limit_and_pop(&w2, usize::MAX), Steal::Success(3));
     /// assert_eq!(w2.pop(), Some(4));
     /// assert_eq!(w2.pop(), Some(5));
     /// assert_eq!(w2.pop(), None);
@@ -1562,7 +1563,7 @@ impl<T> Injector<T> {
     /// // Setting a large limit does not guarantee that all elements will be popped. In this case,
     /// // half of the elements are currently popped, but the number of popped elements is considered
     /// // an implementation detail that may be changed in the future.
-    /// let _ = q.steal_batch_with_limit(&w, std::usize::MAX);
+    /// let _ = q.steal_batch_with_limit(&w, usize::MAX);
     /// assert_eq!(w.len(), 3);
     /// ```
     pub fn steal_batch_with_limit(&self, dest: &Worker<T>, limit: usize) -> Steal<()> {
@@ -1758,7 +1759,7 @@ impl<T> Injector<T> {
     /// // Setting a large limit does not guarantee that all elements will be popped. In this case,
     /// // half of the elements are currently popped, but the number of popped elements is considered
     /// // an implementation detail that may be changed in the future.
-    /// assert_eq!(q.steal_batch_with_limit_and_pop(&w, std::usize::MAX), Steal::Success(3));
+    /// assert_eq!(q.steal_batch_with_limit_and_pop(&w, usize::MAX), Steal::Success(3));
     /// assert_eq!(w.pop(), Some(4));
     /// assert_eq!(w.pop(), Some(5));
     /// assert_eq!(w.pop(), None);

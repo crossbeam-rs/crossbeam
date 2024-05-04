@@ -200,7 +200,7 @@ impl Global {
         let global_epoch = self.try_advance(guard);
 
         let steps = if cfg!(crossbeam_sanitize) {
-            usize::max_value()
+            usize::MAX
         } else {
             Self::COLLECT_STEPS
         };
@@ -558,7 +558,7 @@ impl IsElement<Self> for Local {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
 
     use super::*;
 
