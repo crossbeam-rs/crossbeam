@@ -9,7 +9,7 @@ use std::ops::Deref;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{after, bounded, never, select, tick, unbounded};
+use crossbeam_channel::{after, bounded, never, select, select_biased, tick, unbounded};
 use crossbeam_channel::{Receiver, RecvError, SendError, Sender, TryRecvError};
 use crossbeam_utils::thread::scope;
 
@@ -941,6 +941,39 @@ fn fairness_send() {
         }
     }
     assert!(hits.iter().all(|x| *x >= COUNT / 4));
+}
+
+#[test]
+fn unfairness() {
+    #[cfg(miri)]
+    const COUNT: usize = 100;
+    #[cfg(not(miri))]
+    const COUNT: usize = 10_000;
+
+    let (s1, r1) = unbounded::<()>();
+    let (s2, r2) = unbounded::<()>();
+
+    for _ in 0..COUNT {
+        s1.send(()).unwrap();
+        s2.send(()).unwrap();
+    }
+
+    let mut hits = [0usize; 2];
+    for _ in 0..COUNT {
+        select_biased! {
+            recv(r1) -> _ => hits[0] += 1,
+            recv(r2) -> _ => hits[1] += 1,
+        }
+    }
+    assert_eq!(hits, [COUNT, 0]);
+
+    for _ in 0..COUNT {
+        select_biased! {
+            recv(r1) -> _ => hits[0] += 1,
+            recv(r2) -> _ => hits[1] += 1,
+        }
+    }
+    assert_eq!(hits, [COUNT, COUNT]);
 }
 
 #[allow(clippy::or_fun_call, clippy::unnecessary_literal_unwrap)] // This is intentional.
