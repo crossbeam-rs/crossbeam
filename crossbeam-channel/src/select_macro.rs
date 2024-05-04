@@ -772,7 +772,7 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
     ) => {{
         let _oper: ::std::option::Option<$crate::SelectedOperation<'_>> = {
-            let _oper = $crate::internal::try_select(&mut $sel);
+            let _oper = $crate::internal::try_select(&mut $sel, _IS_BIASED);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             unsafe { ::std::mem::transmute(_oper) }
