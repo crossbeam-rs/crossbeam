@@ -960,24 +960,24 @@ fn unfairness() {
     }
     s3.send(()).unwrap();
 
-    let mut hits = [0usize; 2];
+    let mut hits = [0usize; 3];
     for _ in 0..COUNT {
         select_biased! {
             recv(r1) -> _ => hits[0] += 1,
             recv(r2) -> _ => hits[1] += 1,
-            recv(r3) -> _ => unreachable!(),
+            recv(r3) -> _ => hits[2] += 1,
         }
     }
-    assert_eq!(hits, [COUNT, 0]);
+    assert_eq!(hits, [COUNT, 0, 0]);
 
     for _ in 0..COUNT {
         select_biased! {
             recv(r1) -> _ => hits[0] += 1,
             recv(r2) -> _ => hits[1] += 1,
-            recv(r3) -> _ => unreachable!(),
+            recv(r3) -> _ => hits[2] += 1,
         }
     }
-    assert_eq!(hits, [COUNT, COUNT]);
+    assert_eq!(hits, [COUNT, COUNT, 0]);
 }
 
 #[test]
@@ -997,26 +997,26 @@ fn unfairness_timeout() {
     }
     s3.send(()).unwrap();
 
-    let mut hits = [0usize; 2];
+    let mut hits = [0usize; 3];
     for _ in 0..COUNT {
         select_biased! {
             recv(r1) -> _ => hits[0] += 1,
             recv(r2) -> _ => hits[1] += 1,
-            recv(r3) -> _ => unreachable!(),
-            default(ms(1000)) => panic!(),
+            recv(r3) -> _ => hits[2] += 1,
+            default(ms(1000)) => unreachable!(),
         }
     }
-    assert_eq!(hits, [COUNT, 0]);
+    assert_eq!(hits, [COUNT, 0, 0]);
 
     for _ in 0..COUNT {
         select_biased! {
             recv(r1) -> _ => hits[0] += 1,
             recv(r2) -> _ => hits[1] += 1,
-            recv(r3) -> _ => unreachable!(),
-            default(ms(1000)) => panic!(),
+            recv(r3) -> _ => hits[2] += 1,
+            default(ms(1000)) => unreachable!(),
         }
     }
-    assert_eq!(hits, [COUNT, COUNT]);
+    assert_eq!(hits, [COUNT, COUNT, 0]);
 }
 
 #[test]
@@ -1036,26 +1036,26 @@ fn unfairness_try() {
     }
     s3.send(()).unwrap();
 
-    let mut hits = [0usize; 2];
+    let mut hits = [0usize; 3];
     for _ in 0..COUNT {
         select_biased! {
             recv(r1) -> _ => hits[0] += 1,
             recv(r2) -> _ => hits[1] += 1,
-            recv(r3) -> _ => unreachable!(),
-            default() => panic!(),
+            recv(r3) -> _ => hits[2] += 1,
+            default() => unreachable!(),
         }
     }
-    assert_eq!(hits, [COUNT, 0]);
+    assert_eq!(hits, [COUNT, 0, 0]);
 
     for _ in 0..COUNT {
         select_biased! {
             recv(r1) -> _ => hits[0] += 1,
             recv(r2) -> _ => hits[1] += 1,
-            recv(r3) -> _ => unreachable!(),
-            default() => panic!(),
+            recv(r3) -> _ => hits[2] += 1,
+            default() => unreachable!(),
         }
     }
-    assert_eq!(hits, [COUNT, COUNT]);
+    assert_eq!(hits, [COUNT, COUNT, 0]);
 }
 
 #[allow(clippy::or_fun_call, clippy::unnecessary_literal_unwrap)] // This is intentional.
