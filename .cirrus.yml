@@ -16,6 +16,7 @@ aarch64_linux_task:
   arm_container:
     image: rust
   setup_script:
+    # TODO: Pin nightly due to: https://github.com/rust-lang/rust/issues/124800
     - rustup toolchain add nightly-2024-05-04 && rustup default nightly-2024-05-04
   test_script:
     - cargo test --all --all-features --exclude benchmarks -- --test-threads=1
@@ -28,6 +29,7 @@ aarch64_macos_task:
   macos_instance:
     image: ghcr.io/cirruslabs/macos-ventura-xcode
   setup_script:
+    # TODO: Pin nightly due to: https://github.com/rust-lang/rust/issues/124800
     - curl --proto '=https' --tlsv1.2 -fsSL --retry 10 --retry-connrefused https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly-2024-05-04 --no-modify-path
   test_script:
     - . "$HOME/.cargo/env"
