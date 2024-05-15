@@ -48,18 +48,18 @@ jobs:
             os: ubuntu-latest
           - rust: stable
             os: windows-latest
-          - rust: nightly
+          - rust: nightly-2024-05-04
             os: ubuntu-latest
-          - rust: nightly
+          - rust: nightly-2024-05-04
             os: windows-latest
-          - rust: nightly
+          - rust: nightly-2024-05-04
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
-          - rust: nightly
+          - rust: nightly-2024-05-04
             os: ubuntu-latest
             target: armv7-unknown-linux-gnueabihf
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
-          - rust: nightly
+          - rust: nightly-2024-05-04
             os: ubuntu-latest
             target: armv5te-unknown-linux-gnueabi
     runs-on: ${{ matrix.os }}
@@ -85,7 +85,7 @@ jobs:
       matrix:
         rust:
           - msrv
-          - nightly
+          - nightly-2024-05-04
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -105,7 +105,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        run: rustup update nightly-2024-05-04 && rustup default nightly-2024-05-04
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Install cargo-minimal-versions
@@ -179,7 +179,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup toolchain install nightly --component miri && rustup default nightly
+        run: rustup toolchain install nightly-2024-05-04 --component miri && rustup default nightly-2024-05-04
       - name: miri
         run: ci/miri.sh
 
@@ -190,7 +190,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup toolchain install nightly --component rust-src && rustup default nightly
+        run: rustup toolchain install nightly-2024-05-04 --component rust-src && rustup default nightly-2024-05-04
       - uses: taiki-e/install-action@cargo-careful
       - name: Run cargo-careful
         run: ci/careful.sh
@@ -202,7 +202,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        run: rustup update nightly-2024-05-04 && rustup default nightly-2024-05-04
       # https://github.com/google/sanitizers/issues/1716 / https://github.com/actions/runner-images/issues/9491
       - run: sudo sysctl vm.mmap_rnd_bits=28
       - name: Run sanitizers
@@ -226,7 +226,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        run: rustup update nightly-2024-05-04 && rustup default nightly-2024-05-04
       - name: docs
         run: cargo doc --no-deps --all --all-features
 
