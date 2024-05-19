@@ -1,3 +1,7 @@
+# Version 0.5.13
+
+- Add `select_biased!` macro. (#1040)
+
 # Version 0.5.12
 
 - Fix memory leak in unbounded channel. (#1084)

@@ -1,3 +1,7 @@
+# Version 0.8.20
+
+- Implement `Display` for `CachePadded`. (#1097)
+
 # Version 0.8.19
 
 - Remove dependency on `cfg-if`. (#1072)
