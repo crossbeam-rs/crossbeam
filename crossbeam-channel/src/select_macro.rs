@@ -750,7 +750,7 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
     ) => {{
         let _oper: $crate::SelectedOperation<'_> = {
-            let _oper = $crate::internal::select(&mut $sel);
+            let _oper = $crate::internal::select(&mut $sel, _IS_BIASED);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             unsafe { ::std::mem::transmute(_oper) }
@@ -772,7 +772,7 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
     ) => {{
         let _oper: ::std::option::Option<$crate::SelectedOperation<'_>> = {
-            let _oper = $crate::internal::try_select(&mut $sel);
+            let _oper = $crate::internal::try_select(&mut $sel, _IS_BIASED);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             unsafe { ::std::mem::transmute(_oper) }
@@ -802,7 +802,7 @@ macro_rules! crossbeam_channel_internal {
         $cases:tt
     ) => {{
         let _oper: ::std::option::Option<$crate::SelectedOperation<'_>> = {
-            let _oper = $crate::internal::select_timeout(&mut $sel, $timeout);
+            let _oper = $crate::internal::select_timeout(&mut $sel, $timeout, _IS_BIASED);
 
             // Erase the lifetime so that `sel` can be dropped early even without NLL.
             unsafe { ::std::mem::transmute(_oper) }
@@ -985,7 +985,8 @@ macro_rules! crossbeam_channel_internal {
 ///
 /// This macro allows you to define a set of channel operations, wait until any one of them becomes
 /// ready, and finally execute it. If multiple operations are ready at the same time, a random one
-/// among them is selected.
+/// among them is selected (i.e. the unbiased selection). Use `select_biased!` for the biased
+/// selection.
 ///
 /// It is also possible to define a `default` case that gets executed if none of the operations are
 /// ready, either right away or for a certain duration of time.
@@ -1109,8 +1110,33 @@ macro_rules! crossbeam_channel_internal {
 #[macro_export]
 macro_rules! select {
     ($($tokens:tt)*) => {
-        $crate::crossbeam_channel_internal!(
-            $($tokens)*
-        )
+        {
+            const _IS_BIASED: bool = false;
+
+            $crate::crossbeam_channel_internal!(
+                $($tokens)*
+            )
+        }
+    };
+}
+
+/// Selects from a set of channel operations.
+///
+/// This macro allows you to define a list of channel operations, wait until any one of them
+/// becomes ready, and finally execute it. If multiple operations are ready at the same time, the
+/// operation nearest to the front of the list is always selected (i.e. the biased selection). Use
+/// [`select!`] for the unbiased selection.
+///
+/// Otherwise, this macro's functionality is identical to [`select!`]. Refer to it for the syntax.
+#[macro_export]
+macro_rules! select_biased {
+    ($($tokens:tt)*) => {
+        {
+            const _IS_BIASED: bool = true;
+
+            $crate::crossbeam_channel_internal!(
+                $($tokens)*
+            )
+        }
     };
 }

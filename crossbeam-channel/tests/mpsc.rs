@@ -176,6 +176,8 @@ macro_rules! select {
     (
         $($name:pat = $rx:ident.$meth:ident() => $code:expr),+
     ) => ({
+        const _IS_BIASED: bool = false;
+
         cc::crossbeam_channel_internal! {
             $(
                 $meth(($rx).inner) -> res => {
