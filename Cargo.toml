@@ -50,6 +50,9 @@ crossbeam-utils = { version = "0.8.18", path = "crossbeam-utils", default-featur
 [dev-dependencies]
 rand = "0.8"
 
+[lints]
+workspace = true
+
 [workspace]
 resolver = "2"
 members = [
@@ -62,3 +65,9 @@ members = [
   "crossbeam-skiplist",
   "crossbeam-utils",
 ]
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(crossbeam_loom)',
+  'cfg(crossbeam_sanitize)',
+] }

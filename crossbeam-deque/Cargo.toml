@@ -29,3 +29,6 @@ crossbeam-utils = { version = "0.8.18", path = "../crossbeam-utils", default-fea
 
 [dev-dependencies]
 rand = "0.8"
+
+[lints]
+workspace = true
