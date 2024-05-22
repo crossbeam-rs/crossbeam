@@ -63,5 +63,9 @@ members = [
 missing_debug_implementations = "warn"
 rust_2018_idioms = "warn"
 single_use_lifetimes = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(crossbeam_loom)',
+  'cfg(crossbeam_sanitize)',
+] }
 unreachable_pub = "warn"
 # unsafe_op_in_unsafe_fn = "warn" # Set at crate-level instead since https://github.com/rust-lang/rust/pull/100081 is not available on MSRV
