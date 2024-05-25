@@ -34,11 +34,16 @@ const LAP: usize = 32;
 // The maximum number of messages a block can hold.
 const BLOCK_CAP: usize = LAP - 1;
 // How many lower bits are reserved for metadata.
-const SHIFT: usize = 1;
-// Has two different purposes:
-// * If set in head, indicates that the block is not the last one.
-// * If set in tail, indicates that the channel is disconnected.
-const MARK_BIT: usize = 1;
+const SHIFT: usize = 2;
+
+const HEAD_NOT_LAST: usize = 1;
+
+// Channel is disconnected implicitly via drop
+const TAIL_DISCONNECT_IMPLICIT: usize = 1;
+// Channel is disconnected explicitly as requested
+const TAIL_DISCONNECT_EXPLICIT: usize = 2;
+
+const TAIL_DISCONNECT_ANY: usize = TAIL_DISCONNECT_IMPLICIT | TAIL_DISCONNECT_EXPLICIT;
 
 /// A slot in a block.
 struct Slot<T> {
@@ -204,7 +209,7 @@ impl<T> Channel<T> {
 
         loop {
             // Check if the channel is disconnected.
-            if tail & MARK_BIT != 0 {
+            if tail & TAIL_DISCONNECT_ANY != 0 {
                 token.list.block = ptr::null();
                 return true;
             }
@@ -317,14 +322,14 @@ impl<T> Channel<T> {
 
             let mut new_head = head + (1 << SHIFT);
 
-            if new_head & MARK_BIT == 0 {
+            if new_head & HEAD_NOT_LAST == 0 {
                 atomic::fence(Ordering::SeqCst);
                 let tail = self.tail.index.load(Ordering::Relaxed);
 
                 // If the tail equals the head, that means the channel is empty.
                 if head >> SHIFT == tail >> SHIFT {
                     // If the channel is disconnected...
-                    if tail & MARK_BIT != 0 {
+                    if tail & TAIL_DISCONNECT_ANY != 0 {
                         // ...then receive an error.
                         token.list.block = ptr::null();
                         return true;
@@ -334,9 +339,9 @@ impl<T> Channel<T> {
                     }
                 }
 
-                // If head and tail are not in the same block, set `MARK_BIT` in head.
+                // If head and tail are not in the same block, set `HEAD_NOT_LAST` in head.
                 if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
-                    new_head |= MARK_BIT;
+                    new_head |= HEAD_NOT_LAST;
                 }
             }
 
@@ -360,9 +365,9 @@ impl<T> Channel<T> {
                     // If we've reached the end of the block, move to the next one.
                     if offset + 1 == BLOCK_CAP {
                         let next = (*block).wait_next();
-                        let mut next_index = (new_head & !MARK_BIT).wrapping_add(1 << SHIFT);
+                        let mut next_index = (new_head & !HEAD_NOT_LAST).wrapping_add(1 << SHIFT);
                         if !(*next).next.load(Ordering::Relaxed).is_null() {
-                            next_index |= MARK_BIT;
+                            next_index |= HEAD_NOT_LAST;
                         }
 
                         self.head.block.store(next, Ordering::Release);
@@ -538,10 +543,13 @@ impl<T> Channel<T> {
     /// Disconnects senders and wakes up all blocked receivers.
     ///
     /// Returns `true` if this call disconnected the channel.
-    pub(crate) fn disconnect_senders(&self) -> bool {
-        let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
+    pub(crate) fn disconnect_senders_to_drop(&self) -> bool {
+        let tail = self
+            .tail
+            .index
+            .fetch_or(TAIL_DISCONNECT_IMPLICIT, Ordering::SeqCst);
 
-        if tail & MARK_BIT == 0 {
+        if tail & TAIL_DISCONNECT_IMPLICIT == 0 {
             self.receivers.disconnect();
             true
         } else {
@@ -549,13 +557,39 @@ impl<T> Channel<T> {
         }
     }
 
+    pub(crate) fn disconnect(&self) -> bool {
+        let tail = self
+            .tail
+            .index
+            .fetch_or(TAIL_DISCONNECT_EXPLICIT, Ordering::SeqCst);
+
+        if tail & TAIL_DISCONNECT_ANY == 0 {
+            self.receivers.disconnect();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn connect(&self) -> bool {
+        let tail = self
+            .tail
+            .index
+            .fetch_and(!TAIL_DISCONNECT_EXPLICIT, Ordering::SeqCst);
+
+        tail & TAIL_DISCONNECT_ANY == TAIL_DISCONNECT_EXPLICIT
+    }
+
     /// Disconnects receivers.
     ///
     /// Returns `true` if this call disconnected the channel.
-    pub(crate) fn disconnect_receivers(&self) -> bool {
-        let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
+    pub(crate) fn disconnect_receivers_to_drop(&self) -> bool {
+        let tail = self
+            .tail
+            .index
+            .fetch_or(TAIL_DISCONNECT_IMPLICIT, Ordering::SeqCst);
 
-        if tail & MARK_BIT == 0 {
+        if tail & TAIL_DISCONNECT_IMPLICIT == 0 {
             // If receivers are dropped first, discard all messages to free
             // memory eagerly.
             self.discard_all_messages();
@@ -628,13 +662,13 @@ impl<T> Channel<T> {
                 drop(Box::from_raw(block));
             }
         }
-        head &= !MARK_BIT;
+        head &= !HEAD_NOT_LAST;
         self.head.index.store(head, Ordering::Release);
     }
 
     /// Returns `true` if the channel is disconnected.
     pub(crate) fn is_disconnected(&self) -> bool {
-        self.tail.index.load(Ordering::SeqCst) & MARK_BIT != 0
+        self.tail.index.load(Ordering::SeqCst) & TAIL_DISCONNECT_ANY != 0
     }
 
     /// Returns `true` if the channel is empty.

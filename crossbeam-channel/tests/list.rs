@@ -580,3 +580,84 @@ fn channel_through_channel() {
     })
     .unwrap();
 }
+
+#[test]
+fn disconnect_by_sender() {
+    let (s, r) = unbounded::<()>();
+    let s2 = s.clone();
+
+    assert!(s.disconnect());
+
+    assert!(!s.disconnect());
+    assert!(!s2.disconnect());
+
+    drop(r);
+}
+
+#[test]
+fn connect_by_sender() {
+    let (s, r) = unbounded::<()>();
+    assert!(s.disconnect());
+
+    assert!(s.connect());
+    assert!(s.disconnect());
+
+    drop(r);
+    // connect should fail after all receivers has gone
+    assert!(!s.connect());
+}
+
+#[test]
+fn disconnect_by_receiver() {
+    let (s, r) = unbounded::<()>();
+    let r2 = r.clone();
+    assert!(r.disconnect());
+    assert!(!r.disconnect());
+    assert!(!r2.disconnect());
+    drop(s);
+}
+
+#[test]
+fn connect_by_receiver() {
+    let (s, r) = unbounded::<()>();
+    assert!(r.disconnect());
+
+    assert!(r.connect());
+    assert!(r.disconnect());
+
+    drop(s);
+    // connect should fail after all senders has gone
+    assert!(!r.connect());
+}
+
+#[test]
+fn send_after_disconnect_then_connect() {
+    let (s, r) = unbounded::<()>();
+
+    assert!(s.disconnect());
+    assert_eq!(s.send(()), Err(SendError(())));
+
+    assert!(s.connect());
+    assert_eq!(s.send(()), Ok(()));
+
+    drop(r);
+}
+
+#[test]
+fn receive_after_disconnect_then_connect() {
+    let (s, r) = unbounded::<()>();
+    s.send(()).unwrap();
+
+    assert!(r.disconnect());
+    assert_eq!(r.recv(), Ok(()));
+    assert_eq!(
+        r.recv_timeout(Duration::from_millis(1)),
+        Err(RecvTimeoutError::Disconnected)
+    );
+
+    assert!(r.connect());
+    assert_eq!(
+        r.recv_timeout(Duration::from_millis(1)),
+        Err(RecvTimeoutError::Timeout)
+    );
+}
