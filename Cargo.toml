@@ -56,6 +56,7 @@ members = [
   "crossbeam-epoch",
   "crossbeam-queue",
   "crossbeam-skiplist",
+  "crossbeam-stack",
   "crossbeam-utils",
 ]
 
