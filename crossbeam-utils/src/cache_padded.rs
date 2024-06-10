@@ -24,7 +24,7 @@ macro_rules! cache_padded {
             )),
             repr(align($default_align))
         )]
-        #[derive(Clone, Copy, Default, Hash, PartialEq, Eq)]
+        #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
         pub struct $Name<T> {
             value: T,
         }
