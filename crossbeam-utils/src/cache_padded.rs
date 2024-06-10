@@ -210,8 +210,8 @@ cache_padded! {
 cache_padded! {
     /// Like [`CachePadded`], but with its alignment modifier capped at 128.
     /// This is useful if you have a value no larger than 128 bytes
-    /// and you don't want it to *cross* a cache line,
-    /// but you don't mind if it *shares* one.
+    /// and you want it to *cross* as few cache lines as possible,
+    /// but you don't mind if it *shares* a cache line.
     ///
     /// See the documentation of [`CachePadded`] for more.
     CachePaddedMax128 {
@@ -225,8 +225,8 @@ cache_padded! {
 cache_padded! {
     /// Like [`CachePadded`], but with its alignment modifier capped at 64.
     /// This is useful if you have a value no larger than 64 bytes
-    /// and you don't want it to *cross* a cache line,
-    /// but you don't mind if it *shares* one.
+    /// and you want it to *cross* as few cache lines as possible,
+    /// but you don't mind if it *shares* a cache line.
     ///
     /// See the documentation of [`CachePadded`] for more.
     CachePaddedMax64 {
@@ -239,8 +239,8 @@ cache_padded! {
 cache_padded! {
     /// Like [`CachePadded`], but with its alignment modifier capped at 32.
     /// This is useful if you have a value no larger than 32 bytes
-    /// and you don't want it to *cross* a cache line,
-    /// but you don't mind if it *shares* one.
+    /// and you want it to *cross* as few cache lines as possible,
+    /// but you don't mind if it *shares* a cache line.
     ///
     /// See the documentation of [`CachePadded`] for more.
     CachePaddedMax32 {
