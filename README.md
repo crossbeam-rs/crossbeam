@@ -21,7 +21,7 @@ This crate provides a set of tools for concurrent programming:
 
 #### Data structures
 
-* [`deque`], work-stealing deques for building task schedulers.
+* [`deque`], work-stealing dequeues for building task schedulers.
 * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.<sup>(alloc)</sup>
 * [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.<sup>(alloc)</sup>
 
@@ -68,7 +68,7 @@ smaller subcrates:
 * [`crossbeam-channel`](crossbeam-channel)
   provides multi-producer multi-consumer channels for message passing.
 * [`crossbeam-deque`](crossbeam-deque)
-  provides work-stealing deques, which are primarily intended for building task schedulers.
+  provides work-stealing dequeues, which are primarily intended for building task schedulers.
 * [`crossbeam-epoch`](crossbeam-epoch)
   provides epoch-based garbage collection for building concurrent data structures.
 * [`crossbeam-queue`](crossbeam-queue)

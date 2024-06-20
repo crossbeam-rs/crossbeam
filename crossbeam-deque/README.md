@@ -12,7 +12,7 @@ https://docs.rs/crossbeam-deque)
 https://www.rust-lang.org)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.com/invite/JXYwgWZ)
 
-This crate provides work-stealing deques, which are primarily intended for
+This crate provides work-stealing dequeues, which are primarily intended for
 building task schedulers.
 
 ## Usage

@@ -1,4 +1,4 @@
-//! Concurrent work-stealing deques.
+//! Concurrent work-stealing dequeues.
 //!
 //! These data structures are most commonly used in work-stealing schedulers. The typical setup
 //! involves a number of threads, each having its own FIFO or LIFO queue (*worker*). There is also
