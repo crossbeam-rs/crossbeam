@@ -5,7 +5,6 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
 use std::ptr;
-use std::slice;
 use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -52,7 +51,7 @@ impl<T> Buffer<T> {
     /// Deallocates the buffer.
     unsafe fn dealloc(self) {
         drop(unsafe {
-            Box::from_raw(slice::from_raw_parts_mut(
+            Box::from_raw(ptr::slice_from_raw_parts_mut(
                 self.ptr.cast::<MaybeUninit<T>>(),
                 self.cap,
             ))
