@@ -1206,6 +1206,9 @@ struct Slot<T> {
 }
 
 impl<T> Slot<T> {
+    // `UNINIT` is only used for efficient `Slot` array initialization in `Block::new`.
+    // TODO: Replace the usage of `UNINIT` with inline-const after MSRV is bumped 1.79 or higher.
+    #[allow(clippy::declare_interior_mutable_const)]
     const UNINIT: Self = Self {
         task: UnsafeCell::new(MaybeUninit::uninit()),
         state: AtomicUsize::new(0),
