@@ -92,7 +92,7 @@ mod primitive {
 pub mod atomic;
 
 mod cache_padded;
-pub use crate::cache_padded::CachePadded;
+pub use crate::cache_padded::{CachePadded, CachePaddedMax128, CachePaddedMax32, CachePaddedMax64};
 
 mod backoff;
 pub use crate::backoff::Backoff;
