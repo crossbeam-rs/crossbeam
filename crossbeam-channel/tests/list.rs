@@ -1,6 +1,7 @@
 //! Tests for the list channel flavor.
 
 use std::any::Any;
+use std::cell::Cell;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -579,4 +580,95 @@ fn channel_through_channel() {
         });
     })
     .unwrap();
+}
+
+#[test]
+fn panic_on_drop() {
+    struct Msg1<'a>(&'a Cell<bool>);
+    impl Drop for Msg1<'_> {
+        fn drop(&mut self) {
+            if self.0.get() && !std::thread::panicking() {
+                panic!("double drop");
+            } else {
+                self.0.set(true);
+            }
+        }
+    }
+
+    struct Msg2<'a>(&'a Cell<bool>);
+    impl Drop for Msg2<'_> {
+        fn drop(&mut self) {
+            if self.0.get() {
+                panic!("double drop");
+            } else {
+                self.0.set(true);
+                panic!("first drop");
+            }
+        }
+    }
+
+    // normal (sender first)
+    let (s, r) = unbounded();
+    let (a, b) = (Cell::new(false), Cell::new(false));
+    s.send(Msg1(&a)).unwrap();
+    s.send(Msg1(&b)).unwrap();
+    drop(s);
+    assert!(!a.get());
+    assert!(!b.get());
+    drop(r);
+    assert!(a.get());
+    assert!(b.get());
+
+    // normal (receiver first)
+    let (s, r) = unbounded();
+    let (a, b) = (Cell::new(false), Cell::new(false));
+    s.send(Msg1(&a)).unwrap();
+    s.send(Msg1(&b)).unwrap();
+    drop(r);
+    // When the receiver is dropped, messages are dropped eagerly.
+    assert!(a.get());
+    assert!(b.get());
+    drop(s);
+    assert!(a.get());
+    assert!(b.get());
+
+    // panic on drop (sender first)
+    let (s, r) = unbounded();
+    let (a, b) = (Cell::new(false), Cell::new(false));
+    s.send(Msg2(&a)).unwrap();
+    s.send(Msg2(&b)).unwrap();
+    drop(s);
+    assert!(!a.get());
+    assert!(!b.get());
+    let res = std::panic::catch_unwind(move || {
+        drop(r);
+    });
+    assert_eq!(
+        *res.unwrap_err().downcast_ref::<&str>().unwrap(),
+        "first drop"
+    );
+    assert!(a.get());
+    // Elements after the panicked element will leak.
+    assert!(!b.get());
+
+    // panic on drop (receiver first)
+    let (s, r) = unbounded();
+    let (a, b) = (Cell::new(false), Cell::new(false));
+    s.send(Msg2(&a)).unwrap();
+    s.send(Msg2(&b)).unwrap();
+    let res = std::panic::catch_unwind(move || {
+        drop(r);
+    });
+    assert_eq!(
+        *res.unwrap_err().downcast_ref::<&str>().unwrap(),
+        "first drop"
+    );
+    // When the receiver is dropped, messages are dropped eagerly.
+    assert!(a.get());
+    // Elements after the panicked element will leak.
+    assert!(!b.get());
+    drop(s);
+    assert!(a.get());
+    // Elements after the panicked element will leak.
+    assert!(!b.get());
 }
