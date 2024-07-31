@@ -71,7 +71,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(crossbeam_loom)',
   'cfg(crossbeam_sanitize)',
 ] }
-
 [workspace.lints.clippy]
 # Suppress buggy or noisy clippy lints
 declare_interior_mutable_const = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/7665
+lint_groups_priority = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/12920
