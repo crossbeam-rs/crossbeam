@@ -942,3 +942,92 @@ fn concurrent_insert_get_same_key() {
     }
     handle.join().unwrap()
 }
+
+#[test]
+fn drops_after_remove() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static KEYS: AtomicUsize = AtomicUsize::new(0);
+    static VALUES: AtomicUsize = AtomicUsize::new(0);
+
+    // Insert some entries. Remove one of them. Drop everything.
+    {
+        #[derive(Eq, PartialEq, Ord, PartialOrd)]
+        struct Key(i32);
+
+        impl Drop for Key {
+            fn drop(&mut self) {
+                KEYS.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        struct Value;
+
+        impl Drop for Value {
+            fn drop(&mut self) {
+                VALUES.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        let s = SkipMap::new();
+        for &x in &[4, 2, 12, 8, 7, 11, 5] {
+            s.insert(Key(x), Value);
+        }
+        assert_eq!(KEYS.load(Ordering::SeqCst), 0);
+        assert_eq!(VALUES.load(Ordering::SeqCst), 0);
+
+        let key7 = Key(7);
+        s.remove(&key7).unwrap();
+        assert_eq!(KEYS.load(Ordering::SeqCst), 0);
+        assert_eq!(VALUES.load(Ordering::SeqCst), 0);
+
+        s.clear();
+        drop(s);
+    }
+
+    // TODO actual value is 7 because Key(7) isn't dropped
+    assert_eq!(KEYS.load(Ordering::SeqCst), 8);
+    assert_eq!(VALUES.load(Ordering::SeqCst), 7);
+}
+
+#[test]
+fn drops_after_reinsert() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static KEYS: AtomicUsize = AtomicUsize::new(0);
+    static VALUES: AtomicUsize = AtomicUsize::new(0);
+
+    // Insert some entries twice. Drop everything.
+    {
+        #[derive(Eq, PartialEq, Ord, PartialOrd)]
+        struct Key(i32);
+
+        impl Drop for Key {
+            fn drop(&mut self) {
+                KEYS.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        struct Value;
+
+        impl Drop for Value {
+            fn drop(&mut self) {
+                VALUES.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        let s = SkipMap::new();
+        for &x in &[4, 2, 12, 8, 7, 11, 5] {
+            s.insert(Key(x), Value);
+        }
+        for &x in &[4, 2, 12, 8, 7, 11, 5] {
+            s.insert(Key(x), Value);
+        }
+        assert_eq!(KEYS.load(Ordering::SeqCst), 0);
+        assert_eq!(VALUES.load(Ordering::SeqCst), 0);
+
+        drop(s);
+    }
+
+    // TODO We only drop 11 out of the 14 keys we created
+    assert_eq!(KEYS.load(Ordering::SeqCst), 14);
+    assert_eq!(VALUES.load(Ordering::SeqCst), 14);
+}
