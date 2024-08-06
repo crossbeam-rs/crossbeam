@@ -4,6 +4,7 @@
 //! 2002.  <http://dl.acm.org/citation.cfm?id=564870.564881>
 
 use core::marker::PhantomData;
+use core::ptr::NonNull;
 use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 use crate::{unprotected, Atomic, Guard, Shared};
@@ -66,7 +67,7 @@ pub(crate) struct Entry {
 ///
 pub(crate) trait IsElement<T> {
     /// Returns a reference to this element's `Entry`.
-    fn entry_of(_: &T) -> &Entry;
+    fn entry_of(_: *const T) -> *const Entry;
 
     /// Given a reference to an element's entry, returns that element.
     ///
@@ -80,7 +81,7 @@ pub(crate) trait IsElement<T> {
     ///
     /// The caller has to guarantee that the `Entry` is called with was retrieved from an instance
     /// of the element type (`T`).
-    unsafe fn element_of(_: &Entry) -> &T;
+    unsafe fn element_of(_: *const Entry) -> *const T;
 
     /// The function that is called when an entry is unlinked from list.
     ///
@@ -88,7 +89,7 @@ pub(crate) trait IsElement<T> {
     ///
     /// The caller has to guarantee that the `Entry` is called with was retrieved from an instance
     /// of the element type (`T`).
-    unsafe fn finalize(_: &Entry, _: &Guard);
+    unsafe fn finalize(_: *const Entry, _: &Guard);
 }
 
 /// A lock-free, intrusive linked list of type `T`.
@@ -173,16 +174,16 @@ impl<T, C: IsElement<T>> List<T, C> {
         // Insert right after head, i.e. at the beginning of the list.
         let to = &self.head;
         // Get the intrusively stored Entry of the new element to insert.
-        let entry: &Entry = C::entry_of(unsafe { container.deref() });
+        let entry: *const Entry = C::entry_of(unsafe { container.as_ptr() });
         // Make a Shared ptr to that Entry.
-        let entry_ptr = Shared::from(entry as *const _);
+        let entry_ptr = Shared::from(entry);
         // Read the current successor of where we want to insert.
         let mut next = to.load(Relaxed, guard);
 
         loop {
             // Set the Entry of the to-be-inserted element to point to the previous successor of
             // `to`.
-            entry.next.store(next, Relaxed);
+            unsafe { (*entry).next.store(next, Relaxed) }
             match to.compare_exchange_weak(next, entry_ptr, Release, Relaxed, guard) {
                 Ok(_) => break,
                 // We lost the race or weak CAS failed spuriously. Update the successor and try
@@ -220,12 +221,12 @@ impl<T, C: IsElement<T>> Drop for List<T, C> {
         unsafe {
             let guard = unprotected();
             let mut curr = self.head.load(Relaxed, guard);
-            while let Some(c) = curr.as_ref() {
-                let succ = c.next.load(Relaxed, guard);
+            while let Some(c) = NonNull::new(curr.as_ptr() as *mut Entry) {
+                let succ = c.as_ref().next.load(Relaxed, guard);
                 // Verify that all elements have been removed from the list.
                 assert_eq!(succ.tag(), 1);
 
-                C::finalize(curr.deref(), guard);
+                C::finalize(curr.as_ptr(), guard);
                 curr = succ;
             }
         }
@@ -236,8 +237,8 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
     type Item = Result<&'g T, IterError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(c) = unsafe { self.curr.as_ref() } {
-            let succ = c.next.load(Acquire, self.guard);
+        while let Some(c) = unsafe { NonNull::new(self.curr.as_ptr() as *mut Entry) } {
+            let succ = unsafe { c.as_ref().next.load(Acquire, self.guard) };
 
             if succ.tag() == 1 {
                 // This entry was removed. Try unlinking it from the list.
@@ -257,7 +258,7 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                         // deallocation. Deferred drop is okay, because `list.delete()` can only be
                         // called if `T: 'static`.
                         unsafe {
-                            C::finalize(self.curr.deref(), self.guard);
+                            C::finalize(self.curr.as_ptr(), self.guard);
                         }
 
                         // `succ` is the new value of `self.pred`.
@@ -284,10 +285,10 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
             }
 
             // Move one step forward.
-            self.pred = &c.next;
+            self.pred = unsafe { &(*c.as_ptr()).next };
             self.curr = succ;
 
-            return Some(Ok(unsafe { C::element_of(c) }));
+            return Some(Ok(unsafe { &*C::element_of(c.as_ptr()) }));
         }
 
         // We reached the end of the list.
@@ -304,16 +305,16 @@ mod tests {
     use std::vec::Vec;
 
     impl IsElement<Self> for Entry {
-        fn entry_of(entry: &Self) -> &Entry {
+        fn entry_of(entry: *const Self) -> *const Entry {
             entry
         }
 
-        unsafe fn element_of(entry: &Entry) -> &Self {
+        unsafe fn element_of(entry: *const Entry) -> *const Self {
             entry
         }
 
-        unsafe fn finalize(entry: &Entry, guard: &Guard) {
-            unsafe { guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _)) }
+        unsafe fn finalize(entry: *const Entry, guard: &Guard) {
+            unsafe { guard.defer_destroy(Shared::from(Self::element_of(entry))) }
         }
     }
 
