@@ -656,6 +656,44 @@ impl<T> Sender<T> {
             _ => false,
         }
     }
+
+    /// Disconnects the channel.
+    ///
+    /// Explicitly disconnects the channel and returns `true`, as if all instances of either side
+    /// (sender or receiver) are dropped, unless it has been already disconnected. Otherwise, this
+    /// method does nothing and returns `false`.
+    ///
+    /// The successful disconnect operation results in immediately rejecting sending subsequent
+    /// messages to receivers.
+    ///
+    /// Disconnected channels can be restored connected by calling [`connect`], as long as there
+    /// are at least a sender and a receiver for the channel.
+    ///
+    /// [`connect`]: Self::connect
+    pub fn disconnect(&self) -> bool {
+        match &self.flavor {
+            SenderFlavor::List(chan) => chan.disconnect(),
+            _ => todo!(),
+        }
+    }
+
+    /// Connects the channel.
+    ///
+    /// Connects the disconnected channel and returns `true`, unless it has been already
+    /// connected. Otherwise, this method does nothing and returns `false`.
+    ///
+    /// The successful connect operation results in immediately succeeding sending subsequent
+    /// messages to receivers.
+    ///
+    /// Connected channels can be disconnected again by calling [`disconnect`].
+    ///
+    /// [`disconnect`]: Self::disconnect
+    pub fn connect(&self) -> bool {
+        match &self.flavor {
+            SenderFlavor::List(chan) => chan.connect(),
+            _ => todo!(),
+        }
+    }
 }
 
 impl<T> Drop for Sender<T> {
@@ -663,7 +701,7 @@ impl<T> Drop for Sender<T> {
         unsafe {
             match &self.flavor {
                 SenderFlavor::Array(chan) => chan.release(|c| c.disconnect()),
-                SenderFlavor::List(chan) => chan.release(|c| c.disconnect_senders()),
+                SenderFlavor::List(chan) => chan.release(|c| c.disconnect_senders_to_drop()),
                 SenderFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
             }
         }
@@ -1153,6 +1191,49 @@ impl<T> Receiver<T> {
             _ => false,
         }
     }
+
+    /// Disconnects the channel.
+    ///
+    /// Explicitly disconnects the channel and returns `true`, as if all instances of either side
+    /// (receiver and sender) are dropped, unless it has been already disconnected. Otherwise, this
+    /// method does nothing and returns `false`.  Also, this method does nothing and returns
+    /// `false` as well, if this method is called on channels other than bounded-capacity,
+    /// unbounded-capacity or zero-capacity channels.
+    ///
+    /// The successful disconnect operation results in immediately rejecting receiving messages,
+    /// unless they are sent already but not received yet.
+    ///
+    /// Disconnected channels can be restored connected by calling [`connect`], as long as there
+    /// are at least a sender and a receiver for the channel.
+    ///
+    /// [`connect`]: Self::connect
+    pub fn disconnect(&self) -> bool {
+        match &self.flavor {
+            ReceiverFlavor::List(chan) => chan.disconnect(),
+            _ => todo!(),
+        }
+    }
+
+    /// Connects the channel.
+    ///
+    /// Connects the disconnected channel and returns `true`, unless it has been already
+    /// connected. Otherwise, this method does nothing and returns `false`. Also, this method does
+    /// nothing and returns `false` as well, if this method is called on channels other than
+    /// bounded-capacity, unbounded-capacity or zero-capacity channels.
+
+    ///
+    /// The successful connect operation results in immediately succeeding receiving messages
+    /// from senders.
+    ///
+    /// Connected channels can be disconnected again by calling [`disconnect`].
+    ///
+    /// [`disconnect`]: Self::disconnect
+    pub fn connect(&self) -> bool {
+        match &self.flavor {
+            ReceiverFlavor::List(chan) => chan.connect(),
+            _ => todo!(),
+        }
+    }
 }
 
 impl<T> Drop for Receiver<T> {
@@ -1160,7 +1241,7 @@ impl<T> Drop for Receiver<T> {
         unsafe {
             match &self.flavor {
                 ReceiverFlavor::Array(chan) => chan.release(|c| c.disconnect()),
-                ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect_receivers()),
+                ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect_receivers_to_drop()),
                 ReceiverFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
                 ReceiverFlavor::At(_) => {}
                 ReceiverFlavor::Tick(_) => {}
