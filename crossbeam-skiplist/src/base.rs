@@ -31,11 +31,9 @@ struct Tower<K, V> {
     pointers: [Atomic<Node<K, V>>; 0],
 }
 
-impl<K, V> Index<usize> for Tower<K, V> {
-    type Output = Atomic<Node<K, V>>;
-    fn index(&self, index: usize) -> &Atomic<Node<K, V>> {
-        // This implementation is actually unsafe since we don't check if the
-        // index is in-bounds. But this is fine since this is only used internally.
+impl<K, V> Tower<K, V> {
+    /// SAFETY: `index` must be in-bounds.
+    unsafe fn idx(&self, index: usize) -> &Atomic<Node<K, V>> {
         unsafe { &*(&self.pointers as *const Atomic<Node<K, V>>).add(index) }
     }
 }
@@ -151,7 +149,7 @@ impl<K, V> Node<K, V> {
                 // We're loading the pointer only for the tag, so it's okay to use
                 // `epoch::unprotected()` in this situation.
                 // TODO(Amanieu): can we use release ordering here?
-                self.tower[level]
+                self.tower.idx(level)
                     .fetch_or(1, Ordering::SeqCst, epoch::unprotected())
                     .tag()
             };
@@ -172,7 +170,7 @@ impl<K, V> Node<K, V> {
         let tag = unsafe {
             // We're loading the pointer only for the tag, so it's okay to use
             // `epoch::unprotected()` in this situation.
-            self.tower[0]
+            self.tower.idx(0)
                 .load(Ordering::Relaxed, epoch::unprotected())
                 .tag()
         };
@@ -649,7 +647,7 @@ where
             }
 
             while let Some(c) = curr.as_ref() {
-                let succ = c.tower[0].load_consume(guard);
+                let succ = c.tower.idx(0).load_consume(guard);
 
                 if succ.tag() == 1 {
                     if let Some(c) = self.help_unlink(&pred[0], c, succ, guard) {
@@ -723,7 +721,7 @@ where
                     // Iterate through the current level until we reach a node with a key greater
                     // than or equal to `key`.
                     while let Some(c) = curr.as_ref() {
-                        let succ = c.tower[level].load_consume(guard);
+                        let succ = c.tower.idx(level).load_consume(guard);
 
                         if succ.tag() == 1 {
                             if let Some(c) = self.help_unlink(&pred[level], c, succ, guard) {
@@ -809,7 +807,7 @@ where
                     // Iterate through the current level until we reach a node with a key greater
                     // than or equal to `key`.
                     while let Some(c) = curr.as_ref() {
-                        let succ = c.tower[level].load_consume(guard);
+                        let succ = c.tower.idx(level).load_consume(guard);
 
                         if succ.tag() == 1 {
                             if let Some(c) = self.help_unlink(&pred[level], c, succ, guard) {
@@ -907,7 +905,7 @@ where
 
             loop {
                 // Set the lowest successor of `n` to `search.right[0]`.
-                n.tower[0].store(search.right[0], Ordering::Relaxed);
+                n.tower.idx(0).store(search.right[0], Ordering::Relaxed);
 
                 // Try installing the new node into the skip list (at level 0).
                 // TODO(Amanieu): can we use release ordering here?
@@ -978,7 +976,7 @@ where
 
                     // Load the current value of the pointer in the tower at this level.
                     // TODO(Amanieu): can we use relaxed ordering here?
-                    let next = n.tower[level].load(Ordering::SeqCst, guard);
+                    let next = n.tower.idx(level).load(Ordering::SeqCst, guard);
 
                     // If the current pointer is marked, that means another thread is already
                     // removing the node we've just inserted. In that case, let's just stop
@@ -1014,7 +1012,7 @@ where
                     // operation fails, that means another thread has marked the pointer and we
                     // should stop building the tower.
                     // TODO(Amanieu): can we use release ordering here?
-                    if n.tower[level]
+                    if n.tower.idx(level)
                         .compare_exchange(next, succ, Ordering::SeqCst, Ordering::SeqCst, guard)
                         .is_err()
                     {
@@ -1135,7 +1133,7 @@ where
                     // the `left` and `right` lists.
                     for level in (0..n.height()).rev() {
                         // TODO(Amanieu): can we use relaxed ordering here?
-                        let succ = n.tower[level].load(Ordering::SeqCst, guard).with_tag(0);
+                        let succ = n.tower.idx(level).load(Ordering::SeqCst, guard).with_tag(0);
 
                         // Try linking the predecessor and successor at this level.
                         // TODO(Amanieu): can we use release ordering here?
@@ -1248,7 +1246,7 @@ impl<K, V> Drop for SkipList<K, V> {
             while let Some(n) = node {
                 // Unprotected loads are okay because this function is the only one currently using
                 // the skip list.
-                let next = n.tower[0]
+                let next = n.tower.idx(0)
                     .load(Ordering::Relaxed, epoch::unprotected())
                     .as_ref();
 
@@ -2022,7 +2020,7 @@ impl<K, V> Drop for IntoIter<K, V> {
             unsafe {
                 // Unprotected loads are okay because this function is the only one currently using
                 // the skip list.
-                let next = (*self.node).tower[0].load(Ordering::Relaxed, epoch::unprotected());
+                let next = (*self.node).tower.idx(0).load(Ordering::Relaxed, epoch::unprotected());
 
                 // We can safely do this without deferring because references to
                 // keys & values that we give out never outlive the SkipList.
@@ -2053,7 +2051,7 @@ impl<K, V> Iterator for IntoIter<K, V> {
                 //
                 // Unprotected loads are okay because this function is the only one currently using
                 // the skip list.
-                let next = (*self.node).tower[0].load(Ordering::Relaxed, epoch::unprotected());
+                let next = (*self.node).tower.idx(0).load(Ordering::Relaxed, epoch::unprotected());
 
                 // Deallocate the current node and move to the next one.
                 Node::dealloc(self.node);
