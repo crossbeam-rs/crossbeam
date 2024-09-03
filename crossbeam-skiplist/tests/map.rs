@@ -443,7 +443,7 @@ fn lower_bound() {
     s.insert(40, 4);
     s.insert(20, 2);
 
-    assert_eq!(*s.lower_bound(Bound::Unbounded).unwrap().value(), 1);
+    assert_eq!(*s.lower_bound::<i32>(Bound::Unbounded).unwrap().value(), 1);
 
     assert_eq!(*s.lower_bound(Bound::Included(&10)).unwrap().value(), 1);
     assert_eq!(*s.lower_bound(Bound::Included(&20)).unwrap().value(), 2);
@@ -477,7 +477,7 @@ fn upper_bound() {
     s.insert(40, 4);
     s.insert(20, 2);
 
-    assert_eq!(*s.upper_bound(Bound::Unbounded).unwrap().value(), 5);
+    assert_eq!(*s.upper_bound::<i32>(Bound::Unbounded).unwrap().value(), 5);
 
     assert_eq!(*s.upper_bound(Bound::Included(&10)).unwrap().value(), 1);
     assert_eq!(*s.upper_bound(Bound::Included(&20)).unwrap().value(), 2);
@@ -670,210 +670,212 @@ fn iter_range() {
         vec![90, 80, 70, 60, 50, 40, 30, 20, 10, 0]
     );
     assert_eq!(
-        s.range(..).map(|x| *x.value()).collect::<Vec<_>>(),
+        s.range::<i32, _>(..)
+            .map(|x| *x.value())
+            .collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     );
 
     assert_eq!(
-        s.range((Included(&0), Unbounded))
+        s.range::<i32, _>((Included(&0), Unbounded))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     );
     assert_eq!(
-        s.range((Included(&0), Included(&60)))
+        s.range::<i32, _>((Included(&0), Included(&60)))
             .rev()
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![60, 50, 40, 30, 20, 10, 0]
     );
     assert_eq!(
-        s.range((Excluded(&0), Unbounded))
+        s.range::<i32, _>((Excluded(&0), Unbounded))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![10, 20, 30, 40, 50, 60, 70, 80, 90]
     );
     assert_eq!(
-        s.range((Included(&25), Unbounded))
+        s.range::<i32, _>((Included(&25), Unbounded))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![30, 40, 50, 60, 70, 80, 90]
     );
     assert_eq!(
-        s.range((Excluded(&25), Unbounded))
+        s.range::<i32, _>((Excluded(&25), Unbounded))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![30, 40, 50, 60, 70, 80, 90]
     );
     assert_eq!(
-        s.range((Included(&70), Unbounded))
+        s.range::<i32, _>((Included(&70), Unbounded))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![70, 80, 90]
     );
     assert_eq!(
-        s.range((Excluded(&70), Unbounded))
+        s.range::<i32, _>((Excluded(&70), Unbounded))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![80, 90]
     );
     assert_eq!(
-        s.range((Included(&100), Unbounded))
+        s.range::<i32, _>((Included(&100), Unbounded))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Excluded(&100), Unbounded))
+        s.range::<i32, _>((Excluded(&100), Unbounded))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
 
     assert_eq!(
-        s.range((Unbounded, Included(&90)))
+        s.range::<i32, _>((Unbounded, Included(&90)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     );
     assert_eq!(
-        s.range((Unbounded, Excluded(&90)))
+        s.range::<i32, _>((Unbounded, Excluded(&90)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60, 70, 80]
     );
     assert_eq!(
-        s.range((Unbounded, Included(&25)))
+        s.range::<i32, _>((Unbounded, Included(&25)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20]
     );
     assert_eq!(
-        s.range((Unbounded, Excluded(&25)))
+        s.range::<i32, _>((Unbounded, Excluded(&25)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20]
     );
     assert_eq!(
-        s.range((Unbounded, Included(&70)))
+        s.range::<i32, _>((Unbounded, Included(&70)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60, 70]
     );
     assert_eq!(
-        s.range((Unbounded, Excluded(&70)))
+        s.range::<i32, _>((Unbounded, Excluded(&70)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![0, 10, 20, 30, 40, 50, 60]
     );
     assert_eq!(
-        s.range((Unbounded, Included(&-1)))
+        s.range::<i32, _>((Unbounded, Included(&-1)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Unbounded, Excluded(&-1)))
+        s.range::<i32, _>((Unbounded, Excluded(&-1)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
 
     assert_eq!(
-        s.range((Included(&25), Included(&80)))
+        s.range::<i32, _>((Included(&25), Included(&80)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![30, 40, 50, 60, 70, 80]
     );
     assert_eq!(
-        s.range((Included(&25), Excluded(&80)))
+        s.range::<i32, _>((Included(&25), Excluded(&80)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![30, 40, 50, 60, 70]
     );
     assert_eq!(
-        s.range((Excluded(&25), Included(&80)))
+        s.range::<i32, _>((Excluded(&25), Included(&80)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![30, 40, 50, 60, 70, 80]
     );
     assert_eq!(
-        s.range((Excluded(&25), Excluded(&80)))
+        s.range::<i32, _>((Excluded(&25), Excluded(&80)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![30, 40, 50, 60, 70]
     );
 
     assert_eq!(
-        s.range((Included(&25), Included(&25)))
+        s.range::<i32, _>((Included(&25), Included(&25)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Included(&25), Excluded(&25)))
+        s.range::<i32, _>((Included(&25), Excluded(&25)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Excluded(&25), Included(&25)))
+        s.range::<i32, _>((Excluded(&25), Included(&25)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Excluded(&25), Excluded(&25)))
+        s.range::<i32, _>((Excluded(&25), Excluded(&25)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
 
     assert_eq!(
-        s.range((Included(&50), Included(&50)))
+        s.range::<i32, _>((Included(&50), Included(&50)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![50]
     );
     assert_eq!(
-        s.range((Included(&50), Excluded(&50)))
+        s.range::<i32, _>((Included(&50), Excluded(&50)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Excluded(&50), Included(&50)))
+        s.range::<i32, _>((Excluded(&50), Included(&50)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Excluded(&50), Excluded(&50)))
+        s.range::<i32, _>((Excluded(&50), Excluded(&50)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
 
     assert_eq!(
-        s.range((Included(&100), Included(&-2)))
+        s.range::<i32, _>((Included(&100), Included(&-2)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Included(&100), Excluded(&-2)))
+        s.range::<i32, _>((Included(&100), Excluded(&-2)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Excluded(&100), Included(&-2)))
+        s.range::<i32, _>((Excluded(&100), Included(&-2)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
     );
     assert_eq!(
-        s.range((Excluded(&100), Excluded(&-2)))
+        s.range::<i32, _>((Excluded(&100), Excluded(&-2)))
             .map(|x| *x.value())
             .collect::<Vec<_>>(),
         vec![]
