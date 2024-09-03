@@ -281,7 +281,12 @@ fn lower_bound() {
     s.insert(40, 4, guard).release(guard);
     s.insert(20, 2, guard).release(guard);
 
-    assert_eq!(*s.lower_bound(Bound::Unbounded, guard).unwrap().value(), 1);
+    assert_eq!(
+        *s.lower_bound::<i32>(Bound::Unbounded, guard)
+            .unwrap()
+            .value(),
+        1
+    );
 
     assert_eq!(
         *s.lower_bound(Bound::Included(&10), guard).unwrap().value(),
@@ -361,7 +366,12 @@ fn upper_bound() {
     s.insert(40, 4, guard).release(guard);
     s.insert(20, 2, guard).release(guard);
 
-    assert_eq!(*s.upper_bound(Bound::Unbounded, guard).unwrap().value(), 5);
+    assert_eq!(
+        *s.upper_bound::<i32>(Bound::Unbounded, guard)
+            .unwrap()
+            .value(),
+        5
+    );
 
     assert_eq!(
         *s.upper_bound(Bound::Included(&10), guard).unwrap().value(),
@@ -899,4 +909,74 @@ fn drops() {
     handle.pin().flush();
     assert_eq!(KEYS.load(Ordering::SeqCst), 8);
     assert_eq!(VALUES.load(Ordering::SeqCst), 7);
+}
+
+#[test]
+fn comparable_get() {
+    use equivalent::{Comparable, Equivalent};
+
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    struct Foo {
+        a: u64,
+        b: u32,
+    }
+
+    #[derive(PartialEq, Eq)]
+    struct FooRef<'a> {
+        data: &'a [u8],
+    }
+
+    impl PartialOrd for FooRef<'_> {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for FooRef<'_> {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            let a = u64::from_be_bytes(self.data[..8].try_into().unwrap());
+            let b = u32::from_be_bytes(self.data[8..].try_into().unwrap());
+            let other_a = u64::from_be_bytes(other.data[..8].try_into().unwrap());
+            let other_b = u32::from_be_bytes(other.data[8..].try_into().unwrap());
+            Foo { a, b }.cmp(&Foo {
+                a: other_a,
+                b: other_b,
+            })
+        }
+    }
+
+    impl Equivalent<Foo> for FooRef<'_> {
+        fn equivalent(&self, key: &Foo) -> bool {
+            let a = u64::from_be_bytes(self.data[..8].try_into().unwrap());
+            let b = u32::from_be_bytes(self.data[8..].try_into().unwrap());
+            a == key.a && b == key.b
+        }
+    }
+
+    impl Comparable<Foo> for FooRef<'_> {
+        fn compare(&self, key: &Foo) -> std::cmp::Ordering {
+            let a = u64::from_be_bytes(self.data[..8].try_into().unwrap());
+            let b = u32::from_be_bytes(self.data[8..].try_into().unwrap());
+            Foo { a, b }.cmp(key)
+        }
+    }
+
+    let s = SkipList::new(epoch::default_collector().clone());
+    let foo = Foo { a: 1, b: 2 };
+
+    let g = &epoch::pin();
+    s.insert(foo, 12, g);
+
+    let buf = 1u64
+        .to_be_bytes()
+        .iter()
+        .chain(2u32.to_be_bytes().iter())
+        .copied()
+        .collect::<Vec<_>>();
+    let foo_ref = FooRef { data: &buf };
+
+    let ent = s.get(&foo_ref, g).unwrap();
+    assert_eq!(ent.key().a, 1);
+    assert_eq!(ent.key().b, 2);
+    assert_eq!(*ent.value(), 12);
 }
