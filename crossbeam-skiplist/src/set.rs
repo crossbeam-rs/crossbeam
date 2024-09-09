@@ -1,6 +1,5 @@
 //! A set based on a lock-free skip list. See [`SkipSet`].
 
-use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
 use std::ops::{Bound, RangeBounds};
@@ -600,7 +599,7 @@ where
 
 impl<'a, Q, R, T> DoubleEndedIterator for Range<'a, Q, R, T>
 where
-    T: Ord + Borrow<Q>,
+    T: Ord,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized + Comparable<T>,
 {
@@ -611,7 +610,7 @@ where
 
 impl<Q, R, T> fmt::Debug for Range<'_, Q, R, T>
 where
-    T: Ord + Borrow<Q> + fmt::Debug,
+    T: Ord + fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized + Comparable<T>,
 {
