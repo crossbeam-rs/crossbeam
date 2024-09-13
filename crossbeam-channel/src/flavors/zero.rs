@@ -13,7 +13,7 @@ use std::{fmt, ptr};
 use crossbeam_utils::Backoff;
 
 use crate::context::Context;
-use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::err::{ForceSendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
 use crate::waker::Waker;
 
@@ -213,6 +213,26 @@ impl<T> Channel<T> {
             Err(TrySendError::Disconnected(msg))
         } else {
             Err(TrySendError::Full(msg))
+        }
+    }
+
+    /// Send the message if a receiver is connected, otherwise returns it to the sender
+    pub(crate) fn force_send(&self, msg: T) -> Result<Option<T>, ForceSendError<T>> {
+        let token = &mut Token::default();
+        let mut inner = self.inner.lock().unwrap();
+
+        // If there's a waiting receiver, pair up with it.
+        if let Some(operation) = inner.receivers.try_select() {
+            token.zero.0 = operation.packet;
+            drop(inner);
+            unsafe {
+                self.write(token, msg).ok().unwrap();
+            }
+            Ok(None)
+        } else if inner.is_disconnected {
+            Err(ForceSendError::Disconnected(msg))
+        } else {
+            Ok(Some(msg))
         }
     }
 

@@ -11,6 +11,17 @@ use std::fmt;
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(pub T);
 
+/// An error returned from the [`force_send`] method.
+///
+/// The error contains the message being sent so it can be recovered.
+///
+/// [`force_send`]: super::Sender::force_send
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum ForceSendError<T> {
+    /// The message could not be sent because the channel is disconnected.
+    Disconnected(T),
+}
+
 /// An error returned from the [`try_send`] method.
 ///
 /// The error contains the message being sent so it can be recovered.
