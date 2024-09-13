@@ -1,6 +1,5 @@
 //! The channel interface.
 
-use core::sync::atomic::AtomicUsize;
 use std::fmt;
 use std::iter::FusedIterator;
 use std::mem;
