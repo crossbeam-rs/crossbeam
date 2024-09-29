@@ -13,7 +13,7 @@ use core::ops::{Deref, DerefMut};
 ///
 /// Cache lines are assumed to be N bytes long, depending on the architecture:
 ///
-/// * On x86-64, aarch64, and powerpc64, N = 128.
+/// * On x86-64, and powerpc64, N = 128.
 /// * On arm, mips, mips64, sparc, and hexagon, N = 32.
 /// * On m68k, N = 16.
 /// * On s390x, N = 256.
@@ -80,7 +80,6 @@ use core::ops::{Deref, DerefMut};
 #[cfg_attr(
     any(
         target_arch = "x86_64",
-        target_arch = "aarch64",
         target_arch = "powerpc64",
     ),
     repr(align(128))
@@ -124,12 +123,12 @@ use core::ops::{Deref, DerefMut};
 // - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_wasm.go#L7
 // - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/riscv/include/asm/cache.h#L10
 // - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/sparc/include/asm/cache.h#L19
+// - https://developer.arm.com/documentation/ddi0488/d/system-control/aarch64-register-descriptions/cache-size-id-register--el1
 //
 // All others are assumed to have 64-byte cache line size.
 #[cfg_attr(
     not(any(
         target_arch = "x86_64",
-        target_arch = "aarch64",
         target_arch = "powerpc64",
         target_arch = "arm",
         target_arch = "mips",
