@@ -13,6 +13,7 @@ go run go.go | tee go.txt
 # up the plot (they start to overlap). So only 5 contenders
 # with the most tests are included by default.
 
+# cargo run --release --bin orengine | tee orengine.txt
 # cargo run --release --bin atomicringqueue | tee atomicringqueue.txt
 # cargo run --release --bin atomicring | tee atomicring.txt
 # cargo run --release --bin bus | tee bus.txt

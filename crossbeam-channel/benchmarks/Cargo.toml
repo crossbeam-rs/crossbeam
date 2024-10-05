@@ -14,6 +14,7 @@ flume = "0.11"
 futures = { version = "0.3", features = ["thread-pool"] }
 lockfree = "0.5.1"
 mpmc = "0.1.6"
+orengine = "0.1.13"
 
 [[bin]]
 name = "atomicring"
@@ -68,6 +69,11 @@ doc = false
 [[bin]]
 name = "mpmc"
 path = "mpmc.rs"
+doc = false
+
+[[bin]]
+name = "orengine"
+path = "orengine.rs"
 doc = false
 
 [lints]
