@@ -1903,7 +1903,6 @@ where
 /// An iterator over reference-counted subset of entries of a `SkipList`.
 pub struct RefRange<'a, Q, R, K, V>
 where
-    K: Ord,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized + Comparable<K>,
 {
@@ -1916,7 +1915,6 @@ where
 
 unsafe impl<Q, R, K, V> Send for RefRange<'_, Q, R, K, V>
 where
-    K: Ord,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized + Comparable<K>,
 {
@@ -1924,7 +1922,6 @@ where
 
 unsafe impl<Q, R, K, V> Sync for RefRange<'_, Q, R, K, V>
 where
-    K: Ord,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized + Comparable<K>,
 {
@@ -1932,7 +1929,7 @@ where
 
 impl<Q, R, K, V> fmt::Debug for RefRange<'_, Q, R, K, V>
 where
-    K: Ord + fmt::Debug,
+    K: fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized + Comparable<K>,
@@ -1943,6 +1940,23 @@ where
             .field("head", &self.head)
             .field("tail", &self.tail)
             .finish()
+    }
+}
+
+impl<'a, Q, R, K: 'a, V: 'a> RefRange<'a, Q, R, K, V>
+where
+    R: RangeBounds<Q>,
+    Q: Ord + ?Sized + Comparable<K>,
+{
+    /// Decrements a reference count owned by this iterator.
+    pub fn drop_impl(&mut self, guard: &Guard) {
+        self.parent.check_guard(guard);
+        if let Some(e) = self.head.take() {
+            unsafe { e.node.decrement(guard) };
+        }
+        if let Some(e) = self.tail.take() {
+            unsafe { e.node.decrement(guard) };
+        }
     }
 }
 
@@ -2029,17 +2043,6 @@ where
             }
         } else {
             None
-        }
-    }
-
-    /// Decrements a reference count owned by this iterator.
-    pub fn drop_impl(&mut self, guard: &Guard) {
-        self.parent.check_guard(guard);
-        if let Some(e) = self.head.take() {
-            unsafe { e.node.decrement(guard) };
-        }
-        if let Some(e) = self.tail.take() {
-            unsafe { e.node.decrement(guard) };
         }
     }
 }

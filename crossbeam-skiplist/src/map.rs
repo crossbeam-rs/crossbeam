@@ -715,7 +715,6 @@ impl<K, V> Drop for Iter<'_, K, V> {
 /// An iterator over a subset of entries of a `SkipMap`.
 pub struct Range<'a, Q, R, K, V>
 where
-    K: Ord,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized + Comparable<K>,
 {
@@ -750,7 +749,7 @@ where
 
 impl<Q, R, K, V> fmt::Debug for Range<'_, Q, R, K, V>
 where
-    K: Ord + fmt::Debug,
+    K: fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized + Comparable<K>,
@@ -766,7 +765,6 @@ where
 
 impl<Q, R, K, V> Drop for Range<'_, Q, R, K, V>
 where
-    K: Ord,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized + Comparable<K>,
 {

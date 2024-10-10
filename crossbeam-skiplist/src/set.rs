@@ -577,7 +577,6 @@ impl<T> fmt::Debug for Iter<'_, T> {
 /// An iterator over a subset of entries of a `SkipSet`.
 pub struct Range<'a, Q, R, T>
 where
-    T: Ord,
     R: RangeBounds<Q>,
     Q: Ord + ?Sized + Comparable<T>,
 {
@@ -610,7 +609,7 @@ where
 
 impl<Q, R, T> fmt::Debug for Range<'_, Q, R, T>
 where
-    T: Ord + fmt::Debug,
+    T: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: Ord + ?Sized + Comparable<T>,
 {
