@@ -11,7 +11,7 @@ use std::time::Instant;
 use crossbeam_utils::{Backoff, CachePadded};
 
 use crate::context::Context;
-use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::err::{ForceSendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
 use crate::waker::SyncWaker;
 
@@ -415,6 +415,15 @@ impl<T> Channel<T> {
             SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
             SendTimeoutError::Timeout(_) => unreachable!(),
         })
+    }
+
+    /// Forces a send, failing only if the channel is disconnected
+    pub(crate) fn force_send(&self, msg: T) -> Result<Option<T>, ForceSendError<T>> {
+        match self.send(msg, None) {
+            Ok(()) => Ok(None),
+            Err(SendTimeoutError::Disconnected(err)) => Err(ForceSendError::Disconnected(err)),
+            Err(SendTimeoutError::Timeout(_)) => unreachable!(),
+        }
     }
 
     /// Sends a message into the channel.
