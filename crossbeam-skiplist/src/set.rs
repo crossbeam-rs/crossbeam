@@ -123,7 +123,7 @@ where
     /// ```
     pub fn contains<Q>(&self, key: &Q) -> bool
     where
-        Q: Ord + ?Sized + Comparable<T>,
+        Q: ?Sized + Comparable<T>,
     {
         self.inner.contains_key(key)
     }
@@ -141,7 +141,7 @@ where
     /// ```
     pub fn get<Q>(&self, key: &Q) -> Option<Entry<'_, T>>
     where
-        Q: Ord + ?Sized + Comparable<T>,
+        Q: ?Sized + Comparable<T>,
     {
         self.inner.get(key).map(Entry::new)
     }
@@ -172,7 +172,7 @@ where
     /// ```
     pub fn lower_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, T>>
     where
-        Q: Ord + ?Sized + Comparable<T>,
+        Q: ?Sized + Comparable<T>,
     {
         self.inner.lower_bound(bound).map(Entry::new)
     }
@@ -200,7 +200,7 @@ where
     /// ```
     pub fn upper_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, T>>
     where
-        Q: Ord + ?Sized + Comparable<T>,
+        Q: ?Sized + Comparable<T>,
     {
         self.inner.upper_bound(bound).map(Entry::new)
     }
@@ -264,7 +264,7 @@ where
     pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, T>
     where
         R: RangeBounds<Q>,
-        Q: Ord + ?Sized + Comparable<T>,
+        Q: ?Sized + Comparable<T>,
     {
         Range {
             inner: self.inner.range(range),
@@ -311,7 +311,7 @@ where
     /// ```
     pub fn remove<Q>(&self, key: &Q) -> Option<Entry<'_, T>>
     where
-        Q: Ord + ?Sized + Comparable<T>,
+        Q: ?Sized + Comparable<T>,
     {
         self.inner.remove(key).map(Entry::new)
     }
@@ -578,7 +578,7 @@ impl<T> fmt::Debug for Iter<'_, T> {
 pub struct Range<'a, Q, R, T>
 where
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<T>,
+    Q: ?Sized + Comparable<T>,
 {
     inner: map::Range<'a, Q, R, T, ()>,
 }
@@ -587,7 +587,7 @@ impl<'a, Q, R, T> Iterator for Range<'a, Q, R, T>
 where
     T: Ord,
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<T>,
+    Q: ?Sized + Comparable<T>,
 {
     type Item = Entry<'a, T>;
 
@@ -600,7 +600,7 @@ impl<'a, Q, R, T> DoubleEndedIterator for Range<'a, Q, R, T>
 where
     T: Ord,
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<T>,
+    Q: ?Sized + Comparable<T>,
 {
     fn next_back(&mut self) -> Option<Entry<'a, T>> {
         self.inner.next_back().map(Entry::new)
@@ -611,7 +611,7 @@ impl<Q, R, T> fmt::Debug for Range<'_, Q, R, T>
 where
     T: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
-    Q: Ord + ?Sized + Comparable<T>,
+    Q: ?Sized + Comparable<T>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Range")

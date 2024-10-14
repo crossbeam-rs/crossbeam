@@ -410,7 +410,7 @@ where
     /// Returns `true` if the map contains a value for the specified key.
     pub fn contains_key<Q>(&self, key: &Q, guard: &Guard) -> bool
     where
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         self.get(key, guard).is_some()
     }
@@ -418,7 +418,7 @@ where
     /// Returns an entry with the specified `key`.
     pub fn get<'a: 'g, 'g, Q>(&'a self, key: &Q, guard: &'g Guard) -> Option<Entry<'a, 'g, K, V>>
     where
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         self.check_guard(guard);
         let n = self.search_bound(Bound::Included(key), false, guard)?;
@@ -441,7 +441,7 @@ where
         guard: &'g Guard,
     ) -> Option<Entry<'a, 'g, K, V>>
     where
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         self.check_guard(guard);
         let n = self.search_bound(bound, false, guard)?;
@@ -461,7 +461,7 @@ where
         guard: &'g Guard,
     ) -> Option<Entry<'a, 'g, K, V>>
     where
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         self.check_guard(guard);
         let n = self.search_bound(bound, true, guard)?;
@@ -521,7 +521,7 @@ where
     where
         K: Borrow<Q>,
         R: RangeBounds<Q>,
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         self.check_guard(guard);
         Range {
@@ -539,7 +539,7 @@ where
     pub fn ref_range<'a, Q, R>(&'a self, range: R) -> RefRange<'a, Q, R, K, V>
     where
         R: RangeBounds<Q>,
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         RefRange {
             parent: self,
@@ -681,7 +681,7 @@ where
         guard: &'a Guard,
     ) -> Option<&'a Node<K, V>>
     where
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         unsafe {
             'search: loop {
@@ -762,7 +762,7 @@ where
     /// Searches for a key in the skip list and returns a list of all adjacent nodes.
     fn search_position<'a, Q>(&'a self, key: &Q, guard: &'a Guard) -> Position<'a, K, V>
     where
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         unsafe {
             'search: loop {
@@ -1095,7 +1095,7 @@ where
     /// Removes an entry with the specified `key` from the map and returns it.
     pub fn remove<Q>(&self, key: &Q, guard: &Guard) -> Option<RefEntry<'_, K, V>>
     where
-        Q: Ord + ?Sized + Comparable<K>,
+        Q: ?Sized + Comparable<K>,
     {
         self.check_guard(guard);
 
@@ -1790,7 +1790,7 @@ pub struct Range<'a: 'g, 'g, Q, R, K, V>
 where
     K: Ord,
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
     parent: &'a SkipList<K, V>,
     head: Option<&'g Node<K, V>>,
@@ -1804,7 +1804,7 @@ impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> Iterator for Range<'a, 'g, Q, R, K, V>
 where
     K: Ord,
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
     type Item = Entry<'a, 'g, K, V>;
 
@@ -1847,7 +1847,7 @@ impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> DoubleEndedIterator for Range<'a, 'g, Q, R,
 where
     K: Ord,
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
     fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V>> {
         self.tail = match self.tail {
@@ -1889,7 +1889,7 @@ where
     K: Ord + fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Range")
@@ -1904,7 +1904,7 @@ where
 pub struct RefRange<'a, Q, R, K, V>
 where
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
     parent: &'a SkipList<K, V>,
     pub(crate) head: Option<RefEntry<'a, K, V>>,
@@ -1916,14 +1916,14 @@ where
 unsafe impl<Q, R, K, V> Send for RefRange<'_, Q, R, K, V>
 where
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
 }
 
 unsafe impl<Q, R, K, V> Sync for RefRange<'_, Q, R, K, V>
 where
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
 }
 
@@ -1932,7 +1932,7 @@ where
     K: fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RefRange")
@@ -1946,7 +1946,7 @@ where
 impl<'a, Q, R, K: 'a, V: 'a> RefRange<'a, Q, R, K, V>
 where
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
     /// Decrements a reference count owned by this iterator.
     pub fn drop_impl(&mut self, guard: &Guard) {
@@ -1964,7 +1964,7 @@ impl<'a, Q, R, K: 'a, V: 'a> RefRange<'a, Q, R, K, V>
 where
     K: Ord,
     R: RangeBounds<Q>,
-    Q: Ord + ?Sized + Comparable<K>,
+    Q: ?Sized + Comparable<K>,
 {
     /// Advances the iterator and returns the next value.
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
@@ -2129,7 +2129,7 @@ where
 }
 
 /// Helper function to check if a value is above a lower bound
-fn above_lower_bound<V, T: Ord + ?Sized + Comparable<V>>(bound: &Bound<&T>, other: &V) -> bool {
+fn above_lower_bound<V, T: ?Sized + Comparable<V>>(bound: &Bound<&T>, other: &V) -> bool {
     match *bound {
         Bound::Unbounded => true,
         Bound::Included(key) => key.compare(other).is_le(),
@@ -2138,7 +2138,7 @@ fn above_lower_bound<V, T: Ord + ?Sized + Comparable<V>>(bound: &Bound<&T>, othe
 }
 
 /// Helper function to check if a value is below an upper bound
-fn below_upper_bound<V, T: Ord + ?Sized + Comparable<V>>(bound: &Bound<&T>, other: &V) -> bool {
+fn below_upper_bound<V, T: ?Sized + Comparable<V>>(bound: &Bound<&T>, other: &V) -> bool {
     match *bound {
         Bound::Unbounded => true,
         Bound::Included(key) => key.compare(other).is_ge(),
