@@ -1514,7 +1514,7 @@ pub(crate) unsafe fn write<T>(s: &Sender<T>, token: &mut Token, msg: T) -> Resul
     unsafe {
         match &s.flavor {
             SenderFlavor::Array(chan) => chan.write(token, msg),
-            SenderFlavor::List(chan) => chan.write(token, msg),
+            SenderFlavor::List(chan) => chan.write(&mut token.list, msg),
             SenderFlavor::Zero(chan) => chan.write(token, msg),
         }
     }
@@ -1525,7 +1525,7 @@ pub(crate) unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()
     unsafe {
         match &r.flavor {
             ReceiverFlavor::Array(chan) => chan.read(token),
-            ReceiverFlavor::List(chan) => chan.read(token),
+            ReceiverFlavor::List(chan) => chan.read(&mut token.list),
             ReceiverFlavor::Zero(chan) => chan.read(token),
             ReceiverFlavor::At(chan) => {
                 mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
