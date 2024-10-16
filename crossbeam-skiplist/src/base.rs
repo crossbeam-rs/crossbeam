@@ -1157,8 +1157,12 @@ where
                             break;
                         }
                     }
+                    return Some(entry);
+                } else {
+                    // The node has already been marked.
+                    n.decrement(guard);
+                    return None;
                 }
-                return Some(entry);
             }
         }
     }
