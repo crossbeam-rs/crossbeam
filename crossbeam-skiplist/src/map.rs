@@ -566,12 +566,12 @@ impl<'a, K, V> Entry<'a, K, V> {
     }
 
     /// Returns a reference to the key.
-    pub fn key(&self) -> &K {
+    pub fn key(&self) -> &'a K {
         self.inner.key()
     }
 
     /// Returns a reference to the value.
-    pub fn value(&self) -> &V {
+    pub fn value(&self) -> &'a V {
         self.inner.value()
     }
 

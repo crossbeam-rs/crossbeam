@@ -1449,12 +1449,12 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
     }
 
     /// Returns a reference to the key.
-    pub fn key(&self) -> &K {
+    pub fn key(&self) -> &'a K {
         &self.node.key
     }
 
     /// Returns a reference to the value.
-    pub fn value(&self) -> &V {
+    pub fn value(&self) -> &'a V {
         &self.node.value
     }
 

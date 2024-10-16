@@ -450,7 +450,7 @@ impl<'a, T> Entry<'a, T> {
     }
 
     /// Returns a reference to the value.
-    pub fn value(&self) -> &T {
+    pub fn value(&self) -> &'a T {
         self.inner.key()
     }
 
