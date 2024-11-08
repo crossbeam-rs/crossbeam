@@ -1,6 +1,6 @@
 //! Unbounded channel implemented as a linked list.
 
-use std::alloc::{alloc_zeroed, Layout};
+use std::alloc::{alloc_zeroed, handle_alloc_error, Layout};
 use std::boxed::Box;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -74,6 +74,17 @@ struct Block<T> {
 impl<T> Block<T> {
     /// Creates an empty block.
     fn new() -> Box<Self> {
+        let layout = Layout::new::<Self>();
+        assert!(
+            layout.size() != 0,
+            "Block should never be zero-sized, as it has an AtomicPtr field"
+        );
+        // SAFETY: layout is not zero-sized
+        let ptr = unsafe { alloc_zeroed(layout) };
+        // Handle allocation failure
+        if ptr.is_null() {
+            handle_alloc_error(layout)
+        }
         // SAFETY: This is safe because:
         //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
         //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
@@ -81,8 +92,7 @@ impl<T> Block<T> {
         //       holds a MaybeUninit.
         //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
         // TODO: unsafe { Box::new_zeroed().assume_init() }
-        let layout = Layout::new::<Self>();
-        unsafe { Box::from_raw(alloc_zeroed(layout).cast()) }
+        unsafe { Box::from_raw(ptr.cast()) }
     }
 
     /// Waits until the next pointer is set.
