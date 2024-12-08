@@ -4,10 +4,13 @@
 
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
 
 pub(crate) struct OnceLock<T> {
     once: Once,
+    // Once::is_completed requires Rust 1.43, so use this to track of whether they have been initialized.
+    is_initialized: AtomicBool,
     value: UnsafeCell<MaybeUninit<T>>,
     // Unlike std::sync::OnceLock, we don't need PhantomData here because
     // we don't use #[may_dangle].
@@ -22,6 +25,7 @@ impl<T> OnceLock<T> {
     pub(crate) const fn new() -> Self {
         Self {
             once: Once::new(),
+            is_initialized: AtomicBool::new(false),
             value: UnsafeCell::new(MaybeUninit::uninit()),
         }
     }
@@ -46,7 +50,7 @@ impl<T> OnceLock<T> {
         F: FnOnce() -> T,
     {
         // Fast path check
-        if self.once.is_completed() {
+        if self.is_initialized() {
             // SAFETY: The inner value has been initialized
             return unsafe { self.get_unchecked() };
         }
@@ -56,16 +60,23 @@ impl<T> OnceLock<T> {
         unsafe { self.get_unchecked() }
     }
 
+    #[inline]
+    fn is_initialized(&self) -> bool {
+        self.is_initialized.load(Ordering::Acquire)
+    }
+
     #[cold]
     fn initialize<F>(&self, f: F)
     where
         F: FnOnce() -> T,
     {
         let slot = self.value.get();
+        let is_initialized = &self.is_initialized;
 
         self.once.call_once(|| {
             let value = f();
             unsafe { slot.write(MaybeUninit::new(value)) }
+            is_initialized.store(true, Ordering::Release);
         });
     }
 
@@ -73,14 +84,16 @@ impl<T> OnceLock<T> {
     ///
     /// The value must be initialized
     unsafe fn get_unchecked(&self) -> &T {
-        debug_assert!(self.once.is_completed());
-        unsafe { (*self.value.get()).assume_init_ref() }
+        debug_assert!(self.is_initialized());
+        // assume_init_drop requires Rust 1.55
+        // unsafe { (*self.value.get()).assume_init_ref() }
+        unsafe { &*self.value.get().cast::<T>() }
     }
 }
 
 impl<T> Drop for OnceLock<T> {
     fn drop(&mut self) {
-        if self.once.is_completed() {
+        if self.is_initialized() {
             // SAFETY: The inner value has been initialized
             // assume_init_drop requires Rust 1.60
             // unsafe { (*self.value.get()).assume_init_drop() };

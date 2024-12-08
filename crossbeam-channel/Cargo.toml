@@ -5,7 +5,7 @@ name = "crossbeam-channel"
 # - Update README.md (when increasing major or minor version)
 # - Run './tools/publish.sh crossbeam-channel <version>'
 version = "0.5.13"
-edition = "2021"
+edition = "2018"
 rust-version = "1.60"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"

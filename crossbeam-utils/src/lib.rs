@@ -32,7 +32,7 @@
         allow(dead_code, unused_assignments, unused_variables)
     )
 ))]
-#![warn(missing_docs, unsafe_op_in_unsafe_fn)]
+#![warn(missing_docs, /* unsafe_op_in_unsafe_fn */)] // unsafe_op_in_unsafe_fn requires Rust 1.52
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "std")]
@@ -65,7 +65,13 @@ mod primitive {
 #[allow(unused_imports)]
 mod primitive {
     pub(crate) mod hint {
-        pub(crate) use core::hint::spin_loop;
+        // core::hint::spin_loop requires Rust 1.49
+        // pub(crate) use core::hint::spin_loop;
+        #[inline]
+        pub(crate) fn spin_loop() {
+            #[allow(deprecated)]
+            core::sync::atomic::spin_loop_hint();
+        }
     }
     pub(crate) mod sync {
         pub(crate) use core::sync::atomic;

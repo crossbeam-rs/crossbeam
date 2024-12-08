@@ -2,6 +2,7 @@
 
 use std::borrow::Borrow;
 use std::fmt;
+use std::iter::FromIterator;
 use std::ops::Deref;
 use std::ops::{Bound, RangeBounds};
 
