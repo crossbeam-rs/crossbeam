@@ -34,7 +34,7 @@ alloc = []
 loom = ["loom-crate", "crossbeam-utils/loom"]
 
 [dependencies]
-crossbeam-utils = { version = "0.8.18", path = "../crossbeam-utils", default-features = false }
+crossbeam-utils = { version = "0.8.18", path = "../crossbeam-utils", default-features = false, features = ["atomic"] }
 
 # Enable the use of loom for concurrency testing.
 #

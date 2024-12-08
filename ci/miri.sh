@@ -16,20 +16,20 @@ export MIRIFLAGS="${MIRIFLAGS:-} -Zmiri-strict-provenance -Zmiri-symbolic-alignm
 case "${group}" in
     channel)
         MIRI_LEAK_CHECK='1' \
-            cargo miri test \
+            cargo miri test --all-features \
             -p crossbeam-channel 2>&1 | ts -i '%.s  '
         # -Zmiri-ignore-leaks is needed because we use detached threads in tests in tests/golang.rs: https://github.com/rust-lang/miri/issues/1371
         MIRIFLAGS="${MIRIFLAGS} -Zmiri-ignore-leaks" \
-            cargo miri test \
+            cargo miri test --all-features \
             -p crossbeam-channel --test golang 2>&1 | ts -i '%.s  '
         ;;
     others)
-        cargo miri test \
+        cargo miri test --all-features \
             -p crossbeam-queue \
             -p crossbeam-utils 2>&1 | ts -i '%.s  '
         # Use Tree Borrows instead of Stacked Borrows because epoch is not compatible with Stacked Borrows: https://github.com/crossbeam-rs/crossbeam/issues/545#issuecomment-1192785003
         MIRIFLAGS="${MIRIFLAGS} -Zmiri-tree-borrows" \
-            cargo miri test \
+            cargo miri test --all-features \
             -p crossbeam-epoch \
             -p crossbeam-skiplist \
             -p crossbeam 2>&1 | ts -i '%.s  '
@@ -38,7 +38,7 @@ case "${group}" in
         # doctest of Stealer::steal) incorrectly assume that sequential weak CAS will never fail.
         # -Zmiri-preemption-rate=0 is needed because this code technically has UB and Miri catches that.
         MIRIFLAGS="${MIRIFLAGS} -Zmiri-tree-borrows -Zmiri-compare-exchange-weak-failure-rate=0.0 -Zmiri-preemption-rate=0" \
-            cargo miri test \
+            cargo miri test --all-features \
             -p crossbeam-deque 2>&1 | ts -i '%.s  '
         ;;
     *)
