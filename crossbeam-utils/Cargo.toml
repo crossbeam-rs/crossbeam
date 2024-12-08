@@ -26,9 +26,10 @@ std = []
 
 # Enable `atomic` module.
 # This requires Rust 1.60.
-atomic = []
+atomic = ["atomic-maybe-uninit"]
 
 [dependencies]
+atomic-maybe-uninit = { version = "0.3.4", optional = true }
 
 # Enable the use of loom for concurrency testing.
 #
