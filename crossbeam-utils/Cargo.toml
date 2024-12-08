@@ -6,7 +6,7 @@ name = "crossbeam-utils"
 # - Run './tools/publish.sh crossbeam-utils <version>'
 version = "0.8.20"
 edition = "2021"
-rust-version = "1.60"
+rust-version = "1.56"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils"
@@ -25,6 +25,7 @@ default = ["std"]
 std = []
 
 # Enable `atomic` module.
+# This requires Rust 1.60.
 atomic = []
 
 [dependencies]

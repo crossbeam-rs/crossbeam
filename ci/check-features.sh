@@ -7,7 +7,10 @@ cd "$(dirname "$0")"/..
 # * `--no-dev-deps` - build without dev-dependencies to avoid https://github.com/rust-lang/cargo/issues/4866
 # * `--exclude benchmarks` - benchmarks doesn't published.
 if [[ "${RUST_VERSION}" == "msrv" ]]; then
-    cargo hack build --all --feature-powerset --no-dev-deps --exclude benchmarks --rust-version
+    cargo hack build --all --feature-powerset --no-dev-deps --exclude crossbeam-utils --exclude benchmarks --rust-version
+    # atomic feature requires Rust 1.60.
+    cargo hack build -p crossbeam-utils --feature-powerset --no-dev-deps --rust-version --exclude-features atomic
+    cargo +1.60 hack build -p crossbeam-utils --feature-powerset --no-dev-deps
 else
     cargo hack build --all --feature-powerset --no-dev-deps --exclude benchmarks
 fi
