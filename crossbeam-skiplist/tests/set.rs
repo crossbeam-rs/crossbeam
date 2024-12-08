@@ -1,6 +1,10 @@
 use crossbeam_skiplist::SkipSet;
 use crossbeam_utils::thread;
-use std::{iter, ops::Bound, sync::Barrier};
+use std::{
+    iter,
+    ops::Bound,
+    sync::{Arc, Barrier},
+};
 
 #[test]
 fn smoke() {
@@ -696,9 +700,8 @@ fn clear() {
 // https://github.com/crossbeam-rs/crossbeam/issues/1023
 #[test]
 fn concurrent_insert_get_same_key() {
-    use std::sync::Arc;
     let set: Arc<SkipSet<u32>> = Arc::new(SkipSet::new());
-    let len = 10_0000;
+    let len = if cfg!(miri) { 100 } else { 10_000 };
     let key = 0;
     set.insert(0);
 
