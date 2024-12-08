@@ -176,7 +176,7 @@ impl<T> SegQueue<T> {
         }
     }
 
-    /// Pushes an element into the queue.
+    /// Pushes back an element to the tail.
     ///
     /// # Examples
     ///
@@ -268,7 +268,7 @@ impl<T> SegQueue<T> {
         }
     }
 
-    /// Pops an element from the queue.
+    /// Pops the head element from the queue.
     ///
     /// If the queue is empty, `None` is returned.
     ///
@@ -280,7 +280,9 @@ impl<T> SegQueue<T> {
     /// let q = SegQueue::new();
     ///
     /// q.push(10);
+    /// q.push(20);
     /// assert_eq!(q.pop(), Some(10));
+    /// assert_eq!(q.pop(), Some(20));
     /// assert!(q.pop().is_none());
     /// ```
     pub fn pop(&self) -> Option<T> {

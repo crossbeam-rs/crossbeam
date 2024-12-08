@@ -580,3 +580,18 @@ fn channel_through_channel() {
     })
     .unwrap();
 }
+
+// If `Block` is created on the stack, the array of slots will multiply this `BigStruct` and
+// probably overflow the thread stack. It's now directly created on the heap to avoid this.
+#[test]
+fn stack_overflow() {
+    const N: usize = 32_768;
+    struct BigStruct {
+        _data: [u8; N],
+    }
+
+    let (sender, receiver) = unbounded::<BigStruct>();
+    sender.send(BigStruct { _data: [0u8; N] }).unwrap();
+
+    for _data in receiver.try_iter() {}
+}
