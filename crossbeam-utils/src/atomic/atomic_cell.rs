@@ -36,6 +36,7 @@ pub struct AtomicCell<T> {
     ///
     /// Using MaybeUninit to prevent code outside the cell from observing partially initialized state:
     /// <https://github.com/crossbeam-rs/crossbeam/issues/833>
+    /// (This rustc bug has been fixed in Rust 1.64.)
     ///
     /// Note:
     /// - we'll never store uninitialized `T` due to our API only using initialized `T`.
