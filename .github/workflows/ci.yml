@@ -35,9 +35,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - rust: '1.61'
+          - rust: '1.63'
             os: ubuntu-latest
-          - rust: '1.61'
+          - rust: '1.63'
             os: windows-latest
           - rust: stable
             os: ubuntu-latest
