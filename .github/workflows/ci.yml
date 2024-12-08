@@ -136,7 +136,7 @@ jobs:
           if ! git diff --exit-code; then
               git add .
               git commit -m "Update no_atomic.rs"
-              echo "::set-output name=success::false"
+              echo 'success=false' >>"${GITHUB_OUTPUT}"
           fi
         if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule'
       - uses: peter-evans/create-pull-request@v5
