@@ -139,7 +139,7 @@ jobs:
               echo 'success=false' >>"${GITHUB_OUTPUT}"
           fi
         if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule'
-      - uses: peter-evans/create-pull-request@v5
+      - uses: peter-evans/create-pull-request@v7
         with:
           title: Update no_atomic.rs
           body: |
