@@ -170,7 +170,7 @@ jobs:
       - name: Install Rust
         run: rustup update stable
       - name: clippy
-        run: cargo clippy --all --tests --examples
+        run: cargo clippy --all --all-features --tests --examples
 
   # Run miri.
   miri:

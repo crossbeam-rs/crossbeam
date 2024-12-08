@@ -14,12 +14,18 @@ description = "Utilities for concurrent programming"
 keywords = ["scoped", "thread", "atomic", "cache"]
 categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = ["std"]
 
 # Enable to use APIs that require `std`.
 # This is enabled by default.
 std = []
+
+# Enable `atomic` module.
+atomic = []
 
 [dependencies]
 
