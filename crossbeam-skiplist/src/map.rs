@@ -5,9 +5,11 @@ use std::mem::ManuallyDrop;
 use std::ops::{Bound, RangeBounds};
 use std::ptr;
 
-use crate::base::{self, try_pin_loop};
+use crate::{
+    base::{self, try_pin_loop},
+    equivalent::Comparable,
+};
 use crossbeam_epoch as epoch;
-use equivalent::Comparable;
 
 /// An ordered map based on a lock-free skip list.
 ///
@@ -133,7 +135,8 @@ where
     /// ```
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
-        Q: ?Sized + Comparable<K>,
+        K: Comparable<Q>,
+        Q: ?Sized,
     {
         let guard = &epoch::pin();
         self.inner.contains_key(key, guard)
@@ -156,7 +159,8 @@ where
     /// ```
     pub fn get<Q>(&self, key: &Q) -> Option<Entry<'_, K, V>>
     where
-        Q: ?Sized + Comparable<K>,
+        K: Comparable<Q>,
+        Q: ?Sized,
     {
         let guard = &epoch::pin();
         try_pin_loop(|| self.inner.get(key, guard)).map(Entry::new)
@@ -190,7 +194,8 @@ where
     /// ```
     pub fn lower_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, K, V>>
     where
-        Q: ?Sized + Comparable<K>,
+        K: Comparable<Q>,
+        Q: ?Sized,
     {
         let guard = &epoch::pin();
         try_pin_loop(|| self.inner.lower_bound(bound, guard)).map(Entry::new)
@@ -221,7 +226,8 @@ where
     /// ```
     pub fn upper_bound<'a, Q>(&'a self, bound: Bound<&Q>) -> Option<Entry<'a, K, V>>
     where
-        Q: ?Sized + Comparable<K>,
+        K: Comparable<Q>,
+        Q: ?Sized,
     {
         let guard = &epoch::pin();
         try_pin_loop(|| self.inner.upper_bound(bound, guard)).map(Entry::new)
@@ -334,7 +340,8 @@ where
     pub fn range<Q, R>(&self, range: R) -> Range<'_, Q, R, K, V>
     where
         R: RangeBounds<Q>,
-        Q: ?Sized + Comparable<K>,
+        K: Comparable<Q>,
+        Q: ?Sized,
     {
         Range {
             inner: self.inner.ref_range(range),
@@ -419,7 +426,8 @@ where
     /// ```
     pub fn remove<Q>(&self, key: &Q) -> Option<Entry<'_, K, V>>
     where
-        Q: ?Sized + Comparable<K>,
+        K: Comparable<Q>,
+        Q: ?Sized,
     {
         let guard = &epoch::pin();
         self.inner.remove(key, guard).map(Entry::new)
@@ -715,17 +723,18 @@ impl<K, V> Drop for Iter<'_, K, V> {
 /// An iterator over a subset of entries of a `SkipMap`.
 pub struct Range<'a, Q, R, K, V>
 where
+    K: Ord + Comparable<Q>,
     R: RangeBounds<Q>,
-    Q: ?Sized + Comparable<K>,
+    Q: ?Sized,
 {
     pub(crate) inner: base::RefRange<'a, Q, R, K, V>,
 }
 
 impl<'a, Q, R, K, V> Iterator for Range<'a, Q, R, K, V>
 where
-    K: Ord,
+    K: Ord + Comparable<Q>,
     R: RangeBounds<Q>,
-    Q: ?Sized + Comparable<K>,
+    Q: ?Sized,
 {
     type Item = Entry<'a, K, V>;
 
@@ -737,9 +746,9 @@ where
 
 impl<'a, Q, R, K, V> DoubleEndedIterator for Range<'a, Q, R, K, V>
 where
-    K: Ord,
+    K: Ord + Comparable<Q>,
     R: RangeBounds<Q>,
-    Q: ?Sized + Comparable<K>,
+    Q: ?Sized,
 {
     fn next_back(&mut self) -> Option<Entry<'a, K, V>> {
         let guard = &epoch::pin();
@@ -749,10 +758,10 @@ where
 
 impl<Q, R, K, V> fmt::Debug for Range<'_, Q, R, K, V>
 where
-    K: fmt::Debug,
+    K: Ord + fmt::Debug + Comparable<Q>,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
-    Q: ?Sized + Comparable<K>,
+    Q: ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Range")
@@ -765,8 +774,9 @@ where
 
 impl<Q, R, K, V> Drop for Range<'_, Q, R, K, V>
 where
+    K: Ord + Comparable<Q>,
     R: RangeBounds<Q>,
-    Q: ?Sized + Comparable<K>,
+    Q: ?Sized,
 {
     fn drop(&mut self) {
         let guard = &epoch::pin();
