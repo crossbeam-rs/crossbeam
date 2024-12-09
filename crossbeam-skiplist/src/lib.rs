@@ -259,5 +259,4 @@ pub mod set;
 #[doc(inline)]
 pub use crate::{map::SkipMap, set::SkipSet};
 
-/// Traits for key comparison in maps.
 pub mod equivalent;
