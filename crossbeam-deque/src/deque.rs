@@ -2,6 +2,7 @@ use std::boxed::Box;
 use std::cell::{Cell, UnsafeCell};
 use std::cmp;
 use std::fmt;
+use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
 use std::ptr;

@@ -1,6 +1,7 @@
 //! A set based on a lock-free skip list. See [`SkipSet`].
 
 use std::fmt;
+use std::iter::FromIterator;
 use std::ops::Deref;
 use std::ops::{Bound, RangeBounds};
 

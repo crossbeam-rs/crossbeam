@@ -1,6 +1,7 @@
 //! An ordered map based on a lock-free skip list. See [`SkipMap`].
 
 use std::fmt;
+use std::iter::FromIterator;
 use std::mem::ManuallyDrop;
 use std::ops::{Bound, RangeBounds};
 use std::ptr;

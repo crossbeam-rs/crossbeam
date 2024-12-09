@@ -5,6 +5,7 @@
 //! * [`WaitGroup`], for synchronizing the beginning or end of some computation.
 
 #[cfg(not(crossbeam_loom))]
+#[allow(unused_unsafe)] // once_lock.rs is also used from epoch which sets unsafe_op_in_unsafe_fn.
 mod once_lock;
 mod parker;
 #[cfg(not(crossbeam_loom))]

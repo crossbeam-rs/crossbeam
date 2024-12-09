@@ -5,8 +5,8 @@ name = "crossbeam-utils"
 # - Update README.md (when increasing major or minor version)
 # - Run './tools/publish.sh crossbeam-utils <version>'
 version = "0.8.20"
-edition = "2021"
-rust-version = "1.56"
+edition = "2018"
+rust-version = "1.38"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils"

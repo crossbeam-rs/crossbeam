@@ -3,6 +3,10 @@
 //! * [`AtomicCell`], a thread-safe mutable memory location.
 //! * [`AtomicConsume`], for reading from primitive atomic types with "consume" ordering.
 
+// unsafe_op_in_unsafe_fn requires Rust 1.52, so cannot be used at crate-level,
+// but this module requires 1.60.
+#![warn(unsafe_op_in_unsafe_fn)]
+
 #[cfg(target_has_atomic = "ptr")]
 #[cfg(not(crossbeam_loom))]
 // Use "wide" sequence lock if the pointer width <= 32 for preventing its counter against wrap
