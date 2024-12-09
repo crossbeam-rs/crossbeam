@@ -33,6 +33,7 @@
     )
 ))]
 #![warn(missing_docs, unsafe_op_in_unsafe_fn)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -67,28 +68,14 @@ mod primitive {
         pub(crate) use core::hint::spin_loop;
     }
     pub(crate) mod sync {
-        pub(crate) mod atomic {
-            pub(crate) use core::sync::atomic::{compiler_fence, Ordering};
-            #[cfg(not(crossbeam_no_atomic))]
-            pub(crate) use core::sync::atomic::{
-                AtomicBool, AtomicI16, AtomicI8, AtomicIsize, AtomicU16, AtomicU8, AtomicUsize,
-            };
-            #[cfg(not(crossbeam_no_atomic))]
-            #[cfg(any(target_has_atomic = "32", not(target_pointer_width = "16")))]
-            pub(crate) use core::sync::atomic::{AtomicI32, AtomicU32};
-            #[cfg(not(crossbeam_no_atomic))]
-            #[cfg(any(
-                target_has_atomic = "64",
-                not(any(target_pointer_width = "16", target_pointer_width = "32")),
-            ))]
-            pub(crate) use core::sync::atomic::{AtomicI64, AtomicU64};
-        }
-
+        pub(crate) use core::sync::atomic;
         #[cfg(feature = "std")]
         pub(crate) use std::sync::{Arc, Condvar, Mutex};
     }
 }
 
+#[cfg(feature = "atomic")]
+#[cfg_attr(docsrs, doc(cfg(feature = "atomic")))]
 pub mod atomic;
 
 mod cache_padded;

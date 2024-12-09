@@ -82,7 +82,9 @@ impl<T> Drop for OnceLock<T> {
     fn drop(&mut self) {
         if self.once.is_completed() {
             // SAFETY: The inner value has been initialized
-            unsafe { (*self.value.get()).assume_init_drop() };
+            // assume_init_drop requires Rust 1.60
+            // unsafe { (*self.value.get()).assume_init_drop() };
+            unsafe { self.value.get().cast::<T>().drop_in_place() };
         }
     }
 }

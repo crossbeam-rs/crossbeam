@@ -611,6 +611,9 @@ pub struct Select<'a> {
 
     /// The next index to assign to an operation.
     next_index: usize,
+
+    /// Whether to use the index of handles as bias for selecting ready operations.
+    biased: bool,
 }
 
 unsafe impl Send for Select<'_> {}
@@ -633,6 +636,28 @@ impl<'a> Select<'a> {
         Self {
             handles: Vec::with_capacity(4),
             next_index: 0,
+            biased: false,
+        }
+    }
+
+    /// Creates an empty list of channel operations with biased selection.
+    ///
+    /// When multiple handles are ready, this will select the operation with the lowest index.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::Select;
+    ///
+    /// let mut sel = Select::new_biased();
+    ///
+    /// // The list of operations is empty, which means no operation can be selected.
+    /// assert!(sel.try_select().is_err());
+    /// ```
+    pub fn new_biased() -> Self {
+        Self {
+            biased: true,
+            ..Default::default()
         }
     }
 
@@ -774,7 +799,7 @@ impl<'a> Select<'a> {
     /// }
     /// ```
     pub fn try_select(&mut self) -> Result<SelectedOperation<'a>, TrySelectError> {
-        try_select(&mut self.handles, false)
+        try_select(&mut self.handles, self.biased)
     }
 
     /// Blocks until one of the operations becomes ready and selects it.
@@ -825,7 +850,7 @@ impl<'a> Select<'a> {
     /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn select(&mut self) -> SelectedOperation<'a> {
-        select(&mut self.handles, false)
+        select(&mut self.handles, self.biased)
     }
 
     /// Blocks for a limited time until one of the operations becomes ready and selects it.
@@ -879,7 +904,7 @@ impl<'a> Select<'a> {
         &mut self,
         timeout: Duration,
     ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
-        select_timeout(&mut self.handles, timeout, false)
+        select_timeout(&mut self.handles, timeout, self.biased)
     }
 
     /// Blocks until a given deadline, or until one of the operations becomes ready and selects it.
@@ -935,7 +960,7 @@ impl<'a> Select<'a> {
         &mut self,
         deadline: Instant,
     ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
-        select_deadline(&mut self.handles, deadline, false)
+        select_deadline(&mut self.handles, deadline, self.biased)
     }
 
     /// Attempts to find a ready operation without blocking.
@@ -974,7 +999,7 @@ impl<'a> Select<'a> {
     /// }
     /// ```
     pub fn try_ready(&mut self) -> Result<usize, TryReadyError> {
-        match run_ready(&mut self.handles, Timeout::Now, false) {
+        match run_ready(&mut self.handles, Timeout::Now, self.biased) {
             None => Err(TryReadyError),
             Some(index) => Ok(index),
         }
@@ -1031,7 +1056,7 @@ impl<'a> Select<'a> {
             panic!("no operations have been added to `Select`");
         }
 
-        run_ready(&mut self.handles, Timeout::Never, false).unwrap()
+        run_ready(&mut self.handles, Timeout::Never, self.biased).unwrap()
     }
 
     /// Blocks for a limited time until one of the operations becomes ready.
@@ -1132,7 +1157,7 @@ impl<'a> Select<'a> {
     /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
     /// ```
     pub fn ready_deadline(&mut self, deadline: Instant) -> Result<usize, ReadyTimeoutError> {
-        match run_ready(&mut self.handles, Timeout::At(deadline), false) {
+        match run_ready(&mut self.handles, Timeout::At(deadline), self.biased) {
             None => Err(ReadyTimeoutError),
             Some(index) => Ok(index),
         }
@@ -1144,6 +1169,7 @@ impl Clone for Select<'_> {
         Self {
             handles: self.handles.clone(),
             next_index: self.next_index,
+            biased: self.biased,
         }
     }
 }
