@@ -1,3 +1,7 @@
+# Version 0.8.6
+
+- Fix stack overflow when pushing large value to `Injector`. (#1146, #1147, #1159)
+
 # Version 0.8.5
 
 - Remove dependency on `cfg-if`. (#1072)

@@ -1,3 +1,7 @@
+# Version 0.3.12
+
+- Fix stack overflow when pushing large value to `SegQueue`. (#1146, #1147, #1159)
+
 # Version 0.3.11
 
 - Remove dependency on `cfg-if`. (#1072)
