@@ -4,7 +4,7 @@ name = "crossbeam-utils"
 # - Update CHANGELOG.md
 # - Update README.md (when increasing major or minor version)
 # - Run './tools/publish.sh crossbeam-utils <version>'
-version = "0.8.20"
+version = "0.8.21"
 edition = "2021"
 rust-version = "1.60"
 license = "MIT OR Apache-2.0"
