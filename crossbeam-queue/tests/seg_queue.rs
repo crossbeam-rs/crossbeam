@@ -193,3 +193,18 @@ fn into_iter_drop() {
         assert_eq!(i, j);
     }
 }
+
+// If `Block` is created on the stack, the array of slots will multiply this `BigStruct` and
+// probably overflow the thread stack. It's now directly created on the heap to avoid this.
+#[test]
+fn stack_overflow() {
+    const N: usize = 32_768;
+    struct BigStruct {
+        _data: [u8; N],
+    }
+
+    let q = SegQueue::new();
+    q.push(BigStruct { _data: [0u8; N] });
+
+    for _data in q.into_iter() {}
+}

@@ -373,3 +373,19 @@ fn destructors() {
         }
     }
 }
+
+// If `Block` is created on the stack, the array of slots will multiply this `BigStruct` and
+// probably overflow the thread stack. It's now directly created on the heap to avoid this.
+#[test]
+fn stack_overflow() {
+    const N: usize = 32_768;
+    struct BigStruct {
+        _data: [u8; N],
+    }
+
+    let q = Injector::new();
+
+    q.push(BigStruct { _data: [0u8; N] });
+
+    while !matches!(q.steal(), Empty) {}
+}
