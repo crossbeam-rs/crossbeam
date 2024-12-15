@@ -1225,18 +1225,22 @@ struct Block<T> {
 }
 
 impl<T> Block<T> {
-    /// Creates an empty block.
-    fn new() -> Box<Self> {
+    const LAYOUT: Layout = {
         let layout = Layout::new::<Self>();
         assert!(
             layout.size() != 0,
             "Block should never be zero-sized, as it has an AtomicPtr field"
         );
+        layout
+    };
+
+    /// Creates an empty block.
+    fn new() -> Box<Self> {
         // SAFETY: layout is not zero-sized
-        let ptr = unsafe { alloc_zeroed(layout) };
+        let ptr = unsafe { alloc_zeroed(Self::LAYOUT) };
         // Handle allocation failure
         if ptr.is_null() {
-            handle_alloc_error(layout)
+            handle_alloc_error(Self::LAYOUT)
         }
         // SAFETY: This is safe because:
         //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
