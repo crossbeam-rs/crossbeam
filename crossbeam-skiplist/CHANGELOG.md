@@ -1,3 +1,9 @@
+# Version 0.1.4
+
+- Allow lookup to be customized. (#1132)
+- Explicitly annotate lifetime of entry methods. (#1141)
+- Fix #1023. (#1101)
+
 # Version 0.1.3
 
 - Remove dependency on `cfg-if`. (#1072)
