@@ -18,7 +18,7 @@ use std::time::Instant;
 use crossbeam_utils::{Backoff, CachePadded};
 
 use crate::context::Context;
-use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::err::{ForceSendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
 use crate::waker::SyncWaker;
 
@@ -322,6 +322,27 @@ impl<T> Channel<T> {
             unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
         } else {
             Err(TrySendError::Full(msg))
+        }
+    }
+
+    /// Force send a message into the channel. Only fails if the channel is disconnected
+    pub(crate) fn force_send(&self, mut msg: T) -> Result<Option<T>, ForceSendError<T>> {
+        let mut token = Token::default();
+        if self.start_send(&mut token) {
+            match unsafe { self.write(&mut token, msg) } {
+                Ok(()) => Ok(None),
+                Err(msg) => Err(ForceSendError::Disconnected(msg)),
+            }
+        } else {
+            let tail = self.tail.load(Ordering::Acquire);
+            let prev_index = match tail & (self.mark_bit - 1) {
+                0 => self.cap() - 1,
+                x => x - 1,
+            };
+            let queued_msg =
+                unsafe { (*self.buffer.get_unchecked(prev_index).msg.get()).assume_init_mut() };
+            std::mem::swap(&mut msg, queued_msg);
+            Ok(Some(msg))
         }
     }
 
