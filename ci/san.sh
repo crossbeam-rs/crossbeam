@@ -15,10 +15,11 @@ rustup component add rust-src
 # `--cfg crossbeam_sanitize`.
 cargo clean
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=address --cfg crossbeam_sanitize" \
-    cargo test -Z build-std --all --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
+    cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
 
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=address --cfg crossbeam_sanitize" \
     cargo run -Z build-std \
+    --all-features \
     --release \
     --target x86_64-unknown-linux-gnu \
     --example sanitize \
@@ -27,10 +28,10 @@ RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=address --cfg crossbeam_sanitize" \
 # Run memory sanitizer
 cargo clean
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=memory --cfg crossbeam_sanitize" \
-    cargo test -Z build-std --all --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
+    cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
 
 # Run thread sanitizer
 cargo clean
 TSAN_OPTIONS="suppressions=$(pwd)/ci/tsan" \
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=thread --cfg crossbeam_sanitize" \
-    cargo test -Z build-std --all --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
+    cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1

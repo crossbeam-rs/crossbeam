@@ -4,15 +4,18 @@ name = "crossbeam-utils"
 # - Update CHANGELOG.md
 # - Update README.md (when increasing major or minor version)
 # - Run './tools/publish.sh crossbeam-utils <version>'
-version = "0.8.20"
+version = "0.8.21"
 edition = "2021"
-rust-version = "1.60"
+rust-version = "1.56"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils"
 description = "Utilities for concurrent programming"
 keywords = ["scoped", "thread", "atomic", "cache"]
 categories = ["algorithms", "concurrency", "data-structures", "no-std"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [features]
 default = ["std"]
@@ -21,7 +24,12 @@ default = ["std"]
 # This is enabled by default.
 std = []
 
+# Enable `atomic` module.
+# This requires Rust 1.60.
+atomic = ["atomic-maybe-uninit"]
+
 [dependencies]
+atomic-maybe-uninit = { version = "0.3.4", optional = true }
 
 # Enable the use of loom for concurrency testing.
 #

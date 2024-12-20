@@ -1,3 +1,4 @@
+use alloc::alloc::{alloc_zeroed, handle_alloc_error, Layout};
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::fmt;
@@ -36,11 +37,6 @@ struct Slot<T> {
 }
 
 impl<T> Slot<T> {
-    const UNINIT: Self = Self {
-        value: UnsafeCell::new(MaybeUninit::uninit()),
-        state: AtomicUsize::new(0),
-    };
-
     /// Waits until a value is written into the slot.
     fn wait_write(&self) {
         let backoff = Backoff::new();
@@ -62,12 +58,31 @@ struct Block<T> {
 }
 
 impl<T> Block<T> {
-    /// Creates an empty block that starts at `start_index`.
-    fn new() -> Self {
-        Self {
-            next: AtomicPtr::new(ptr::null_mut()),
-            slots: [Slot::UNINIT; BLOCK_CAP],
+    const LAYOUT: Layout = {
+        let layout = Layout::new::<Self>();
+        assert!(
+            layout.size() != 0,
+            "Block should never be zero-sized, as it has an AtomicPtr field"
+        );
+        layout
+    };
+
+    /// Creates an empty block.
+    fn new() -> Box<Self> {
+        // SAFETY: layout is not zero-sized
+        let ptr = unsafe { alloc_zeroed(Self::LAYOUT) };
+        // Handle allocation failure
+        if ptr.is_null() {
+            handle_alloc_error(Self::LAYOUT)
         }
+        // SAFETY: This is safe because:
+        //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
+        //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
+        //  [3] `Slot::value` (UnsafeCell) may be safely zero initialized because it
+        //       holds a MaybeUninit.
+        //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
+        // TODO: unsafe { Box::new_zeroed().assume_init() }
+        unsafe { Box::from_raw(ptr.cast()) }
     }
 
     /// Waits until the next pointer is set.
@@ -176,7 +191,7 @@ impl<T> SegQueue<T> {
         }
     }
 
-    /// Pushes an element into the queue.
+    /// Pushes back an element to the tail.
     ///
     /// # Examples
     ///
@@ -209,12 +224,12 @@ impl<T> SegQueue<T> {
             // If we're going to have to install the next block, allocate it in advance in order to
             // make the wait for other threads as short as possible.
             if offset + 1 == BLOCK_CAP && next_block.is_none() {
-                next_block = Some(Box::new(Block::<T>::new()));
+                next_block = Some(Block::<T>::new());
             }
 
             // If this is the first push operation, we need to allocate the first block.
             if block.is_null() {
-                let new = Box::into_raw(Box::new(Block::<T>::new()));
+                let new = Box::into_raw(Block::<T>::new());
 
                 if self
                     .tail
@@ -268,7 +283,7 @@ impl<T> SegQueue<T> {
         }
     }
 
-    /// Pops an element from the queue.
+    /// Pops the head element from the queue.
     ///
     /// If the queue is empty, `None` is returned.
     ///
@@ -280,7 +295,9 @@ impl<T> SegQueue<T> {
     /// let q = SegQueue::new();
     ///
     /// q.push(10);
+    /// q.push(20);
     /// assert_eq!(q.pop(), Some(10));
+    /// assert_eq!(q.pop(), Some(20));
     /// assert!(q.pop().is_none());
     /// ```
     pub fn pop(&self) -> Option<T> {

@@ -245,6 +245,7 @@ extern crate std;
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod base;
+
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 #[doc(inline)]
 pub use crate::base::SkipList;
@@ -257,3 +258,5 @@ pub mod set;
 #[cfg(feature = "std")]
 #[doc(inline)]
 pub use crate::{map::SkipMap, set::SkipSet};
+
+pub mod equivalent;

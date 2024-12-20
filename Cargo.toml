@@ -38,7 +38,7 @@ crossbeam-channel = { version = "0.5.10", path = "crossbeam-channel", default-fe
 crossbeam-deque = { version = "0.8.4", path = "crossbeam-deque", default-features = false, optional = true }
 crossbeam-epoch = { version = "0.9.17", path = "crossbeam-epoch", default-features = false, optional = true }
 crossbeam-queue = { version = "0.3.10", path = "crossbeam-queue", default-features = false, optional = true }
-crossbeam-utils = { version = "0.8.18", path = "crossbeam-utils", default-features = false }
+crossbeam-utils = { version = "0.8.18", path = "crossbeam-utils", default-features = false, features = ["atomic"] }
 
 [dev-dependencies]
 rand = "0.8"
@@ -72,4 +72,5 @@ unreachable_pub = "warn"
 [workspace.lints.clippy]
 # Suppress buggy or noisy clippy lints
 declare_interior_mutable_const = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/7665
+incompatible_msrv = { level = "allow", priority = 1 } # buggy: doesn't consider cfg, https://github.com/rust-lang/rust-clippy/issues/12280, https://github.com/rust-lang/rust-clippy/issues/12257#issuecomment-2093667187
 lint_groups_priority = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/12920

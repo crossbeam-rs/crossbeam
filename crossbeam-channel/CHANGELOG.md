@@ -1,3 +1,10 @@
+# Version 0.5.14
+
+- Fix stack overflow when sending large value to unbounded channel. (#1146, #1147)
+- Add `Select::new_biased` function. (#1150)
+- Remove inefficient spinning. (#1154)
+- Suppress buggy `clippy::zero_repeat_side_effects` lint in macro generated code. (#1123)
+
 # Version 0.5.13
 
 - Add `select_biased!` macro. (#1040)
