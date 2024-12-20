@@ -978,6 +978,9 @@ fn remove_race() {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     let nthreads = 16;
+    #[cfg(miri)]
+    let key_range = 100u32;
+    #[cfg(not(miri))]
     let key_range = 100_000u32;
 
     let guard = &epoch::pin();
