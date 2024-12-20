@@ -74,9 +74,6 @@ pub(crate) struct Channel<T> {
     /// The buffer holding slots.
     buffer: Box<[Slot<T>]>,
 
-    /// A stamp with the value of `{ lap: 1, mark: 0, index: 0 }`.
-    one_lap: usize,
-
     /// If this bit is set in the tail, that means the channel is disconnected.
     mark_bit: usize,
 
@@ -92,9 +89,8 @@ impl<T> Channel<T> {
     pub(crate) fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
-        // Compute constants `mark_bit` and `one_lap`.
+        // Compute constants `mark_bit`.
         let mark_bit = (cap + 1).next_power_of_two();
-        let one_lap = mark_bit * 2;
 
         // Head is initialized to `{ lap: 0, mark: 0, index: 0 }`.
         let head = 0;
@@ -115,7 +111,6 @@ impl<T> Channel<T> {
 
         Self {
             buffer,
-            one_lap,
             mark_bit,
             head: CachePadded::new(AtomicUsize::new(head)),
             tail: CachePadded::new(AtomicUsize::new(tail)),
@@ -138,18 +133,19 @@ impl<T> Channel<T> {
     fn start_send(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
+        let mark_bit = self.mark_bit;
 
         loop {
             // Check if the channel is disconnected.
-            if tail & self.mark_bit != 0 {
+            if tail & mark_bit != 0 {
                 token.array.slot = ptr::null();
                 token.array.stamp = 0;
                 return true;
             }
 
             // Deconstruct the tail.
-            let index = tail & (self.mark_bit - 1);
-            let lap = tail & !(self.one_lap - 1);
+            let index = tail & (mark_bit - 1);
+            let lap = tail & !(one_lap(mark_bit) - 1);
 
             // Inspect the corresponding slot.
             debug_assert!(index < self.buffer.len());
@@ -165,7 +161,7 @@ impl<T> Channel<T> {
                 } else {
                     // One lap forward, index wraps around to zero.
                     // Set to `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`.
-                    lap.wrapping_add(self.one_lap)
+                    lap.wrapping_add(one_lap(mark_bit))
                 };
 
                 // Try moving the tail.
@@ -186,12 +182,12 @@ impl<T> Channel<T> {
                         backoff.spin();
                     }
                 }
-            } else if stamp.wrapping_add(self.one_lap) == tail + 1 {
+            } else if stamp.wrapping_add(one_lap(mark_bit)) == tail + 1 {
                 atomic::fence(Ordering::SeqCst);
                 let head = self.head.load(Ordering::Relaxed);
 
                 // If the head lags one lap behind the tail as well...
-                if head.wrapping_add(self.one_lap) == tail {
+                if head.wrapping_add(one_lap(mark_bit)) == tail {
                     // ...then the channel is full.
                     return false;
                 }
@@ -228,11 +224,12 @@ impl<T> Channel<T> {
     fn start_recv(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
         let mut head = self.head.load(Ordering::Relaxed);
+        let mark_bit = self.mark_bit;
 
         loop {
             // Deconstruct the head.
-            let index = head & (self.mark_bit - 1);
-            let lap = head & !(self.one_lap - 1);
+            let index = head & (mark_bit - 1);
+            let lap = head & !(one_lap(mark_bit) - 1);
 
             // Inspect the corresponding slot.
             debug_assert!(index < self.buffer.len());
@@ -248,7 +245,7 @@ impl<T> Channel<T> {
                 } else {
                     // One lap forward, index wraps around to zero.
                     // Set to `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`.
-                    lap.wrapping_add(self.one_lap)
+                    lap.wrapping_add(one_lap(mark_bit))
                 };
 
                 // Try moving the head.
@@ -261,7 +258,7 @@ impl<T> Channel<T> {
                     Ok(_) => {
                         // Prepare the token for the follow-up call to `read`.
                         token.array.slot = slot as *const Slot<T> as *const u8;
-                        token.array.stamp = head.wrapping_add(self.one_lap);
+                        token.array.stamp = head.wrapping_add(one_lap(mark_bit));
                         return true;
                     }
                     Err(h) => {
@@ -274,9 +271,9 @@ impl<T> Channel<T> {
                 let tail = self.tail.load(Ordering::Relaxed);
 
                 // If the tail equals the head, that means the channel is empty.
-                if (tail & !self.mark_bit) == head {
+                if (tail & !mark_bit) == head {
                     // If the channel is disconnected...
-                    if tail & self.mark_bit != 0 {
+                    if tail & mark_bit != 0 {
                         // ...then receive an error.
                         token.array.slot = ptr::null();
                         token.array.stamp = 0;
@@ -442,6 +439,7 @@ impl<T> Channel<T> {
 
     /// Returns the current number of messages inside the channel.
     pub(crate) fn len(&self) -> usize {
+        let mark_bit = self.mark_bit;
         loop {
             // Load the tail, then load the head.
             let tail = self.tail.load(Ordering::SeqCst);
@@ -449,14 +447,14 @@ impl<T> Channel<T> {
 
             // If the tail didn't change, we've got consistent values to work with.
             if self.tail.load(Ordering::SeqCst) == tail {
-                let hix = head & (self.mark_bit - 1);
-                let tix = tail & (self.mark_bit - 1);
+                let hix = head & (mark_bit - 1);
+                let tix = tail & (mark_bit - 1);
 
                 return if hix < tix {
                     tix - hix
                 } else if hix > tix {
                     self.cap() - hix + tix
-                } else if (tail & !self.mark_bit) == head {
+                } else if (tail & !mark_bit) == head {
                     0
                 } else {
                     self.cap()
@@ -480,9 +478,10 @@ impl<T> Channel<T> {
     ///
     /// Returns `true` if this call disconnected the channel.
     pub(crate) fn disconnect(&self) -> bool {
-        let tail = self.tail.fetch_or(self.mark_bit, Ordering::SeqCst);
+        let mark_bit = self.mark_bit;
+        let tail = self.tail.fetch_or(mark_bit, Ordering::SeqCst);
 
-        if tail & self.mark_bit == 0 {
+        if tail & mark_bit == 0 {
             self.senders.disconnect();
             self.receivers.disconnect();
             true
@@ -512,12 +511,13 @@ impl<T> Channel<T> {
     pub(crate) fn is_full(&self) -> bool {
         let tail = self.tail.load(Ordering::SeqCst);
         let head = self.head.load(Ordering::SeqCst);
+        let mark_bit = self.mark_bit;
 
         // Is the head lagging one lap behind tail?
         //
         // Note: If the tail changes just before we load the head, that means there was a moment
         // when the channel was not full, so it is safe to just return `false`.
-        head.wrapping_add(self.one_lap) == tail & !self.mark_bit
+        head.wrapping_add(one_lap(mark_bit)) == tail & !mark_bit
     }
 }
 
@@ -527,15 +527,16 @@ impl<T> Drop for Channel<T> {
             // Get the index of the head.
             let head = *self.head.get_mut();
             let tail = *self.tail.get_mut();
+            let mark_bit = self.mark_bit;
 
-            let hix = head & (self.mark_bit - 1);
-            let tix = tail & (self.mark_bit - 1);
+            let hix = head & (mark_bit - 1);
+            let tix = tail & (mark_bit - 1);
 
             let len = if hix < tix {
                 tix - hix
             } else if hix > tix {
                 self.cap() - hix + tix
-            } else if (tail & !self.mark_bit) == head {
+            } else if (tail & !mark_bit) == head {
                 0
             } else {
                 self.cap()
@@ -558,6 +559,12 @@ impl<T> Drop for Channel<T> {
             }
         }
     }
+}
+
+/// Returns a stamp with the value of `{ lap: 1, mark: 0, index: 0 }`.
+#[inline]
+fn one_lap(mark_bit: usize) -> usize {
+    mark_bit * 2
 }
 
 /// Receiver handle to a channel.
