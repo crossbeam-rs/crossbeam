@@ -987,7 +987,7 @@ fn remove_race() {
     let s = SkipList::new(epoch::default_collector().clone());
 
     for x in 0..key_range {
-        s.insert(x, (), guard);
+        s.insert(x, (), guard).release(guard);
     }
 
     let barrier1 = AtomicU32::new(nthreads);
