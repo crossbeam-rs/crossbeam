@@ -38,18 +38,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # aarch64/x86_64 macOS and aarch64 Linux are tested on Cirrus CI
+        # macOS is tested on Cirrus CI due to GitHub-hosted macOS runners are slow.
         include:
           - rust: '1.63'
             os: ubuntu-latest
           - rust: '1.63'
+            os: ubuntu-24.04-arm
+          - rust: '1.63'
             os: windows-latest
           - rust: stable
             os: ubuntu-latest
+          - rust: stable
+            os: ubuntu-24.04-arm
           - rust: stable
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
+          - rust: nightly
+            os: ubuntu-24.04-arm
           - rust: nightly
             os: windows-latest
           - rust: nightly
@@ -69,10 +75,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
+      # https://github.com/orgs/community/discussions/148648#discussioncomment-11867019
+      - name: Workaround for AArch64 Linux runner bug
+        run: for var in PATH XDG_CONFIG_HOME; do sed -Ee "s/^/${var}=/" -e 's/(runner)admin/\1/g' <<< "${!var}"; done | tee -a -- "${GITHUB_ENV}"
+        if: endsWith(matrix.os, '-arm')
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
-        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
+        uses: taiki-e/github-actions/install-rust@main
+        with:
+          toolchain: ${{ matrix.rust }}
       - uses: taiki-e/setup-cross-toolchain-action@v1
         with:
           target: ${{ matrix.target }}
@@ -95,7 +106,9 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+        uses: taiki-e/github-actions/install-rust@main
+        with:
+          toolchain: ${{ matrix.rust }}
         if: matrix.rust != 'msrv'
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
@@ -109,7 +122,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        uses: taiki-e/github-actions/install-rust@nightly
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Install cargo-minimal-versions
@@ -127,7 +140,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update stable
+        uses: taiki-e/github-actions/install-rust@stable
       - run: ci/no_atomic.sh
       - run: git add -N . && git diff --exit-code
         if: github.repository_owner != 'crossbeam-rs' || github.event_name != 'schedule'
@@ -161,7 +174,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update stable
+        uses: taiki-e/github-actions/install-rust@stable
       - name: rustfmt
         run: cargo fmt --all --check
 
@@ -172,7 +185,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update stable
+        uses: taiki-e/github-actions/install-rust@stable
       - name: clippy
         run: cargo clippy --all --all-features --tests --examples
 
@@ -189,7 +202,9 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup toolchain install nightly --component miri && rustup default nightly
+        uses: taiki-e/github-actions/install-rust@nightly
+        with:
+          component: miri
       - name: miri
         run: ci/miri.sh ${{ matrix.group }}
 
@@ -200,7 +215,9 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup toolchain install nightly --component rust-src && rustup default nightly
+        uses: taiki-e/github-actions/install-rust@nightly
+        with:
+          component: rust-src
       - uses: taiki-e/install-action@cargo-careful
       - name: Run cargo-careful
         run: ci/careful.sh
@@ -212,7 +229,9 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        uses: taiki-e/github-actions/install-rust@nightly
+        with:
+          component: rust-src
       # https://github.com/google/sanitizers/issues/1716 / https://github.com/actions/runner-images/issues/9491
       - run: sudo sysctl vm.mmap_rnd_bits=28
       - name: Run sanitizers
@@ -225,7 +244,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update stable
+        uses: taiki-e/github-actions/install-rust@stable
       - name: loom
         run: ci/crossbeam-epoch-loom.sh
 
@@ -236,7 +255,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        uses: taiki-e/github-actions/install-rust@nightly
       - name: docs
         run: cargo doc --no-deps --all --all-features
 
