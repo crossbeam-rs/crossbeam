@@ -62,7 +62,7 @@ jobs:
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
           - rust: nightly
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             target: armv7-unknown-linux-gnueabihf
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
