@@ -75,10 +75,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      # https://github.com/orgs/community/discussions/148648#discussioncomment-11867019
-      - name: Workaround for AArch64 Linux runner bug
-        run: for var in PATH XDG_CONFIG_HOME; do sed -Ee "s/^/${var}=/" -e 's/(runner)admin/\1/g' <<< "${!var}"; done | tee -a -- "${GITHUB_ENV}"
-        if: endsWith(matrix.os, '-arm')
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         uses: taiki-e/github-actions/install-rust@main
