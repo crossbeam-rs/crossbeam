@@ -7,8 +7,6 @@ if [[ "$OSTYPE" != "linux"* ]]; then
     exit 0
 fi
 
-rustup component add rust-src
-
 # Run address sanitizer
 # TODO: Once `cfg(sanitize = "..")` is stable, replace
 # `cfg(crossbeam_sanitize)` with `cfg(sanitize = "..")` and remove

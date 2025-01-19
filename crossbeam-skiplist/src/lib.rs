@@ -112,7 +112,7 @@
 //!
 //! What happens here? If the map implementation frees the memory
 //! belonging to a value when it is
-//! removed, then a user-after-free occurs, resulting in memory corruption.
+//! removed, then a use-after-free occurs, resulting in memory corruption.
 //!
 //! To solve the above, this crate uses the _epoch-based memory reclamation_ mechanism
 //! implemented in [`crossbeam-epoch`]. Simplified, a value removed from the map

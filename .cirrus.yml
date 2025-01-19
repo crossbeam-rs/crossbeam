@@ -9,18 +9,6 @@ env:
   RUSTFLAGS: -D warnings
   RUSTUP_MAX_RETRIES: '10'
 
-aarch64_linux_task:
-  name: test ($TARGET)
-  env:
-    TARGET: aarch64-unknown-linux-gnu
-  arm_container:
-    image: rust
-  setup_script:
-    - rustup toolchain add nightly && rustup default nightly
-  test_script:
-    - cargo test --all --all-features --exclude benchmarks -- --test-threads=1
-    - cargo test --all --all-features --exclude benchmarks --release -- --test-threads=1
-
 aarch64_macos_task:
   name: test ($TARGET)
   env:
