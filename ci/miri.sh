@@ -15,10 +15,13 @@ export MIRIFLAGS="${MIRIFLAGS:-} -Zmiri-strict-provenance -Zmiri-symbolic-alignm
 
 case "${group}" in
     channel)
+        # -Zmiri-ignore-leaks is needed because we use detached threads in tests in tests/array.rs: panic_on_drop
         MIRI_LEAK_CHECK='1' \
+        MIRIFLAGS="${MIRIFLAGS} -Zmiri-ignore-leaks" \
             cargo miri test --all-features \
             -p crossbeam-channel 2>&1 | ts -i '%.s  '
         # -Zmiri-ignore-leaks is needed because we use detached threads in tests in tests/golang.rs: https://github.com/rust-lang/miri/issues/1371
+        MIRI_LEAK_CHECK='1' \
         MIRIFLAGS="${MIRIFLAGS} -Zmiri-ignore-leaks" \
             cargo miri test --all-features \
             -p crossbeam-channel --test golang 2>&1 | ts -i '%.s  '

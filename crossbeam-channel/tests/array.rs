@@ -690,6 +690,8 @@ fn channel_through_channel() {
     .unwrap();
 }
 
+// On the current implementation, panic on drop will cause memory leaks
+#[cfg_attr(crossbeam_sanitize, ignore)]
 #[test]
 fn panic_on_drop() {
     struct Msg1<'a>(&'a mut bool);
