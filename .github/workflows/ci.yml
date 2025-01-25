@@ -43,26 +43,26 @@ jobs:
           - rust: '1.63'
             os: ubuntu-latest
           - rust: '1.63'
-            os: ubuntu-24.04-arm
+            os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
           - rust: '1.63'
             os: windows-latest
           - rust: stable
             os: ubuntu-latest
           - rust: stable
-            os: ubuntu-24.04-arm
+            os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
           - rust: stable
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
           - rust: nightly
-            os: ubuntu-24.04-arm
+            os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
           - rust: nightly
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
           - rust: nightly
-            os: ubuntu-24.04-arm
+            os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
             target: armv7-unknown-linux-gnueabihf
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
