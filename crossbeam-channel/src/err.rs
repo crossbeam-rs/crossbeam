@@ -11,6 +11,17 @@ use std::fmt;
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(pub T);
 
+/// An error returned from the [`force_send`] method.
+///
+/// The error contains the message being sent so it can be recovered.
+///
+/// [`force_send`]: super::Sender::force_send
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum ForceSendError<T> {
+    /// The message could not be sent because the channel is disconnected.
+    Disconnected(T),
+}
+
 /// An error returned from the [`try_send`] method.
 ///
 /// The error contains the message being sent so it can be recovered.
@@ -201,6 +212,59 @@ impl<T> TrySendError<T> {
     /// Returns `true` if the send operation failed because the channel is full.
     pub fn is_full(&self) -> bool {
         matches!(self, Self::Full(_))
+    }
+
+    /// Returns `true` if the send operation failed because the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self, Self::Disconnected(_))
+    }
+}
+
+impl<T> fmt::Debug for ForceSendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::Disconnected(..) => "Disconnected(..)".fmt(f),
+        }
+    }
+}
+
+impl<T> fmt::Display for ForceSendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::Disconnected(..) => "sending on a disconnected channel".fmt(f),
+        }
+    }
+}
+
+impl<T: Send> error::Error for ForceSendError<T> {}
+
+impl<T> From<SendError<T>> for ForceSendError<T> {
+    fn from(err: SendError<T>) -> Self {
+        match err {
+            SendError(t) => Self::Disconnected(t),
+        }
+    }
+}
+
+impl<T> ForceSendError<T> {
+    /// Unwraps the message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::bounded;
+    ///
+    /// let (s, r) = bounded(0);
+    /// drop(r);
+    ///
+    /// if let Err(err) = s.force_send("foo") {
+    ///     assert_eq!(err.into_inner(), "foo");
+    /// }
+    /// ```
+    pub fn into_inner(self) -> T {
+        match self {
+            Self::Disconnected(v) => v,
+        }
     }
 
     /// Returns `true` if the send operation failed because the channel is disconnected.
