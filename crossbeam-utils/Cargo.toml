@@ -39,7 +39,7 @@ atomic-maybe-uninit = { version = "0.3.4", optional = true }
 loom = { version = "0.7.1", optional = true }
 
 [dev-dependencies]
-rand = "0.8"
+rand = "0.9"
 
 [lints]
 workspace = true
