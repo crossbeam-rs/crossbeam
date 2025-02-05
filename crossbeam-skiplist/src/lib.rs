@@ -259,4 +259,8 @@ pub mod set;
 #[doc(inline)]
 pub use crate::{map::SkipMap, set::SkipSet};
 
+#[cfg(not(feature = "equivalent-flipped-1"))]
 pub mod equivalent;
+
+#[cfg(feature = "equivalent-flipped-1")]
+pub use equivalent_flipped_1 as equivalent;
