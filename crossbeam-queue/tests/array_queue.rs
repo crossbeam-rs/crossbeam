@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_queue::ArrayQueue;
 use crossbeam_utils::thread::scope;
-use rand::{thread_rng, Rng};
 
 #[test]
 fn smoke() {
@@ -295,11 +294,11 @@ fn drops() {
         }
     }
 
-    let mut rng = thread_rng();
+    let mut rng = fastrand::Rng::new();
 
     for _ in 0..runs {
-        let steps = rng.gen_range(0..steps);
-        let additional = rng.gen_range(0..additional);
+        let steps = rng.usize(0..steps);
+        let additional = rng.usize(0..additional);
 
         DROPS.store(0, Ordering::SeqCst);
         let q = ArrayQueue::new(50);
