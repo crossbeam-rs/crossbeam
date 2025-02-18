@@ -230,7 +230,7 @@ impl<T> Channel<T> {
             }
             Ok(None)
         } else if inner.is_disconnected {
-            Err(ForceSendError::Disconnected(msg))
+            Err(ForceSendError(msg))
         } else {
             Ok(Some(msg))
         }

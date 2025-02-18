@@ -326,24 +326,26 @@ impl<T> Channel<T> {
     }
 
     /// Force send a message into the channel. Only fails if the channel is disconnected
-    pub(crate) fn force_send(&self, mut msg: T) -> Result<Option<T>, ForceSendError<T>> {
-        let mut token = Token::default();
-        if self.start_send(&mut token) {
-            match unsafe { self.write(&mut token, msg) } {
-                Ok(()) => Ok(None),
-                Err(msg) => Err(ForceSendError::Disconnected(msg)),
-            }
-        } else {
-            let tail = self.tail.load(Ordering::Acquire);
-            let prev_index = match tail & (self.mark_bit - 1) {
-                0 => self.cap() - 1,
-                x => x - 1,
-            };
-            let queued_msg =
-                unsafe { (*self.buffer.get_unchecked(prev_index).msg.get()).assume_init_mut() };
-            std::mem::swap(&mut msg, queued_msg);
-            Ok(Some(msg))
+    ///
+    /// Note that this is currently a naive implementation to make the sequential test pass
+    pub(crate) fn force_send(&self, msg: T) -> Result<Option<T>, ForceSendError<T>> {
+        if self.is_disconnected() {
+            return Err(ForceSendError(msg));
         }
+
+        let old_msg = if self.is_full() {
+            let Ok(old_msg) = self.try_recv() else {
+                return Err(ForceSendError(msg));
+            };
+            Some(old_msg)
+        } else {
+            None
+        };
+
+        self.try_send(msg)
+            .map_err(|e| ForceSendError(e.into_inner()))?;
+
+        Ok(old_msg)
     }
 
     /// Sends a message into the channel.

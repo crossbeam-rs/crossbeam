@@ -421,7 +421,7 @@ impl<T> Channel<T> {
     pub(crate) fn force_send(&self, msg: T) -> Result<Option<T>, ForceSendError<T>> {
         match self.send(msg, None) {
             Ok(()) => Ok(None),
-            Err(SendTimeoutError::Disconnected(err)) => Err(ForceSendError::Disconnected(err)),
+            Err(SendTimeoutError::Disconnected(err)) => Err(ForceSendError(err)),
             Err(SendTimeoutError::Timeout(_)) => unreachable!(),
         }
     }
