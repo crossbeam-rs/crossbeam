@@ -334,10 +334,11 @@ impl<T> Channel<T> {
         }
 
         let old_msg = if self.is_full() {
-            let Ok(old_msg) = self.try_recv() else {
+            let old_msg = self.try_recv().ok();
+            if old_msg.is_none() {
                 return Err(ForceSendError(msg));
-            };
-            Some(old_msg)
+            }
+            old_msg
         } else {
             None
         };
