@@ -716,3 +716,56 @@ fn concurrent_insert_get_same_key() {
     }
     handle.join().unwrap()
 }
+
+#[test]
+fn comparator() {
+    use std::cmp::Ordering;
+
+    use crossbeam_skiplist::comparator::{Comparator, Equivalator};
+
+    struct DynComparator {
+        inner: Box<dyn Fn(&[u8], &[u8]) -> Ordering>,
+    }
+
+    impl<L: ?Sized, R: ?Sized> Equivalator<L, R> for DynComparator
+    where
+        L: std::borrow::Borrow<[u8]>,
+        R: std::borrow::Borrow<[u8]>,
+    {
+        fn equivalent(&self, lhs: &L, rhs: &R) -> bool {
+            (self.inner)(lhs.borrow(), rhs.borrow()).is_eq()
+        }
+    }
+
+    impl<L: ?Sized, R: ?Sized> Comparator<L, R> for DynComparator
+    where
+        L: std::borrow::Borrow<[u8]>,
+        R: std::borrow::Borrow<[u8]>,
+    {
+        fn compare(&self, lhs: &L, rhs: &R) -> Ordering {
+            (self.inner)(lhs.borrow(), rhs.borrow())
+        }
+    }
+
+    // Wacky comparison function
+    fn compare(lhs: &[u8], rhs: &[u8]) -> Ordering {
+        Ord::cmp(&lhs.len(), &rhs.len())
+    }
+
+    let s = SkipSet::with_comparator(DynComparator {
+        inner: Box::new(compare),
+    });
+    s.insert(b"ab".to_vec());
+    s.insert(b"".to_vec());
+    s.insert(b"z".to_vec());
+    s.insert(b"a".to_vec());
+
+    assert_eq!(s.len(), 3);
+    assert!(s.contains(b"a"));
+    assert!(s.contains(b"x"));
+    assert!(s.contains(b"xy"));
+    assert!(s.contains(b""));
+
+    let elems: Vec<_> = s.into_iter().collect();
+    assert_eq!(elems, [&b""[..], b"a", b"ab"]);
+}

@@ -259,4 +259,4 @@ pub mod set;
 #[doc(inline)]
 pub use crate::{map::SkipMap, set::SkipSet};
 
-pub mod equivalent;
+pub mod comparator;

@@ -902,8 +902,8 @@ fn drops() {
 }
 
 #[test]
-fn comparable_get() {
-    use crossbeam_skiplist::equivalent::{Comparable, Equivalent};
+fn comparator() {
+    use crossbeam_skiplist::comparator::{Comparator, Equivalator};
 
     #[derive(PartialEq, Eq, PartialOrd, Ord)]
     struct Foo {
@@ -915,6 +915,9 @@ fn comparable_get() {
     struct FooRef<'a> {
         data: &'a [u8],
     }
+
+    #[derive(Clone, Copy, Default)]
+    struct FooComparator;
 
     impl PartialOrd for FooRef<'_> {
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -935,23 +938,35 @@ fn comparable_get() {
         }
     }
 
-    impl<'a> Equivalent<FooRef<'a>> for Foo {
-        fn equivalent(&self, key: &FooRef<'a>) -> bool {
-            let a = u64::from_be_bytes(key.data[..8].try_into().unwrap());
-            let b = u32::from_be_bytes(key.data[8..].try_into().unwrap());
-            a == self.a && b == self.b
+    impl<'a> Equivalator<Foo> for FooComparator {
+        fn equivalent(&self, lhs: &Foo, rhs: &Foo) -> bool {
+            lhs == rhs
         }
     }
 
-    impl<'a> Comparable<FooRef<'a>> for Foo {
-        fn compare(&self, key: &FooRef<'a>) -> std::cmp::Ordering {
+    impl<'a> Equivalator<Foo, FooRef<'a>> for FooComparator {
+        fn equivalent(&self, foo: &Foo, key: &FooRef<'a>) -> bool {
             let a = u64::from_be_bytes(key.data[..8].try_into().unwrap());
             let b = u32::from_be_bytes(key.data[8..].try_into().unwrap());
-            Foo { a, b }.cmp(self)
+            a == foo.a && b == foo.b
         }
     }
 
-    let s = SkipList::new(epoch::default_collector().clone());
+    impl<'a> Comparator<Foo> for FooComparator {
+        fn compare(&self, lhs: &Foo, rhs: &Foo) -> std::cmp::Ordering {
+            Ord::cmp(lhs, rhs)
+        }
+    }
+
+    impl<'a> Comparator<Foo, FooRef<'a>> for FooComparator {
+        fn compare(&self, foo: &Foo, key: &FooRef<'a>) -> std::cmp::Ordering {
+            let a = u64::from_be_bytes(key.data[..8].try_into().unwrap());
+            let b = u32::from_be_bytes(key.data[8..].try_into().unwrap());
+            Foo { a, b }.cmp(foo)
+        }
+    }
+
+    let s = SkipList::with_comparator(epoch::default_collector().clone(), FooComparator);
     let foo = Foo { a: 1, b: 2 };
 
     let g = &epoch::pin();
