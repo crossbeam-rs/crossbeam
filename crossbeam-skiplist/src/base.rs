@@ -1,6 +1,6 @@
 //! A lock-free skip list. See [`SkipList`].
 
-use crate::comparator::{Comparator, OrdComparator};
+use crate::comparator::{Comparator, BasicComparator};
 
 use alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
 use core::cmp;
@@ -323,7 +323,7 @@ struct HotData {
 // As a further future optimization, if `!mem::needs_drop::<K>() && !mem::needs_drop::<V>()`
 // (neither key nor the value have destructors), there's no point in creating a new local
 // collector, so we should simply use the global one.
-pub struct SkipList<K, V, C = OrdComparator> {
+pub struct SkipList<K, V, C = BasicComparator> {
     /// The head of the skip list (just a dummy node, not a real entry).
     head: Head<K, V>,
 
@@ -1333,7 +1333,7 @@ impl<K, V, C> IntoIterator for SkipList<K, V, C> {
 /// The lifetimes of the key and value are the same as that of the `Guard`
 /// used when creating the `Entry` (`'g`). This lifetime is also constrained to
 /// not outlive the `SkipList`.
-pub struct Entry<'a: 'g, 'g, K, V, C = OrdComparator> {
+pub struct Entry<'a: 'g, 'g, K, V, C = BasicComparator> {
     parent: &'a SkipList<K, V, C>,
     node: &'g Node<K, V>,
     guard: &'g Guard,
@@ -1476,7 +1476,7 @@ where
 ///
 /// You *must* call `release` to free this type, otherwise the node will be
 /// leaked. This is because releasing the entry requires a `Guard`.
-pub struct RefEntry<'a, K, V, C = OrdComparator> {
+pub struct RefEntry<'a, K, V, C = BasicComparator> {
     parent: &'a SkipList<K, V, C>,
     node: &'a Node<K, V>,
 }
@@ -1651,7 +1651,7 @@ where
 }
 
 /// An iterator over the entries of a `SkipList`.
-pub struct Iter<'a: 'g, 'g, K, V, C = OrdComparator> {
+pub struct Iter<'a: 'g, 'g, K, V, C = BasicComparator> {
     parent: &'a SkipList<K, V, C>,
     head: Option<&'g Node<K, V>>,
     tail: Option<&'g Node<K, V>>,
@@ -1728,7 +1728,7 @@ where
 }
 
 /// An iterator over reference-counted entries of a `SkipList`.
-pub struct RefIter<'a, K, V, C = OrdComparator> {
+pub struct RefIter<'a, K, V, C = BasicComparator> {
     parent: &'a SkipList<K, V, C>,
     head: Option<RefEntry<'a, K, V, C>>,
     tail: Option<RefEntry<'a, K, V, C>>,
@@ -1830,7 +1830,7 @@ impl<'a, K: 'a, V: 'a, C> RefIter<'a, K, V, C> {
 }
 
 /// An iterator over a subset of entries of a `SkipList`.
-pub struct Range<'a: 'g, 'g, Q, R, K, V, C = OrdComparator>
+pub struct Range<'a: 'g, 'g, Q, R, K, V, C = BasicComparator>
 where
     C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
@@ -1946,7 +1946,7 @@ where
 }
 
 /// An iterator over reference-counted subset of entries of a `SkipList`.
-pub struct RefRange<'a, Q, R, K, V, C = OrdComparator>
+pub struct RefRange<'a, Q, R, K, V, C = BasicComparator>
 where
     C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,

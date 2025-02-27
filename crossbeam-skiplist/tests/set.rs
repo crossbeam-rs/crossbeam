@@ -766,6 +766,9 @@ fn comparator() {
     assert!(s.contains(b"xy"));
     assert!(s.contains(b""));
 
-    let elems: Vec<_> = s.into_iter().collect();
+    let elems: Vec<_> = s.iter().map(|x| &x.value()[..]).collect();
     assert_eq!(elems, [&b""[..], b"a", b"ab"]);
+
+    s.remove(b"p");
+    assert!(!s.contains(b"a"));
 }

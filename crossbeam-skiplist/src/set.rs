@@ -5,7 +5,7 @@ use std::ops::Deref;
 use std::ops::{Bound, RangeBounds};
 
 use crate::{
-    comparator::{Comparator, OrdComparator},
+    comparator::{BasicComparator, Comparator},
     map,
 };
 
@@ -15,7 +15,7 @@ use crate::{
 /// concurrent access across multiple threads.
 ///
 /// [`BTreeSet`]: std::collections::BTreeSet
-pub struct SkipSet<T, C = OrdComparator> {
+pub struct SkipSet<T, C = BasicComparator> {
     inner: map::SkipMap<T, (), C>,
 }
 
@@ -42,9 +42,9 @@ impl<T, C> SkipSet<T, C> {
     /// # Example
     ///
     /// ```
-    /// use crossbeam_skiplist::{SkipSet, comparator::OrdComparator};
+    /// use crossbeam_skiplist::{SkipSet, comparator::BasicComparator};
     ///
-    /// let map: SkipSet<i32> = SkipSet::with_comparator(OrdComparator);
+    /// let map: SkipSet<i32> = SkipSet::with_comparator(BasicComparator);
     /// ```
     pub fn with_comparator(comparator: C) -> Self {
         Self {
@@ -469,7 +469,7 @@ where
 }
 
 /// A reference-counted entry in a set.
-pub struct Entry<'a, T, C = OrdComparator> {
+pub struct Entry<'a, T, C = BasicComparator> {
     inner: map::Entry<'a, T, (), C>,
 }
 
@@ -574,7 +574,7 @@ impl<T> fmt::Debug for IntoIter<T> {
 }
 
 /// An iterator over the entries of a `SkipSet`.
-pub struct Iter<'a, T, C = OrdComparator> {
+pub struct Iter<'a, T, C = BasicComparator> {
     inner: map::Iter<'a, T, (), C>,
 }
 
@@ -605,7 +605,7 @@ impl<T, C> fmt::Debug for Iter<'_, T, C> {
 }
 
 /// An iterator over a subset of entries of a `SkipSet`.
-pub struct Range<'a, Q, R, T, C = OrdComparator>
+pub struct Range<'a, Q, R, T, C = BasicComparator>
 where
     C: Comparator<T> + Comparator<T, Q>,
     R: RangeBounds<Q>,

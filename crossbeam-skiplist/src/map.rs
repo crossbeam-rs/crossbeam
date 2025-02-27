@@ -7,8 +7,8 @@ use std::ptr;
 
 use crate::{
     base::{self, try_pin_loop},
+    comparator::BasicComparator,
     comparator::Comparator,
-    comparator::OrdComparator,
 };
 use crossbeam_epoch as epoch;
 
@@ -18,7 +18,7 @@ use crossbeam_epoch as epoch;
 /// concurrent access across multiple threads.
 ///
 /// [`BTreeMap`]: std::collections::BTreeMap
-pub struct SkipMap<K, V, C = OrdComparator> {
+pub struct SkipMap<K, V, C = BasicComparator> {
     inner: base::SkipList<K, V, C>,
 }
 
@@ -45,9 +45,9 @@ impl<K, V, C> SkipMap<K, V, C> {
     /// # Example
     ///
     /// ```
-    /// use crossbeam_skiplist::{SkipMap, comparator::OrdComparator};
+    /// use crossbeam_skiplist::{SkipMap, comparator::BasicComparator};
     ///
-    /// let map: SkipMap<i32, &str> = SkipMap::with_comparator(OrdComparator);
+    /// let map: SkipMap<i32, &str> = SkipMap::with_comparator(BasicComparator);
     /// ```
     pub fn with_comparator(comparator: C) -> Self {
         Self {
@@ -589,7 +589,7 @@ where
 }
 
 /// A reference-counted entry in a map.
-pub struct Entry<'a, K, V, C = OrdComparator> {
+pub struct Entry<'a, K, V, C = BasicComparator> {
     inner: ManuallyDrop<base::RefEntry<'a, K, V, C>>,
 }
 
@@ -709,7 +709,7 @@ impl<K, V> fmt::Debug for IntoIter<K, V> {
 }
 
 /// An iterator over the entries of a `SkipMap`.
-pub struct Iter<'a, K, V, C = OrdComparator> {
+pub struct Iter<'a, K, V, C = BasicComparator> {
     inner: base::RefIter<'a, K, V, C>,
 }
 
@@ -749,7 +749,7 @@ impl<K, V, C> Drop for Iter<'_, K, V, C> {
 }
 
 /// An iterator over a subset of entries of a `SkipMap`.
-pub struct Range<'a, Q, R, K, V, C = OrdComparator>
+pub struct Range<'a, Q, R, K, V, C = BasicComparator>
 where
     C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
