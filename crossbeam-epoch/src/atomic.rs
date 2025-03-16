@@ -190,7 +190,6 @@ impl<T> Pointable for T {
 /// along with pointer as in `Box<[T]>`).
 ///
 /// Elements are not present in the type, but they will be in the allocation.
-/// ```
 #[repr(C)]
 struct Array<T> {
     /// The number of elements (not the number of bytes).
