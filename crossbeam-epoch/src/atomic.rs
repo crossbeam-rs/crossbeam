@@ -63,26 +63,26 @@ fn ensure_aligned<T: ?Sized + Pointable>(raw: *mut ()) {
 /// `tag` is truncated to fit into the unused bits of the pointer to `T`.
 #[inline]
 fn compose_tag<T: ?Sized + Pointable>(ptr: *mut (), tag: usize) -> *mut () {
-    int_to_ptr_with_provenance(
-        (ptr as usize & !low_bits::<T>()) | (tag & low_bits::<T>()),
-        ptr,
-    )
+    map_addr(ptr, |a| (a & !low_bits::<T>()) | (tag & low_bits::<T>()))
 }
 
 /// Decomposes a tagged pointer `data` into the pointer and the tag.
 #[inline]
 fn decompose_tag<T: ?Sized + Pointable>(ptr: *mut ()) -> (*mut (), usize) {
     (
-        int_to_ptr_with_provenance(ptr as usize & !low_bits::<T>(), ptr),
+        map_addr(ptr, |a| a & !low_bits::<T>()),
         ptr as usize & low_bits::<T>(),
     )
 }
 
-// HACK: https://github.com/rust-lang/miri/issues/1866#issuecomment-985802751
+// FIXME: This is exactly <https://doc.rust-lang.org/nightly/std/primitive.pointer.html#method.map_addr-1>,
+// which we cannot use yet due to the MSRV.
 #[inline]
-fn int_to_ptr_with_provenance<T>(addr: usize, prov: *mut T) -> *mut T {
-    let ptr = prov.cast::<u8>();
-    ptr.wrapping_add(addr.wrapping_sub(ptr as usize)).cast()
+fn map_addr<T>(ptr: *mut T, f: impl FnOnce(usize) -> usize) -> *mut T {
+    let new_addr = f(ptr as usize);
+    ptr.cast::<u8>()
+        .wrapping_add(new_addr.wrapping_sub(ptr as usize))
+        .cast::<T>()
 }
 
 /// Types that are pointed to by a single word.
@@ -640,9 +640,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
             let fetch_order = strongest_failure_ordering(order);
             Shared::from_ptr(
                 self.data
-                    .fetch_update(order, fetch_order, |x| {
-                        Some(int_to_ptr_with_provenance(x as usize & val, x))
-                    })
+                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a & val)))
                     .unwrap(),
             )
         }
@@ -687,9 +685,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
             let fetch_order = strongest_failure_ordering(order);
             Shared::from_ptr(
                 self.data
-                    .fetch_update(order, fetch_order, |x| {
-                        Some(int_to_ptr_with_provenance(x as usize | val, x))
-                    })
+                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a | val)))
                     .unwrap(),
             )
         }
@@ -734,9 +730,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
             let fetch_order = strongest_failure_ordering(order);
             Shared::from_ptr(
                 self.data
-                    .fetch_update(order, fetch_order, |x| {
-                        Some(int_to_ptr_with_provenance(x as usize ^ val, x))
-                    })
+                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a ^ val)))
                     .unwrap(),
             )
         }
