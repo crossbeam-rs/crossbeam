@@ -106,7 +106,7 @@ impl<K, V> Node<K, V> {
             }
 
             ptr::addr_of_mut!((*ptr).refs_and_height)
-                .write(AtomicUsize::new((height - 1) | ref_count << HEIGHT_BITS));
+                .write(AtomicUsize::new((height - 1) | (ref_count << HEIGHT_BITS)));
             ptr::addr_of_mut!((*ptr).tower.pointers)
                 .cast::<Atomic<Self>>()
                 .write_bytes(0, height);
