@@ -7,7 +7,6 @@ use core::marker::PhantomData;
 use core::mem::{self, MaybeUninit};
 use core::ops::{Deref, DerefMut};
 use core::ptr;
-use core::slice;
 
 use crate::guard::Guard;
 #[cfg(not(miri))]
@@ -119,24 +118,24 @@ pub trait Pointable {
     /// The result should be a multiple of `ALIGN`.
     unsafe fn init(init: Self::Init) -> *mut ();
 
-    /// Dereferences the given pointer.
+    /// Gets the raw pointer to this type that allows immutable access from the given pointer.
     ///
     /// # Safety
     ///
     /// - The given `ptr` should have been initialized with [`Pointable::init`].
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
-    /// - `ptr` should not be mutably dereferenced by [`Pointable::deref_mut`] concurrently.
-    unsafe fn deref<'a>(ptr: *mut ()) -> &'a Self;
+    /// - `ptr` should not be mutably dereferenced by [`Pointable::as_mut_ptr`] concurrently.
+    unsafe fn as_ptr(ptr: *mut ()) -> *const Self;
 
-    /// Mutably dereferences the given pointer.
+    /// Gets the raw pointer to this type that allows mutable access from the given pointer.
     ///
     /// # Safety
     ///
     /// - The given `ptr` should have been initialized with [`Pointable::init`].
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
-    /// - `ptr` should not be dereferenced by [`Pointable::deref`] or [`Pointable::deref_mut`]
+    /// - `ptr` should not be dereferenced by [`Pointable::as_ptr`] or [`Pointable::as_mut_ptr`]
     ///   concurrently.
-    unsafe fn deref_mut<'a>(ptr: *mut ()) -> &'a mut Self;
+    unsafe fn as_mut_ptr(ptr: *mut ()) -> *mut Self;
 
     /// Drops the object pointed to by the given pointer.
     ///
@@ -144,7 +143,7 @@ pub trait Pointable {
     ///
     /// - The given `ptr` should have been initialized with [`Pointable::init`].
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
-    /// - `ptr` should not be dereferenced by [`Pointable::deref`] or [`Pointable::deref_mut`]
+    /// - `ptr` should not be dereferenced by [`Pointable::as_ptr`] or [`Pointable::as_mut_ptr`]
     ///   concurrently.
     unsafe fn drop(ptr: *mut ());
 }
@@ -158,12 +157,12 @@ impl<T> Pointable for T {
         Box::into_raw(Box::new(init)).cast::<()>()
     }
 
-    unsafe fn deref<'a>(ptr: *mut ()) -> &'a Self {
-        unsafe { &*(ptr as *const T) }
+    unsafe fn as_ptr(ptr: *mut ()) -> *const Self {
+        ptr as *const T
     }
 
-    unsafe fn deref_mut<'a>(ptr: *mut ()) -> &'a mut Self {
-        unsafe { &mut *ptr.cast::<T>() }
+    unsafe fn as_mut_ptr(ptr: *mut ()) -> *mut Self {
+        ptr.cast::<T>()
     }
 
     unsafe fn drop(ptr: *mut ()) {
@@ -224,17 +223,22 @@ impl<T> Pointable for [MaybeUninit<T>] {
         }
     }
 
-    unsafe fn deref<'a>(ptr: *mut ()) -> &'a Self {
+    unsafe fn as_ptr(ptr: *mut ()) -> *const Self {
         unsafe {
-            let array = &*(ptr as *const Array<T>);
-            slice::from_raw_parts(array.elements.as_ptr(), array.len)
+            let len = (*ptr.cast::<Array<T>>()).len;
+            // Use addr_of_mut for stacked borrows: https://github.com/rust-lang/miri/issues/1976
+            let elements =
+                ptr::addr_of_mut!((*ptr.cast::<Array<T>>()).elements).cast::<MaybeUninit<T>>();
+            ptr::slice_from_raw_parts(elements, len)
         }
     }
 
-    unsafe fn deref_mut<'a>(ptr: *mut ()) -> &'a mut Self {
+    unsafe fn as_mut_ptr(ptr: *mut ()) -> *mut Self {
         unsafe {
-            let array = &mut *ptr.cast::<Array<T>>();
-            slice::from_raw_parts_mut(array.elements.as_mut_ptr(), array.len)
+            let len = (*ptr.cast::<Array<T>>()).len;
+            let elements =
+                ptr::addr_of_mut!((*ptr.cast::<Array<T>>()).elements).cast::<MaybeUninit<T>>();
+            ptr::slice_from_raw_parts_mut(elements, len)
         }
     }
 
@@ -839,7 +843,7 @@ impl<T: ?Sized + Pointable> fmt::Pointer for Atomic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, _) = decompose_tag::<T>(data);
-        fmt::Pointer::fmt(&(unsafe { T::deref(raw) as *const _ }), f)
+        fmt::Pointer::fmt(&(unsafe { T::as_ptr(raw) }), f)
     }
 }
 
@@ -1127,14 +1131,14 @@ impl<T: ?Sized + Pointable> Deref for Owned<T> {
 
     fn deref(&self) -> &T {
         let (raw, _) = decompose_tag::<T>(self.data);
-        unsafe { T::deref(raw) }
+        unsafe { &*T::as_ptr(raw) }
     }
 }
 
 impl<T: ?Sized + Pointable> DerefMut for Owned<T> {
     fn deref_mut(&mut self) -> &mut T {
         let (raw, _) = decompose_tag::<T>(self.data);
-        unsafe { T::deref_mut(raw) }
+        unsafe { &mut *T::as_mut_ptr(raw) }
     }
 }
 
@@ -1284,6 +1288,16 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
         raw.is_null()
     }
 
+    pub(crate) unsafe fn as_ptr(&self) -> *const T {
+        let (raw, _) = decompose_tag::<T>(self.data);
+        unsafe { T::as_ptr(raw) }
+    }
+
+    pub(crate) unsafe fn as_mut_ptr(&self) -> *mut T {
+        let (raw, _) = decompose_tag::<T>(self.data);
+        unsafe { T::as_mut_ptr(raw) }
+    }
+
     /// Dereferences the pointer.
     ///
     /// Returns a reference to the pointee that is valid during the lifetime `'g`.
@@ -1317,8 +1331,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn deref(&self) -> &'g T {
-        let (raw, _) = decompose_tag::<T>(self.data);
-        unsafe { T::deref(raw) }
+        unsafe { &*self.as_ptr() }
     }
 
     /// Dereferences the pointer.
@@ -1359,8 +1372,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn deref_mut(&mut self) -> &'g mut T {
-        let (raw, _) = decompose_tag::<T>(self.data);
-        unsafe { T::deref_mut(raw) }
+        unsafe { &mut *self.as_mut_ptr() }
     }
 
     /// Converts the pointer to a reference.
@@ -1400,7 +1412,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
         if raw.is_null() {
             None
         } else {
-            Some(unsafe { T::deref(raw) })
+            Some(unsafe { &*T::as_ptr(raw) })
         }
     }
 
@@ -1562,7 +1574,7 @@ impl<T: ?Sized + Pointable> fmt::Debug for Shared<'_, T> {
 
 impl<T: ?Sized + Pointable> fmt::Pointer for Shared<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Pointer::fmt(&(unsafe { self.deref() as *const _ }), f)
+        fmt::Pointer::fmt(&(unsafe { self.as_ptr() }), f)
     }
 }
 
