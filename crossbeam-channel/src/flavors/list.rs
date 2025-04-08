@@ -611,7 +611,7 @@ impl<T> Channel<T> {
             // In that case, just wait until it gets initialized.
             while block.is_null() {
                 backoff.snooze();
-                block = self.head.block.load(Ordering::Acquire);
+                block = self.head.block.swap(ptr::null_mut(), Ordering::AcqRel);
             }
         }
 
