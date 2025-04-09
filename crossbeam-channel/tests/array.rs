@@ -689,6 +689,8 @@ fn channel_through_channel() {
     .unwrap();
 }
 
+// On the current implementation, panic on drop will cause memory leaks
+#[cfg_attr(crossbeam_sanitize, ignore)]
 #[test]
 fn panic_on_drop() {
     struct Msg1<'a>(&'a mut bool);
@@ -740,4 +742,16 @@ fn panic_on_drop() {
     assert!(a);
     // Elements after the panicked element will leak.
     assert!(!b);
+}
+
+#[test]
+fn drop_unreceived() {
+    let (tx, rx) = bounded::<std::rc::Rc<()>>(1);
+    let msg = std::rc::Rc::new(());
+    let weak = std::rc::Rc::downgrade(&msg);
+    assert!(tx.send(msg).is_ok());
+    drop(rx);
+    // Messages should be dropped immediately when the last receiver is destroyed.
+    assert!(weak.upgrade().is_none());
+    drop(tx);
 }
