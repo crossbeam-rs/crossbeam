@@ -4,7 +4,7 @@ name = "crossbeam-skiplist"
 # - Update CHANGELOG.md
 # - Update README.md (when increasing major or minor version)
 # - Run './tools/publish.sh crossbeam-skiplist <version>'
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 rust-version = "1.61"
 license = "MIT OR Apache-2.0"
