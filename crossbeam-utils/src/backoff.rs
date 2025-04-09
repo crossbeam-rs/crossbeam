@@ -2,8 +2,9 @@ use crate::primitive::hint;
 use core::cell::Cell;
 use core::fmt;
 
-const SPIN_LIMIT: u32 = 6;
-const YIELD_LIMIT: u32 = 10;
+// https://github.com/oneapi-src/oneTBB/blob/v2021.5.0/include/oneapi/tbb/detail/_utils.h#L46-L48
+const SPIN_LIMIT: u32 = 4;
+const YIELD_LIMIT: u32 = 6;
 
 /// Performs exponential backoff in spin loops.
 ///
