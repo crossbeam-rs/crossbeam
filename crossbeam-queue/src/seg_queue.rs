@@ -7,6 +7,7 @@ use core::mem::MaybeUninit;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr;
 use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
+use std::println;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
@@ -112,7 +113,7 @@ impl<T> Block<T> {
                 return;
             }
         }
-
+        println!("drop!!");
         // No thread is using the block, now it is safe to destroy it.
         drop(unsafe { Box::from_raw(this) });
     }
@@ -301,16 +302,9 @@ impl<T> SegQueue<T> {
     pub fn push_mut(&mut self, value: T) {
         let tail = self.tail.index.load(Ordering::Relaxed);
         let mut block = self.tail.block.load(Ordering::Relaxed);
-        let mut next_block = None;
 
         // Calculate the offset of the index into the block.
         let offset = (tail >> SHIFT) % LAP;
-
-        // If we're going to have to install the next block, allocate it in advance in order to
-        // make the wait for other threads as short as possible.
-        if offset + 1 == BLOCK_CAP && next_block.is_none() {
-            next_block = Some(Block::<T>::new());
-        }
 
         // If this is the first push operation, we need to allocate the first block.
         if block.is_null() {
@@ -328,7 +322,7 @@ impl<T> SegQueue<T> {
         unsafe {
             // If we've reached the end of the block, install the next one.
             if offset + 1 == BLOCK_CAP {
-                let next_block = Box::into_raw(next_block.unwrap());
+                let next_block = Box::into_raw(Block::<T>::new());
                 let next_index = new_tail.wrapping_add(1 << SHIFT);
 
                 self.tail.block.store(next_block, Ordering::Relaxed);
@@ -510,10 +504,11 @@ impl<T> SegQueue<T> {
             slot.wait_write();
             let value = slot.value.get().read().assume_init();
 
-            // Destroy the block if we've reached the end, or if another thread wanted to
-            // destroy but couldn't because we were busy reading from the slot.
+            // Destroy the block if we've reached the end
             if offset + 1 == BLOCK_CAP {
-                Block::destroy(block, 0);
+                println!("destroy!!");
+                drop(Box::from_raw(block) );
+                // Block::destroy(block, 0);
             }
 
             Some(value)
