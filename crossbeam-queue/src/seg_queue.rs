@@ -499,12 +499,13 @@ impl<T> SegQueue<T> {
 
             // Read the value.
             let slot = (*block).slots.get_unchecked(offset);
-            slot.wait_write();
             let value = slot.value.get().read().assume_init();
 
             // Destroy the block if we've reached the end
             if offset + 1 == BLOCK_CAP {
-                drop(Box::from_raw(block));
+                Block::destroy(block, 0);
+            } else if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
+                Block::destroy(block, offset + 1);
             }
 
             Some(value)

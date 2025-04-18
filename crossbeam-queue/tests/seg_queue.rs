@@ -70,6 +70,29 @@ fn exclusive_reference() {
     assert_eq!(q.len(), 0);
     assert!(q.is_empty());
 
+    for i in 0..35 {
+        q.push(i);
+        assert_eq!(q.len(), i + 1);
+    }
+
+    for i in 0..5 {
+        q.push_mut(i);
+        assert_eq!(q.len(), 35 + i + 1);
+    }
+
+    for i in 0..5 {
+        q.pop_mut().unwrap();
+        assert_eq!(q.len(), 40 - i - 1);
+    }
+
+    for i in 0..35 {
+        q.pop().unwrap();
+        assert_eq!(q.len(), 35 - i - 1);
+    }
+
+    assert_eq!(q.len(), 0);
+    assert!(q.is_empty());
+
     q.push_mut(1);
 
     assert!(!q.is_empty());
