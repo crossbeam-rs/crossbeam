@@ -7,7 +7,6 @@ use core::mem::MaybeUninit;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr;
 use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
-use std::println;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
@@ -113,7 +112,6 @@ impl<T> Block<T> {
                 return;
             }
         }
-        println!("drop!!");
         // No thread is using the block, now it is safe to destroy it.
         drop(unsafe { Box::from_raw(this) });
     }
@@ -506,9 +504,7 @@ impl<T> SegQueue<T> {
 
             // Destroy the block if we've reached the end
             if offset + 1 == BLOCK_CAP {
-                println!("destroy!!");
-                drop(Box::from_raw(block) );
-                // Block::destroy(block, 0);
+                drop(Box::from_raw(block));
             }
 
             Some(value)
