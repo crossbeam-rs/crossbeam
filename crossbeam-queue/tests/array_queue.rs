@@ -57,6 +57,36 @@ fn len_empty_full() {
 }
 
 #[test]
+fn exclusive_reference() {
+    let mut q = ArrayQueue::new(2);
+
+    assert_eq!(q.len(), 0);
+    assert!(q.is_empty());
+
+    q.push_mut(()).unwrap();
+
+    assert_eq!(q.len(), 1);
+    assert!(!q.is_empty());
+    assert!(!q.is_full());
+
+    q.push_mut(()).unwrap();
+
+    assert_eq!(q.len(), 2);
+    assert!(!q.is_empty());
+    assert!(q.is_full());
+
+    q.pop_mut().unwrap();
+
+    assert_eq!(q.len(), 1);
+    assert!(!q.is_empty());
+    assert!(!q.is_full());
+
+    q.pop().unwrap();
+
+    assert_eq!(q.len(), 0);
+}
+
+#[test]
 fn len() {
     #[cfg(miri)]
     const COUNT: usize = 30;

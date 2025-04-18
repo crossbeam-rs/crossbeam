@@ -212,6 +212,49 @@ impl<T> ArrayQueue<T> {
         })
     }
 
+    /// Attempts to push an element using an exclusive reference of the queue.
+    ///
+    /// Atomic operaitons and checks are omitted
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::ArrayQueue;
+    ///
+    /// let mut q = ArrayQueue::new(1);
+    ///
+    /// assert_eq!(q.push_mut(10), Ok(()));
+    /// assert_eq!(q.push_mut(20), Err(20));
+    /// ```
+    pub fn push_mut(&mut self, value: T) -> Result<(), T> {
+        let tail = self.tail.load(Ordering::Relaxed);
+        let head = self.head.load(Ordering::Relaxed);
+
+        if head.wrapping_add(self.one_lap) == tail {
+            return Err(value);
+        }
+
+        // Now, trying to update the tail
+        let index = tail & (self.one_lap - 1);
+        let lap = tail & !(self.one_lap - 1);
+        let new_tail = if index + 1 < self.capacity() {
+            tail + 1
+        } else {
+            // One lap forward, index wraps around to zero.
+            lap.wrapping_add(self.one_lap)
+        };
+
+        self.tail.store(new_tail, Ordering::Relaxed);
+
+        let slot = unsafe { self.buffer.get_unchecked(index) };
+        unsafe {
+            slot.value.get().write(MaybeUninit::new(value));
+        }
+        slot.stamp.store(tail + 1, Ordering::Relaxed);
+
+        Ok(())
+    }
+
     /// Pushes an element into the queue, replacing the oldest element if necessary.
     ///
     /// If the queue is full, the oldest element is replaced and returned,
@@ -334,6 +377,52 @@ impl<T> ArrayQueue<T> {
                 head = self.head.load(Ordering::Relaxed);
             }
         }
+    }
+
+    /// Attempts to pop an element using a exclusive reference of the queue.
+    ///
+    /// Due to having an exclusive reference, atomic operaitons and checks are omitted
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::ArrayQueue;
+    ///
+    /// let mut q = ArrayQueue::new(1);
+    /// assert_eq!(q.push(10), Ok(()));
+    ///
+    /// assert_eq!(q.pop_mut(), Some(10));
+    /// assert!(q.pop_mut().is_none());
+    /// ```
+    pub fn pop_mut(&mut self) -> Option<T> {
+        let head = self.head.load(Ordering::Relaxed);
+        let tail = self.tail.load(Ordering::Relaxed);
+
+        // If the tail equals the head, that means the channel is empty.
+        if tail == head {
+            return None;
+        }
+        let index = head & (self.one_lap - 1);
+        let lap = head & !(self.one_lap - 1);
+
+        // Inspect the corresponding slot.
+        debug_assert!(index < self.buffer.len());
+        let slot = unsafe { self.buffer.get_unchecked(index) };
+
+        let new = if index + 1 < self.capacity() {
+            // Same lap, incremented index.
+            // Set to `{ lap: lap, index: index + 1 }`.
+            head + 1
+        } else {
+            // One lap forward, index wraps around to zero.
+            // Set to `{ lap: lap.wrapping_add(1), index: 0 }`.
+            lap.wrapping_add(self.one_lap)
+        };
+        let msg = unsafe { slot.value.get().read().assume_init() };
+        slot.stamp
+            .store(head.wrapping_add(self.one_lap), Ordering::Relaxed);
+        self.head.store(new, Ordering::Relaxed);
+        Some(msg)
     }
 
     /// Returns the capacity of the queue.

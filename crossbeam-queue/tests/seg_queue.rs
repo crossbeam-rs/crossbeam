@@ -52,6 +52,30 @@ fn len() {
 }
 
 #[test]
+fn exclusive_reference() {
+    let mut q = SegQueue::new();
+
+    assert_eq!(q.len(), 0);
+
+    for i in 0..50 {
+        q.push_mut(i);
+        assert_eq!(q.len(), i + 1);
+    }
+
+    for i in 0..50 {
+        q.pop_mut().unwrap();
+        assert_eq!(q.len(), 50 - i - 1);
+    }
+
+    assert_eq!(q.len(), 0);
+    assert!(q.is_empty());
+
+    q.push_mut(1);
+
+    assert!(!q.is_empty());
+}
+
+#[test]
 fn spsc() {
     #[cfg(miri)]
     const COUNT: usize = 100;

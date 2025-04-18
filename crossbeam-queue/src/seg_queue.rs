@@ -283,6 +283,66 @@ impl<T> SegQueue<T> {
         }
     }
 
+    /// Pushes an element to the queue with exclusive mutable access.
+    ///
+    /// Avoids atomic operations and synchronization, assuming
+    /// no other threads access the queue concurrently.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::SegQueue;
+    ///
+    /// let mut q = SegQueue::new();
+    ///
+    /// q.push_mut(10);
+    /// q.push_mut(20);
+    /// ```
+    pub fn push_mut(&mut self, value: T) {
+        let tail = self.tail.index.load(Ordering::Relaxed);
+        let mut block = self.tail.block.load(Ordering::Relaxed);
+        let mut next_block = None;
+
+        // Calculate the offset of the index into the block.
+        let offset = (tail >> SHIFT) % LAP;
+
+        // If we're going to have to install the next block, allocate it in advance in order to
+        // make the wait for other threads as short as possible.
+        if offset + 1 == BLOCK_CAP && next_block.is_none() {
+            next_block = Some(Block::<T>::new());
+        }
+
+        // If this is the first push operation, we need to allocate the first block.
+        if block.is_null() {
+            let new = Box::into_raw(Block::<T>::new());
+            self.head.block.store(new, Ordering::Relaxed);
+            self.tail.block.store(new, Ordering::Relaxed);
+
+            block = new;
+        }
+
+        let new_tail = tail + (1 << SHIFT);
+
+        self.tail.index.store(new_tail, Ordering::Relaxed);
+
+        unsafe {
+            // If we've reached the end of the block, install the next one.
+            if offset + 1 == BLOCK_CAP {
+                let next_block = Box::into_raw(next_block.unwrap());
+                let next_index = new_tail.wrapping_add(1 << SHIFT);
+
+                self.tail.block.store(next_block, Ordering::Relaxed);
+                self.tail.index.store(next_index, Ordering::Relaxed);
+                (*block).next.store(next_block, Ordering::Relaxed);
+            }
+
+            // Write the value into the slot.
+            let slot = (*block).slots.get_unchecked(offset);
+            slot.value.get().write(MaybeUninit::new(value));
+            slot.state.fetch_or(WRITE, Ordering::Relaxed);
+        }
+    }
+
     /// Pops the head element from the queue.
     ///
     /// If the queue is empty, `None` is returned.
@@ -384,6 +444,79 @@ impl<T> SegQueue<T> {
                     backoff.spin();
                 }
             }
+        }
+    }
+
+    /// Pops the head element from the queue using an exclusive reference.
+    ///
+    /// Avoids atomic operations and synchronization, assuming
+    /// no other threads access the queue concurrently.
+    ///
+    /// If the queue is empty, `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::SegQueue;
+    ///
+    /// let mut q = SegQueue::new();
+    ///
+    /// q.push(10);
+    /// q.push(20);
+    /// assert_eq!(q.pop_mut(), Some(10));
+    /// assert_eq!(q.pop_mut(), Some(20));
+    /// assert!(q.pop_mut().is_none());
+    /// ```
+    pub fn pop_mut(&mut self) -> Option<T> {
+        let head = self.head.index.load(Ordering::Relaxed);
+        let block = self.head.block.load(Ordering::Relaxed);
+
+        // Calculate the offset of the index into the block.
+        let offset = (head >> SHIFT) % LAP;
+
+        let mut new_head = head + (1 << SHIFT);
+
+        if new_head & HAS_NEXT == 0 {
+            let tail = self.tail.index.load(Ordering::Relaxed);
+
+            // If the tail equals the head, that means the queue is empty.
+            if head >> SHIFT == tail >> SHIFT {
+                return None;
+            }
+
+            // If head and tail are not in the same block, set `HAS_NEXT` in head.
+            if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
+                new_head |= HAS_NEXT;
+            }
+        }
+
+        self.head.index.store(new_head, Ordering::Relaxed);
+
+        unsafe {
+            // If we've reached the end of the block, move to the next one.
+            if offset + 1 == BLOCK_CAP {
+                let next = (*block).wait_next();
+                let mut next_index = (new_head & !HAS_NEXT).wrapping_add(1 << SHIFT);
+                if !(*next).next.load(Ordering::Relaxed).is_null() {
+                    next_index |= HAS_NEXT;
+                }
+
+                self.head.block.store(next, Ordering::Relaxed);
+                self.head.index.store(next_index, Ordering::Relaxed);
+            }
+
+            // Read the value.
+            let slot = (*block).slots.get_unchecked(offset);
+            slot.wait_write();
+            let value = slot.value.get().read().assume_init();
+
+            // Destroy the block if we've reached the end, or if another thread wanted to
+            // destroy but couldn't because we were busy reading from the slot.
+            if offset + 1 == BLOCK_CAP {
+                Block::destroy(block, 0);
+            }
+
+            Some(value)
         }
     }
 
