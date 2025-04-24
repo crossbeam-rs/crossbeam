@@ -13,7 +13,15 @@
 use std::env;
 
 include!("no_atomic.rs");
-include!("build-common.rs");
+//include!("");
+fn convert_custom_linux_target(target: String) -> String {
+    let mut parts: Vec<&str> = target.split('-').collect();
+    let system = parts.get(2);
+    if system == Some(&"linux") {
+        parts[1] = "unknown";
+    };
+    parts.join("-")
+}
 
 fn main() {
     println!("cargo:rerun-if-changed=no_atomic.rs");
@@ -34,9 +42,9 @@ fn main() {
     // Note that this is `no_`*, not `has_*`. This allows treating as the latest
     // stable rustc is used when the build script doesn't run. This is useful
     // for non-cargo build systems that don't run the build script.
-    if NO_ATOMIC.contains(&&*target) {
-        println!("cargo:rustc-cfg=crossbeam_no_atomic");
-    }
+    //if NO_ATOMIC.contains(&&*target) {
+    //    println!("cargo:rustc-cfg=crossbeam_no_atomic");
+   // }
 
     // `cfg(sanitize = "..")` is not stabilized.
     if let Ok(sanitize) = env::var("CARGO_CFG_SANITIZE") {
