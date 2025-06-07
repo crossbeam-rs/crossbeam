@@ -300,6 +300,7 @@ mod tests {
     use super::*;
     use crate::{Collector, Owned};
     use crossbeam_utils::thread;
+    use std::ptr;
     use std::sync::Barrier;
     use std::vec::Vec;
 
@@ -340,13 +341,13 @@ mod tests {
         let mut iter = l.iter(&guard);
         let maybe_e3 = iter.next();
         assert!(maybe_e3.is_some());
-        assert!(maybe_e3.unwrap().unwrap() as *const Entry == e3.as_raw());
+        assert!(ptr::eq(maybe_e3.unwrap().unwrap(), e3.as_raw()));
         let maybe_e2 = iter.next();
         assert!(maybe_e2.is_some());
-        assert!(maybe_e2.unwrap().unwrap() as *const Entry == e2.as_raw());
+        assert!(ptr::eq(maybe_e2.unwrap().unwrap(), e2.as_raw()));
         let maybe_e1 = iter.next();
         assert!(maybe_e1.is_some());
-        assert!(maybe_e1.unwrap().unwrap() as *const Entry == e1.as_raw());
+        assert!(ptr::eq(maybe_e1.unwrap().unwrap(), e1.as_raw()));
         assert!(iter.next().is_none());
 
         unsafe {
@@ -379,10 +380,10 @@ mod tests {
         let mut iter = l.iter(&guard);
         let maybe_e3 = iter.next();
         assert!(maybe_e3.is_some());
-        assert!(maybe_e3.unwrap().unwrap() as *const Entry == e3.as_raw());
+        assert!(ptr::eq(maybe_e3.unwrap().unwrap(), e3.as_raw()));
         let maybe_e1 = iter.next();
         assert!(maybe_e1.is_some());
-        assert!(maybe_e1.unwrap().unwrap() as *const Entry == e1.as_raw());
+        assert!(ptr::eq(maybe_e1.unwrap().unwrap(), e1.as_raw()));
         assert!(iter.next().is_none());
 
         unsafe {
