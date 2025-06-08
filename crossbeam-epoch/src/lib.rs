@@ -145,7 +145,9 @@ mod sync;
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub use crate::{
-    atomic::{Atomic, CompareExchangeError, Owned, Pointable, Pointer, Shared},
+    atomic::{
+        Atomic, CompareExchangeError, CompareExchangeValue, Owned, Pointable, Pointer, Shared,
+    },
     collector::{Collector, LocalHandle},
     guard::{unprotected, Guard},
 };
