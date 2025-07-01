@@ -297,12 +297,12 @@ impl<T> Worker<T> {
     /// let s_1 = w_1.stealer();
     /// let s_2 = w_2.stealer();
     ///
-    /// assert!(w_1.is_same_as(&s_1));
-    /// assert!(w_2.is_same_as(&s_2));
-    /// assert!(!w_1.is_same_as(&s_2));
-    /// assert!(!w_2.is_same_as(&s_1));
+    /// assert!(w_1.donates_to(&s_1));
+    /// assert!(w_2.donates_to(&s_2));
+    /// assert!(!w_1.donates_to(&s_2));
+    /// assert!(!w_2.donates_to(&s_1));
     /// ```
-    pub fn is_same_as(&self, stealer: &Stealer<T>) -> bool {
+    pub fn donates_to(&self, stealer: &Stealer<T>) -> bool {
         Arc::ptr_eq(&self.inner, &stealer.inner)
     }
 
