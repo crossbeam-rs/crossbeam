@@ -747,28 +747,70 @@ fn comparator() {
         }
     }
 
-    // Wacky comparison function
+    #[derive(Clone, Copy, Debug)]
+    struct OrderedF32(f32);
+
+    impl PartialEq for OrderedF32 {
+        fn eq(&self, other: &Self) -> bool {
+            self.cmp(other).is_eq()
+        }
+    }
+
+    impl Eq for OrderedF32 {}
+
+    impl PartialOrd for OrderedF32 {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for OrderedF32 {
+        fn cmp(&self, other: &Self) -> Ordering {
+            match self.0.partial_cmp(&other.0) {
+                Some(o) => o,
+                None => Ordering::Equal,
+            }
+        }
+    }
+
+    fn encode(slice: &[f32]) -> Vec<u8> {
+        let mut bytes = vec![];
+        for &f in slice {
+            bytes.extend_from_slice(&f.to_le_bytes());
+        }
+        bytes
+    }
+
+    fn decode(slice: &[u8]) -> impl Iterator<Item = OrderedF32> + '_ {
+        slice
+            .chunks_exact(4)
+            .map(|b| OrderedF32(f32::from_le_bytes(b.try_into().unwrap())))
+    }
+
     fn compare(lhs: &[u8], rhs: &[u8]) -> Ordering {
-        Ord::cmp(&lhs.len(), &rhs.len())
+        decode(lhs).cmp(decode(rhs))
     }
 
     let s = SkipSet::with_comparator(DynComparator {
         inner: Box::new(compare),
     });
-    s.insert(b"ab".to_vec());
-    s.insert(b"".to_vec());
-    s.insert(b"z".to_vec());
-    s.insert(b"a".to_vec());
+    s.insert(encode(&[0f32]));
+    s.insert(encode(&[1f32]));
+    s.insert(encode(&[0f32, 1f32]));
+    s.insert(encode(&[-0f32]));
 
     assert_eq!(s.len(), 3);
-    assert!(s.contains(b"a"));
-    assert!(s.contains(b"x"));
-    assert!(s.contains(b"xy"));
-    assert!(s.contains(b""));
+    assert!(s.contains(&encode(&[0f32])));
+    assert!(s.contains(&encode(&[-0f32])));
+    assert!(s.contains(&encode(&[1f32])));
+    assert!(s.contains(&encode(&[0f32, 1f32])));
 
     let elems: Vec<_> = s.iter().map(|x| &x.value()[..]).collect();
-    assert_eq!(elems, [&b""[..], b"a", b"ab"]);
+    assert_eq!(
+        elems,
+        [&encode(&[-0f32]), &encode(&[0f32, 1f32]), &encode(&[1f32])],
+    );
 
-    s.remove(b"p");
-    assert!(!s.contains(b"a"));
+    s.remove(&encode(&[0f32]));
+    assert!(!s.contains(&encode(&[-0f32])));
 }

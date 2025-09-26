@@ -14,13 +14,18 @@ use crate::{
 /// This is an alternative to [`BTreeSet`] which supports
 /// concurrent access across multiple threads.
 ///
+/// A custom comparator may be provided, causing all
+/// elements to be ordered by the comparison function used
+/// instead of the standard `Ord` impl. See [`Comparator`].
+///
 /// [`BTreeSet`]: std::collections::BTreeSet
+/// [`Comparator`]: crossbeam_skiplist::comparator::Comparator
 pub struct SkipSet<T, C = BasicComparator> {
     inner: map::SkipMap<T, (), C>,
 }
 
 impl<T> SkipSet<T> {
-    /// Returns a new, empty set.
+    /// Returns a new, empty set with the default comparator.
     ///
     /// # Example
     ///

@@ -17,13 +17,18 @@ use crossbeam_epoch as epoch;
 /// This is an alternative to [`BTreeMap`] which supports
 /// concurrent access across multiple threads.
 ///
+/// A custom comparator may be provided, causing all keys
+/// to be ordered by the comparison function used instead
+/// of the standard `Ord` impl. See [`Comparator`].
+///
 /// [`BTreeMap`]: std::collections::BTreeMap
+/// [`Comparator`]: crossbeam_skiplist::comparator::Comparator
 pub struct SkipMap<K, V, C = BasicComparator> {
     inner: base::SkipList<K, V, C>,
 }
 
 impl<K, V> SkipMap<K, V> {
-    /// Returns a new, empty map.
+    /// Returns a new, empty map with the default comparator.
     ///
     /// # Example
     ///

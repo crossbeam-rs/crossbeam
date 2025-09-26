@@ -13,23 +13,38 @@ use crate::equivalent::{Comparable, Equivalent};
 /// runtime, or you can use `Box<dyn Equivalator<L, R>>` to allow the user of
 /// your code to supply a custom comparison function.
 ///
-/// Because you can use `Equivalator` to implement very different comparison
-/// logic from the `Eq` trait for a given type, there is no expectation that
-/// two keys should have the same hash for them to compare equal. For example,
-/// this is a valid implementation that treats two inputs of any type as equal:
+/// Implementations of `Equivalator` don't affect the inherent `Eq` or `Hash`
+/// implementations for a type. Currently there is no companion trait that
+/// allows for custom hashing the way `Equivalator` allows for custom
+/// comparison.
+///
+/// See also `Comparator`.
+///
+/// ## Example
 /// ```
 /// use crossbeam_skiplist::comparator::Equivalator;
 ///
-/// struct TrivialEquivalator;
+/// struct MyEquivalator {
+///     case_sensitive: bool,
+/// }
 ///
-/// impl<L: ?Sized, R: ?Sized> Equivalator<L, R> for TrivialEquivalator {
-///     fn equivalent(&self, lhs: &L, rhs: &R) -> bool {
-///         true
+/// impl Equivalator<[u8], [u8]> for MyEquivalator {
+///     fn equivalent(&self, lhs: &[u8], rhs: &[u8]) -> bool {
+///         if self.case_sensitive {
+///             return lhs == rhs;
+///         } else {
+///             // Case-insensitive ASCII comparison on raw bytes
+///             if lhs.len() != rhs.len() { return false; }
+///             for (&c1, &c2) in lhs.iter().zip(rhs.iter()) {
+///                 let c1 = if c1 >= 0x61 && c1 <= 0x7a { c1 - 32 } else { c1 };
+///                 let c2 = if c2 >= 0x61 && c2 <= 0x7a { c2 - 32 } else { c2 };
+///                 if c1 != c2 { return false; }
+///             }
+///             true
+///         }
 ///     }
 /// }
 /// ```
-///
-/// See also `Comparator`.
 pub trait Equivalator<L: ?Sized, R: ?Sized = L> {
     /// Compare `lhs` to `rhs` for equality.
     fn equivalent(&self, lhs: &L, rhs: &R) -> bool;

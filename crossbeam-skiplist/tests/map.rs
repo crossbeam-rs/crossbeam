@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::iter;
 use std::ops::Bound;
 use std::sync::{Arc, Barrier};
@@ -941,4 +942,67 @@ fn concurrent_insert_get_same_key() {
         assert!(getter.get(&key).is_some());
     }
     handle.join().unwrap()
+}
+
+#[test]
+fn comparator() {
+    use std::cmp::Ordering;
+
+    use crossbeam_skiplist::comparator::{Comparator, Equivalator};
+
+    #[derive(Debug)]
+    struct CaseComparator {
+        case_sensitive: bool,
+    }
+
+    impl<L: Borrow<str> + ?Sized, R: Borrow<str> + ?Sized> Equivalator<L, R> for CaseComparator {
+        fn equivalent(&self, lhs: &L, rhs: &R) -> bool {
+            if self.case_sensitive {
+                lhs.borrow() == rhs.borrow()
+            } else {
+                lhs.borrow()
+                    .chars()
+                    .flat_map(|c| c.to_lowercase())
+                    .eq(rhs.borrow().chars().flat_map(|c| c.to_lowercase()))
+            }
+        }
+    }
+
+    impl<L: Borrow<str> + ?Sized, R: Borrow<str> + ?Sized> Comparator<L, R> for CaseComparator {
+        fn compare(&self, lhs: &L, rhs: &R) -> Ordering {
+            if self.case_sensitive {
+                lhs.borrow().cmp(rhs.borrow())
+            } else {
+                lhs.borrow()
+                    .chars()
+                    .flat_map(|c| c.to_lowercase())
+                    .cmp(rhs.borrow().chars().flat_map(|c| c.to_lowercase()))
+            }
+        }
+    }
+
+    let s: SkipMap<String, u32, _> = SkipMap::with_comparator(CaseComparator {
+        case_sensitive: true,
+    });
+    s.insert("abc".to_owned(), 1);
+    s.insert("ABC".to_owned(), 2);
+    assert_eq!(s.len(), 2);
+    assert_eq!(*s.get("abc").unwrap().value(), 1);
+    assert_eq!(*s.get("ABC").unwrap().value(), 2);
+    assert!(!s.contains_key("aBc"));
+    s.remove("abc");
+    assert!(!s.contains_key("abc"));
+    assert!(s.contains_key("ABC"));
+
+    let s: SkipMap<String, u32, _> = SkipMap::with_comparator(CaseComparator {
+        case_sensitive: false,
+    });
+    s.insert("abc".to_owned(), 1);
+    s.insert("ABC".to_owned(), 2);
+    assert_eq!(s.len(), 1);
+    assert_eq!(*s.get("abc").unwrap().value(), 2);
+    assert_eq!(*s.get("ABC").unwrap().value(), 2);
+    assert_eq!(*s.get("aBc").unwrap().value(), 2);
+    s.remove("AbC");
+    assert!(s.is_empty());
 }
