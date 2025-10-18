@@ -1011,21 +1011,6 @@ mod select3 {
             }
         });
     }
-
-    //#[test]
-    fn main4() {
-        // selects with closed channels behave like ordinary operations
-        let closedch = make::<i32>(1);
-        closedch.close_s();
-        let closedch = Arc::new(closedch);
-        test_panic(ALWAYS, {
-            move || {
-                select! {
-                    send(closedch.tx(), 7) -> _ => {}
-                }
-            }
-        });
-    }
 }
 
 // https://github.com/golang/go/blob/master/test/chan/select4.go
