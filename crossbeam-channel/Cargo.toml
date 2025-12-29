@@ -29,7 +29,7 @@ crossbeam-utils = { version = "0.8.18", path = "../crossbeam-utils", default-fea
 [dev-dependencies]
 fastrand = "2"
 num_cpus = "1.13.0"
-signal-hook = "0.3"
+signal-hook = "0.4"
 
 [lints]
 workspace = true
