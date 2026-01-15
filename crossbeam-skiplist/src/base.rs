@@ -1977,7 +1977,11 @@ where
                 Some(ref t) => {
                     let bound = Bound::Excluded(t.key());
                     if below_upper_bound(&bound, h.key()) {
-                        self.head.clone_from(&next_head);
+                        if let Some(e) = mem::replace(&mut self.head, next_head.clone()) {
+                            unsafe {
+                                e.node.decrement(guard);
+                            }
+                        }
                         next_head
                     } else {
                         unsafe {
@@ -1989,7 +1993,11 @@ where
                 None => {
                     let bound = self.range.end_bound();
                     if below_upper_bound(&bound, h.key()) {
-                        self.head.clone_from(&next_head);
+                        if let Some(e) = mem::replace(&mut self.head, next_head.clone()) {
+                            unsafe {
+                                e.node.decrement(guard);
+                            }
+                        }
                         next_head
                     } else {
                         unsafe {
@@ -2017,7 +2025,11 @@ where
                 Some(ref h) => {
                     let bound = Bound::Excluded(h.key());
                     if above_lower_bound(&bound, t.key()) {
-                        self.tail.clone_from(&next_tail);
+                        if let Some(e) = mem::replace(&mut self.tail, next_tail.clone()) {
+                            unsafe {
+                                e.node.decrement(guard);
+                            }
+                        }
                         next_tail
                     } else {
                         unsafe {
@@ -2029,7 +2041,11 @@ where
                 None => {
                     let bound = self.range.start_bound();
                     if above_lower_bound(&bound, t.key()) {
-                        self.tail.clone_from(&next_tail);
+                        if let Some(e) = mem::replace(&mut self.tail, next_tail.clone()) {
+                            unsafe {
+                                e.node.decrement(guard);
+                            }
+                        }
                         next_tail
                     } else {
                         unsafe {
