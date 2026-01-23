@@ -2,8 +2,12 @@
 // It is not intended for manual editing.
 
 const NO_ATOMIC: &[&str] = &[
+    "armv4t-none-eabi",
+    "armv5te-none-eabi",
     "bpfeb-unknown-none",
     "bpfel-unknown-none",
     "mipsel-sony-psx",
     "msp430-none-elf",
+    "thumbv4t-none-eabi",
+    "thumbv5te-none-eabi",
 ];
