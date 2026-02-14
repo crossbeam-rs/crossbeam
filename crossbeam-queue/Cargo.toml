@@ -6,6 +6,7 @@ name = "crossbeam-queue"
 # - Run './tools/publish.sh crossbeam-queue <version>'
 version = "0.3.12"
 edition = "2021"
+# NB: Sync with msrv badge and "Compatibility" section in README.md
 rust-version = "1.60"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
