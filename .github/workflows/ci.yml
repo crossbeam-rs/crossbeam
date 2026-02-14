@@ -228,8 +228,6 @@ jobs:
         uses: taiki-e/github-actions/install-rust@nightly
         with:
           component: rust-src
-      # https://github.com/google/sanitizers/issues/1716 / https://github.com/actions/runner-images/issues/9491
-      - run: sudo sysctl vm.mmap_rnd_bits=28
       - name: Run sanitizers
         run: ci/san.sh
 
