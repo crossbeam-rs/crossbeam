@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-skiplist#license
 https://crates.io/crates/crossbeam-skiplist)
 [![Documentation](https://docs.rs/crossbeam-skiplist/badge.svg)](
 https://docs.rs/crossbeam-skiplist)
-[![Rust 1.61+](https://img.shields.io/badge/rust-1.61+-lightgray.svg)](
+[![Rust 1.74+](https://img.shields.io/badge/rust-1.74+-lightgray.svg)](
 https://www.rust-lang.org)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.com/invite/JXYwgWZ)
 
@@ -34,7 +34,7 @@ crossbeam-skiplist = "0.1"
 
 Crossbeam Skiplist supports stable Rust releases going back at least six months,
 and every time the minimum supported Rust version is increased, a new minor
-version is released. Currently, the minimum supported Rust version is 1.61.
+version is released. Currently, the minimum supported Rust version is 1.74.
 
 ## License
 
