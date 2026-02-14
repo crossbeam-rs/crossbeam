@@ -40,11 +40,11 @@ jobs:
       matrix:
         # macOS is tested on Cirrus CI due to GitHub-hosted macOS runners are slow.
         include:
-          - rust: '1.63'
+          - rust: '1.74'
             os: ubuntu-latest
-          - rust: '1.63'
+          - rust: '1.74'
             os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
-          - rust: '1.63'
+          - rust: '1.74'
             os: windows-latest
           - rust: stable
             os: ubuntu-latest
