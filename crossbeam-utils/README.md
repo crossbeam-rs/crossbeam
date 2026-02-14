@@ -8,7 +8,7 @@ https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-utils#license)
 https://crates.io/crates/crossbeam-utils)
 [![Documentation](https://docs.rs/crossbeam-utils/badge.svg)](
 https://docs.rs/crossbeam-utils)
-[![Rust 1.60+](https://img.shields.io/badge/rust-1.60+-lightgray.svg)](
+[![Rust 1.56+](https://img.shields.io/badge/rust-1.56+-lightgray.svg)](
 https://www.rust-lang.org)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.com/invite/JXYwgWZ)
 

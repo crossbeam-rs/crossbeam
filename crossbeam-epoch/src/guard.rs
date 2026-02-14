@@ -372,7 +372,9 @@ impl Guard {
             fn drop(&mut self) {
                 if let Some(local) = unsafe { self.0.as_ref() } {
                     mem::forget(local.pin());
-                    local.release_handle();
+                    unsafe {
+                        Local::release_handle(local);
+                    }
                 }
             }
         }
