@@ -985,7 +985,7 @@ macro_rules! crossbeam_channel_internal {
 ///
 /// This macro allows you to define a set of channel operations, wait until any one of them becomes
 /// ready, and finally execute it. If multiple operations are ready at the same time, a random one
-/// among them is selected (i.e. the unbiased selection). Use `select_biased!` for the biased
+/// among them is selected (i.e. the unbiased selection). Use [`select_biased!`] for the biased
 /// selection.
 ///
 /// It is also possible to define a `default` case that gets executed if none of the operations are
@@ -998,6 +998,7 @@ macro_rules! crossbeam_channel_internal {
 /// dynamically created list of channel operations.
 ///
 /// [`Select`]: super::Select
+/// [`select_biased!`]: super::select_biased
 ///
 /// # Examples
 ///
