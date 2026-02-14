@@ -28,11 +28,8 @@ case "${group}" in
             -p crossbeam-queue \
             -p crossbeam-epoch \
             -p crossbeam-utils \
+            -p crossbeam-skiplist \
             -p crossbeam 2>&1 | ts -i '%.s  '
-        # Use Tree Borrows instead of Stacked Borrows because skiplist is not compatible with Stacked Borrows: https://github.com/crossbeam-rs/crossbeam/issues/878
-        MIRIFLAGS="${MIRIFLAGS} -Zmiri-tree-borrows" \
-            cargo miri test --all-features \
-            -p crossbeam-skiplist 2>&1 | ts -i '%.s  '
         # -Zmiri-compare-exchange-weak-failure-rate=0.0 is needed because some sequential tests (e.g.,
         # doctest of Stealer::steal) incorrectly assume that sequential weak CAS will never fail.
         # -Zmiri-preemption-rate=0 is needed because this code technically has UB and Miri catches that.
