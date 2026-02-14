@@ -101,6 +101,7 @@ impl<T> AtomicCell<T> {
     /// ```
     /// # // Always use fallback for now on environments that do not support inline assembly.
     /// # if cfg!(any(miri, crossbeam_loom, crossbeam_atomic_cell_force_fallback)) { return; }
+    /// # atomic_maybe_uninit::cfg_no_atomic_cas! { if true { return; } }
     /// use crossbeam_utils::atomic::AtomicCell;
     ///
     /// // This type is internally represented as `AtomicUsize` so we can just use atomic
