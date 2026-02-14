@@ -193,6 +193,9 @@ jobs:
         group:
           - channel
           - others
+        miriflags:
+          - ''
+          - '-Zmiri-tree-borrows'
     runs-on: ubuntu-latest
     timeout-minutes: 120 # TODO
     steps:
@@ -203,6 +206,8 @@ jobs:
           component: miri
       - name: miri
         run: ci/miri.sh ${{ matrix.group }}
+        env:
+          MIRIFLAGS: ${{ matrix.miriflags }}
 
   # Run cargo-careful.
   careful:
