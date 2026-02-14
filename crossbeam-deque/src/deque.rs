@@ -768,7 +768,7 @@ impl<T> Stealer<T> {
         }
 
         // Reserve capacity for the stolen batch.
-        let batch_size = cmp::min((len as usize + 1) / 2, limit);
+        let batch_size = cmp::min((len as usize).div_ceil(2), limit);
         dest.reserve(batch_size);
         let mut batch_size = batch_size as isize;
 
@@ -1620,7 +1620,7 @@ impl<T> Injector<T> {
             } else {
                 let len = (tail - head) >> SHIFT;
                 // Steal half of the available tasks.
-                advance = ((len + 1) / 2).min(limit);
+                advance = len.div_ceil(2).min(limit);
             }
         } else {
             // We can steal all tasks till the end of the block.
@@ -1817,7 +1817,7 @@ impl<T> Injector<T> {
             } else {
                 let len = (tail - head) >> SHIFT;
                 // Steal half of the available tasks.
-                advance = ((len + 1) / 2).min(limit);
+                advance = len.div_ceil(2).min(limit);
             }
         } else {
             // We can steal all tasks till the end of the block.
