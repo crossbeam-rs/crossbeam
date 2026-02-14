@@ -1548,7 +1548,7 @@ impl<T> Injector<T> {
         self.steal_batch_with_limit(dest, MAX_BATCH)
     }
 
-    /// Steals no more than of tasks and pushes them into a worker.
+    /// Steals no more than `limit` of tasks and pushes them into a worker.
     ///
     /// How many tasks exactly will be stolen is not specified. That said, this method will try to
     /// steal around half of the tasks in the queue, but also not more than some constant limit.
