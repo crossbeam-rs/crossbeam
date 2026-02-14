@@ -6,7 +6,8 @@ name = "crossbeam-skiplist"
 # - Run './tools/publish.sh crossbeam-skiplist <version>'
 version = "0.1.3"
 edition = "2021"
-rust-version = "1.61"
+# NB: Sync with msrv badge and "Compatibility" section in README.md
+rust-version = "1.74"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-skiplist"
