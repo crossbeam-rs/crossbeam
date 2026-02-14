@@ -942,3 +942,21 @@ fn concurrent_insert_get_same_key() {
     }
     handle.join().unwrap()
 }
+
+// https://github.com/crossbeam-rs/crossbeam/issues/1178
+#[test]
+fn issue_1178() {
+    let map = SkipMap::new();
+    let _ = map.insert(vec![1u8], vec![1u8]);
+    let _ = map.insert(vec![2], vec![2]);
+    let _ = map.insert(vec![3], vec![3]);
+
+    let kvs: Vec<(Vec<u8>, Vec<u8>)> = map
+        .range(vec![1]..vec![3])
+        .map(|e| (e.key().clone(), e.value().clone()))
+        .collect();
+
+    for (k, v) in kvs {
+        map.insert(k, v);
+    }
+}
