@@ -27,6 +27,24 @@ fn strongest_failure_ordering(order: Ordering) -> Ordering {
     }
 }
 
+/// The value returned from a compare-and-swap operation.
+pub struct CompareExchangeValue<'g, T: ?Sized + Pointable> {
+    /// The previous value that was in the atomic pointer.
+    pub old: Shared<'g, T>,
+
+    /// The new value that was stored.
+    pub new: Shared<'g, T>,
+}
+
+impl<T: ?Sized + Pointable> fmt::Debug for CompareExchangeValue<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CompareExchangeValue")
+            .field("old", &self.old)
+            .field("new", &self.new)
+            .finish()
+    }
+}
+
 /// The error returned on failed compare-and-swap operation.
 pub struct CompareExchangeError<'g, T: ?Sized + Pointable, P: Pointer<T>> {
     /// The value in the atomic pointer at the time of the failed operation.
@@ -424,9 +442,10 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// value is the same as `current`. The tag is also taken into account, so two pointers to the
     /// same object, but with different tags, will not be considered equal.
     ///
-    /// The return value is a result indicating whether the new pointer was written. On success the
-    /// pointer that was written is returned. On failure the actual current value and `new` are
-    /// returned.
+    /// The return value contains both the previous value and the new value that was written.
+    /// On success, `old` contains the previous value (which equals `current`) and `new` contains
+    /// the value that was stored. On failure, `old` contains the actual current value and `new`
+    /// contains the value that was attempted to be stored.
     ///
     /// This method takes two `Ordering` arguments to describe the memory
     /// ordering of this operation. `success` describes the required ordering for the
@@ -458,14 +477,19 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         success: Ordering,
         failure: Ordering,
         _: &'g Guard,
-    ) -> Result<Shared<'g, T>, CompareExchangeError<'g, T, P>>
+    ) -> Result<CompareExchangeValue<'g, T>, CompareExchangeError<'g, T, P>>
     where
         P: Pointer<T>,
     {
         let new = new.into_ptr();
         self.data
             .compare_exchange(current.into_ptr(), new, success, failure)
-            .map(|_| unsafe { Shared::from_ptr(new) })
+            .map(|old| unsafe {
+                CompareExchangeValue {
+                    old: Shared::from_ptr(old),
+                    new: Shared::from_ptr(new),
+                }
+            })
             .map_err(|current| unsafe {
                 CompareExchangeError {
                     current: Shared::from_ptr(current),
@@ -479,9 +503,11 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// same object, but with different tags, will not be considered equal.
     ///
     /// Unlike [`compare_exchange`], this method is allowed to spuriously fail even when comparison
-    /// succeeds, which can result in more efficient code on some platforms.  The return value is a
-    /// result indicating whether the new pointer was written. On success the pointer that was
-    /// written is returned. On failure the actual current value and `new` are returned.
+    /// succeeds, which can result in more efficient code on some platforms. The return value
+    /// contains both the previous value and the new value that was written. On success, `old`
+    /// contains the previous value (which equals `current`) and `new` contains the value that was
+    /// stored. On failure, `old` contains the actual current value and `new` contains the value
+    /// that was attempted to be stored.
     ///
     /// This method takes two `Ordering` arguments to describe the memory
     /// ordering of this operation. `success` describes the required ordering for the
@@ -508,8 +534,8 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// # unsafe { drop(a.load(SeqCst, guard).into_owned()); } // avoid leak
     /// loop {
     ///     match a.compare_exchange_weak(ptr, new, SeqCst, SeqCst, guard) {
-    ///         Ok(p) => {
-    ///             ptr = p;
+    ///         Ok(result) => {
+    ///             ptr = result.old;
     ///             break;
     ///         }
     ///         Err(err) => {
@@ -535,14 +561,19 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         success: Ordering,
         failure: Ordering,
         _: &'g Guard,
-    ) -> Result<Shared<'g, T>, CompareExchangeError<'g, T, P>>
+    ) -> Result<CompareExchangeValue<'g, T>, CompareExchangeError<'g, T, P>>
     where
         P: Pointer<T>,
     {
         let new = new.into_ptr();
         self.data
             .compare_exchange_weak(current.into_ptr(), new, success, failure)
-            .map(|_| unsafe { Shared::from_ptr(new) })
+            .map(|old| unsafe {
+                CompareExchangeValue {
+                    old: Shared::from_ptr(old),
+                    new: Shared::from_ptr(new),
+                }
+            })
             .map_err(|current| unsafe {
                 CompareExchangeError {
                     current: Shared::from_ptr(current),
@@ -604,7 +635,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         let mut prev = self.load(fail_order, guard);
         while let Some(next) = func(prev) {
             match self.compare_exchange_weak(prev, next, set_order, fail_order, guard) {
-                Ok(shared) => return Ok(shared),
+                Ok(result) => return Ok(result.old),
                 Err(next_prev) => prev = next_prev.current,
             }
         }
@@ -1586,8 +1617,10 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
-    use super::{Owned, Shared};
+    use super::{Atomic, Owned, Shared};
+    use crate::pin;
     use std::mem::MaybeUninit;
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn valid_tag_i8() {
@@ -1610,5 +1643,119 @@ mod tests {
         let owned = Owned::<[MaybeUninit<usize>]>::init(10);
         let arr: &[MaybeUninit<usize>] = &owned;
         assert_eq!(arr.len(), 10);
+    }
+
+    #[test]
+    fn compare_exchange_success() {
+        let atomic = Atomic::new(42);
+        let guard = &pin();
+
+        let current = atomic.load(Ordering::SeqCst, guard);
+        let new_value = Owned::new(100);
+
+        let result = atomic
+            .compare_exchange(
+                current,
+                new_value,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            )
+            .unwrap();
+        // On success, `old` should equal the current value we loaded
+        assert_eq!(unsafe { result.old.deref() }, &42);
+        // `new` should equal the value we stored
+        assert_eq!(unsafe { result.new.deref() }, &100);
+
+        // Verify the atomic actually contains the new value
+        let current = atomic.load(Ordering::SeqCst, guard);
+        assert_eq!(unsafe { current.deref() }, &100);
+
+        unsafe {
+            drop(result.old.into_owned());
+            drop(atomic.into_owned());
+        }
+    }
+
+    #[test]
+    fn compare_exchange_failure() {
+        let atomic = Atomic::new(42);
+        let guard = &pin();
+
+        // Load the current value
+        let current = atomic.load(Ordering::SeqCst, guard);
+
+        let old_value = atomic.swap(Owned::new(200), Ordering::SeqCst, guard);
+        unsafe {
+            drop(old_value.into_owned());
+        }
+
+        // Now try to compare_exchange with the old current value - this should fail
+        let new_value = Owned::new(300);
+        let error = atomic
+            .compare_exchange(
+                current,
+                new_value,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            )
+            .unwrap_err();
+        // On failure, `current` should contain the actual current value (200)
+        assert_eq!(unsafe { error.current.deref() }, &200);
+        // `new` should contain the value we tried to store (300)
+        assert_eq!(&*error.new, &300);
+
+        // Verify the atomic still contains the value we set (200), not the failed attempt (300)
+        let current = atomic.load(Ordering::SeqCst, guard);
+        assert_eq!(unsafe { current.deref() }, &200);
+
+        unsafe {
+            drop(atomic.into_owned());
+        }
+    }
+
+    #[test]
+    fn compare_exchange_weak_success() {
+        let atomic = Atomic::new(42);
+        let guard = &pin();
+
+        let mut current = atomic.load(Ordering::SeqCst, guard);
+        let mut new_value = Owned::new(100);
+
+        loop {
+            match atomic.compare_exchange_weak(
+                current,
+                new_value,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            ) {
+                Ok(result) => {
+                    // On success, `old` should equal the current value we loaded
+                    assert_eq!(unsafe { result.old.deref() }, &42);
+                    // `new` should equal the value we stored
+                    assert_eq!(unsafe { result.new.deref() }, &100);
+
+                    // Verify the atomic actually contains the new value
+                    let current = atomic.load(Ordering::SeqCst, guard);
+                    assert_eq!(unsafe { current.deref() }, &100);
+
+                    unsafe {
+                        drop(result.old.into_owned());
+                    }
+                    break;
+                }
+                Err(e) => {
+                    current = e.current;
+                    new_value = e.new;
+                    assert_eq!(unsafe { current.deref() }, &42);
+                }
+            }
+        }
+
+        unsafe {
+            drop(atomic.into_owned());
+        }
     }
 }
