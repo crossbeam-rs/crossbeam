@@ -2,11 +2,19 @@
 
 extern crate test;
 
+use std::num::NonZeroUsize;
+
 use crossbeam_channel::{bounded, unbounded};
 use crossbeam_utils::thread::scope;
 use test::Bencher;
 
 const TOTAL_STEPS: usize = 40_000;
+
+fn num_cpus() -> usize {
+    std::thread::available_parallelism()
+        .unwrap_or(NonZeroUsize::MIN)
+        .into()
+}
 
 mod unbounded {
     use super::*;
@@ -36,7 +44,7 @@ mod unbounded {
 
     #[bench]
     fn par_inout(b: &mut Bencher) {
-        let threads = num_cpus::get();
+        let threads = num_cpus();
         let steps = TOTAL_STEPS / threads;
         let (s, r) = unbounded::<i32>();
 
@@ -99,7 +107,7 @@ mod unbounded {
 
     #[bench]
     fn spmc(b: &mut Bencher) {
-        let threads = num_cpus::get() - 1;
+        let threads = num_cpus() - 1;
         let steps = TOTAL_STEPS / threads;
         let (s, r) = unbounded::<i32>();
 
@@ -135,7 +143,7 @@ mod unbounded {
 
     #[bench]
     fn mpsc(b: &mut Bencher) {
-        let threads = num_cpus::get() - 1;
+        let threads = num_cpus() - 1;
         let steps = TOTAL_STEPS / threads;
         let (s, r) = unbounded::<i32>();
 
@@ -171,7 +179,7 @@ mod unbounded {
 
     #[bench]
     fn mpmc(b: &mut Bencher) {
-        let threads = num_cpus::get();
+        let threads = num_cpus();
         let steps = TOTAL_STEPS / threads;
         let (s, r) = unbounded::<i32>();
 
@@ -247,7 +255,7 @@ mod bounded_n {
 
     #[bench]
     fn spmc(b: &mut Bencher) {
-        let threads = num_cpus::get() - 1;
+        let threads = num_cpus() - 1;
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(steps * threads);
 
@@ -283,7 +291,7 @@ mod bounded_n {
 
     #[bench]
     fn mpsc(b: &mut Bencher) {
-        let threads = num_cpus::get() - 1;
+        let threads = num_cpus() - 1;
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(steps * threads);
 
@@ -319,7 +327,7 @@ mod bounded_n {
 
     #[bench]
     fn par_inout(b: &mut Bencher) {
-        let threads = num_cpus::get();
+        let threads = num_cpus();
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(threads);
 
@@ -353,7 +361,7 @@ mod bounded_n {
 
     #[bench]
     fn mpmc(b: &mut Bencher) {
-        let threads = num_cpus::get();
+        let threads = num_cpus();
         assert_eq!(threads % 2, 0);
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(steps * threads);
@@ -444,7 +452,7 @@ mod bounded_1 {
 
     #[bench]
     fn spmc(b: &mut Bencher) {
-        let threads = num_cpus::get() - 1;
+        let threads = num_cpus() - 1;
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(1);
 
@@ -480,7 +488,7 @@ mod bounded_1 {
 
     #[bench]
     fn mpsc(b: &mut Bencher) {
-        let threads = num_cpus::get() - 1;
+        let threads = num_cpus() - 1;
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(1);
 
@@ -516,7 +524,7 @@ mod bounded_1 {
 
     #[bench]
     fn mpmc(b: &mut Bencher) {
-        let threads = num_cpus::get();
+        let threads = num_cpus();
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(1);
 
@@ -597,7 +605,7 @@ mod bounded_0 {
 
     #[bench]
     fn spmc(b: &mut Bencher) {
-        let threads = num_cpus::get() - 1;
+        let threads = num_cpus() - 1;
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(0);
 
@@ -633,7 +641,7 @@ mod bounded_0 {
 
     #[bench]
     fn mpsc(b: &mut Bencher) {
-        let threads = num_cpus::get() - 1;
+        let threads = num_cpus() - 1;
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(0);
 
@@ -669,7 +677,7 @@ mod bounded_0 {
 
     #[bench]
     fn mpmc(b: &mut Bencher) {
-        let threads = num_cpus::get();
+        let threads = num_cpus();
         let steps = TOTAL_STEPS / threads;
         let (s, r) = bounded::<i32>(0);
 
