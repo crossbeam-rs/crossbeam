@@ -8,7 +8,7 @@ use crate::collector::{Collector, LocalHandle};
 use crate::guard::Guard;
 use crate::primitive::thread_local;
 #[cfg(not(crossbeam_loom))]
-use crate::sync::once_lock::OnceLock;
+use std::sync::OnceLock;
 
 fn collector() -> &'static Collector {
     #[cfg(not(crossbeam_loom))]
