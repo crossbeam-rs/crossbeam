@@ -52,7 +52,7 @@ fn is_lock_free() {
     // of `AtomicU64` is `8`, so `AtomicCell<u64>` is not lock-free.
     assert_eq!(
         AtomicCell::<u64>::is_lock_free(),
-        cfg!(target_has_atomic = "64") && std::mem::align_of::<u64>() == 8 && !always_use_fallback
+        cfg!(target_has_atomic = "64") && mem::align_of::<u64>() == 8 && !always_use_fallback
     );
     assert_eq!(mem::size_of::<U64Align8>(), 8);
     assert_eq!(mem::align_of::<U64Align8>(), 8);
@@ -61,12 +61,15 @@ fn is_lock_free() {
         cfg!(target_has_atomic = "64") && !always_use_fallback
     );
 
-    assert_eq!(
-        AtomicCell::<u128>::is_lock_free(),
-        cfg!(target_has_atomic = "128")
-            && std::mem::align_of::<u128>() == 16
-            && !always_use_fallback
-    );
+    atomic_maybe_uninit::cfg_has_atomic_128! {
+        assert_eq!(
+            AtomicCell::<u128>::is_lock_free(),
+            mem::align_of::<u128>() == 16 && !always_use_fallback
+        );
+    };
+    atomic_maybe_uninit::cfg_no_atomic_128! {
+        assert!(!AtomicCell::<u128>::is_lock_free());
+    };
 }
 
 #[test]

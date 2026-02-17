@@ -64,6 +64,12 @@ jobs:
           - rust: nightly
             os: ubuntu-24.04-arm
             target: armv7-unknown-linux-gnueabihf
+          - rust: nightly
+            os: ubuntu-latest
+            target: powerpc64le-unknown-linux-gnu
+          - rust: nightly
+            os: ubuntu-latest
+            target: s390x-unknown-linux-gnu
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
             os: ubuntu-latest
