@@ -10,6 +10,7 @@ on:
       - master
   schedule:
     - cron: '0 2 * * *'
+  workflow_dispatch:
 
 env:
   CARGO_INCREMENTAL: 0
@@ -23,7 +24,7 @@ env:
 
 defaults:
   run:
-    shell: bash
+    shell: bash --noprofile --norc -CeEuxo pipefail {0}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
@@ -205,7 +206,7 @@ jobs:
           - ''
           - '-Zmiri-tree-borrows'
     runs-on: ubuntu-latest
-    timeout-minutes: 120 # TODO
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
