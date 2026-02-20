@@ -232,6 +232,8 @@ impl Global {
         // TODO(stjepang): `Local`s are stored in a linked list because linked lists are fairly
         // easy to implement in a lock-free manner. However, traversal can be slow due to cache
         // misses and data dependencies. We should experiment with other data structures as well.
+        #[cfg(crossbeam_sanitize_thread)]
+        let mut locals = alloc::vec![];
         for local in self.locals.iter(guard) {
             match local {
                 Err(IterError::Stalled) => {
@@ -248,10 +250,19 @@ impl Global {
                     if local_epoch.is_pinned() && local_epoch.unpinned() != global_epoch {
                         return global_epoch;
                     }
+
+                    #[cfg(crossbeam_sanitize_thread)]
+                    locals.push(local);
                 }
             }
         }
-        atomic::fence(Ordering::Acquire);
+        #[cfg(crossbeam_sanitize_thread)]
+        for local in locals {
+            local.epoch.load(Ordering::Acquire);
+        }
+        if !cfg!(crossbeam_sanitize_thread) {
+            atomic::fence(Ordering::Acquire);
+        }
 
         // All pinned participants were pinned in the current global epoch.
         // Now let's advance the global epoch...
