@@ -37,6 +37,8 @@ jobs:
     with:
       unqualified_local_imports: false # TODO
       fuzzy_provenance_casts: false # TODO
+  docs:
+    uses: taiki-e/github-actions/.github/workflows/docs.yml@main
 
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
@@ -249,17 +251,6 @@ jobs:
         uses: taiki-e/github-actions/install-rust@stable
       - name: loom
         run: ci/crossbeam-epoch-loom.sh
-
-  # Check if the document can be generated without warning.
-  docs:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install Rust
-        uses: taiki-e/github-actions/install-rust@nightly
-      - name: docs
-        run: cargo doc --no-deps --all --all-features
 
   shellcheck:
     runs-on: ubuntu-latest
