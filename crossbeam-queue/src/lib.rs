@@ -5,7 +5,7 @@
 //! * [`ArrayQueue`], a bounded MPMC queue that allocates a fixed-capacity buffer on construction.
 //! * [`SegQueue`], an unbounded MPMC queue that allocates small buffers, segments, on demand.
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![doc(test(
     no_crate_inject,
     attr(
@@ -20,10 +20,13 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+#[cfg(target_has_atomic = "ptr")]
 mod array_queue;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod seg_queue;
 
+#[cfg(target_has_atomic = "ptr")]
+pub use crate::array_queue::ArrayQueue;
+
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
-pub use crate::{array_queue::ArrayQueue, seg_queue::SegQueue};
+pub use crate::seg_queue::SegQueue;
