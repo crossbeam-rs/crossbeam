@@ -128,6 +128,23 @@ mod primitive {
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 extern crate alloc;
 
+/// Make the given function const if the given condition is true.
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+macro_rules! const_fn {
+    (
+        const_if: #[cfg($($cfg:tt)+)];
+        $(#[$($attr:tt)*])*
+        $vis:vis const $($rest:tt)*
+    ) => {
+        #[cfg($($cfg)+)]
+        $(#[$($attr)*])*
+        $vis const $($rest)*
+        #[cfg(not($($cfg)+))]
+        $(#[$($attr)*])*
+        $vis $($rest)*
+    };
+}
+
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod atomic;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
