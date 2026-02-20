@@ -30,6 +30,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-external-types:
+    uses: taiki-e/github-actions/.github/workflows/check-external-types.yml@main
+
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
     env:
