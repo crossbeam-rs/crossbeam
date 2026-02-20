@@ -985,7 +985,7 @@ macro_rules! crossbeam_channel_internal {
 ///
 /// This macro allows you to define a set of channel operations, wait until any one of them becomes
 /// ready, and finally execute it. If multiple operations are ready at the same time, a random one
-/// among them is selected (i.e. the unbiased selection). Use `select_biased!` for the biased
+/// among them is selected (i.e. the unbiased selection). Use [`select_biased!`] for the biased
 /// selection.
 ///
 /// It is also possible to define a `default` case that gets executed if none of the operations are
@@ -998,6 +998,7 @@ macro_rules! crossbeam_channel_internal {
 /// dynamically created list of channel operations.
 ///
 /// [`Select`]: super::Select
+/// [`select_biased!`]: super::select_biased
 ///
 /// # Examples
 ///
@@ -1085,6 +1086,7 @@ macro_rules! crossbeam_channel_internal {
 /// Optionally add a receive operation to `select!` using [`never`]:
 ///
 /// ```
+/// # #[allow(clippy::unnecessary_literal_unwrap)] {
 /// use std::thread;
 /// use std::time::Duration;
 /// use crossbeam_channel::{select, never, unbounded};
@@ -1113,6 +1115,7 @@ macro_rules! crossbeam_channel_internal {
 /// }
 /// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+/// # }
 /// ```
 ///
 /// To optionally add a timeout to `select!`, see the [example] for [`never`].

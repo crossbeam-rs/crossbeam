@@ -3,8 +3,8 @@ set -euxo pipefail
 IFS=$'\n\t'
 cd "$(dirname "$0")"/..
 
-if [[ "$OSTYPE" != "linux"* ]]; then
-    exit 0
+if [[ "${OSTYPE}" != "linux"* ]]; then
+  exit 0
 fi
 
 # Run address sanitizer
@@ -13,23 +13,23 @@ fi
 # `--cfg crossbeam_sanitize`.
 cargo clean
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=address --cfg crossbeam_sanitize" \
-    cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
+  cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
 
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=address --cfg crossbeam_sanitize" \
-    cargo run -Z build-std \
-    --all-features \
-    --release \
-    --target x86_64-unknown-linux-gnu \
-    --example sanitize \
-    --manifest-path crossbeam-epoch/Cargo.toml
+  cargo run -Z build-std \
+  --all-features \
+  --release \
+  --target x86_64-unknown-linux-gnu \
+  --example sanitize \
+  --manifest-path crossbeam-epoch/Cargo.toml
 
 # Run memory sanitizer
 cargo clean
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=memory --cfg crossbeam_sanitize" \
-    cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
+  cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
 
 # Run thread sanitizer
 cargo clean
 TSAN_OPTIONS="suppressions=$(pwd)/ci/tsan" \
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=thread --cfg crossbeam_sanitize" \
-    cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
+  cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1
