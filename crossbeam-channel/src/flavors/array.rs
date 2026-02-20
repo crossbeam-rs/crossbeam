@@ -18,7 +18,7 @@ use std::time::Instant;
 use crossbeam_utils::{Backoff, CachePadded};
 
 use crate::context::Context;
-use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
+use crate::err::{ForceSendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
 use crate::waker::SyncWaker;
 
@@ -323,6 +323,30 @@ impl<T> Channel<T> {
         } else {
             Err(TrySendError::Full(msg))
         }
+    }
+
+    /// Force send a message into the channel. Only fails if the channel is disconnected
+    ///
+    /// Note that this is currently a naive implementation to make the sequential test pass
+    pub(crate) fn force_send(&self, msg: T) -> Result<Option<T>, ForceSendError<T>> {
+        if self.is_disconnected() {
+            return Err(ForceSendError(msg));
+        }
+
+        let old_msg = if self.is_full() {
+            let old_msg = self.try_recv().ok();
+            if old_msg.is_none() {
+                return Err(ForceSendError(msg));
+            }
+            old_msg
+        } else {
+            None
+        };
+
+        self.try_send(msg)
+            .map_err(|e| ForceSendError(e.into_inner()))?;
+
+        Ok(old_msg)
     }
 
     /// Sends a message into the channel.

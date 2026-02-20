@@ -370,8 +370,8 @@ pub use crate::{
         after, at, bounded, never, tick, unbounded, IntoIter, Iter, Receiver, Sender, TryIter,
     },
     err::{
-        ReadyTimeoutError, RecvError, RecvTimeoutError, SelectTimeoutError, SendError,
-        SendTimeoutError, TryReadyError, TryRecvError, TrySelectError, TrySendError,
+        ForceSendError, ReadyTimeoutError, RecvError, RecvTimeoutError, SelectTimeoutError,
+        SendError, SendTimeoutError, TryReadyError, TryRecvError, TrySelectError, TrySendError,
     },
     select::{Select, SelectedOperation},
 };

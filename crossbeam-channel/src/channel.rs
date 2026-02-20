@@ -10,7 +10,8 @@ use std::time::{Duration, Instant};
 use crate::context::Context;
 use crate::counter;
 use crate::err::{
-    RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError,
+    ForceSendError, RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError,
+    TrySendError,
 };
 use crate::flavors;
 use crate::select::{Operation, SelectHandle, Token};
@@ -407,6 +408,54 @@ impl<T> Sender<T> {
             SenderFlavor::Array(chan) => chan.try_send(msg),
             SenderFlavor::List(chan) => chan.try_send(msg),
             SenderFlavor::Zero(chan) => chan.try_send(msg),
+        }
+    }
+
+    /// Sends a message to a channel without blocking. It will only fail if the channel is disconnected.
+    ///
+    /// This method will either send a message into the channel immediately,
+    /// overwrite and return the last value in the channel or return an error if
+    /// the channel is full. The returned error contains the original message.
+    ///
+    /// If called on a zero-capacity channel, this method will send the message only if there
+    /// happens to be a pending receive operation on the other side of the channel at the same time,
+    /// otherwise it will return the value to the sender.
+    ///
+    /// ```
+    /// use crossbeam_channel::{bounded, ForceSendError};
+    ///
+    /// let (s, r) = bounded(3);
+    ///
+    /// assert_eq!(s.force_send(0), Ok(None));
+    /// assert_eq!(s.force_send(1), Ok(None));
+    /// assert_eq!(s.force_send(2), Ok(None));
+    /// assert_eq!(s.force_send(3), Ok(Some(0)));
+    ///
+    /// assert_eq!(r.recv(), Ok(1));
+    ///
+    /// assert_eq!(s.force_send(4), Ok(None));
+    ///
+    /// assert_eq!(r.recv(), Ok(2));
+    /// assert_eq!(r.recv(), Ok(3));
+    ///
+    /// assert_eq!(s.force_send(5), Ok(None));
+    /// assert_eq!(s.force_send(6), Ok(None));
+    /// assert_eq!(s.force_send(7), Ok(Some(4)));
+    /// assert_eq!(s.force_send(8), Ok(Some(5)));
+    ///
+    /// assert_eq!(r.recv(), Ok(6));
+    /// assert_eq!(r.recv(), Ok(7));
+    /// assert_eq!(r.recv(), Ok(8));
+    ///
+    /// drop(r);
+    ///
+    /// assert_eq!(s.force_send(9), Err(ForceSendError(9)));
+    /// ``````
+    pub fn force_send(&self, msg: T) -> Result<Option<T>, ForceSendError<T>> {
+        match &self.flavor {
+            SenderFlavor::Array(chan) => chan.force_send(msg),
+            SenderFlavor::List(chan) => chan.force_send(msg),
+            SenderFlavor::Zero(chan) => chan.force_send(msg),
         }
     }
 
