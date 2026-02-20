@@ -16,6 +16,9 @@ keywords = ["atomic", "garbage", "non-blocking", "lock-free", "rcu"]
 categories = ["concurrency", "memory-management", "data-structures", "no-std"]
 exclude = ["/.*", "/ci", "/tools"]
 
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
 [features]
 default = ["std"]
 

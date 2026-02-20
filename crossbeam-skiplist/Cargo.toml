@@ -15,6 +15,9 @@ description = "A concurrent skip list"
 keywords = ["map", "set", "skiplist", "lock-free"]
 categories = ["algorithms", "concurrency", "data-structures", "no-std"]
 
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
 [features]
 default = ["std"]
 
