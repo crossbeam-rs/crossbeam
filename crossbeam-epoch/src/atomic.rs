@@ -14,19 +14,6 @@ use crate::primitive::sync::atomic::AtomicUsize;
 use crate::primitive::sync::atomic::{AtomicPtr, Ordering};
 use crossbeam_utils::atomic::AtomicConsume;
 
-/// Given ordering for the success case in a compare-exchange operation, returns the strongest
-/// appropriate ordering for the failure case.
-#[cfg(miri)]
-#[inline]
-fn strongest_failure_ordering(order: Ordering) -> Ordering {
-    use Ordering::*;
-    match order {
-        Relaxed | Release => Relaxed,
-        Acquire | AcqRel => Acquire,
-        _ => SeqCst,
-    }
-}
-
 /// The value returned from a compare-and-swap operation.
 pub struct CompareExchangeValue<'g, T: ?Sized + Pointable> {
     /// The previous value that was in the atomic pointer.
@@ -662,27 +649,20 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
     pub fn fetch_and<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        let val = val | !low_bits::<T>();
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
+        // compatible, but it requires Rust 1.91. So, for now use it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
-        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
-        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            let val = val | !low_bits::<T>();
-            let fetch_order = strongest_failure_ordering(order);
-            Shared::from_ptr(
-                self.data
-                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a & val)))
-                    .unwrap(),
-            )
+            Shared::from_ptr(self.data.fetch_and(val, order))
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
-                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_and(val | !low_bits::<T>(), order) as *mut (),
+                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize)).fetch_and(val, order)
+                    as *mut (),
             )
         }
     }
@@ -707,27 +687,20 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 3);
     /// ```
     pub fn fetch_or<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        let val = val & low_bits::<T>();
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
+        // compatible, but it requires Rust 1.91. So, for now use it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
-        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
-        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            let val = val & low_bits::<T>();
-            let fetch_order = strongest_failure_ordering(order);
-            Shared::from_ptr(
-                self.data
-                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a | val)))
-                    .unwrap(),
-            )
+            Shared::from_ptr(self.data.fetch_or(val, order))
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
-                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_or(val & low_bits::<T>(), order) as *mut (),
+                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize)).fetch_or(val, order)
+                    as *mut (),
             )
         }
     }
@@ -752,27 +725,20 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
     pub fn fetch_xor<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        let val = val & low_bits::<T>();
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
+        // compatible, but it requires Rust 1.91. So, for now use it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
-        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
-        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            let val = val & low_bits::<T>();
-            let fetch_order = strongest_failure_ordering(order);
-            Shared::from_ptr(
-                self.data
-                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a ^ val)))
-                    .unwrap(),
-            )
+            Shared::from_ptr(self.data.fetch_xor(val, order) as *mut ())
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
-                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_xor(val & low_bits::<T>(), order) as *mut (),
+                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize)).fetch_xor(val, order)
+                    as *mut (),
             )
         }
     }
