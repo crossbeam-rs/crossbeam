@@ -16,6 +16,12 @@ Default configuration:
 
 ### Running
 
+Install python packages:
+
+```
+pip install -r requirements.txt
+```
+
 Runs benchmarks, stores results into `*.txt` files, and generates `plot.png`:
 
 ```
@@ -28,7 +34,8 @@ Dependencies:
 - Go
 - Bash
 - Python 
-- Matplotlib
+- plotly (python graphing library)
+- kaleido (image export engine for plotly)
 
 ### Results
 
