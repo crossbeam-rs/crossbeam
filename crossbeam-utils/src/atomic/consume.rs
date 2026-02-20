@@ -1,4 +1,4 @@
-#[cfg(not(crossbeam_no_atomic))]
+#[cfg(target_has_atomic = "ptr")]
 use core::sync::atomic::Ordering;
 
 /// Trait which allows reading from primitive atomic types with "consume" ordering.
@@ -24,7 +24,7 @@ pub trait AtomicConsume {
     fn load_consume(&self) -> Self::Val;
 }
 
-#[cfg(not(crossbeam_no_atomic))]
+#[cfg(target_has_atomic = "ptr")]
 // Miri and Loom don't support "consume" ordering and ThreadSanitizer doesn't treat
 // load(Relaxed) + compiler_fence(Acquire) as "consume" load.
 // LLVM generates machine code equivalent to fence(Acquire) in compiler_fence(Acquire)
@@ -47,7 +47,7 @@ macro_rules! impl_consume {
     };
 }
 
-#[cfg(not(crossbeam_no_atomic))]
+#[cfg(target_has_atomic = "ptr")]
 #[cfg(not(all(
     any(target_arch = "arm", target_arch = "aarch64"),
     not(any(miri, crossbeam_loom, crossbeam_sanitize_thread)),
@@ -63,7 +63,6 @@ macro_rules! impl_consume {
 
 macro_rules! impl_atomic {
     ($atomic:ident, $val:ty) => {
-        #[cfg(not(crossbeam_no_atomic))]
         impl AtomicConsume for core::sync::atomic::$atomic {
             type Val = $val;
             impl_consume!();
@@ -76,29 +75,30 @@ macro_rules! impl_atomic {
     };
 }
 
+#[cfg(target_has_atomic = "8")]
 impl_atomic!(AtomicBool, bool);
+#[cfg(target_has_atomic = "ptr")]
 impl_atomic!(AtomicUsize, usize);
+#[cfg(target_has_atomic = "ptr")]
 impl_atomic!(AtomicIsize, isize);
+#[cfg(target_has_atomic = "8")]
 impl_atomic!(AtomicU8, u8);
+#[cfg(target_has_atomic = "8")]
 impl_atomic!(AtomicI8, i8);
+#[cfg(target_has_atomic = "16")]
 impl_atomic!(AtomicU16, u16);
+#[cfg(target_has_atomic = "16")]
 impl_atomic!(AtomicI16, i16);
-#[cfg(any(target_has_atomic = "32", not(target_pointer_width = "16")))]
+#[cfg(target_has_atomic = "32")]
 impl_atomic!(AtomicU32, u32);
-#[cfg(any(target_has_atomic = "32", not(target_pointer_width = "16")))]
+#[cfg(target_has_atomic = "32")]
 impl_atomic!(AtomicI32, i32);
-#[cfg(any(
-    target_has_atomic = "64",
-    not(any(target_pointer_width = "16", target_pointer_width = "32")),
-))]
+#[cfg(target_has_atomic = "64")]
 impl_atomic!(AtomicU64, u64);
-#[cfg(any(
-    target_has_atomic = "64",
-    not(any(target_pointer_width = "16", target_pointer_width = "32")),
-))]
+#[cfg(target_has_atomic = "64")]
 impl_atomic!(AtomicI64, i64);
 
-#[cfg(not(crossbeam_no_atomic))]
+#[cfg(target_has_atomic = "ptr")]
 impl<T> AtomicConsume for core::sync::atomic::AtomicPtr<T> {
     type Val = *mut T;
     impl_consume!();
