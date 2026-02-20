@@ -337,28 +337,22 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         }
     }
 
-    /// Returns a new null atomic pointer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Atomic;
-    ///
-    /// let a = Atomic::<i32>::null();
-    /// ```
-    #[cfg(not(crossbeam_loom))]
-    pub const fn null() -> Atomic<T> {
-        Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
-        }
-    }
-    /// Returns a new null atomic pointer.
-    #[cfg(crossbeam_loom)]
-    pub fn null() -> Atomic<T> {
-        Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
+    const_fn! {
+        const_if: #[cfg(not(crossbeam_loom))];
+        /// Returns a new null atomic pointer.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use crossbeam_epoch::Atomic;
+        ///
+        /// let a = Atomic::<i32>::null();
+        /// ```
+        pub const fn null() -> Atomic<T> {
+            Self {
+                data: AtomicUsize::new(0),
+                _marker: PhantomData,
+            }
         }
     }
 
@@ -1356,7 +1350,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// let p = Shared::<i32>::null();
     /// assert!(p.is_null());
     /// ```
-    pub fn null() -> Shared<'g, T> {
+    pub const fn null() -> Shared<'g, T> {
         Shared {
             data: 0,
             _marker: PhantomData,
@@ -1688,9 +1682,12 @@ mod tests {
     }
 
     #[test]
-    fn const_atomic_null() {
-        use super::Atomic;
-        static _U: Atomic<u8> = Atomic::<u8>::null();
+    fn const_null() {
+        use super::{Atomic, Shared};
+        static _A: Atomic<u8> = Atomic::<u8>::null();
+        static _S: () = {
+            let _shared = Shared::<u8>::null();
+        };
     }
 
     #[test]
