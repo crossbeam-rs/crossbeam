@@ -6,6 +6,7 @@ name = "crossbeam-queue"
 # - Run './tools/publish.sh crossbeam-queue <version>'
 version = "0.3.12"
 edition = "2021"
+# NB: Sync with msrv badge and "Compatibility" section in README.md
 rust-version = "1.60"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
@@ -13,6 +14,14 @@ homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-queu
 description = "Concurrent queues"
 keywords = ["queue", "mpmc", "lock-free", "producer", "consumer"]
 categories = ["concurrency", "data-structures", "no-std"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[package.metadata.cargo_check_external_types]
+# The following are external types that are allowed to be exposed in our public API.
+allowed_external_types = [
+]
 
 [features]
 default = ["std"]

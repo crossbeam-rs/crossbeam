@@ -771,7 +771,7 @@ impl<T> Stealer<T> {
         }
 
         // Reserve capacity for the stolen batch.
-        let batch_size = cmp::min((len as usize + 1) / 2, limit);
+        let batch_size = cmp::min((len as usize).div_ceil(2), limit);
         dest.reserve(batch_size);
         let mut batch_size = batch_size as isize;
 
@@ -1548,7 +1548,7 @@ impl<T> Injector<T> {
         self.steal_batch_with_limit(dest, MAX_BATCH)
     }
 
-    /// Steals no more than of tasks and pushes them into a worker.
+    /// Steals no more than `limit` of tasks and pushes them into a worker.
     ///
     /// How many tasks exactly will be stolen is not specified. That said, this method will try to
     /// steal around half of the tasks in the queue, but also not more than some constant limit.
@@ -1623,7 +1623,7 @@ impl<T> Injector<T> {
             } else {
                 let len = (tail - head) >> SHIFT;
                 // Steal half of the available tasks.
-                advance = ((len + 1) / 2).min(limit);
+                advance = len.div_ceil(2).min(limit);
             }
         } else {
             // We can steal all tasks till the end of the block.
@@ -1820,7 +1820,7 @@ impl<T> Injector<T> {
             } else {
                 let len = (tail - head) >> SHIFT;
                 // Steal half of the available tasks.
-                advance = ((len + 1) / 2).min(limit);
+                advance = len.div_ceil(2).min(limit);
             }
         } else {
             // We can steal all tasks till the end of the block.

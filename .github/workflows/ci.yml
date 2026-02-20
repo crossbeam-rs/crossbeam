@@ -10,6 +10,7 @@ on:
       - master
   schedule:
     - cron: '0 2 * * *'
+  workflow_dispatch:
 
 env:
   CARGO_INCREMENTAL: 0
@@ -23,13 +24,23 @@ env:
 
 defaults:
   run:
-    shell: bash
+    shell: bash --noprofile --norc -CeEuxo pipefail {0}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
+  check-external-types:
+    uses: taiki-e/github-actions/.github/workflows/check-external-types.yml@main
+  clippy:
+    uses: taiki-e/github-actions/.github/workflows/clippy.yml@main
+    with:
+      unqualified_local_imports: false # TODO
+      fuzzy_provenance_casts: false # TODO
+  docs:
+    uses: taiki-e/github-actions/.github/workflows/docs.yml@main
+
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
     env:
@@ -40,30 +51,36 @@ jobs:
       matrix:
         # macOS is tested on Cirrus CI due to GitHub-hosted macOS runners are slow.
         include:
-          - rust: '1.63'
+          - rust: '1.74'
             os: ubuntu-latest
-          - rust: '1.63'
-            os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
-          - rust: '1.63'
+          - rust: '1.74'
+            os: ubuntu-24.04-arm
+          - rust: '1.74'
             os: windows-latest
           - rust: stable
             os: ubuntu-latest
           - rust: stable
-            os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
+            os: ubuntu-24.04-arm
           - rust: stable
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
           - rust: nightly
-            os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
+            os: ubuntu-24.04-arm
           - rust: nightly
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
           - rust: nightly
-            os: ubuntu-22.04-arm # TODO: update to 24.04 when https://github.com/rust-lang/rust/issues/135867 solved
+            os: ubuntu-24.04-arm
             target: armv7-unknown-linux-gnueabihf
+          - rust: nightly
+            os: ubuntu-latest
+            target: powerpc64le-unknown-linux-gnu
+          - rust: nightly
+            os: ubuntu-latest
+            target: s390x-unknown-linux-gnu
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
             os: ubuntu-latest
@@ -151,7 +168,7 @@ jobs:
               echo 'success=false' >>"${GITHUB_OUTPUT}"
           fi
         if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule'
-      - uses: peter-evans/create-pull-request@v7
+      - uses: peter-evans/create-pull-request@v8
         with:
           title: Update no_atomic.rs
           body: |
@@ -164,26 +181,18 @@ jobs:
         if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule' && steps.diff.outputs.success == 'false'
 
   # Check formatting.
-  rustfmt:
+  fmt:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
         uses: taiki-e/github-actions/install-rust@stable
-      - name: rustfmt
-        run: cargo fmt --all --check
-
-  # Check clippy.
-  clippy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install Rust
-        uses: taiki-e/github-actions/install-rust@stable
-      - name: clippy
-        run: cargo clippy --all --all-features --tests --examples
+      - name: Install shfmt
+        uses: taiki-e/install-action@shfmt
+      - run: cargo fmt --all --check
+      - run: shfmt -d $(git ls-files '*.sh')
+      - run: RUST_LOG=warn npx -y @taplo/cli fmt --check $(git ls-files '*.toml')
 
   # Run miri.
   miri:
@@ -193,8 +202,11 @@ jobs:
         group:
           - channel
           - others
+        miriflags:
+          - ''
+          - '-Zmiri-tree-borrows'
     runs-on: ubuntu-latest
-    timeout-minutes: 120 # TODO
+    timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
@@ -203,6 +215,8 @@ jobs:
           component: miri
       - name: miri
         run: ci/miri.sh ${{ matrix.group }}
+        env:
+          MIRIFLAGS: ${{ matrix.miriflags }}
 
   # Run cargo-careful.
   careful:
@@ -228,8 +242,6 @@ jobs:
         uses: taiki-e/github-actions/install-rust@nightly
         with:
           component: rust-src
-      # https://github.com/google/sanitizers/issues/1716 / https://github.com/actions/runner-images/issues/9491
-      - run: sudo sysctl vm.mmap_rnd_bits=28
       - name: Run sanitizers
         run: ci/san.sh
 
@@ -243,17 +255,6 @@ jobs:
         uses: taiki-e/github-actions/install-rust@stable
       - name: loom
         run: ci/crossbeam-epoch-loom.sh
-
-  # Check if the document can be generated without warning.
-  docs:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install Rust
-        uses: taiki-e/github-actions/install-rust@nightly
-      - name: docs
-        run: cargo doc --no-deps --all --all-features
 
   shellcheck:
     runs-on: ubuntu-latest

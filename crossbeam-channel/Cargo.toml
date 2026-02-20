@@ -6,13 +6,22 @@ name = "crossbeam-channel"
 # - Run './tools/publish.sh crossbeam-channel <version>'
 version = "0.5.15"
 edition = "2021"
-rust-version = "1.60"
+# NB: Sync with msrv badge and "Compatibility" section in README.md
+rust-version = "1.74"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 homepage = "https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-channel"
 description = "Multi-producer multi-consumer channels for message passing"
 keywords = ["channel", "mpmc", "select", "golang", "message"]
 categories = ["algorithms", "concurrency", "data-structures"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[package.metadata.cargo_check_external_types]
+# The following are external types that are allowed to be exposed in our public API.
+allowed_external_types = [
+]
 
 [features]
 default = ["std"]
@@ -28,8 +37,8 @@ crossbeam-utils = { version = "0.8.18", path = "../crossbeam-utils", default-fea
 
 [dev-dependencies]
 fastrand = "2"
-num_cpus = "1.13.0"
-signal-hook = "0.3"
+rustversion = "1"
+signal-hook = "0.4"
 
 [lints]
 workspace = true

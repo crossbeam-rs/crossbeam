@@ -7,7 +7,6 @@ use core::marker::PhantomData;
 use core::mem::{self, MaybeUninit};
 use core::ops::{Deref, DerefMut};
 use core::ptr;
-use core::slice;
 
 use crate::guard::Guard;
 #[cfg(not(miri))]
@@ -15,16 +14,21 @@ use crate::primitive::sync::atomic::AtomicUsize;
 use crate::primitive::sync::atomic::{AtomicPtr, Ordering};
 use crossbeam_utils::atomic::AtomicConsume;
 
-/// Given ordering for the success case in a compare-exchange operation, returns the strongest
-/// appropriate ordering for the failure case.
-#[cfg(miri)]
-#[inline]
-fn strongest_failure_ordering(order: Ordering) -> Ordering {
-    use Ordering::*;
-    match order {
-        Relaxed | Release => Relaxed,
-        Acquire | AcqRel => Acquire,
-        _ => SeqCst,
+/// The value returned from a compare-and-swap operation.
+pub struct CompareExchangeValue<'g, T: ?Sized + Pointable> {
+    /// The previous value that was in the atomic pointer.
+    pub old: Shared<'g, T>,
+
+    /// The new value that was stored.
+    pub new: Shared<'g, T>,
+}
+
+impl<T: ?Sized + Pointable> fmt::Debug for CompareExchangeValue<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CompareExchangeValue")
+            .field("old", &self.old)
+            .field("new", &self.new)
+            .finish()
     }
 }
 
@@ -119,24 +123,24 @@ pub trait Pointable {
     /// The result should be a multiple of `ALIGN`.
     unsafe fn init(init: Self::Init) -> *mut ();
 
-    /// Dereferences the given pointer.
+    /// Gets the raw pointer to this type that allows immutable access from the given pointer.
     ///
     /// # Safety
     ///
     /// - The given `ptr` should have been initialized with [`Pointable::init`].
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
-    /// - `ptr` should not be mutably dereferenced by [`Pointable::deref_mut`] concurrently.
-    unsafe fn deref<'a>(ptr: *mut ()) -> &'a Self;
+    /// - `ptr` should not be mutably dereferenced by [`Pointable::as_mut_ptr`] concurrently.
+    unsafe fn as_ptr(ptr: *mut ()) -> *const Self;
 
-    /// Mutably dereferences the given pointer.
+    /// Gets the raw pointer to this type that allows mutable access from the given pointer.
     ///
     /// # Safety
     ///
     /// - The given `ptr` should have been initialized with [`Pointable::init`].
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
-    /// - `ptr` should not be dereferenced by [`Pointable::deref`] or [`Pointable::deref_mut`]
+    /// - `ptr` should not be dereferenced by [`Pointable::as_ptr`] or [`Pointable::as_mut_ptr`]
     ///   concurrently.
-    unsafe fn deref_mut<'a>(ptr: *mut ()) -> &'a mut Self;
+    unsafe fn as_mut_ptr(ptr: *mut ()) -> *mut Self;
 
     /// Drops the object pointed to by the given pointer.
     ///
@@ -144,7 +148,7 @@ pub trait Pointable {
     ///
     /// - The given `ptr` should have been initialized with [`Pointable::init`].
     /// - `ptr` should not have yet been dropped by [`Pointable::drop`].
-    /// - `ptr` should not be dereferenced by [`Pointable::deref`] or [`Pointable::deref_mut`]
+    /// - `ptr` should not be dereferenced by [`Pointable::as_ptr`] or [`Pointable::as_mut_ptr`]
     ///   concurrently.
     unsafe fn drop(ptr: *mut ());
 }
@@ -158,12 +162,12 @@ impl<T> Pointable for T {
         Box::into_raw(Box::new(init)).cast::<()>()
     }
 
-    unsafe fn deref<'a>(ptr: *mut ()) -> &'a Self {
-        unsafe { &*(ptr as *const T) }
+    unsafe fn as_ptr(ptr: *mut ()) -> *const Self {
+        ptr as *const T
     }
 
-    unsafe fn deref_mut<'a>(ptr: *mut ()) -> &'a mut Self {
-        unsafe { &mut *ptr.cast::<T>() }
+    unsafe fn as_mut_ptr(ptr: *mut ()) -> *mut Self {
+        ptr.cast::<T>()
     }
 
     unsafe fn drop(ptr: *mut ()) {
@@ -224,17 +228,22 @@ impl<T> Pointable for [MaybeUninit<T>] {
         }
     }
 
-    unsafe fn deref<'a>(ptr: *mut ()) -> &'a Self {
+    unsafe fn as_ptr(ptr: *mut ()) -> *const Self {
         unsafe {
-            let array = &*(ptr as *const Array<T>);
-            slice::from_raw_parts(array.elements.as_ptr(), array.len)
+            let len = (*ptr.cast::<Array<T>>()).len;
+            // Use addr_of_mut for stacked borrows: https://github.com/rust-lang/miri/issues/1976
+            let elements =
+                ptr::addr_of_mut!((*ptr.cast::<Array<T>>()).elements).cast::<MaybeUninit<T>>();
+            ptr::slice_from_raw_parts(elements, len)
         }
     }
 
-    unsafe fn deref_mut<'a>(ptr: *mut ()) -> &'a mut Self {
+    unsafe fn as_mut_ptr(ptr: *mut ()) -> *mut Self {
         unsafe {
-            let array = &mut *ptr.cast::<Array<T>>();
-            slice::from_raw_parts_mut(array.elements.as_mut_ptr(), array.len)
+            let len = (*ptr.cast::<Array<T>>()).len;
+            let elements =
+                ptr::addr_of_mut!((*ptr.cast::<Array<T>>()).elements).cast::<MaybeUninit<T>>();
+            ptr::slice_from_raw_parts_mut(elements, len)
         }
     }
 
@@ -303,28 +312,22 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         }
     }
 
-    /// Returns a new null atomic pointer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Atomic;
-    ///
-    /// let a = Atomic::<i32>::null();
-    /// ```
-    #[cfg(not(crossbeam_loom))]
-    pub const fn null() -> Self {
-        Self {
-            data: AtomicPtr::new(ptr::null_mut()),
-            _marker: PhantomData,
-        }
-    }
-    /// Returns a new null atomic pointer.
-    #[cfg(crossbeam_loom)]
-    pub fn null() -> Self {
-        Self {
-            data: AtomicPtr::new(ptr::null_mut()),
-            _marker: PhantomData,
+    const_fn! {
+        const_if: #[cfg(not(crossbeam_loom))];
+        /// Returns a new null atomic pointer.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use crossbeam_epoch::Atomic;
+        ///
+        /// let a = Atomic::<i32>::null();
+        /// ```
+        pub const fn null() -> Self {
+            Self {
+                data: AtomicPtr::new(ptr::null_mut()),
+                _marker: PhantomData,
+            }
         }
     }
 
@@ -420,9 +423,10 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// value is the same as `current`. The tag is also taken into account, so two pointers to the
     /// same object, but with different tags, will not be considered equal.
     ///
-    /// The return value is a result indicating whether the new pointer was written. On success the
-    /// pointer that was written is returned. On failure the actual current value and `new` are
-    /// returned.
+    /// The return value contains both the previous value and the new value that was written.
+    /// On success, `old` contains the previous value (which equals `current`) and `new` contains
+    /// the value that was stored. On failure, `old` contains the actual current value and `new`
+    /// contains the value that was attempted to be stored.
     ///
     /// This method takes two `Ordering` arguments to describe the memory
     /// ordering of this operation. `success` describes the required ordering for the
@@ -454,14 +458,19 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         success: Ordering,
         failure: Ordering,
         _: &'g Guard,
-    ) -> Result<Shared<'g, T>, CompareExchangeError<'g, T, P>>
+    ) -> Result<CompareExchangeValue<'g, T>, CompareExchangeError<'g, T, P>>
     where
         P: Pointer<T>,
     {
         let new = new.into_ptr();
         self.data
             .compare_exchange(current.into_ptr(), new, success, failure)
-            .map(|_| unsafe { Shared::from_ptr(new) })
+            .map(|old| unsafe {
+                CompareExchangeValue {
+                    old: Shared::from_ptr(old),
+                    new: Shared::from_ptr(new),
+                }
+            })
             .map_err(|current| unsafe {
                 CompareExchangeError {
                     current: Shared::from_ptr(current),
@@ -475,9 +484,11 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// same object, but with different tags, will not be considered equal.
     ///
     /// Unlike [`compare_exchange`], this method is allowed to spuriously fail even when comparison
-    /// succeeds, which can result in more efficient code on some platforms.  The return value is a
-    /// result indicating whether the new pointer was written. On success the pointer that was
-    /// written is returned. On failure the actual current value and `new` are returned.
+    /// succeeds, which can result in more efficient code on some platforms. The return value
+    /// contains both the previous value and the new value that was written. On success, `old`
+    /// contains the previous value (which equals `current`) and `new` contains the value that was
+    /// stored. On failure, `old` contains the actual current value and `new` contains the value
+    /// that was attempted to be stored.
     ///
     /// This method takes two `Ordering` arguments to describe the memory
     /// ordering of this operation. `success` describes the required ordering for the
@@ -504,8 +515,8 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// # unsafe { drop(a.load(SeqCst, guard).into_owned()); } // avoid leak
     /// loop {
     ///     match a.compare_exchange_weak(ptr, new, SeqCst, SeqCst, guard) {
-    ///         Ok(p) => {
-    ///             ptr = p;
+    ///         Ok(result) => {
+    ///             ptr = result.old;
     ///             break;
     ///         }
     ///         Err(err) => {
@@ -531,14 +542,19 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         success: Ordering,
         failure: Ordering,
         _: &'g Guard,
-    ) -> Result<Shared<'g, T>, CompareExchangeError<'g, T, P>>
+    ) -> Result<CompareExchangeValue<'g, T>, CompareExchangeError<'g, T, P>>
     where
         P: Pointer<T>,
     {
         let new = new.into_ptr();
         self.data
             .compare_exchange_weak(current.into_ptr(), new, success, failure)
-            .map(|_| unsafe { Shared::from_ptr(new) })
+            .map(|old| unsafe {
+                CompareExchangeValue {
+                    old: Shared::from_ptr(old),
+                    new: Shared::from_ptr(new),
+                }
+            })
             .map_err(|current| unsafe {
                 CompareExchangeError {
                     current: Shared::from_ptr(current),
@@ -600,7 +616,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         let mut prev = self.load(fail_order, guard);
         while let Some(next) = func(prev) {
             match self.compare_exchange_weak(prev, next, set_order, fail_order, guard) {
-                Ok(shared) => return Ok(shared),
+                Ok(result) => return Ok(result.old),
                 Err(next_prev) => prev = next_prev.current,
             }
         }
@@ -627,27 +643,20 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
     pub fn fetch_and<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        let val = val | !low_bits::<T>();
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
+        // compatible, but it requires Rust 1.91. So, for now use it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
-        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
-        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            let val = val | !low_bits::<T>();
-            let fetch_order = strongest_failure_ordering(order);
-            Shared::from_ptr(
-                self.data
-                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a & val)))
-                    .unwrap(),
-            )
+            Shared::from_ptr(self.data.fetch_and(val, order))
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
-                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_and(val | !low_bits::<T>(), order) as *mut (),
+                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize)).fetch_and(val, order)
+                    as *mut (),
             )
         }
     }
@@ -672,27 +681,20 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 3);
     /// ```
     pub fn fetch_or<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        let val = val & low_bits::<T>();
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
+        // compatible, but it requires Rust 1.91. So, for now use it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
-        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
-        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            let val = val & low_bits::<T>();
-            let fetch_order = strongest_failure_ordering(order);
-            Shared::from_ptr(
-                self.data
-                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a | val)))
-                    .unwrap(),
-            )
+            Shared::from_ptr(self.data.fetch_or(val, order))
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
-                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_or(val & low_bits::<T>(), order) as *mut (),
+                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize)).fetch_or(val, order)
+                    as *mut (),
             )
         }
     }
@@ -717,27 +719,20 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     /// assert_eq!(a.load(SeqCst, guard).tag(), 2);
     /// ```
     pub fn fetch_xor<'g>(&self, val: usize, order: Ordering, _: &'g Guard) -> Shared<'g, T> {
+        let val = val & low_bits::<T>();
         // Ideally, we would always use AtomicPtr::fetch_* since it is strict-provenance
-        // compatible, but it is unstable. So, for now emulate it only on cfg(miri).
+        // compatible, but it requires Rust 1.91. So, for now use it only on cfg(miri).
         // Code using AtomicUsize::fetch_* via casts is still permissive-provenance
         // compatible and is sound.
-        // TODO: Once `#![feature(strict_provenance_atomic_ptr)]` is stabilized,
-        // use AtomicPtr::fetch_* in all cases from the version in which it is stabilized.
         #[cfg(miri)]
         unsafe {
-            let val = val & low_bits::<T>();
-            let fetch_order = strongest_failure_ordering(order);
-            Shared::from_ptr(
-                self.data
-                    .fetch_update(order, fetch_order, |x| Some(map_addr(x, |a| a ^ val)))
-                    .unwrap(),
-            )
+            Shared::from_ptr(self.data.fetch_xor(val, order) as *mut ())
         }
         #[cfg(not(miri))]
         unsafe {
             Shared::from_ptr(
-                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize))
-                    .fetch_xor(val & low_bits::<T>(), order) as *mut (),
+                (*(&self.data as *const AtomicPtr<_> as *const AtomicUsize)).fetch_xor(val, order)
+                    as *mut (),
             )
         }
     }
@@ -771,7 +766,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///         // By now the DataStructure lives only in our thread and we are sure we don't hold
     ///         // any Shared or & to it ourselves.
     ///         unsafe {
-    ///             drop(mem::replace(&mut self.ptr, Atomic::null()).into_owned());
+    ///             drop(mem::take(&mut self.ptr).into_owned());
     ///         }
     ///     }
     /// }
@@ -804,7 +799,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///     fn drop(&mut self) {
     ///         // By now the DataStructure lives only in our thread and we are sure we don't hold
     ///         // any Shared or & to it ourselves, but it may be null, so we have to be careful.
-    ///         let old = mem::replace(&mut self.ptr, Atomic::null());
+    ///         let old = mem::take(&mut self.ptr);
     ///         unsafe {
     ///             if let Some(x) = old.try_into_owned() {
     ///                 drop(x)
@@ -839,7 +834,7 @@ impl<T: ?Sized + Pointable> fmt::Pointer for Atomic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, _) = decompose_tag::<T>(data);
-        fmt::Pointer::fmt(&(unsafe { T::deref(raw) as *const _ }), f)
+        fmt::Pointer::fmt(&(unsafe { T::as_ptr(raw) }), f)
     }
 }
 
@@ -1127,14 +1122,14 @@ impl<T: ?Sized + Pointable> Deref for Owned<T> {
 
     fn deref(&self) -> &T {
         let (raw, _) = decompose_tag::<T>(self.data);
-        unsafe { T::deref(raw) }
+        unsafe { &*T::as_ptr(raw) }
     }
 }
 
 impl<T: ?Sized + Pointable> DerefMut for Owned<T> {
     fn deref_mut(&mut self) -> &mut T {
         let (raw, _) = decompose_tag::<T>(self.data);
-        unsafe { T::deref_mut(raw) }
+        unsafe { &mut *T::as_mut_ptr(raw) }
     }
 }
 
@@ -1257,7 +1252,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// let p = Shared::<i32>::null();
     /// assert!(p.is_null());
     /// ```
-    pub fn null() -> Self {
+    pub const fn null() -> Self {
         Self {
             data: ptr::null_mut(),
             _marker: PhantomData,
@@ -1282,6 +1277,16 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     pub fn is_null(&self) -> bool {
         let (raw, _) = decompose_tag::<T>(self.data);
         raw.is_null()
+    }
+
+    pub(crate) unsafe fn as_ptr(&self) -> *const T {
+        let (raw, _) = decompose_tag::<T>(self.data);
+        unsafe { T::as_ptr(raw) }
+    }
+
+    pub(crate) unsafe fn as_mut_ptr(&self) -> *mut T {
+        let (raw, _) = decompose_tag::<T>(self.data);
+        unsafe { T::as_mut_ptr(raw) }
     }
 
     /// Dereferences the pointer.
@@ -1317,8 +1322,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn deref(&self) -> &'g T {
-        let (raw, _) = decompose_tag::<T>(self.data);
-        unsafe { T::deref(raw) }
+        unsafe { &*self.as_ptr() }
     }
 
     /// Dereferences the pointer.
@@ -1359,8 +1363,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
     pub unsafe fn deref_mut(&mut self) -> &'g mut T {
-        let (raw, _) = decompose_tag::<T>(self.data);
-        unsafe { T::deref_mut(raw) }
+        unsafe { &mut *self.as_mut_ptr() }
     }
 
     /// Converts the pointer to a reference.
@@ -1400,7 +1403,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
         if raw.is_null() {
             None
         } else {
-            Some(unsafe { T::deref(raw) })
+            Some(unsafe { &*T::as_ptr(raw) })
         }
     }
 
@@ -1539,7 +1542,7 @@ impl<T: ?Sized + Pointable> Eq for Shared<'_, T> {}
 
 impl<'g, T: ?Sized + Pointable> PartialOrd<Shared<'g, T>> for Shared<'g, T> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        Some(self.data.cmp(&other.data))
+        Some(self.cmp(other))
     }
 }
 
@@ -1562,7 +1565,7 @@ impl<T: ?Sized + Pointable> fmt::Debug for Shared<'_, T> {
 
 impl<T: ?Sized + Pointable> fmt::Pointer for Shared<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Pointer::fmt(&(unsafe { self.deref() as *const _ }), f)
+        fmt::Pointer::fmt(&(unsafe { self.as_ptr() }), f)
     }
 }
 
@@ -1574,8 +1577,10 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
-    use super::{Owned, Shared};
+    use super::{Atomic, Owned, Shared};
+    use crate::pin;
     use std::mem::MaybeUninit;
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn valid_tag_i8() {
@@ -1588,9 +1593,12 @@ mod tests {
     }
 
     #[test]
-    fn const_atomic_null() {
-        use super::Atomic;
-        static _U: Atomic<u8> = Atomic::<u8>::null();
+    fn const_null() {
+        use super::{Atomic, Shared};
+        static _A: Atomic<u8> = Atomic::<u8>::null();
+        static _S: () = {
+            let _shared = Shared::<u8>::null();
+        };
     }
 
     #[test]
@@ -1598,5 +1606,119 @@ mod tests {
         let owned = Owned::<[MaybeUninit<usize>]>::init(10);
         let arr: &[MaybeUninit<usize>] = &owned;
         assert_eq!(arr.len(), 10);
+    }
+
+    #[test]
+    fn compare_exchange_success() {
+        let atomic = Atomic::new(42);
+        let guard = &pin();
+
+        let current = atomic.load(Ordering::SeqCst, guard);
+        let new_value = Owned::new(100);
+
+        let result = atomic
+            .compare_exchange(
+                current,
+                new_value,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            )
+            .unwrap();
+        // On success, `old` should equal the current value we loaded
+        assert_eq!(unsafe { result.old.deref() }, &42);
+        // `new` should equal the value we stored
+        assert_eq!(unsafe { result.new.deref() }, &100);
+
+        // Verify the atomic actually contains the new value
+        let current = atomic.load(Ordering::SeqCst, guard);
+        assert_eq!(unsafe { current.deref() }, &100);
+
+        unsafe {
+            drop(result.old.into_owned());
+            drop(atomic.into_owned());
+        }
+    }
+
+    #[test]
+    fn compare_exchange_failure() {
+        let atomic = Atomic::new(42);
+        let guard = &pin();
+
+        // Load the current value
+        let current = atomic.load(Ordering::SeqCst, guard);
+
+        let old_value = atomic.swap(Owned::new(200), Ordering::SeqCst, guard);
+        unsafe {
+            drop(old_value.into_owned());
+        }
+
+        // Now try to compare_exchange with the old current value - this should fail
+        let new_value = Owned::new(300);
+        let error = atomic
+            .compare_exchange(
+                current,
+                new_value,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            )
+            .unwrap_err();
+        // On failure, `current` should contain the actual current value (200)
+        assert_eq!(unsafe { error.current.deref() }, &200);
+        // `new` should contain the value we tried to store (300)
+        assert_eq!(&*error.new, &300);
+
+        // Verify the atomic still contains the value we set (200), not the failed attempt (300)
+        let current = atomic.load(Ordering::SeqCst, guard);
+        assert_eq!(unsafe { current.deref() }, &200);
+
+        unsafe {
+            drop(atomic.into_owned());
+        }
+    }
+
+    #[test]
+    fn compare_exchange_weak_success() {
+        let atomic = Atomic::new(42);
+        let guard = &pin();
+
+        let mut current = atomic.load(Ordering::SeqCst, guard);
+        let mut new_value = Owned::new(100);
+
+        loop {
+            match atomic.compare_exchange_weak(
+                current,
+                new_value,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            ) {
+                Ok(result) => {
+                    // On success, `old` should equal the current value we loaded
+                    assert_eq!(unsafe { result.old.deref() }, &42);
+                    // `new` should equal the value we stored
+                    assert_eq!(unsafe { result.new.deref() }, &100);
+
+                    // Verify the atomic actually contains the new value
+                    let current = atomic.load(Ordering::SeqCst, guard);
+                    assert_eq!(unsafe { current.deref() }, &100);
+
+                    unsafe {
+                        drop(result.old.into_owned());
+                    }
+                    break;
+                }
+                Err(e) => {
+                    current = e.current;
+                    new_value = e.new;
+                    assert_eq!(unsafe { current.deref() }, &42);
+                }
+            }
+        }
+
+        unsafe {
+            drop(atomic.into_owned());
+        }
     }
 }

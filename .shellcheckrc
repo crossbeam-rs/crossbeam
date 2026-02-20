@@ -1,0 +1,38 @@
+# ShellCheck configuration
+# https://github.com/koalaman/shellcheck/blob/HEAD/shellcheck.1.md#rc-files
+
+# See also:
+# https://github.com/koalaman/shellcheck/wiki/Optional
+# https://google.github.io/styleguide/shellguide.html
+
+# https://github.com/koalaman/shellcheck/wiki/Directive#external-sources
+external-sources=true
+
+# https://github.com/koalaman/shellcheck/wiki/SC2249
+# enable=add-default-case
+
+# https://github.com/koalaman/shellcheck/wiki/SC2244
+enable=avoid-nullary-conditions
+
+# https://github.com/koalaman/shellcheck/wiki/SC2312
+# enable=check-extra-masked-returns
+
+# https://github.com/koalaman/shellcheck/wiki/SC2310
+# https://github.com/koalaman/shellcheck/wiki/SC2311
+# enable=check-set-e-suppressed
+
+# enable=check-unassigned-uppercase
+
+# https://github.com/koalaman/shellcheck/wiki/SC2230
+enable=deprecate-which
+
+# https://github.com/koalaman/shellcheck/wiki/SC2248
+enable=quote-safe-variables
+
+# https://github.com/koalaman/shellcheck/wiki/SC2292
+# https://google.github.io/styleguide/shellguide.html#s6.3-tests
+enable=require-double-brackets
+
+# https://github.com/koalaman/shellcheck/wiki/SC2250
+# https://google.github.io/styleguide/shellguide.html#s5.6-variable-expansion
+enable=require-variable-braces
