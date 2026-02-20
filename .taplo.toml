@@ -1,0 +1,9 @@
+# Taplo configuration
+# https://taplo.tamasfe.dev/configuration/formatter-options.html
+
+[formatting]
+align_comments = false
+allowed_blank_lines = 1
+array_auto_collapse = false
+array_auto_expand = false
+indent_string = "    "

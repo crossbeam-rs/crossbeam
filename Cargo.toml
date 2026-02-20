@@ -22,12 +22,12 @@ targets = ["x86_64-unknown-linux-gnu"]
 [package.metadata.cargo_check_external_types]
 # The following are external types that are allowed to be exposed in our public API.
 allowed_external_types = [
-  "crossbeam_channel",
-  "crossbeam_channel::*",
-  "crossbeam_deque",
-  "crossbeam_epoch",
-  "crossbeam_queue",
-  "crossbeam_utils::*",
+    "crossbeam_channel",
+    "crossbeam_channel::*",
+    "crossbeam_deque",
+    "crossbeam_epoch",
+    "crossbeam_queue",
+    "crossbeam_utils::*",
 ]
 
 [features]
@@ -36,12 +36,12 @@ default = ["std"]
 # Enable to use APIs that require `std`.
 # This is enabled by default.
 std = [
-  "alloc",
-  "crossbeam-channel/std",
-  "crossbeam-deque/std",
-  "crossbeam-epoch/std",
-  "crossbeam-queue/std",
-  "crossbeam-utils/std",
+    "alloc",
+    "crossbeam-channel/std",
+    "crossbeam-deque/std",
+    "crossbeam-epoch/std",
+    "crossbeam-queue/std",
+    "crossbeam-utils/std",
 ]
 
 # Enable to use APIs that require `alloc`.
@@ -63,14 +63,14 @@ workspace = true
 [workspace]
 resolver = "2"
 members = [
-  ".",
-  "crossbeam-channel",
-  "crossbeam-channel/benchmarks",
-  "crossbeam-deque",
-  "crossbeam-epoch",
-  "crossbeam-queue",
-  "crossbeam-skiplist",
-  "crossbeam-utils",
+    ".",
+    "crossbeam-channel",
+    "crossbeam-channel/benchmarks",
+    "crossbeam-deque",
+    "crossbeam-epoch",
+    "crossbeam-queue",
+    "crossbeam-skiplist",
+    "crossbeam-utils",
 ]
 
 [workspace.lints.rust]
@@ -78,8 +78,8 @@ missing_debug_implementations = "warn"
 rust_2018_idioms = "warn"
 single_use_lifetimes = "warn"
 unexpected_cfgs = { level = "warn", check-cfg = [
-  'cfg(crossbeam_loom)',
-  'cfg(crossbeam_sanitize)',
+    'cfg(crossbeam_loom)',
+    'cfg(crossbeam_sanitize)',
 ] }
 unreachable_pub = "warn"
 # unsafe_op_in_unsafe_fn = "warn" # Set at crate-level instead since https://github.com/rust-lang/rust/pull/100081 is not available on MSRV
