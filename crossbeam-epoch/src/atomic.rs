@@ -806,7 +806,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///         // By now the DataStructure lives only in our thread and we are sure we don't hold
     ///         // any Shared or & to it ourselves.
     ///         unsafe {
-    ///             drop(mem::replace(&mut self.ptr, Atomic::null()).into_owned());
+    ///             drop(mem::take(&mut self.ptr).into_owned());
     ///         }
     ///     }
     /// }
@@ -839,7 +839,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
     ///     fn drop(&mut self) {
     ///         // By now the DataStructure lives only in our thread and we are sure we don't hold
     ///         // any Shared or & to it ourselves, but it may be null, so we have to be careful.
-    ///         let old = mem::replace(&mut self.ptr, Atomic::null());
+    ///         let old = mem::take(&mut self.ptr);
     ///         unsafe {
     ///             if let Some(x) = old.try_into_owned() {
     ///                 drop(x)

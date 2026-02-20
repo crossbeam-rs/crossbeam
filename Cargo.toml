@@ -85,6 +85,7 @@ unreachable_pub = "warn"
 # unsafe_op_in_unsafe_fn = "warn" # Set at crate-level instead since https://github.com/rust-lang/rust/pull/100081 is not available on MSRV
 [workspace.lints.clippy]
 # Suppress buggy or noisy clippy lints
+bool_assert_comparison = { level = "allow", priority = 1 }
 declare_interior_mutable_const = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/7665
 incompatible_msrv = { level = "allow", priority = 1 } # buggy: doesn't consider cfg, https://github.com/rust-lang/rust-clippy/issues/12280, https://github.com/rust-lang/rust-clippy/issues/12257#issuecomment-2093667187
 lint_groups_priority = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/12920

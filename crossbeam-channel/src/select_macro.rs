@@ -1086,6 +1086,7 @@ macro_rules! crossbeam_channel_internal {
 /// Optionally add a receive operation to `select!` using [`never`]:
 ///
 /// ```
+/// # #[allow(clippy::unnecessary_literal_unwrap)] {
 /// use std::thread;
 /// use std::time::Duration;
 /// use crossbeam_channel::{select, never, unbounded};
@@ -1114,6 +1115,7 @@ macro_rules! crossbeam_channel_internal {
 /// }
 /// # t1.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// # t2.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
+/// # }
 /// ```
 ///
 /// To optionally add a timeout to `select!`, see the [example] for [`never`].
