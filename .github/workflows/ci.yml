@@ -32,6 +32,11 @@ concurrency:
 jobs:
   check-external-types:
     uses: taiki-e/github-actions/.github/workflows/check-external-types.yml@main
+  clippy:
+    uses: taiki-e/github-actions/.github/workflows/clippy.yml@main
+    with:
+      unqualified_local_imports: false # TODO
+      fuzzy_provenance_casts: false # TODO
 
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
@@ -182,17 +187,6 @@ jobs:
         uses: taiki-e/github-actions/install-rust@stable
       - name: rustfmt
         run: cargo fmt --all --check
-
-  # Check clippy.
-  clippy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install Rust
-        uses: taiki-e/github-actions/install-rust@stable
-      - name: clippy
-        run: cargo clippy --all --all-features --tests --examples
 
   # Run miri.
   miri:
