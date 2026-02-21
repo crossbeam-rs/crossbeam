@@ -21,6 +21,8 @@ extern crate alloc;
 extern crate std;
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod alloc_helper;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod array_queue;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod seg_queue;

@@ -336,7 +336,12 @@
 #![warn(missing_docs, unsafe_op_in_unsafe_fn)]
 
 #[cfg(feature = "std")]
+extern crate alloc;
+#[cfg(feature = "std")]
 extern crate std;
+
+#[cfg(feature = "std")]
+mod alloc_helper;
 
 #[cfg(feature = "std")]
 mod channel;

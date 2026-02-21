@@ -1,6 +1,6 @@
 //! Unbounded channel implemented as a linked list.
 
-use std::alloc::{alloc_zeroed, handle_alloc_error, Layout};
+use std::alloc::{handle_alloc_error, Layout};
 use std::boxed::Box;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -11,6 +11,7 @@ use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
+use crate::alloc_helper::Global;
 use crate::context::Context;
 use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
 use crate::select::{Operation, SelectHandle, Selected, Token};
@@ -83,20 +84,20 @@ impl<T> Block<T> {
 
     /// Creates an empty block.
     fn new() -> Box<Self> {
-        // SAFETY: layout is not zero-sized
-        let ptr = unsafe { alloc_zeroed(Self::LAYOUT) };
-        // Handle allocation failure
-        if ptr.is_null() {
-            handle_alloc_error(Self::LAYOUT)
+        // unsafe { Box::new_zeroed().assume_init() } requires Rust 1.92
+        match Global.allocate_zeroed(Self::LAYOUT) {
+            Some(ptr) => {
+                // SAFETY: This is safe because:
+                //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
+                //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
+                //  [3] `Slot::msg` (UnsafeCell) may be safely zero initialized because it
+                //       holds a MaybeUninit.
+                //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
+                unsafe { Box::from_raw(ptr.as_ptr().cast()) }
+            }
+            // Handle allocation failure
+            None => handle_alloc_error(Self::LAYOUT),
         }
-        // SAFETY: This is safe because:
-        //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
-        //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
-        //  [3] `Slot::msg` (UnsafeCell) may be safely zero initialized because it
-        //       holds a MaybeUninit.
-        //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
-        // TODO: unsafe { Box::new_zeroed().assume_init() }
-        unsafe { Box::from_raw(ptr.cast()) }
     }
 
     /// Waits until the next pointer is set.

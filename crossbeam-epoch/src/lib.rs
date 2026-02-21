@@ -146,6 +146,8 @@ macro_rules! const_fn {
 }
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod alloc_helper;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod atomic;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod collector;
