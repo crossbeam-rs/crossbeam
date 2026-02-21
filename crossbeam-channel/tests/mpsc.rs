@@ -192,9 +192,9 @@ macro_rules! select {
 
 // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
 mod channel_tests {
-    use super::*;
-
     use std::{env, thread, time::Instant};
+
+    use super::*;
 
     fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
@@ -966,9 +966,9 @@ mod channel_tests {
 
 // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
 mod sync_channel_tests {
-    use super::*;
-
     use std::{env, thread};
+
+    use super::*;
 
     fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
@@ -1700,9 +1700,9 @@ mod sync_channel_tests {
 
 // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/select.rs
 mod select_tests {
-    use super::*;
-
     use std::thread;
+
+    use super::*;
 
     #[test]
     fn smoke() {

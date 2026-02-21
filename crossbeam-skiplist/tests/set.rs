@@ -1,10 +1,11 @@
-use crossbeam_skiplist::SkipSet;
-use crossbeam_utils::thread;
 use std::{
     iter,
     ops::Bound,
     sync::{Arc, Barrier},
 };
+
+use crossbeam_skiplist::SkipSet;
+use crossbeam_utils::thread;
 
 #[test]
 fn smoke() {

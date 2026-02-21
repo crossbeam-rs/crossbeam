@@ -1,6 +1,5 @@
 //! A lock-free skip list. See [`SkipList`].
 
-use super::equivalent::Comparable;
 use alloc::alloc::handle_alloc_error;
 use core::{
     alloc::Layout,
@@ -13,9 +12,11 @@ use core::{
     sync::atomic::{fence, AtomicUsize, Ordering},
 };
 
-use crate::alloc_helper::Global;
 use crossbeam_epoch::{self as epoch, Atomic, Collector, Guard, Shared};
 use crossbeam_utils::CachePadded;
+
+use super::equivalent::Comparable;
+use crate::alloc_helper::Global;
 
 /// Number of bits needed to store height.
 const HEIGHT_BITS: usize = 5;

@@ -1,8 +1,8 @@
 #![cfg(crossbeam_loom)]
 
-use crossbeam_epoch as epoch;
-use loom_crate as loom;
+use std::{mem::ManuallyDrop, ptr};
 
+use crossbeam_epoch as epoch;
 use epoch::{Atomic, Owned, *};
 use loom::{
     sync::{
@@ -11,7 +11,7 @@ use loom::{
     },
     thread::spawn,
 };
-use std::{mem::ManuallyDrop, ptr};
+use loom_crate as loom;
 
 #[test]
 fn it_works() {

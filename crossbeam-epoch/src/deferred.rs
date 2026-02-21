@@ -96,8 +96,9 @@ impl Deferred {
     clippy::std_instead_of_core
 )]
 mod tests {
-    use super::Deferred;
     use std::{boxed::Box, cell::Cell, convert::identity, string::ToString, vec};
+
+    use super::Deferred;
 
     #[test]
     fn on_stack() {

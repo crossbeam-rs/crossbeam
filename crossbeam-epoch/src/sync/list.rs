@@ -305,10 +305,12 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
     clippy::std_instead_of_core
 )]
 mod tests {
+    use std::{ptr, sync::Barrier, vec::Vec};
+
+    use crossbeam_utils::thread;
+
     use super::*;
     use crate::{Collector, Owned};
-    use crossbeam_utils::thread;
-    use std::{ptr, sync::Barrier, vec::Vec};
 
     impl IsElement<Self> for Entry {
         fn entry_of(entry: *const Self) -> *const Entry {

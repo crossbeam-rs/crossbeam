@@ -4,6 +4,8 @@
 # Override the default formatting style.
 # This is unstable (tracking issue: https://github.com/rust-lang/rustfmt/issues/4991).
 imports_granularity = "Crate"
+# This is unstable (tracking issue: https://github.com/rust-lang/rustfmt/issues/5083).
+group_imports = "StdExternalCrate"
 
 # Set the default settings again to always apply the proper formatting without
 # being affected by the editor settings.

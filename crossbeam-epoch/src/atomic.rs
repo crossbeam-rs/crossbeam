@@ -9,6 +9,8 @@ use core::{
     ptr::{self, NonNull},
 };
 
+use crossbeam_utils::atomic::AtomicConsume;
+
 #[cfg(not(miri))]
 use crate::primitive::sync::atomic::AtomicUsize;
 use crate::{
@@ -16,7 +18,6 @@ use crate::{
     guard::Guard,
     primitive::sync::atomic::{AtomicPtr, Ordering},
 };
-use crossbeam_utils::atomic::AtomicConsume;
 
 /// The value returned from a compare-and-swap operation.
 pub struct CompareExchangeValue<'g, T: ?Sized + Pointable> {
@@ -1587,9 +1588,10 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
     clippy::std_instead_of_core
 )]
 mod tests {
+    use std::{mem::MaybeUninit, sync::atomic::Ordering};
+
     use super::{Atomic, Owned, Shared};
     use crate::pin;
-    use std::{mem::MaybeUninit, sync::atomic::Ordering};
 
     #[test]
     fn valid_tag_i8() {
