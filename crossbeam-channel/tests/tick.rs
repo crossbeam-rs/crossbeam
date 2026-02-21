@@ -130,7 +130,7 @@ fn recv() {
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
 
-#[cfg(not(crossbeam_sanitize))] // TODO: assertions failed due to tsan is slow
+#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: assertions failed due to tsan is slow
 #[test]
 fn recv_timeout() {
     let start = Instant::now();
@@ -255,7 +255,7 @@ fn select() {
     assert_eq!(hits.load(Ordering::SeqCst), 8);
 }
 
-#[cfg(not(crossbeam_sanitize))] // TODO: assertions failed due to tsan is slow
+#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: assertions failed due to tsan is slow
 #[test]
 fn ready() {
     const THREADS: usize = 4;

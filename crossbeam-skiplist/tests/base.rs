@@ -974,38 +974,34 @@ fn comparable_get() {
 }
 
 // https://github.com/crossbeam-rs/crossbeam/pull/1143
-#[cfg(target_has_atomic = "32")]
 #[test]
 fn remove_race() {
     use std::sync::atomic::{AtomicU32, Ordering};
 
-    let nthreads = 16;
-    #[cfg(miri)]
-    let key_range = 100u32;
-    #[cfg(not(miri))]
-    let key_range = 100_000u32;
+    const NTHREADS: u32 = 16;
+    const KEY_RANGE: u32 = if cfg!(miri) { 100 } else { 100_000 };
 
     let guard = &epoch::pin();
     let s = SkipList::new(epoch::default_collector().clone());
 
-    for x in 0..key_range {
+    for x in 0..KEY_RANGE {
         s.insert(x, (), guard).release(guard);
     }
 
-    let barrier1 = AtomicU32::new(nthreads);
-    let barrier2 = AtomicU32::new(nthreads);
+    let barrier1 = AtomicU32::new(NTHREADS);
+    let barrier2 = AtomicU32::new(NTHREADS);
     let mut total_removed = AtomicU32::new(0);
 
     std::thread::scope(|scope| {
-        for _ in 0..nthreads {
+        for _ in 0..NTHREADS {
             scope.spawn(|| {
                 let guard = &epoch::pin();
-                let mut removed_entries = Vec::with_capacity(key_range as usize);
+                let mut removed_entries = Vec::with_capacity(KEY_RANGE as usize);
 
                 barrier1.fetch_sub(1, Ordering::Relaxed);
                 while barrier1.load(Ordering::Acquire) != 0 {}
 
-                for x in 0..key_range {
+                for x in 0..KEY_RANGE {
                     if let Some(entry) = s.remove(&x, guard) {
                         removed_entries.push(entry);
                     }
@@ -1023,5 +1019,5 @@ fn remove_race() {
         }
     });
 
-    assert_eq!(*total_removed.get_mut(), key_range);
+    assert_eq!(*total_removed.get_mut(), KEY_RANGE);
 }
