@@ -81,6 +81,7 @@ fn try_recv() {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn recv_timeout() {
     let start = Instant::now();
     let r = never::<i32>();
