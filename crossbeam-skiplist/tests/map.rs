@@ -1023,6 +1023,6 @@ fn comparator() {
     assert_eq!(*s.get("abc").unwrap().value(), 2);
     assert_eq!(*s.get("ABC").unwrap().value(), 2);
     assert_eq!(*s.get("aBc").unwrap().value(), 2);
-    s.remove("AbC");
+    assert_eq!(s.remove("AbC").unwrap().key(), "ABC");
     assert!(s.is_empty());
 }

@@ -485,16 +485,7 @@ unsafe impl<K: Send + Sync, V: Send + Sync, C: Send + Sync> Sync for SkipList<K,
 impl<K, V> SkipList<K, V> {
     /// Returns a new, empty skip list.
     pub fn new(collector: Collector) -> Self {
-        Self {
-            head: Head::new(),
-            collector,
-            hot_data: CachePadded::new(HotData {
-                seed: AtomicUsize::new(1),
-                len: AtomicUsize::new(0),
-                max_height: AtomicUsize::new(1),
-            }),
-            comparator: Default::default(),
-        }
+        Self::with_comparator(collector, Default::default())
     }
 }
 

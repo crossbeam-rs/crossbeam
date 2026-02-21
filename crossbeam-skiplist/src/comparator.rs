@@ -31,7 +31,7 @@ use crate::equivalent::{Comparable, Equivalent};
 /// impl Equivalator<[u8], [u8]> for MyEquivalator {
 ///     fn equivalent(&self, lhs: &[u8], rhs: &[u8]) -> bool {
 ///         if self.case_sensitive {
-///             return lhs == rhs;
+///             lhs == rhs
 ///         } else {
 ///             // Case-insensitive ASCII comparison on raw bytes
 ///             if lhs.len() != rhs.len() { return false; }
