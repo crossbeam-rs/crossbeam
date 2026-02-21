@@ -997,7 +997,7 @@ where
 
     /// Inserts an entry with the specified `key` and `value`.
     ///
-    /// If `replace` is `true`, then any existing entry with this key will first be removed.
+    /// If `replace` is `true`, then any existing entry with this key will be removed, using CAS.
     fn insert_internal<F, CompareF>(
         &self,
         key: K,
@@ -1225,8 +1225,8 @@ where
 {
     /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
     ///
-    /// If there is an existing entry with this key, it will be removed before inserting the new
-    /// one.
+    /// If there is an existing entry with this key, it will be removed when inserting the new
+    /// one using CAS.
     pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
         self.insert_internal(key, || value, |_| true, guard)
     }
@@ -1234,7 +1234,7 @@ where
     /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
     ///
     /// If there is an existing entry with this key and compare(entry.value) returns true,
-    /// it will be removed before inserting the new one.
+    /// it will be removed when inserting the new one. It is atomic when actually replacing data, using CAS.
     /// The closure will not be called if the key is not present.
     pub fn compare_insert<F>(
         &self,
