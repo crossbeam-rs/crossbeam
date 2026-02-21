@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crossbeam_channel::{after, select, Select, TryRecvError};
+use crossbeam_channel::{Select, TryRecvError, after, select};
 use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {

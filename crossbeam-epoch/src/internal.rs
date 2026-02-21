@@ -50,7 +50,7 @@ use crate::{
     collector::{Collector, LocalHandle},
     deferred::Deferred,
     epoch::{AtomicEpoch, Epoch},
-    guard::{unprotected, Guard},
+    guard::{Guard, unprotected},
     primitive::{
         cell::UnsafeCell,
         sync::atomic::{self, Ordering},

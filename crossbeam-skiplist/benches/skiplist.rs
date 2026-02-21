@@ -5,7 +5,7 @@ extern crate test;
 
 use crossbeam_epoch as epoch;
 use crossbeam_skiplist::SkipList;
-use test::{black_box, Bencher};
+use test::{Bencher, black_box};
 
 #[bench]
 fn insert(b: &mut Bencher) {

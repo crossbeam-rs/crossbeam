@@ -27,11 +27,7 @@ impl SeqLock {
     #[inline]
     pub(crate) fn optimistic_read(&self) -> Option<usize> {
         let state = self.state.load(Ordering::Acquire);
-        if state == 1 {
-            None
-        } else {
-            Some(state)
-        }
+        if state == 1 { None } else { Some(state) }
     }
 
     /// Returns `true` if the current stamp is equal to `stamp`.

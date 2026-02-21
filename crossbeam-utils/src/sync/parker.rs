@@ -2,8 +2,8 @@ use core::{fmt, marker::PhantomData, time::Duration};
 use std::time::Instant;
 
 use crate::primitive::sync::{
-    atomic::{AtomicUsize, Ordering::SeqCst},
     Arc, Condvar, Mutex,
+    atomic::{AtomicUsize, Ordering::SeqCst},
 };
 
 /// A thread parking primitive.

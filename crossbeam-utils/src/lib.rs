@@ -53,8 +53,8 @@ mod primitive {
     pub(crate) mod sync {
         pub(crate) mod atomic {
             pub(crate) use loom::sync::atomic::{
-                fence, AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize,
-                AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
+                AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicIsize, AtomicU8,
+                AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Ordering, fence,
             };
 
             // FIXME: loom does not support compiler_fence at the moment.

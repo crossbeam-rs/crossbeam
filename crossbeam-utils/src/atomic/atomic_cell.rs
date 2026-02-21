@@ -11,8 +11,8 @@ use core::{
 
 use super::seq_lock::SeqLock;
 use crate::{
-    primitive::sync::atomic::{self, Ordering},
     CachePadded,
+    primitive::sync::atomic::{self, Ordering},
 };
 
 /// A thread-safe mutable memory location.

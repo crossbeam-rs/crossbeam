@@ -8,7 +8,7 @@ use std::{
 };
 
 use crossbeam_channel::{
-    after, bounded, tick, unbounded, Receiver, Select, TryRecvError, TrySendError,
+    Receiver, Select, TryRecvError, TrySendError, after, bounded, tick, unbounded,
 };
 use crossbeam_utils::thread::scope;
 

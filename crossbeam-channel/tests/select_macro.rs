@@ -12,8 +12,8 @@ use std::{
 };
 
 use crossbeam_channel::{
-    after, bounded, never, select, select_biased, tick, unbounded, Receiver, RecvError, SendError,
-    Sender, TryRecvError,
+    Receiver, RecvError, SendError, Sender, TryRecvError, after, bounded, never, select,
+    select_biased, tick, unbounded,
 };
 use crossbeam_utils::thread::scope;
 
@@ -298,27 +298,31 @@ fn loop_try() {
         let (s_end, r_end) = bounded::<()>(0);
 
         scope(|scope| {
-            scope.spawn(|_| loop {
-                select! {
-                    send(s1, 1) -> _ => break,
-                    default => {}
-                }
+            scope.spawn(|_| {
+                loop {
+                    select! {
+                        send(s1, 1) -> _ => break,
+                        default => {}
+                    }
 
-                select! {
-                    recv(r_end) -> _ => break,
-                    default => {}
+                    select! {
+                        recv(r_end) -> _ => break,
+                        default => {}
+                    }
                 }
             });
 
-            scope.spawn(|_| loop {
-                if let Ok(x) = r2.try_recv() {
-                    assert_eq!(x, 2);
-                    break;
-                }
+            scope.spawn(|_| {
+                loop {
+                    if let Ok(x) = r2.try_recv() {
+                        assert_eq!(x, 2);
+                        break;
+                    }
 
-                select! {
-                    recv(r_end) -> _ => break,
-                    default => {}
+                    select! {
+                        recv(r_end) -> _ => break,
+                        default => {}
+                    }
                 }
             });
 

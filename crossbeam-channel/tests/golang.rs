@@ -17,14 +17,14 @@ use std::{
     cell::Cell,
     collections::HashMap,
     sync::{
-        atomic::{AtomicI32, AtomicUsize, Ordering::SeqCst},
         Arc, Condvar, Mutex,
+        atomic::{AtomicI32, AtomicUsize, Ordering::SeqCst},
     },
     thread,
     time::Duration,
 };
 
-use crossbeam_channel::{bounded, never, select, tick, unbounded, Receiver, Select, Sender};
+use crossbeam_channel::{Receiver, Select, Sender, bounded, never, select, tick, unbounded};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

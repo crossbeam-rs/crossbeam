@@ -2202,10 +2202,6 @@ impl<T> FromIterator<Self> for Steal<T> {
             }
         }
 
-        if retry {
-            Self::Retry
-        } else {
-            Self::Empty
-        }
+        if retry { Self::Retry } else { Self::Empty }
     }
 }

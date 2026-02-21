@@ -12,7 +12,7 @@ fn main() {
         time::{Duration, Instant},
     };
 
-    use crossbeam_channel::{bounded, select, tick, Receiver};
+    use crossbeam_channel::{Receiver, bounded, select, tick};
     use signal_hook::{consts::SIGINT, iterator::Signals};
 
     // Creates a channel that gets a message every time `SIGINT` is signalled.

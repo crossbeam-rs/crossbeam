@@ -9,7 +9,7 @@ use core::{
     ops::{Bound, Deref, RangeBounds},
     ptr,
     ptr::NonNull,
-    sync::atomic::{fence, AtomicUsize, Ordering},
+    sync::atomic::{AtomicUsize, Ordering, fence},
 };
 
 use crossbeam_epoch::{self as epoch, Atomic, Collector, Guard, Shared};
@@ -505,11 +505,7 @@ impl<K, V> SkipList<K, V> {
 
         // Due to the relaxed memory ordering, the length counter may sometimes
         // underflow and produce a very large value. We treat such values as 0.
-        if len > isize::MAX as usize {
-            0
-        } else {
-            len
-        }
+        if len > isize::MAX as usize { 0 } else { len }
     }
 
     /// Ensures that all `Guard`s used with the skip list come from the same

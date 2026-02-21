@@ -16,7 +16,7 @@ use std::{
     thread::{self, ThreadId},
 };
 
-use crate::{sync::once_lock::OnceLock, CachePadded};
+use crate::{CachePadded, sync::once_lock::OnceLock};
 
 /// The number of shards per sharded lock. Must be a power of two.
 const NUM_SHARDS: usize = 8;
