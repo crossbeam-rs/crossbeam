@@ -75,6 +75,10 @@ impl<C> Sender<C> {
             }
         }
     }
+
+    pub(crate) fn addr(&self) -> usize {
+        self.counter.as_ptr() as usize
+    }
 }
 
 impl<C> ops::Deref for Sender<C> {
@@ -129,6 +133,10 @@ impl<C> Receiver<C> {
                 drop(unsafe { Box::from_raw(self.counter.as_ptr()) });
             }
         }
+    }
+
+    pub(crate) fn addr(&self) -> usize {
+        self.counter.as_ptr() as usize
     }
 }
 

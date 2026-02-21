@@ -174,10 +174,10 @@ enum Timeout {
 /// Successful receive operations will have to be followed up by `channel::read()` and successful
 /// send operations by `channel::write()`.
 fn run_select(
-    handles: &mut [(&dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(&dyn SelectHandle, usize, usize)],
     timeout: Timeout,
     is_biased: bool,
-) -> Option<(Token, usize, *const u8)> {
+) -> Option<(Token, usize, usize)> {
     if handles.is_empty() {
         // Wait until the timeout and return.
         match timeout {
@@ -204,9 +204,9 @@ fn run_select(
     let mut token = Token::default();
 
     // Try selecting one of the operations without blocking.
-    for &(handle, i, ptr) in handles.iter() {
+    for &(handle, i, addr) in handles.iter() {
         if handle.try_select(&mut token) {
-            return Some((token, i, ptr));
+            return Some((token, i, addr));
         }
     }
 
@@ -273,9 +273,9 @@ fn run_select(
                 Selected::Aborted => {
                     // If an operation became ready during registration, try selecting it.
                     if let Some(index_ready) = index_ready {
-                        for &(handle, i, ptr) in handles.iter() {
+                        for &(handle, i, addr) in handles.iter() {
                             if i == index_ready && handle.try_select(&mut token) {
-                                return Some((i, ptr));
+                                return Some((i, addr));
                             }
                         }
                     }
@@ -283,13 +283,13 @@ fn run_select(
                 Selected::Disconnected => {}
                 Selected::Operation(_) => {
                     // Find the selected operation.
-                    for (handle, i, ptr) in handles.iter_mut() {
+                    for (handle, i, addr) in handles.iter_mut() {
                         // Is this the selected operation?
                         if sel == Selected::Operation(Operation::hook::<&dyn SelectHandle>(handle))
                         {
                             // Try selecting this operation.
                             if handle.accept(&mut token, cx) {
-                                return Some((*i, *ptr));
+                                return Some((*i, *addr));
                             }
                         }
                     }
@@ -300,14 +300,14 @@ fn run_select(
         });
 
         // Return if an operation was selected.
-        if let Some((i, ptr)) = res {
-            return Some((token, i, ptr));
+        if let Some((i, addr)) = res {
+            return Some((token, i, addr));
         }
 
         // Try selecting one of the operations without blocking.
-        for &(handle, i, ptr) in handles.iter() {
+        for &(handle, i, addr) in handles.iter() {
             if handle.try_select(&mut token) {
-                return Some((token, i, ptr));
+                return Some((token, i, addr));
             }
         }
 
@@ -325,7 +325,7 @@ fn run_select(
 
 /// Runs until one of the operations becomes ready, potentially blocking the current thread.
 fn run_ready(
-    handles: &mut [(&dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(&dyn SelectHandle, usize, usize)],
     timeout: Timeout,
     is_biased: bool,
 ) -> Option<usize> {
@@ -454,15 +454,15 @@ fn run_ready(
 // This is a private API (exposed inside crossbeam_channel::internal module) that is used by the select macro.
 #[inline]
 pub fn try_select<'a>(
-    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(&'a dyn SelectHandle, usize, usize)],
     is_biased: bool,
 ) -> Result<SelectedOperation<'a>, TrySelectError> {
     match run_select(handles, Timeout::Now, is_biased) {
         None => Err(TrySelectError),
-        Some((token, index, ptr)) => Ok(SelectedOperation {
+        Some((token, index, addr)) => Ok(SelectedOperation {
             token,
             index,
-            ptr,
+            addr,
             _marker: PhantomData,
         }),
     }
@@ -472,18 +472,18 @@ pub fn try_select<'a>(
 // This is a private API (exposed inside crossbeam_channel::internal module) that is used by the select macro.
 #[inline]
 pub fn select<'a>(
-    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(&'a dyn SelectHandle, usize, usize)],
     is_biased: bool,
 ) -> SelectedOperation<'a> {
     if handles.is_empty() {
         panic!("no operations have been added to `Select`");
     }
 
-    let (token, index, ptr) = run_select(handles, Timeout::Never, is_biased).unwrap();
+    let (token, index, addr) = run_select(handles, Timeout::Never, is_biased).unwrap();
     SelectedOperation {
         token,
         index,
-        ptr,
+        addr,
         _marker: PhantomData,
     }
 }
@@ -492,7 +492,7 @@ pub fn select<'a>(
 // This is a private API (exposed inside crossbeam_channel::internal module) that is used by the select macro.
 #[inline]
 pub fn select_timeout<'a>(
-    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(&'a dyn SelectHandle, usize, usize)],
     timeout: Duration,
     is_biased: bool,
 ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
@@ -505,19 +505,28 @@ pub fn select_timeout<'a>(
 /// Blocks until a given deadline, or until one of the operations becomes ready and selects it.
 #[inline]
 pub(crate) fn select_deadline<'a>(
-    handles: &mut [(&'a dyn SelectHandle, usize, *const u8)],
+    handles: &mut [(&'a dyn SelectHandle, usize, usize)],
     deadline: Instant,
     is_biased: bool,
 ) -> Result<SelectedOperation<'a>, SelectTimeoutError> {
     match run_select(handles, Timeout::At(deadline), is_biased) {
         None => Err(SelectTimeoutError),
-        Some((token, index, ptr)) => Ok(SelectedOperation {
+        Some((token, index, addr)) => Ok(SelectedOperation {
             token,
             index,
-            ptr,
+            addr,
             _marker: PhantomData,
         }),
     }
+}
+
+#[doc(hidden)]
+pub fn sender_addr<T>(s: &Sender<T>) -> usize {
+    s.addr()
+}
+#[doc(hidden)]
+pub fn receiver_addr<T>(s: &Receiver<T>) -> usize {
+    s.addr()
 }
 
 /// Selects from a set of channel operations.
@@ -606,7 +615,7 @@ pub(crate) fn select_deadline<'a>(
 /// [`ready_timeout`]: Select::ready_timeout
 pub struct Select<'a> {
     /// A list of senders and receivers participating in selection.
-    handles: Vec<(&'a dyn SelectHandle, usize, *const u8)>,
+    handles: Vec<(&'a dyn SelectHandle, usize, usize)>,
 
     /// The next index to assign to an operation.
     next_index: usize,
@@ -676,8 +685,8 @@ impl<'a> Select<'a> {
     /// ```
     pub fn send<T>(&mut self, s: &'a Sender<T>) -> usize {
         let i = self.next_index;
-        let ptr = s as *const Sender<_> as *const u8;
-        self.handles.push((s, i, ptr));
+        let addr = s.addr();
+        self.handles.push((s, i, addr));
         self.next_index += 1;
         i
     }
@@ -698,8 +707,8 @@ impl<'a> Select<'a> {
     /// ```
     pub fn recv<T>(&mut self, r: &'a Receiver<T>) -> usize {
         let i = self.next_index;
-        let ptr = r as *const Receiver<_> as *const u8;
-        self.handles.push((r, i, ptr));
+        let addr = r.addr();
+        self.handles.push((r, i, addr));
         self.next_index += 1;
         i
     }
@@ -1205,7 +1214,7 @@ pub struct SelectedOperation<'a> {
     index: usize,
 
     /// The address of the selected `Sender` or `Receiver`.
-    ptr: *const u8,
+    addr: usize,
 
     /// Indicates that `Sender`s and `Receiver`s are borrowed.
     _marker: PhantomData<&'a ()>,
@@ -1266,7 +1275,7 @@ impl SelectedOperation<'_> {
     /// ```
     pub fn send<T>(mut self, s: &Sender<T>, msg: T) -> Result<(), SendError<T>> {
         assert!(
-            s as *const Sender<T> as *const u8 == self.ptr,
+            s.addr() == self.addr,
             "passed a sender that wasn't selected",
         );
         let res = unsafe { channel::write(s, &mut self.token, msg) };
@@ -1300,7 +1309,7 @@ impl SelectedOperation<'_> {
     /// ```
     pub fn recv<T>(mut self, r: &Receiver<T>) -> Result<T, RecvError> {
         assert!(
-            r as *const Receiver<T> as *const u8 == self.ptr,
+            r.addr() == self.addr,
             "passed a receiver that wasn't selected",
         );
         let res = unsafe { channel::read(r, &mut self.token) };
