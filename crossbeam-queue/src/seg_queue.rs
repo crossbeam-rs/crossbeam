@@ -115,6 +115,11 @@ impl<T> Block<T> {
         // No thread is using the block, now it is safe to destroy it.
         drop(unsafe { Box::from_raw(this) });
     }
+
+    /// Destroys the block. Only safe to call with exclusive access, when no other thread is using it.
+    unsafe fn destroy_mut(this: *mut Self) {
+        drop(unsafe { Box::from_raw(this) });
+    }
 }
 
 /// A position in a queue.
@@ -298,8 +303,8 @@ impl<T> SegQueue<T> {
     /// q.push_mut(20);
     /// ```
     pub fn push_mut(&mut self, value: T) {
-        let tail = self.tail.index.load(Ordering::Relaxed);
-        let mut block = self.tail.block.load(Ordering::Relaxed);
+        let tail = *self.tail.index.get_mut();
+        let mut block = *self.tail.block.get_mut();
 
         // Calculate the offset of the index into the block.
         let offset = (tail >> SHIFT) % LAP;
@@ -307,15 +312,15 @@ impl<T> SegQueue<T> {
         // If this is the first push operation, we need to allocate the first block.
         if block.is_null() {
             let new = Box::into_raw(Block::<T>::new());
-            self.head.block.store(new, Ordering::Relaxed);
-            self.tail.block.store(new, Ordering::Relaxed);
+            *self.head.block.get_mut() = new;
+            *self.tail.block.get_mut() = new;
 
             block = new;
         }
 
         let new_tail = tail + (1 << SHIFT);
 
-        self.tail.index.store(new_tail, Ordering::Relaxed);
+        *self.tail.index.get_mut() = new_tail;
 
         unsafe {
             // If we've reached the end of the block, install the next one.
@@ -323,15 +328,15 @@ impl<T> SegQueue<T> {
                 let next_block = Box::into_raw(Block::<T>::new());
                 let next_index = new_tail.wrapping_add(1 << SHIFT);
 
-                self.tail.block.store(next_block, Ordering::Relaxed);
-                self.tail.index.store(next_index, Ordering::Relaxed);
-                (*block).next.store(next_block, Ordering::Relaxed);
+                *self.tail.block.get_mut() = next_block;
+                *self.tail.index.get_mut() = next_index;
+                *(*block).next.get_mut() = next_block;
             }
 
             // Write the value into the slot.
             let slot = (*block).slots.get_unchecked(offset);
             slot.value.get().write(MaybeUninit::new(value));
-            slot.state.fetch_or(WRITE, Ordering::Relaxed);
+            *(*block).slots.get_unchecked_mut(offset).state.get_mut() |= WRITE;
         }
     }
 
@@ -460,8 +465,8 @@ impl<T> SegQueue<T> {
     /// assert!(q.pop_mut().is_none());
     /// ```
     pub fn pop_mut(&mut self) -> Option<T> {
-        let head = self.head.index.load(Ordering::Relaxed);
-        let block = self.head.block.load(Ordering::Relaxed);
+        let head = *self.head.index.get_mut();
+        let block = *self.head.block.get_mut();
 
         // Calculate the offset of the index into the block.
         let offset = (head >> SHIFT) % LAP;
@@ -469,7 +474,7 @@ impl<T> SegQueue<T> {
         let mut new_head = head + (1 << SHIFT);
 
         if new_head & HAS_NEXT == 0 {
-            let tail = self.tail.index.load(Ordering::Relaxed);
+            let tail = *self.tail.index.get_mut();
 
             // If the tail equals the head, that means the queue is empty.
             if head >> SHIFT == tail >> SHIFT {
@@ -482,19 +487,19 @@ impl<T> SegQueue<T> {
             }
         }
 
-        self.head.index.store(new_head, Ordering::Relaxed);
+        *self.head.index.get_mut() = new_head;
 
         unsafe {
             // If we've reached the end of the block, move to the next one.
             if offset + 1 == BLOCK_CAP {
-                let next = (*block).wait_next();
+                let next = *(*block).next.get_mut();
                 let mut next_index = (new_head & !HAS_NEXT).wrapping_add(1 << SHIFT);
-                if !(*next).next.load(Ordering::Relaxed).is_null() {
+                if !(*next).next.get_mut().is_null() {
                     next_index |= HAS_NEXT;
                 }
 
-                self.head.block.store(next, Ordering::Relaxed);
-                self.head.index.store(next_index, Ordering::Relaxed);
+                *self.head.block.get_mut() = next;
+                *self.head.index.get_mut() = next_index;
             }
 
             // Read the value.
@@ -503,9 +508,7 @@ impl<T> SegQueue<T> {
 
             // Destroy the block if we've reached the end
             if offset + 1 == BLOCK_CAP {
-                Block::destroy(block, 0);
-            } else if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
-                Block::destroy(block, offset + 1);
+                Block::destroy_mut(block);
             }
 
             Some(value)

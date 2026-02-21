@@ -227,30 +227,28 @@ impl<T> ArrayQueue<T> {
     /// assert_eq!(q.push_mut(20), Err(20));
     /// ```
     pub fn push_mut(&mut self, value: T) -> Result<(), T> {
-        let tail = self.tail.load(Ordering::Relaxed);
-        let head = self.head.load(Ordering::Relaxed);
+        let tail = *self.tail.get_mut();
+        let head = *self.head.get_mut();
 
         if head.wrapping_add(self.one_lap) == tail {
             return Err(value);
         }
 
-        // Now, trying to update the tail
         let index = tail & (self.one_lap - 1);
         let lap = tail & !(self.one_lap - 1);
         let new_tail = if index + 1 < self.capacity() {
             tail + 1
         } else {
-            // One lap forward, index wraps around to zero.
             lap.wrapping_add(self.one_lap)
         };
 
-        self.tail.store(new_tail, Ordering::Relaxed);
+        *self.tail.get_mut() = new_tail;
 
-        let slot = unsafe { self.buffer.get_unchecked(index) };
+        let slot = unsafe { self.buffer.get_unchecked_mut(index) };
         unsafe {
             slot.value.get().write(MaybeUninit::new(value));
         }
-        slot.stamp.store(tail + 1, Ordering::Relaxed);
+        *slot.stamp.get_mut() = tail + 1;
 
         Ok(())
     }
@@ -395,8 +393,8 @@ impl<T> ArrayQueue<T> {
     /// assert!(q.pop_mut().is_none());
     /// ```
     pub fn pop_mut(&mut self) -> Option<T> {
-        let head = self.head.load(Ordering::Relaxed);
-        let tail = self.tail.load(Ordering::Relaxed);
+        let head = *self.head.get_mut();
+        let tail = *self.tail.get_mut();
 
         // If the tail equals the head, that means the channel is empty.
         if tail == head {
@@ -407,7 +405,6 @@ impl<T> ArrayQueue<T> {
 
         // Inspect the corresponding slot.
         debug_assert!(index < self.buffer.len());
-        let slot = unsafe { self.buffer.get_unchecked(index) };
 
         let new = if index + 1 < self.capacity() {
             // Same lap, incremented index.
@@ -418,10 +415,12 @@ impl<T> ArrayQueue<T> {
             // Set to `{ lap: lap.wrapping_add(1), index: 0 }`.
             lap.wrapping_add(self.one_lap)
         };
+
+        let slot = unsafe { self.buffer.get_unchecked_mut(index) };
+
         let msg = unsafe { slot.value.get().read().assume_init() };
-        slot.stamp
-            .store(head.wrapping_add(self.one_lap), Ordering::Relaxed);
-        self.head.store(new, Ordering::Relaxed);
+        *slot.stamp.get_mut() = head.wrapping_add(self.one_lap);
+        *self.head.get_mut() = new;
         Some(msg)
     }
 
