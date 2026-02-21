@@ -1,4 +1,17 @@
-use crossbeam_deque::{Injector, Steal::Success, Worker};
+use crossbeam_deque::{
+    Injector,
+    Steal::{self, Success},
+    Worker,
+};
+
+fn busy_retry<T>(mut f: impl FnMut() -> Steal<T>) -> Steal<T> {
+    loop {
+        let s = f();
+        if !s.is_retry() {
+            return s;
+        }
+    }
+}
 
 #[test]
 fn steal_fifo() {
@@ -33,9 +46,9 @@ fn steal_injector() {
         q.push(i);
     }
 
-    assert_eq!(q.steal(), Success(1));
-    assert_eq!(q.steal(), Success(2));
-    assert_eq!(q.steal(), Success(3));
+    assert_eq!(busy_retry(|| q.steal()), Success(1));
+    assert_eq!(busy_retry(|| q.steal()), Success(2));
+    assert_eq!(busy_retry(|| q.steal()), Success(3));
 }
 
 #[test]
@@ -106,7 +119,7 @@ fn steal_batch_injector_fifo() {
     }
 
     let w2 = Worker::new_fifo();
-    assert_eq!(q.steal_batch(&w2), Success(()));
+    assert_eq!(busy_retry(|| q.steal_batch(&w2)), Success(()));
     assert_eq!(w2.pop(), Some(1));
     assert_eq!(w2.pop(), Some(2));
 }
@@ -119,7 +132,7 @@ fn steal_batch_injector_lifo() {
     }
 
     let w2 = Worker::new_lifo();
-    assert_eq!(q.steal_batch(&w2), Success(()));
+    assert_eq!(busy_retry(|| q.steal_batch(&w2)), Success(()));
     assert_eq!(w2.pop(), Some(1));
     assert_eq!(w2.pop(), Some(2));
 }
@@ -192,7 +205,7 @@ fn steal_batch_and_pop_injector_fifo() {
     }
 
     let w2 = Worker::new_fifo();
-    assert_eq!(q.steal_batch_and_pop(&w2), Success(1));
+    assert_eq!(busy_retry(|| q.steal_batch_and_pop(&w2)), Success(1));
     assert_eq!(w2.pop(), Some(2));
     assert_eq!(w2.pop(), Some(3));
 }
@@ -205,7 +218,7 @@ fn steal_batch_and_pop_injector_lifo() {
     }
 
     let w2 = Worker::new_lifo();
-    assert_eq!(q.steal_batch_and_pop(&w2), Success(1));
+    assert_eq!(busy_retry(|| q.steal_batch_and_pop(&w2)), Success(1));
     assert_eq!(w2.pop(), Some(2));
     assert_eq!(w2.pop(), Some(3));
 }

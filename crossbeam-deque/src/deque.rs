@@ -1318,6 +1318,7 @@ struct Position<T> {
 /// # Examples
 ///
 /// ```
+/// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
 /// use crossbeam_deque::{Injector, Steal};
 ///
 /// let q = Injector::new();
@@ -1449,6 +1450,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Steal};
     ///
     /// let q = Injector::new();
@@ -1545,6 +1547,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Worker};
     ///
     /// let q = Injector::new();
@@ -1570,6 +1573,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Worker};
     ///
     /// let q = Injector::new();
@@ -1746,6 +1750,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Steal, Worker};
     ///
     /// let q = Injector::new();
@@ -1772,6 +1777,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Steal, Worker};
     ///
     /// let q = Injector::new();

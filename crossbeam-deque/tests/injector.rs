@@ -5,25 +5,34 @@ use std::sync::{
 
 use crossbeam_deque::{
     Injector,
-    Steal::{Empty, Success},
+    Steal::{self, Empty, Success},
     Worker,
 };
 use crossbeam_utils::thread::scope;
 
+fn busy_retry<T>(mut f: impl FnMut() -> Steal<T>) -> Steal<T> {
+    loop {
+        let s = f();
+        if !s.is_retry() {
+            return s;
+        }
+    }
+}
+
 #[test]
 fn smoke() {
     let q = Injector::new();
-    assert_eq!(q.steal(), Empty);
+    assert_eq!(busy_retry(|| q.steal()), Empty);
 
     q.push(1);
     q.push(2);
-    assert_eq!(q.steal(), Success(1));
-    assert_eq!(q.steal(), Success(2));
-    assert_eq!(q.steal(), Empty);
+    assert_eq!(busy_retry(|| q.steal()), Success(1));
+    assert_eq!(busy_retry(|| q.steal()), Success(2));
+    assert_eq!(busy_retry(|| q.steal()), Empty);
 
     q.push(3);
-    assert_eq!(q.steal(), Success(3));
-    assert_eq!(q.steal(), Empty);
+    assert_eq!(busy_retry(|| q.steal()), Success(3));
+    assert_eq!(busy_retry(|| q.steal()), Empty);
 }
 
 #[test]
@@ -36,14 +45,14 @@ fn is_empty() {
     q.push(2);
     assert!(!q.is_empty());
 
-    let _ = q.steal();
+    let _ = busy_retry(|| q.steal());
     assert!(!q.is_empty());
-    let _ = q.steal();
+    let _ = busy_retry(|| q.steal());
     assert!(q.is_empty());
 
     q.push(3);
     assert!(!q.is_empty());
-    let _ = q.steal();
+    let _ = busy_retry(|| q.steal());
     assert!(q.is_empty());
 }
 
@@ -69,7 +78,7 @@ fn spsc() {
                 }
             }
 
-            assert_eq!(q.steal(), Empty);
+            assert_eq!(busy_retry(|| q.steal()), Empty);
         });
 
         for i in 0..COUNT {
@@ -172,6 +181,10 @@ fn stress() {
     const COUNT: usize = 500;
     #[cfg(not(miri))]
     const COUNT: usize = 50_000;
+
+    if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() {
+        return; // see ci/miri.sh
+    }
 
     let q = Injector::new();
     let done = Arc::new(AtomicBool::new(false));
