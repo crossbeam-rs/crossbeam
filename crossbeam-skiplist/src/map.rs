@@ -11,8 +11,7 @@ use crossbeam_epoch as epoch;
 
 use crate::{
     base::{self, try_pin_loop},
-    comparator::BasicComparator,
-    comparator::Comparator,
+    comparator::{BasicComparator, Comparator},
 };
 
 /// An ordered map based on a lock-free skip list.
@@ -25,7 +24,7 @@ use crate::{
 /// of the standard `Ord` impl. See [`Comparator`].
 ///
 /// [`BTreeMap`]: std::collections::BTreeMap
-/// [`Comparator`]: crossbeam_skiplist::comparator::Comparator
+/// [`Comparator`]: crate::comparator::Comparator
 pub struct SkipMap<K, V, C = BasicComparator> {
     inner: base::SkipList<K, V, C>,
 }

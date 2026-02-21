@@ -20,7 +20,7 @@ use crate::{
 /// instead of the standard `Ord` impl. See [`Comparator`].
 ///
 /// [`BTreeSet`]: std::collections::BTreeSet
-/// [`Comparator`]: crossbeam_skiplist::comparator::Comparator
+/// [`Comparator`]: crate::comparator::Comparator
 pub struct SkipSet<T, C = BasicComparator> {
     inner: map::SkipMap<T, (), C>,
 }

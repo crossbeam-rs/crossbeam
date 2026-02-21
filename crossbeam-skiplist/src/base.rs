@@ -17,8 +17,8 @@ use crossbeam_utils::CachePadded;
 
 use crate::{
     alloc_helper::Global,
-    comparator::{Comparator, BasicComparator},
-}
+    comparator::{BasicComparator, Comparator},
+};
 
 /// Number of bits needed to store height.
 const HEIGHT_BITS: usize = 5;
@@ -1180,7 +1180,7 @@ where
                     // higher levels are there just to make searching faster.
                     if succ
                         .as_ref()
-                        .map_or(false, |s| self.comparator.equivalent(&s.key, &n.key))
+                        .is_some_and(|s| self.comparator.equivalent(&s.key, &n.key))
                     {
                         search = self.search_position(&n.key, guard);
                         continue;
