@@ -1,12 +1,15 @@
 //! Tests for channel readiness using the `Select` struct.
 
-use std::any::Any;
-use std::cell::Cell;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+    any::Any,
+    cell::Cell,
+    thread,
+    time::{Duration, Instant},
+};
 
-use crossbeam_channel::{after, bounded, tick, unbounded};
-use crossbeam_channel::{Receiver, Select, TryRecvError, TrySendError};
+use crossbeam_channel::{
+    after, bounded, tick, unbounded, Receiver, Select, TryRecvError, TrySendError,
+};
 use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {

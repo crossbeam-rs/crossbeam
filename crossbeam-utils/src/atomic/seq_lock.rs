@@ -1,5 +1,7 @@
-use core::mem;
-use core::sync::atomic::{self, AtomicUsize, Ordering};
+use core::{
+    mem,
+    sync::atomic::{self, AtomicUsize, Ordering},
+};
 
 use crate::Backoff;
 

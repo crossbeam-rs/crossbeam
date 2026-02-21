@@ -1,9 +1,11 @@
 //! Tests for channel selection using the `Select` struct.
 
-use std::any::Any;
-use std::cell::Cell;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+    any::Any,
+    cell::Cell,
+    thread,
+    time::{Duration, Instant},
+};
 
 use crossbeam_channel::{after, bounded, tick, unbounded, Receiver, Select, TryRecvError};
 use crossbeam_utils::thread::scope;

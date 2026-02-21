@@ -1,8 +1,9 @@
-use std::thread::sleep;
-use std::time::Duration;
+use std::{thread::sleep, time::Duration};
 
-use crossbeam_utils::sync::{Parker, UnparkReason};
-use crossbeam_utils::thread;
+use crossbeam_utils::{
+    sync::{Parker, UnparkReason},
+    thread,
+};
 
 #[test]
 fn park_timeout_unpark_before() {

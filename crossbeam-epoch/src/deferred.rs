@@ -1,8 +1,10 @@
 use alloc::boxed::Box;
-use core::fmt;
-use core::marker::PhantomData;
-use core::mem::{self, MaybeUninit};
-use core::ptr;
+use core::{
+    fmt,
+    marker::PhantomData,
+    mem::{self, MaybeUninit},
+    ptr,
+};
 
 /// Number of words a piece of `Data` can hold.
 ///
@@ -95,11 +97,7 @@ impl Deferred {
 )]
 mod tests {
     use super::Deferred;
-    use std::boxed::Box;
-    use std::cell::Cell;
-    use std::convert::identity;
-    use std::string::ToString;
-    use std::vec;
+    use std::{boxed::Box, cell::Cell, convert::identity, string::ToString, vec};
 
     #[test]
     fn on_stack() {

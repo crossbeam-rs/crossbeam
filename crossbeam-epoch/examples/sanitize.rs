@@ -1,8 +1,14 @@
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
-use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+    sync::{
+        atomic::{
+            AtomicUsize,
+            Ordering::{AcqRel, Acquire, Relaxed},
+        },
+        Arc,
+    },
+    thread,
+    time::{Duration, Instant},
+};
 
 use crossbeam_epoch::{self as epoch, Atomic, Collector, LocalHandle, Owned, Shared};
 

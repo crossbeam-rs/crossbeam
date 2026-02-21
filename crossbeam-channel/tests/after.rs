@@ -2,10 +2,11 @@
 
 #![cfg(not(miri))] // TODO: many assertions failed due to Miri is slow
 
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+    sync::atomic::{AtomicUsize, Ordering},
+    thread,
+    time::{Duration, Instant},
+};
 
 use crossbeam_channel::{after, select, Select, TryRecvError};
 use crossbeam_utils::thread::scope;

@@ -1,8 +1,9 @@
 //! A set based on a lock-free skip list. See [`SkipSet`].
 
-use core::fmt;
-use core::ops::Deref;
-use core::ops::{Bound, RangeBounds};
+use core::{
+    fmt,
+    ops::{Bound, Deref, RangeBounds},
+};
 
 use crate::{equivalent::Comparable, map};
 

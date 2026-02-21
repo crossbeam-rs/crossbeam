@@ -1,18 +1,21 @@
 use alloc::boxed::Box;
-use core::alloc::Layout;
-use core::borrow::{Borrow, BorrowMut};
-use core::cmp;
-use core::fmt;
-use core::marker::PhantomData;
-use core::mem::{self, MaybeUninit};
-use core::ops::{Deref, DerefMut};
-use core::ptr::{self, NonNull};
+use core::{
+    alloc::Layout,
+    borrow::{Borrow, BorrowMut},
+    cmp, fmt,
+    marker::PhantomData,
+    mem::{self, MaybeUninit},
+    ops::{Deref, DerefMut},
+    ptr::{self, NonNull},
+};
 
-use crate::alloc_helper::Global;
-use crate::guard::Guard;
 #[cfg(not(miri))]
 use crate::primitive::sync::atomic::AtomicUsize;
-use crate::primitive::sync::atomic::{AtomicPtr, Ordering};
+use crate::{
+    alloc_helper::Global,
+    guard::Guard,
+    primitive::sync::atomic::{AtomicPtr, Ordering},
+};
 use crossbeam_utils::atomic::AtomicConsume;
 
 /// The value returned from a compare-and-swap operation.
@@ -1586,8 +1589,7 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
 mod tests {
     use super::{Atomic, Owned, Shared};
     use crate::pin;
-    use std::mem::MaybeUninit;
-    use std::sync::atomic::Ordering;
+    use std::{mem::MaybeUninit, sync::atomic::Ordering};
 
     #[test]
     fn valid_tag_i8() {

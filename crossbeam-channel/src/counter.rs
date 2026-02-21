@@ -1,9 +1,11 @@
 //! Reference counter for channels.
 
 use alloc::boxed::Box;
-use core::ops;
-use core::ptr::NonNull;
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use core::{
+    ops,
+    ptr::NonNull,
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 use std::process;
 
 /// Reference counter internals.

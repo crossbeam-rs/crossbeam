@@ -1,22 +1,25 @@
 //! Unbounded channel implemented as a linked list.
 
-use alloc::alloc::handle_alloc_error;
-use alloc::boxed::Box;
-use core::alloc::Layout;
-use core::cell::UnsafeCell;
-use core::marker::PhantomData;
-use core::mem::MaybeUninit;
-use core::ptr;
-use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
+use alloc::{alloc::handle_alloc_error, boxed::Box};
+use core::{
+    alloc::Layout,
+    cell::UnsafeCell,
+    marker::PhantomData,
+    mem::MaybeUninit,
+    ptr,
+    sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering},
+};
 use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use crate::alloc_helper::Global;
-use crate::context::Context;
-use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use crate::select::{Operation, SelectHandle, Selected, Token};
-use crate::waker::SyncWaker;
+use crate::{
+    alloc_helper::Global,
+    context::Context,
+    err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
+    select::{Operation, SelectHandle, Selected, Token},
+    waker::SyncWaker,
+};
 
 // TODO(stjepang): Once we bump the minimum required Rust version to 1.28 or newer, re-apply the
 // following changes by @kleimkuhler:

@@ -111,17 +111,9 @@
 //! }).unwrap();
 //! ```
 
-use alloc::boxed::Box;
-use alloc::string::String;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use core::fmt;
-use core::marker::PhantomData;
-use core::mem;
-use std::io;
-use std::panic;
-use std::sync::Mutex;
-use std::thread;
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use core::{fmt, marker::PhantomData, mem};
+use std::{io, panic, sync::Mutex, thread};
 
 use crate::sync::WaitGroup;
 

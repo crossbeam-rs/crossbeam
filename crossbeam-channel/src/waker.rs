@@ -1,13 +1,19 @@
 //! Waking mechanism for threads blocked on channel operations.
 
 use alloc::vec::Vec;
-use core::ptr;
-use core::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
-use std::thread::{self, ThreadId};
+use core::{
+    ptr,
+    sync::atomic::{AtomicBool, Ordering},
+};
+use std::{
+    sync::Mutex,
+    thread::{self, ThreadId},
+};
 
-use crate::context::Context;
-use crate::select::{Operation, Selected};
+use crate::{
+    context::Context,
+    select::{Operation, Selected},
+};
 
 /// Represents a thread blocked on a specific channel operation.
 pub(crate) struct Entry {

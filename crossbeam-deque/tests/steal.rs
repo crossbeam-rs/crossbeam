@@ -1,5 +1,4 @@
-use crossbeam_deque::Steal::Success;
-use crossbeam_deque::{Injector, Worker};
+use crossbeam_deque::{Injector, Steal::Success, Worker};
 
 #[test]
 fn steal_fifo() {

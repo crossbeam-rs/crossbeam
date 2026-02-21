@@ -1,6 +1,8 @@
-use std::iter;
-use std::ops::Bound;
-use std::sync::{Arc, Barrier};
+use std::{
+    iter,
+    ops::Bound,
+    sync::{Arc, Barrier},
+};
 
 use crossbeam_skiplist::SkipMap;
 use crossbeam_utils::thread;

@@ -9,18 +9,22 @@
 //!   - <https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub>
 
 use alloc::boxed::Box;
-use core::cell::UnsafeCell;
-use core::mem::{self, MaybeUninit};
-use core::ptr;
-use core::sync::atomic::{self, AtomicUsize, Ordering};
+use core::{
+    cell::UnsafeCell,
+    mem::{self, MaybeUninit},
+    ptr,
+    sync::atomic::{self, AtomicUsize, Ordering},
+};
 use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use crate::context::Context;
-use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use crate::select::{Operation, SelectHandle, Selected, Token};
-use crate::waker::SyncWaker;
+use crate::{
+    context::Context,
+    err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
+    select::{Operation, SelectHandle, Selected, Token},
+    waker::SyncWaker,
+};
 
 /// A slot in a channel.
 struct Slot<T> {
