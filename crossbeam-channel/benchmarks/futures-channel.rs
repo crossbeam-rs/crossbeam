@@ -1,6 +1,8 @@
-use futures::channel::mpsc;
-use futures::executor::{block_on, ThreadPool};
-use futures::{future, stream, SinkExt, StreamExt};
+use futures::{
+    channel::mpsc,
+    executor::{block_on, ThreadPool},
+    future, stream, SinkExt, StreamExt,
+};
 
 mod message;
 

@@ -1,11 +1,15 @@
 //! Thread-local context used in select.
 
 use alloc::sync::Arc;
-use core::cell::Cell;
-use core::ptr;
-use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
-use std::thread::{self, Thread, ThreadId};
-use std::time::Instant;
+use core::{
+    cell::Cell,
+    ptr,
+    sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
+};
+use std::{
+    thread::{self, Thread, ThreadId},
+    time::Instant,
+};
 
 use crossbeam_utils::Backoff;
 

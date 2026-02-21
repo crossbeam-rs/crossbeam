@@ -3,9 +3,11 @@
 //! Ideas from Michael.  High Performance Dynamic Lock-Free Hash Tables and List-Based Sets.  SPAA
 //! 2002.  <http://dl.acm.org/citation.cfm?id=564870.564881>
 
-use core::marker::PhantomData;
-use core::ptr::NonNull;
-use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use core::{
+    marker::PhantomData,
+    ptr::NonNull,
+    sync::atomic::Ordering::{Acquire, Relaxed, Release},
+};
 
 use crate::{unprotected, Atomic, Guard, Shared};
 
@@ -306,9 +308,7 @@ mod tests {
     use super::*;
     use crate::{Collector, Owned};
     use crossbeam_utils::thread;
-    use std::ptr;
-    use std::sync::Barrier;
-    use std::vec::Vec;
+    use std::{ptr, sync::Barrier, vec::Vec};
 
     impl IsElement<Self> for Entry {
         fn entry_of(entry: *const Self) -> *const Entry {

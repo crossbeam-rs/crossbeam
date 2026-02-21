@@ -2,15 +2,16 @@
 
 use super::equivalent::Comparable;
 use alloc::alloc::handle_alloc_error;
-use core::alloc::Layout;
-use core::cmp;
-use core::fmt;
-use core::marker::PhantomData;
-use core::mem;
-use core::ops::{Bound, Deref, RangeBounds};
-use core::ptr;
-use core::ptr::NonNull;
-use core::sync::atomic::{fence, AtomicUsize, Ordering};
+use core::{
+    alloc::Layout,
+    cmp, fmt,
+    marker::PhantomData,
+    mem,
+    ops::{Bound, Deref, RangeBounds},
+    ptr,
+    ptr::NonNull,
+    sync::atomic::{fence, AtomicUsize, Ordering},
+};
 
 use crate::alloc_helper::Global;
 use crossbeam_epoch::{self as epoch, Atomic, Collector, Guard, Shared};

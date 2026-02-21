@@ -3,13 +3,15 @@
 use crossbeam_epoch as epoch;
 use loom_crate as loom;
 
-use epoch::*;
-use epoch::{Atomic, Owned};
-use loom::sync::atomic::Ordering::{self, Acquire, Relaxed, Release};
-use loom::sync::Arc;
-use loom::thread::spawn;
-use std::mem::ManuallyDrop;
-use std::ptr;
+use epoch::{Atomic, Owned, *};
+use loom::{
+    sync::{
+        atomic::Ordering::{self, Acquire, Relaxed, Release},
+        Arc,
+    },
+    thread::spawn,
+};
+use std::{mem::ManuallyDrop, ptr};
 
 #[test]
 fn it_works() {

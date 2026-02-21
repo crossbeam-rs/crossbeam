@@ -22,10 +22,11 @@
 
 #![allow(clippy::match_single_binding, clippy::redundant_clone)]
 
-use std::sync::mpsc::{RecvError, RecvTimeoutError, TryRecvError};
-use std::sync::mpsc::{SendError, TrySendError};
-use std::thread::JoinHandle;
-use std::time::Duration;
+use std::{
+    sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError},
+    thread::JoinHandle,
+    time::Duration,
+};
 
 use crossbeam_channel as cc;
 
@@ -193,9 +194,7 @@ macro_rules! select {
 mod channel_tests {
     use super::*;
 
-    use std::env;
-    use std::thread;
-    use std::time::Instant;
+    use std::{env, thread, time::Instant};
 
     fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
@@ -969,8 +968,7 @@ mod channel_tests {
 mod sync_channel_tests {
     use super::*;
 
-    use std::env;
-    use std::thread;
+    use std::{env, thread};
 
     fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {

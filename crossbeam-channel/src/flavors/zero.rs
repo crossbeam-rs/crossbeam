@@ -3,19 +3,23 @@
 //! This kind of channel is also known as *rendezvous* channel.
 
 use alloc::boxed::Box;
-use core::cell::UnsafeCell;
-use core::marker::PhantomData;
-use core::sync::atomic::{AtomicBool, Ordering};
-use core::{fmt, ptr};
-use std::sync::Mutex;
-use std::time::Instant;
+use core::{
+    cell::UnsafeCell,
+    fmt,
+    marker::PhantomData,
+    ptr,
+    sync::atomic::{AtomicBool, Ordering},
+};
+use std::{sync::Mutex, time::Instant};
 
 use crossbeam_utils::Backoff;
 
-use crate::context::Context;
-use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use crate::select::{Operation, SelectHandle, Selected, Token};
-use crate::waker::Waker;
+use crate::{
+    context::Context,
+    err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
+    select::{Operation, SelectHandle, Selected, Token},
+    waker::Waker,
+};
 
 /// A pointer to a packet.
 pub(crate) struct ZeroToken(*mut ());

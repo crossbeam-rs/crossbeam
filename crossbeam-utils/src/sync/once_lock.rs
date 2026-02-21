@@ -2,8 +2,7 @@
 //
 // Source: https://github.com/rust-lang/rust/blob/8e9c93df464b7ada3fc7a1c8ccddd9dcb24ee0a0/library/std/src/sync/once_lock.rs
 
-use core::cell::UnsafeCell;
-use core::mem::MaybeUninit;
+use core::{cell::UnsafeCell, mem::MaybeUninit};
 use std::sync::Once;
 
 pub(crate) struct OnceLock<T> {

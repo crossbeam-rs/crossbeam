@@ -4,9 +4,11 @@
 //! is registered in the default collector.  If initialized, the thread's participant will get
 //! destructed on thread exit, which in turn unregisters the thread.
 
-use crate::collector::{Collector, LocalHandle};
-use crate::guard::Guard;
-use crate::primitive::thread_local;
+use crate::{
+    collector::{Collector, LocalHandle},
+    guard::Guard,
+    primitive::thread_local,
+};
 #[cfg(not(crossbeam_loom))]
 use std::sync::OnceLock;
 

@@ -2,8 +2,7 @@
 
 #![cfg(not(miri))] // Miri detects that this test is buggy: the destructor of `FOO` uses `std::thread::current()`!
 
-use std::thread;
-use std::time::Duration;
+use std::{thread, time::Duration};
 
 use crossbeam_channel::{select, unbounded};
 use crossbeam_utils::thread::scope;

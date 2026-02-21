@@ -1,5 +1,4 @@
-use core::alloc::Layout;
-use core::ptr::NonNull;
+use core::{alloc::Layout, ptr::NonNull};
 
 // Based on unstable alloc::alloc::Global.
 //

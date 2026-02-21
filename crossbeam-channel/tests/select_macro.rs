@@ -3,14 +3,18 @@
 #![forbid(unsafe_code)] // select! is safe.
 #![allow(clippy::match_single_binding)]
 
-use std::any::Any;
-use std::cell::Cell;
-use std::ops::Deref;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+    any::Any,
+    cell::Cell,
+    ops::Deref,
+    thread,
+    time::{Duration, Instant},
+};
 
-use crossbeam_channel::{after, bounded, never, select, select_biased, tick, unbounded};
-use crossbeam_channel::{Receiver, RecvError, SendError, Sender, TryRecvError};
+use crossbeam_channel::{
+    after, bounded, never, select, select_biased, tick, unbounded, Receiver, RecvError, SendError,
+    Sender, TryRecvError,
+};
 use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {

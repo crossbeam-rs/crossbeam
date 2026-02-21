@@ -1,6 +1,5 @@
 use crate::primitive::hint;
-use core::cell::Cell;
-use core::fmt;
+use core::{cell::Cell, fmt};
 
 const SPIN_LIMIT: u32 = 6;
 const YIELD_LIMIT: u32 = 10;

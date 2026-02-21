@@ -1,9 +1,12 @@
-use std::sync::atomic::Ordering::SeqCst;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
+    Arc, Mutex,
+};
 
-use crossbeam_deque::Steal::{Empty, Success};
-use crossbeam_deque::Worker;
+use crossbeam_deque::{
+    Steal::{Empty, Success},
+    Worker,
+};
 use crossbeam_utils::thread::scope;
 
 #[test]

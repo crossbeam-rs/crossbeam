@@ -35,22 +35,31 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use crate::primitive::cell::UnsafeCell;
-use crate::primitive::sync::atomic::{self, Ordering};
-use core::cell::Cell;
-use core::mem::{self, ManuallyDrop};
-use core::num::Wrapping;
-use core::{fmt, ptr};
+use crate::primitive::{
+    cell::UnsafeCell,
+    sync::atomic::{self, Ordering},
+};
+use core::{
+    cell::Cell,
+    fmt,
+    mem::{self, ManuallyDrop},
+    num::Wrapping,
+    ptr,
+};
 
 use crossbeam_utils::CachePadded;
 
-use crate::atomic::{Owned, Shared};
-use crate::collector::{Collector, LocalHandle};
-use crate::deferred::Deferred;
-use crate::epoch::{AtomicEpoch, Epoch};
-use crate::guard::{unprotected, Guard};
-use crate::sync::list::{Entry, IsElement, IterError, List};
-use crate::sync::queue::Queue;
+use crate::{
+    atomic::{Owned, Shared},
+    collector::{Collector, LocalHandle},
+    deferred::Deferred,
+    epoch::{AtomicEpoch, Epoch},
+    guard::{unprotected, Guard},
+    sync::{
+        list::{Entry, IsElement, IterError, List},
+        queue::Queue,
+    },
+};
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(any(crossbeam_sanitize, miri)))]

@@ -1,7 +1,9 @@
-use std::any::Any;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread::sleep;
-use std::time::Duration;
+use std::{
+    any::Any,
+    sync::atomic::{AtomicUsize, Ordering},
+    thread::sleep,
+    time::Duration,
+};
 
 use crossbeam_utils::thread;
 

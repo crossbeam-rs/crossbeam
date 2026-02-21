@@ -1,14 +1,13 @@
-use alloc::alloc::handle_alloc_error;
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use core::alloc::Layout;
-use core::cell::{Cell, UnsafeCell};
-use core::cmp;
-use core::fmt;
-use core::marker::PhantomData;
-use core::mem::{self, MaybeUninit};
-use core::ptr;
-use core::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
+use alloc::{alloc::handle_alloc_error, boxed::Box, sync::Arc};
+use core::{
+    alloc::Layout,
+    cell::{Cell, UnsafeCell},
+    cmp, fmt,
+    marker::PhantomData,
+    mem::{self, MaybeUninit},
+    ptr,
+    sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
+};
 
 use crossbeam_epoch::{self as epoch, Atomic, Owned};
 use crossbeam_utils::{Backoff, CachePadded};

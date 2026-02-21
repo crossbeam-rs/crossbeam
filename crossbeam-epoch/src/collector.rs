@@ -14,9 +14,11 @@
 /// ```
 use core::fmt;
 
-use crate::guard::Guard;
-use crate::internal::{Global, Local};
-use crate::primitive::sync::Arc;
+use crate::{
+    guard::Guard,
+    internal::{Global, Local},
+    primitive::sync::Arc,
+};
 
 /// An epoch-based garbage collector.
 pub struct Collector {
@@ -117,9 +119,11 @@ impl fmt::Debug for LocalHandle {
     clippy::std_instead_of_core
 )]
 mod tests {
-    use std::mem::ManuallyDrop;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::vec::Vec;
+    use std::{
+        mem::ManuallyDrop,
+        sync::atomic::{AtomicUsize, Ordering},
+        vec::Vec,
+    };
 
     use crossbeam_utils::thread;
 
