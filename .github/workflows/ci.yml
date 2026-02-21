@@ -246,6 +246,7 @@ jobs:
         uses: taiki-e/github-actions/install-rust@nightly
         with:
           component: rust-src
+          target: x86_64-unknown-linux-gnuasan
       - name: Run sanitizers
         run: ci/san.sh
 
