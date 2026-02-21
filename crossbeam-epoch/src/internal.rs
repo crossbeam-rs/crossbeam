@@ -35,10 +35,6 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use crate::primitive::{
-    cell::UnsafeCell,
-    sync::atomic::{self, Ordering},
-};
 use core::{
     cell::Cell,
     fmt,
@@ -55,6 +51,10 @@ use crate::{
     deferred::Deferred,
     epoch::{AtomicEpoch, Epoch},
     guard::{unprotected, Guard},
+    primitive::{
+        cell::UnsafeCell,
+        sync::atomic::{self, Ordering},
+    },
     sync::{
         list::{Entry, IsElement, IterError, List},
         queue::Queue,

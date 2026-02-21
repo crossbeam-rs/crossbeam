@@ -1,10 +1,6 @@
 // Necessary for implementing atomic methods for `AtomicUnit`
 #![allow(clippy::unit_arg)]
 
-use crate::{
-    primitive::sync::atomic::{self, Ordering},
-    CachePadded,
-};
 use core::{
     cell::UnsafeCell,
     cmp, fmt,
@@ -14,6 +10,10 @@ use core::{
 };
 
 use super::seq_lock::SeqLock;
+use crate::{
+    primitive::sync::atomic::{self, Ordering},
+    CachePadded,
+};
 
 /// A thread-safe mutable memory location.
 ///

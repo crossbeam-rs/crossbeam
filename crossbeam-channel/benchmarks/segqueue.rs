@@ -1,5 +1,6 @@
-use crossbeam::queue::SegQueue;
 use std::thread;
+
+use crossbeam::queue::SegQueue;
 
 mod message;
 

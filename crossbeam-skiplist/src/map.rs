@@ -7,11 +7,12 @@ use core::{
     ptr,
 };
 
+use crossbeam_epoch as epoch;
+
 use crate::{
     base::{self, try_pin_loop},
     equivalent::Comparable,
 };
-use crossbeam_epoch as epoch;
 
 /// An ordered map based on a lock-free skip list.
 ///

@@ -2,9 +2,9 @@
 
 extern crate test;
 
-use test::{black_box, Bencher};
-
 use std::collections::HashMap as Map;
+
+use test::{black_box, Bencher};
 
 #[bench]
 fn insert(b: &mut Bencher) {

@@ -1,5 +1,6 @@
-use crossbeam_deque::{Steal, Worker};
 use std::thread;
+
+use crossbeam_deque::{Steal, Worker};
 
 mod message;
 

@@ -1,9 +1,10 @@
+use core::{fmt, marker::PhantomData, time::Duration};
+use std::time::Instant;
+
 use crate::primitive::sync::{
     atomic::{AtomicUsize, Ordering::SeqCst},
     Arc, Condvar, Mutex,
 };
-use core::{fmt, marker::PhantomData, time::Duration};
-use std::time::Instant;
 
 /// A thread parking primitive.
 ///

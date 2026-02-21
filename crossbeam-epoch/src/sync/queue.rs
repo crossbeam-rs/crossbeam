@@ -223,10 +223,12 @@ impl<T> Drop for Queue<T> {
     clippy::std_instead_of_core
 )]
 mod test {
+    use std::vec;
+
+    use crossbeam_utils::thread;
+
     use super::*;
     use crate::pin;
-    use crossbeam_utils::thread;
-    use std::vec;
 
     struct Queue<T> {
         queue: super::Queue<T>,
