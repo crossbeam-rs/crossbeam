@@ -1,14 +1,18 @@
-use alloc::alloc::{alloc_zeroed, handle_alloc_error, Layout};
-use alloc::boxed::Box;
-use core::cell::UnsafeCell;
-use core::fmt;
-use core::marker::PhantomData;
-use core::mem::MaybeUninit;
-use core::panic::{RefUnwindSafe, UnwindSafe};
-use core::ptr;
-use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
+use alloc::{alloc::handle_alloc_error, boxed::Box};
+use core::{
+    alloc::Layout,
+    cell::UnsafeCell,
+    fmt,
+    marker::PhantomData,
+    mem::MaybeUninit,
+    panic::{RefUnwindSafe, UnwindSafe},
+    ptr,
+    sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering},
+};
 
 use crossbeam_utils::{Backoff, CachePadded};
+
+use crate::alloc_helper::Global;
 
 // Bits indicating the state of a slot:
 // * If a value has been written into the slot, `WRITE` is set.
@@ -69,20 +73,20 @@ impl<T> Block<T> {
 
     /// Creates an empty block.
     fn new() -> Box<Self> {
-        // SAFETY: layout is not zero-sized
-        let ptr = unsafe { alloc_zeroed(Self::LAYOUT) };
-        // Handle allocation failure
-        if ptr.is_null() {
-            handle_alloc_error(Self::LAYOUT)
+        // unsafe { Box::new_zeroed().assume_init() } requires Rust 1.92
+        match Global.allocate_zeroed(Self::LAYOUT) {
+            Some(ptr) => {
+                // SAFETY: This is safe because:
+                //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
+                //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
+                //  [3] `Slot::value` (UnsafeCell) may be safely zero initialized because it
+                //       holds a MaybeUninit.
+                //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
+                unsafe { Box::from_raw(ptr.as_ptr().cast()) }
+            }
+            // Handle allocation failure
+            None => handle_alloc_error(Self::LAYOUT),
         }
-        // SAFETY: This is safe because:
-        //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
-        //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
-        //  [3] `Slot::value` (UnsafeCell) may be safely zero initialized because it
-        //       holds a MaybeUninit.
-        //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
-        // TODO: unsafe { Box::new_zeroed().assume_init() }
-        unsafe { Box::from_raw(ptr.cast()) }
     }
 
     /// Waits until the next pointer is set.

@@ -1,5 +1,4 @@
-use std::cell::Cell;
-use std::mem;
+use std::{cell::Cell, mem};
 
 use crossbeam_utils::CachePadded;
 

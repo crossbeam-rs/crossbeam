@@ -1,18 +1,22 @@
-use std::boxed::Box;
-use std::cell::UnsafeCell;
-use std::collections::HashMap;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem;
-use std::ops::{Deref, DerefMut};
-use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
-use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
-use std::thread::{self, ThreadId};
-use std::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
+use core::{
+    cell::UnsafeCell,
+    fmt,
+    marker::PhantomData,
+    mem,
+    ops::{Deref, DerefMut},
+    panic::{RefUnwindSafe, UnwindSafe},
+};
+use std::{
+    collections::HashMap,
+    sync::{
+        LockResult, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError,
+        TryLockResult,
+    },
+    thread::{self, ThreadId},
+};
 
-use crate::sync::once_lock::OnceLock;
-use crate::CachePadded;
+use crate::{CachePadded, sync::once_lock::OnceLock};
 
 /// The number of shards per sharded lock. Must be a power of two.
 const NUM_SHARDS: usize = 8;

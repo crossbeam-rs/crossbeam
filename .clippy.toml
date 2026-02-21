@@ -1,0 +1,17 @@
+# Clippy configuration
+# https://doc.rust-lang.org/nightly/clippy/lint_configuration.html
+
+allow-private-module-inception = true
+avoid-breaking-exported-api = false
+disallowed-names = []
+disallowed-macros = [
+    { path = "std::dbg", reason = "it is okay to use during development, but please do not include it in master branch" },
+]
+disallowed-methods = [
+    # Use helper for safer allocation instead.
+    { path = "alloc::alloc::alloc", replacement = "crate::alloc_helper::Global::allocate" },
+    { path = "alloc::alloc::alloc_zeroed", replacement = "crate::alloc_helper::Global::allocate_zeroed" },
+    { path = "alloc::alloc::dealloc", replacement = "crate::alloc_helper::Global::deallocate" },
+]
+disallowed-types = [
+]

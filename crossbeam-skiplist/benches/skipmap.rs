@@ -2,9 +2,8 @@
 
 extern crate test;
 
-use test::{black_box, Bencher};
-
 use crossbeam_skiplist::SkipMap as Map;
+use test::{Bencher, black_box};
 
 #[bench]
 fn insert(b: &mut Bencher) {

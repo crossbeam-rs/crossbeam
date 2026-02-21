@@ -8,19 +8,23 @@
 //!   - <http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue>
 //!   - <https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub>
 
-use std::boxed::Box;
-use std::cell::UnsafeCell;
-use std::mem::{self, MaybeUninit};
-use std::ptr;
-use std::sync::atomic::{self, AtomicUsize, Ordering};
+use alloc::boxed::Box;
+use core::{
+    cell::UnsafeCell,
+    mem::{self, MaybeUninit},
+    ptr,
+    sync::atomic::{self, AtomicUsize, Ordering},
+};
 use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};
 
-use crate::context::Context;
-use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError};
-use crate::select::{Operation, SelectHandle, Selected, Token};
-use crate::waker::SyncWaker;
+use crate::{
+    context::Context,
+    err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
+    select::{Operation, SelectHandle, Selected, Token},
+    waker::SyncWaker,
+};
 
 /// A slot in a channel.
 struct Slot<T> {

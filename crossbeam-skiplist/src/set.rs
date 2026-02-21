@@ -1,8 +1,9 @@
 //! A set based on a lock-free skip list. See [`SkipSet`].
 
-use std::fmt;
-use std::ops::Deref;
-use std::ops::{Bound, RangeBounds};
+use core::{
+    fmt,
+    ops::{Bound, Deref, RangeBounds},
+};
 
 use crate::{
     comparator::{BasicComparator, Comparator},

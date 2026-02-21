@@ -7,13 +7,13 @@ fn main() {
 
 #[cfg(not(windows))]
 fn main() {
-    use std::io;
-    use std::thread;
-    use std::time::{Duration, Instant};
+    use std::{
+        io, thread,
+        time::{Duration, Instant},
+    };
 
-    use crossbeam_channel::{bounded, select, tick, Receiver};
-    use signal_hook::consts::SIGINT;
-    use signal_hook::iterator::Signals;
+    use crossbeam_channel::{Receiver, bounded, select, tick};
+    use signal_hook::{consts::SIGINT, iterator::Signals};
 
     // Creates a channel that gets a message every time `SIGINT` is signalled.
     fn sigint_notifier() -> io::Result<Receiver<()>> {

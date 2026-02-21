@@ -1,5 +1,6 @@
-use atomicring::AtomicRingQueue;
 use std::thread;
+
+use atomicring::AtomicRingQueue;
 
 mod message;
 

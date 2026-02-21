@@ -35,22 +35,31 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use crate::primitive::cell::UnsafeCell;
-use crate::primitive::sync::atomic::{self, Ordering};
-use core::cell::Cell;
-use core::mem::{self, ManuallyDrop};
-use core::num::Wrapping;
-use core::{fmt, ptr};
+use core::{
+    cell::Cell,
+    fmt,
+    mem::{self, ManuallyDrop},
+    num::Wrapping,
+    ptr,
+};
 
 use crossbeam_utils::CachePadded;
 
-use crate::atomic::{Owned, Shared};
-use crate::collector::{Collector, LocalHandle};
-use crate::deferred::Deferred;
-use crate::epoch::{AtomicEpoch, Epoch};
-use crate::guard::{unprotected, Guard};
-use crate::sync::list::{Entry, IsElement, IterError, List};
-use crate::sync::queue::Queue;
+use crate::{
+    atomic::{Owned, Shared},
+    collector::{Collector, LocalHandle},
+    deferred::Deferred,
+    epoch::{AtomicEpoch, Epoch},
+    guard::{Guard, unprotected},
+    primitive::{
+        cell::UnsafeCell,
+        sync::atomic::{self, Ordering},
+    },
+    sync::{
+        list::{Entry, IsElement, IterError, List},
+        queue::Queue,
+    },
+};
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(any(crossbeam_sanitize, miri)))]
@@ -229,6 +238,11 @@ impl Global {
         let global_epoch = self.epoch.load(Ordering::Relaxed);
         atomic::fence(Ordering::SeqCst);
 
+        // For ThreadSanitizer that does not understand fences, we simulate the equivalent effect.
+        // It is unfortunate that allocation is required, but without it, synchronization might
+        // occur in cases where it should not, potentially causing false positives.
+        #[cfg(crossbeam_sanitize_thread)]
+        let mut locals = alloc::vec![];
         // TODO(stjepang): `Local`s are stored in a linked list because linked lists are fairly
         // easy to implement in a lock-free manner. However, traversal can be slow due to cache
         // misses and data dependencies. We should experiment with other data structures as well.
@@ -248,9 +262,17 @@ impl Global {
                     if local_epoch.is_pinned() && local_epoch.unpinned() != global_epoch {
                         return global_epoch;
                     }
+
+                    #[cfg(crossbeam_sanitize_thread)]
+                    locals.push(local);
                 }
             }
         }
+        #[cfg(crossbeam_sanitize_thread)]
+        for local in locals {
+            local.epoch.load(Ordering::Acquire);
+        }
+        #[cfg(not(crossbeam_sanitize_thread))]
         atomic::fence(Ordering::Acquire);
 
         // All pinned participants were pinned in the current global epoch.
@@ -449,7 +471,9 @@ impl Local {
             self.epoch.store(Epoch::starting(), Ordering::Release);
 
             if self.handle_count.get() == 0 {
-                self.finalize();
+                unsafe {
+                    Self::finalize(self);
+                }
             }
         }
     }
@@ -487,44 +511,55 @@ impl Local {
 
     /// Decrements the handle count.
     #[inline]
-    pub(crate) fn release_handle(&self) {
-        let guard_count = self.guard_count.get();
-        let handle_count = self.handle_count.get();
+    pub(crate) unsafe fn release_handle(this: *const Self) {
+        let guard_count = unsafe { (*this).guard_count.get() };
+        let handle_count = unsafe { (*this).handle_count.get() };
         debug_assert!(handle_count >= 1);
-        self.handle_count.set(handle_count - 1);
+        unsafe {
+            (*this).handle_count.set(handle_count - 1);
+        }
 
         if guard_count == 0 && handle_count == 1 {
-            self.finalize();
+            unsafe {
+                Self::finalize(this);
+            }
         }
     }
 
     /// Removes the `Local` from the global linked list.
     #[cold]
-    fn finalize(&self) {
-        debug_assert_eq!(self.guard_count.get(), 0);
-        debug_assert_eq!(self.handle_count.get(), 0);
+    unsafe fn finalize(this: *const Self) {
+        unsafe {
+            debug_assert_eq!((*this).guard_count.get(), 0);
+            debug_assert_eq!((*this).handle_count.get(), 0);
+        }
 
         // Temporarily increment handle count. This is required so that the following call to `pin`
         // doesn't call `finalize` again.
-        self.handle_count.set(1);
+        unsafe {
+            (*this).handle_count.set(1);
+        }
         unsafe {
             // Pin and move the local bag into the global queue. It's important that `push_bag`
             // doesn't defer destruction on any new garbage.
-            let guard = &self.pin();
-            self.global()
-                .push_bag(self.bag.with_mut(|b| &mut *b), guard);
+            let guard = &(*this).pin();
+            (*this)
+                .global()
+                .push_bag((*this).bag.with_mut(|b| &mut *b), guard);
         }
         // Revert the handle count back to zero.
-        self.handle_count.set(0);
+        unsafe {
+            (*this).handle_count.set(0);
+        }
 
         unsafe {
             // Take the reference to the `Global` out of this `Local`. Since we're not protected
             // by a guard at this time, it's crucial that the reference is read before marking the
             // `Local` as deleted.
-            let collector: Collector = ptr::read(self.collector.with(|c| &*(*c)));
+            let collector: Collector = ptr::read((*this).collector.with(|c| &*(*c)));
 
             // Mark this node in the linked list as deleted.
-            self.entry.delete(unprotected());
+            (*this).entry.delete(unprotected());
 
             // Finally, drop the reference to the global. Note that this might be the last reference
             // to the `Global`. If so, the global data will be destroyed and all deferred functions
@@ -535,28 +570,27 @@ impl Local {
 }
 
 impl IsElement<Self> for Local {
-    fn entry_of(local: &Self) -> &Entry {
+    fn entry_of(local: *const Self) -> *const Entry {
         // SAFETY: `Local` is `repr(C)` and `entry` is the first field of it.
-        unsafe {
-            let entry_ptr = (local as *const Self).cast::<Entry>();
-            &*entry_ptr
-        }
+        local.cast::<Entry>()
     }
 
-    unsafe fn element_of(entry: &Entry) -> &Self {
+    unsafe fn element_of(entry: *const Entry) -> *const Self {
         // SAFETY: `Local` is `repr(C)` and `entry` is the first field of it.
-        unsafe {
-            let local_ptr = (entry as *const Entry).cast::<Self>();
-            &*local_ptr
-        }
+        entry.cast::<Self>()
     }
 
-    unsafe fn finalize(entry: &Entry, guard: &Guard) {
-        unsafe { guard.defer_destroy(Shared::from(Self::element_of(entry) as *const _)) }
+    unsafe fn finalize(entry: *const Entry, guard: &Guard) {
+        unsafe { guard.defer_destroy(Shared::from(Self::element_of(entry))) }
     }
 }
 
 #[cfg(all(test, not(crossbeam_loom)))]
+#[allow(
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 mod tests {
     use std::sync::atomic::AtomicUsize;
 

@@ -27,14 +27,20 @@
 #![no_std]
 #![doc(test(
     no_crate_inject,
-    attr(
-        deny(warnings, rust_2018_idioms, single_use_lifetimes),
-        allow(dead_code, unused_assignments, unused_variables)
-    )
+    attr(allow(dead_code, unused_assignments, unused_variables))
 ))]
-#![warn(missing_docs, unsafe_op_in_unsafe_fn)]
+#![warn(
+    missing_docs,
+    unsafe_op_in_unsafe_fn,
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+#[cfg(feature = "std")]
+#[cfg(not(crossbeam_loom))]
+extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -47,8 +53,8 @@ mod primitive {
     pub(crate) mod sync {
         pub(crate) mod atomic {
             pub(crate) use loom::sync::atomic::{
-                AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize, AtomicU16,
-                AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
+                AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicIsize, AtomicU8,
+                AtomicU16, AtomicU32, AtomicU64, AtomicUsize, Ordering, fence,
             };
 
             // FIXME: loom does not support compiler_fence at the moment.
@@ -56,7 +62,7 @@ mod primitive {
             // we use fence as a stand-in for compiler_fence for the time being.
             // this may miss some races since fence is stronger than compiler_fence,
             // but it's the best we can do for the time being.
-            pub(crate) use loom::sync::atomic::fence as compiler_fence;
+            pub(crate) use self::fence as compiler_fence;
         }
         pub(crate) use loom::sync::{Arc, Condvar, Mutex};
     }
@@ -68,9 +74,11 @@ mod primitive {
         pub(crate) use core::hint::spin_loop;
     }
     pub(crate) mod sync {
+        #[cfg(feature = "std")]
+        pub(crate) use alloc::sync::Arc;
         pub(crate) use core::sync::atomic;
         #[cfg(feature = "std")]
-        pub(crate) use std::sync::{Arc, Condvar, Mutex};
+        pub(crate) use std::sync::{Condvar, Mutex};
     }
 }
 

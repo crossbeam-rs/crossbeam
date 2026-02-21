@@ -51,12 +51,15 @@
 #![no_std]
 #![doc(test(
     no_crate_inject,
-    attr(
-        deny(warnings, rust_2018_idioms, single_use_lifetimes),
-        allow(dead_code, unused_assignments, unused_variables)
-    )
+    attr(allow(dead_code, unused_assignments, unused_variables))
 ))]
-#![warn(missing_docs, unsafe_op_in_unsafe_fn)]
+#![warn(
+    missing_docs,
+    unsafe_op_in_unsafe_fn,
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 
 #[cfg(crossbeam_loom)]
 extern crate loom_crate as loom;
@@ -71,7 +74,9 @@ mod primitive {
     }
     pub(crate) mod sync {
         pub(crate) mod atomic {
-            pub(crate) use loom::sync::atomic::{fence, AtomicPtr, AtomicUsize, Ordering};
+            #[cfg(target_has_atomic = "64")]
+            pub(crate) use loom::sync::atomic::AtomicU64;
+            pub(crate) use loom::sync::atomic::{AtomicPtr, AtomicUsize, Ordering, fence};
 
             // FIXME: loom does not support compiler_fence at the moment.
             // https://github.com/tokio-rs/loom/issues/117
@@ -128,6 +133,25 @@ mod primitive {
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 extern crate alloc;
 
+/// Make the given function const if the given condition is true.
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+macro_rules! const_fn {
+    (
+        const_if: #[cfg($($cfg:tt)+)];
+        $(#[$($attr:tt)*])*
+        $vis:vis const $($rest:tt)*
+    ) => {
+        #[cfg($($cfg)+)]
+        $(#[$($attr)*])*
+        $vis const $($rest)*
+        #[cfg(not($($cfg)+))]
+        $(#[$($attr)*])*
+        $vis $($rest)*
+    };
+}
+
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod alloc_helper;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod atomic;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
@@ -145,9 +169,11 @@ mod sync;
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub use crate::{
-    atomic::{Atomic, CompareExchangeError, Owned, Pointable, Pointer, Shared},
+    atomic::{
+        Atomic, CompareExchangeError, CompareExchangeValue, Owned, Pointable, Pointer, Shared,
+    },
     collector::{Collector, LocalHandle},
-    guard::{unprotected, Guard},
+    guard::{Guard, unprotected},
 };
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]

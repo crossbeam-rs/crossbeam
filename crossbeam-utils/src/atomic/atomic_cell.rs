@@ -1,16 +1,19 @@
 // Necessary for implementing atomic methods for `AtomicUnit`
 #![allow(clippy::unit_arg)]
 
-use crate::primitive::sync::atomic::{self, Ordering};
-use crate::CachePadded;
-use core::cell::UnsafeCell;
-use core::cmp;
-use core::fmt;
-use core::mem::{self, ManuallyDrop, MaybeUninit};
-use core::panic::{RefUnwindSafe, UnwindSafe};
-use core::ptr;
+use core::{
+    cell::UnsafeCell,
+    cmp, fmt,
+    mem::{self, ManuallyDrop, MaybeUninit},
+    panic::{RefUnwindSafe, UnwindSafe},
+    ptr,
+};
 
 use super::seq_lock::SeqLock;
+use crate::{
+    CachePadded,
+    primitive::sync::atomic::{self, Ordering},
+};
 
 /// A thread-safe mutable memory location.
 ///
@@ -101,6 +104,7 @@ impl<T> AtomicCell<T> {
     /// ```
     /// # // Always use fallback for now on environments that do not support inline assembly.
     /// # if cfg!(any(miri, crossbeam_loom, crossbeam_atomic_cell_force_fallback)) { return; }
+    /// # atomic_maybe_uninit::cfg_no_atomic_cas! { if true { return; } }
     /// use crossbeam_utils::atomic::AtomicCell;
     ///
     /// // This type is internally represented as `AtomicUsize` so we can just use atomic

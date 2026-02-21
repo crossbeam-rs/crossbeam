@@ -1,7 +1,11 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::channel;
-use std::sync::{Arc, TryLockError};
-use std::thread;
+use std::{
+    sync::{
+        Arc, TryLockError,
+        atomic::{AtomicUsize, Ordering},
+        mpsc::channel,
+    },
+    thread,
+};
 
 use crossbeam_utils::sync::ShardedLock;
 
