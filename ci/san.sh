@@ -14,9 +14,11 @@ export RUSTFLAGS="${RUSTFLAGS:-} --cfg crossbeam_sanitize"
 # `cfg(crossbeam_sanitize)` with `cfg(sanitize = "..")` and remove
 # `--cfg crossbeam_sanitize`.
 cargo clean
-cargo test --all --all-features --release --target x86_64-unknown-linux-gnuasan --tests --exclude benchmarks -- --test-threads=1
+ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_stack_use_after_return=1" \
+  cargo test --all --all-features --release --target x86_64-unknown-linux-gnuasan --tests --exclude benchmarks -- --test-threads=1
 
-cargo run \
+ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_stack_use_after_return=1" \
+  cargo run \
   --all-features \
   --release \
   --target x86_64-unknown-linux-gnuasan \
