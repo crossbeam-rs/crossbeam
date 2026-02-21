@@ -1,7 +1,7 @@
-use std::thread::sleep;
+use std::thread::{sleep, spawn};
 use std::time::Duration;
 
-use crossbeam_utils::sync::{Parker, UnparkReason};
+use crossbeam_utils::sync::{Parker, UnparkReason, UnparkResult};
 use crossbeam_utils::thread;
 
 #[test]
@@ -46,4 +46,30 @@ fn park_timeout_unpark_called_other_thread() {
         })
         .unwrap();
     }
+}
+
+#[test]
+fn unpark_with_result_called_before_park() {
+    let p = Parker::new();
+    let u = p.unparker().clone();
+
+    let result = u.unpark_with_result();
+    assert_eq!(result, UnparkResult::NotParked);
+
+    p.park(); // consume the token and immediately return
+}
+
+#[test]
+fn unpark_with_result_called_after_park() {
+    let p = Parker::new();
+    let u = p.unparker().clone();
+
+    let t = spawn(move || {
+        sleep(Duration::from_millis(500));
+        let result = u.unpark_with_result();
+        assert_eq!(result, UnparkResult::Notified);
+    });
+
+    p.park(); // consume the token and immediately return
+    t.join().unwrap();
 }
