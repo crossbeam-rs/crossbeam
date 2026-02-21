@@ -1489,7 +1489,7 @@ impl<T> Injector<T> {
         if self
             .head
             .index
-            .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Acquire)
+            .compare_exchange(head, new_head, Ordering::SeqCst, Ordering::Acquire)
             .is_err()
         {
             return Steal::Retry;
@@ -1639,7 +1639,7 @@ impl<T> Injector<T> {
         if self
             .head
             .index
-            .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Acquire)
+            .compare_exchange(head, new_head, Ordering::SeqCst, Ordering::Acquire)
             .is_err()
         {
             return Steal::Retry;
@@ -1836,7 +1836,7 @@ impl<T> Injector<T> {
         if self
             .head
             .index
-            .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Acquire)
+            .compare_exchange(head, new_head, Ordering::SeqCst, Ordering::Acquire)
             .is_err()
         {
             return Steal::Retry;
