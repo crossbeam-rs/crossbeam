@@ -317,10 +317,7 @@ mod channel_tests {
 
     #[test]
     fn stress() {
-        #[cfg(miri)]
-        const COUNT: usize = 100;
-        #[cfg(not(miri))]
-        const COUNT: usize = 10000;
+        const COUNT: usize = if cfg!(miri) { 100 } else { 10000 };
 
         let (tx, rx) = channel::<i32>();
         let t = thread::spawn(move || {
@@ -740,10 +737,7 @@ mod channel_tests {
 
     #[test]
     fn recv_a_lot() {
-        #[cfg(miri)]
-        const N: usize = 50;
-        #[cfg(not(miri))]
-        const N: usize = 10000;
+        const N: usize = if cfg!(miri) { 50 } else { 10000 };
 
         // Regression test that we don't run out of stack in scheduler context
         let (tx, rx) = channel();
@@ -1087,10 +1081,7 @@ mod sync_channel_tests {
 
     #[test]
     fn stress() {
-        #[cfg(miri)]
-        const N: usize = 100;
-        #[cfg(not(miri))]
-        const N: usize = 10000;
+        const N: usize = if cfg!(miri) { 100 } else { 10000 };
 
         let (tx, rx) = sync_channel::<i32>(0);
         let t = thread::spawn(move || {
@@ -1106,10 +1097,7 @@ mod sync_channel_tests {
 
     #[test]
     fn stress_recv_timeout_two_threads() {
-        #[cfg(miri)]
-        const N: usize = 100;
-        #[cfg(not(miri))]
-        const N: usize = 10000;
+        const N: usize = if cfg!(miri) { 100 } else { 10000 };
 
         let (tx, rx) = sync_channel::<i32>(0);
 
@@ -1137,10 +1125,7 @@ mod sync_channel_tests {
 
     #[test]
     fn stress_recv_timeout_shared() {
-        #[cfg(miri)]
-        const AMT: u32 = 100;
-        #[cfg(not(miri))]
-        const AMT: u32 = 1000;
+        const AMT: u32 = if cfg!(miri) { 100 } else { 1000 };
         const NTHREADS: u32 = 8;
         let (tx, rx) = sync_channel::<i32>(0);
         let (dtx, drx) = sync_channel::<()>(0);
@@ -1186,10 +1171,7 @@ mod sync_channel_tests {
 
     #[test]
     fn stress_shared() {
-        #[cfg(miri)]
-        const AMT: u32 = 100;
-        #[cfg(not(miri))]
-        const AMT: u32 = 1000;
+        const AMT: u32 = if cfg!(miri) { 100 } else { 1000 };
         const NTHREADS: u32 = 8;
         let (tx, rx) = sync_channel::<i32>(0);
         let (dtx, drx) = sync_channel::<()>(0);
@@ -1470,10 +1452,7 @@ mod sync_channel_tests {
 
     #[test]
     fn recv_a_lot() {
-        #[cfg(miri)]
-        const N: usize = 100;
-        #[cfg(not(miri))]
-        const N: usize = 10000;
+        const N: usize = if cfg!(miri) { 100 } else { 10000 };
 
         // Regression test that we don't run out of stack in scheduler context
         let (tx, rx) = sync_channel(N);
@@ -1818,10 +1797,7 @@ mod select_tests {
 
     #[test]
     fn stress() {
-        #[cfg(miri)]
-        const AMT: i32 = 100;
-        #[cfg(not(miri))]
-        const AMT: i32 = 10000;
+        const AMT: i32 = if cfg!(miri) { 100 } else { 10000 };
 
         let (tx1, rx1) = channel::<i32>();
         let (tx2, rx2) = channel::<i32>();

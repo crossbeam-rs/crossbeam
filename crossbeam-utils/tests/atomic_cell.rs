@@ -331,7 +331,6 @@ test_arithmetic!(arithmetic_u128, u128);
 test_arithmetic!(arithmetic_i128, i128);
 
 // https://github.com/crossbeam-rs/crossbeam/issues/748
-#[cfg_attr(miri, ignore)] // TODO
 #[test]
 fn issue_748() {
     #[allow(dead_code)]
@@ -360,10 +359,7 @@ fn issue_833() {
         thread,
     };
 
-    #[cfg(miri)]
-    const N: usize = 10_000;
-    #[cfg(not(miri))]
-    const N: usize = 1_000_000;
+    const N: usize = if cfg!(miri) { 10_000 } else { 1_000_000 };
 
     #[allow(dead_code)]
     enum Enum {

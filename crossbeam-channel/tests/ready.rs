@@ -494,10 +494,7 @@ fn nesting() {
 
 #[test]
 fn stress_recv() {
-    #[cfg(miri)]
-    const COUNT: usize = 100;
-    #[cfg(not(miri))]
-    const COUNT: usize = 10_000;
+    const COUNT: usize = if cfg!(miri) { 100 } else { 10_000 };
 
     let (s1, r1) = unbounded();
     let (s2, r2) = bounded(5);
@@ -534,10 +531,7 @@ fn stress_recv() {
 
 #[test]
 fn stress_send() {
-    #[cfg(miri)]
-    const COUNT: usize = 100;
-    #[cfg(not(miri))]
-    const COUNT: usize = 10_000;
+    const COUNT: usize = if cfg!(miri) { 100 } else { 10_000 };
 
     let (s1, r1) = bounded(0);
     let (s2, r2) = bounded(0);
@@ -571,10 +565,7 @@ fn stress_send() {
 
 #[test]
 fn stress_mixed() {
-    #[cfg(miri)]
-    const COUNT: usize = 100;
-    #[cfg(not(miri))]
-    const COUNT: usize = 10_000;
+    const COUNT: usize = if cfg!(miri) { 100 } else { 10_000 };
 
     let (s1, r1) = bounded(0);
     let (s2, r2) = bounded(0);
@@ -679,10 +670,7 @@ fn send_recv_same_channel() {
 
 #[test]
 fn channel_through_channel() {
-    #[cfg(miri)]
-    const COUNT: usize = 100;
-    #[cfg(not(miri))]
-    const COUNT: usize = 1000;
+    const COUNT: usize = if cfg!(miri) { 100 } else { 1000 };
 
     type T = Box<dyn Any + Send>;
 
@@ -738,10 +726,7 @@ fn channel_through_channel() {
 
 #[test]
 fn fairness1() {
-    #[cfg(miri)]
-    const COUNT: usize = 100;
-    #[cfg(not(miri))]
-    const COUNT: usize = 10_000;
+    const COUNT: usize = if cfg!(miri) { 100 } else { 10_000 };
 
     let (s1, r1) = bounded::<()>(COUNT);
     let (s2, r2) = unbounded::<()>();
@@ -786,10 +771,7 @@ fn fairness1() {
 
 #[test]
 fn fairness2() {
-    #[cfg(miri)]
-    const COUNT: usize = 100;
-    #[cfg(not(miri))]
-    const COUNT: usize = 100_000;
+    const COUNT: usize = if cfg!(miri) { 100 } else { 100_000 };
 
     let (s1, r1) = unbounded::<()>();
     let (s2, r2) = bounded::<()>(1);

@@ -88,14 +88,8 @@ fn exclusive_reference() {
 
 #[test]
 fn len() {
-    #[cfg(miri)]
-    const COUNT: usize = 30;
-    #[cfg(not(miri))]
-    const COUNT: usize = 25_000;
-    #[cfg(miri)]
-    const CAP: usize = 40;
-    #[cfg(not(miri))]
-    const CAP: usize = 1000;
+    const COUNT: usize = if cfg!(miri) { 30 } else { 25_000 };
+    const CAP: usize = if cfg!(miri) { 40 } else { 1000 };
     const ITERS: usize = CAP / 20;
 
     let q = ArrayQueue::new(CAP);
@@ -152,10 +146,7 @@ fn len() {
 
 #[test]
 fn spsc() {
-    #[cfg(miri)]
-    const COUNT: usize = 50;
-    #[cfg(not(miri))]
-    const COUNT: usize = 100_000;
+    const COUNT: usize = if cfg!(miri) { 50 } else { 100_000 };
 
     let q = ArrayQueue::new(3);
 
@@ -183,10 +174,7 @@ fn spsc() {
 
 #[test]
 fn spsc_ring_buffer() {
-    #[cfg(miri)]
-    const COUNT: usize = 50;
-    #[cfg(not(miri))]
-    const COUNT: usize = 100_000;
+    const COUNT: usize = if cfg!(miri) { 50 } else { 100_000 };
 
     let t = AtomicUsize::new(1);
     let q = ArrayQueue::<usize>::new(3);
@@ -226,10 +214,7 @@ fn spsc_ring_buffer() {
 
 #[test]
 fn mpmc() {
-    #[cfg(miri)]
-    const COUNT: usize = 50;
-    #[cfg(not(miri))]
-    const COUNT: usize = 25_000;
+    const COUNT: usize = if cfg!(miri) { 50 } else { 25_000 };
     const THREADS: usize = 4;
 
     let q = ArrayQueue::<usize>::new(3);
@@ -265,10 +250,7 @@ fn mpmc() {
 
 #[test]
 fn mpmc_ring_buffer() {
-    #[cfg(miri)]
-    const COUNT: usize = 50;
-    #[cfg(not(miri))]
-    const COUNT: usize = 25_000;
+    const COUNT: usize = if cfg!(miri) { 50 } else { 25_000 };
     const THREADS: usize = 4;
 
     let t = AtomicUsize::new(THREADS);
@@ -366,10 +348,7 @@ fn drops() {
 
 #[test]
 fn linearizable() {
-    #[cfg(miri)]
-    const COUNT: usize = 100;
-    #[cfg(not(miri))]
-    const COUNT: usize = 25_000;
+    const COUNT: usize = if cfg!(miri) { 100 } else { 25_000 };
     const THREADS: usize = 4;
 
     let q = ArrayQueue::new(THREADS);

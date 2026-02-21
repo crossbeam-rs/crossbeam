@@ -73,10 +73,7 @@ fn is_empty() {
 
 #[test]
 fn spsc() {
-    #[cfg(miri)]
-    const STEPS: usize = 500;
-    #[cfg(not(miri))]
-    const STEPS: usize = 50_000;
+    const STEPS: usize = if cfg!(miri) { 500 } else { 50_000 };
 
     let w = Worker::new_lifo();
     let s = w.stealer();
@@ -107,10 +104,7 @@ fn spsc() {
 #[test]
 fn stampede() {
     const THREADS: usize = 8;
-    #[cfg(miri)]
-    const COUNT: usize = 500;
-    #[cfg(not(miri))]
-    const COUNT: usize = 50_000;
+    const COUNT: usize = if cfg!(miri) { 500 } else { 50_000 };
 
     let w = Worker::new_lifo();
 
@@ -151,10 +145,7 @@ fn stampede() {
 #[test]
 fn stress() {
     const THREADS: usize = 8;
-    #[cfg(miri)]
-    const COUNT: usize = 500;
-    #[cfg(not(miri))]
-    const COUNT: usize = 50_000;
+    const COUNT: usize = if cfg!(miri) { 500 } else { 50_000 };
 
     let w = Worker::new_lifo();
     let done = Arc::new(AtomicBool::new(false));
@@ -272,18 +263,9 @@ fn no_starvation() {
 
 #[test]
 fn destructors() {
-    #[cfg(miri)]
-    const THREADS: usize = 2;
-    #[cfg(not(miri))]
-    const THREADS: usize = 8;
-    #[cfg(miri)]
-    const COUNT: usize = 500;
-    #[cfg(not(miri))]
-    const COUNT: usize = 50_000;
-    #[cfg(miri)]
-    const STEPS: usize = 100;
-    #[cfg(not(miri))]
-    const STEPS: usize = 1000;
+    const THREADS: usize = if cfg!(miri) { 2 } else { 8 };
+    const COUNT: usize = if cfg!(miri) { 500 } else { 50_000 };
+    const STEPS: usize = if cfg!(miri) { 100 } else { 1000 };
 
     struct Elem(usize, Arc<Mutex<Vec<usize>>>);
 

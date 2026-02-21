@@ -58,10 +58,7 @@ fn is_empty() {
 
 #[test]
 fn spsc() {
-    #[cfg(miri)]
-    const COUNT: usize = 500;
-    #[cfg(not(miri))]
-    const COUNT: usize = 100_000;
+    const COUNT: usize = if cfg!(miri) { 500 } else { 100_000 };
 
     let q = Injector::new();
 
@@ -90,10 +87,7 @@ fn spsc() {
 
 #[test]
 fn mpmc() {
-    #[cfg(miri)]
-    const COUNT: usize = 500;
-    #[cfg(not(miri))]
-    const COUNT: usize = 25_000;
+    const COUNT: usize = if cfg!(miri) { 500 } else { 25_000 };
     const THREADS: usize = 4;
 
     let q = Injector::new();
@@ -133,10 +127,7 @@ fn mpmc() {
 #[test]
 fn stampede() {
     const THREADS: usize = 8;
-    #[cfg(miri)]
-    const COUNT: usize = 500;
-    #[cfg(not(miri))]
-    const COUNT: usize = 50_000;
+    const COUNT: usize = if cfg!(miri) { 500 } else { 50_000 };
 
     let q = Injector::new();
 
@@ -177,10 +168,7 @@ fn stampede() {
 #[test]
 fn stress() {
     const THREADS: usize = 8;
-    #[cfg(miri)]
-    const COUNT: usize = 500;
-    #[cfg(not(miri))]
-    const COUNT: usize = 50_000;
+    const COUNT: usize = if cfg!(miri) { 500 } else { 50_000 };
 
     if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() {
         return; // see ci/miri.sh
@@ -302,18 +290,9 @@ fn no_starvation() {
 
 #[test]
 fn destructors() {
-    #[cfg(miri)]
-    const THREADS: usize = 2;
-    #[cfg(not(miri))]
-    const THREADS: usize = 8;
-    #[cfg(miri)]
-    const COUNT: usize = 500;
-    #[cfg(not(miri))]
-    const COUNT: usize = 50_000;
-    #[cfg(miri)]
-    const STEPS: usize = 100;
-    #[cfg(not(miri))]
-    const STEPS: usize = 1000;
+    const THREADS: usize = if cfg!(miri) { 2 } else { 8 };
+    const COUNT: usize = if cfg!(miri) { 500 } else { 50_000 };
+    const STEPS: usize = if cfg!(miri) { 100 } else { 1000 };
 
     struct Elem(usize, Arc<Mutex<Vec<usize>>>);
 
