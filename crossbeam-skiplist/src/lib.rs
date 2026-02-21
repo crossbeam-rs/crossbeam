@@ -244,6 +244,9 @@ extern crate alloc;
 extern crate std;
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod alloc_helper;
+
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod base;
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]

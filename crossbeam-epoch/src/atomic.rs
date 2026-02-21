@@ -6,8 +6,9 @@ use core::fmt;
 use core::marker::PhantomData;
 use core::mem::{self, MaybeUninit};
 use core::ops::{Deref, DerefMut};
-use core::ptr;
+use core::ptr::{self, NonNull};
 
+use crate::alloc_helper::Global;
 use crate::guard::Guard;
 #[cfg(not(miri))]
 use crate::primitive::sync::atomic::AtomicUsize;
@@ -216,15 +217,16 @@ impl<T> Pointable for [MaybeUninit<T>] {
 
     type Init = usize;
 
+    #[inline]
     unsafe fn init(len: Self::Init) -> *mut () {
         let layout = Array::<T>::layout(len);
-        unsafe {
-            let ptr = alloc::alloc::alloc(layout).cast::<Array<T>>();
-            if ptr.is_null() {
-                alloc::alloc::handle_alloc_error(layout);
-            }
-            ptr::addr_of_mut!((*ptr).len).write(len);
-            ptr.cast::<()>()
+        match Global.allocate(layout) {
+            Some(ptr) => unsafe {
+                let ptr = ptr.as_ptr().cast::<Array<T>>();
+                ptr::addr_of_mut!((*ptr).len).write(len);
+                ptr.cast::<()>()
+            },
+            None => alloc::alloc::handle_alloc_error(layout),
         }
     }
 
@@ -251,7 +253,7 @@ impl<T> Pointable for [MaybeUninit<T>] {
         unsafe {
             let len = (*ptr.cast::<Array<T>>()).len;
             let layout = Array::<T>::layout(len);
-            alloc::alloc::dealloc(ptr.cast::<u8>(), layout);
+            Global.deallocate(NonNull::new_unchecked(ptr.cast::<u8>()), layout);
         }
     }
 }

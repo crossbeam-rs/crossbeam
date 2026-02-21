@@ -1,7 +1,7 @@
 //! A lock-free skip list. See [`SkipList`].
 
 use super::equivalent::Comparable;
-use alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+use alloc::alloc::{handle_alloc_error, Layout};
 use core::cmp;
 use core::fmt;
 use core::marker::PhantomData;
@@ -11,6 +11,7 @@ use core::ptr;
 use core::ptr::NonNull;
 use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
+use crate::alloc_helper::Global;
 use crossbeam_epoch::{self as epoch, Atomic, Collector, Guard, Shared};
 use crossbeam_utils::CachePadded;
 
@@ -163,10 +164,10 @@ impl<K, V> Node<K, V> {
     unsafe fn alloc(height: usize, ref_count: usize) -> *mut Self {
         let layout = Self::get_layout(height);
         unsafe {
-            let ptr = alloc(layout).cast::<Self>();
-            if ptr.is_null() {
-                handle_alloc_error(layout);
-            }
+            let ptr = match Global.allocate(layout) {
+                Some(ptr) => ptr.as_ptr().cast::<Self>(),
+                None => handle_alloc_error(layout),
+            };
 
             ptr::addr_of_mut!((*ptr).refs_and_height)
                 .write(AtomicUsize::new((height - 1) | (ref_count << HEIGHT_BITS)));
@@ -184,7 +185,7 @@ impl<K, V> Node<K, V> {
         unsafe {
             let height = (*ptr).height();
             let layout = Self::get_layout(height);
-            dealloc(ptr.cast::<u8>(), layout);
+            Global.deallocate(NonNull::new_unchecked(ptr.cast::<u8>()), layout);
         }
     }
 
