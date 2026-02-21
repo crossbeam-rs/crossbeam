@@ -36,7 +36,6 @@ jobs:
   clippy:
     uses: taiki-e/github-actions/.github/workflows/clippy.yml@main
     with:
-      unqualified_local_imports: false # TODO
       fuzzy_provenance_casts: false # TODO
   docs:
     uses: taiki-e/github-actions/.github/workflows/docs.yml@main
