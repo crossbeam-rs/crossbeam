@@ -111,16 +111,9 @@
 //! }).unwrap();
 //! ```
 
-use std::boxed::Box;
-use std::fmt;
-use std::io;
-use std::marker::PhantomData;
-use std::mem;
-use std::panic;
-use std::string::String;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::vec::Vec;
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use core::{fmt, marker::PhantomData, mem};
+use std::{io, panic, sync::Mutex, thread};
 
 use crate::sync::WaitGroup;
 
@@ -568,11 +561,11 @@ impl<T> ScopedJoinHandle<'_, T> {
 /// Unix-specific extensions.
 #[cfg(unix)]
 pub mod unix {
-    use super::ScopedJoinHandle;
     use std::os::unix::thread::JoinHandleExt as _;
-
     #[doc(no_inline)]
     pub use std::os::unix::thread::RawPthread;
+
+    use super::ScopedJoinHandle;
 
     mod sealed {
         pub trait Sealed {}
@@ -607,8 +600,9 @@ pub mod unix {
 /// Windows-specific extensions.
 #[cfg(windows)]
 mod windows {
-    use super::ScopedJoinHandle;
     use std::os::windows::io::{AsRawHandle, IntoRawHandle, RawHandle};
+
+    use super::ScopedJoinHandle;
 
     impl<T> AsRawHandle for ScopedJoinHandle<'_, T> {
         fn as_raw_handle(&self) -> RawHandle {

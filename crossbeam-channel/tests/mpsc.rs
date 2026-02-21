@@ -22,10 +22,11 @@
 
 #![allow(clippy::match_single_binding, clippy::redundant_clone)]
 
-use std::sync::mpsc::{RecvError, RecvTimeoutError, TryRecvError};
-use std::sync::mpsc::{SendError, TrySendError};
-use std::thread::JoinHandle;
-use std::time::Duration;
+use std::{
+    sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError},
+    thread::JoinHandle,
+    time::Duration,
+};
 
 use crossbeam_channel as cc;
 
@@ -191,11 +192,9 @@ macro_rules! select {
 
 // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
 mod channel_tests {
-    use super::*;
+    use std::{env, thread, time::Instant};
 
-    use std::env;
-    use std::thread;
-    use std::time::Instant;
+    use super::*;
 
     fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
@@ -967,10 +966,9 @@ mod channel_tests {
 
 // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
 mod sync_channel_tests {
-    use super::*;
+    use std::{env, thread};
 
-    use std::env;
-    use std::thread;
+    use super::*;
 
     fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
@@ -1702,9 +1700,9 @@ mod sync_channel_tests {
 
 // Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/select.rs
 mod select_tests {
-    use super::*;
-
     use std::thread;
+
+    use super::*;
 
     #[test]
     fn smoke() {

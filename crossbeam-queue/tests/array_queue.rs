@@ -193,13 +193,15 @@ fn spsc_ring_buffer() {
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
     scope(|scope| {
-        scope.spawn(|_| loop {
-            match t.load(Ordering::SeqCst) {
-                0 if q.is_empty() => break,
+        scope.spawn(|_| {
+            loop {
+                match t.load(Ordering::SeqCst) {
+                    0 if q.is_empty() => break,
 
-                _ => {
-                    while let Some(n) = q.pop() {
-                        v[n].fetch_add(1, Ordering::SeqCst);
+                    _ => {
+                        while let Some(n) = q.pop() {
+                            v[n].fetch_add(1, Ordering::SeqCst);
+                        }
                     }
                 }
             }
@@ -275,13 +277,15 @@ fn mpmc_ring_buffer() {
 
     scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|_| loop {
-                match t.load(Ordering::SeqCst) {
-                    0 if q.is_empty() => break,
+            scope.spawn(|_| {
+                loop {
+                    match t.load(Ordering::SeqCst) {
+                        0 if q.is_empty() => break,
 
-                    _ => {
-                        while let Some(n) = q.pop() {
-                            v[n].fetch_add(1, Ordering::SeqCst);
+                        _ => {
+                            while let Some(n) = q.pop() {
+                                v[n].fetch_add(1, Ordering::SeqCst);
+                            }
                         }
                     }
                 }

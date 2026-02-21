@@ -1,18 +1,23 @@
 use alloc::boxed::Box;
-use core::alloc::Layout;
-use core::borrow::{Borrow, BorrowMut};
-use core::cmp;
-use core::fmt;
-use core::marker::PhantomData;
-use core::mem::{self, MaybeUninit};
-use core::ops::{Deref, DerefMut};
-use core::ptr;
+use core::{
+    alloc::Layout,
+    borrow::{Borrow, BorrowMut},
+    cmp, fmt,
+    marker::PhantomData,
+    mem::{self, MaybeUninit},
+    ops::{Deref, DerefMut},
+    ptr::{self, NonNull},
+};
 
-use crate::guard::Guard;
+use crossbeam_utils::atomic::AtomicConsume;
+
 #[cfg(not(miri))]
 use crate::primitive::sync::atomic::AtomicUsize;
-use crate::primitive::sync::atomic::{AtomicPtr, Ordering};
-use crossbeam_utils::atomic::AtomicConsume;
+use crate::{
+    alloc_helper::Global,
+    guard::Guard,
+    primitive::sync::atomic::{AtomicPtr, Ordering},
+};
 
 /// The value returned from a compare-and-swap operation.
 pub struct CompareExchangeValue<'g, T: ?Sized + Pointable> {
@@ -216,15 +221,16 @@ impl<T> Pointable for [MaybeUninit<T>] {
 
     type Init = usize;
 
+    #[inline]
     unsafe fn init(len: Self::Init) -> *mut () {
         let layout = Array::<T>::layout(len);
-        unsafe {
-            let ptr = alloc::alloc::alloc(layout).cast::<Array<T>>();
-            if ptr.is_null() {
-                alloc::alloc::handle_alloc_error(layout);
-            }
-            ptr::addr_of_mut!((*ptr).len).write(len);
-            ptr.cast::<()>()
+        match Global.allocate(layout) {
+            Some(ptr) => unsafe {
+                let ptr = ptr.as_ptr().cast::<Array<T>>();
+                ptr::addr_of_mut!((*ptr).len).write(len);
+                ptr.cast::<()>()
+            },
+            None => alloc::alloc::handle_alloc_error(layout),
         }
     }
 
@@ -251,7 +257,7 @@ impl<T> Pointable for [MaybeUninit<T>] {
         unsafe {
             let len = (*ptr.cast::<Array<T>>()).len;
             let layout = Array::<T>::layout(len);
-            alloc::alloc::dealloc(ptr.cast::<u8>(), layout);
+            Global.deallocate(NonNull::new_unchecked(ptr.cast::<u8>()), layout);
         }
     }
 }
@@ -1576,11 +1582,16 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
 }
 
 #[cfg(all(test, not(crossbeam_loom)))]
+#[allow(
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 mod tests {
+    use std::{mem::MaybeUninit, sync::atomic::Ordering};
+
     use super::{Atomic, Owned, Shared};
     use crate::pin;
-    use std::mem::MaybeUninit;
-    use std::sync::atomic::Ordering;
 
     #[test]
     fn valid_tag_i8() {

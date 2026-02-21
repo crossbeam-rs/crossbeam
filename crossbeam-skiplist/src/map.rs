@@ -1,15 +1,18 @@
 //! An ordered map based on a lock-free skip list. See [`SkipMap`].
 
-use std::fmt;
-use std::mem::ManuallyDrop;
-use std::ops::{Bound, RangeBounds};
-use std::ptr;
+use core::{
+    fmt,
+    mem::ManuallyDrop,
+    ops::{Bound, RangeBounds},
+    ptr,
+};
+
+use crossbeam_epoch as epoch;
 
 use crate::{
     base::{self, try_pin_loop},
     equivalent::Comparable,
 };
-use crossbeam_epoch as epoch;
 
 /// An ordered map based on a lock-free skip list.
 ///

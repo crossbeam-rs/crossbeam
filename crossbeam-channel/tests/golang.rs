@@ -11,16 +11,20 @@
 
 #![allow(clippy::redundant_clone)]
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::any::Any;
-use std::cell::Cell;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering::SeqCst};
-use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
-use std::time::Duration;
+use std::{
+    alloc::{GlobalAlloc, Layout, System},
+    any::Any,
+    cell::Cell,
+    collections::HashMap,
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicI32, AtomicUsize, Ordering::SeqCst},
+    },
+    thread,
+    time::Duration,
+};
 
-use crossbeam_channel::{bounded, never, select, tick, unbounded, Receiver, Select, Sender};
+use crossbeam_channel::{Receiver, Select, Sender, bounded, never, select, tick, unbounded};
 
 fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)

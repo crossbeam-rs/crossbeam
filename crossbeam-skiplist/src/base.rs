@@ -1,18 +1,22 @@
 //! A lock-free skip list. See [`SkipList`].
 
-use super::equivalent::Comparable;
-use alloc::alloc::{alloc, dealloc, handle_alloc_error, Layout};
-use core::cmp;
-use core::fmt;
-use core::marker::PhantomData;
-use core::mem;
-use core::ops::{Bound, Deref, RangeBounds};
-use core::ptr;
-use core::ptr::NonNull;
-use core::sync::atomic::{fence, AtomicUsize, Ordering};
+use alloc::alloc::handle_alloc_error;
+use core::{
+    alloc::Layout,
+    cmp, fmt,
+    marker::PhantomData,
+    mem,
+    ops::{Bound, Deref, RangeBounds},
+    ptr,
+    ptr::NonNull,
+    sync::atomic::{AtomicUsize, Ordering, fence},
+};
 
 use crossbeam_epoch::{self as epoch, Atomic, Collector, Guard, Shared};
 use crossbeam_utils::CachePadded;
+
+use super::equivalent::Comparable;
+use crate::alloc_helper::Global;
 
 /// Number of bits needed to store height.
 const HEIGHT_BITS: usize = 5;
@@ -163,10 +167,10 @@ impl<K, V> Node<K, V> {
     unsafe fn alloc(height: usize, ref_count: usize) -> *mut Self {
         let layout = Self::get_layout(height);
         unsafe {
-            let ptr = alloc(layout).cast::<Self>();
-            if ptr.is_null() {
-                handle_alloc_error(layout);
-            }
+            let ptr = match Global.allocate(layout) {
+                Some(ptr) => ptr.as_ptr().cast::<Self>(),
+                None => handle_alloc_error(layout),
+            };
 
             ptr::addr_of_mut!((*ptr).refs_and_height)
                 .write(AtomicUsize::new((height - 1) | (ref_count << HEIGHT_BITS)));
@@ -184,7 +188,7 @@ impl<K, V> Node<K, V> {
         unsafe {
             let height = (*ptr).height();
             let layout = Self::get_layout(height);
-            dealloc(ptr.cast::<u8>(), layout);
+            Global.deallocate(NonNull::new_unchecked(ptr.cast::<u8>()), layout);
         }
     }
 
@@ -501,11 +505,7 @@ impl<K, V> SkipList<K, V> {
 
         // Due to the relaxed memory ordering, the length counter may sometimes
         // underflow and produce a very large value. We treat such values as 0.
-        if len > isize::MAX as usize {
-            0
-        } else {
-            len
-        }
+        if len > isize::MAX as usize { 0 } else { len }
     }
 
     /// Ensures that all `Guard`s used with the skip list come from the same

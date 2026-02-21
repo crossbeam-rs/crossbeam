@@ -2,14 +2,15 @@
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
-use std::time::Instant;
+use core::sync::atomic::{AtomicBool, Ordering};
+use std::{thread, time::Instant};
 
-use crate::context::Context;
-use crate::err::{RecvTimeoutError, TryRecvError};
-use crate::select::{Operation, SelectHandle, Token};
-use crate::utils;
+use crate::{
+    context::Context,
+    err::{RecvTimeoutError, TryRecvError},
+    select::{Operation, SelectHandle, Token},
+    utils,
+};
 
 /// Result of a receive operation.
 pub(crate) type AtToken = Option<Instant>;

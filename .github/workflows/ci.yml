@@ -36,7 +36,6 @@ jobs:
   clippy:
     uses: taiki-e/github-actions/.github/workflows/clippy.yml@main
     with:
-      unqualified_local_imports: false # TODO
       fuzzy_provenance_casts: false # TODO
   docs:
     uses: taiki-e/github-actions/.github/workflows/docs.yml@main
@@ -187,10 +186,15 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@v1
       - name: Install Rust
-        uses: taiki-e/github-actions/install-rust@stable
+        uses: taiki-e/github-actions/install-rust@nightly
+        with:
+          component: rustfmt
       - name: Install shfmt
         uses: taiki-e/install-action@shfmt
-      - run: cargo fmt --all --check
+      # `cargo fmt` cannot recognize files not included in the current workspace and modules
+      # defined inside macros, so run rustfmt directly.
+      # We need to use nightly rustfmt because we use the unstable formatting options of rustfmt.
+      - run: rustfmt --check $(git ls-files '*.rs')
       - run: shfmt -d $(git ls-files '*.sh')
       - run: RUST_LOG=warn npx -y @taplo/cli fmt --check $(git ls-files '*.toml')
 

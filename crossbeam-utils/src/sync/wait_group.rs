@@ -1,7 +1,9 @@
-use crate::primitive::sync::atomic::{AtomicUsize, Ordering};
-use crate::primitive::sync::{Arc, Condvar, Mutex};
-use core::mem::ManuallyDrop;
-use std::fmt;
+use core::{fmt, mem::ManuallyDrop};
+
+use crate::primitive::sync::{
+    Arc, Condvar, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 
 /// Enables threads to synchronize the beginning or end of some computation.
 ///

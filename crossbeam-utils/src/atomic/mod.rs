@@ -26,7 +26,7 @@ mod seq_lock;
 mod atomic_cell;
 #[cfg(target_has_atomic = "ptr")]
 #[cfg(not(crossbeam_loom))]
-pub use atomic_cell::AtomicCell;
+pub use self::atomic_cell::AtomicCell;
 
 mod consume;
-pub use consume::AtomicConsume;
+pub use self::consume::AtomicConsume;

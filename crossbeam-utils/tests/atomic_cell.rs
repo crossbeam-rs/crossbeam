@@ -1,6 +1,7 @@
-use std::mem;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::SeqCst;
+use std::{
+    mem,
+    sync::atomic::{AtomicUsize, Ordering::SeqCst},
+};
 
 use crossbeam_utils::atomic::AtomicCell;
 
@@ -353,9 +354,11 @@ fn issue_748() {
 // https://github.com/crossbeam-rs/crossbeam/issues/833
 #[test]
 fn issue_833() {
-    use std::num::NonZeroU128;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::thread;
+    use std::{
+        num::NonZeroU128,
+        sync::atomic::{AtomicBool, Ordering},
+        thread,
+    };
 
     #[cfg(miri)]
     const N: usize = 10_000;

@@ -1,16 +1,19 @@
 // Necessary for implementing atomic methods for `AtomicUnit`
 #![allow(clippy::unit_arg)]
 
-use crate::primitive::sync::atomic::{self, Ordering};
-use crate::CachePadded;
-use core::cell::UnsafeCell;
-use core::cmp;
-use core::fmt;
-use core::mem::{self, ManuallyDrop, MaybeUninit};
-use core::panic::{RefUnwindSafe, UnwindSafe};
-use core::ptr;
+use core::{
+    cell::UnsafeCell,
+    cmp, fmt,
+    mem::{self, ManuallyDrop, MaybeUninit},
+    panic::{RefUnwindSafe, UnwindSafe},
+    ptr,
+};
 
 use super::seq_lock::SeqLock;
+use crate::{
+    CachePadded,
+    primitive::sync::atomic::{self, Ordering},
+};
 
 /// A thread-safe mutable memory location.
 ///

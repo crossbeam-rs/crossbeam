@@ -1,14 +1,16 @@
 //! Tests for the list channel flavor.
 
-use std::any::Any;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::thread;
-use std::time::Duration;
+use std::{
+    any::Any,
+    sync::atomic::{AtomicUsize, Ordering},
+    thread,
+    time::Duration,
+};
 
-use crossbeam_channel::{select, unbounded, Receiver};
-use crossbeam_channel::{RecvError, RecvTimeoutError, TryRecvError};
-use crossbeam_channel::{SendError, SendTimeoutError, TrySendError};
+use crossbeam_channel::{
+    Receiver, RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError,
+    select, unbounded,
+};
 use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {

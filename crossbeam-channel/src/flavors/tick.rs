@@ -2,14 +2,16 @@
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
-use std::thread;
-use std::time::{Duration, Instant};
+use core::time::Duration;
+use std::{thread, time::Instant};
 
 use crossbeam_utils::atomic::AtomicCell;
 
-use crate::context::Context;
-use crate::err::{RecvTimeoutError, TryRecvError};
-use crate::select::{Operation, SelectHandle, Token};
+use crate::{
+    context::Context,
+    err::{RecvTimeoutError, TryRecvError},
+    select::{Operation, SelectHandle, Token},
+};
 
 /// Result of a receive operation.
 pub(crate) type TickToken = Option<Instant>;

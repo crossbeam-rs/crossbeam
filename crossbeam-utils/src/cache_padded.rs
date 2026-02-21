@@ -1,5 +1,7 @@
-use core::fmt;
-use core::ops::{Deref, DerefMut};
+use core::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 
 /// Pads and aligns a value to the length of a cache line.
 ///

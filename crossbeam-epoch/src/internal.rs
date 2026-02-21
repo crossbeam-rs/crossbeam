@@ -35,22 +35,31 @@
 //! Ideally each instance of concurrent data structure may have its own queue that gets fully
 //! destroyed as soon as the data structure gets dropped.
 
-use crate::primitive::cell::UnsafeCell;
-use crate::primitive::sync::atomic::{self, Ordering};
-use core::cell::Cell;
-use core::mem::{self, ManuallyDrop};
-use core::num::Wrapping;
-use core::{fmt, ptr};
+use core::{
+    cell::Cell,
+    fmt,
+    mem::{self, ManuallyDrop},
+    num::Wrapping,
+    ptr,
+};
 
 use crossbeam_utils::CachePadded;
 
-use crate::atomic::{Owned, Shared};
-use crate::collector::{Collector, LocalHandle};
-use crate::deferred::Deferred;
-use crate::epoch::{AtomicEpoch, Epoch};
-use crate::guard::{unprotected, Guard};
-use crate::sync::list::{Entry, IsElement, IterError, List};
-use crate::sync::queue::Queue;
+use crate::{
+    atomic::{Owned, Shared},
+    collector::{Collector, LocalHandle},
+    deferred::Deferred,
+    epoch::{AtomicEpoch, Epoch},
+    guard::{Guard, unprotected},
+    primitive::{
+        cell::UnsafeCell,
+        sync::atomic::{self, Ordering},
+    },
+    sync::{
+        list::{Entry, IsElement, IterError, List},
+        queue::Queue,
+    },
+};
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(any(crossbeam_sanitize, miri)))]
@@ -229,11 +238,14 @@ impl Global {
         let global_epoch = self.epoch.load(Ordering::Relaxed);
         atomic::fence(Ordering::SeqCst);
 
+        // For ThreadSanitizer that does not understand fences, we simulate the equivalent effect.
+        // It is unfortunate that allocation is required, but without it, synchronization might
+        // occur in cases where it should not, potentially causing false positives.
+        #[cfg(crossbeam_sanitize_thread)]
+        let mut locals = alloc::vec![];
         // TODO(stjepang): `Local`s are stored in a linked list because linked lists are fairly
         // easy to implement in a lock-free manner. However, traversal can be slow due to cache
         // misses and data dependencies. We should experiment with other data structures as well.
-        #[cfg(crossbeam_sanitize_thread)]
-        let mut locals = alloc::vec![];
         for local in self.locals.iter(guard) {
             match local {
                 Err(IterError::Stalled) => {
@@ -260,9 +272,8 @@ impl Global {
         for local in locals {
             local.epoch.load(Ordering::Acquire);
         }
-        if !cfg!(crossbeam_sanitize_thread) {
-            atomic::fence(Ordering::Acquire);
-        }
+        #[cfg(not(crossbeam_sanitize_thread))]
+        atomic::fence(Ordering::Acquire);
 
         // All pinned participants were pinned in the current global epoch.
         // Now let's advance the global epoch...
@@ -575,6 +586,11 @@ impl IsElement<Self> for Local {
 }
 
 #[cfg(all(test, not(crossbeam_loom)))]
+#[allow(
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 mod tests {
     use std::sync::atomic::AtomicUsize;
 

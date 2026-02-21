@@ -3,11 +3,13 @@
 //! Ideas from Michael.  High Performance Dynamic Lock-Free Hash Tables and List-Based Sets.  SPAA
 //! 2002.  <http://dl.acm.org/citation.cfm?id=564870.564881>
 
-use core::marker::PhantomData;
-use core::ptr::NonNull;
-use core::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use core::{
+    marker::PhantomData,
+    ptr::NonNull,
+    sync::atomic::Ordering::{Acquire, Relaxed, Release},
+};
 
-use crate::{unprotected, Atomic, Guard, Shared};
+use crate::{Atomic, Guard, Shared, unprotected};
 
 /// An entry in a linked list.
 ///
@@ -297,13 +299,18 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
 }
 
 #[cfg(all(test, not(crossbeam_loom)))]
+#[allow(
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 mod tests {
+    use std::{ptr, sync::Barrier, vec::Vec};
+
+    use crossbeam_utils::thread;
+
     use super::*;
     use crate::{Collector, Owned};
-    use crossbeam_utils::thread;
-    use std::ptr;
-    use std::sync::Barrier;
-    use std::vec::Vec;
 
     impl IsElement<Self> for Entry {
         fn entry_of(entry: *const Self) -> *const Entry {

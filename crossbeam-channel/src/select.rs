@@ -1,20 +1,19 @@
 //! Interface to the select mechanism.
 
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem;
-use std::time::{Duration, Instant};
-use std::vec::Vec;
+use alloc::vec::Vec;
+use core::{fmt, marker::PhantomData, mem, time::Duration};
+use std::time::Instant;
 
 use crossbeam_utils::Backoff;
 
-use crate::channel::{self, Receiver, Sender};
-use crate::context::Context;
-use crate::err::{ReadyTimeoutError, TryReadyError};
-use crate::err::{RecvError, SendError};
-use crate::err::{SelectTimeoutError, TrySelectError};
-use crate::flavors;
-use crate::utils;
+use crate::{
+    channel::{self, Receiver, Sender},
+    context::Context,
+    err::{
+        ReadyTimeoutError, RecvError, SelectTimeoutError, SendError, TryReadyError, TrySelectError,
+    },
+    flavors, utils,
+};
 
 /// Temporary data that gets initialized during select or a blocking operation, and is consumed by
 /// `read` or `write`.

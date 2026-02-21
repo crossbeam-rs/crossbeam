@@ -1,19 +1,22 @@
 //! The channel interface.
 
-use std::fmt;
-use std::iter::FusedIterator;
-use std::mem;
-use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-
-use crate::context::Context;
-use crate::counter;
-use crate::err::{
-    RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError,
+use alloc::sync::Arc;
+use core::{
+    fmt,
+    iter::FusedIterator,
+    mem,
+    panic::{RefUnwindSafe, UnwindSafe},
+    time::Duration,
 };
-use crate::flavors;
-use crate::select::{Operation, SelectHandle, Token};
+use std::time::Instant;
+
+use crate::{
+    context::Context,
+    counter,
+    err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError},
+    flavors,
+    select::{Operation, SelectHandle, Token},
+};
 
 /// Creates a multi-producer multi-consumer channel of unbounded capacity.
 ///

@@ -4,8 +4,7 @@ extern crate test;
 
 use std::sync::Barrier;
 
-use crossbeam_utils::atomic::AtomicCell;
-use crossbeam_utils::thread;
+use crossbeam_utils::{atomic::AtomicCell, thread};
 
 #[bench]
 fn load_u8(b: &mut test::Bencher) {
@@ -50,18 +49,20 @@ fn concurrent_load_u8(b: &mut test::Bencher) {
 
     thread::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|_| loop {
-                start.wait();
+            scope.spawn(|_| {
+                loop {
+                    start.wait();
 
-                let mut sum = 0;
-                for _ in 0..STEPS {
-                    sum += a.load();
-                }
-                test::black_box(sum);
+                    let mut sum = 0;
+                    for _ in 0..STEPS {
+                        sum += a.load();
+                    }
+                    test::black_box(sum);
 
-                end.wait();
-                if exit.load() {
-                    break;
+                    end.wait();
+                    if exit.load() {
+                        break;
+                    }
                 }
             });
         }
@@ -124,18 +125,20 @@ fn concurrent_load_usize(b: &mut test::Bencher) {
 
     thread::scope(|scope| {
         for _ in 0..THREADS {
-            scope.spawn(|_| loop {
-                start.wait();
+            scope.spawn(|_| {
+                loop {
+                    start.wait();
 
-                let mut sum = 0;
-                for _ in 0..STEPS {
-                    sum += a.load();
-                }
-                test::black_box(sum);
+                    let mut sum = 0;
+                    for _ in 0..STEPS {
+                        sum += a.load();
+                    }
+                    test::black_box(sum);
 
-                end.wait();
-                if exit.load() {
-                    break;
+                    end.wait();
+                    if exit.load() {
+                        break;
+                    }
                 }
             });
         }

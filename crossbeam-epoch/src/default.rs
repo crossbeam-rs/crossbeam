@@ -4,11 +4,14 @@
 //! is registered in the default collector.  If initialized, the thread's participant will get
 //! destructed on thread exit, which in turn unregisters the thread.
 
-use crate::collector::{Collector, LocalHandle};
-use crate::guard::Guard;
-use crate::primitive::thread_local;
 #[cfg(not(crossbeam_loom))]
 use std::sync::OnceLock;
+
+use crate::{
+    collector::{Collector, LocalHandle},
+    guard::Guard,
+    primitive::thread_local,
+};
 
 fn collector() -> &'static Collector {
     #[cfg(not(crossbeam_loom))]
@@ -62,6 +65,11 @@ where
 }
 
 #[cfg(all(test, not(crossbeam_loom)))]
+#[allow(
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 mod tests {
     use crossbeam_utils::thread;
 

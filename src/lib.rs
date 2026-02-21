@@ -41,12 +41,15 @@
 #![no_std]
 #![doc(test(
     no_crate_inject,
-    attr(
-        deny(warnings, rust_2018_idioms, single_use_lifetimes),
-        allow(dead_code, unused_assignments, unused_variables)
-    )
+    attr(allow(dead_code, unused_assignments, unused_variables))
 ))]
-#![warn(missing_docs, unsafe_op_in_unsafe_fn)]
+#![warn(
+    missing_docs,
+    unsafe_op_in_unsafe_fn,
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -59,21 +62,18 @@ pub mod utils {
     //! * [`Backoff`], for exponential backoff in spin loops.
     //! * [`CachePadded`], for padding and aligning a value to the length of a cache line.
 
-    pub use crossbeam_utils::Backoff;
-    pub use crossbeam_utils::CachePadded;
+    pub use crossbeam_utils::{Backoff, CachePadded};
 }
 
-#[cfg(feature = "alloc")]
-#[doc(inline)]
-pub use {crossbeam_epoch as epoch, crossbeam_queue as queue};
-
+#[cfg(feature = "std")]
+#[cfg(not(crossbeam_loom))]
+pub use crossbeam_utils::thread::{self, scope};
 #[cfg(feature = "std")]
 #[doc(inline)]
 pub use {
     crossbeam_channel as channel, crossbeam_channel::select, crossbeam_deque as deque,
     crossbeam_utils::sync,
 };
-
-#[cfg(feature = "std")]
-#[cfg(not(crossbeam_loom))]
-pub use crossbeam_utils::thread::{self, scope};
+#[cfg(feature = "alloc")]
+#[doc(inline)]
+pub use {crossbeam_epoch as epoch, crossbeam_queue as queue};

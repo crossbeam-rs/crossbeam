@@ -8,18 +8,23 @@
 #![no_std]
 #![doc(test(
     no_crate_inject,
-    attr(
-        deny(warnings, rust_2018_idioms, single_use_lifetimes),
-        allow(dead_code, unused_assignments, unused_variables)
-    )
+    attr(allow(dead_code, unused_assignments, unused_variables))
 ))]
-#![warn(missing_docs, unsafe_op_in_unsafe_fn)]
+#![warn(
+    missing_docs,
+    unsafe_op_in_unsafe_fn,
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod alloc_helper;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod array_queue;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]

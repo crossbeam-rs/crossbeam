@@ -4,11 +4,13 @@
 //!   - <http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue>
 
 use alloc::boxed::Box;
-use core::cell::UnsafeCell;
-use core::fmt;
-use core::mem::{self, MaybeUninit};
-use core::panic::{RefUnwindSafe, UnwindSafe};
-use core::sync::atomic::{self, AtomicUsize, Ordering};
+use core::{
+    cell::UnsafeCell,
+    fmt,
+    mem::{self, MaybeUninit},
+    panic::{RefUnwindSafe, UnwindSafe},
+    sync::atomic::{self, AtomicUsize, Ordering},
+};
 
 use crossbeam_utils::{Backoff, CachePadded};
 

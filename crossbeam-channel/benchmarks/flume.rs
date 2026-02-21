@@ -4,8 +4,7 @@ const MESSAGES: usize = 5_000_000;
 const THREADS: usize = 4;
 
 pub fn shuffle<T>(v: &mut [T]) {
-    use std::cell::Cell;
-    use std::num::Wrapping;
+    use std::{cell::Cell, num::Wrapping};
 
     let len = v.len();
     if len <= 1 {

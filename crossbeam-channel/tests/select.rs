@@ -1,11 +1,13 @@
 //! Tests for channel selection using the `Select` struct.
 
-use std::any::Any;
-use std::cell::Cell;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+    any::Any,
+    cell::Cell,
+    thread,
+    time::{Duration, Instant},
+};
 
-use crossbeam_channel::{after, bounded, tick, unbounded, Receiver, Select, TryRecvError};
+use crossbeam_channel::{Receiver, Select, TryRecvError, after, bounded, tick, unbounded};
 use crossbeam_utils::thread::scope;
 
 fn ms(ms: u64) -> Duration {
@@ -416,66 +418,70 @@ fn loop_try() {
         let (s_end, r_end) = bounded::<()>(0);
 
         scope(|scope| {
-            scope.spawn(|_| loop {
-                let mut done = false;
+            scope.spawn(|_| {
+                loop {
+                    let mut done = false;
 
-                let mut sel = Select::new();
-                let oper1 = sel.send(&s1);
-                let oper = sel.try_select();
-                match oper {
-                    Err(_) => {}
-                    Ok(oper) => match oper.index() {
-                        i if i == oper1 => {
-                            let _ = oper.send(&s1, 1);
-                            done = true;
-                        }
-                        _ => unreachable!(),
-                    },
-                }
-                if done {
-                    break;
-                }
+                    let mut sel = Select::new();
+                    let oper1 = sel.send(&s1);
+                    let oper = sel.try_select();
+                    match oper {
+                        Err(_) => {}
+                        Ok(oper) => match oper.index() {
+                            i if i == oper1 => {
+                                let _ = oper.send(&s1, 1);
+                                done = true;
+                            }
+                            _ => unreachable!(),
+                        },
+                    }
+                    if done {
+                        break;
+                    }
 
-                let mut sel = Select::new();
-                let oper1 = sel.recv(&r_end);
-                let oper = sel.try_select();
-                match oper {
-                    Err(_) => {}
-                    Ok(oper) => match oper.index() {
-                        i if i == oper1 => {
-                            let _ = oper.recv(&r_end);
-                            done = true;
-                        }
-                        _ => unreachable!(),
-                    },
-                }
-                if done {
-                    break;
+                    let mut sel = Select::new();
+                    let oper1 = sel.recv(&r_end);
+                    let oper = sel.try_select();
+                    match oper {
+                        Err(_) => {}
+                        Ok(oper) => match oper.index() {
+                            i if i == oper1 => {
+                                let _ = oper.recv(&r_end);
+                                done = true;
+                            }
+                            _ => unreachable!(),
+                        },
+                    }
+                    if done {
+                        break;
+                    }
                 }
             });
 
-            scope.spawn(|_| loop {
-                if let Ok(x) = r2.try_recv() {
-                    assert_eq!(x, 2);
-                    break;
-                }
+            scope.spawn(|_| {
+                loop {
+                    if let Ok(x) = r2.try_recv() {
+                        assert_eq!(x, 2);
+                        break;
+                    }
 
-                let mut done = false;
-                let mut sel = Select::new();
-                let oper1 = sel.recv(&r_end);
-                let oper = sel.try_select();
-                match oper {
-                    Err(_) => {}
-                    Ok(oper) => match oper.index() {
-                        i if i == oper1 => {
-                            let _ = oper.recv(&r_end);
-                            done = true;
-                        }
-                        _ => unreachable!(),
-                    },
-                }
-                if done {
-                    break;
+                    let mut done = false;
+                    let mut sel = Select::new();
+                    let oper1 = sel.recv(&r_end);
+                    let oper = sel.try_select();
+                    match oper {
+                        Err(_) => {}
+                        Ok(oper) => match oper.index() {
+                            i if i == oper1 => {
+                                let _ = oper.recv(&r_end);
+                                done = true;
+                            }
+                            _ => unreachable!(),
+                        },
+                    }
+                    if done {
+                        break;
+                    }
                 }
             });
 

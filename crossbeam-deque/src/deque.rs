@@ -1,16 +1,18 @@
-use std::alloc::{alloc_zeroed, handle_alloc_error, Layout};
-use std::boxed::Box;
-use std::cell::{Cell, UnsafeCell};
-use std::cmp;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem::{self, MaybeUninit};
-use std::ptr;
-use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
-use std::sync::Arc;
+use alloc::{alloc::handle_alloc_error, boxed::Box, sync::Arc};
+use core::{
+    alloc::Layout,
+    cell::{Cell, UnsafeCell},
+    cmp, fmt,
+    marker::PhantomData,
+    mem::{self, MaybeUninit},
+    ptr,
+    sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
+};
 
 use crossbeam_epoch::{self as epoch, Atomic, Owned};
 use crossbeam_utils::{Backoff, CachePadded};
+
+use crate::alloc_helper::Global;
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;
@@ -417,13 +419,17 @@ impl<T> Worker<T> {
             buffer.write(b, MaybeUninit::new(task));
         }
 
+        // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+        #[cfg(not(crossbeam_sanitize_thread))]
         atomic::fence(Ordering::Release);
+        let store_order = if cfg!(crossbeam_sanitize_thread) {
+            Ordering::Release
+        } else {
+            Ordering::Relaxed
+        };
 
         // Increment the back index.
-        //
-        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
-        // races because it doesn't understand fences.
-        self.inner.back.store(b.wrapping_add(1), Ordering::Release);
+        self.inner.back.store(b.wrapping_add(1), store_order);
     }
 
     /// Pops a task from the queue.
@@ -902,13 +908,17 @@ impl<T> Stealer<T> {
             }
         }
 
+        // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+        #[cfg(not(crossbeam_sanitize_thread))]
         atomic::fence(Ordering::Release);
+        let store_order = if cfg!(crossbeam_sanitize_thread) {
+            Ordering::Release
+        } else {
+            Ordering::Relaxed
+        };
 
         // Update the back index in the destination queue.
-        //
-        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
-        // races because it doesn't understand fences.
-        dest.inner.back.store(dest_b, Ordering::Release);
+        dest.inner.back.store(dest_b, store_order);
 
         // Return with success.
         Steal::Success(())
@@ -1151,13 +1161,17 @@ impl<T> Stealer<T> {
             }
         }
 
+        // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+        #[cfg(not(crossbeam_sanitize_thread))]
         atomic::fence(Ordering::Release);
+        let store_order = if cfg!(crossbeam_sanitize_thread) {
+            Ordering::Release
+        } else {
+            Ordering::Relaxed
+        };
 
         // Update the back index in the destination queue.
-        //
-        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
-        // races because it doesn't understand fences.
-        dest.inner.back.store(dest_b, Ordering::Release);
+        dest.inner.back.store(dest_b, store_order);
 
         // Return with success.
         Steal::Success(unsafe { task.assume_init() })
@@ -1238,20 +1252,20 @@ impl<T> Block<T> {
 
     /// Creates an empty block.
     fn new() -> Box<Self> {
-        // SAFETY: layout is not zero-sized
-        let ptr = unsafe { alloc_zeroed(Self::LAYOUT) };
-        // Handle allocation failure
-        if ptr.is_null() {
-            handle_alloc_error(Self::LAYOUT)
+        // unsafe { Box::new_zeroed().assume_init() } requires Rust 1.92
+        match Global.allocate_zeroed(Self::LAYOUT) {
+            Some(ptr) => {
+                // SAFETY: This is safe because:
+                //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
+                //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
+                //  [3] `Slot::task` (UnsafeCell) may be safely zero initialized because it
+                //       holds a MaybeUninit.
+                //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
+                unsafe { Box::from_raw(ptr.as_ptr().cast()) }
+            }
+            // Handle allocation failure
+            None => handle_alloc_error(Self::LAYOUT),
         }
-        // SAFETY: This is safe because:
-        //  [1] `Block::next` (AtomicPtr) may be safely zero initialized.
-        //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
-        //  [3] `Slot::task` (UnsafeCell) may be safely zero initialized because it
-        //       holds a MaybeUninit.
-        //  [4] `Slot::state` (AtomicUsize) may be safely zero initialized.
-        // TODO: unsafe { Box::new_zeroed().assume_init() }
-        unsafe { Box::from_raw(ptr.cast()) }
     }
 
     /// Waits until the next pointer is set.
@@ -1304,6 +1318,7 @@ struct Position<T> {
 /// # Examples
 ///
 /// ```
+/// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
 /// use crossbeam_deque::{Injector, Steal};
 ///
 /// let q = Injector::new();
@@ -1435,6 +1450,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Steal};
     ///
     /// let q = Injector::new();
@@ -1531,6 +1547,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Worker};
     ///
     /// let q = Injector::new();
@@ -1556,6 +1573,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Worker};
     ///
     /// let q = Injector::new();
@@ -1691,15 +1709,19 @@ impl<T> Injector<T> {
                 }
             }
 
+            // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+            #[cfg(not(crossbeam_sanitize_thread))]
             atomic::fence(Ordering::Release);
+            let store_order = if cfg!(crossbeam_sanitize_thread) {
+                Ordering::Release
+            } else {
+                Ordering::Relaxed
+            };
 
             // Update the back index in the destination queue.
-            //
-            // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
-            // data races because it doesn't understand fences.
             dest.inner
                 .back
-                .store(dest_b.wrapping_add(batch_size as isize), Ordering::Release);
+                .store(dest_b.wrapping_add(batch_size as isize), store_order);
 
             // Destroy the block if we've reached the end, or if another thread wanted to destroy
             // but couldn't because we were busy reading from the slot.
@@ -1728,6 +1750,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Steal, Worker};
     ///
     /// let q = Injector::new();
@@ -1754,6 +1777,7 @@ impl<T> Injector<T> {
     /// # Examples
     ///
     /// ```
+    /// # if option_env!("MIRI_FALLIBLE_WEAK_CAS").is_some() { return; } // see ci/miri.sh
     /// use crossbeam_deque::{Injector, Steal, Worker};
     ///
     /// let q = Injector::new();
@@ -1894,15 +1918,19 @@ impl<T> Injector<T> {
                 }
             }
 
+            // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+            #[cfg(not(crossbeam_sanitize_thread))]
             atomic::fence(Ordering::Release);
+            let store_order = if cfg!(crossbeam_sanitize_thread) {
+                Ordering::Release
+            } else {
+                Ordering::Relaxed
+            };
 
             // Update the back index in the destination queue.
-            //
-            // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
-            // data races because it doesn't understand fences.
             dest.inner
                 .back
-                .store(dest_b.wrapping_add(batch_size as isize), Ordering::Release);
+                .store(dest_b.wrapping_add(batch_size as isize), store_order);
 
             // Destroy the block if we've reached the end, or if another thread wanted to destroy
             // but couldn't because we were busy reading from the slot.
@@ -2200,10 +2228,6 @@ impl<T> FromIterator<Self> for Steal<T> {
             }
         }
 
-        if retry {
-            Self::Retry
-        } else {
-            Self::Empty
-        }
+        if retry { Self::Retry } else { Self::Empty }
     }
 }
