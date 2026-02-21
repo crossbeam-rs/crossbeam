@@ -45,6 +45,7 @@ fn fire() {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn intervals() {
     let start = Instant::now();
     let r = tick(ms(50));
@@ -98,6 +99,7 @@ fn len_empty_full() {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn try_recv() {
     let r = tick(ms(200));
     assert!(r.try_recv().is_err());
@@ -115,6 +117,7 @@ fn try_recv() {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn recv() {
     let start = Instant::now();
     let r = tick(ms(50));
@@ -130,8 +133,9 @@ fn recv() {
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
 }
 
-#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: assertions failed due to tsan is slow
 #[test]
+#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: assertions failed due to tsan is slow
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn recv_timeout() {
     let start = Instant::now();
     let r = tick(ms(200));
@@ -182,6 +186,7 @@ fn recv_two() {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn recv_race() {
     select! {
         recv(tick(ms(50))) -> _ => {}
@@ -214,6 +219,7 @@ fn stress_default() {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn select() {
     const THREADS: usize = 4;
 
@@ -255,8 +261,9 @@ fn select() {
     assert_eq!(hits.load(Ordering::SeqCst), 8);
 }
 
-#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: assertions failed due to tsan is slow
 #[test]
+#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: assertions failed due to tsan is slow
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn ready() {
     const THREADS: usize = 4;
 

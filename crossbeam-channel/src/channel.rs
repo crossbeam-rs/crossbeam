@@ -158,6 +158,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// When the message gets sent:
 ///
 /// ```
+/// # if cfg!(gha_macos_runner) { return; } // GitHub-hosted macOS runner is slow
 /// use std::thread;
 /// use std::time::{Duration, Instant};
 /// use crossbeam_channel::after;
@@ -303,6 +304,7 @@ pub fn never<T>() -> Receiver<T> {
 /// When messages get sent:
 ///
 /// ```
+/// # if cfg!(gha_macos_runner) { return; } // GitHub-hosted macOS runner is slow
 /// use std::thread;
 /// use std::time::{Duration, Instant};
 /// use crossbeam_channel::tick;

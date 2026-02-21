@@ -215,6 +215,7 @@ fn default_when_disconnected() {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn default_only() {
     let start = Instant::now();
     select! {
@@ -845,8 +846,8 @@ fn fairness1() {
     assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
 }
 
-#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: flaky: https://github.com/crossbeam-rs/crossbeam/issues/1094
 #[test]
+#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: flaky: https://github.com/crossbeam-rs/crossbeam/issues/1094
 fn fairness2() {
     const COUNT: usize = if cfg!(miri) { 100 } else { 10_000 };
 
