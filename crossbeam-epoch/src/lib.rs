@@ -71,6 +71,8 @@ mod primitive {
     }
     pub(crate) mod sync {
         pub(crate) mod atomic {
+            #[cfg(target_has_atomic = "64")]
+            pub(crate) use loom::sync::atomic::AtomicU64;
             pub(crate) use loom::sync::atomic::{fence, AtomicPtr, AtomicUsize, Ordering};
 
             // FIXME: loom does not support compiler_fence at the moment.
