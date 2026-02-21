@@ -513,6 +513,12 @@ impl<T> SegQueue<T> {
             // Destroy the block if we've reached the end
             if offset + 1 == BLOCK_CAP {
                 Block::destroy_mut(block);
+            } else {
+                let state = *(*block).slots.get_unchecked_mut(offset).state.get_mut();
+                *(*block).slots.get_unchecked_mut(offset).state.get_mut() = state | READ;
+                if state & DESTROY != 0 {
+                    Block::destroy(block, offset + 1);
+                }
             }
 
             Some(value)
