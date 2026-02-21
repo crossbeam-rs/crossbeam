@@ -1,15 +1,15 @@
-use std::boxed::Box;
-use std::cell::UnsafeCell;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::cell::UnsafeCell;
+use core::fmt;
+use core::marker::PhantomData;
+use core::mem;
+use core::ops::{Deref, DerefMut};
+use core::panic::{RefUnwindSafe, UnwindSafe};
 use std::collections::HashMap;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem;
-use std::ops::{Deref, DerefMut};
-use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread::{self, ThreadId};
-use std::vec::Vec;
 
 use crate::sync::once_lock::OnceLock;
 use crate::CachePadded;

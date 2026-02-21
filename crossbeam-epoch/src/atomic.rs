@@ -1578,6 +1578,11 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
 }
 
 #[cfg(all(test, not(crossbeam_loom)))]
+#[allow(
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 mod tests {
     use super::{Atomic, Owned, Shared};
     use crate::pin;

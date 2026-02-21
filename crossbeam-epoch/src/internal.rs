@@ -575,6 +575,11 @@ impl IsElement<Self> for Local {
 }
 
 #[cfg(all(test, not(crossbeam_loom)))]
+#[allow(
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 mod tests {
     use std::sync::atomic::AtomicUsize;
 

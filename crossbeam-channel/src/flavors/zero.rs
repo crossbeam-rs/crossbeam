@@ -2,13 +2,13 @@
 //!
 //! This kind of channel is also known as *rendezvous* channel.
 
-use std::boxed::Box;
-use std::cell::UnsafeCell;
-use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering};
+use alloc::boxed::Box;
+use core::cell::UnsafeCell;
+use core::marker::PhantomData;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::{fmt, ptr};
 use std::sync::Mutex;
 use std::time::Instant;
-use std::{fmt, ptr};
 
 use crossbeam_utils::Backoff;
 

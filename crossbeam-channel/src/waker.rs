@@ -1,10 +1,10 @@
 //! Waking mechanism for threads blocked on channel operations.
 
-use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use alloc::vec::Vec;
+use core::ptr;
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread::{self, ThreadId};
-use std::vec::Vec;
 
 use crate::context::Context;
 use crate::select::{Operation, Selected};

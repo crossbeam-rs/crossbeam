@@ -1,9 +1,9 @@
 //! Thread-local context used in select.
 
-use std::cell::Cell;
-use std::ptr;
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
-use std::sync::Arc;
+use alloc::sync::Arc;
+use core::cell::Cell;
+use core::ptr;
+use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use std::thread::{self, Thread, ThreadId};
 use std::time::Instant;
 

@@ -29,9 +29,18 @@
     no_crate_inject,
     attr(allow(dead_code, unused_assignments, unused_variables))
 ))]
-#![warn(missing_docs, unsafe_op_in_unsafe_fn)]
+#![warn(
+    missing_docs,
+    unsafe_op_in_unsafe_fn,
+    clippy::alloc_instead_of_core,
+    clippy::std_instead_of_alloc,
+    clippy::std_instead_of_core
+)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+#[cfg(feature = "std")]
+#[cfg(not(crossbeam_loom))]
+extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -65,9 +74,11 @@ mod primitive {
         pub(crate) use core::hint::spin_loop;
     }
     pub(crate) mod sync {
+        #[cfg(feature = "std")]
+        pub(crate) use alloc::sync::Arc;
         pub(crate) use core::sync::atomic;
         #[cfg(feature = "std")]
-        pub(crate) use std::sync::{Arc, Condvar, Mutex};
+        pub(crate) use std::sync::{Condvar, Mutex};
     }
 }
 

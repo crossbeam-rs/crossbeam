@@ -1,13 +1,14 @@
-use std::alloc::{handle_alloc_error, Layout};
-use std::boxed::Box;
-use std::cell::{Cell, UnsafeCell};
-use std::cmp;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem::{self, MaybeUninit};
-use std::ptr;
-use std::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
-use std::sync::Arc;
+use alloc::alloc::handle_alloc_error;
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use core::alloc::Layout;
+use core::cell::{Cell, UnsafeCell};
+use core::cmp;
+use core::fmt;
+use core::marker::PhantomData;
+use core::mem::{self, MaybeUninit};
+use core::ptr;
+use core::sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic, Owned};
 use crossbeam_utils::{Backoff, CachePadded};

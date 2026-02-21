@@ -2,7 +2,7 @@
 //!
 //! Messages cannot be sent into this kind of channel.
 
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 use std::time::Instant;
 
 use crate::context::Context;
