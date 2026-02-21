@@ -1,8 +1,9 @@
 use crate::primitive::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use crate::primitive::sync::{Arc, Condvar, Mutex};
-use std::fmt;
-use std::marker::PhantomData;
-use std::time::{Duration, Instant};
+use core::fmt;
+use core::marker::PhantomData;
+use core::time::Duration;
+use std::time::Instant;
 
 /// A thread parking primitive.
 ///

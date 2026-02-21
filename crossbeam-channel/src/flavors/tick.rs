@@ -2,8 +2,9 @@
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
+use core::time::Duration;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crossbeam_utils::atomic::AtomicCell;
 

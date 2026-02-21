@@ -1,5 +1,6 @@
-use alloc::alloc::{handle_alloc_error, Layout};
+use alloc::alloc::handle_alloc_error;
 use alloc::boxed::Box;
+use core::alloc::Layout;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;

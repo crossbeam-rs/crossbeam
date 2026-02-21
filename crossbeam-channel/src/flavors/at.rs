@@ -2,7 +2,7 @@
 //!
 //! Messages cannot be sent into this kind of channel; they are materialized on demand.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Instant;
 

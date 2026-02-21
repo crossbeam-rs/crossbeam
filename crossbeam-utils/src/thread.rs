@@ -111,16 +111,17 @@
 //! }).unwrap();
 //! ```
 
-use std::boxed::Box;
-use std::fmt;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::fmt;
+use core::marker::PhantomData;
+use core::mem;
 use std::io;
-use std::marker::PhantomData;
-use std::mem;
 use std::panic;
-use std::string::String;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread;
-use std::vec::Vec;
 
 use crate::sync::WaitGroup;
 

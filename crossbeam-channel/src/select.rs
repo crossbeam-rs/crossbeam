@@ -1,10 +1,11 @@
 //! Interface to the select mechanism.
 
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem;
-use std::time::{Duration, Instant};
-use std::vec::Vec;
+use alloc::vec::Vec;
+use core::fmt;
+use core::marker::PhantomData;
+use core::mem;
+use core::time::Duration;
+use std::time::Instant;
 
 use crossbeam_utils::Backoff;
 

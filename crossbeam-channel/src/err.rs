@@ -1,5 +1,5 @@
+use core::fmt;
 use std::error;
-use std::fmt;
 
 /// An error returned from the [`send`] method.
 ///

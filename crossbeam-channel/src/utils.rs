@@ -1,9 +1,10 @@
 //! Miscellaneous utilities.
 
-use std::cell::Cell;
-use std::num::Wrapping;
+use core::cell::Cell;
+use core::num::Wrapping;
+use core::time::Duration;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Randomly shuffles a slice.
 pub(crate) fn shuffle<T>(v: &mut [T]) {

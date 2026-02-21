@@ -1,11 +1,12 @@
 //! The channel interface.
 
-use std::fmt;
-use std::iter::FusedIterator;
-use std::mem;
-use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use alloc::sync::Arc;
+use core::fmt;
+use core::iter::FusedIterator;
+use core::mem;
+use core::panic::{RefUnwindSafe, UnwindSafe};
+use core::time::Duration;
+use std::time::Instant;
 
 use crate::context::Context;
 use crate::counter;

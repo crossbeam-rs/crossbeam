@@ -1,7 +1,8 @@
 //! A lock-free skip list. See [`SkipList`].
 
 use super::equivalent::Comparable;
-use alloc::alloc::{handle_alloc_error, Layout};
+use alloc::alloc::handle_alloc_error;
+use core::alloc::Layout;
 use core::cmp;
 use core::fmt;
 use core::marker::PhantomData;

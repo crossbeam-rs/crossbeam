@@ -1,9 +1,9 @@
 //! An ordered map based on a lock-free skip list. See [`SkipMap`].
 
-use std::fmt;
-use std::mem::ManuallyDrop;
-use std::ops::{Bound, RangeBounds};
-use std::ptr;
+use core::fmt;
+use core::mem::ManuallyDrop;
+use core::ops::{Bound, RangeBounds};
+use core::ptr;
 
 use crate::{
     base::{self, try_pin_loop},

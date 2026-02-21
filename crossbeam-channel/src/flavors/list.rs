@@ -1,12 +1,13 @@
 //! Unbounded channel implemented as a linked list.
 
-use std::alloc::{handle_alloc_error, Layout};
-use std::boxed::Box;
-use std::cell::UnsafeCell;
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
+use alloc::alloc::handle_alloc_error;
+use alloc::boxed::Box;
+use core::alloc::Layout;
+use core::cell::UnsafeCell;
+use core::marker::PhantomData;
+use core::mem::MaybeUninit;
+use core::ptr;
+use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use crossbeam_utils::{Backoff, CachePadded};

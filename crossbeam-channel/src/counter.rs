@@ -1,10 +1,10 @@
 //! Reference counter for channels.
 
-use std::boxed::Box;
-use std::ops;
+use alloc::boxed::Box;
+use core::ops;
+use core::ptr::NonNull;
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::process;
-use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// Reference counter internals.
 struct Counter<C> {
