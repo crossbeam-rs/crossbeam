@@ -1,7 +1,8 @@
 use futures::{
+    SinkExt, StreamExt,
     channel::mpsc,
-    executor::{block_on, ThreadPool},
-    future, stream, SinkExt, StreamExt,
+    executor::{ThreadPool, block_on},
+    future, stream,
 };
 
 mod message;

@@ -8,8 +8,8 @@ use std::{
 };
 
 use crossbeam_channel::{
-    select, unbounded, Receiver, RecvError, RecvTimeoutError, SendError, SendTimeoutError,
-    TryRecvError, TrySendError,
+    Receiver, RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError,
+    select, unbounded,
 };
 use crossbeam_utils::thread::scope;
 

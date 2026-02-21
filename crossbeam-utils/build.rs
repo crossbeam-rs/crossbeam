@@ -17,7 +17,9 @@ include!("build-common.rs");
 
 fn main() {
     println!("cargo:rerun-if-changed=no_atomic.rs");
-    println!("cargo:rustc-check-cfg=cfg(crossbeam_no_atomic,crossbeam_sanitize_thread,crossbeam_atomic_cell_force_fallback)");
+    println!(
+        "cargo:rustc-check-cfg=cfg(crossbeam_no_atomic,crossbeam_sanitize_thread,crossbeam_atomic_cell_force_fallback)"
+    );
 
     let target = match env::var("TARGET") {
         Ok(target) => convert_custom_linux_target(target),

@@ -1,8 +1,8 @@
 use core::{fmt, mem::ManuallyDrop};
 
 use crate::primitive::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc, Condvar, Mutex,
+    atomic::{AtomicUsize, Ordering},
 };
 
 /// Enables threads to synchronize the beginning or end of some computation.

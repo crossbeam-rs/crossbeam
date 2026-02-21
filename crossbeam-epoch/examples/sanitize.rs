@@ -1,10 +1,10 @@
 use std::{
     sync::{
+        Arc,
         atomic::{
             AtomicUsize,
             Ordering::{AcqRel, Acquire, Relaxed},
         },
-        Arc,
     },
     thread,
     time::{Duration, Instant},

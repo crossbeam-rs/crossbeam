@@ -9,7 +9,7 @@ use core::{
     sync::atomic::Ordering::{Acquire, Relaxed, Release},
 };
 
-use crate::{unprotected, Atomic, Guard, Shared};
+use crate::{Atomic, Guard, Shared, unprotected};
 
 /// An entry in a linked list.
 ///

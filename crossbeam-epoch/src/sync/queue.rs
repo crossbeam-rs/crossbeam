@@ -15,7 +15,7 @@ use core::{
 
 use crossbeam_utils::CachePadded;
 
-use crate::{unprotected, Atomic, Guard, Owned, Shared};
+use crate::{Atomic, Guard, Owned, Shared, unprotected};
 
 // The representation here is a singly-linked list, with a sentinel node at the front. In general
 // the `tail` pointer may lag behind the actual tail. Non-sentinel nodes are either all `Data` or

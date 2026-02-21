@@ -6,8 +6,8 @@ use crossbeam_epoch as epoch;
 use epoch::{Atomic, Owned, *};
 use loom::{
     sync::{
-        atomic::Ordering::{self, Acquire, Relaxed, Release},
         Arc,
+        atomic::Ordering::{self, Acquire, Relaxed, Release},
     },
     thread::spawn,
 };

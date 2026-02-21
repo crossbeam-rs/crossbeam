@@ -1,8 +1,8 @@
 use std::{
     sync::{
+        Arc, TryLockError,
         atomic::{AtomicUsize, Ordering},
         mpsc::channel,
-        Arc, TryLockError,
     },
     thread,
 };

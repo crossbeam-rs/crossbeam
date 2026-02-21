@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
     Arc, Mutex,
+    atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
 };
 
 use crossbeam_deque::{

@@ -76,7 +76,7 @@ mod primitive {
         pub(crate) mod atomic {
             #[cfg(target_has_atomic = "64")]
             pub(crate) use loom::sync::atomic::AtomicU64;
-            pub(crate) use loom::sync::atomic::{fence, AtomicPtr, AtomicUsize, Ordering};
+            pub(crate) use loom::sync::atomic::{AtomicPtr, AtomicUsize, Ordering, fence};
 
             // FIXME: loom does not support compiler_fence at the moment.
             // https://github.com/tokio-rs/loom/issues/117
@@ -173,7 +173,7 @@ pub use crate::{
         Atomic, CompareExchangeError, CompareExchangeValue, Owned, Pointable, Pointer, Shared,
     },
     collector::{Collector, LocalHandle},
-    guard::{unprotected, Guard},
+    guard::{Guard, unprotected},
 };
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]

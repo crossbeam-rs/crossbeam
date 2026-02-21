@@ -369,13 +369,13 @@ mod waker;
 #[doc(hidden)]
 #[cfg(feature = "std")]
 pub mod internal {
-    pub use crate::select::{select, select_timeout, try_select, SelectHandle};
+    pub use crate::select::{SelectHandle, select, select_timeout, try_select};
 }
 
 #[cfg(feature = "std")]
 pub use crate::{
     channel::{
-        after, at, bounded, never, tick, unbounded, IntoIter, Iter, Receiver, Sender, TryIter,
+        IntoIter, Iter, Receiver, Sender, TryIter, after, at, bounded, never, tick, unbounded,
     },
     err::{
         ReadyTimeoutError, RecvError, RecvTimeoutError, SelectTimeoutError, SendError,
