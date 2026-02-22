@@ -147,7 +147,7 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
-    ////
+    /// 
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
     ///
@@ -176,7 +176,7 @@ where
     /// discarded. If closure is modifying some other state (such as shared counters or shared
     /// objects), it may lead to <u>undesired behaviour</u> such as counters being changed without
     /// result of closure inserted
-    ////
+    /// 
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
     ///

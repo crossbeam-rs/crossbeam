@@ -43,14 +43,14 @@ impl<T> SkipSet<T> {
 }
 
 impl<T, C> SkipSet<T, C> {
-    /// Returns a new, empty map with the given comparator.
+    /// Returns a new, empty set with the given comparator.
     ///
     /// # Example
     ///
     /// ```
     /// use crossbeam_skiplist::{SkipSet, comparator::BasicComparator};
     ///
-    /// let map: SkipSet<i32> = SkipSet::with_comparator(BasicComparator);
+    /// let set: SkipSet<i32> = SkipSet::with_comparator(BasicComparator);
     /// ```
     pub fn with_comparator(comparator: C) -> Self {
         Self {
