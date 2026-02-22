@@ -181,7 +181,7 @@ impl<T> AtomicCell<T> {
     /// let ptr = a.as_ptr();
     /// ```
     #[inline]
-    pub fn as_ptr(&self) -> *mut T {
+    pub const fn as_ptr(&self) -> *mut T {
         self.value.get().cast::<T>()
     }
 }
