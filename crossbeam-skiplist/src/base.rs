@@ -453,24 +453,12 @@ struct HotData {
 }
 
 /// A lock-free skip list.
-// TODO(stjepang): Embed a custom `epoch::Collector` inside `SkipList<K, V>`. Instead of adding
-// garbage to the default global collector, we should add it to a local collector tied to the
-// particular skip list instance.
-//
-// Since global collector might destroy garbage arbitrarily late in the future, some skip list
-// methods have `K: 'static` and `V: 'static` bounds. But a local collector embedded in the skip
-// list would destroy all remaining garbage when the skip list is dropped, so in that case we'd be
-// able to remove those bounds on types `K` and `V`.
-//
-// As a further future optimization, if `!mem::needs_drop::<K>() && !mem::needs_drop::<V>()`
-// (neither key nor the value have destructors), there's no point in creating a new local
-// collector, so we should simply use the global one.
 pub struct SkipList<K, V, C = BasicComparator> {
     /// The head of the skip list (just a dummy node, not a real entry).
     head: Head<K, V>,
 
     /// The `Collector` associated with this skip list.
-    collector: Collector,
+    pub(crate) collector: Collector,
 
     /// Hot data associated with the skip list, stored in a dedicated cache line.
     hot_data: CachePadded<HotData>,
@@ -484,14 +472,29 @@ unsafe impl<K: Send + Sync, V: Send + Sync, C: Send + Sync> Sync for SkipList<K,
 
 impl<K, V> SkipList<K, V> {
     /// Returns a new, empty skip list.
-    pub fn new(collector: Collector) -> Self {
-        Self::with_comparator(collector, Default::default())
+    ///
+    /// # Safety
+    ///
+    /// If `mem::needs_drop::<K>` or/and `mem::needs_drop::<V>` is true,
+    /// `collector` must destroy garbage within the lifetime of `K` or/and `V`.
+    ///
+    /// The easiest way to ensure this is to request `K: 'static` and `V: 'static` bounds.
+    pub unsafe fn new(collector: Collector) -> Self {
+        // SAFETY: the caller must uphold the safety contract.
+        unsafe { Self::with_comparator(collector, Default::default()) }
     }
 }
 
 impl<K, V, C> SkipList<K, V, C> {
     /// Returns a new, empty skip list using the given comparator.
-    pub fn with_comparator(collector: Collector, comparator: C) -> Self {
+    ///
+    /// # Safety
+    ///
+    /// If `mem::needs_drop::<K>` or/and `mem::needs_drop::<V>` is true,
+    /// `collector` must destroy garbage within the lifetime of `K` or/and `V`.
+    ///
+    /// The easiest way to ensure this is to request `K: 'static` and `V: 'static` bounds.
+    pub unsafe fn with_comparator(collector: Collector, comparator: C) -> Self {
         Self {
             head: Head::new(),
             collector,
@@ -1237,8 +1240,8 @@ where
 impl<K, V, C> SkipList<K, V, C>
 where
     C: Comparator<K>,
-    K: Send + 'static,
-    V: Send + 'static,
+    K: Send,
+    V: Send,
 {
     /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
     ///
@@ -1521,8 +1524,8 @@ impl<'a: 'g, 'g, K: 'a, V: 'a, C> Entry<'a, 'g, K, V, C> {
 impl<K, V, C> Entry<'_, '_, K, V, C>
 where
     C: Comparator<K>,
-    K: Send + 'static,
-    V: Send + 'static,
+    K: Send,
+    V: Send,
 {
     /// Removes the entry from the skip list.
     ///
@@ -1685,8 +1688,8 @@ impl<'a, K: 'a, V: 'a, C: 'a> RefEntry<'a, K, V, C> {
 impl<K, V, C> RefEntry<'_, K, V, C>
 where
     C: Comparator<K>,
-    K: Send + 'static,
-    V: Send + 'static,
+    K: Send,
+    V: Send,
 {
     /// Removes the entry from the skip list.
     ///

@@ -7,12 +7,17 @@ use crossbeam_epoch as epoch;
 use crossbeam_skiplist::SkipList;
 use test::{Bencher, black_box};
 
+fn new<K: 'static, V: 'static>(collector: epoch::Collector) -> SkipList<K, V> {
+    // SAFETY: Both K and V have lifetime of 'static.
+    unsafe { SkipList::<K, V>::new(collector) }
+}
+
 #[bench]
 fn insert(b: &mut Bencher) {
     let guard = &epoch::pin();
 
     b.iter(|| {
-        let map = SkipList::new(epoch::default_collector().clone());
+        let map = new(epoch::default_collector().clone());
 
         let mut num = 0u64;
         for _ in 0..1_000 {
@@ -25,7 +30,7 @@ fn insert(b: &mut Bencher) {
 #[bench]
 fn iter(b: &mut Bencher) {
     let guard = &epoch::pin();
-    let map = SkipList::new(epoch::default_collector().clone());
+    let map = new(epoch::default_collector().clone());
 
     let mut num = 0u64;
     for _ in 0..1_000 {
@@ -43,7 +48,7 @@ fn iter(b: &mut Bencher) {
 #[bench]
 fn rev_iter(b: &mut Bencher) {
     let guard = &epoch::pin();
-    let map = SkipList::new(epoch::default_collector().clone());
+    let map = new(epoch::default_collector().clone());
 
     let mut num = 0u64;
     for _ in 0..1_000 {
@@ -61,7 +66,7 @@ fn rev_iter(b: &mut Bencher) {
 #[bench]
 fn lookup(b: &mut Bencher) {
     let guard = &epoch::pin();
-    let map = SkipList::new(epoch::default_collector().clone());
+    let map = new(epoch::default_collector().clone());
 
     let mut num = 0u64;
     for _ in 0..1_000 {
@@ -83,7 +88,7 @@ fn insert_remove(b: &mut Bencher) {
     let guard = &epoch::pin();
 
     b.iter(|| {
-        let map = SkipList::new(epoch::default_collector().clone());
+        let map = new(epoch::default_collector().clone());
 
         let mut num = 0u64;
         for _ in 0..1_000 {

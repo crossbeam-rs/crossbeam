@@ -8,6 +8,11 @@ use std::{
 use crossbeam_epoch as epoch;
 use crossbeam_skiplist::{SkipList, base};
 
+fn new<K: 'static, V: 'static>(collector: epoch::Collector) -> SkipList<K, V> {
+    // SAFETY: Both K and V have lifetime of 'static.
+    unsafe { SkipList::<K, V>::new(collector) }
+}
+
 fn ref_entry<'a, K, V>(e: impl Into<Option<base::RefEntry<'a, K, V>>>) -> Entry<'a, K, V> {
     Entry(e.into())
 }
@@ -26,15 +31,15 @@ impl<K, V> Drop for Entry<'_, K, V> {
 }
 
 #[test]
-fn new() {
-    SkipList::<i32, i32>::new(epoch::default_collector().clone());
-    SkipList::<String, Box<i32>>::new(epoch::default_collector().clone());
+fn new_() {
+    new::<i32, i32>(epoch::default_collector().clone());
+    new::<String, Box<i32>>(epoch::default_collector().clone());
 }
 
 #[test]
 fn is_empty() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     assert!(s.is_empty());
 
     s.insert(1, 10, guard).release(guard);
@@ -58,7 +63,7 @@ fn insert() {
     let guard = &epoch::pin();
     let insert = [0, 4, 2, 12, 8, 7, 11, 5];
     let not_present = [1, 3, 6, 9, 10];
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
 
     for &x in &insert {
         s.insert(x, x * 10, guard).release(guard);
@@ -78,7 +83,7 @@ fn remove() {
     let remove = [2, 12, 8];
     let remaining = [0, 4, 5, 7, 11];
 
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
 
     for &x in &insert {
         s.insert(x, x * 10, guard).release(guard);
@@ -109,7 +114,7 @@ fn remove() {
 #[test]
 fn entry() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
 
     assert!(s.front(guard).is_none());
     assert!(s.back(guard).is_none());
@@ -134,7 +139,7 @@ fn entry() {
 #[test]
 fn entry_remove() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
 
     for &x in &[4, 2, 12, 8, 7, 11, 5] {
         s.insert(x, x * 10, guard).release(guard);
@@ -161,7 +166,7 @@ fn entry_remove() {
 #[test]
 fn entry_reposition() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
 
     for &x in &[4, 2, 12, 8, 7, 11, 5] {
         s.insert(x, x * 10, guard).release(guard);
@@ -181,7 +186,7 @@ fn entry_reposition() {
 #[test]
 fn len() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     assert_eq!(s.len(), 0);
 
     for (i, &x) in [4, 2, 12, 8, 7, 11, 5].iter().enumerate() {
@@ -205,7 +210,7 @@ fn len() {
 #[test]
 fn insert_and_remove() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     let keys = || s.iter(guard).map(|e| *e.key()).collect::<Vec<_>>();
 
     s.insert(3, 0, guard).release(guard);
@@ -254,7 +259,7 @@ fn insert_and_remove() {
 #[test]
 fn get() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     s.insert(30, 3, guard).release(guard);
     s.insert(50, 5, guard).release(guard);
     s.insert(10, 1, guard).release(guard);
@@ -276,7 +281,7 @@ fn get() {
 #[test]
 fn lower_bound() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     s.insert(30, 3, guard).release(guard);
     s.insert(50, 5, guard).release(guard);
     s.insert(10, 1, guard).release(guard);
@@ -356,7 +361,7 @@ fn lower_bound() {
 #[test]
 fn upper_bound() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     s.insert(30, 3, guard).release(guard);
     s.insert(50, 5, guard).release(guard);
     s.insert(10, 1, guard).release(guard);
@@ -436,7 +441,7 @@ fn upper_bound() {
 #[test]
 fn get_or_insert() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     s.insert(3, 3, guard).release(guard);
     s.insert(5, 5, guard).release(guard);
     s.insert(1, 1, guard).release(guard);
@@ -455,7 +460,7 @@ fn get_or_insert() {
 #[test]
 fn get_or_insert_with() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     s.insert(3, 3, guard).release(guard);
     s.insert(5, 5, guard).release(guard);
     s.insert(1, 1, guard).release(guard);
@@ -475,7 +480,7 @@ fn get_or_insert_with() {
 fn get_or_insert_with_panic() {
     use std::panic;
 
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     let res = panic::catch_unwind(panic::AssertUnwindSafe(|| {
         let guard = &epoch::pin();
         s.get_or_insert_with(4, || panic!(), guard);
@@ -491,7 +496,7 @@ fn get_or_insert_with_panic() {
 fn get_or_insert_with_parallel_run() {
     use std::sync::{Arc, Mutex};
 
-    let s = Arc::new(SkipList::new(epoch::default_collector().clone()));
+    let s = Arc::new(new(epoch::default_collector().clone()));
     let s2 = s.clone();
     let called = Arc::new(Mutex::new(false));
     let called2 = called.clone();
@@ -525,7 +530,7 @@ fn get_or_insert_with_parallel_run() {
 #[test]
 fn get_next_prev() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     s.insert(3, 3, guard).release(guard);
     s.insert(5, 5, guard).release(guard);
     s.insert(1, 1, guard).release(guard);
@@ -559,7 +564,7 @@ fn get_next_prev() {
 #[test]
 fn front_and_back() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     assert!(s.front(guard).is_none());
     assert!(s.back(guard).is_none());
 
@@ -574,7 +579,7 @@ fn front_and_back() {
 #[test]
 fn iter() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     for &x in &[4, 2, 12, 8, 7, 11, 5] {
         s.insert(x, x * 10, guard).release(guard);
     }
@@ -600,7 +605,7 @@ fn iter() {
 fn iter_range() {
     use crate::Bound::*;
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     let v = (0..10).map(|x| x * 10).collect::<Vec<_>>();
     for &x in v.iter() {
         s.insert(x, x, guard).release(guard);
@@ -821,7 +826,7 @@ fn iter_range() {
 #[test]
 fn into_iter() {
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     for &x in &[4, 2, 12, 8, 7, 11, 5] {
         s.insert(x, x * 10, guard).release(guard);
     }
@@ -843,7 +848,7 @@ fn into_iter() {
 #[test]
 fn clear() {
     let guard = &mut epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     for &x in &[4, 2, 12, 8, 7, 11, 5] {
         s.insert(x, x * 10, guard).release(guard);
     }
@@ -882,7 +887,7 @@ fn drops() {
             }
         }
 
-        let s = SkipList::new(collector.clone());
+        let s = new(collector.clone());
         for &x in &[4, 2, 12, 8, 7, 11, 5] {
             s.insert(Key(x), Value, guard).release(guard);
         }
@@ -953,7 +958,7 @@ fn comparable_get() {
         }
     }
 
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
     let foo = Foo { a: 1, b: 2 };
 
     let g = &epoch::pin();
@@ -982,7 +987,7 @@ fn remove_race() {
     const KEY_RANGE: u32 = if cfg!(miri) { 100 } else { 100_000 };
 
     let guard = &epoch::pin();
-    let s = SkipList::new(epoch::default_collector().clone());
+    let s = new(epoch::default_collector().clone());
 
     for x in 0..KEY_RANGE {
         s.insert(x, (), guard).release(guard);
