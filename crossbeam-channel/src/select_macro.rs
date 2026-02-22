@@ -90,7 +90,7 @@ macro_rules! crossbeam_channel_internal {
     };
     // Print an error if there is a semicolon after the block.
     (@list
-        ($case:ident $args:tt $(-> $res:pat)* => $body:block; $($tail:tt)*)
+        ($case:ident $args:tt $(-> $res:pat)* => { $($body:tt)* }; $($tail:tt)*)
         ($($head:tt)*)
     ) => {
         compile_error!(
@@ -98,6 +98,16 @@ macro_rules! crossbeam_channel_internal {
         )
     };
     // The first case is separated by a comma.
+    (@list
+        ($case:ident ($($args:tt)*) $(-> $res:pat)* => { $($body:tt)* }, $($tail:tt)*)
+        ($($head:tt)*)
+    ) => {
+        $crate::crossbeam_channel_internal!(
+            @list
+            ($($tail)*)
+            ($($head)* $case ($($args)*) $(-> $res)* => { $($body)* },)
+        )
+    };
     (@list
         ($case:ident ($($args:tt)*) $(-> $res:pat)* => $body:expr, $($tail:tt)*)
         ($($head:tt)*)
@@ -110,13 +120,13 @@ macro_rules! crossbeam_channel_internal {
     };
     // Don't require a comma after the case if it has a proper block.
     (@list
-        ($case:ident ($($args:tt)*) $(-> $res:pat)* => $body:block $($tail:tt)*)
+        ($case:ident ($($args:tt)*) $(-> $res:pat)* => { $($body:tt)* } $($tail:tt)*)
         ($($head:tt)*)
     ) => {
         $crate::crossbeam_channel_internal!(
             @list
             ($($tail)*)
-            ($($head)* $case ($($args)*) $(-> $res)* => { $body },)
+            ($($head)* $case ($($args)*) $(-> $res)* => { $($body)* },)
         )
     };
     // Only one case remains.
