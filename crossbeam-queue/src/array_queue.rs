@@ -214,6 +214,47 @@ impl<T> ArrayQueue<T> {
         })
     }
 
+    /// Attempts to push an element using an exclusive reference of the queue.
+    ///
+    /// Atomic operations and checks are omitted
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::ArrayQueue;
+    ///
+    /// let mut q = ArrayQueue::new(1);
+    ///
+    /// assert_eq!(q.push_mut(10), Ok(()));
+    /// assert_eq!(q.push_mut(20), Err(20));
+    /// ```
+    pub fn push_mut(&mut self, value: T) -> Result<(), T> {
+        let tail = *self.tail.get_mut();
+        let head = *self.head.get_mut();
+
+        if head.wrapping_add(self.one_lap) == tail {
+            return Err(value);
+        }
+
+        let index = tail & (self.one_lap - 1);
+        let lap = tail & !(self.one_lap - 1);
+        let new_tail = if index + 1 < self.capacity() {
+            tail + 1
+        } else {
+            lap.wrapping_add(self.one_lap)
+        };
+
+        *self.tail.get_mut() = new_tail;
+
+        let slot = unsafe { self.buffer.get_unchecked_mut(index) };
+        unsafe {
+            slot.value.get().write(MaybeUninit::new(value));
+        }
+        *slot.stamp.get_mut() = tail + 1;
+
+        Ok(())
+    }
+
     /// Pushes an element into the queue, replacing the oldest element if necessary.
     ///
     /// If the queue is full, the oldest element is replaced and returned,
@@ -336,6 +377,53 @@ impl<T> ArrayQueue<T> {
                 head = self.head.load(Ordering::Relaxed);
             }
         }
+    }
+
+    /// Attempts to pop an element using an exclusive reference of the queue.
+    ///
+    /// Due to having an exclusive reference, atomic operations and checks are omitted
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::ArrayQueue;
+    ///
+    /// let mut q = ArrayQueue::new(1);
+    /// assert_eq!(q.push(10), Ok(()));
+    ///
+    /// assert_eq!(q.pop_mut(), Some(10));
+    /// assert!(q.pop_mut().is_none());
+    /// ```
+    pub fn pop_mut(&mut self) -> Option<T> {
+        let head = *self.head.get_mut();
+        let tail = *self.tail.get_mut();
+
+        // If the tail equals the head, that means the channel is empty.
+        if tail == head {
+            return None;
+        }
+        let index = head & (self.one_lap - 1);
+        let lap = head & !(self.one_lap - 1);
+
+        // Inspect the corresponding slot.
+        debug_assert!(index < self.buffer.len());
+
+        let new = if index + 1 < self.capacity() {
+            // Same lap, incremented index.
+            // Set to `{ lap: lap, index: index + 1 }`.
+            head + 1
+        } else {
+            // One lap forward, index wraps around to zero.
+            // Set to `{ lap: lap.wrapping_add(1), index: 0 }`.
+            lap.wrapping_add(self.one_lap)
+        };
+
+        let slot = unsafe { self.buffer.get_unchecked_mut(index) };
+
+        let msg = unsafe { slot.value.get().read().assume_init() };
+        *slot.stamp.get_mut() = head.wrapping_add(self.one_lap);
+        *self.head.get_mut() = new;
+        Some(msg)
     }
 
     /// Returns the capacity of the queue.
