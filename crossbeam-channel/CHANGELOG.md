@@ -1,3 +1,11 @@
+# Version 0.5.16
+
+- Bump the minimum supported Rust version to 1.74.
+- Improve support for rust-analyzer auto-completion of code inside `select!`/`select_biased!` macro. (#1240)
+- Fix panic in `SelectedOperation::{send,recv}` when cloned sender/receiver passed. (#1235)
+- Make some operations in `tick` lock-free on some platforms. (#1222)
+- Update `crossbeam-utils` to 0.9.
+
 # Version 0.5.15
 
 - Fix regression introduced in 0.5.12 that can lead to a double free when dropping unbounded channel. (#1187)

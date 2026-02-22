@@ -87,7 +87,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam = "0.8"
+crossbeam = "0.9"
 ```
 
 ## Compatibility
