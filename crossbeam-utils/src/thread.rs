@@ -354,7 +354,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     /// ```
     ///
     /// [naming-threads]: std::thread#naming-threads
-    pub fn name(mut self, name: String) -> ScopedThreadBuilder<'scope, 'env> {
+    pub fn name(mut self, name: String) -> Self {
         self.builder = self.builder.name(name);
         self
     }
@@ -379,7 +379,7 @@ impl<'scope, 'env> ScopedThreadBuilder<'scope, 'env> {
     /// ```
     ///
     /// [stack-size]: std::thread#stack-size
-    pub fn stack_size(mut self, size: usize) -> ScopedThreadBuilder<'scope, 'env> {
+    pub fn stack_size(mut self, size: usize) -> Self {
         self.builder = self.builder.stack_size(size);
         self
     }

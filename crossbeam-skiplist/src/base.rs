@@ -1450,7 +1450,7 @@ impl<K, V, C> IntoIterator for SkipList<K, V, C> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
 
-    fn into_iter(self) -> IntoIter<K, V> {
+    fn into_iter(self) -> Self::IntoIter {
         unsafe {
             // Load the front node.
             //
@@ -1567,7 +1567,7 @@ where
     }
 }
 
-impl<'a: 'g, 'g, K, V, C> Entry<'a, 'g, K, V, C>
+impl<K, V, C> Entry<'_, '_, K, V, C>
 where
     C: Comparator<K>,
 {
@@ -1583,7 +1583,7 @@ where
     }
 
     /// Returns the next entry in the skip list.
-    pub fn next(&self) -> Option<Entry<'a, 'g, K, V, C>> {
+    pub fn next(&self) -> Option<Self> {
         let n = self.parent.next_node(
             self.node.as_tower(),
             Bound::Excluded(&self.node.key),
@@ -1608,7 +1608,7 @@ where
     }
 
     /// Returns the previous entry in the skip list.
-    pub fn prev(&self) -> Option<Entry<'a, 'g, K, V, C>> {
+    pub fn prev(&self) -> Option<Self> {
         let n = self
             .parent
             .search_bound(Bound::Excluded(&self.node.key), true, self.guard)?;
@@ -1667,10 +1667,7 @@ impl<'a, K: 'a, V: 'a, C: 'a> RefEntry<'a, K, V, C> {
 
     /// Tries to create a new `RefEntry` by incrementing the reference count of
     /// a node.
-    unsafe fn try_acquire(
-        parent: &'a SkipList<K, V, C>,
-        node: NodeRef<'_, K, V>,
-    ) -> Option<RefEntry<'a, K, V, C>> {
+    unsafe fn try_acquire(parent: &'a SkipList<K, V, C>, node: NodeRef<'_, K, V>) -> Option<Self> {
         if unsafe { node.try_increment() } {
             Some(RefEntry {
                 parent,
@@ -1739,7 +1736,7 @@ where
     }
 }
 
-impl<'a, K, V, C> RefEntry<'a, K, V, C>
+impl<K, V, C> RefEntry<'_, K, V, C>
 where
     C: Comparator<K>,
 {
@@ -1755,7 +1752,7 @@ where
     }
 
     /// Returns the next entry in the skip list.
-    pub fn next(&self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
+    pub fn next(&self, guard: &Guard) -> Option<Self> {
         self.parent.check_guard(guard);
         unsafe {
             let mut n = self.node;
@@ -1782,7 +1779,7 @@ where
     }
 
     /// Returns the previous entry in the skip list.
-    pub fn prev(&self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
+    pub fn prev(&self, guard: &Guard) -> Option<Self> {
         self.parent.check_guard(guard);
         unsafe {
             let mut n = self.node;
@@ -1812,7 +1809,7 @@ where
 {
     type Item = Entry<'a, 'g, K, V, C>;
 
-    fn next(&mut self) -> Option<Entry<'a, 'g, K, V, C>> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.head = match self.head {
             Some(n) => self
                 .parent
@@ -1840,7 +1837,7 @@ impl<'a: 'g, 'g, K: 'a, V: 'a, C> DoubleEndedIterator for Iter<'a, 'g, K, V, C>
 where
     C: Comparator<K>,
 {
-    fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V, C>> {
+    fn next_back(&mut self) -> Option<Self::Item> {
         self.tail = match self.tail {
             Some(n) => self
                 .parent
@@ -2001,7 +1998,7 @@ where
 {
     type Item = Entry<'a, 'g, K, V, C>;
 
-    fn next(&mut self) -> Option<Entry<'a, 'g, K, V, C>> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.head = match self.head {
             Some(n) => self
                 .parent
@@ -2042,7 +2039,7 @@ where
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
-    fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V, C>> {
+    fn next_back(&mut self) -> Option<Self::Item> {
         self.tail = match self.tail {
             Some(n) => self
                 .parent
@@ -2288,7 +2285,7 @@ impl<K, V> Drop for IntoIter<K, V> {
 impl<K, V> Iterator for IntoIter<K, V> {
     type Item = (K, V);
 
-    fn next(&mut self) -> Option<(K, V)> {
+    fn next(&mut self) -> Option<Self::Item> {
         loop {
             // Have we reached the end of the skip list?
             if self.node.is_null() {

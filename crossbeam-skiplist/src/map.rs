@@ -558,7 +558,7 @@ impl<K, V, C> IntoIterator for SkipMap<K, V, C> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
 
-    fn into_iter(self) -> IntoIter<K, V> {
+    fn into_iter(self) -> Self::IntoIter {
         IntoIter {
             inner: self.inner.into_iter(),
         }
@@ -572,7 +572,7 @@ where
     type Item = Entry<'a, K, V, C>;
     type IntoIter = Iter<'a, K, V, C>;
 
-    fn into_iter(self) -> Iter<'a, K, V, C> {
+    fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
 }
@@ -629,7 +629,7 @@ impl<K, V, C> Drop for Entry<'_, K, V, C> {
     }
 }
 
-impl<'a, K, V, C> Entry<'a, K, V, C>
+impl<K, V, C> Entry<'_, K, V, C>
 where
     C: Comparator<K>,
 {
@@ -646,13 +646,13 @@ where
     }
 
     /// Returns the next entry in the map.
-    pub fn next(&self) -> Option<Entry<'a, K, V, C>> {
+    pub fn next(&self) -> Option<Self> {
         let guard = &epoch::pin();
         self.inner.next(guard).map(Entry::new)
     }
 
     /// Returns the previous entry in the map.
-    pub fn prev(&self) -> Option<Entry<'a, K, V, C>> {
+    pub fn prev(&self) -> Option<Self> {
         let guard = &epoch::pin();
         self.inner.prev(guard).map(Entry::new)
     }
@@ -702,7 +702,7 @@ pub struct IntoIter<K, V> {
 impl<K, V> Iterator for IntoIter<K, V> {
     type Item = (K, V);
 
-    fn next(&mut self) -> Option<(K, V)> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
     }
 }

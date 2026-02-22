@@ -109,7 +109,7 @@ impl<'a, T> IntoIterator for &'a Receiver<T> {
     type Item = T;
     type IntoIter = Iter<'a, T>;
 
-    fn into_iter(self) -> Iter<'a, T> {
+    fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
 }
@@ -118,7 +118,7 @@ impl<T> IntoIterator for Receiver<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
-    fn into_iter(self) -> IntoIter<T> {
+    fn into_iter(self) -> Self::IntoIter {
         IntoIter { inner: self }
     }
 }
@@ -130,7 +130,7 @@ struct TryIter<'a, T> {
 impl<T> Iterator for TryIter<'_, T> {
     type Item = T;
 
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.inner.try_recv().ok()
     }
 }
@@ -142,7 +142,7 @@ struct Iter<'a, T> {
 impl<T> Iterator for Iter<'_, T> {
     type Item = T;
 
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.inner.recv().ok()
     }
 }
@@ -154,7 +154,7 @@ struct IntoIter<T> {
 impl<T> Iterator for IntoIter<T> {
     type Item = T;
 
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.inner.recv().ok()
     }
 }
