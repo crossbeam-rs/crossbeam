@@ -216,7 +216,7 @@ impl<T> ArrayQueue<T> {
 
     /// Attempts to push an element using an exclusive reference of the queue.
     ///
-    /// Atomic operaitons and checks are omitted
+    /// Atomic operations and checks are omitted
     ///
     /// # Examples
     ///
@@ -379,9 +379,9 @@ impl<T> ArrayQueue<T> {
         }
     }
 
-    /// Attempts to pop an element using a exclusive reference of the queue.
+    /// Attempts to pop an element using an exclusive reference of the queue.
     ///
-    /// Due to having an exclusive reference, atomic operaitons and checks are omitted
+    /// Due to having an exclusive reference, atomic operations and checks are omitted
     ///
     /// # Examples
     ///
