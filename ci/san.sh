@@ -34,6 +34,5 @@ RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=memory" \
 # TODO: Use x86_64-unknown-linux-gnutsan once https://github.com/rust-lang/rust/pull/152757 merged
 # Run thread sanitizer
 cargo clean
-TSAN_OPTIONS="${TSAN_OPTIONS:-} suppressions=$(pwd)/ci/tsan" \
 RUSTFLAGS="${RUSTFLAGS:-} -Z sanitizer=thread" \
   cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnu --tests --exclude benchmarks -- --test-threads=1

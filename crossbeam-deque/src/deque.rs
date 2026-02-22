@@ -9,10 +9,11 @@ use core::{
     sync::atomic::{self, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
 };
 
+use atomic_maybe_uninit::PerByteAtomicMaybeUninit;
 use crossbeam_epoch::{self as epoch, Atomic, Owned};
 use crossbeam_utils::{Backoff, CachePadded};
 
-use crate::alloc_helper::Global;
+use crate::{alloc_helper::Global, atomic_memcpy};
 
 // Minimum buffer capacity.
 const MIN_CAP: usize = 64;
@@ -43,7 +44,7 @@ impl<T> Buffer<T> {
 
         let ptr = Box::into_raw(
             (0..cap)
-                .map(|_| MaybeUninit::<T>::uninit())
+                .map(|_| PerByteAtomicMaybeUninit::new(MaybeUninit::<T>::uninit()))
                 .collect::<Box<[_]>>(),
         )
         .cast::<T>();
@@ -70,23 +71,13 @@ impl<T> Buffer<T> {
     }
 
     /// Writes `task` into the specified `index`.
-    ///
-    /// This method might be concurrently called with another `read` at the same index, which is
-    /// technically speaking a data race and therefore UB. We should use an atomic store here, but
-    /// that would be more expensive and difficult to implement generically for all types `T`.
-    /// Hence, as a hack, we use a volatile write instead.
     unsafe fn write(&self, index: isize, task: MaybeUninit<T>) {
-        unsafe { ptr::write_volatile(self.at(index).cast::<MaybeUninit<T>>(), task) }
+        unsafe { atomic_memcpy::store(self.at(index), task) }
     }
 
     /// Reads a task from the specified `index`.
-    ///
-    /// This method might be concurrently called with another `write` at the same index, which is
-    /// technically speaking a data race and therefore UB. We should use an atomic load here, but
-    /// that would be more expensive and difficult to implement generically for all types `T`.
-    /// Hence, as a hack, we use a volatile load instead.
     unsafe fn read(&self, index: isize) -> MaybeUninit<T> {
-        unsafe { ptr::read_volatile(self.at(index).cast::<MaybeUninit<T>>()) }
+        unsafe { atomic_memcpy::load(self.at(index)) }
     }
 }
 

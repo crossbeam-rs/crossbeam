@@ -35,6 +35,7 @@ std = ["crossbeam-epoch/std", "crossbeam-utils/std"]
 [dependencies]
 crossbeam-epoch = { version = "0.9.17", path = "../crossbeam-epoch", default-features = false }
 crossbeam-utils = { version = "0.8.18", path = "../crossbeam-utils", default-features = false }
+atomic-maybe-uninit = { version = "0.3.15", git = "https://github.com/taiki-e/atomic-maybe-uninit", branch = "memcpy" }
 
 [dev-dependencies]
 fastrand = "2"

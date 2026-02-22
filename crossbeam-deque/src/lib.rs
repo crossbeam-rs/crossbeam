@@ -102,6 +102,8 @@ extern crate std;
 
 #[cfg(feature = "std")]
 mod alloc_helper;
+#[cfg(feature = "std")]
+mod atomic_memcpy;
 
 #[cfg(feature = "std")]
 mod deque;

@@ -36,7 +36,7 @@ std = []
 atomic = ["atomic-maybe-uninit"]
 
 [dependencies]
-atomic-maybe-uninit = { version = "0.3.4", optional = true }
+atomic-maybe-uninit = { version = "0.3.15", optional = true, git = "https://github.com/taiki-e/atomic-maybe-uninit", branch = "memcpy" }
 
 # Enable the use of loom for concurrency testing.
 #

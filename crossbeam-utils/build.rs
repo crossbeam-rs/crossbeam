@@ -18,7 +18,7 @@ include!("build-common.rs");
 fn main() {
     println!("cargo:rerun-if-changed=no_atomic.rs");
     println!(
-        "cargo:rustc-check-cfg=cfg(crossbeam_no_atomic,crossbeam_sanitize_thread,crossbeam_atomic_cell_force_fallback)"
+        "cargo:rustc-check-cfg=cfg(crossbeam_no_atomic,crossbeam_sanitize_thread,crossbeam_sanitize_any,crossbeam_atomic_cell_force_fallback)"
     );
 
     let target = match env::var("TARGET") {
@@ -41,10 +41,12 @@ fn main() {
     }
 
     // `cfg(sanitize = "..")` is not stabilized.
-    if let Ok(sanitize) = env::var("CARGO_CFG_SANITIZE") {
+    let sanitize = env::var("CARGO_CFG_SANITIZE").unwrap_or_default();
+    if !sanitize.is_empty() {
+        println!("cargo:rustc-cfg=crossbeam_sanitize_any");
+        println!("cargo:rustc-cfg=crossbeam_atomic_cell_force_fallback");
         if sanitize.contains("thread") {
             println!("cargo:rustc-cfg=crossbeam_sanitize_thread");
         }
-        println!("cargo:rustc-cfg=crossbeam_atomic_cell_force_fallback");
     }
 }
