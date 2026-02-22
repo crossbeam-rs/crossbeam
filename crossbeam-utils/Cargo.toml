@@ -4,7 +4,7 @@ name = "crossbeam-utils"
 # - Update CHANGELOG.md
 # - Update README.md (when increasing major or minor version)
 # - Run './tools/publish.sh crossbeam-utils <version>'
-version = "0.8.21"
+version = "0.9.0"
 edition = "2021"
 # NB: Sync with msrv badge and "Compatibility" section in README.md
 rust-version = "1.56"

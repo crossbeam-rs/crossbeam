@@ -1,3 +1,14 @@
+# Version 0.5.16
+
+- Bump the minimum supported Rust version to 1.74.
+- Fix panic in `SelectedOperation::{send,recv}` when cloned sender/receiver passed. (#1235)
+- Make some operations in `tick` lock-free on some platforms. (#1222)
+- Update `crossbeam-utils` to 0.9.
+
+TODO:
+- consider (non-breaking) https://github.com/crossbeam-rs/crossbeam/pull/1135
+- consider (non-breaking) https://github.com/crossbeam-rs/crossbeam/pull/1121
+
 # Version 0.5.15
 
 - Fix regression introduced in 0.5.12 that can lead to a double free when dropping unbounded channel. (#1187)

@@ -4,7 +4,7 @@ name = "crossbeam"
 # - Update CHANGELOG.md
 # - Update README.md (when increasing major or minor version)
 # - Run './tools/publish.sh crossbeam <version>'
-version = "0.8.4"
+version = "0.9.0"
 edition = "2021"
 # NB: Sync with msrv badge and "Compatibility" section in README.md
 rust-version = "1.74"
@@ -49,11 +49,11 @@ std = [
 alloc = ["crossbeam-epoch/alloc", "crossbeam-queue/alloc"]
 
 [dependencies]
-crossbeam-channel = { version = "0.5.10", path = "crossbeam-channel", default-features = false, optional = true }
-crossbeam-deque = { version = "0.8.4", path = "crossbeam-deque", default-features = false, optional = true }
-crossbeam-epoch = { version = "0.9.17", path = "crossbeam-epoch", default-features = false, optional = true }
-crossbeam-queue = { version = "0.3.10", path = "crossbeam-queue", default-features = false, optional = true }
-crossbeam-utils = { version = "0.8.18", path = "crossbeam-utils", default-features = false, features = ["atomic"] }
+crossbeam-channel = { version = "0.5.16", path = "crossbeam-channel", default-features = false, optional = true }
+crossbeam-deque = { version = "0.8.7", path = "crossbeam-deque", default-features = false, optional = true }
+crossbeam-epoch = { version = "0.10.0", path = "crossbeam-epoch", default-features = false, optional = true }
+crossbeam-queue = { version = "0.4.0", path = "crossbeam-queue", default-features = false, optional = true }
+crossbeam-utils = { version = "0.9.0", path = "crossbeam-utils", default-features = false, features = ["atomic"] }
 
 [dev-dependencies]
 
