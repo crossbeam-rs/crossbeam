@@ -212,9 +212,9 @@ mod tests {
         .unwrap();
     }
 
+    #[test]
     // TODO: assertions failed due to `cfg(crossbeam_sanitize)` reduce `internal::MAX_OBJECTS`: https://github.com/crossbeam-rs/crossbeam/issues/662
     #[cfg_attr(crossbeam_sanitize, ignore)]
-    #[test]
     fn incremental() {
         const COUNT: usize = if cfg!(miri) { 500 } else { 100_000 };
         static DESTROYS: AtomicUsize = AtomicUsize::new(0);

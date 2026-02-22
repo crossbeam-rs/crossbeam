@@ -231,6 +231,7 @@ fn default_when_disconnected() {
 
 #[test]
 #[cfg_attr(miri, ignore)] // this test makes timing assumptions, but Miri is so slow it violates them
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn default_only() {
     let start = Instant::now();
 

@@ -369,7 +369,9 @@ mod waker;
 #[doc(hidden)]
 #[cfg(feature = "std")]
 pub mod internal {
-    pub use crate::select::{SelectHandle, select, select_timeout, try_select};
+    pub use crate::select::{
+        SelectHandle, receiver_addr, select, select_timeout, sender_addr, try_select,
+    };
 }
 
 #[cfg(feature = "std")]

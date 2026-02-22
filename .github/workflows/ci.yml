@@ -48,7 +48,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS is tested on Cirrus CI due to GitHub-hosted macOS runners are slow.
         include:
           - rust: '1.74'
             os: ubuntu-latest
@@ -66,6 +65,8 @@ jobs:
             os: ubuntu-latest
           - rust: nightly
             os: ubuntu-24.04-arm
+          - rust: nightly
+            os: macos-latest
           - rust: nightly
             os: windows-latest
           - rust: nightly
@@ -100,6 +101,10 @@ jobs:
         with:
           target: ${{ matrix.target }}
         if: matrix.target != ''
+      - run: |
+          echo "RUSTFLAGS=${RUSTFLAGS} --cfg gha_macos_runner" >>"${GITHUB_ENV}"
+          echo "RUSTDOCFLAGS=${RUSTDOCFLAGS} --cfg gha_macos_runner" >>"${GITHUB_ENV}"
+        if: startsWith(matrix.os, 'macos')
       - name: Test
         run: ci/test.sh
 

@@ -688,7 +688,7 @@ macro_rules! crossbeam_channel_internal {
         let _handle: &dyn $crate::internal::SelectHandle = &$crate::never::<()>();
 
         #[allow(unused_mut, clippy::zero_repeat_side_effects)]
-        let mut _sel = [(_handle, 0, ::std::ptr::null()); _LEN];
+        let mut _sel = [(_handle, 0, 0); _LEN];
 
         $crate::crossbeam_channel_internal!(
             @add
@@ -852,7 +852,7 @@ macro_rules! crossbeam_channel_internal {
                     }
                     unbind(_r)
                 };
-                $sel[$i] = ($var, $i, $var as *const $crate::Receiver<_> as *const u8);
+                $sel[$i] = ($var, $i, $crate::internal::receiver_addr($var));
 
                 $crate::crossbeam_channel_internal!(
                     @add
@@ -884,7 +884,7 @@ macro_rules! crossbeam_channel_internal {
                     }
                     unbind(_s)
                 };
-                $sel[$i] = ($var, $i, $var as *const $crate::Sender<_> as *const u8);
+                $sel[$i] = ($var, $i, $crate::internal::sender_addr($var));
 
                 $crate::crossbeam_channel_internal!(
                     @add

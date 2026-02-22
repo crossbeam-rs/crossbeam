@@ -158,6 +158,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// When the message gets sent:
 ///
 /// ```
+/// # if cfg!(gha_macos_runner) { return; } // GitHub-hosted macOS runner is slow
 /// use std::thread;
 /// use std::time::{Duration, Instant};
 /// use crossbeam_channel::after;
@@ -303,6 +304,7 @@ pub fn never<T>() -> Receiver<T> {
 /// When messages get sent:
 ///
 /// ```
+/// # if cfg!(gha_macos_runner) { return; } // GitHub-hosted macOS runner is slow
 /// use std::thread;
 /// use std::time::{Duration, Instant};
 /// use crossbeam_channel::tick;
@@ -657,6 +659,14 @@ impl<T> Sender<T> {
             (SenderFlavor::List(ref a), SenderFlavor::List(ref b)) => a == b,
             (SenderFlavor::Zero(ref a), SenderFlavor::Zero(ref b)) => a == b,
             _ => false,
+        }
+    }
+
+    pub(crate) fn addr(&self) -> usize {
+        match &self.flavor {
+            SenderFlavor::Array(a) => a.addr(),
+            SenderFlavor::List(a) => a.addr(),
+            SenderFlavor::Zero(a) => a.addr(),
         }
     }
 }
@@ -1154,6 +1164,17 @@ impl<T> Receiver<T> {
             (ReceiverFlavor::Tick(a), ReceiverFlavor::Tick(b)) => Arc::ptr_eq(a, b),
             (ReceiverFlavor::Never(_), ReceiverFlavor::Never(_)) => true,
             _ => false,
+        }
+    }
+
+    pub(crate) fn addr(&self) -> usize {
+        match &self.flavor {
+            ReceiverFlavor::Array(chan) => chan.addr(),
+            ReceiverFlavor::List(chan) => chan.addr(),
+            ReceiverFlavor::Zero(chan) => chan.addr(),
+            ReceiverFlavor::At(chan) => Arc::as_ptr(chan) as usize,
+            ReceiverFlavor::Tick(chan) => Arc::as_ptr(chan) as usize,
+            ReceiverFlavor::Never(_chan) => 0,
         }
     }
 }

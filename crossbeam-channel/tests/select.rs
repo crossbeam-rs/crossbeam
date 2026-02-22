@@ -315,6 +315,7 @@ fn default_when_disconnected() {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn default_only() {
     let start = Instant::now();
 
@@ -1300,6 +1301,64 @@ fn reuse() {
             }
             s3.send(()).unwrap();
         }
+    })
+    .unwrap();
+}
+
+// https://github.com/crossbeam-rs/crossbeam/issues/1096
+#[test]
+fn issue_1096() {
+    // unbounded recv
+    let (tx, rx) = unbounded::<u32>();
+    tx.send(123).unwrap();
+    let mut select = Select::new();
+    select.recv(&rx);
+    let operation = select.select();
+    assert_eq!(operation.recv(&rx.clone()).unwrap(), 123);
+
+    // unbounded send
+    let (tx, rx) = unbounded::<u32>();
+    let mut select = Select::new();
+    select.send(&tx);
+    let operation = select.select();
+    operation.send(&tx.clone(), 124).unwrap();
+    assert_eq!(rx.recv().unwrap(), 124);
+
+    // bounded(2) recv
+    let (tx, rx) = bounded::<u32>(2);
+    tx.send(123).unwrap();
+    let mut select = Select::new();
+    select.recv(&rx);
+    let operation = select.select();
+    assert_eq!(operation.recv(&rx.clone()).unwrap(), 123);
+
+    // bounded(2) send
+    let (tx, rx) = bounded::<u32>(2);
+    let mut select = Select::new();
+    select.send(&tx);
+    let operation = select.select();
+    operation.send(&tx.clone(), 124).unwrap();
+    assert_eq!(rx.recv().unwrap(), 124);
+
+    // zero recv
+    let (tx, rx) = bounded::<u32>(0);
+    scope(|scope| {
+        scope.spawn(|_| tx.send(123).unwrap());
+        let mut select = Select::new();
+        select.recv(&rx);
+        let operation = select.select();
+        assert_eq!(operation.recv(&rx.clone()).unwrap(), 123);
+    })
+    .unwrap();
+
+    // zero send
+    let (tx, rx) = bounded::<u32>(0);
+    scope(|scope| {
+        scope.spawn(|_| assert_eq!(rx.recv().unwrap(), 124));
+        let mut select = Select::new();
+        select.send(&tx);
+        let operation = select.select();
+        operation.send(&tx.clone(), 124).unwrap();
     })
     .unwrap();
 }
