@@ -9,7 +9,10 @@ use core::{
     ptr,
 };
 
-use super::seq_lock::SeqLock;
+use super::{
+    atomic_memcpy::{self, store as write},
+    seq_lock::SeqLock,
+};
 use crate::{
     CachePadded,
     primitive::sync::atomic::{self, Ordering},
@@ -407,10 +410,10 @@ macro_rules! impl_arithmetic {
                         }
                     },
                     {
-                        let _guard = lock(self.as_ptr() as usize).write();
-                        let value = unsafe { &mut *(self.as_ptr()) };
-                        let old = *value;
-                        *value = value.wrapping_add(val);
+                        let dst = self.as_ptr();
+                        let _guard = lock(dst as usize).write();
+                        let old = unsafe { ptr::read(dst) };
+                        unsafe { write(dst, MaybeUninit::new(old.wrapping_add(val))) }
                         old
                     }
                 }
@@ -446,10 +449,10 @@ macro_rules! impl_arithmetic {
                         }
                     },
                     {
-                        let _guard = lock(self.as_ptr() as usize).write();
-                        let value = unsafe { &mut *(self.as_ptr()) };
-                        let old = *value;
-                        *value = value.wrapping_sub(val);
+                        let dst = self.as_ptr();
+                        let _guard = lock(dst as usize).write();
+                        let old = unsafe { ptr::read(dst) };
+                        unsafe { write(dst, MaybeUninit::new(old.wrapping_sub(val))) }
                         old
                     }
                 }
@@ -483,10 +486,10 @@ macro_rules! impl_arithmetic {
                         }
                     },
                     {
-                        let _guard = lock(self.as_ptr() as usize).write();
-                        let value = unsafe { &mut *(self.as_ptr()) };
-                        let old = *value;
-                        *value &= val;
+                        let dst = self.as_ptr();
+                        let _guard = lock(dst as usize).write();
+                        let old = unsafe { ptr::read(dst) };
+                        unsafe { write(dst, MaybeUninit::new(old & val)) }
                         old
                     }
                 }
@@ -520,10 +523,10 @@ macro_rules! impl_arithmetic {
                         }
                     },
                     {
-                        let _guard = lock(self.as_ptr() as usize).write();
-                        let value = unsafe { &mut *(self.as_ptr()) };
-                        let old = *value;
-                        *value = !(old & val);
+                        let dst = self.as_ptr();
+                        let _guard = lock(dst as usize).write();
+                        let old = unsafe { ptr::read(dst) };
+                        unsafe { write(dst, MaybeUninit::new(!(old & val))) }
                         old
                     }
                 }
@@ -557,10 +560,10 @@ macro_rules! impl_arithmetic {
                         }
                     },
                     {
-                        let _guard = lock(self.as_ptr() as usize).write();
-                        let value = unsafe { &mut *(self.as_ptr()) };
-                        let old = *value;
-                        *value |= val;
+                        let dst = self.as_ptr();
+                        let _guard = lock(dst as usize).write();
+                        let old = unsafe { ptr::read(dst) };
+                        unsafe { write(dst, MaybeUninit::new(old | val)) }
                         old
                     }
                 }
@@ -594,10 +597,10 @@ macro_rules! impl_arithmetic {
                         }
                     },
                     {
-                        let _guard = lock(self.as_ptr() as usize).write();
-                        let value = unsafe { &mut *(self.as_ptr()) };
-                        let old = *value;
-                        *value ^= val;
+                        let dst = self.as_ptr();
+                        let _guard = lock(dst as usize).write();
+                        let old = unsafe { ptr::read(dst) };
+                        unsafe { write(dst, MaybeUninit::new(old ^ val)) }
                         old
                     }
                 }
@@ -632,10 +635,10 @@ macro_rules! impl_arithmetic {
                         }
                     },
                     {
-                        let _guard = lock(self.as_ptr() as usize).write();
-                        let value = unsafe { &mut *(self.as_ptr()) };
-                        let old = *value;
-                        *value = cmp::max(old, val);
+                        let dst = self.as_ptr();
+                        let _guard = lock(dst as usize).write();
+                        let old = unsafe { ptr::read(dst) };
+                        unsafe { write(dst, MaybeUninit::new(cmp::max(old, val))) }
                         old
                     }
                 }
@@ -670,10 +673,10 @@ macro_rules! impl_arithmetic {
                         }
                     },
                     {
-                        let _guard = lock(self.as_ptr() as usize).write();
-                        let value = unsafe { &mut *(self.as_ptr()) };
-                        let old = *value;
-                        *value = cmp::min(old, val);
+                        let dst = self.as_ptr();
+                        let _guard = lock(dst as usize).write();
+                        let old = unsafe { ptr::read(dst) };
+                        unsafe { write(dst, MaybeUninit::new(cmp::min(old, val))) }
                         old
                     }
                 }
@@ -792,10 +795,10 @@ impl AtomicCell<bool> {
                 }
             },
             {
-                let _guard = lock(self.as_ptr() as usize).write();
-                let value = unsafe { &mut *(self.as_ptr()) };
-                let old = *value;
-                *value &= val;
+                let dst = self.as_ptr();
+                let _guard = lock(dst as usize).write();
+                let old = unsafe { ptr::read(dst) };
+                unsafe { write(dst, MaybeUninit::new(old & val)) }
                 old
             }
         }
@@ -835,10 +838,10 @@ impl AtomicCell<bool> {
                 }
             },
             {
-                let _guard = lock(self.as_ptr() as usize).write();
-                let value = unsafe { &mut *(self.as_ptr()) };
-                let old = *value;
-                *value = !(old & val);
+                let dst = self.as_ptr();
+                let _guard = lock(dst as usize).write();
+                let old = unsafe { ptr::read(dst) };
+                unsafe { write(dst, MaybeUninit::new(!(old & val))) }
                 old
             }
         }
@@ -875,10 +878,10 @@ impl AtomicCell<bool> {
                 }
             },
             {
-                let _guard = lock(self.as_ptr() as usize).write();
-                let value = unsafe { &mut *(self.as_ptr()) };
-                let old = *value;
-                *value |= val;
+                let dst = self.as_ptr();
+                let _guard = lock(dst as usize).write();
+                let old = unsafe { ptr::read(dst) };
+                unsafe { write(dst, MaybeUninit::new(old | val)) }
                 old
             }
         }
@@ -915,10 +918,10 @@ impl AtomicCell<bool> {
                 }
             },
             {
-                let _guard = lock(self.as_ptr() as usize).write();
-                let value = unsafe { &mut *(self.as_ptr()) };
-                let old = *value;
-                *value ^= val;
+                let dst = self.as_ptr();
+                let _guard = lock(dst as usize).write();
+                let old = unsafe { ptr::read(dst) };
+                unsafe { write(dst, MaybeUninit::new(old ^ val)) }
                 old
             }
         }
@@ -1045,13 +1048,7 @@ where
 
             // Try doing an optimistic read first.
             if let Some(stamp) = lock.optimistic_read() {
-                // We need a volatile read here because other threads might concurrently modify the
-                // value. In theory, data races are *always* UB, even if we use volatile reads and
-                // discard the data when a data race is detected. The proper solution would be to
-                // do atomic reads and atomic writes, but we can't atomically read and write all
-                // kinds of data since `AtomicU8` is not available on stable Rust yet.
-                // Load as `MaybeUninit` because we may load a value that is not valid as `T`.
-                let val = unsafe { ptr::read_volatile(src.cast::<MaybeUninit<T>>()) };
+                let val = unsafe { atomic_memcpy::load(src) };
 
                 if lock.validate_read(stamp) {
                     return unsafe { val.assume_init() };
@@ -1082,7 +1079,7 @@ unsafe fn atomic_store<T>(dst: *mut T, val: T) {
         },
         {
             let _guard = lock(dst as usize).write();
-            unsafe { ptr::write(dst, val) }
+            unsafe { write(dst, MaybeUninit::new(val)) }
         }
     }
 }
@@ -1102,7 +1099,9 @@ unsafe fn atomic_swap<T>(dst: *mut T, val: T) -> T {
         },
         {
             let _guard = lock(dst as usize).write();
-            unsafe { ptr::replace(dst, val) }
+            let old = unsafe { ptr::read(dst.cast::<MaybeUninit<T>>()) };
+            unsafe { write(dst, MaybeUninit::new(val)) }
+            unsafe { old.assume_init() }
         }
     }
 }
@@ -1156,7 +1155,7 @@ where
 
             let old = unsafe { ptr::read(dst) };
             if T::eq(&old, &current) {
-                unsafe { ptr::write(dst, new) }
+                unsafe { write(dst, MaybeUninit::new(new)) }
                 Ok(old)
             } else {
                 // The value hasn't been changed. Drop the guard without incrementing the stamp.
