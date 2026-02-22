@@ -47,6 +47,7 @@ loom = { version = "0.7.1", optional = true }
 
 [dev-dependencies]
 fastrand = "2"
+rustversion = "1"
 
 [lints]
 workspace = true
