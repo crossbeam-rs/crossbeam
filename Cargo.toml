@@ -91,3 +91,5 @@ declare_interior_mutable_const = { level = "allow", priority = 1 } # https://git
 incompatible_msrv = { level = "allow", priority = 1 } # buggy: doesn't consider cfg, https://github.com/rust-lang/rust-clippy/issues/12280, https://github.com/rust-lang/rust-clippy/issues/12257#issuecomment-2093667187
 lint_groups_priority = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/12920
 manual_map = { level = "allow", priority = 1 }
+manual_range_contains = { level = "allow", priority = 1 } # https://github.com/rust-lang/rust-clippy/issues/6455#issuecomment-1225966395
+type_complexity = { level = "allow", priority = 1 }

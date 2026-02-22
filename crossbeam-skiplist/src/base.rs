@@ -15,8 +15,10 @@ use core::{
 use crossbeam_epoch::{self as epoch, Atomic, Collector, Guard, Shared};
 use crossbeam_utils::CachePadded;
 
-use super::equivalent::Comparable;
-use crate::alloc_helper::Global;
+use crate::{
+    alloc_helper::Global,
+    comparator::{BasicComparator, Comparator},
+};
 
 /// Number of bits needed to store height.
 const HEIGHT_BITS: usize = 5;
@@ -304,7 +306,7 @@ impl<'a, K, V> NodeRef<'a, K, V> {
     /// Decrements the reference count of a node, pinning the thread and destroying the node
     /// if the count become zero.
     #[inline]
-    unsafe fn decrement_with_pin<F>(self, parent: &SkipList<K, V>, pin: F)
+    unsafe fn decrement_with_pin<F, C>(self, parent: &SkipList<K, V, C>, pin: F)
     where
         F: FnOnce() -> Guard,
     {
@@ -463,7 +465,7 @@ struct HotData {
 // As a further future optimization, if `!mem::needs_drop::<K>() && !mem::needs_drop::<V>()`
 // (neither key nor the value have destructors), there's no point in creating a new local
 // collector, so we should simply use the global one.
-pub struct SkipList<K, V> {
+pub struct SkipList<K, V, C = BasicComparator> {
     /// The head of the skip list (just a dummy node, not a real entry).
     head: Head<K, V>,
 
@@ -472,14 +474,24 @@ pub struct SkipList<K, V> {
 
     /// Hot data associated with the skip list, stored in a dedicated cache line.
     hot_data: CachePadded<HotData>,
+
+    /// The `Comparator` used to determine key ordering.
+    comparator: C,
 }
 
-unsafe impl<K: Send + Sync, V: Send + Sync> Send for SkipList<K, V> {}
-unsafe impl<K: Send + Sync, V: Send + Sync> Sync for SkipList<K, V> {}
+unsafe impl<K: Send + Sync, V: Send + Sync, C: Send + Sync> Send for SkipList<K, V, C> {}
+unsafe impl<K: Send + Sync, V: Send + Sync, C: Send + Sync> Sync for SkipList<K, V, C> {}
 
 impl<K, V> SkipList<K, V> {
     /// Returns a new, empty skip list.
     pub fn new(collector: Collector) -> Self {
+        Self::with_comparator(collector, Default::default())
+    }
+}
+
+impl<K, V, C> SkipList<K, V, C> {
+    /// Returns a new, empty skip list using the given comparator.
+    pub fn with_comparator(collector: Collector, comparator: C) -> Self {
         Self {
             head: Head::new(),
             collector,
@@ -488,6 +500,7 @@ impl<K, V> SkipList<K, V> {
                 len: AtomicUsize::new(0),
                 max_height: AtomicUsize::new(1),
             }),
+            comparator,
         }
     }
 
@@ -517,12 +530,12 @@ impl<K, V> SkipList<K, V> {
     }
 }
 
-impl<K, V> SkipList<K, V>
+impl<K, V, C> SkipList<K, V, C>
 where
-    K: Ord,
+    C: Comparator<K>,
 {
     /// Returns the entry with the smallest key.
-    pub fn front<'a: 'g, 'g>(&'a self, guard: &'g Guard) -> Option<Entry<'a, 'g, K, V>> {
+    pub fn front<'a: 'g, 'g>(&'a self, guard: &'g Guard) -> Option<Entry<'a, 'g, K, V, C>> {
         self.check_guard(guard);
         let n = self.next_node(self.head.as_tower(), Bound::Unbounded, guard)?;
         Some(Entry {
@@ -533,7 +546,7 @@ where
     }
 
     /// Returns the entry with the largest key.
-    pub fn back<'a: 'g, 'g>(&'a self, guard: &'g Guard) -> Option<Entry<'a, 'g, K, V>> {
+    pub fn back<'a: 'g, 'g>(&'a self, guard: &'g Guard) -> Option<Entry<'a, 'g, K, V, C>> {
         self.check_guard(guard);
         let n = self.search_bound::<K>(Bound::Unbounded, true, guard)?;
         Some(Entry {
@@ -546,21 +559,21 @@ where
     /// Returns `true` if the map contains a value for the specified key.
     pub fn contains_key<Q>(&self, key: &Q, guard: &Guard) -> bool
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         Q: ?Sized,
     {
         self.get(key, guard).is_some()
     }
 
     /// Returns an entry with the specified `key`.
-    pub fn get<'a: 'g, 'g, Q>(&'a self, key: &Q, guard: &'g Guard) -> Option<Entry<'a, 'g, K, V>>
+    pub fn get<'a: 'g, 'g, Q>(&'a self, key: &Q, guard: &'g Guard) -> Option<Entry<'a, 'g, K, V, C>>
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         Q: ?Sized,
     {
         self.check_guard(guard);
         let n = self.search_bound(Bound::Included(key), false, guard)?;
-        if !n.key.equivalent(key) {
+        if !self.comparator.equivalent(&n.key, key) {
             return None;
         }
 
@@ -578,9 +591,9 @@ where
         &'a self,
         bound: Bound<&Q>,
         guard: &'g Guard,
-    ) -> Option<Entry<'a, 'g, K, V>>
+    ) -> Option<Entry<'a, 'g, K, V, C>>
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         Q: ?Sized,
     {
         self.check_guard(guard);
@@ -599,9 +612,9 @@ where
         &'a self,
         bound: Bound<&Q>,
         guard: &'g Guard,
-    ) -> Option<Entry<'a, 'g, K, V>>
+    ) -> Option<Entry<'a, 'g, K, V, C>>
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         Q: ?Sized,
     {
         self.check_guard(guard);
@@ -614,19 +627,18 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
-    pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
+    pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V, C> {
         self.insert_internal(key, || value, |_| false, guard)
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist,
     /// where value is calculated with a function.
     ///
-    ///
     /// <b>Note:</b> Another thread may write key value first, leading to the result of this closure
     /// discarded. If closure is modifying some other state (such as shared counters or shared
     /// objects), it may lead to <u>undesired behaviour</u> such as counters being changed without
     /// result of closure inserted
-    pub fn get_or_insert_with<F>(&self, key: K, value: F, guard: &Guard) -> RefEntry<'_, K, V>
+    pub fn get_or_insert_with<F>(&self, key: K, value: F, guard: &Guard) -> RefEntry<'_, K, V, C>
     where
         F: FnOnce() -> V,
     {
@@ -634,7 +646,7 @@ where
     }
 
     /// Returns an iterator over all entries in the skip list.
-    pub fn iter<'a: 'g, 'g>(&'a self, guard: &'g Guard) -> Iter<'a, 'g, K, V> {
+    pub fn iter<'a: 'g, 'g>(&'a self, guard: &'g Guard) -> Iter<'a, 'g, K, V, C> {
         self.check_guard(guard);
         Iter {
             parent: self,
@@ -645,7 +657,7 @@ where
     }
 
     /// Returns an iterator over all entries in the skip list.
-    pub fn ref_iter(&self) -> RefIter<'_, K, V> {
+    pub fn ref_iter(&self) -> RefIter<'_, K, V, C> {
         RefIter {
             parent: self,
             head: None,
@@ -658,9 +670,9 @@ where
         &'a self,
         range: R,
         guard: &'g Guard,
-    ) -> Range<'a, 'g, Q, R, K, V>
+    ) -> Range<'a, 'g, Q, R, K, V, C>
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         R: RangeBounds<Q>,
         Q: ?Sized,
     {
@@ -677,9 +689,9 @@ where
 
     /// Returns an iterator over a subset of entries in the skip list.
     #[allow(clippy::needless_lifetimes)]
-    pub fn ref_range<'a, Q, R>(&'a self, range: R) -> RefRange<'a, Q, R, K, V>
+    pub fn ref_range<'a, Q, R>(&'a self, range: R) -> RefRange<'a, Q, R, K, V, C>
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         R: RangeBounds<Q>,
         Q: ?Sized,
     {
@@ -825,7 +837,7 @@ where
         guard: &'a Guard,
     ) -> Option<NodeRef<'a, K, V>>
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         Q: ?Sized,
     {
         unsafe {
@@ -887,11 +899,11 @@ where
                         // bound, we return the last node before the condition became true. For the
                         // lower bound, we return the first node after the condition became true.
                         if upper_bound {
-                            if !below_upper_bound(&bound, &c.key) {
+                            if !below_upper_bound(&self.comparator, &bound, &c.key) {
                                 break;
                             }
                             result = Some(c);
-                        } else if above_lower_bound(&bound, &c.key) {
+                        } else if above_lower_bound(&self.comparator, &bound, &c.key) {
                             result = Some(c);
                             break;
                         }
@@ -910,7 +922,7 @@ where
     /// Searches for a key in the skip list and returns a list of all adjacent nodes.
     fn search_position<'a, Q>(&'a self, key: &Q, guard: &'a Guard) -> Position<'a, K, V>
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         Q: ?Sized,
     {
         unsafe {
@@ -971,7 +983,7 @@ where
 
                         // If `curr` contains a key that is greater than or equal to `key`, we're
                         // done with this level.
-                        match c.key.compare(key) {
+                        match self.comparator.compare(&c.key, key) {
                             cmp::Ordering::Greater => break,
                             cmp::Ordering::Equal => {
                                 result.found = Some(c);
@@ -1004,8 +1016,9 @@ where
         value: F,
         replace: CompareF,
         guard: &Guard,
-    ) -> RefEntry<'_, K, V>
+    ) -> RefEntry<'_, K, V, C>
     where
+        C: Comparator<K>,
         F: FnOnce() -> V,
         CompareF: Fn(&V) -> bool,
     {
@@ -1155,7 +1168,10 @@ where
                     // the tower without breaking any invariants. Note that building higher levels
                     // is completely optional. Only the lowest level really matters, and all the
                     // higher levels are there just to make searching faster.
-                    if succ.as_ref().map(|s| &s.key) == Some(&n.key) {
+                    if succ
+                        .as_ref()
+                        .is_some_and(|s| self.comparator.equivalent(&s.key, &n.key))
+                    {
                         search = self.search_position(&n.key, guard);
                         continue;
                     }
@@ -1218,16 +1234,17 @@ where
     }
 }
 
-impl<K, V> SkipList<K, V>
+impl<K, V, C> SkipList<K, V, C>
 where
-    K: Ord + Send + 'static,
+    C: Comparator<K>,
+    K: Send + 'static,
     V: Send + 'static,
 {
     /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
     ///
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
-    pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V> {
+    pub fn insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V, C> {
         self.insert_internal(key, || value, |_| true, guard)
     }
 
@@ -1242,7 +1259,7 @@ where
         value: V,
         compare_fn: F,
         guard: &Guard,
-    ) -> RefEntry<'_, K, V>
+    ) -> RefEntry<'_, K, V, C>
     where
         F: Fn(&V) -> bool,
     {
@@ -1250,9 +1267,9 @@ where
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
-    pub fn remove<Q>(&self, key: &Q, guard: &Guard) -> Option<RefEntry<'_, K, V>>
+    pub fn remove<Q>(&self, key: &Q, guard: &Guard) -> Option<RefEntry<'_, K, V, C>>
     where
-        K: Comparable<Q>,
+        C: Comparator<K, Q>,
         Q: ?Sized,
     {
         self.check_guard(guard);
@@ -1320,7 +1337,7 @@ where
     }
 
     /// Removes an entry from the front of the skip list.
-    pub fn pop_front(&self, guard: &Guard) -> Option<RefEntry<'_, K, V>> {
+    pub fn pop_front(&self, guard: &Guard) -> Option<RefEntry<'_, K, V, C>> {
         self.check_guard(guard);
         loop {
             let e = self.front(guard)?;
@@ -1335,7 +1352,7 @@ where
     }
 
     /// Removes an entry from the back of the skip list.
-    pub fn pop_back(&self, guard: &Guard) -> Option<RefEntry<'_, K, V>> {
+    pub fn pop_back(&self, guard: &Guard) -> Option<RefEntry<'_, K, V, C>> {
         self.check_guard(guard);
         loop {
             let e = self.back(guard)?;
@@ -1393,7 +1410,7 @@ where
     }
 }
 
-impl<K, V> Drop for SkipList<K, V> {
+impl<K, V, C> Drop for SkipList<K, V, C> {
     fn drop(&mut self) {
         unsafe {
             let mut node = NodeRef::from_shared(
@@ -1419,9 +1436,9 @@ impl<K, V> Drop for SkipList<K, V> {
     }
 }
 
-impl<K, V> fmt::Debug for SkipList<K, V>
+impl<K, V, C> fmt::Debug for SkipList<K, V, C>
 where
-    K: Ord + fmt::Debug,
+    K: fmt::Debug,
     V: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1429,7 +1446,7 @@ where
     }
 }
 
-impl<K, V> IntoIterator for SkipList<K, V> {
+impl<K, V, C> IntoIterator for SkipList<K, V, C> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V>;
 
@@ -1464,13 +1481,13 @@ impl<K, V> IntoIterator for SkipList<K, V> {
 /// The lifetimes of the key and value are the same as that of the `Guard`
 /// used when creating the `Entry` (`'g`). This lifetime is also constrained to
 /// not outlive the `SkipList`.
-pub struct Entry<'a: 'g, 'g, K, V> {
-    parent: &'a SkipList<K, V>,
+pub struct Entry<'a: 'g, 'g, K, V, C = BasicComparator> {
+    parent: &'a SkipList<K, V, C>,
     node: NodeRef<'g, K, V>,
     guard: &'g Guard,
 }
 
-impl<'a: 'g, 'g, K: 'a, V: 'a> Entry<'a, 'g, K, V> {
+impl<'a: 'g, 'g, K: 'a, V: 'a, C> Entry<'a, 'g, K, V, C> {
     /// Returns `true` if the entry is removed from the skip list.
     pub fn is_removed(&self) -> bool {
         self.node.is_removed()
@@ -1487,7 +1504,7 @@ impl<'a: 'g, 'g, K: 'a, V: 'a> Entry<'a, 'g, K, V> {
     }
 
     /// Returns a reference to the parent `SkipList`
-    pub fn skiplist(&self) -> &'a SkipList<K, V> {
+    pub fn skiplist(&self) -> &'a SkipList<K, V, C> {
         self.parent
     }
 
@@ -1496,14 +1513,15 @@ impl<'a: 'g, 'g, K: 'a, V: 'a> Entry<'a, 'g, K, V> {
     ///
     /// This method may return `None` if the reference count is already 0 and
     /// the node has been queued for deletion.
-    pub fn pin(&self) -> Option<RefEntry<'a, K, V>> {
+    pub fn pin(&self) -> Option<RefEntry<'a, K, V, C>> {
         unsafe { RefEntry::try_acquire(self.parent, self.node) }
     }
 }
 
-impl<K, V> Entry<'_, '_, K, V>
+impl<K, V, C> Entry<'_, '_, K, V, C>
 where
-    K: Ord + Send + 'static,
+    C: Comparator<K>,
+    K: Send + 'static,
     V: Send + 'static,
 {
     /// Removes the entry from the skip list.
@@ -1526,7 +1544,7 @@ where
     }
 }
 
-impl<K, V> Clone for Entry<'_, '_, K, V> {
+impl<K, V, C> Clone for Entry<'_, '_, K, V, C> {
     fn clone(&self) -> Self {
         Self {
             parent: self.parent,
@@ -1536,7 +1554,7 @@ impl<K, V> Clone for Entry<'_, '_, K, V> {
     }
 }
 
-impl<K, V> fmt::Debug for Entry<'_, '_, K, V>
+impl<K, V, C> fmt::Debug for Entry<'_, '_, K, V, C>
 where
     K: fmt::Debug,
     V: fmt::Debug,
@@ -1549,9 +1567,9 @@ where
     }
 }
 
-impl<'a: 'g, 'g, K, V> Entry<'a, 'g, K, V>
+impl<'a: 'g, 'g, K, V, C> Entry<'a, 'g, K, V, C>
 where
-    K: Ord,
+    C: Comparator<K>,
 {
     /// Moves to the next entry in the skip list.
     pub fn move_next(&mut self) -> bool {
@@ -1565,7 +1583,7 @@ where
     }
 
     /// Returns the next entry in the skip list.
-    pub fn next(&self) -> Option<Entry<'a, 'g, K, V>> {
+    pub fn next(&self) -> Option<Entry<'a, 'g, K, V, C>> {
         let n = self.parent.next_node(
             self.node.as_tower(),
             Bound::Excluded(&self.node.key),
@@ -1590,7 +1608,7 @@ where
     }
 
     /// Returns the previous entry in the skip list.
-    pub fn prev(&self) -> Option<Entry<'a, 'g, K, V>> {
+    pub fn prev(&self) -> Option<Entry<'a, 'g, K, V, C>> {
         let n = self
             .parent
             .search_bound(Bound::Excluded(&self.node.key), true, self.guard)?;
@@ -1606,12 +1624,12 @@ where
 ///
 /// You *must* call `release` to free this type, otherwise the node will be
 /// leaked. This is because releasing the entry requires a `Guard`.
-pub struct RefEntry<'a, K, V> {
-    parent: &'a SkipList<K, V>,
+pub struct RefEntry<'a, K, V, C = BasicComparator> {
+    parent: &'a SkipList<K, V, C>,
     node: NodeRef<'a, K, V>,
 }
 
-impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
+impl<'a, K: 'a, V: 'a, C: 'a> RefEntry<'a, K, V, C> {
     /// Returns `true` if the entry is removed from the skip list.
     pub fn is_removed(&self) -> bool {
         self.node.is_removed()
@@ -1628,7 +1646,7 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
     }
 
     /// Returns a reference to the parent `SkipList`
-    pub fn skiplist(&self) -> &'a SkipList<K, V> {
+    pub fn skiplist(&self) -> &'a SkipList<K, V, C> {
         self.parent
     }
 
@@ -1650,9 +1668,9 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
     /// Tries to create a new `RefEntry` by incrementing the reference count of
     /// a node.
     unsafe fn try_acquire(
-        parent: &'a SkipList<K, V>,
+        parent: &'a SkipList<K, V, C>,
         node: NodeRef<'_, K, V>,
-    ) -> Option<RefEntry<'a, K, V>> {
+    ) -> Option<RefEntry<'a, K, V, C>> {
         if unsafe { node.try_increment() } {
             Some(RefEntry {
                 parent,
@@ -1667,9 +1685,10 @@ impl<'a, K: 'a, V: 'a> RefEntry<'a, K, V> {
     }
 }
 
-impl<K, V> RefEntry<'_, K, V>
+impl<K, V, C> RefEntry<'_, K, V, C>
 where
-    K: Ord + Send + 'static,
+    C: Comparator<K>,
+    K: Send + 'static,
     V: Send + 'static,
 {
     /// Removes the entry from the skip list.
@@ -1694,7 +1713,7 @@ where
     }
 }
 
-impl<K, V> Clone for RefEntry<'_, K, V> {
+impl<K, V, C> Clone for RefEntry<'_, K, V, C> {
     fn clone(&self) -> Self {
         unsafe {
             // Incrementing will always succeed since we're already holding a reference to the node.
@@ -1707,7 +1726,7 @@ impl<K, V> Clone for RefEntry<'_, K, V> {
     }
 }
 
-impl<K, V> fmt::Debug for RefEntry<'_, K, V>
+impl<K, V, C> fmt::Debug for RefEntry<'_, K, V, C>
 where
     K: fmt::Debug,
     V: fmt::Debug,
@@ -1720,9 +1739,9 @@ where
     }
 }
 
-impl<'a, K, V> RefEntry<'a, K, V>
+impl<'a, K, V, C> RefEntry<'a, K, V, C>
 where
-    K: Ord,
+    C: Comparator<K>,
 {
     /// Moves to the next entry in the skip list.
     pub fn move_next(&mut self, guard: &Guard) -> bool {
@@ -1736,7 +1755,7 @@ where
     }
 
     /// Returns the next entry in the skip list.
-    pub fn next(&self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
+    pub fn next(&self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
         self.parent.check_guard(guard);
         unsafe {
             let mut n = self.node;
@@ -1763,7 +1782,7 @@ where
     }
 
     /// Returns the previous entry in the skip list.
-    pub fn prev(&self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
+    pub fn prev(&self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
         self.parent.check_guard(guard);
         unsafe {
             let mut n = self.node;
@@ -1780,20 +1799,20 @@ where
 }
 
 /// An iterator over the entries of a `SkipList`.
-pub struct Iter<'a: 'g, 'g, K, V> {
-    parent: &'a SkipList<K, V>,
+pub struct Iter<'a: 'g, 'g, K, V, C = BasicComparator> {
+    parent: &'a SkipList<K, V, C>,
     head: Option<NodeRef<'g, K, V>>,
     tail: Option<NodeRef<'g, K, V>>,
     guard: &'g Guard,
 }
 
-impl<'a: 'g, 'g, K: 'a, V: 'a> Iterator for Iter<'a, 'g, K, V>
+impl<'a: 'g, 'g, K: 'a, V: 'a, C> Iterator for Iter<'a, 'g, K, V, C>
 where
-    K: Ord,
+    C: Comparator<K>,
 {
-    type Item = Entry<'a, 'g, K, V>;
+    type Item = Entry<'a, 'g, K, V, C>;
 
-    fn next(&mut self) -> Option<Entry<'a, 'g, K, V>> {
+    fn next(&mut self) -> Option<Entry<'a, 'g, K, V, C>> {
         self.head = match self.head {
             Some(n) => self
                 .parent
@@ -1804,7 +1823,7 @@ where
             }
         };
         if let (Some(h), Some(t)) = (self.head, self.tail) {
-            if h.key >= t.key {
+            if self.parent.comparator.compare(&h.key, &t.key).is_ge() {
                 self.head = None;
                 self.tail = None;
             }
@@ -1817,11 +1836,11 @@ where
     }
 }
 
-impl<'a: 'g, 'g, K: 'a, V: 'a> DoubleEndedIterator for Iter<'a, 'g, K, V>
+impl<'a: 'g, 'g, K: 'a, V: 'a, C> DoubleEndedIterator for Iter<'a, 'g, K, V, C>
 where
-    K: Ord,
+    C: Comparator<K>,
 {
-    fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V>> {
+    fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V, C>> {
         self.tail = match self.tail {
             Some(n) => self
                 .parent
@@ -1831,7 +1850,7 @@ where
                 .search_bound::<K>(Bound::Unbounded, true, self.guard),
         };
         if let (Some(h), Some(t)) = (self.head, self.tail) {
-            if h.key >= t.key {
+            if self.parent.comparator.compare(&h.key, &t.key).is_ge() {
                 self.head = None;
                 self.tail = None;
             }
@@ -1844,7 +1863,7 @@ where
     }
 }
 
-impl<K, V> fmt::Debug for Iter<'_, '_, K, V>
+impl<K, V, C> fmt::Debug for Iter<'_, '_, K, V, C>
 where
     K: fmt::Debug,
     V: fmt::Debug,
@@ -1858,13 +1877,13 @@ where
 }
 
 /// An iterator over reference-counted entries of a `SkipList`.
-pub struct RefIter<'a, K, V> {
-    parent: &'a SkipList<K, V>,
-    head: Option<RefEntry<'a, K, V>>,
-    tail: Option<RefEntry<'a, K, V>>,
+pub struct RefIter<'a, K, V, C = BasicComparator> {
+    parent: &'a SkipList<K, V, C>,
+    head: Option<RefEntry<'a, K, V, C>>,
+    tail: Option<RefEntry<'a, K, V, C>>,
 }
 
-impl<K, V> fmt::Debug for RefIter<'_, K, V>
+impl<K, V, C> fmt::Debug for RefIter<'_, K, V, C>
 where
     K: fmt::Debug,
     V: fmt::Debug,
@@ -1883,12 +1902,12 @@ where
     }
 }
 
-impl<'a, K: 'a, V: 'a> RefIter<'a, K, V>
+impl<'a, K: 'a, V: 'a, C> RefIter<'a, K, V, C>
 where
-    K: Ord,
+    C: Comparator<K>,
 {
     /// Advances the iterator and returns the next value.
-    pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
+    pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
         self.parent.check_guard(guard);
         let next_head = match &self.head {
             Some(e) => e.next(guard),
@@ -1896,7 +1915,9 @@ where
         };
         match (&next_head, &self.tail) {
             // The next key is larger than the latest tail key we observed with this iterator.
-            (Some(ref next), Some(t)) if next.key() >= t.key() => {
+            (Some(ref next), Some(t))
+                if self.parent.comparator.compare(next.key(), t.key()).is_ge() =>
+            {
                 unsafe {
                     next.node.decrement(guard);
                 }
@@ -1915,7 +1936,7 @@ where
     }
 
     /// Removes and returns an element from the end of the iterator.
-    pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
+    pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
         self.parent.check_guard(guard);
         let next_tail = match &self.tail {
             Some(e) => e.prev(guard),
@@ -1923,7 +1944,9 @@ where
         };
         match (&self.head, &next_tail) {
             // The prev key is smaller than the latest head key we observed with this iterator.
-            (Some(h), Some(next)) if h.key() >= next.key() => {
+            (Some(h), Some(next))
+                if self.parent.comparator.compare(h.key(), next.key()).is_ge() =>
+            {
                 unsafe {
                     next.node.decrement(guard);
                 }
@@ -1942,7 +1965,7 @@ where
     }
 }
 
-impl<'a, K: 'a, V: 'a> RefIter<'a, K, V> {
+impl<'a, K: 'a, V: 'a, C> RefIter<'a, K, V, C> {
     /// Decrements the reference count of `RefEntry` owned by the iterator.
     pub fn drop_impl(&mut self, guard: &Guard) {
         self.parent.check_guard(guard);
@@ -1956,13 +1979,13 @@ impl<'a, K: 'a, V: 'a> RefIter<'a, K, V> {
 }
 
 /// An iterator over a subset of entries of a `SkipList`.
-pub struct Range<'a: 'g, 'g, Q, R, K, V>
+pub struct Range<'a: 'g, 'g, Q, R, K, V, C = BasicComparator>
 where
-    K: Ord + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
-    parent: &'a SkipList<K, V>,
+    parent: &'a SkipList<K, V, C>,
     head: Option<NodeRef<'g, K, V>>,
     tail: Option<NodeRef<'g, K, V>>,
     range: R,
@@ -1970,15 +1993,15 @@ where
     _marker: PhantomData<fn() -> Q>, // covariant over `Q`
 }
 
-impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> Iterator for Range<'a, 'g, Q, R, K, V>
+impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a, C> Iterator for Range<'a, 'g, Q, R, K, V, C>
 where
-    K: Ord + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
-    type Item = Entry<'a, 'g, K, V>;
+    type Item = Entry<'a, 'g, K, V, C>;
 
-    fn next(&mut self) -> Option<Entry<'a, 'g, K, V>> {
+    fn next(&mut self) -> Option<Entry<'a, 'g, K, V, C>> {
         self.head = match self.head {
             Some(n) => self
                 .parent
@@ -1991,14 +2014,14 @@ where
             match self.tail {
                 Some(t) => {
                     let bound = Bound::Excluded(&t.as_ref().key);
-                    if !below_upper_bound(&bound, &h.key) {
+                    if !below_upper_bound(&self.parent.comparator, &bound, &h.key) {
                         self.head = None;
                         self.tail = None;
                     }
                 }
                 None => {
                     let bound = self.range.end_bound();
-                    if !below_upper_bound(&bound, &h.key) {
+                    if !below_upper_bound(&self.parent.comparator, &bound, &h.key) {
                         self.head = None;
                         self.tail = None;
                     }
@@ -2013,13 +2036,13 @@ where
     }
 }
 
-impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a> DoubleEndedIterator for Range<'a, 'g, Q, R, K, V>
+impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a, C> DoubleEndedIterator for Range<'a, 'g, Q, R, K, V, C>
 where
-    K: Ord + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
-    fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V>> {
+    fn next_back(&mut self) -> Option<Entry<'a, 'g, K, V, C>> {
         self.tail = match self.tail {
             Some(n) => self
                 .parent
@@ -2032,14 +2055,14 @@ where
             match self.head {
                 Some(h) => {
                     let bound = Bound::Excluded(&h.as_ref().key);
-                    if !above_lower_bound(&bound, &t.key) {
+                    if !above_lower_bound(&self.parent.comparator, &bound, &t.key) {
                         self.head = None;
                         self.tail = None;
                     }
                 }
                 None => {
                     let bound = self.range.start_bound();
-                    if !above_lower_bound(&bound, &t.key) {
+                    if !above_lower_bound(&self.parent.comparator, &bound, &t.key) {
                         self.head = None;
                         self.tail = None;
                     }
@@ -2054,9 +2077,10 @@ where
     }
 }
 
-impl<Q, R, K, V> fmt::Debug for Range<'_, '_, Q, R, K, V>
+impl<Q, R, K, V, C> fmt::Debug for Range<'_, '_, Q, R, K, V, C>
 where
-    K: Ord + fmt::Debug + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
+    K: fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: ?Sized,
@@ -2071,38 +2095,39 @@ where
 }
 
 /// An iterator over reference-counted subset of entries of a `SkipList`.
-pub struct RefRange<'a, Q, R, K, V>
+pub struct RefRange<'a, Q, R, K, V, C = BasicComparator>
 where
-    K: Ord + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
-    parent: &'a SkipList<K, V>,
-    pub(crate) head: Option<RefEntry<'a, K, V>>,
-    pub(crate) tail: Option<RefEntry<'a, K, V>>,
+    parent: &'a SkipList<K, V, C>,
+    pub(crate) head: Option<RefEntry<'a, K, V, C>>,
+    pub(crate) tail: Option<RefEntry<'a, K, V, C>>,
     pub(crate) range: R,
     _marker: PhantomData<fn() -> Q>, // covariant over `Q`
 }
 
-unsafe impl<Q, R, K, V> Send for RefRange<'_, Q, R, K, V>
+unsafe impl<Q, R, K, V, C> Send for RefRange<'_, Q, R, K, V, C>
 where
-    K: Ord + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
 }
 
-unsafe impl<Q, R, K, V> Sync for RefRange<'_, Q, R, K, V>
+unsafe impl<Q, R, K, V, C> Sync for RefRange<'_, Q, R, K, V, C>
 where
-    K: Ord + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
 }
 
-impl<Q, R, K, V> fmt::Debug for RefRange<'_, Q, R, K, V>
+impl<Q, R, K, V, C> fmt::Debug for RefRange<'_, Q, R, K, V, C>
 where
-    K: Ord + fmt::Debug + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
+    K: fmt::Debug,
     V: fmt::Debug,
     R: RangeBounds<Q> + fmt::Debug,
     Q: ?Sized,
@@ -2116,14 +2141,14 @@ where
     }
 }
 
-impl<'a, Q, R, K: 'a, V: 'a> RefRange<'a, Q, R, K, V>
+impl<'a, Q, R, K: 'a, V: 'a, C> RefRange<'a, Q, R, K, V, C>
 where
-    K: Ord + Comparable<Q>,
+    C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
     /// Advances the iterator and returns the next value.
-    pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
+    pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
         self.parent.check_guard(guard);
         let next_head = match self.head {
             Some(ref e) => e.next(guard),
@@ -2134,7 +2159,7 @@ where
             match self.tail {
                 Some(ref t) => {
                     let bound = Bound::Excluded(t.key());
-                    if below_upper_bound(&bound, h.key()) {
+                    if below_upper_bound(&self.parent.comparator, &bound, h.key()) {
                         if let Some(e) = mem::replace(&mut self.head, next_head.clone()) {
                             unsafe {
                                 e.node.decrement(guard);
@@ -2150,7 +2175,7 @@ where
                 }
                 None => {
                     let bound = self.range.end_bound();
-                    if below_upper_bound(&bound, h.key()) {
+                    if below_upper_bound(&self.parent.comparator, &bound, h.key()) {
                         if let Some(e) = mem::replace(&mut self.head, next_head.clone()) {
                             unsafe {
                                 e.node.decrement(guard);
@@ -2171,7 +2196,7 @@ where
     }
 
     /// Removes and returns an element from the end of the iterator.
-    pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V>> {
+    pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
         self.parent.check_guard(guard);
         let next_tail = match self.tail {
             Some(ref e) => e.prev(guard),
@@ -2182,7 +2207,7 @@ where
             match self.head {
                 Some(ref h) => {
                     let bound = Bound::Excluded(h.key());
-                    if above_lower_bound(&bound, t.key()) {
+                    if above_lower_bound(&self.parent.comparator, &bound, t.key()) {
                         if let Some(e) = mem::replace(&mut self.tail, next_tail.clone()) {
                             unsafe {
                                 e.node.decrement(guard);
@@ -2198,7 +2223,7 @@ where
                 }
                 None => {
                     let bound = self.range.start_bound();
-                    if above_lower_bound(&bound, t.key()) {
+                    if above_lower_bound(&self.parent.comparator, &bound, t.key()) {
                         if let Some(e) = mem::replace(&mut self.tail, next_tail.clone()) {
                             unsafe {
                                 e.node.decrement(guard);
@@ -2307,9 +2332,9 @@ impl<K, V> fmt::Debug for IntoIter<K, V> {
 
 /// Helper function to retry an operation until pinning succeeds or `None` is
 /// returned.
-pub(crate) fn try_pin_loop<'a: 'g, 'g, F, K, V>(mut f: F) -> Option<RefEntry<'a, K, V>>
+pub(crate) fn try_pin_loop<'a: 'g, 'g, F, K, V, C>(mut f: F) -> Option<RefEntry<'a, K, V, C>>
 where
-    F: FnMut() -> Option<Entry<'a, 'g, K, V>>,
+    F: FnMut() -> Option<Entry<'a, 'g, K, V, C>>,
 {
     loop {
         if let Some(e) = f()?.pin() {
@@ -2319,27 +2344,27 @@ where
 }
 
 /// Helper function to check if a value is above a lower bound
-fn above_lower_bound<V, T>(bound: &Bound<&T>, other: &V) -> bool
+fn above_lower_bound<V, T, C>(comparator: &C, bound: &Bound<&T>, other: &V) -> bool
 where
     T: ?Sized,
-    V: Comparable<T>,
+    C: Comparator<V, T>,
 {
     match *bound {
         Bound::Unbounded => true,
-        Bound::Included(key) => other.compare(key).is_ge(),
-        Bound::Excluded(key) => other.compare(key).is_gt(),
+        Bound::Included(key) => comparator.compare(other, key).is_ge(),
+        Bound::Excluded(key) => comparator.compare(other, key).is_gt(),
     }
 }
 
 /// Helper function to check if a value is below an upper bound
-fn below_upper_bound<V, T>(bound: &Bound<&T>, other: &V) -> bool
+fn below_upper_bound<V, T, C>(comparator: &C, bound: &Bound<&T>, other: &V) -> bool
 where
     T: ?Sized,
-    V: Comparable<T>,
+    C: Comparator<V, T>,
 {
     match *bound {
         Bound::Unbounded => true,
-        Bound::Included(key) => other.compare(key).is_le(),
-        Bound::Excluded(key) => other.compare(key).is_lt(),
+        Bound::Included(key) => comparator.compare(other, key).is_le(),
+        Bound::Excluded(key) => comparator.compare(other, key).is_lt(),
     }
 }
