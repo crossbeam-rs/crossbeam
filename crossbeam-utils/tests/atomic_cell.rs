@@ -276,6 +276,10 @@ fn garbage_padding() {
 fn const_atomic_cell() {
     const _IS_LOCK_FREE_U: bool = AtomicCell::<usize>::is_lock_free();
     const _IS_LOCK_FREE_I: bool = AtomicCell::<isize>::is_lock_free();
+    static INTO_INNER: usize = {
+        let v = AtomicCell::new(!0);
+        v.into_inner()
+    };
     #[rustversion::since(1.83)]
     static _AS_PTR: AtomicCell<usize> = {
         let v = AtomicCell::new(!0);
@@ -286,6 +290,7 @@ fn const_atomic_cell() {
 
     CELL.store(1);
     assert_eq!(CELL.load(), 1);
+    assert_eq!(INTO_INNER, !0);
 }
 
 // https://github.com/crossbeam-rs/crossbeam/pull/767

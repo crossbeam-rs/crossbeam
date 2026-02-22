@@ -84,14 +84,46 @@ impl<T> AtomicCell<T> {
     ///
     /// assert_eq!(v, 7);
     /// ```
-    pub fn into_inner(self) -> T {
-        let this = ManuallyDrop::new(self);
+    pub const fn into_inner(self) -> T {
+        // HACK: This is equivalent to transmute_copy by value, but available in const
+        // context even on older rustc (const transmute_copy requires Rust 1.74), and
+        // can work around "cannot borrow here, since the borrowed element may contain
+        // interior mutability" error occurs (until const_refs_to_cell stabilized, i.e.,
+        // Rust 1.83) when using transmute_copy with generic type in const context
+        // (because this is a by-value transmutation that doesn't create a reference to
+        // the source value).
+        /// # Safety
+        ///
+        /// This function has the same safety requirements as [`core::mem::transmute_copy`].
+        ///
+        /// Since this is a by-value transmutation, it copies the bits from the source value
+        /// into the destination value, then forgets the original, as with the [`core::mem::transmute`].
+        #[inline]
+        #[must_use]
+        const unsafe fn transmute_copy_by_val<Src, Dst>(src: Src) -> Dst {
+            #[repr(C)]
+            union ConstHack<Src, Dst> {
+                src: ManuallyDrop<Src>,
+                dst: ManuallyDrop<Dst>,
+            }
+            assert!(mem::size_of::<Src>() >= mem::size_of::<Dst>()); // assertion copied from transmute_copy
+            // SAFETY: ConstHack is #[repr(C)] union, and the caller must guarantee that
+            // transmuting Src to Dst is safe.
+            ManuallyDrop::into_inner(unsafe {
+                ConstHack::<Src, Dst> {
+                    src: ManuallyDrop::new(src),
+                }
+                .dst
+            })
+        }
+
         // SAFETY:
+        // - Self is repr(transparent) over `UnsafeCell<MaybeUninit<T>>` and
+        //   `UnsafeCell<MaybeUninit<T>>` and `T` has the same layout.
         // - passing `self` by value guarantees that no other threads are concurrently
         //   accessing the atomic data
-        // - the raw pointer passed in is valid because we got it from an owned value.
-        // - `ManuallyDrop` prevents double dropping `T`
-        unsafe { this.as_ptr().read() }
+        // (Equivalent to UnsafeCell::into_inner which is unstable in const context.)
+        unsafe { transmute_copy_by_val(self) }
     }
 
     /// Returns `true` if operations on values of this type are lock-free.
