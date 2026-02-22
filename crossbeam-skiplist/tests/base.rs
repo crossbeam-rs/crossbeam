@@ -949,7 +949,7 @@ fn comparable_get() {
         fn compare(&self, key: &FooRef<'a>) -> std::cmp::Ordering {
             let a = u64::from_be_bytes(key.data[..8].try_into().unwrap());
             let b = u32::from_be_bytes(key.data[8..].try_into().unwrap());
-            Foo { a, b }.cmp(self)
+            Self { a, b }.cmp(self)
         }
     }
 

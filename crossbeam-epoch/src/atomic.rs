@@ -1510,7 +1510,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// assert_eq!(p1.as_raw(), p2.as_raw());
     /// # unsafe { drop(a.into_owned()); } // avoid leak
     /// ```
-    pub fn with_tag(&self, tag: usize) -> Shared<'g, T> {
+    pub fn with_tag(&self, tag: usize) -> Self {
         unsafe { Self::from_ptr(compose_tag::<T>(self.data, tag)) }
     }
 }
@@ -1538,7 +1538,7 @@ impl<T> From<*const T> for Shared<'_, T> {
     }
 }
 
-impl<'g, T: ?Sized + Pointable> PartialEq<Shared<'g, T>> for Shared<'g, T> {
+impl<T: ?Sized + Pointable> PartialEq for Shared<'_, T> {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
     }
@@ -1546,7 +1546,7 @@ impl<'g, T: ?Sized + Pointable> PartialEq<Shared<'g, T>> for Shared<'g, T> {
 
 impl<T: ?Sized + Pointable> Eq for Shared<'_, T> {}
 
-impl<'g, T: ?Sized + Pointable> PartialOrd<Shared<'g, T>> for Shared<'g, T> {
+impl<T: ?Sized + Pointable> PartialOrd for Shared<'_, T> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }

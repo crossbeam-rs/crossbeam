@@ -439,7 +439,7 @@ impl<T, C> IntoIterator for SkipSet<T, C> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
-    fn into_iter(self) -> IntoIter<T> {
+    fn into_iter(self) -> Self::IntoIter {
         IntoIter {
             inner: self.inner.into_iter(),
         }
@@ -453,7 +453,7 @@ where
     type Item = Entry<'a, T, C>;
     type IntoIter = Iter<'a, T, C>;
 
-    fn into_iter(self) -> Iter<'a, T, C> {
+    fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
 }
@@ -495,7 +495,7 @@ impl<'a, T, C> Entry<'a, T, C> {
     }
 }
 
-impl<'a, T, C> Entry<'a, T, C>
+impl<T, C> Entry<'_, T, C>
 where
     C: Comparator<T>,
 {
@@ -510,12 +510,12 @@ where
     }
 
     /// Returns the next entry in the set.
-    pub fn next(&self) -> Option<Entry<'a, T, C>> {
+    pub fn next(&self) -> Option<Self> {
         self.inner.next().map(Entry::new)
     }
 
     /// Returns the previous entry in the set.
-    pub fn prev(&self) -> Option<Entry<'a, T, C>> {
+    pub fn prev(&self) -> Option<Self> {
         self.inner.prev().map(Entry::new)
     }
 }
@@ -568,7 +568,7 @@ pub struct IntoIter<T> {
 impl<T> Iterator for IntoIter<T> {
     type Item = T;
 
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(k, ())| k)
     }
 }
@@ -590,16 +590,16 @@ where
 {
     type Item = Entry<'a, T, C>;
 
-    fn next(&mut self) -> Option<Entry<'a, T, C>> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(Entry::new)
     }
 }
 
-impl<'a, T, C> DoubleEndedIterator for Iter<'a, T, C>
+impl<T, C> DoubleEndedIterator for Iter<'_, T, C>
 where
     C: Comparator<T>,
 {
-    fn next_back(&mut self) -> Option<Entry<'a, T, C>> {
+    fn next_back(&mut self) -> Option<Self::Item> {
         self.inner.next_back().map(Entry::new)
     }
 }
@@ -628,18 +628,18 @@ where
 {
     type Item = Entry<'a, T, C>;
 
-    fn next(&mut self) -> Option<Entry<'a, T, C>> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(Entry::new)
     }
 }
 
-impl<'a, Q, R, T, C> DoubleEndedIterator for Range<'a, Q, R, T, C>
+impl<Q, R, T, C> DoubleEndedIterator for Range<'_, Q, R, T, C>
 where
     C: Comparator<T> + Comparator<T, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
-    fn next_back(&mut self) -> Option<Entry<'a, T, C>> {
+    fn next_back(&mut self) -> Option<Self::Item> {
         self.inner.next_back().map(Entry::new)
     }
 }
