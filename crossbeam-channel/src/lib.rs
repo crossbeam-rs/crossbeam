@@ -364,6 +364,8 @@ mod select_macro;
 mod utils;
 #[cfg(feature = "std")]
 mod waker;
+#[cfg(feature = "std")]
+mod watch;
 
 /// Crate internals used by the `select!` macro.
 #[doc(hidden)]
@@ -384,4 +386,5 @@ pub use crate::{
         SendTimeoutError, TryReadyError, TryRecvError, TrySelectError, TrySendError,
     },
     select::{Select, SelectedOperation},
+    watch::{watch, WatchReceiver, WatchSender},
 };
