@@ -1,6 +1,6 @@
-use crossbeam_channel::{watch, RecvError, TryRecvError};
-use std::thread;
-use std::time::Duration;
+use std::{thread, time::Duration};
+
+use crossbeam_channel::{RecvError, TryRecvError, watch};
 
 #[test]
 fn watch_send_recv_basic() {
@@ -127,16 +127,11 @@ fn watch_multithreaded() {
 
     // The receiver should eventually see 99 (or possibly skip some values).
     let mut last_seen = -1;
-    loop {
-        match rx.recv() {
-            Ok(v) => {
-                assert!(v > last_seen || v == 0);
-                last_seen = v;
-                if v == 99 {
-                    break;
-                }
-            }
-            Err(_) => break,
+    while let Ok(v) = rx.recv() {
+        assert!(v > last_seen || v == 0);
+        last_seen = v;
+        if v == 99 {
+            break;
         }
     }
     assert_eq!(last_seen, 99);

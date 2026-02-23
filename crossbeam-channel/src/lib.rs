@@ -386,5 +386,5 @@ pub use crate::{
         SendTimeoutError, TryReadyError, TryRecvError, TrySelectError, TrySendError,
     },
     select::{Select, SelectedOperation},
-    watch::{watch, WatchReceiver, WatchSender},
+    watch::{WatchReceiver, WatchSender, watch},
 };
