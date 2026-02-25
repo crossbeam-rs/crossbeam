@@ -96,3 +96,10 @@ fn recv_timeout() {
     assert!(now - start >= ms(200));
     assert!(now - start <= ms(250));
 }
+
+#[test]
+#[should_panic]
+fn new_sender() {
+    let r = never::<i32>();
+    r.new_sender();
+}
