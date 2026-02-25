@@ -339,3 +339,10 @@ fn fairness_duplicates() {
         assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
     }
 }
+
+#[test]
+#[should_panic]
+fn new_sender() {
+    let r = after(Duration::from_micros(20));
+    r.new_sender();
+}

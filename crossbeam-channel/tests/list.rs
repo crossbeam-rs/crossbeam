@@ -209,6 +209,23 @@ fn recv_after_disconnect() {
 }
 
 #[test]
+fn zero_sender_revival() {
+    let (s, r) = unbounded();
+
+    s.send(1).unwrap();
+
+    drop(s);
+
+    assert_eq!(r.recv(), Ok(1));
+    assert_eq!(r.recv(), Err(RecvError));
+
+    let s = r.new_sender();
+
+    s.send(1).unwrap();
+    assert_eq!(r.recv(), Ok(1));
+}
+
+#[test]
 fn len() {
     let (s, r) = unbounded();
 

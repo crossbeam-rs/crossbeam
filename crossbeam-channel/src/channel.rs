@@ -1177,6 +1177,48 @@ impl<T> Receiver<T> {
             ReceiverFlavor::Never(_chan) => 0,
         }
     }
+
+    /// Returns a new sender that communicates with this
+    /// receiver. This can be used to revive a receiver
+    /// even when there are no senders currently alive.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use crossbeam_channel::{unbounded, RecvError};
+    /// let (s, r) = unbounded::<i32>();
+    /// s.send(1).unwrap();
+    /// drop(s); // After this point no sender is alive
+    /// assert_eq!(r.recv(), Ok(1));
+    /// // Here the channel is empty, but the rcv call doesn't block
+    /// // as there are no live senders capable of sending messages.
+    /// assert_eq!(r.recv(), Err(RecvError));
+    /// // We can spawn a new sender
+    /// let s = r.new_sender();
+    /// s.send(1).unwrap();
+    /// assert_eq!(r.recv(), Ok(1));
+    /// // Another recv call here would block as there exists a live sender.
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// If this receiver was created from [tick], [at], or [never()].
+    /// Those channel flavors do not support explicit receivers.
+    #[track_caller]
+    pub fn new_sender(&self) -> Sender<T> {
+        match &self.flavor {
+            ReceiverFlavor::Array(chan) => Sender {
+                flavor: SenderFlavor::Array(chan.new_sender(|c| c.reconnect_senders())),
+            },
+            ReceiverFlavor::List(chan) => Sender {
+                flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())),
+            },
+            ReceiverFlavor::Zero(chan) => Sender {
+                flavor: SenderFlavor::Zero(chan.new_sender(|c| c.reconnect_senders())),
+            },
+            _ => panic!("new_sender cannot be called with a Receiver created by at/never/tick"),
+        }
+    }
 }
 
 impl<T> Drop for Receiver<T> {
