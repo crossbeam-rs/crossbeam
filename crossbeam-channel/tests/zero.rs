@@ -559,7 +559,6 @@ fn channel_through_channel() {
 
 #[test]
 fn zero_sender_revival() {
-
     let (s, r) = bounded::<i32>(0);
 
     let rref = &r;
