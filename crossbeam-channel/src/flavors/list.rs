@@ -570,8 +570,8 @@ impl<T> Channel<T> {
     }
 
     /// Reconnects senders. There is no need to notify threads
-    /// as nobody is currently blocking, since we were in an
-    /// idle phase.
+    /// as nobody is currently blocking, since we were in a phase
+    /// where no senders are alive.
     ///
     /// Returns `true` if this call reconnected the channel.
     pub(crate) fn reconnect_senders(&self) -> bool {

@@ -209,7 +209,7 @@ fn recv_after_disconnect() {
 }
 
 #[test]
-fn zero_receiver_revival() {
+fn zero_sender_revival() {
     let (s, r) = unbounded();
 
     s.send(1).unwrap();

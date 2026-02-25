@@ -556,3 +556,50 @@ fn channel_through_channel() {
     })
     .unwrap();
 }
+
+#[test]
+fn zero_sender_revival() {
+
+    let (s, r) = bounded::<i32>(0);
+
+    let rref = &r;
+
+    scope(|scope| {
+        scope.spawn(move |_| {
+            let s = s;
+
+            s.send(1).unwrap();
+            // sender is dropped
+        });
+
+        scope.spawn(move |_| {
+            let r = rref;
+
+            assert_eq!(r.recv(), Ok(1));
+            thread::sleep(Duration::from_millis(100));
+            assert_eq!(r.recv(), Err(RecvError)); // non blocking
+
+            let mut msg = r.recv();
+            assert_eq!(msg, Err(RecvError)); // no senders
+
+            while msg == Err(RecvError) {
+                // Yield to the other thread
+                thread::sleep(ms(30));
+                msg = r.recv();
+            }
+
+            assert_eq!(msg, Ok(2)); // received from second sender thread
+        });
+
+        scope.spawn(move |_| {
+            thread::sleep(ms(200)); // start with a delay
+
+            let r = rref;
+
+            let s = r.new_sender();
+
+            s.send(2).unwrap();
+        });
+    })
+    .unwrap();
+}

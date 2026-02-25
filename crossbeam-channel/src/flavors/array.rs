@@ -495,6 +495,17 @@ impl<T> Channel<T> {
         }
     }
 
+    /// Reconnects senders. There is no need to notify threads
+    /// as nobody is currently blocking, since we were in a phase
+    /// where no senders are alive.
+    ///
+    /// Returns `true` if this call reconnected the channel.
+    pub(crate) fn reconnect_senders(&self) -> bool {
+        let tail = self.tail.fetch_and(!self.mark_bit, Ordering::SeqCst);
+
+        tail & self.mark_bit == 0
+    }
+
     /// Returns `true` if the channel is disconnected.
     pub(crate) fn is_disconnected(&self) -> bool {
         self.tail.load(Ordering::SeqCst) & self.mark_bit != 0

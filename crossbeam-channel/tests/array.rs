@@ -707,3 +707,20 @@ fn panic_on_drop() {
     // Elements after the panicked element will leak.
     assert!(!b);
 }
+
+#[test]
+fn zero_sender_revival() {
+    let (s, r) = bounded::<i32>(1);
+
+    s.send(1).unwrap();
+
+    drop(s);
+
+    assert_eq!(r.recv(), Ok(1));
+    assert_eq!(r.recv(), Err(RecvError));
+
+    let s = r.new_sender();
+
+    s.send(1).unwrap();
+    assert_eq!(r.recv(), Ok(1));
+}

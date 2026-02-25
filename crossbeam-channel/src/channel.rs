@@ -1202,19 +1202,19 @@ impl<T> Receiver<T> {
     ///
     /// # Panics
     ///
-    /// If this receiver was created from [tick], [at], or [never].
+    /// If this receiver was created from [tick], [at], or [never()].
     /// Those channel flavors do not support explicit receivers.
     #[track_caller]
     pub fn new_sender(&self) -> Sender<T> {
         match &self.flavor {
             ReceiverFlavor::Array(chan) => Sender {
-                flavor: SenderFlavor::Array(chan.new_sender(|_| unimplemented!("but unreachable"))),
+                flavor: SenderFlavor::Array(chan.new_sender(|c| c.reconnect_senders())),
             },
             ReceiverFlavor::List(chan) => Sender {
                 flavor: SenderFlavor::List(chan.new_sender(|c| c.reconnect_senders())),
             },
             ReceiverFlavor::Zero(chan) => Sender {
-                flavor: SenderFlavor::Zero(chan.new_sender(|_| unimplemented!("but unreachable"))),
+                flavor: SenderFlavor::Zero(chan.new_sender(|c| c.reconnect_senders())),
             },
             _ => panic!("new_sender cannot be called with a Receiver created by at/never/tick"),
         }
