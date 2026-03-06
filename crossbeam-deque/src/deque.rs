@@ -335,11 +335,8 @@ impl<T> Worker<T> {
 
             // Is there enough capacity to push `reserve_cap` tasks?
             if cap - len < reserve_cap {
-                // Keep doubling the capacity as much as is needed.
-                let mut new_cap = cap * 2;
-                while new_cap - len < reserve_cap {
-                    new_cap *= 2;
-                }
+                // Ensure capacity for reserve_cap + len, rounded up to the next power of 2
+                let new_cap = (reserve_cap + len).next_power_of_two();
 
                 // Resize the buffer.
                 unsafe {
