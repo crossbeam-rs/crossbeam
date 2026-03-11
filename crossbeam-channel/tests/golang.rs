@@ -770,8 +770,9 @@ mod select2 {
 
 // https://github.com/golang/go/blob/master/test/chan/select3.go
 mod select3 {
-    use super::*;
     use std::panic::AssertUnwindSafe;
+
+    use super::*;
     const ALWAYS: &str = "function did not";
     const NEVER: &str = "function did";
 
