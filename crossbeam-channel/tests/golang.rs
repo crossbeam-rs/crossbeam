@@ -26,10 +26,6 @@ fn ms(ms: u64) -> Duration {
     Duration::from_millis(ms)
 }
 
-fn secs(secs: u64) -> Duration {
-    Duration::from_secs(secs)
-}
-
 struct Chan<T> {
     inner: Arc<Mutex<ChanInner<T>>>,
 }
@@ -161,19 +157,6 @@ fn make_unbounded<T>() -> Chan<T> {
             nil_s,
             _nil_sr,
         })),
-    }
-}
-
-fn make_nil<T>() -> Chan<T> {
-    let (nil_s, _nil_sr) = bounded(0);
-    Chan {
-        inner: Arc::new(Mutex::new(ChanInner {
-            s: None,
-            r: None,
-            nil_r: never(),
-            nil_s,
-            _nil_sr
-        }))
     }
 }
 
@@ -793,10 +776,6 @@ mod select3 {
     const ALWAYS: &str = "function did not";
     const NEVER: &str = "function did";
 
-    fn unreachable() {
-        panic!("control flow shouldn't reach here")
-    }
-
     fn test_panic<T: Fn()>(signal: &'static str, f: T) {
         let result = std::panic::catch_unwind(AssertUnwindSafe(f));
 
@@ -807,197 +786,229 @@ mod select3 {
         }
     }
 
-    fn test_block<T: Fn() + Clone + Send + 'static>(signal: &'static str, f: T) {
-        let c = make::<&str>(1);
-        let block = move || { f()};
-        go!(c, block, {
-            block();
-            c.send(NEVER);
+    // Calls f and empirically verifies that f always/never blocks depending on signal.
+    fn test_block(signal: &'static str, f: impl FnOnce() + Send + 'static) {
+        let c = make::<&str>(0);
+        go!(c, {
+            f();
+            c.send(NEVER); // f didn't block
         });
-
-        go!(signal, c, {
+        go!(c, {
             if signal == NEVER {
-                thread::sleep(secs(10));
+                thread::sleep(Duration::from_secs(10));
+            } else {
+                thread::sleep(Duration::from_millis(10));
             }
-            else {
-                thread::sleep(ms(10));
-            }
-            c.send(ALWAYS)
+            c.send(ALWAYS);
         });
-
-        if let Some(v) = c.recv() {
-            if v != signal {
-                panic!("{} block", signal)
-            }
+        let received = c.clone().recv().unwrap();
+        if received != signal {
+            panic!("{signal} block");
         }
     }
 
     #[test]
     fn main() {
-        const ASYNC_CHANNELS: usize = 1;
-        let nil_ch: Chan<i32> = make_nil::<i32>();
-        let closed_ch: Chan<i32> = make::<i32>(0);
-        closed_ch.close_s();
-        closed_ch.close_r();
+        // https://github.com/rust-lang/miri/issues/1371
+        if option_env!("MIRI_LEAK_CHECK").is_some() {
+            return;
+        }
+        let r#async = 1;
+        let nilch = make::<i32>(0);
+        nilch.close_s();
+        nilch.close_r();
+        let nilch = Arc::new(nilch);
+        let closedch = make::<i32>(0);
+        closedch.close_s();
+        let closedch = Arc::new(closedch);
 
         // sending/receiving from a nil channel blocks
-        let nil_ch1 = nil_ch.clone();
-        test_block(ALWAYS,  move || {nil_ch1.send(7)});
-
-        let nil_ch2 = nil_ch.clone();
-        test_block(ALWAYS, move || {nil_ch2.recv();});
+        test_block(ALWAYS, {
+            let nilch = nilch.clone();
+            move || {
+                nilch.tx().send(7);
+            }
+        });
+        test_block(ALWAYS, {
+            let nilch = nilch.clone();
+            move || {
+                let _ = nilch.rx().recv();
+            }
+        });
 
         // sending/receiving from a nil channel inside a select is never selected
-        let nil_ch3 = nil_ch.clone();
-        test_panic(NEVER, || {
-            select! {
-                send(nil_ch3.tx(), 7) -> _ => unreachable(),
-                default() => ()
+        test_panic(NEVER, {
+            let nilch = nilch.clone();
+            move || {
+                select! {
+                    send(nilch.tx(), 7) -> _ => unreachable!(),
+                    default => {},
+                }
             }
         });
-
-        let nil_ch4 = nil_ch.clone();
-        test_panic(NEVER, || {
-            select! {
-                recv(nil_ch4.rx()) -> _ => unreachable(),
-                default() => ()
-            }
-        });
-
-        // sending to an async channel with free buffer space never blocks
-        test_block(NEVER, || {
-            let ch = make::<i32>(ASYNC_CHANNELS);
-            ch.send(7);
-        });
-
-        // receiving from a closed channel never blocks
-        let closed_ch1 = closed_ch.clone();
-        test_block(NEVER, move || {
-            for _ in 0..10 {
-                if let Some(x) = closed_ch1.recv() {
-                    println!("closed_ch: {}", x);
-                    panic!("expected None from closed channel");
+        test_panic(NEVER, {
+            let nilch = nilch.clone();
+            move || {
+                select! {
+                    recv(nilch.rx()) -> _ => unreachable!(),
+                    default => {},
                 }
             }
         });
 
-        // sending to a closed channel panics.
-        let closed_ch2 = closed_ch.clone();
-        test_panic(ALWAYS, || {
-            closed_ch2.send(7);
+        // sending to an async channel with free buffer space never blocks
+        test_block(NEVER, {
+            move || {
+                let ch = make::<i32>(r#async);
+                ch.send(7);
+            }
+        });
+
+        // receiving from a closed channel never blocks
+        test_block(NEVER, {
+            let closedch = closedch.clone();
+            move || {
+                for _ in 0..10 {
+                    if closedch.recv().is_some() {
+                        panic!("expected None when reading from closed channel");
+                    }
+                }
+            }
         });
 
         // receiving from a non-ready channel always blocks
-        test_block(ALWAYS, || {
-            let ch = make::<i32>(0);
-            ch.recv();
-        });
-
-        // empty selects always block
-        test_block(ALWAYS, || {
-            //simulate empty select block
-            let _: Result<(), _> = never::<()>().recv();
+        test_block(ALWAYS, {
+            move || {
+                let ch = make::<i32>(0);
+                let _ = ch.recv();
+            }
         });
 
         // selects with only nil channels always block
-        let nil_ch5 = nil_ch.clone();
-        test_block(ALWAYS, move || {
-            select! {
-                recv(nil_ch5.rx()) -> _ => unreachable()
+        test_block(ALWAYS, {
+            let nilch = nilch.clone();
+            move || {
+                select! {
+                    recv(nilch.rx()) -> _ => unreachable!()
+                }
+            }
+        });
+        test_block(ALWAYS, {
+            let nilch = nilch.clone();
+            move || {
+                select! {
+                    send(nilch.tx(), 7) -> _ => unreachable!()
+                }
+            }
+        });
+        test_block(ALWAYS, {
+            let nilch = nilch.clone();
+            move || {
+                select! {
+                    recv(nilch.rx()) -> _ => unreachable!(),
+                    send(nilch.tx(), 7) -> _ => unreachable!(),
+                }
             }
         });
 
-        let nil_ch6 = nil_ch.clone();
-        test_block(ALWAYS, move || {
-            select! {
-                send(nil_ch6.tx(), 7) -> _ => unreachable()
-            }
-        });
-
-        let nil_ch7 = nil_ch.clone();
-        test_block(ALWAYS, move || {
-            select! {
-                recv(nil_ch7.rx()) -> _ => unreachable(),
-                send(nil_ch7.tx(), 7) -> _ => unreachable()
-            }
-        });
-
-        test_block(ALWAYS, || {
-            let ch = make::<i32>(0);
-            select! {
-                recv(ch.rx()) -> _ => unreachable()
+        // selects with non-ready non-nil channels always block
+        test_block(ALWAYS, {
+            move || {
+                let ch = make::<i32>(0);
+                select! {
+                    recv(ch.rx()) -> _ => unreachable!()
+                }
             }
         });
 
         // selects with default cases don't block
-        test_block(NEVER, || {select! {default() => ()}});
-
-        let nil_ch8 = nil_ch.clone();
-        test_block(ALWAYS, move || {
-            select! {
-                recv(nil_ch8.rx()) -> _ => unreachable(),
-                default() => ()
+        test_block(NEVER, {
+            move || {
+                select! {
+                    default => {}
+                }
             }
         });
-
-        let nil_ch9 = nil_ch.clone();
-        test_block(ALWAYS, move || {
-            select! {
-                send(nil_ch9.tx(), 7) -> _ => unreachable(),
-                default() => ()
+        test_block(NEVER, {
+            let nilch = nilch.clone();
+            move || {
+                select! {
+                    recv(nilch.rx()) -> _ => unreachable!(),
+                    default => {},
+                }
             }
         });
-
+        test_block(NEVER, {
+            let nilch = nilch.clone();
+            move || {
+                select! {
+                    send(nilch.tx(), 7) -> _ => unreachable!(),
+                    default => {},
+                }
+            }
+        });
 
         // selects with ready channels don't block
-        test_block(NEVER, || {
-            let ch = make::<i32>(ASYNC_CHANNELS);
-            select! {
-                send(ch.tx(), 7) -> _ => (),
-                default() => unreachable()
+        test_block(NEVER, {
+            move || {
+                let ch = make::<i32>(r#async);
+                select! {
+                    send(ch.tx(), 7) -> _ => {},
+                    default => unreachable!(),
+                }
             }
         });
-
-        test_block(NEVER, || {
-            let ch = make::<i32>(ASYNC_CHANNELS);
-            ch.send(7);
-            select! {
-                recv(ch.rx()) -> _ => (),
-                default() => unreachable()
+        test_block(NEVER, {
+            move || {
+                let ch = make::<i32>(r#async);
+                ch.send(7);
+                select! {
+                    recv(ch.rx()) -> _ => {},
+                    default => unreachable!(),
+                }
             }
         });
 
         // selects with closed channels behave like ordinary operations
-        let closed_ch3 = closed_ch.clone();
-        test_block(NEVER, move || {
-            select! {
-                recv(closed_ch3.rx()) -> _ => ()
+        test_block(NEVER, {
+            let closedch = closedch.clone();
+            move || {
+                select! {
+                    recv(closedch.rx()) -> _ => {}
+                }
             }
         });
-
-        let closed_ch4 = closed_ch.clone();
-        test_block(NEVER, move || {
-            select! {
-                recv(closed_ch4.rx()) -> _x => ()
-            }
-        });
-
-        let closed_ch5 = closed_ch.clone();
-        test_panic(ALWAYS, move || {
-            select! {
-                send(closed_ch5.tx(), 7) -> _ => ()
+        test_block(NEVER, {
+            let closedch = closedch.clone();
+            move || {
+                select! {
+                    recv(closedch.rx()) -> x => { let _ = x; }
+                }
             }
         });
 
         // select should not get confused if it sees itself
-        test_block(ALWAYS, || {
-            let c = make::<i32>(0);
-            select! {
-                send(c.tx(), 1) -> _ => (),
-                recv(c.rx()) -> _ => ()
+        test_block(ALWAYS, {
+            move || {
+                let ch = make::<i32>(0);
+                select! {
+                    recv(ch.rx()) -> _ => {},
+                    send(ch.tx(), 7) -> _ => {},
+                }
             }
         });
+    }
 
+    #[test]
+    fn sending_to_a_closed_channel_panics() {
+        let closedch = make::<i32>(0);
+        closedch.close_s();
+        let closedch = Arc::new(closedch);
+        test_panic(ALWAYS, {
+            move || {
+                let _ = closedch.send(7);
+            }
+        });
     }
 }
 
