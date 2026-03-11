@@ -770,16 +770,15 @@ mod select2 {
 
 // https://github.com/golang/go/blob/master/test/chan/select3.go
 mod select3 {
-    use std::panic::AssertUnwindSafe;
     use super::*;
-
+    use std::panic::AssertUnwindSafe;
     const ALWAYS: &str = "function did not";
     const NEVER: &str = "function did";
 
     fn test_panic<T: Fn()>(signal: &'static str, f: T) {
         let result = std::panic::catch_unwind(AssertUnwindSafe(f));
 
-        let s = if result.is_err() {ALWAYS} else {NEVER};
+        let s = if result.is_err() { ALWAYS } else { NEVER };
 
         if s != signal {
             panic!("{} panic", signal)
@@ -826,7 +825,7 @@ mod select3 {
         test_block(ALWAYS, {
             let nilch = nilch.clone();
             move || {
-                nilch.tx().send(7);
+                let _ = nilch.tx().send(7);
             }
         });
         test_block(ALWAYS, {
@@ -860,7 +859,7 @@ mod select3 {
         test_block(NEVER, {
             move || {
                 let ch = make::<i32>(r#async);
-                ch.send(7);
+                let _ = ch.send(7);
             }
         });
 
