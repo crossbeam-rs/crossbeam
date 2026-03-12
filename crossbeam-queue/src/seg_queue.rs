@@ -4,7 +4,8 @@ use core::{
     cell::UnsafeCell,
     fmt,
     marker::PhantomData,
-    mem::MaybeUninit,
+    mem::{self, MaybeUninit},
+    ops::{Bound, RangeBounds},
     panic::{RefUnwindSafe, UnwindSafe},
     ptr,
     sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering},
@@ -525,6 +526,75 @@ impl<T> SegQueue<T> {
         }
     }
 
+    /// Returns an iterator that drains elements from the queue within the given range.
+    ///
+    /// Elements before the range and after the range remain in the queue.
+    /// If the `Drain` iterator is dropped before being fully consumed,
+    /// the remaining elements within the range are dropped, and elements
+    /// outside the range are preserved in their original order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the start of the range is greater than the end.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::SegQueue;
+    ///
+    /// // Full drain
+    /// let mut q = SegQueue::new();
+    /// for i in 0..5 { q.push(i); }
+    /// let v: Vec<_> = q.drain(..).collect();
+    /// assert_eq!(v, [0, 1, 2, 3, 4]);
+    /// assert!(q.is_empty());
+    ///
+    /// // Prefix drain
+    /// let mut q = SegQueue::new();
+    /// for i in 0..5 { q.push(i); }
+    /// let v: Vec<_> = q.drain(..3).collect();
+    /// assert_eq!(v, [0, 1, 2]);
+    /// assert_eq!(q.len(), 2);
+    ///
+    /// // Range drain
+    /// let mut q = SegQueue::new();
+    /// for i in 0..5 { q.push(i); }
+    /// let v: Vec<_> = q.drain(1..4).collect();
+    /// assert_eq!(v, [1, 2, 3]);
+    /// assert_eq!(q.len(), 2);
+    /// ```
+    pub fn drain<R: RangeBounds<usize>>(&mut self, range: R) -> Drain<'_, T> {
+        let start = match range.start_bound() {
+            Bound::Included(&n) => n,
+            Bound::Excluded(&n) => n.checked_add(1).expect("start index overflow"),
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&n) => n.checked_add(1).expect("end index overflow"),
+            Bound::Excluded(&n) => n,
+            Bound::Unbounded => usize::MAX,
+        };
+        assert!(start <= end, "drain range start is greater than end");
+
+        // Move prefix elements into a saved SegQueue.
+        // We use push_mut/pop_mut throughout since we have exclusive access.
+        let mut prefix = SegQueue::new();
+        for _ in 0..start {
+            match self.pop_mut() {
+                Some(v) => prefix.push_mut(v),
+                None => break,
+            }
+        }
+
+        let remaining = end.saturating_sub(start);
+
+        Drain {
+            queue: self,
+            prefix,
+            remaining,
+        }
+    }
+
     /// Returns `true` if the queue is empty.
     ///
     /// # Examples
@@ -593,6 +663,68 @@ impl<T> SegQueue<T> {
                 return tail - head - tail / LAP;
             }
         }
+    }
+}
+
+/// A draining iterator for `SegQueue<T>`.
+///
+/// This struct is created by the [`drain`] method on [`SegQueue`].
+///
+/// [`drain`]: SegQueue::drain
+pub struct Drain<'a, T> {
+    queue: &'a mut SegQueue<T>,
+    /// Saved prefix elements (before the drain range).
+    prefix: SegQueue<T>,
+    /// How many elements are left to yield/drop within the drain range.
+    remaining: usize,
+}
+
+impl<T> Iterator for Drain<'_, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.remaining == 0 {
+            return None;
+        }
+        let val = self.queue.pop_mut();
+        if val.is_some() {
+            self.remaining -= 1;
+        }
+        val
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        // Credit: size_hint and ExactSizeIterator suggested by @laycookie
+        // in https://github.com/crossbeam-rs/crossbeam/issues/1228
+        let remaining = self.remaining.min(self.queue.len());
+        (remaining, Some(remaining))
+    }
+}
+
+impl<T> ExactSizeIterator for Drain<'_, T> {}
+
+impl<T> Drop for Drain<'_, T> {
+    fn drop(&mut self) {
+        // Drop all remaining elements in the drain range.
+        while self.remaining > 0 {
+            if self.next().is_none() {
+                break;
+            }
+        }
+        // Move suffix (whatever remains in queue) into prefix,
+        // preserving order: prefix elements come first, then suffix.
+        while let Some(v) = self.queue.pop_mut() {
+            self.prefix.push_mut(v);
+        }
+        // Swap so the original queue now holds prefix + suffix.
+        mem::swap(self.queue, &mut self.prefix);
+        // self.prefix (now the old queue, empty) drops here cleanly.
+    }
+}
+
+impl<T> fmt::Debug for Drain<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad("Drain { .. }")
     }
 }
 
