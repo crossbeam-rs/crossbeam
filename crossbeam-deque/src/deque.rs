@@ -286,28 +286,6 @@ impl<T> Worker<T> {
         }
     }
 
-    /// Checks if the worker and the provided stealer are pointing to the same underlying queue.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_deque::Worker;
-    ///
-    /// let w_1 = Worker::<i32>::new_lifo();
-    /// let w_2 = Worker::<i32>::new_fifo();
-    ///
-    /// let s_1 = w_1.stealer();
-    /// let s_2 = w_2.stealer();
-    ///
-    /// assert!(w_1.donates_to(&s_1));
-    /// assert!(w_2.donates_to(&s_2));
-    /// assert!(!w_1.donates_to(&s_2));
-    /// assert!(!w_2.donates_to(&s_1));
-    /// ```
-    pub fn donates_to(&self, stealer: &Stealer<T>) -> bool {
-        Arc::ptr_eq(&self.inner, &stealer.inner)
-    }
-
     /// Resizes the internal buffer to the new capacity of `new_cap`.
     #[cold]
     unsafe fn resize(&self, new_cap: usize) {
@@ -643,6 +621,30 @@ impl<T> Stealer<T> {
         atomic::fence(Ordering::SeqCst);
         let b = self.inner.back.load(Ordering::Acquire);
         b.wrapping_sub(f).max(0) as usize
+    }
+
+    /// Checks if the stealer will steal from the provided worker.
+    ///
+    /// If both are pointing to the same underlying queue, this will return false.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Worker;
+    ///
+    /// let w_1 = Worker::<i32>::new_lifo();
+    /// let w_2 = Worker::<i32>::new_fifo();
+    ///
+    /// let s_1 = w_1.stealer();
+    /// let s_2 = w_2.stealer();
+    ///
+    /// assert!(!w_1.will_steal_fromq(&s_1));
+    /// assert!(!w_2.will_steal_fromq(&s_2));
+    /// assert!(w_1.will_steal_fromq(&s_2));
+    /// assert!(w_2.will_steal_fromq(&s_1));
+    /// ```
+    pub fn will_steal_fromq(&self, stealer: &Stealer<T>) -> bool {
+        !Arc::ptr_eq(&self.inner, &stealer.inner)
     }
 
     /// Steals a task from the queue.
