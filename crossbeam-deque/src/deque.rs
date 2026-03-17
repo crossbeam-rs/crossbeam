@@ -638,13 +638,13 @@ impl<T> Stealer<T> {
     /// let s_1 = w_1.stealer();
     /// let s_2 = w_2.stealer();
     ///
-    /// assert!(!w_1.will_steal_fromq(&s_1));
-    /// assert!(!w_2.will_steal_fromq(&s_2));
-    /// assert!(w_1.will_steal_fromq(&s_2));
-    /// assert!(w_2.will_steal_fromq(&s_1));
+    /// assert!(!s_1.will_steal_fromq(&w_1));
+    /// assert!(!s_2.will_steal_fromq(&w_2));
+    /// assert!(s_1.will_steal_fromq(&w_2));
+    /// assert!(s_2.will_steal_fromq(&w_1));
     /// ```
-    pub fn will_steal_fromq(&self, stealer: &Stealer<T>) -> bool {
-        !Arc::ptr_eq(&self.inner, &stealer.inner)
+    pub fn will_steal_fromq(&self, worker: &Worker<T>) -> bool {
+        !Arc::ptr_eq(&self.inner, &worker.inner)
     }
 
     /// Steals a task from the queue.
