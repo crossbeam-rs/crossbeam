@@ -1626,7 +1626,6 @@ mod closedchan {
         }));
         assert!(result.is_err());
     }
-
 }
 
 // https://github.com/golang/go/blob/master/src/runtime/chanbarrier_test.go
