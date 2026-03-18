@@ -1578,7 +1578,7 @@ mod closedchan {
         for _ in 0..3 {
             // recv a close signal (a zero value)
             let x = c.recv().unwrap_or(0);
-            assert_eq!(x, 0, "test1: recv on closed");
+            assert_eq!(x, 0);
 
             // should work with select: received a value without blocking
             let x = c.try_recv().unwrap_or(0);
