@@ -1540,7 +1540,60 @@ mod chan_test {
 
 // https://github.com/golang/go/blob/master/test/closedchan.go
 mod closedchan {
-    // TODO
+    use super::*;
+
+    fn test1(c: Chan<i32>) {
+        for _ in 0..3 {
+            // recv a close signal (a zero value)
+            let x = c.recv().unwrap_or(0);
+            assert_eq!(x, 0);
+
+            // should work with select: received a value without blocking
+            let x = c.try_recv().unwrap_or(0);
+            assert_eq!(x, 0);
+        }
+    }
+
+    fn test_async1(c: Chan<i32>) {
+        //should be able to get the last value via Recv
+        let x = c.recv().unwrap_or(0);
+        assert_eq!(x, 1);
+        test1(c);
+    }
+
+    fn test_async2(c: Chan<i32>) {
+        //should be able to get the last value via Nbrecv
+        let x = c.try_recv().unwrap_or(0);
+        assert_eq!(x, 1);
+        test1(c);
+    }
+
+    fn closed_sync() -> Chan<i32> {
+        let c = make::<i32>(0);
+        c.close_s();
+        c
+    }
+
+    fn closed_async() -> Chan<i32> {
+        let c = make::<i32>(2);
+        c.send(1);
+        c.close_s();
+        c
+    }
+    #[test]
+    fn main() {
+        test1(closed_sync());
+        test_async1(closed_async());
+        test_async2(closed_async());
+
+        let ch = make::<i32>(0);
+        ch.close_s();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ch.close_s();
+        }));
+        assert!(result.is_err());
+    }
 }
 
 // https://github.com/golang/go/blob/master/src/runtime/chanbarrier_test.go
