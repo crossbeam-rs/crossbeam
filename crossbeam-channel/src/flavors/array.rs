@@ -89,11 +89,23 @@ pub(crate) struct Channel<T> {
 
     /// Receivers waiting while the channel is empty and not disconnected.
     receivers: SyncWaker,
+
+    /// If true, `try_send` on a full channel evicts the oldest message instead of dropping the incoming one.
+    lossy: bool,
 }
 
 impl<T> Channel<T> {
     /// Creates a bounded channel of capacity `cap`.
     pub(crate) fn with_capacity(cap: usize) -> Self {
+        Self::new(cap, false)
+    }
+
+    /// Creates a lossy bounded channel of capacity `cap`.
+    pub(crate) fn with_capacity_lossy(cap: usize) -> Self {
+        Self::new(cap, true)
+    }
+
+    fn new(cap: usize, lossy: bool) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
         // Compute constants `mark_bit` and `one_lap`.
@@ -125,6 +137,7 @@ impl<T> Channel<T> {
             tail: CachePadded::new(AtomicUsize::new(tail)),
             senders: SyncWaker::new(),
             receivers: SyncWaker::new(),
+            lossy,
         }
     }
 
@@ -321,11 +334,90 @@ impl<T> Channel<T> {
 
     /// Attempts to send a message into the channel.
     pub(crate) fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        let token = &mut Token::default();
-        if self.start_send(token) {
-            unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
+        if self.lossy {
+            self.force_send(msg)
         } else {
-            Err(TrySendError::Full(msg))
+            let token = &mut Token::default();
+            if self.start_send(token) {
+                unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
+            } else {
+                Err(TrySendError::Full(msg))
+            }
+        }
+    }
+
+    /// Sends a message, evicting the oldest if the channel is full.
+    ///
+    /// Returns `Ok(())` if there was space, `Err(TrySendError::Full(evicted))` if the oldest
+    /// message was displaced, or `Err(TrySendError::Disconnected(msg))` if disconnected.
+    fn force_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+        let backoff = Backoff::new();
+        let mut tail = self.tail.load(Ordering::Relaxed);
+
+        loop {
+            if tail & self.mark_bit != 0 {
+                return Err(TrySendError::Disconnected(msg));
+            }
+
+            let index = tail & (self.mark_bit - 1);
+            let lap = tail & !(self.one_lap - 1);
+
+            let new_tail = if index + 1 < self.cap() {
+                tail + 1
+            } else {
+                lap.wrapping_add(self.one_lap)
+            };
+
+            debug_assert!(index < self.buffer.len());
+            let slot = unsafe { self.buffer.get_unchecked(index) };
+            let stamp = slot.stamp.load(Ordering::Acquire);
+
+            if tail == stamp {
+                // Slot is empty - try to claim it.
+                match self.tail.compare_exchange_weak(
+                    tail,
+                    new_tail,
+                    Ordering::SeqCst,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => {
+                        unsafe { slot.msg.get().write(MaybeUninit::new(msg)) }
+                        slot.stamp.store(tail + 1, Ordering::Release);
+                        self.receivers.notify();
+                        return Ok(());
+                    }
+                    Err(t) => {
+                        tail = t;
+                        backoff.spin();
+                    }
+                }
+            } else if stamp.wrapping_add(self.one_lap) == tail + 1 {
+                // Slot is full - try to evict the oldest.
+                atomic::fence(Ordering::SeqCst);
+
+                let head = tail.wrapping_sub(self.one_lap);
+                let new_head = new_tail.wrapping_sub(self.one_lap);
+
+                if self
+                    .head
+                    .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Relaxed)
+                    .is_ok()
+                {
+                    self.tail.store(new_tail, Ordering::SeqCst);
+
+                    let old = unsafe { slot.msg.get().replace(MaybeUninit::new(msg)).assume_init() };
+                    slot.stamp.store(tail + 1, Ordering::Release);
+
+                    self.receivers.notify();
+                    return Err(TrySendError::Full(old));
+                }
+
+                backoff.spin();
+                tail = self.tail.load(Ordering::Relaxed);
+            } else {
+                backoff.snooze();
+                tail = self.tail.load(Ordering::Relaxed);
+            }
         }
     }
 

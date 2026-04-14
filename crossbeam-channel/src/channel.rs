@@ -132,6 +132,43 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     }
 }
 
+/// Creates a lossy bounded channel with a capacity of `cap` messages.
+///
+/// A lossy channel behaves like [`bounded`], except that [`Sender::try_send`] on a full channel
+/// evicts the oldest message and returns it inside [`TrySendError::Full`] instead of returning
+/// the incoming message. [`Sender::send`] still blocks when the channel is full.
+///
+/// # Panics
+///
+/// Panics if `cap` is zero.
+///
+/// # Examples
+///
+/// ```
+/// use crossbeam_channel::{lossy, TrySendError};
+///
+/// let (s, r) = lossy(2);
+///
+/// assert!(s.try_send(1).is_ok());
+/// assert!(s.try_send(2).is_ok());
+///
+/// // Channel is full - oldest message (1) is evicted.
+/// assert_eq!(s.try_send(3), Err(TrySendError::Full(1)));
+/// assert_eq!(r.recv(), Ok(2));
+/// assert_eq!(r.recv(), Ok(3));
+/// ```
+pub fn lossy<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
+    assert!(cap > 0, "lossy channel capacity must be positive");
+    let (s, r) = counter::new(flavors::array::Channel::with_capacity_lossy(cap));
+    let s = Sender {
+        flavor: SenderFlavor::Array(s),
+    };
+    let r = Receiver {
+        flavor: ReceiverFlavor::Array(r),
+    };
+    (s, r)
+}
+
 /// Creates a receiver that delivers a message after a certain duration of time.
 ///
 /// The channel is bounded with capacity of 1 and never gets disconnected. Exactly one message will
