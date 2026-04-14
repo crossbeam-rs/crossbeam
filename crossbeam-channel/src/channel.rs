@@ -138,10 +138,6 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// evicts the oldest message and returns it inside [`TrySendError::Full`] instead of returning
 /// the incoming message. [`Sender::send`] still blocks when the channel is full.
 ///
-/// # Panics
-///
-/// Panics if `cap` is zero.
-///
 /// # Examples
 ///
 /// ```
@@ -158,7 +154,6 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// assert_eq!(r.recv(), Ok(3));
 /// ```
 pub fn lossy<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
-    assert!(cap > 0, "lossy channel capacity must be positive");
     let (s, r) = counter::new(flavors::array::Channel::with_capacity_lossy(cap));
     let s = Sender {
         flavor: SenderFlavor::Array(s),

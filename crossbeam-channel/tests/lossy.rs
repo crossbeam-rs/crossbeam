@@ -1,9 +1,8 @@
 //! Tests for the lossy bounded channel.
 
-use std::{
-    sync::atomic::{AtomicUsize, Ordering},
-    thread,
-    time::Duration,
+use std::sync::{
+    Barrier,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use crossbeam_channel::{RecvError, SendError, TryRecvError, TrySendError, lossy};
@@ -43,7 +42,7 @@ fn capacity_one() {
 }
 
 #[test]
-#[should_panic(expected = "lossy channel capacity must be positive")]
+#[should_panic(expected = "capacity must be positive")]
 fn zero_capacity_panics() {
     let _ = lossy::<i32>(0);
 }
@@ -116,16 +115,18 @@ fn send_blocks_when_full() {
     let (s, r) = lossy(1);
     s.send(1).unwrap();
 
+    let barrier = Barrier::new(2);
     let received = AtomicUsize::new(0);
     scope(|scope| {
         scope.spawn(|_| {
-            thread::sleep(Duration::from_millis(100));
             assert_eq!(r.recv(), Ok(1));
             received.store(1, Ordering::Release);
+            barrier.wait();
         });
 
         // If send evicted instead of blocking, it would return before the receiver runs.
-        assert!(s.send(2).is_ok());
+        s.send(2).unwrap();
+        barrier.wait();
         assert_eq!(received.load(Ordering::Acquire), 1);
     })
     .unwrap();
@@ -158,14 +159,16 @@ fn send_after_disconnect() {
 #[test]
 fn disconnect_wakes_sender() {
     let (s, r) = lossy(1);
+    let barrier = Barrier::new(2);
 
     scope(|scope| {
-        scope.spawn(move |_| {
+        scope.spawn(|_| {
             assert_eq!(s.send(()), Ok(()));
+            barrier.wait();
             assert_eq!(s.send(()), Err(SendError(())));
         });
-        scope.spawn(move |_| {
-            thread::sleep(Duration::from_millis(100));
+        scope.spawn(|_| {
+            barrier.wait();
             drop(r);
         });
     })

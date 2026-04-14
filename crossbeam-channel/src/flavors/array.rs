@@ -405,7 +405,8 @@ impl<T> Channel<T> {
                 {
                     self.tail.store(new_tail, Ordering::SeqCst);
 
-                    let old = unsafe { slot.msg.get().replace(MaybeUninit::new(msg)).assume_init() };
+                    let old =
+                        unsafe { slot.msg.get().replace(MaybeUninit::new(msg)).assume_init() };
                     slot.stamp.store(tail + 1, Ordering::Release);
 
                     self.receivers.notify();
