@@ -16,7 +16,7 @@ use crossbeam_utils::Backoff;
 
 use crate::{
     context::Context,
-    err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
+    err::{LossySendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
     select::{Operation, SelectHandle, Selected, Token},
     waker::Waker,
 };
@@ -218,6 +218,15 @@ impl<T> Channel<T> {
         } else {
             Err(TrySendError::Full(msg))
         }
+    }
+
+    /// A zero-capacity channel has no buffer to evict from, so a lossy send will either
+    /// succeed or return one of the variants `NotSent` or `Disconnected`.
+    pub(crate) fn lossy_send(&self, msg: T) -> Result<(), LossySendError<T>> {
+        self.try_send(msg).map_err(|err| match err {
+            TrySendError::Full(msg) => LossySendError::NotSent(msg),
+            TrySendError::Disconnected(msg) => LossySendError::Disconnected(msg),
+        })
     }
 
     /// Sends a message into the channel.

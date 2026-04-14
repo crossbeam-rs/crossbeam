@@ -1,6 +1,7 @@
 #![allow(clippy::redundant_clone)]
 
 use std::{
+    hint,
     ops::Bound,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -999,7 +1000,9 @@ fn remove_race() {
                 let mut removed_entries = Vec::with_capacity(KEY_RANGE as usize);
 
                 barrier1.fetch_sub(1, Ordering::Relaxed);
-                while barrier1.load(Ordering::Acquire) != 0 {}
+                while barrier1.load(Ordering::Acquire) != 0 {
+                    hint::spin_loop()
+                }
 
                 for x in 0..KEY_RANGE {
                     if let Some(entry) = s.remove(&x, guard) {
@@ -1008,7 +1011,9 @@ fn remove_race() {
                 }
 
                 barrier2.fetch_sub(1, Ordering::Relaxed);
-                while barrier2.load(Ordering::Acquire) != 0 {}
+                while barrier2.load(Ordering::Acquire) != 0 {
+                    hint::spin_loop()
+                }
 
                 total_removed.fetch_add(removed_entries.len() as u32, Ordering::Relaxed);
 

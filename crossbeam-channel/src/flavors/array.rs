@@ -21,7 +21,7 @@ use crossbeam_utils::{Backoff, CachePadded};
 
 use crate::{
     context::Context,
-    err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
+    err::{LossySendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
     select::{Operation, SelectHandle, Selected, Token},
     waker::SyncWaker,
 };
@@ -326,6 +326,79 @@ impl<T> Channel<T> {
             unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
         } else {
             Err(TrySendError::Full(msg))
+        }
+    }
+
+    /// Sends a message, evicting the oldest if the channel is full.
+    pub(crate) fn lossy_send(&self, msg: T) -> Result<(), LossySendError<T>> {
+        let backoff = Backoff::new();
+        let mut tail = self.tail.load(Ordering::Relaxed);
+
+        loop {
+            if tail & self.mark_bit != 0 {
+                return Err(LossySendError::Disconnected(msg));
+            }
+
+            let index = tail & (self.mark_bit - 1);
+            let lap = tail & !(self.one_lap - 1);
+
+            let new_tail = if index + 1 < self.cap() {
+                tail + 1
+            } else {
+                lap.wrapping_add(self.one_lap)
+            };
+
+            debug_assert!(index < self.buffer.len());
+            let slot = unsafe { self.buffer.get_unchecked(index) };
+            let stamp = slot.stamp.load(Ordering::Acquire);
+
+            if tail == stamp {
+                // Slot is empty - try to claim it.
+                match self.tail.compare_exchange_weak(
+                    tail,
+                    new_tail,
+                    Ordering::SeqCst,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => {
+                        unsafe { slot.msg.get().write(MaybeUninit::new(msg)) }
+                        slot.stamp.store(tail + 1, Ordering::Release);
+                        self.receivers.notify();
+                        return Ok(());
+                    }
+                    Err(t) => {
+                        tail = t;
+                        backoff.spin();
+                    }
+                }
+            } else if stamp.wrapping_add(self.one_lap) == tail + 1 {
+                // Slot is full - try to evict the oldest.
+                atomic::fence(Ordering::SeqCst);
+
+                let head = tail.wrapping_sub(self.one_lap);
+                let new_head = new_tail.wrapping_sub(self.one_lap);
+
+                if self
+                    .head
+                    .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Relaxed)
+                    .is_ok()
+                {
+                    self.tail.store(new_tail, Ordering::SeqCst);
+
+                    let old =
+                        unsafe { slot.msg.get().replace(MaybeUninit::new(msg)).assume_init() };
+                    slot.stamp.store(tail + 1, Ordering::Release);
+
+                    self.receivers.notify();
+                    return Err(LossySendError::Evicted(old));
+                }
+
+                backoff.spin();
+                tail = self.tail.load(Ordering::Relaxed);
+            } else {
+                backoff.snooze();
+                tail = self.tail.load(Ordering::Relaxed);
+            }
         }
     }
 
