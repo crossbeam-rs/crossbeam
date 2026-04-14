@@ -381,8 +381,8 @@ pub use crate::{
         unbounded,
     },
     err::{
-        ReadyTimeoutError, RecvError, RecvTimeoutError, SelectTimeoutError, SendError,
-        SendTimeoutError, TryReadyError, TryRecvError, TrySelectError, TrySendError,
+        LossySendError, ReadyTimeoutError, RecvError, RecvTimeoutError, SelectTimeoutError,
+        SendError, SendTimeoutError, TryReadyError, TryRecvError, TrySelectError, TrySendError,
     },
     select::{Select, SelectedOperation},
 };

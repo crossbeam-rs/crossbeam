@@ -13,7 +13,10 @@ use std::time::Instant;
 use crate::{
     context::Context,
     counter,
-    err::{RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError, TrySendError},
+    err::{
+        LossySendError, RecvError, RecvTimeoutError, SendError, SendTimeoutError, TryRecvError,
+        TrySendError,
+    },
     flavors,
     select::{Operation, SelectHandle, Token},
 };
@@ -132,36 +135,35 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     }
 }
 
-/// Creates a lossy bounded channel with a capacity of `cap` messages.
+/// Creates a bounded channel with a capacity of `cap` messages, intended for use with
+/// [`Sender::lossy_send`].
 ///
-/// A lossy channel behaves like [`bounded`], except that [`Sender::try_send`] on a full channel
-/// evicts the oldest message and returns it inside [`TrySendError::Full`] instead of returning
-/// the incoming message. [`Sender::send`] still blocks when the channel is full.
+/// This is equivalent to [`bounded`] with the restriction that `cap` must be positive, since
+/// lossy eviction semantics require a buffer. Use [`Sender::lossy_send`] on the returned
+/// sender to get eviction behavior when the channel is full.
+///
+/// # Panics
+///
+/// Panics if `cap` is zero.
 ///
 /// # Examples
 ///
 /// ```
-/// use crossbeam_channel::{lossy, TrySendError};
+/// use crossbeam_channel::{lossy, LossySendError};
 ///
 /// let (s, r) = lossy(2);
 ///
-/// assert!(s.try_send(1).is_ok());
-/// assert!(s.try_send(2).is_ok());
+/// assert!(s.lossy_send(1).is_ok());
+/// assert!(s.lossy_send(2).is_ok());
 ///
-/// // Channel is full - oldest message (1) is evicted.
-/// assert_eq!(s.try_send(3), Err(TrySendError::Full(1)));
+/// // Channel is full — oldest message (1) is evicted.
+/// assert_eq!(s.lossy_send(3), Err(LossySendError::Evicted(1)));
 /// assert_eq!(r.recv(), Ok(2));
 /// assert_eq!(r.recv(), Ok(3));
 /// ```
 pub fn lossy<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
-    let (s, r) = counter::new(flavors::array::Channel::with_capacity_lossy(cap));
-    let s = Sender {
-        flavor: SenderFlavor::Array(s),
-    };
-    let r = Receiver {
-        flavor: ReceiverFlavor::Array(r),
-    };
-    (s, r)
+    assert!(cap > 0, "capacity must be positive");
+    bounded(cap)
 }
 
 /// Creates a receiver that delivers a message after a certain duration of time.
@@ -444,6 +446,42 @@ impl<T> Sender<T> {
             SenderFlavor::Array(chan) => chan.try_send(msg),
             SenderFlavor::List(chan) => chan.try_send(msg),
             SenderFlavor::Zero(chan) => chan.try_send(msg),
+        }
+    }
+
+    /// Sends a message into the channel without blocking, evicting the oldest message if the
+    /// channel is full.
+    ///
+    /// For bounded channels, the oldest message is evicted and returned as
+    /// `LossySendError::Evicted(old)` if the channel is full. The new message is always sent
+    /// successfully unless the channel is disconnected.
+    ///
+    /// For unbounded channels, this always succeeds if not disconnected, since the channel is
+    /// never full.
+    ///
+    /// For zero-capacity channels, there is no buffer to evict from: returns
+    /// `LossySendError::NotSent(msg)` if no receiver is waiting.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::{bounded, LossySendError};
+    ///
+    /// let (s, r) = bounded(2);
+    ///
+    /// assert!(s.lossy_send(1).is_ok());
+    /// assert!(s.lossy_send(2).is_ok());
+    ///
+    /// // Channel is full — oldest message (1) is evicted.
+    /// assert_eq!(s.lossy_send(3), Err(LossySendError::Evicted(1)));
+    /// assert_eq!(r.recv(), Ok(2));
+    /// assert_eq!(r.recv(), Ok(3));
+    /// ```
+    pub fn lossy_send(&self, msg: T) -> Result<(), LossySendError<T>> {
+        match &self.flavor {
+            SenderFlavor::Array(chan) => chan.lossy_send(msg),
+            SenderFlavor::List(chan) => chan.lossy_send(msg),
+            SenderFlavor::Zero(chan) => chan.lossy_send(msg),
         }
     }
 

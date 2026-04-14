@@ -21,7 +21,7 @@ use crossbeam_utils::{Backoff, CachePadded};
 
 use crate::{
     context::Context,
-    err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
+    err::{LossySendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
     select::{Operation, SelectHandle, Selected, Token},
     waker::SyncWaker,
 };
@@ -89,23 +89,11 @@ pub(crate) struct Channel<T> {
 
     /// Receivers waiting while the channel is empty and not disconnected.
     receivers: SyncWaker,
-
-    /// If true, `try_send` on a full channel evicts the oldest message instead of dropping the incoming one.
-    lossy: bool,
 }
 
 impl<T> Channel<T> {
     /// Creates a bounded channel of capacity `cap`.
     pub(crate) fn with_capacity(cap: usize) -> Self {
-        Self::new(cap, false)
-    }
-
-    /// Creates a lossy bounded channel of capacity `cap`.
-    pub(crate) fn with_capacity_lossy(cap: usize) -> Self {
-        Self::new(cap, true)
-    }
-
-    fn new(cap: usize, lossy: bool) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
         // Compute constants `mark_bit` and `one_lap`.
@@ -137,7 +125,6 @@ impl<T> Channel<T> {
             tail: CachePadded::new(AtomicUsize::new(tail)),
             senders: SyncWaker::new(),
             receivers: SyncWaker::new(),
-            lossy,
         }
     }
 
@@ -334,29 +321,22 @@ impl<T> Channel<T> {
 
     /// Attempts to send a message into the channel.
     pub(crate) fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
-        if self.lossy {
-            self.force_send(msg)
+        let token = &mut Token::default();
+        if self.start_send(token) {
+            unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
         } else {
-            let token = &mut Token::default();
-            if self.start_send(token) {
-                unsafe { self.write(token, msg).map_err(TrySendError::Disconnected) }
-            } else {
-                Err(TrySendError::Full(msg))
-            }
+            Err(TrySendError::Full(msg))
         }
     }
 
     /// Sends a message, evicting the oldest if the channel is full.
-    ///
-    /// Returns `Ok(())` if there was space, `Err(TrySendError::Full(evicted))` if the oldest
-    /// message was displaced, or `Err(TrySendError::Disconnected(msg))` if disconnected.
-    fn force_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+    pub(crate) fn lossy_send(&self, msg: T) -> Result<(), LossySendError<T>> {
         let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
 
         loop {
             if tail & self.mark_bit != 0 {
-                return Err(TrySendError::Disconnected(msg));
+                return Err(LossySendError::Disconnected(msg));
             }
 
             let index = tail & (self.mark_bit - 1);
@@ -410,7 +390,7 @@ impl<T> Channel<T> {
                     slot.stamp.store(tail + 1, Ordering::Release);
 
                     self.receivers.notify();
-                    return Err(TrySendError::Full(old));
+                    return Err(LossySendError::Evicted(old));
                 }
 
                 backoff.spin();

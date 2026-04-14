@@ -28,6 +28,26 @@ pub enum TrySendError<T> {
     Disconnected(T),
 }
 
+/// An error returned from the [`lossy_send`] method.
+///
+/// The error contains a message so it can be recovered.
+///
+/// [`lossy_send`]: super::Sender::lossy_send
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum LossySendError<T> {
+    /// The channel was full. The oldest message was evicted and is returned here.
+    /// The new message was sent successfully.
+    Evicted(T),
+
+    /// The message could not be sent because the channel is a zero-capacity channel
+    /// and there was no receiver available. The original message is returned.
+    NotSent(T),
+
+    /// The message could not be sent because the channel is disconnected.
+    /// The original message is returned.
+    Disconnected(T),
+}
+
 /// An error returned from the [`send_timeout`] method.
 ///
 /// The error contains the message being sent so it can be recovered.
@@ -201,6 +221,75 @@ impl<T> TrySendError<T> {
     /// Returns `true` if the send operation failed because the channel is full.
     pub fn is_full(&self) -> bool {
         matches!(self, Self::Full(_))
+    }
+
+    /// Returns `true` if the send operation failed because the channel is disconnected.
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self, Self::Disconnected(_))
+    }
+}
+
+impl<T> fmt::Debug for LossySendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::Evicted(..) => "Evicted(..)".fmt(f),
+            Self::NotSent(..) => "NotSent(..)".fmt(f),
+            Self::Disconnected(..) => "Disconnected(..)".fmt(f),
+        }
+    }
+}
+
+impl<T> fmt::Display for LossySendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::Evicted(..) => "sending on a full channel evicted the oldest message".fmt(f),
+            Self::NotSent(..) => "sending on a zero-capacity channel with no receiver".fmt(f),
+            Self::Disconnected(..) => "sending on a disconnected channel".fmt(f),
+        }
+    }
+}
+
+impl<T: Send> error::Error for LossySendError<T> {}
+
+impl<T> From<SendError<T>> for LossySendError<T> {
+    fn from(err: SendError<T>) -> Self {
+        match err {
+            SendError(t) => Self::Disconnected(t),
+        }
+    }
+}
+
+impl<T> LossySendError<T> {
+    /// Unwraps the message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::{bounded, LossySendError};
+    ///
+    /// let (s, r) = bounded(1);
+    /// s.lossy_send(1).unwrap();
+    ///
+    /// if let Err(err) = s.lossy_send(2) {
+    ///     assert_eq!(err.into_inner(), 1);
+    /// }
+    /// ```
+    pub fn into_inner(self) -> T {
+        match self {
+            Self::Evicted(v) => v,
+            Self::NotSent(v) => v,
+            Self::Disconnected(v) => v,
+        }
+    }
+
+    /// Returns `true` if the send operation evicted an older message from the channel.
+    pub fn is_evicted(&self) -> bool {
+        matches!(self, Self::Evicted(_))
+    }
+
+    /// Returns `true` if the message could not be sent.
+    pub fn is_not_sent(&self) -> bool {
+        matches!(self, Self::NotSent(_))
     }
 
     /// Returns `true` if the send operation failed because the channel is disconnected.

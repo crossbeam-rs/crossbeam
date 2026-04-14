@@ -5,7 +5,9 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use crossbeam_channel::{RecvError, SendError, TryRecvError, TrySendError, lossy};
+use crossbeam_channel::{
+    LossySendError, RecvError, SendError, TryRecvError, bounded, lossy, unbounded,
+};
 use crossbeam_utils::thread::scope;
 
 #[test]
@@ -33,9 +35,9 @@ fn capacity() {
 fn capacity_one() {
     let (s, r) = lossy(1);
 
-    assert!(s.try_send(1).is_ok());
-    assert_eq!(s.try_send(2), Err(TrySendError::Full(1)));
-    assert_eq!(s.try_send(3), Err(TrySendError::Full(2)));
+    assert!(s.lossy_send(1).is_ok());
+    assert_eq!(s.lossy_send(2), Err(LossySendError::Evicted(1)));
+    assert_eq!(s.lossy_send(3), Err(LossySendError::Evicted(2)));
 
     assert_eq!(r.recv(), Ok(3));
     assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
@@ -55,18 +57,18 @@ fn len_empty_full() {
     assert!(s.is_empty());
     assert!(!s.is_full());
 
-    s.try_send(()).unwrap();
+    s.lossy_send(()).unwrap();
     assert_eq!(s.len(), 1);
     assert!(!s.is_empty());
     assert!(!s.is_full());
 
-    s.try_send(()).unwrap();
+    s.lossy_send(()).unwrap();
     assert_eq!(s.len(), 2);
     assert!(!s.is_empty());
     assert!(s.is_full());
 
     // Eviction keeps the channel full.
-    let _ = s.try_send(());
+    let _ = s.lossy_send(());
     assert_eq!(s.len(), 2);
     assert!(s.is_full());
 
@@ -76,16 +78,16 @@ fn len_empty_full() {
 }
 
 #[test]
-fn try_send_evicts_oldest() {
+fn lossy_send_evicts_oldest() {
     let (s, r) = lossy(2);
 
-    assert!(s.try_send(1).is_ok());
-    assert!(s.try_send(2).is_ok());
+    assert!(s.lossy_send(1).is_ok());
+    assert!(s.lossy_send(2).is_ok());
 
     // Full - evicts oldest (1).
-    assert_eq!(s.try_send(3), Err(TrySendError::Full(1)));
+    assert_eq!(s.lossy_send(3), Err(LossySendError::Evicted(1)));
     // Evicts 2.
-    assert_eq!(s.try_send(4), Err(TrySendError::Full(2)));
+    assert_eq!(s.lossy_send(4), Err(LossySendError::Evicted(2)));
 
     assert_eq!(r.recv(), Ok(3));
     assert_eq!(r.recv(), Ok(4));
@@ -93,17 +95,17 @@ fn try_send_evicts_oldest() {
 }
 
 #[test]
-fn try_send_no_eviction_when_space() {
+fn lossy_send_no_eviction_when_space() {
     let (s, r) = lossy(3);
 
-    assert!(s.try_send(1).is_ok());
-    assert!(s.try_send(2).is_ok());
-    assert!(s.try_send(3).is_ok());
+    assert!(s.lossy_send(1).is_ok());
+    assert!(s.lossy_send(2).is_ok());
+    assert!(s.lossy_send(3).is_ok());
 
     assert_eq!(r.recv(), Ok(1));
 
     // Space available now.
-    assert!(s.try_send(4).is_ok());
+    assert!(s.lossy_send(4).is_ok());
 
     assert_eq!(r.recv(), Ok(2));
     assert_eq!(r.recv(), Ok(3));
@@ -135,8 +137,8 @@ fn send_blocks_when_full() {
 #[test]
 fn recv_after_disconnect() {
     let (s, r) = lossy(2);
-    s.try_send(1).unwrap();
-    s.try_send(2).unwrap();
+    s.lossy_send(1).unwrap();
+    s.lossy_send(2).unwrap();
     drop(s);
 
     assert_eq!(r.recv(), Ok(1));
@@ -148,12 +150,12 @@ fn recv_after_disconnect() {
 fn send_after_disconnect() {
     let (s, r) = lossy(100);
 
-    s.try_send(1).unwrap();
-    s.try_send(2).unwrap();
+    s.lossy_send(1).unwrap();
+    s.lossy_send(2).unwrap();
     drop(r);
 
     assert_eq!(s.send(3), Err(SendError(3)));
-    assert_eq!(s.try_send(4), Err(TrySendError::Disconnected(4)));
+    assert_eq!(s.lossy_send(4), Err(LossySendError::Disconnected(4)));
 }
 
 #[test]
@@ -176,11 +178,11 @@ fn disconnect_wakes_sender() {
 }
 
 #[test]
-fn try_send_disconnected() {
+fn lossy_send_disconnected() {
     let (s, r) = lossy(2);
     drop(r);
 
-    assert_eq!(s.try_send(1), Err(TrySendError::Disconnected(1)));
+    assert_eq!(s.lossy_send(1), Err(LossySendError::Disconnected(1)));
 }
 
 #[test]
@@ -198,15 +200,15 @@ fn drops() {
 
     DROPS.store(0, Ordering::SeqCst);
     let (s, r) = lossy(2);
-    s.try_send(DropCounter).unwrap();
-    s.try_send(DropCounter).unwrap();
+    s.lossy_send(DropCounter).unwrap();
+    s.lossy_send(DropCounter).unwrap();
     assert_eq!(DROPS.load(Ordering::SeqCst), 0);
 
     // Evict oldest - should drop it.
-    let _ = s.try_send(DropCounter);
+    let _ = s.lossy_send(DropCounter);
     assert_eq!(DROPS.load(Ordering::SeqCst), 1);
 
-    let _ = s.try_send(DropCounter);
+    let _ = s.lossy_send(DropCounter);
     assert_eq!(DROPS.load(Ordering::SeqCst), 2);
 
     // Remaining items dropped when channel is dropped.
@@ -248,7 +250,7 @@ fn mpmc_lossy() {
             let s = s.clone();
             scope.spawn(move |_| {
                 for i in 0..100 {
-                    let _ = s.try_send(i);
+                    let _ = s.lossy_send(i);
                 }
             });
         }
@@ -269,4 +271,38 @@ fn mpmc_lossy() {
 
     // Some messages may have been evicted, but we should have received some.
     assert!(total.load(Ordering::Relaxed) > 0);
+}
+
+// Tests for lossy_send on non-lossy channels.
+
+#[test]
+fn lossy_send_on_unbounded() {
+    let (s, r) = unbounded();
+
+    assert!(s.lossy_send(1).is_ok());
+    assert!(s.lossy_send(2).is_ok());
+    assert!(s.lossy_send(3).is_ok());
+
+    assert_eq!(r.recv(), Ok(1));
+    assert_eq!(r.recv(), Ok(2));
+    assert_eq!(r.recv(), Ok(3));
+
+    drop(r);
+    assert_eq!(s.lossy_send(4), Err(LossySendError::Disconnected(4)));
+}
+
+#[test]
+fn lossy_send_on_zero_capacity() {
+    let (s, r) = bounded::<i32>(0);
+
+    // No receiver waiting — NotSent.
+    assert_eq!(s.lossy_send(1), Err(LossySendError::NotSent(1)));
+
+    drop(r);
+    assert_eq!(s.lossy_send(2), Err(LossySendError::Disconnected(2)));
+
+    // The success path (receiver already waiting) is not tested here because there is no
+    // simple reliable way to guarantee the receiver is blocked in recv() before lossy_send
+    // fires. That path delegates to zero::try_send internally, which is covered by the
+    // zero-capacity channel tests.
 }
