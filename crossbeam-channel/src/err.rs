@@ -265,7 +265,7 @@ impl<T> LossySendError<T> {
     /// # Examples
     ///
     /// ```
-    /// use crossbeam_channel::{bounded, LossySendError};
+    /// use crossbeam_channel::bounded;
     ///
     /// let (s, r) = bounded(1);
     /// s.lossy_send(1).unwrap();
