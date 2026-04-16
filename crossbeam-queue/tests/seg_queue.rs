@@ -708,3 +708,58 @@ fn drain_excluded_start_usize_max() {
     let mut q = SegQueue::<i32>::new();
     q.drain((Bound::Excluded(usize::MAX), Bound::Unbounded));
 }
+
+// This test intentionally leaks memory via `mem::forget` to verify that
+// the queue remains in a consistent (empty) state after a `Drain` is forgotten.
+// Skipped under Miri due to intentional leaks; LeakSanitizer may also flag this test.
+#[cfg_attr(miri, ignore)]
+#[test]
+fn drain_mem_forget() {
+    // If mem::forget is called on Drain, queue must be left in
+    // a consistent (empty) state. Elements are leaked but no corruption.
+    static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+    #[derive(Debug)]
+    struct DropCounter;
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            DROPS.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    // Case 1: mem::forget on drain(..)
+    DROPS.store(0, Ordering::SeqCst);
+    {
+        let mut q = SegQueue::new();
+        for _ in 0..100 {
+            q.push(DropCounter);
+        }
+        let mut drain = q.drain(..);
+        drain.next(); // consume 1
+        std::mem::forget(drain);
+        // queue must be empty and usable
+        assert!(q.is_empty());
+        q.push(DropCounter);
+        assert_eq!(q.len(), 1);
+    }
+    // 1 from next() + 1 from q drop. remaining 99 are leaked.
+    assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+
+    // Case 2: mem::forget on drain(a..b)
+    DROPS.store(0, Ordering::SeqCst);
+    {
+        let mut q = SegQueue::new();
+        for _ in 0..100 {
+            q.push(DropCounter);
+        }
+        let mut drain = q.drain(20..70);
+        drain.next(); // consume 1
+        std::mem::forget(drain);
+        // queue must be empty and usable
+        assert!(q.is_empty());
+        q.push(DropCounter);
+        assert_eq!(q.len(), 1);
+    }
+    // 1 from next() + 1 from q drop. remaining 99 are leaked.
+    assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+}
