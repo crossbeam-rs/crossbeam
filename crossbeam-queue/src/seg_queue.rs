@@ -533,6 +533,10 @@ impl<T> SegQueue<T> {
     /// the remaining elements within the range are dropped, and elements
     /// outside the range are preserved in their original order.
     ///
+    /// If `mem::forget` is called on the `Drain`, the queue is left empty.
+    /// Elements outside the range are leaked, but the queue remains in a
+    /// consistent (empty) state — no corruption occurs.
+    ///
     /// # Panics
     ///
     /// Panics if the start of the range is greater than the end.
@@ -576,21 +580,41 @@ impl<T> SegQueue<T> {
         };
         assert!(start <= end, "drain range start is greater than end");
 
-        // Move prefix elements into a saved SegQueue.
-        // We use push_mut/pop_mut throughout since we have exclusive access.
+        // Step 1: pop `start` elements into prefix via pop_mut.
+        // prefix owns its own blocks — no pointer sharing with rest.
         let mut prefix = SegQueue::new();
+        let mut actual_start = 0;
         for _ in 0..start {
             match self.pop_mut() {
-                Some(v) => prefix.push_mut(v),
+                Some(v) => {
+                    prefix.push_mut(v);
+                    actual_start += 1;
+                }
                 None => break,
             }
         }
 
-        let remaining = end.saturating_sub(start);
+        // Step 2: snapshot the remaining queue (drain range + suffix) into `rest`
+        // by transferring head/tail pointers. No element copying
+        let mut rest = SegQueue::new();
+        *rest.head.index.get_mut() = *self.head.index.get_mut();
+        *rest.head.block.get_mut() = *self.head.block.get_mut();
+        *rest.tail.index.get_mut() = *self.tail.index.get_mut();
+        *rest.tail.block.get_mut() = *self.tail.block.get_mut();
+
+        // Step 3: reset original queue to empty immediately.
+        // If mem::forget is called on Drain, queue is left empty — consistent but leaky.
+        *self.head.index.get_mut() = 0;
+        *self.head.block.get_mut() = ptr::null_mut();
+        *self.tail.index.get_mut() = 0;
+        *self.tail.block.get_mut() = ptr::null_mut();
+
+        let remaining = end.saturating_sub(actual_start);
 
         Drain {
             queue: self,
             prefix,
+            rest,
             remaining,
         }
     }
@@ -672,9 +696,13 @@ impl<T> SegQueue<T> {
 ///
 /// [`drain`]: SegQueue::drain
 pub struct Drain<'a, T> {
+    /// The original queue, reset to empty at `Drain` creation.
+    /// Restored to prefix + suffix on `Drop`.
     queue: &'a mut SegQueue<T>,
-    /// Saved prefix elements (before the drain range).
+    /// Saved prefix elements (before the drain range), owns its own blocks.
     prefix: SegQueue<T>,
+    /// Drain range + suffix, owned via pointer snapshot from original queue.
+    rest: SegQueue<T>,
     /// How many elements are left to yield/drop within the drain range.
     remaining: usize,
 }
@@ -686,7 +714,7 @@ impl<T> Iterator for Drain<'_, T> {
         if self.remaining == 0 {
             return None;
         }
-        let val = self.queue.pop_mut();
+        let val = self.rest.pop_mut();
         if val.is_some() {
             self.remaining -= 1;
         }
@@ -696,7 +724,7 @@ impl<T> Iterator for Drain<'_, T> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         // Credit: size_hint and ExactSizeIterator suggested by @laycookie
         // in https://github.com/crossbeam-rs/crossbeam/issues/1228
-        let remaining = self.remaining.min(self.queue.len());
+        let remaining = self.remaining.min(self.rest.len());
         (remaining, Some(remaining))
     }
 }
@@ -705,20 +733,20 @@ impl<T> ExactSizeIterator for Drain<'_, T> {}
 
 impl<T> Drop for Drain<'_, T> {
     fn drop(&mut self) {
-        // Drop all remaining elements in the drain range.
+        // Step 1: drop remaining elements in the drain range.
         while self.remaining > 0 {
             if self.next().is_none() {
                 break;
             }
         }
-        // Move suffix (whatever remains in queue) into prefix,
-        // preserving order: prefix elements come first, then suffix.
-        while let Some(v) = self.queue.pop_mut() {
+        // Step 2: move suffix (whatever remains in rest) into prefix.
+        // At this point rest contains only suffix elements.
+        while let Some(v) = self.rest.pop_mut() {
             self.prefix.push_mut(v);
         }
-        // Swap so the original queue now holds prefix + suffix.
+        // Step 3: swap prefix (now prefix + suffix) back into original queue.
         mem::swap(self.queue, &mut self.prefix);
-        // self.prefix (now the old queue, empty) drops here cleanly.
+        // self.prefix (now the old empty queue) drops cleanly here.
     }
 }
 
