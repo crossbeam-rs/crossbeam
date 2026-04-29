@@ -210,6 +210,20 @@ fn run_select(
         }
     }
 
+    // Try selecting a message several times.
+    // Mirrors `flavors::list::Channel::recv`
+    if !matches!(timeout, Timeout::Now) {
+        let backoff = Backoff::new();
+        while !backoff.is_completed() {
+            backoff.snooze();
+            for &(handle, i, addr) in handles.iter() {
+                if handle.try_select(&mut token) {
+                    return Some((token, i, addr));
+                }
+            }
+        }
+    }
+
     loop {
         // Prepare for blocking.
         let res = Context::with(|cx| {
