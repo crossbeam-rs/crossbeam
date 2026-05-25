@@ -1550,7 +1550,373 @@ mod chanbarrier_test {
 
 // https://github.com/golang/go/blob/master/src/runtime/race/testdata/chan_test.go
 mod race_chan_test {
-    // TODO
+    use super::*;
+    use std::sync::atomic::{AtomicI32, AtomicU32, Ordering::SeqCst};
+
+    #[test]
+    fn no_race_chan_sync() {
+        let v = Arc::new(AtomicI32::new(0));
+        let c = make::<i32>(0);
+        let v1 = v.clone();
+        let handle = go!(v1, c, {
+            v1.store(1, SeqCst);
+            c.send(0);
+        });
+        c.recv();
+        v.store(2, SeqCst);
+        handle.join().unwrap();
+        assert_eq!(v.load(SeqCst), 2);
+    }
+
+    #[test]
+    fn no_race_chan_sync_rev() {
+        let v = Arc::new(AtomicI32::new(0));
+        let c = make::<i32>(0);
+        let v1 = v.clone();
+        let handle = go!(c, v1, {
+            c.send(0);
+            v1.store(2, SeqCst);
+        });
+        v.store(1, SeqCst);
+        c.recv();
+        handle.join().unwrap();
+        assert_eq!(v.load(SeqCst), 2);
+    }
+
+    #[test]
+    fn no_race_chan_async() {
+        let v = Arc::new(AtomicI32::new(0));
+        let c = make::<i32>(10);
+        let v1 = v.clone();
+        let handle = go!(v1, c, {
+            v1.store(1, SeqCst);
+            c.send(0);
+        });
+        c.recv();
+        v.store(2, SeqCst);
+        handle.join().unwrap();
+        assert_eq!(v.load(SeqCst), 2);
+    }
+
+    #[test]
+    fn no_race_chan_async_close_recv() {
+        let v = Arc::new(AtomicI32::new(0));
+        let c = make::<i32>(10);
+        let v1 = v.clone();
+        let handle = go!(v1, c, {
+            v1.store(1, SeqCst);
+            c.close_s();
+        });
+        let _ = c.recv();
+        v.store(2, SeqCst);
+        handle.join().unwrap();
+        assert_eq!(v.load(SeqCst), 2);
+    }
+
+    #[test]
+    fn no_race_chan_async_close_recv2() {
+        let v = Arc::new(AtomicI32::new(0));
+        let c = make::<i32>(10);
+        let v1 = v.clone();
+        let handle = go!(v1, c, {
+            v1.store(1, SeqCst);
+            c.close_s();
+        });
+        let _ = c.recv();
+        v.store(2, SeqCst);
+        handle.join().unwrap();
+        assert_eq!(v.load(SeqCst), 2);
+    }
+
+    #[test]
+    fn no_race_chan_async_close_recv3() {
+        let v = Arc::new(AtomicI32::new(0));
+        let c = make::<i32>(10);
+        let v1 = v.clone();
+        let handle = go!(v1, c, {
+            v1.store(1, SeqCst);
+            c.close_s();
+        });
+        for _ in &c {}
+        v.store(2, SeqCst);
+        handle.join().unwrap();
+        assert_eq!(v.load(SeqCst), 2);
+    }
+
+    #[test]
+    fn no_race_chan_sync_close_recv() {
+        let v = Arc::new(AtomicI32::new(0));
+        let c = make::<i32>(0);
+        let v1 = v.clone();
+        let handle = go!(v1, c, {
+            v1.store(1, SeqCst);
+            c.close_s();
+        });
+        let _ = c.recv();
+        v.store(2, SeqCst);
+        handle.join().unwrap();
+        assert_eq!(v.load(SeqCst), 2);
+    }
+
+    #[test]
+    fn no_race_chan_ptr() {
+        struct Msg {
+            x: i32,
+        }
+
+        let c = make::<Box<Msg>>(0);
+        let handle = go!(c, {
+            c.send(Box::new(Msg { x: 1 }));
+        });
+        let mut m = c.recv().unwrap();
+        m.x = 2;
+        handle.join().unwrap();
+        assert_eq!(m.x, 2);
+    }
+
+    #[test]
+    fn no_race_producer_consumer_unbuffered() {
+        struct Task {
+            f: Box<dyn FnOnce() + Send>,
+            done: Chan<bool>,
+        }
+
+        let queue = make::<Task>(0);
+        let handle = go!(queue, {
+            let task = queue.recv().unwrap();
+            (task.f)();
+            task.done.send(true);
+        });
+
+        let doit = |f: Box<dyn FnOnce() + Send>| {
+            let done = make::<bool>(1);
+            queue.send(Task {
+                f,
+                done: done.clone(),
+            });
+            done.recv().unwrap();
+        };
+
+        let x = Arc::new(AtomicI32::new(0));
+        let x1 = x.clone();
+        doit(Box::new(move || {
+            x1.store(1, SeqCst);
+        }));
+        handle.join().unwrap();
+        assert_eq!(x.load(SeqCst), 1);
+    }
+
+    #[test]
+    fn no_race_chan_mutex() {
+        let done = make::<()>(0);
+        let mtx = make::<()>(1);
+        let data = Arc::new(AtomicI32::new(0));
+        let data1 = data.clone();
+        let handle = go!(done, mtx, data1, {
+            mtx.send(());
+            data1.store(42, SeqCst);
+            mtx.recv();
+            done.send(());
+        });
+        mtx.send(());
+        data.store(43, SeqCst);
+        mtx.recv();
+        done.recv();
+        handle.join().unwrap();
+        let value = data.load(SeqCst);
+        assert!(value == 42 || value == 43);
+    }
+
+    #[test]
+    fn no_race_select_mutex() {
+        let done = make::<()>(0);
+        let mtx = make::<()>(1);
+        let aux = make::<bool>(0);
+        let data = Arc::new(AtomicI32::new(0));
+        let data1 = data.clone();
+        let handle = go!(done, mtx, aux, data1, {
+            select! {
+                send(mtx.tx(), ()) -> _ => {}
+                recv(aux.rx()) -> _ => {}
+            }
+            data1.store(42, SeqCst);
+            select! {
+                recv(mtx.rx()) -> _ => {}
+                recv(aux.rx()) -> _ => {}
+            }
+            done.send(());
+        });
+        select! {
+            send(mtx.tx(), ()) -> _ => {}
+            recv(aux.rx()) -> _ => {}
+        }
+        data.store(43, SeqCst);
+        select! {
+            recv(mtx.rx()) -> _ => {}
+            recv(aux.rx()) -> _ => {}
+        }
+        done.recv();
+        handle.join().unwrap();
+        let value = data.load(SeqCst);
+        assert!(value == 42 || value == 43);
+    }
+
+    #[test]
+    fn no_race_chan_wait_group() {
+        const N: u32 = if cfg!(miri) { 4 } else { 10 };
+        let wg_cap = (N / 2) as usize;
+        let chan_wg = make::<bool>(wg_cap);
+        let data = Arc::new(Mutex::new(vec![0i32; N as usize]));
+        let mut handles = Vec::new();
+
+        for i in 0..N {
+            chan_wg.send(true);
+            let chan_wg = chan_wg.clone();
+            let data = data.clone();
+            handles.push(go!(chan_wg, data, i, {
+                data.lock().unwrap()[i as usize] = 42;
+                chan_wg.recv();
+            }));
+        }
+
+        for _ in 0..wg_cap {
+            chan_wg.send(true);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert!(data.lock().unwrap().iter().all(|&x| x == 42));
+    }
+
+    #[test]
+    fn no_race_blocked_send_sync() {
+        let c = make::<Box<i32>>(1);
+        c.send(Box::new(0));
+        let handle = go!(c, {
+            let i = 42;
+            c.send(Box::new(i));
+        });
+        c.recv();
+        let p = c.recv().unwrap();
+        assert_eq!(*p, 42);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn no_race_blocked_select_send_sync() {
+        let c = make::<Box<i32>>(1);
+        c.send(Box::new(0));
+        let handle = go!(c, {
+            let i = 42;
+            c.send(Box::new(i));
+        });
+        c.recv();
+        select! {
+            recv(c.rx()) -> res => {
+                assert_eq!(*res.unwrap(), 42);
+            }
+        }
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn no_race_close_happens_before_read() {
+        let iterations = if cfg!(miri) { 10 } else { 100 };
+        for _ in 0..iterations {
+            let loc = Arc::new(AtomicI32::new(0));
+            let write = make::<()>(0);
+            let read = make::<()>(0);
+
+            let loc1 = loc.clone();
+            let handle1 = go!(write, read, loc1, {
+                select! {
+                    recv(write.rx()) -> _ => {
+                        let _ = loc1.load(SeqCst);
+                    }
+                    default => {}
+                }
+                read.close_s();
+            });
+
+            let loc2 = loc.clone();
+            let handle2 = go!(write, loc2, {
+                loc2.store(1, SeqCst);
+                write.close_s();
+            });
+
+            read.recv();
+            handle1.join().unwrap();
+            handle2.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn no_race_elem_size0() {
+        let x = Arc::new(AtomicU32::new(0));
+        let y = Arc::new(AtomicU32::new(0));
+        let c = make::<()>(2);
+        c.send(());
+        c.send(());
+        let x1 = x.clone();
+        let c1 = c.clone();
+        let h1 = go!(x1, c1, {
+            x1.fetch_add(1, SeqCst);
+            c1.recv();
+        });
+        let y1 = y.clone();
+        let c2 = c.clone();
+        let h2 = go!(y1, c2, {
+            y1.fetch_add(1, SeqCst);
+            c2.recv();
+        });
+        thread::sleep(ms(10));
+        c.send(());
+        c.send(());
+        x.fetch_add(1, SeqCst);
+        y.fetch_add(1, SeqCst);
+        h1.join().unwrap();
+        h2.join().unwrap();
+        assert_eq!(x.load(SeqCst), 2);
+        assert_eq!(y.load(SeqCst), 2);
+    }
+
+    #[test]
+    fn no_race_chan_close_len() {
+        let c = make::<i32>(10);
+        let r = make::<i32>(10);
+        let c1 = c.clone();
+        let handle = go!(r, c1, {
+            r.send(c1.rx().len() as i32);
+        });
+        let handle2 = go!(r, c, {
+            c.close_s();
+            r.send(0);
+        });
+        r.recv();
+        r.recv();
+        handle.join().unwrap();
+        handle2.join().unwrap();
+    }
+
+    #[test]
+    fn no_race_chan_close_cap() {
+        let c = make::<i32>(10);
+        let r = make::<i32>(10);
+        let c1 = c.clone();
+        let handle = go!(r, c1, {
+            r.send(c1.rx().capacity().unwrap_or(0) as i32);
+        });
+        let handle2 = go!(r, c, {
+            c.close_s();
+            r.send(0);
+        });
+        r.recv();
+        r.recv();
+        handle.join().unwrap();
+        handle2.join().unwrap();
+    }
 }
 
 // https://github.com/golang/go/blob/master/test/ken/chan.go
