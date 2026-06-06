@@ -95,7 +95,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@${{ matrix.rust }}
           fallback: none
@@ -125,13 +125,13 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@${{ matrix.rust }}
           fallback: none
         if: matrix.rust != 'msrv'
       - name: Install cargo-hack
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: cargo-hack
           fallback: none
@@ -145,7 +145,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust, cargo-hack, and cargo-minimal-versions
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@nightly,cargo-hack,cargo-minimal-versions
           fallback: none
@@ -162,7 +162,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@stable
           fallback: none
@@ -208,7 +208,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@nightly+miri
           fallback: none
@@ -225,7 +225,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust and cargo-careful
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@nightly+rust-src,cargo-careful
           fallback: none
@@ -239,7 +239,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@nightly+rust-src+x86_64-unknown-linux-gnuasan+x86_64-unknown-linux-gnutsan+x86_64-unknown-linux-gnumsan
           fallback: none
@@ -253,7 +253,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@stable
           fallback: none
@@ -266,7 +266,7 @@ jobs:
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust, shfmt, shellcheck, taplo, and zizmor
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        uses: taiki-e/install-action@f48d2f8ba2b452934c948b7be1a768079c3632ff # v2.79.6
         with:
           tool: rust@nightly+rustfmt,shfmt,shellcheck,taplo,zizmor
           fallback: none
