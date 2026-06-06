@@ -272,7 +272,7 @@ pub fn at(when: Instant) -> Receiver<Instant> {
 /// }
 /// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// ```
-pub fn never<T>() -> Receiver<T> {
+pub const fn never<T>() -> Receiver<T> {
     Receiver {
         flavor: ReceiverFlavor::Never(flavors::never::Channel::new()),
     }
