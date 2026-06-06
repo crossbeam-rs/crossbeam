@@ -262,7 +262,7 @@ pub fn at(when: Instant) -> Receiver<Instant> {
 ///     recv(timeout) -> _ => println!("timed out"),
 /// }
 /// ```
-pub fn never<T>() -> Receiver<T> {
+pub const fn never<T>() -> Receiver<T> {
     Receiver {
         flavor: ReceiverFlavor::Never(flavors::never::Channel::new()),
     }
