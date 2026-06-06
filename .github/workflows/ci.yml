@@ -84,16 +84,20 @@ jobs:
             target: s390x-unknown-linux-gnu
           # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
+            container: debian:13-slim
             target: armv5te-unknown-linux-gnueabi
           # Test target without stable inline asm support.
           - rust: stable
             os: ubuntu-latest
             target: sparc64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container && fromJSON(format('{{"image":"{0}","options":"--privileged"}}', matrix.container)) || '' }}
     timeout-minutes: 60
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+      - run: apt-get -o Acquire::Retries=10 -qq update && apt-get -o Acquire::Retries=10 -o Dpkg::Use-Pty=0 install -y --no-install-recommends gcc libc6-dev
+        if: matrix.container != ''
       - name: Install Rust
         uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
         with:
@@ -102,6 +106,7 @@ jobs:
       - uses: taiki-e/setup-cross-toolchain-action@3d9770ce98eb7dbcf378563182a5e8031165f75b # v1.41.0
         with:
           target: ${{ matrix.target }}
+          runner: ${{ matrix.container && 'native' || '' }}
         if: matrix.target != ''
       - run: |
           echo "RUSTFLAGS=${RUSTFLAGS} --cfg gha_macos_runner" >>"${GITHUB_ENV}"
