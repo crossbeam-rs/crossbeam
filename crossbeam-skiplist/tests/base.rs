@@ -1,4 +1,4 @@
-#![allow(clippy::redundant_clone)]
+#![allow(clippy::redundant_clone, clippy::missing_spin_loop)]
 
 use std::{
     ops::Bound,
