@@ -5,14 +5,12 @@ use core::{
     ptr,
     sync::atomic::{AtomicBool, Ordering},
 };
-use std::{
-    sync::Mutex,
-    thread::{self, ThreadId},
-};
+use std::thread::{self, ThreadId};
 
 use crate::{
     context::Context,
     select::{Operation, Selected},
+    utils::Mutex,
 };
 
 /// Represents a thread blocked on a specific channel operation.
@@ -202,7 +200,7 @@ impl SyncWaker {
     /// Registers the current thread with an operation.
     #[inline]
     pub(crate) fn register(&self, oper: Operation, cx: &Context) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.register(oper, cx);
         self.is_empty.store(
             inner.selectors.is_empty() && inner.observers.is_empty(),
@@ -213,7 +211,7 @@ impl SyncWaker {
     /// Unregisters an operation previously registered by the current thread.
     #[inline]
     pub(crate) fn unregister(&self, oper: Operation) -> Option<Entry> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let entry = inner.unregister(oper);
         self.is_empty.store(
             inner.selectors.is_empty() && inner.observers.is_empty(),
@@ -226,7 +224,7 @@ impl SyncWaker {
     #[inline]
     pub(crate) fn notify(&self) {
         if !self.is_empty.load(Ordering::SeqCst) {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock();
             if !self.is_empty.load(Ordering::SeqCst) {
                 inner.try_select();
                 inner.notify();
@@ -241,7 +239,7 @@ impl SyncWaker {
     /// Registers an operation waiting to be ready.
     #[inline]
     pub(crate) fn watch(&self, oper: Operation, cx: &Context) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.watch(oper, cx);
         self.is_empty.store(
             inner.selectors.is_empty() && inner.observers.is_empty(),
@@ -252,7 +250,7 @@ impl SyncWaker {
     /// Unregisters an operation waiting to be ready.
     #[inline]
     pub(crate) fn unwatch(&self, oper: Operation) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.unwatch(oper);
         self.is_empty.store(
             inner.selectors.is_empty() && inner.observers.is_empty(),
@@ -263,7 +261,7 @@ impl SyncWaker {
     /// Notifies all threads that the channel is disconnected.
     #[inline]
     pub(crate) fn disconnect(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.disconnect();
         self.is_empty.store(
             inner.selectors.is_empty() && inner.observers.is_empty(),
