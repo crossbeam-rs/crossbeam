@@ -3,6 +3,10 @@
 use std::{
     any::Any,
     cell::Cell,
+    sync::{
+        Arc, Barrier,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -1361,4 +1365,86 @@ fn issue_1096() {
         operation.send(&tx.clone(), 124).unwrap();
     })
     .unwrap();
+}
+
+#[test]
+// TODO: should panic instead of hang
+// #[should_panic(expected = "dropped `SelectedOperation` without completing the operation")]
+fn uncompleted_select_bounded() {
+    // https://github.com/rust-lang/miri/issues/1371
+    if option_env!("MIRI_LEAK_CHECK").is_some() {
+        return;
+    }
+    let barrier = Arc::new(Barrier::new(2));
+    let barrier2 = barrier.clone();
+    let ready = Arc::new(AtomicBool::new(false));
+    let ready2 = ready.clone();
+    std::thread::spawn(move || {
+        let (s, _r) = bounded::<Box<u8>>(1);
+        let mut sel = Select::new();
+        sel.send(&s);
+        let op = sel.try_select().unwrap();
+        barrier2.wait();
+        drop(op);
+        ready2.store(true, Ordering::Relaxed);
+    });
+    barrier.wait();
+    std::thread::sleep(Duration::from_secs(5));
+    assert!(!ready.load(Ordering::Relaxed));
+}
+#[test]
+// TODO: should panic instead of hang
+// #[should_panic(expected = "dropped `SelectedOperation` without completing the operation")]
+fn uncompleted_select_unbounded() {
+    // https://github.com/rust-lang/miri/issues/1371
+    if option_env!("MIRI_LEAK_CHECK").is_some() {
+        return;
+    }
+    let barrier = Arc::new(Barrier::new(2));
+    let barrier2 = barrier.clone();
+    let ready = Arc::new(AtomicBool::new(false));
+    let ready2 = ready.clone();
+    std::thread::spawn(move || {
+        let (s, _r) = unbounded::<Box<u8>>();
+        let mut sel = Select::new();
+        sel.send(&s);
+        let op = sel.try_select().unwrap();
+        barrier2.wait();
+        drop(op);
+        ready2.store(true, Ordering::Relaxed);
+    });
+    barrier.wait();
+    std::thread::sleep(Duration::from_secs(5));
+    assert!(!ready.load(Ordering::Relaxed));
+}
+#[test]
+fn uncompleted_select_zero() {
+    // https://github.com/rust-lang/miri/issues/1371
+    if option_env!("MIRI_LEAK_CHECK").is_some() {
+        return;
+    }
+    let barrier = Arc::new(Barrier::new(2));
+    let barrier2 = barrier.clone();
+    let ready = Arc::new(AtomicBool::new(false));
+    let ready2 = ready.clone();
+    let (s, r) = bounded::<Box<u8>>(0);
+    std::thread::spawn(move || {
+        barrier2.wait();
+        // TODO: should error instead hang
+        r.recv().unwrap();
+        ready2.store(true, Ordering::Relaxed);
+    });
+    barrier.wait();
+    std::thread::sleep(Duration::from_secs(1)); // wait for register of receiver.
+    let res = std::panic::catch_unwind(move || {
+        let mut sel = Select::new();
+        sel.send(&s);
+        drop(sel.try_select().unwrap());
+    });
+    assert_eq!(
+        *res.unwrap_err().downcast_ref::<&str>().unwrap(),
+        "dropped `SelectedOperation` without completing the operation"
+    );
+    std::thread::sleep(Duration::from_secs(5));
+    assert!(!ready.load(Ordering::Relaxed));
 }
