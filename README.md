@@ -129,7 +129,7 @@ If you'd like to learn more about concurrency and non-blocking data structures, 
 list of learning resources in our [wiki](https://github.com/crossbeam-rs/rfcs/wiki),
 which includes relevant blog posts, papers, videos, and other similar projects.
 
-Another good place to visit is [merged RFCs](https://github.com/crossbeam-rs/rfcs/tree/master/text).
+Another good place to visit is [merged RFCs](https://github.com/crossbeam-rs/rfcs/tree/HEAD/text).
 They contain elaborate descriptions and rationale for features we've introduced to
 Crossbeam, but keep in mind that some of the written information is now out of date.
 

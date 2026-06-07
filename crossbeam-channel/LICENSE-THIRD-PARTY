@@ -359,7 +359,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ===============================================================================
 
 The Rust Programming Language
-https://github.com/rust-lang/rust/blob/master/LICENSE-MIT
+https://github.com/rust-lang/rust/blob/HEAD/LICENSE-MIT
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -388,7 +388,7 @@ DEALINGS IN THE SOFTWARE.
 ===============================================================================
 
 The Rust Programming Language
-https://github.com/rust-lang/rust/blob/master/LICENSE-APACHE
+https://github.com/rust-lang/rust/blob/HEAD/LICENSE-APACHE
 
                               Apache License
                         Version 2.0, January 2004

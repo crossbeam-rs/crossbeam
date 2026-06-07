@@ -12,12 +12,12 @@
 //! - Removed assertion from oneshot_multi_thread_send_close_stress tests.
 //!
 //! Source:
-//!   - https://github.com/rust-lang/rust/tree/master/src/libstd/sync/mpsc
+//!   - https://github.com/rust-lang/rust/tree/HEAD/src/libstd/sync/mpsc
 //!
 //! Copyright & License:
 //!   - Copyright 2013-2014 The Rust Project Developers
 //!   - Apache License, Version 2.0 or MIT license, at your option
-//!   - https://github.com/rust-lang/rust/blob/master/COPYRIGHT
+//!   - https://github.com/rust-lang/rust/blob/HEAD/COPYRIGHT
 //!   - https://www.rust-lang.org/en-US/legal.html
 
 #![allow(clippy::match_single_binding, clippy::redundant_clone)]
@@ -190,7 +190,7 @@ macro_rules! select {
     })
 }
 
-// Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
+// Source: https://github.com/rust-lang/rust/blob/HEAD/src/libstd/sync/mpsc/mod.rs
 mod channel_tests {
     use std::{env, thread, time::Instant};
 
@@ -958,7 +958,7 @@ mod channel_tests {
     }
 }
 
-// Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/mod.rs
+// Source: https://github.com/rust-lang/rust/blob/HEAD/src/libstd/sync/mpsc/mod.rs
 mod sync_channel_tests {
     use std::{env, thread};
 
@@ -1677,7 +1677,7 @@ mod sync_channel_tests {
     }
 }
 
-// Source: https://github.com/rust-lang/rust/blob/master/src/libstd/sync/mpsc/select.rs
+// Source: https://github.com/rust-lang/rust/blob/HEAD/src/libstd/sync/mpsc/select.rs
 mod select_tests {
     use std::thread;
 
