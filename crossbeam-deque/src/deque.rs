@@ -623,6 +623,30 @@ impl<T> Stealer<T> {
         b.wrapping_sub(f).max(0) as usize
     }
 
+    /// Checks if the stealer will steal from the provided worker.
+    ///
+    /// If both are pointing to the same underlying queue, this will return false.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_deque::Worker;
+    ///
+    /// let w_1 = Worker::<i32>::new_lifo();
+    /// let w_2 = Worker::<i32>::new_fifo();
+    ///
+    /// let s_1 = w_1.stealer();
+    /// let s_2 = w_2.stealer();
+    ///
+    /// assert!(!s_1.will_steal_fromq(&w_1));
+    /// assert!(!s_2.will_steal_fromq(&w_2));
+    /// assert!(s_1.will_steal_fromq(&w_2));
+    /// assert!(s_2.will_steal_fromq(&w_1));
+    /// ```
+    pub fn will_steal_fromq(&self, worker: &Worker<T>) -> bool {
+        !Arc::ptr_eq(&self.inner, &worker.inner)
+    }
+
     /// Steals a task from the queue.
     ///
     /// # Examples
