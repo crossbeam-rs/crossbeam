@@ -18,10 +18,13 @@ case "${group}" in
     MIRI_LEAK_CHECK='1' \
       cargo miri test --all-features \
       -p crossbeam-channel 2>&1 | ts -i '%.s  '
-    # -Zmiri-ignore-leaks is needed because we use detached threads in tests in tests/golang.rs: https://github.com/rust-lang/miri/issues/1371
+    # -Zmiri-ignore-leaks is needed because we use detached threads in tests in tests/{golang,select}.rs: https://github.com/rust-lang/miri/issues/1371
     MIRIFLAGS="${MIRIFLAGS} -Zmiri-ignore-leaks" \
       cargo miri test --all-features \
-      -p crossbeam-channel --test golang --test array 2>&1 | ts -i '%.s  '
+      -p crossbeam-channel \
+      --test array \
+      --test golang \
+      --test select 2>&1 | ts -i '%.s  '
     ;;
   others)
     cargo miri test --all-features \
