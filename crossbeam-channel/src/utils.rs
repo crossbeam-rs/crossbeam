@@ -56,3 +56,18 @@ pub(crate) fn sleep_until(deadline: Option<Instant>) {
         }
     }
 }
+
+/// Non-poison mutex.
+pub(crate) struct Mutex<T>(std::sync::Mutex<T>);
+
+impl<T> Mutex<T> {
+    pub(crate) fn new(t: T) -> Self {
+        Self(std::sync::Mutex::new(t))
+    }
+
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, T> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
