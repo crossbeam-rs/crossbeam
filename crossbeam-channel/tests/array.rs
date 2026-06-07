@@ -691,6 +691,10 @@ fn panic_on_drop() {
     assert!(a);
     assert!(b);
 
+    if option_env!("MIRI_LEAK_CHECK").is_some() || option_env!("ASAN_OPTIONS").is_some() {
+        return;
+    }
+
     // panic on drop
     let (s, r) = bounded(2);
     let (mut a, mut b) = (false, false);
@@ -711,9 +715,6 @@ fn panic_on_drop() {
 
 #[test]
 fn drop_unreceived() {
-    if option_env!("MIRI_LEAK_CHECK").is_some() || option_env!("ASAN_OPTIONS").is_some() {
-        return;
-    }
     let (tx, rx) = bounded::<Rc<()>>(1);
     let msg = Rc::new(());
     let weak = Rc::downgrade(&msg);
