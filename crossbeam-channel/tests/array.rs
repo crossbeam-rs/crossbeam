@@ -2,6 +2,7 @@
 
 use std::{
     any::Any,
+    rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::Duration,
@@ -713,9 +714,9 @@ fn drop_unreceived() {
     if option_env!("MIRI_LEAK_CHECK").is_some() || option_env!("ASAN_OPTIONS").is_some() {
         return;
     }
-    let (tx, rx) = bounded::<std::rc::Rc<()>>(1);
-    let msg = std::rc::Rc::new(());
-    let weak = std::rc::Rc::downgrade(&msg);
+    let (tx, rx) = bounded::<Rc<()>>(1);
+    let msg = Rc::new(());
+    let weak = Rc::downgrade(&msg);
     assert!(tx.send(msg).is_ok());
     drop(rx);
     // Messages should be dropped immediately when the last receiver is destroyed.

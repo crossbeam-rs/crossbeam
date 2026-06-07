@@ -31,7 +31,8 @@ struct Slot<T> {
     /// The current stamp.
     stamp: AtomicUsize,
 
-    /// The message in this slot.
+    /// The message in this slot. Either read out in `read` or dropped through
+    /// `discard_all_messages`.
     msg: UnsafeCell<MaybeUninit<T>>,
 }
 
@@ -480,7 +481,7 @@ impl<T> Channel<T> {
         Some(self.cap())
     }
 
-    /// Disconnects senders and wakes up all blocked senders and receivers.
+    /// Disconnects senders and wakes up all blocked receivers.
     ///
     /// Returns `true` if this call disconnected the channel.
     pub(crate) fn disconnect_senders(&self) -> bool {
@@ -511,10 +512,7 @@ impl<T> Channel<T> {
             false
         };
 
-        unsafe {
-            self.discard_all_messages(tail);
-        }
-
+        unsafe { self.discard_all_messages(tail) }
         disconnected
     }
 
@@ -571,7 +569,7 @@ impl<T> Channel<T> {
             // Otherwise, a sender is about to write into the slot, so we need
             // to wait for it to update the stamp.
             } else {
-                backoff.spin();
+                backoff.snooze();
             }
         }
     }
