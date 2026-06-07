@@ -21,7 +21,7 @@ case "${group}" in
     # -Zmiri-ignore-leaks is needed because we use detached threads in tests in tests/golang.rs: https://github.com/rust-lang/miri/issues/1371
     MIRIFLAGS="${MIRIFLAGS} -Zmiri-ignore-leaks" \
       cargo miri test --all-features \
-      -p crossbeam-channel --test golang 2>&1 | ts -i '%.s  '
+      -p crossbeam-channel --test golang --test array 2>&1 | ts -i '%.s  '
     ;;
   others)
     cargo miri test --all-features \

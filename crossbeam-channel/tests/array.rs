@@ -710,6 +710,9 @@ fn panic_on_drop() {
 
 #[test]
 fn drop_unreceived() {
+    if option_env!("MIRI_LEAK_CHECK").is_some() || option_env!("ASAN_OPTIONS").is_some() {
+        return;
+    }
     let (tx, rx) = bounded::<std::rc::Rc<()>>(1);
     let msg = std::rc::Rc::new(());
     let weak = std::rc::Rc::downgrade(&msg);
