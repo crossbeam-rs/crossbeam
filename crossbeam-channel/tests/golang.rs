@@ -1545,7 +1545,90 @@ mod closedchan {
 
 // https://github.com/golang/go/blob/HEAD/src/runtime/chanbarrier_test.go
 mod chanbarrier_test {
-    // TODO
+    use super::*;
+
+    struct Response;
+
+    #[derive(Debug)]
+    struct MyError;
+
+    impl std::fmt::Display for MyError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "")
+        }
+    }
+
+    impl std::error::Error for MyError {}
+
+    struct Async {
+        resp: Option<Response>,
+        err: Option<MyError>,
+    }
+
+    fn do_request(use_select: bool) -> (Option<Response>, Option<MyError>) {
+        let ch = make::<Async>(0);
+        let done = make::<()>(0);
+
+        if use_select {
+            let ch2 = ch.clone();
+            let done2 = done.clone();
+            go!(ch2, done2, {
+                select! {
+                    send(ch2.tx(), Async { resp: None, err: Some(MyError) }) -> _ => {}
+                    recv(done2.rx()) -> _ => {}
+                }
+            });
+        } else {
+            let ch2 = ch.clone();
+            go!(ch2, {
+                ch2.send(Async {
+                    resp: None,
+                    err: Some(MyError),
+                });
+            });
+        }
+
+        let r = ch.recv().unwrap();
+        thread::yield_now();
+        (r.resp, r.err)
+    }
+
+    fn make_byte() -> Vec<u8> {
+        vec![0u8; 1 << 10]
+    }
+
+    fn run_chan_send_barrier(use_select: bool) {
+        let outer = if cfg!(miri) { 10 } else { 100 };
+        let inner = if cfg!(miri) { 1000 } else { 100_000 };
+
+        let wg = WaitGroup::new();
+        for _ in 0..outer {
+            wg.add(1);
+            go!(wg, use_select, {
+                defer! { wg.done() }
+                let mut garbage = Vec::new();
+                for _ in 0..inner {
+                    let (_, err) = do_request(use_select);
+                    if err.is_none() {
+                        panic!("expected MyError");
+                    }
+                    garbage = make_byte();
+                }
+                let _ = garbage;
+            });
+        }
+        wg.wait();
+    }
+
+    #[test]
+    fn test_chan_send_select_barrier() {
+        run_chan_send_barrier(true);
+    }
+
+    #[test]
+    fn test_chan_send_barrier() {
+        run_chan_send_barrier(false);
+    }
 }
 
 // https://github.com/golang/go/blob/HEAD/src/runtime/race/testdata/chan_test.go
