@@ -1540,7 +1540,290 @@ mod chan_test {
 
 // https://github.com/golang/go/blob/HEAD/test/closedchan.go
 mod closedchan {
-    // TODO
+    use std::panic::{self, AssertUnwindSafe};
+
+    use super::*;
+
+    trait ChanOps: Clone {
+        fn send(&self, x: i32);
+        #[allow(dead_code)]
+        fn nbsend(&self, x: i32) -> bool;
+        fn recv(&self) -> i32;
+        fn nbrecv(&self) -> (i32, bool);
+        fn recv2(&self) -> (i32, bool);
+        fn nbrecv2(&self) -> (i32, bool, bool);
+        #[allow(dead_code)]
+        fn close(&self);
+    }
+
+    #[derive(Clone)]
+    struct XChan(Chan<i32>);
+
+    #[derive(Clone)]
+    struct SChan(Chan<i32>);
+
+    #[derive(Clone)]
+    struct SSChan {
+        c: Chan<i32>,
+        dummy: Chan<bool>,
+    }
+
+    impl ChanOps for XChan {
+        fn send(&self, x: i32) {
+            self.0.send(x);
+        }
+
+        fn nbsend(&self, x: i32) -> bool {
+            select! {
+                send(self.0.tx(), x) -> _ => true,
+                default => false,
+            }
+        }
+
+        fn recv(&self) -> i32 {
+            self.0.recv().unwrap_or(0)
+        }
+
+        fn nbrecv(&self) -> (i32, bool) {
+            select! {
+                recv(self.0.rx()) -> res => match res {
+                    Ok(x) => (x, true),
+                    Err(_) => (0, true),
+                },
+                default => (0, false),
+            }
+        }
+
+        fn recv2(&self) -> (i32, bool) {
+            match self.0.recv() {
+                Some(x) => (x, true),
+                None => (0, false),
+            }
+        }
+
+        fn nbrecv2(&self) -> (i32, bool, bool) {
+            select! {
+                recv(self.0.rx()) -> res => match res {
+                    Ok(x) => (x, true, true),
+                    Err(_) => (0, false, true),
+                },
+                default => (0, false, false),
+            }
+        }
+
+        fn close(&self) {
+            self.0.close_s();
+        }
+    }
+
+    impl ChanOps for SChan {
+        fn send(&self, x: i32) {
+            self.0.send(x);
+        }
+
+        fn nbsend(&self, x: i32) -> bool {
+            select! {
+                default => false,
+                send(self.0.tx(), x) -> _ => true,
+            }
+        }
+
+        fn recv(&self) -> i32 {
+            select! {
+                recv(self.0.rx()) -> res => res.ok().unwrap_or(0),
+            }
+        }
+
+        fn nbrecv(&self) -> (i32, bool) {
+            select! {
+                default => (0, false),
+                recv(self.0.rx()) -> res => match res {
+                    Ok(x) => (x, true),
+                    Err(_) => (0, true),
+                },
+            }
+        }
+
+        fn recv2(&self) -> (i32, bool) {
+            select! {
+                recv(self.0.rx()) -> res => match res {
+                    Ok(x) => (x, true),
+                    Err(_) => (0, false),
+                },
+            }
+        }
+
+        fn nbrecv2(&self) -> (i32, bool, bool) {
+            select! {
+                default => (0, false, false),
+                recv(self.0.rx()) -> res => match res {
+                    Ok(x) => (x, true, true),
+                    Err(_) => (0, false, true),
+                },
+            }
+        }
+
+        fn close(&self) {
+            self.0.close_s();
+        }
+    }
+
+    impl ChanOps for SSChan {
+        fn send(&self, x: i32) {
+            self.c.send(x);
+        }
+
+        fn nbsend(&self, x: i32) -> bool {
+            select! {
+                default => false,
+                send(self.c.tx(), x) -> _ => true,
+            }
+        }
+
+        fn recv(&self) -> i32 {
+            select! {
+                recv(self.c.rx()) -> res => res.ok().unwrap_or(0),
+                recv(self.dummy.rx()) -> _ => 0,
+            }
+        }
+
+        fn nbrecv(&self) -> (i32, bool) {
+            select! {
+                default => (0, false),
+                recv(self.c.rx()) -> res => match res {
+                    Ok(x) => (x, true),
+                    Err(_) => (0, true),
+                },
+            }
+        }
+
+        fn recv2(&self) -> (i32, bool) {
+            select! {
+                recv(self.c.rx()) -> res => match res {
+                    Ok(x) => (x, true),
+                    Err(_) => (0, false),
+                },
+                recv(self.dummy.rx()) -> _ => (0, false),
+            }
+        }
+
+        fn nbrecv2(&self) -> (i32, bool, bool) {
+            select! {
+                default => (0, false, false),
+                recv(self.c.rx()) -> res => match res {
+                    Ok(x) => (x, true, true),
+                    Err(_) => (0, false, true),
+                },
+            }
+        }
+
+        fn close(&self) {
+            self.c.close_s();
+        }
+    }
+
+    fn wrap_x(c: Chan<i32>) -> XChan {
+        XChan(c)
+    }
+
+    fn wrap_s(c: Chan<i32>) -> SChan {
+        SChan(c)
+    }
+
+    fn wrap_ss(c: Chan<i32>) -> SSChan {
+        SSChan {
+            c,
+            dummy: make(0),
+        }
+    }
+
+    fn should_panic(f: impl FnOnce()) {
+        assert!(panic::catch_unwind(AssertUnwindSafe(f)).is_err());
+    }
+
+    fn test1<C: ChanOps>(c: &C, mk: impl Fn() -> C) {
+        for _ in 0..3 {
+            assert_eq!(c.recv(), 0, "recv on closed");
+            let (x, ok) = c.recv2();
+            assert_eq!((x, ok), (0, false), "recv2 on closed");
+
+            let (x, selected) = c.nbrecv();
+            assert_eq!((x, selected), (0, true), "nbrecv on closed");
+
+            let (x, ok, selected) = c.nbrecv2();
+            assert_eq!((x, ok, selected), (0, false, true), "nbrecv2 on closed");
+        }
+
+        should_panic(|| {
+            mk().send(2);
+        });
+
+        assert_eq!(mk().recv(), 0, "recv after send on closed");
+
+        should_panic(|| {
+            mk().send(2);
+        });
+
+        assert_eq!(mk().recv(), 0, "recv after nbsend on closed");
+    }
+
+    fn testasync1<C: ChanOps>(c: &C, mk: impl Fn() -> C) {
+        assert_eq!(c.recv(), 1, "async recv");
+        test1(c, mk);
+    }
+
+    fn testasync2<C: ChanOps>(c: &C, mk: impl Fn() -> C) {
+        let (x, ok) = c.recv2();
+        assert_eq!((x, ok), (1, true), "async recv2");
+        test1(c, mk);
+    }
+
+    fn testasync3<C: ChanOps>(c: &C, mk: impl Fn() -> C) {
+        let (x, selected) = c.nbrecv();
+        assert_eq!((x, selected), (1, true), "async nbrecv");
+        test1(c, mk);
+    }
+
+    fn testasync4<C: ChanOps>(c: &C, mk: impl Fn() -> C) {
+        let (x, ok, selected) = c.nbrecv2();
+        assert_eq!((x, ok, selected), (1, true, true), "async nbrecv2");
+        test1(c, mk);
+    }
+
+    fn closed_sync() -> Chan<i32> {
+        let c = make(0);
+        c.close_s();
+        c
+    }
+
+    fn closed_async() -> Chan<i32> {
+        let c = make(2);
+        c.send(1);
+        c.close_s();
+        c
+    }
+
+    fn run_all<C: ChanOps>(mk: fn(Chan<i32>) -> C) {
+        let mk_closed = || mk(closed_sync());
+        test1(&mk_closed(), || mk(closed_sync()));
+        testasync1(&mk(closed_async()), || mk(closed_sync()));
+        testasync2(&mk(closed_async()), || mk(closed_sync()));
+        testasync3(&mk(closed_async()), || mk(closed_sync()));
+        testasync4(&mk(closed_async()), || mk(closed_sync()));
+    }
+
+    #[test]
+    fn main() {
+        run_all(wrap_x);
+        run_all(wrap_s);
+        run_all(wrap_ss);
+
+        let ch = make::<i32>(0);
+        ch.close_s();
+        should_panic(|| {
+            ch.close_s();
+        });
+    }
 }
 
 // https://github.com/golang/go/blob/HEAD/src/runtime/chanbarrier_test.go
