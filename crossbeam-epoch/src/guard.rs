@@ -223,18 +223,21 @@ impl Guard {
     /// Apart from that, keep in mind that another thread may execute the destructor, so the object
     /// must be sendable to other threads.
     ///
-    /// We intentionally didn't require `T: Send`, because Rust's type systems usually cannot prove
-    /// `T: Send` for typical use cases. For example, consider the following code snippet, which
-    /// exemplifies the typical use case of deferring the deallocation of a shared reference:
+    /// We intentionally didn't require `T: Send`, because this method uses
+    /// [`Self::defer_unchecked`] internally, and Rust's type system usually cannot prove the
+    /// deferred closure is `Send` for typical use cases. For example, consider deferring
+    /// destruction of a `Shared` nested inside another `Shared`:
     ///
     /// ```ignore
-    /// let shared = Owned::new(7i32).into_shared(guard);
-    /// guard.defer_destroy(shared); // `Shared` is not `Send`!
+    /// use crossbeam_epoch::Shared;
+    ///
+    /// let shared = Owned::new(Shared::<i32>::null()).into_shared(guard);
+    /// guard.defer_destroy(shared); // `Shared<'_, Shared<i32>>` is not `Send`!
     /// ```
     ///
-    /// While `Shared` is not `Send`, it's safe for another thread to call the destructor, because
-    /// it's called only after the grace period and `shared` is no longer shared with other
-    /// threads. But we don't expect type systems to prove this.
+    /// While neither `Shared` is `Send`, it's safe for another thread to run the destructor,
+    /// because it runs only after the grace period and the inner `Shared` is no longer shared
+    /// with other threads. But we don't expect the type system to prove this.
     ///
     /// # Examples
     ///
