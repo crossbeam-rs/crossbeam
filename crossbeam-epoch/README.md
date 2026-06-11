@@ -28,7 +28,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-epoch = "0.9"
+crossbeam-epoch = "0.10"
 ```
 
 ## Compatibility

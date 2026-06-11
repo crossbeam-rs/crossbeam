@@ -1,3 +1,13 @@
+# Version 0.9.0
+
+- Bump the minimum supported Rust version to 1.74.
+- Remove no longer used `nightly` feature. (#882)
+- Update `crossbeam-epoch` to 0.10.
+- Update `crossbeam-queue` to 0.4.
+- Update `crossbeam-utils` to 0.9.
+- Update `crossbeam-channel` to 0.5.16.
+- Update `crossbeam-deque` to 0.8.7.
+
 # Version 0.8.4
 
 - Remove dependency on `cfg-if`. (#1072)
