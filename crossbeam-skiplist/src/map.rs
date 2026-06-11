@@ -1,13 +1,14 @@
 //! An ordered map based on a lock-free skip list. See [`SkipMap`].
 
 use core::{
-    fmt,
+    fmt, mem,
     mem::ManuallyDrop,
     ops::{Bound, RangeBounds},
     ptr,
 };
 
 use crossbeam_epoch as epoch;
+use thread_local::ThreadLocal;
 
 use crate::{
     base::{self, try_pin_loop},
@@ -27,7 +28,12 @@ use crate::{
 /// [`Comparator`]: crate::comparator::Comparator
 pub struct SkipMap<K, V, C = BasicComparator> {
     inner: base::SkipList<K, V, C>,
+    handles: ThreadLocal<LocalHandle>,
 }
+
+struct LocalHandle(epoch::LocalHandle);
+// TODO
+unsafe impl Send for LocalHandle {}
 
 impl<K, V> SkipMap<K, V> {
     /// Returns a new, empty map with the default comparator.
@@ -41,12 +47,35 @@ impl<K, V> SkipMap<K, V> {
     /// ```
     pub fn new() -> Self {
         Self {
-            inner: base::SkipList::new(epoch::default_collector().clone()),
+            // SAFETY: we only pass global collector if neither key nor the value have destructors.
+            inner: unsafe {
+                base::SkipList::new(if Self::USE_GLOBAL {
+                    epoch::default_collector().clone()
+                } else {
+                    epoch::Collector::new()
+                })
+            },
+            handles: ThreadLocal::new(),
         }
     }
 }
 
 impl<K, V, C> SkipMap<K, V, C> {
+    // If neither key nor the value have destructors, there's no point in creating
+    // a new local collector, so we should simply use the global one.
+    const USE_GLOBAL: bool = !mem::needs_drop::<K>() && !mem::needs_drop::<V>();
+
+    fn pin(&self) -> epoch::Guard {
+        if Self::USE_GLOBAL {
+            epoch::pin()
+        } else {
+            self.handles
+                .get_or(|| LocalHandle(self.inner.collector.register()))
+                .0
+                .pin()
+        }
+    }
+
     /// Returns a new, empty map with the given comparator.
     ///
     /// # Example
@@ -58,7 +87,18 @@ impl<K, V, C> SkipMap<K, V, C> {
     /// ```
     pub fn with_comparator(comparator: C) -> Self {
         Self {
-            inner: base::SkipList::with_comparator(epoch::default_collector().clone(), comparator),
+            // SAFETY: we only pass global collector if neither key nor the value have destructors.
+            inner: unsafe {
+                base::SkipList::with_comparator(
+                    if Self::USE_GLOBAL {
+                        epoch::default_collector().clone()
+                    } else {
+                        epoch::Collector::new()
+                    },
+                    comparator,
+                )
+            },
+            handles: ThreadLocal::new(),
         }
     }
 
@@ -122,8 +162,8 @@ where
     /// assert_eq!(*numbers.front().unwrap().value(), "five");
     /// ```
     pub fn front(&self) -> Option<Entry<'_, K, V, C>> {
-        let guard = &epoch::pin();
-        try_pin_loop(|| self.inner.front(guard)).map(Entry::new)
+        let guard = &self.pin();
+        try_pin_loop(|| self.inner.front(guard)).map(|e| Entry::new(e, self))
     }
 
     /// Returns the entry with the largest key.
@@ -142,8 +182,8 @@ where
     /// assert_eq!(*numbers.back().unwrap().value(), "six");
     /// ```
     pub fn back(&self) -> Option<Entry<'_, K, V, C>> {
-        let guard = &epoch::pin();
-        try_pin_loop(|| self.inner.back(guard)).map(Entry::new)
+        let guard = &self.pin();
+        try_pin_loop(|| self.inner.back(guard)).map(|e| Entry::new(e, self))
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
@@ -164,8 +204,8 @@ where
     /// assert_eq!(*jobs_age.value(), 65);
     /// ```
     pub fn get_or_insert(&self, key: K, value: V) -> Entry<'_, K, V, C> {
-        let guard = &epoch::pin();
-        Entry::new(self.inner.get_or_insert(key, value, guard))
+        let guard = &self.pin();
+        Entry::new(self.inner.get_or_insert(key, value, guard), self)
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist,
@@ -195,8 +235,8 @@ where
     where
         F: FnOnce() -> V,
     {
-        let guard = &epoch::pin();
-        Entry::new(self.inner.get_or_insert_with(key, value_fn, guard))
+        let guard = &self.pin();
+        Entry::new(self.inner.get_or_insert_with(key, value_fn, guard), self)
     }
 
     /// Returns an iterator over all entries in the map,
@@ -224,6 +264,7 @@ where
     pub fn iter(&self) -> Iter<'_, K, V, C> {
         Iter {
             inner: self.inner.ref_iter(),
+            map: self,
         }
     }
 }
@@ -249,7 +290,7 @@ where
         C: Comparator<K, Q>,
         Q: ?Sized,
     {
-        let guard = &epoch::pin();
+        let guard = &self.pin();
         self.inner.contains_key(key, guard)
     }
 
@@ -273,8 +314,8 @@ where
         C: Comparator<K, Q>,
         Q: ?Sized,
     {
-        let guard = &epoch::pin();
-        try_pin_loop(|| self.inner.get(key, guard)).map(Entry::new)
+        let guard = &self.pin();
+        try_pin_loop(|| self.inner.get(key, guard)).map(|e| Entry::new(e, self))
     }
 
     /// Returns an `Entry` pointing to the lowest element whose key is above
@@ -308,8 +349,8 @@ where
         C: Comparator<K, Q>,
         Q: ?Sized,
     {
-        let guard = &epoch::pin();
-        try_pin_loop(|| self.inner.lower_bound(bound, guard)).map(Entry::new)
+        let guard = &self.pin();
+        try_pin_loop(|| self.inner.lower_bound(bound, guard)).map(|e| Entry::new(e, self))
     }
 
     /// Returns an `Entry` pointing to the highest element whose key is below
@@ -340,8 +381,8 @@ where
         C: Comparator<K, Q>,
         Q: ?Sized,
     {
-        let guard = &epoch::pin();
-        try_pin_loop(|| self.inner.upper_bound(bound, guard)).map(Entry::new)
+        let guard = &self.pin();
+        try_pin_loop(|| self.inner.upper_bound(bound, guard)).map(|e| Entry::new(e, self))
     }
 
     /// Returns an iterator over a subset of entries in the map.
@@ -373,6 +414,7 @@ where
     {
         Range {
             inner: self.inner.ref_range(range),
+            map: self,
         }
     }
 }
@@ -380,8 +422,8 @@ where
 impl<K, V, C> SkipMap<K, V, C>
 where
     C: Comparator<K>,
-    K: Send + 'static,
-    V: Send + 'static,
+    K: Send,
+    V: Send,
 {
     /// Inserts a `key`-`value` pair into the map and returns the new entry.
     ///
@@ -401,8 +443,8 @@ where
     /// assert_eq!(*map.get("key").unwrap().value(), "value");
     /// ```
     pub fn insert(&self, key: K, value: V) -> Entry<'_, K, V, C> {
-        let guard = &epoch::pin();
-        Entry::new(self.inner.insert(key, value, guard))
+        let guard = &self.pin();
+        Entry::new(self.inner.insert(key, value, guard), self)
     }
 
     /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
@@ -431,8 +473,11 @@ where
     where
         F: Fn(&V) -> bool,
     {
-        let guard = &epoch::pin();
-        Entry::new(self.inner.compare_insert(key, value, compare_fn, guard))
+        let guard = &self.pin();
+        Entry::new(
+            self.inner.compare_insert(key, value, compare_fn, guard),
+            self,
+        )
     }
 
     /// Removes an entry with the specified `key` from the map and returns it.
@@ -458,8 +503,8 @@ where
         C: Comparator<K, Q>,
         Q: ?Sized,
     {
-        let guard = &epoch::pin();
-        self.inner.remove(key, guard).map(Entry::new)
+        let guard = &self.pin();
+        self.inner.remove(key, guard).map(|e| Entry::new(e, self))
     }
 
     /// Removes the entry with the lowest key
@@ -485,8 +530,8 @@ where
     /// assert!(numbers.is_empty());
     /// ```
     pub fn pop_front(&self) -> Option<Entry<'_, K, V, C>> {
-        let guard = &epoch::pin();
-        self.inner.pop_front(guard).map(Entry::new)
+        let guard = &self.pin();
+        self.inner.pop_front(guard).map(|e| Entry::new(e, self))
     }
 
     /// Removes the entry with the greatest key from the map.
@@ -512,8 +557,8 @@ where
     /// assert!(numbers.is_empty());
     /// ```
     pub fn pop_back(&self) -> Option<Entry<'_, K, V, C>> {
-        let guard = &epoch::pin();
-        self.inner.pop_back(guard).map(Entry::new)
+        let guard = &self.pin();
+        self.inner.pop_back(guard).map(|e| Entry::new(e, self))
     }
 
     /// Removes all entries from the map.
@@ -530,7 +575,7 @@ where
     /// assert!(people.is_empty());
     /// ```
     pub fn clear(&self) {
-        let guard = &mut epoch::pin();
+        let guard = &mut self.pin();
         self.inner.clear(guard);
     }
 }
@@ -596,12 +641,14 @@ where
 /// A reference-counted entry in a map.
 pub struct Entry<'a, K, V, C = BasicComparator> {
     inner: ManuallyDrop<base::RefEntry<'a, K, V, C>>,
+    map: &'a SkipMap<K, V, C>,
 }
 
 impl<'a, K, V, C> Entry<'a, K, V, C> {
-    fn new(inner: base::RefEntry<'a, K, V, C>) -> Self {
+    fn new(inner: base::RefEntry<'a, K, V, C>, map: &'a SkipMap<K, V, C>) -> Self {
         Self {
             inner: ManuallyDrop::new(inner),
+            map,
         }
     }
 
@@ -624,7 +671,7 @@ impl<'a, K, V, C> Entry<'a, K, V, C> {
 impl<K, V, C> Drop for Entry<'_, K, V, C> {
     fn drop(&mut self) {
         unsafe {
-            ManuallyDrop::into_inner(ptr::read(&self.inner)).release_with_pin(epoch::pin);
+            ManuallyDrop::into_inner(ptr::read(&self.inner)).release_with_pin(|| self.map.pin());
         }
     }
 }
@@ -635,40 +682,40 @@ where
 {
     /// Moves to the next entry in the map.
     pub fn move_next(&mut self) -> bool {
-        let guard = &epoch::pin();
+        let guard = &self.map.pin();
         self.inner.move_next(guard)
     }
 
     /// Moves to the previous entry in the map.
     pub fn move_prev(&mut self) -> bool {
-        let guard = &epoch::pin();
+        let guard = &self.map.pin();
         self.inner.move_prev(guard)
     }
 
     /// Returns the next entry in the map.
     pub fn next(&self) -> Option<Self> {
-        let guard = &epoch::pin();
-        self.inner.next(guard).map(Entry::new)
+        let guard = &self.map.pin();
+        self.inner.next(guard).map(|e| Entry::new(e, self.map))
     }
 
     /// Returns the previous entry in the map.
     pub fn prev(&self) -> Option<Self> {
-        let guard = &epoch::pin();
-        self.inner.prev(guard).map(Entry::new)
+        let guard = &self.map.pin();
+        self.inner.prev(guard).map(|e| Entry::new(e, self.map))
     }
 }
 
 impl<K, V, C> Entry<'_, K, V, C>
 where
     C: Comparator<K>,
-    K: Send + 'static,
-    V: Send + 'static,
+    K: Send,
+    V: Send,
 {
     /// Removes the entry from the map.
     ///
     /// Returns `true` if this call removed the entry and `false` if it was already removed.
     pub fn remove(&self) -> bool {
-        let guard = &epoch::pin();
+        let guard = &self.map.pin();
         self.inner.remove(guard)
     }
 }
@@ -677,6 +724,7 @@ impl<K, V, C> Clone for Entry<'_, K, V, C> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
+            map: self.map,
         }
     }
 }
@@ -716,6 +764,7 @@ impl<K, V> fmt::Debug for IntoIter<K, V> {
 /// An iterator over the entries of a `SkipMap`.
 pub struct Iter<'a, K, V, C = BasicComparator> {
     inner: base::RefIter<'a, K, V, C>,
+    map: &'a SkipMap<K, V, C>,
 }
 
 impl<'a, K, V, C> Iterator for Iter<'a, K, V, C>
@@ -724,19 +773,19 @@ where
 {
     type Item = Entry<'a, K, V, C>;
 
-    fn next(&mut self) -> Option<Entry<'a, K, V, C>> {
-        let guard = &epoch::pin();
-        self.inner.next(guard).map(Entry::new)
+    fn next(&mut self) -> Option<Self::Item> {
+        let guard = &self.map.pin();
+        self.inner.next(guard).map(|e| Entry::new(e, self.map))
     }
 }
 
-impl<'a, K, V, C> DoubleEndedIterator for Iter<'a, K, V, C>
+impl<K, V, C> DoubleEndedIterator for Iter<'_, K, V, C>
 where
     C: Comparator<K>,
 {
-    fn next_back(&mut self) -> Option<Entry<'a, K, V, C>> {
-        let guard = &epoch::pin();
-        self.inner.next_back(guard).map(Entry::new)
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let guard = &self.map.pin();
+        self.inner.next_back(guard).map(|e| Entry::new(e, self.map))
     }
 }
 
@@ -748,7 +797,7 @@ impl<K, V, C> fmt::Debug for Iter<'_, K, V, C> {
 
 impl<K, V, C> Drop for Iter<'_, K, V, C> {
     fn drop(&mut self) {
-        let guard = &epoch::pin();
+        let guard = &self.map.pin();
         self.inner.drop_impl(guard);
     }
 }
@@ -761,6 +810,7 @@ where
     Q: ?Sized,
 {
     pub(crate) inner: base::RefRange<'a, Q, R, K, V, C>,
+    map: &'a SkipMap<K, V, C>,
 }
 
 impl<'a, Q, R, K, V, C> Iterator for Range<'a, Q, R, K, V, C>
@@ -771,21 +821,21 @@ where
 {
     type Item = Entry<'a, K, V, C>;
 
-    fn next(&mut self) -> Option<Entry<'a, K, V, C>> {
-        let guard = &epoch::pin();
-        self.inner.next(guard).map(Entry::new)
+    fn next(&mut self) -> Option<Self::Item> {
+        let guard = &self.map.pin();
+        self.inner.next(guard).map(|e| Entry::new(e, self.map))
     }
 }
 
-impl<'a, Q, R, K, V, C> DoubleEndedIterator for Range<'a, Q, R, K, V, C>
+impl<Q, R, K, V, C> DoubleEndedIterator for Range<'_, Q, R, K, V, C>
 where
     C: Comparator<K> + Comparator<K, Q>,
     R: RangeBounds<Q>,
     Q: ?Sized,
 {
-    fn next_back(&mut self) -> Option<Entry<'a, K, V, C>> {
-        let guard = &epoch::pin();
-        self.inner.next_back(guard).map(Entry::new)
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let guard = &self.map.pin();
+        self.inner.next_back(guard).map(|e| Entry::new(e, self.map))
     }
 }
 
@@ -813,7 +863,7 @@ where
     Q: ?Sized,
 {
     fn drop(&mut self) {
-        let guard = &epoch::pin();
+        let guard = &self.map.pin();
         self.inner.drop_impl(guard);
     }
 }
