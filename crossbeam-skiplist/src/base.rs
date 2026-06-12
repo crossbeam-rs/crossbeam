@@ -4,6 +4,7 @@ use alloc::alloc::handle_alloc_error;
 use core::{
     alloc::Layout,
     cmp, fmt,
+    iter::FusedIterator,
     marker::PhantomData,
     mem,
     ops::{Bound, Deref, RangeBounds},
@@ -684,6 +685,7 @@ where
             range,
             guard,
             _marker: PhantomData,
+            finished: false,
         }
     }
 
@@ -701,6 +703,7 @@ where
             head: None,
             tail: None,
             _marker: PhantomData,
+            finished: false,
         }
     }
 
@@ -1988,6 +1991,7 @@ where
     range: R,
     guard: &'g Guard,
     _marker: PhantomData<fn() -> Q>, // covariant over `Q`
+    finished: bool,
 }
 
 impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a, C> Iterator for Range<'a, 'g, Q, R, K, V, C>
@@ -1999,6 +2003,9 @@ where
     type Item = Entry<'a, 'g, K, V, C>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
         self.head = match self.head {
             Some(n) => self
                 .parent
@@ -2014,6 +2021,7 @@ where
                     if !below_upper_bound(&self.parent.comparator, &bound, &h.key) {
                         self.head = None;
                         self.tail = None;
+                        self.finished = true;
                     }
                 }
                 None => {
@@ -2021,6 +2029,7 @@ where
                     if !below_upper_bound(&self.parent.comparator, &bound, &h.key) {
                         self.head = None;
                         self.tail = None;
+                        self.finished = true;
                     }
                 }
             };
@@ -2040,6 +2049,9 @@ where
     Q: ?Sized,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
         self.tail = match self.tail {
             Some(n) => self
                 .parent
@@ -2055,6 +2067,7 @@ where
                     if !above_lower_bound(&self.parent.comparator, &bound, &t.key) {
                         self.head = None;
                         self.tail = None;
+                        self.finished = true;
                     }
                 }
                 None => {
@@ -2062,6 +2075,7 @@ where
                     if !above_lower_bound(&self.parent.comparator, &bound, &t.key) {
                         self.head = None;
                         self.tail = None;
+                        self.finished = true;
                     }
                 }
             };
@@ -2072,6 +2086,14 @@ where
             guard: self.guard,
         })
     }
+}
+
+impl<Q, R, K, V, C> FusedIterator for Range<'_, '_, Q, R, K, V, C>
+where
+    C: Comparator<K> + Comparator<K, Q>,
+    R: RangeBounds<Q>,
+    Q: ?Sized,
+{
 }
 
 impl<Q, R, K, V, C> fmt::Debug for Range<'_, '_, Q, R, K, V, C>
@@ -2103,6 +2125,7 @@ where
     pub(crate) tail: Option<RefEntry<'a, K, V, C>>,
     pub(crate) range: R,
     _marker: PhantomData<fn() -> Q>, // covariant over `Q`
+    finished: bool,
 }
 
 unsafe impl<Q, R, K, V, C> Send for RefRange<'_, Q, R, K, V, C>
@@ -2146,6 +2169,9 @@ where
 {
     /// Advances the iterator and returns the next value.
     pub fn next(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
+        if self.finished {
+            return None;
+        }
         self.parent.check_guard(guard);
         let next_head = match self.head {
             Some(ref e) => e.next(guard),
@@ -2167,6 +2193,7 @@ where
                         unsafe {
                             h.node.decrement(guard);
                         }
+                        self.finished = true;
                         None
                     }
                 }
@@ -2183,6 +2210,7 @@ where
                         unsafe {
                             h.node.decrement(guard);
                         }
+                        self.finished = true;
                         None
                     }
                 }
@@ -2194,6 +2222,9 @@ where
 
     /// Removes and returns an element from the end of the iterator.
     pub fn next_back(&mut self, guard: &Guard) -> Option<RefEntry<'a, K, V, C>> {
+        if self.finished {
+            return None;
+        }
         self.parent.check_guard(guard);
         let next_tail = match self.tail {
             Some(ref e) => e.prev(guard),
@@ -2215,6 +2246,7 @@ where
                         unsafe {
                             t.node.decrement(guard);
                         }
+                        self.finished = true;
                         None
                     }
                 }
@@ -2231,6 +2263,7 @@ where
                         unsafe {
                             t.node.decrement(guard);
                         }
+                        self.finished = true;
                         None
                     }
                 }
