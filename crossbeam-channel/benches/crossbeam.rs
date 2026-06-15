@@ -4,7 +4,7 @@ extern crate test;
 
 use std::num::NonZeroUsize;
 
-use crossbeam_channel::{bounded, unbounded};
+use crossbeam_channel::{bounded, lossy, unbounded};
 use crossbeam_utils::thread::scope;
 use test::Bencher;
 
@@ -536,6 +536,132 @@ mod bounded_1 {
                     while r1.recv().is_ok() {
                         for i in 0..steps {
                             s.send(i as i32).unwrap();
+                        }
+                        s2.send(()).unwrap();
+                    }
+                });
+            }
+            for _ in 0..threads / 2 {
+                scope.spawn(|_| {
+                    while r1.recv().is_ok() {
+                        for _ in 0..steps {
+                            r.recv().unwrap();
+                        }
+                        s2.send(()).unwrap();
+                    }
+                });
+            }
+
+            b.iter(|| {
+                for _ in 0..threads {
+                    s1.send(()).unwrap();
+                }
+                for _ in 0..threads {
+                    r2.recv().unwrap();
+                }
+            });
+            drop(s1);
+        })
+        .unwrap();
+    }
+}
+
+mod lossy {
+    use super::*;
+
+    #[bench]
+    fn create(b: &mut Bencher) {
+        b.iter(|| lossy::<i32>(1));
+    }
+
+    #[bench]
+    fn inout(b: &mut Bencher) {
+        let (s, r) = lossy::<i32>(1);
+        b.iter(|| {
+            s.lossy_send(0).unwrap();
+            r.recv().unwrap();
+        });
+    }
+
+    #[bench]
+    fn spsc(b: &mut Bencher) {
+        let steps = TOTAL_STEPS;
+        let (s, r) = lossy::<i32>(steps);
+
+        let (s1, r1) = bounded(0);
+        let (s2, r2) = bounded(0);
+        scope(|scope| {
+            scope.spawn(|_| {
+                while r1.recv().is_ok() {
+                    for i in 0..steps {
+                        let _ = s.lossy_send(i as i32);
+                    }
+                    s2.send(()).unwrap();
+                }
+            });
+
+            b.iter(|| {
+                s1.send(()).unwrap();
+                for _ in 0..steps {
+                    r.recv().unwrap();
+                }
+                r2.recv().unwrap();
+            });
+            drop(s1);
+        })
+        .unwrap();
+    }
+
+    #[bench]
+    fn mpsc(b: &mut Bencher) {
+        let threads = num_cpus() - 1;
+        let steps = TOTAL_STEPS / threads;
+        let (s, r) = lossy::<i32>(steps * threads);
+
+        let (s1, r1) = bounded(0);
+        let (s2, r2) = bounded(0);
+        scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|_| {
+                    while r1.recv().is_ok() {
+                        for i in 0..steps {
+                            let _ = s.lossy_send(i as i32);
+                        }
+                        s2.send(()).unwrap();
+                    }
+                });
+            }
+
+            b.iter(|| {
+                for _ in 0..threads {
+                    s1.send(()).unwrap();
+                }
+                for _ in 0..steps * threads {
+                    r.recv().unwrap();
+                }
+                for _ in 0..threads {
+                    r2.recv().unwrap();
+                }
+            });
+            drop(s1);
+        })
+        .unwrap();
+    }
+
+    #[bench]
+    fn mpmc(b: &mut Bencher) {
+        let threads = num_cpus();
+        let steps = TOTAL_STEPS / threads;
+        let (s, r) = lossy::<i32>(steps * threads);
+
+        let (s1, r1) = bounded(0);
+        let (s2, r2) = bounded(0);
+        scope(|scope| {
+            for _ in 0..threads / 2 {
+                scope.spawn(|_| {
+                    while r1.recv().is_ok() {
+                        for i in 0..steps {
+                            let _ = s.lossy_send(i as i32);
                         }
                         s2.send(()).unwrap();
                     }

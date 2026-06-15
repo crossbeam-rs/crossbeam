@@ -16,7 +16,7 @@ use crossbeam_utils::{Backoff, CachePadded};
 use crate::{
     alloc_helper::Global,
     context::Context,
-    err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
+    err::{LossySendError, RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError},
     select::{Operation, SelectHandle, Selected, Token},
     waker::SyncWaker,
 };
@@ -434,6 +434,16 @@ impl<T> Channel<T> {
         self.send(msg, None).map_err(|err| match err {
             SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
             SendTimeoutError::Timeout(_) => unreachable!(),
+        })
+    }
+
+    /// Sends a message, evicting the oldest if the channel is full.
+    ///
+    /// An unbounded channel is never full, so this always succeeds if not disconnected.
+    pub(crate) fn lossy_send(&self, msg: T) -> Result<(), LossySendError<T>> {
+        self.try_send(msg).map_err(|err| match err {
+            TrySendError::Full(_) => unreachable!(),
+            TrySendError::Disconnected(msg) => LossySendError::Disconnected(msg),
         })
     }
 
