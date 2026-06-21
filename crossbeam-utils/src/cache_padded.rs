@@ -107,19 +107,19 @@ use core::{
         target_arch = "sparc",
         target_arch = "hexagon",
     ),
-    repr(align(32), C)
+    repr(align(32))
 )]
 // m68k has 16-byte cache line size.
 //
 // Sources:
 // - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/m68k/include/asm/cache.h#L9
-#[cfg_attr(target_arch = "m68k", repr(align(16), C))]
+#[cfg_attr(target_arch = "m68k", repr(align(16)))]
 // s390x has 256-byte cache line size.
 //
 // Sources:
 // - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_s390x.go#L7
 // - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/s390/include/asm/cache.h#L13
-#[cfg_attr(target_arch = "s390x", repr(align(256), C))]
+#[cfg_attr(target_arch = "s390x", repr(align(256)))]
 // x86, wasm, riscv, and sparc64 have 64-byte cache line size.
 //
 // Sources:
@@ -145,8 +145,27 @@ use core::{
         target_arch = "m68k",
         target_arch = "s390x",
     )),
-    repr(align(64), C)
+    repr(align(64))
 )]
+// repr(C) ensures that the value is stored at the very start of this struct, which enables
+// pointers to this struct to be freely cast to pointers to T.
+//
+// The Rust language reference says the following in relation to field offsets in a repr(C) struct:
+//
+// "The size and offset of fields is determined by the following algorithm.
+//  Start with a current offset of 0 bytes.
+//  For each field in declaration order in the struct, first determine the size and alignment of the
+//  field. If the current offset is not a multiple of the field’s alignment, then add padding bytes
+//  to the current offset until it is a multiple of the field’s alignment. The offset for the field
+//  is what the current offset is now. Then increase the current offset by the size of the field."
+//
+// Since the value is the first an only item in the struct, it is placed in the 0th byte, since 0 is
+// a multiple of every integer, this its alignment wouldn't need to be padded.
+//
+// Sources:
+// - https://github.com/rust-lang/reference/blob/264aec433acc7503c48a8c4a2c59075c955f3497/src/type-layout.md?plain=1#L207C1-L208C1
+// 
+#[repr(C)]
 pub struct CachePadded<T> {
     value: T,
 }
