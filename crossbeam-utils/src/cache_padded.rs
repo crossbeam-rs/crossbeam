@@ -33,7 +33,8 @@ use core::{
 ///
 /// # Layout
 ///
-/// Since crossbeam-utils 0.9.0, this type is `#[repr(C)]` and is guaranteed that the pointer to `CachePadded<T>` has the same address as the pointer to the underlying `T`.
+/// Since crossbeam-utils 0.9.0, this type is `#[repr(C)]` and is guaranteed that the pointer to
+/// `CachePadded<T>` has the same address as the pointer to the underlying `T`.
 ///
 /// # Examples
 ///
