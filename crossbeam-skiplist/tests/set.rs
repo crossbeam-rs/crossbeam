@@ -806,10 +806,10 @@ fn comparator() {
     assert!(s.contains(&encode(&[1f32])));
     assert!(s.contains(&encode(&[0f32, 1f32])));
 
-    let elems: Vec<_> = s.iter().map(|x| &x.value()[..]).collect();
+    let elems: Vec<_> = s.iter().map(|x| x.value().clone()).collect();
     assert_eq!(
         elems,
-        [&encode(&[-0f32]), &encode(&[0f32, 1f32]), &encode(&[1f32])],
+        [encode(&[-0f32]), encode(&[0f32, 1f32]), encode(&[1f32])],
     );
 
     s.remove(&encode(&[0f32]));
