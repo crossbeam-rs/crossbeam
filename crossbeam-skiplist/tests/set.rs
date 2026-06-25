@@ -815,3 +815,28 @@ fn comparator() {
     s.remove(&encode(&[0f32]));
     assert!(!s.contains(&encode(&[-0f32])));
 }
+
+#[test]
+fn approximate_range_count_empty() {
+    let s: SkipSet<i32> = SkipSet::new();
+    assert_eq!(s.approximate_range_count(..), 0);
+    assert_eq!(s.approximate_range_count(0..10), 0);
+}
+
+#[test]
+fn approximate_range_count_small() {
+    let s: SkipSet<i32> = (0..10).collect();
+    assert_eq!(s.approximate_range_count(..), 10);
+}
+
+#[test]
+fn approximate_range_count_large() {
+    let n: usize = 10_000;
+    let s: SkipSet<i32> = (0..n as i32).collect();
+
+    let approx = s.approximate_range_count(..);
+    assert!(
+        approx >= n / 4 && approx <= n * 4,
+        "full range: approx={approx}, expected ~{n}"
+    );
+}
