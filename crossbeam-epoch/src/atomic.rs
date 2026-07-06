@@ -840,12 +840,7 @@ impl<T: ?Sized + Pointable> fmt::Pointer for Atomic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, _) = decompose_tag::<T>(data);
-        let ptr = if raw.is_null() {
-            raw
-        } else {
-            unsafe { T::as_ptr(raw).cast::<()>() }
-        };
-        fmt::Pointer::fmt(&ptr, f)
+        fmt::Pointer::fmt(&raw, f)
     }
 }
 
@@ -1577,12 +1572,7 @@ impl<T: ?Sized + Pointable> fmt::Debug for Shared<'_, T> {
 impl<T: ?Sized + Pointable> fmt::Pointer for Shared<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (raw, _) = decompose_tag::<T>(self.data);
-        let ptr = if raw.is_null() {
-            raw
-        } else {
-            unsafe { T::as_ptr(raw).cast::<()>() }
-        };
-        fmt::Pointer::fmt(&ptr, f)
+        fmt::Pointer::fmt(&raw, f)
     }
 }
 
