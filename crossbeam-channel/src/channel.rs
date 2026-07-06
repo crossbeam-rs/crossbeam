@@ -272,7 +272,7 @@ pub fn at(when: Instant) -> Receiver<Instant> {
 /// }
 /// # t.join().unwrap(); // join thread to avoid https://github.com/rust-lang/miri/issues/1371
 /// ```
-pub fn never<T>() -> Receiver<T> {
+pub const fn never<T>() -> Receiver<T> {
     Receiver {
         flavor: ReceiverFlavor::Never(flavors::never::Channel::new()),
     }
@@ -675,7 +675,7 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         unsafe {
             match &self.flavor {
-                SenderFlavor::Array(chan) => chan.release(|c| c.disconnect()),
+                SenderFlavor::Array(chan) => chan.release(|c| c.disconnect_senders()),
                 SenderFlavor::List(chan) => chan.release(|c| c.disconnect_senders()),
                 SenderFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
             }
@@ -904,7 +904,9 @@ impl<T> Receiver<T> {
     ///
     /// If the channel is empty and not disconnected, this call will block until the receive
     /// operation can proceed or the operation times out. If the channel is empty and becomes
-    /// disconnected, this call will wake up and return an error.
+    /// disconnected, this call will wake up and return an error. If the channel is non-empty
+    /// and the deadline has already been reached, the next message in the channel will be
+    /// returned.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
     /// on the other side of the channel.
@@ -1183,7 +1185,7 @@ impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         unsafe {
             match &self.flavor {
-                ReceiverFlavor::Array(chan) => chan.release(|c| c.disconnect()),
+                ReceiverFlavor::Array(chan) => chan.release(|c| c.disconnect_receivers()),
                 ReceiverFlavor::List(chan) => chan.release(|c| c.disconnect_receivers()),
                 ReceiverFlavor::Zero(chan) => chan.release(|c| c.disconnect()),
                 ReceiverFlavor::At(_) => {}

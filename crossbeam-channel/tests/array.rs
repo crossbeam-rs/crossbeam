@@ -2,6 +2,7 @@
 
 use std::{
     any::Any,
+    rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::Duration,
@@ -690,6 +691,10 @@ fn panic_on_drop() {
     assert!(a);
     assert!(b);
 
+    if option_env!("MIRI_LEAK_CHECK").is_some() || option_env!("ASAN_OPTIONS").is_some() {
+        return;
+    }
+
     // panic on drop
     let (s, r) = bounded(2);
     let (mut a, mut b) = (false, false);
@@ -706,4 +711,16 @@ fn panic_on_drop() {
     assert!(a);
     // Elements after the panicked element will leak.
     assert!(!b);
+}
+
+#[test]
+fn drop_unreceived() {
+    let (tx, rx) = bounded::<Rc<()>>(1);
+    let msg = Rc::new(());
+    let weak = Rc::downgrade(&msg);
+    assert!(tx.send(msg).is_ok());
+    drop(rx);
+    // Messages should be dropped immediately when the last receiver is destroyed.
+    assert!(weak.upgrade().is_none());
+    drop(tx);
 }

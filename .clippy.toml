@@ -5,7 +5,7 @@ allow-private-module-inception = true
 avoid-breaking-exported-api = false
 disallowed-names = []
 disallowed-macros = [
-    { path = "std::dbg", reason = "it is okay to use during development, but please do not include it in master branch" },
+    { path = "std::dbg", reason = "it is okay to use during development, but please do not include it in main branch" },
 ]
 disallowed-methods = [
     # Use helper for safer allocation instead.

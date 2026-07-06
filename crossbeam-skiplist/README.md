@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/crossbeam-rs/crossbeam/workflows/CI/badge.svg)](
 https://github.com/crossbeam-rs/crossbeam/actions)
 [![License](https://img.shields.io/badge/license-MIT_OR_Apache--2.0-blue.svg)](
-https://github.com/crossbeam-rs/crossbeam/tree/master/crossbeam-skiplist#license)
+https://github.com/crossbeam-rs/crossbeam/tree/HEAD/crossbeam-skiplist#license)
 [![Cargo](https://img.shields.io/crates/v/crossbeam-skiplist.svg)](
 https://crates.io/crates/crossbeam-skiplist)
 [![Documentation](https://docs.rs/crossbeam-skiplist/badge.svg)](

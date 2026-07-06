@@ -840,7 +840,12 @@ impl<T: ?Sized + Pointable> fmt::Pointer for Atomic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, _) = decompose_tag::<T>(data);
-        fmt::Pointer::fmt(&(unsafe { T::as_ptr(raw) }), f)
+        let ptr = if raw.is_null() {
+            raw
+        } else {
+            unsafe { T::as_ptr(raw).cast::<()>() }
+        };
+        fmt::Pointer::fmt(&ptr, f)
     }
 }
 
@@ -1571,7 +1576,13 @@ impl<T: ?Sized + Pointable> fmt::Debug for Shared<'_, T> {
 
 impl<T: ?Sized + Pointable> fmt::Pointer for Shared<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Pointer::fmt(&(unsafe { self.as_ptr() }), f)
+        let (raw, _) = decompose_tag::<T>(self.data);
+        let ptr = if raw.is_null() {
+            raw
+        } else {
+            unsafe { T::as_ptr(raw).cast::<()>() }
+        };
+        fmt::Pointer::fmt(&ptr, f)
     }
 }
 
@@ -1588,7 +1599,7 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
     clippy::std_instead_of_core
 )]
 mod tests {
-    use std::{mem::MaybeUninit, sync::atomic::Ordering};
+    use std::{format, mem::MaybeUninit, sync::atomic::Ordering};
 
     use super::{Atomic, Owned, Shared};
     use crate::pin;
@@ -1614,9 +1625,23 @@ mod tests {
 
     #[test]
     fn array_init() {
-        let owned = Owned::<[MaybeUninit<usize>]>::init(10);
-        let arr: &[MaybeUninit<usize>] = &owned;
+        let mut owned = Owned::<[MaybeUninit<usize>]>::init(10);
+        let arr: &mut [MaybeUninit<usize>] = &mut owned;
+        arr[arr.len() - 1].write(20);
         assert_eq!(arr.len(), 10);
+    }
+
+    #[test]
+    fn format_null() {
+        let atomic = Atomic::<usize>::null();
+        assert_eq!(format!("{atomic:p}"), "0x0");
+        let atomic = Atomic::<[MaybeUninit<usize>]>::null();
+        assert_eq!(format!("{atomic:p}"), "0x0");
+
+        let shared = Shared::<usize>::null();
+        assert_eq!(format!("{shared:p}"), "0x0");
+        let shared = Shared::<[MaybeUninit<usize>]>::null();
+        assert_eq!(format!("{shared:p}"), "0x0");
     }
 
     #[test]

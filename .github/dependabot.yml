@@ -4,13 +4,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14 # Note: Unless dependencies are pinned/locked, the effect is limited.
     commit-message:
       prefix: ''
     labels: []
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    cooldown:
+      default-days: 14
     commit-message:
       prefix: ''
     labels: []
