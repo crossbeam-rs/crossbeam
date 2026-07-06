@@ -1,31 +1,47 @@
 name: CI
 
-permissions:
-  contents: read
+permissions: {}
 
 on:
   pull_request:
   push:
     branches:
-      - staging
-      - trying
+      - main
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 env:
-  RUSTFLAGS: -Dwarnings
-  RUSTDOCFLAGS: -Dwarnings
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+  CARGO_NET_RETRY: 10
+  CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  RUSTDOCFLAGS: -D warnings
+  RUSTFLAGS: -D warnings
+  RUSTUP_MAX_RETRIES: 10
 
 defaults:
   run:
-    shell: bash
+    shell: bash --noprofile --norc -CeEuxo pipefail {0}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
+  # check-external-types:
+  #   uses: taiki-e/github-actions/.github/workflows/rust-check-external-types.yml@8bc74abe5dc8a730ff1d49a7f65246a175cec715 # main
+  # This branch no longer actively developed. Most commits to this
+  # branch are backporting and should not be blocked by clippy.
+  # clippy:
+  #   uses: taiki-e/github-actions/.github/workflows/rust-clippy.yml@8bc74abe5dc8a730ff1d49a7f65246a175cec715 # main
+  #   with:
+  #     fuzzy_provenance_casts: false # TODO
+  #     lossy_provenance_casts: false # TODO
+  docs:
+    uses: taiki-e/github-actions/.github/workflows/rust-docs.yml@8bc74abe5dc8a730ff1d49a7f65246a175cec715 # main
+
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
     env:
@@ -35,17 +51,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - rust: '1.63'
+          - rust: '1.65'
             os: ubuntu-latest
-          - rust: '1.63'
+          - rust: '1.65'
+            os: ubuntu-24.04-arm
+          - rust: '1.71'
             os: windows-latest
           - rust: stable
             os: ubuntu-latest
+          - rust: stable
+            os: ubuntu-24.04-arm
           - rust: stable
             os: windows-latest
           - rust: nightly
             os: ubuntu-latest
-          # TODO: https://github.com/crossbeam-rs/crossbeam/pull/518#issuecomment-633342606
+          - rust: nightly
+            os: ubuntu-24.04-arm
           # - rust: nightly
           #   os: macos-latest
           - rust: nightly
@@ -54,26 +75,44 @@ jobs:
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
           - rust: nightly
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-          - rust: nightly
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             target: armv7-unknown-linux-gnueabihf
-          # Test 32-bit target that does not have AtomicU64/AtomicI64.
           - rust: nightly
             os: ubuntu-latest
-            target: armv5te-unknown-linux-gnueabi
+            target: powerpc64le-unknown-linux-gnu
+          - rust: nightly
+            os: ubuntu-latest
+            target: s390x-unknown-linux-gnu
+          # # Test 32-bit target that does not have AtomicU64/AtomicI64.
+          # - rust: nightly
+          #   os: ubuntu-24.04-arm
+          #   container: debian:13-slim
+          #   target: armv5te-unknown-linux-gnueabi
+          # Test target without stable inline asm support.
+          - rust: stable
+            os: ubuntu-latest
+            target: sparc64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container && fromJSON(format('{{"image":"{0}","options":"--privileged"}}', matrix.container)) || '' }}
     timeout-minutes: 60
     steps:
-      - uses: taiki-e/checkout-action@v1
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+      - run: apt-get -o Acquire::Retries=10 -qq update && apt-get -o Acquire::Retries=10 -o Dpkg::Use-Pty=0 install -y --no-install-recommends gcc libc6-dev
+        if: matrix.container != ''
       - name: Install Rust
-        # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
-        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
-      - uses: taiki-e/setup-cross-toolchain-action@v1
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: rust@${{ matrix.rust }}
+          fallback: none
+      - uses: taiki-e/setup-cross-toolchain-action@3d9770ce98eb7dbcf378563182a5e8031165f75b # v1.41.0
         with:
           target: ${{ matrix.target }}
+          runner: ${{ matrix.container && 'native' || '' }}
         if: matrix.target != ''
+      - run: |
+          echo "RUSTFLAGS=${RUSTFLAGS} --cfg gha_macos_runner" >>"${GITHUB_ENV}"
+          echo "RUSTDOCFLAGS=${RUSTDOCFLAGS} --cfg gha_macos_runner" >>"${GITHUB_ENV}"
+        if: startsWith(matrix.os, 'macos')
       - name: Test
         run: ci/test.sh
 
@@ -90,12 +129,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: taiki-e/checkout-action@v1
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: rust@${{ matrix.rust }}
+          fallback: none
         if: matrix.rust != 'msrv'
       - name: Install cargo-hack
-        uses: taiki-e/install-action@cargo-hack
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: cargo-hack
+          fallback: none
       - name: Check features
         run: ci/check-features.sh
 
@@ -104,13 +149,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
-      - name: Install cargo-hack
-        uses: taiki-e/install-action@cargo-hack
-      - name: Install cargo-minimal-versions
-        uses: taiki-e/install-action@cargo-minimal-versions
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+      - name: Install Rust, cargo-hack, and cargo-minimal-versions
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: rust@nightly,cargo-hack,cargo-minimal-versions
+          fallback: none
       - name: dependency tree check
         run: ci/dependencies.sh
 
@@ -118,13 +162,16 @@ jobs:
   codegen:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write # for peter-evans/create-pull-request
+      pull-requests: write # for peter-evans/create-pull-request
     timeout-minutes: 60
     steps:
-      - uses: taiki-e/checkout-action@v1
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        run: rustup update stable
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: rust@stable
+          fallback: none
       - run: ci/no_atomic.sh
       - run: git add -N . && git diff --exit-code
         if: github.repository_owner != 'crossbeam-rs' || github.event_name != 'schedule'
@@ -139,7 +186,7 @@ jobs:
               echo 'success=false' >>"${GITHUB_OUTPUT}"
           fi
         if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule'
-      - uses: peter-evans/create-pull-request@v7
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1 # zizmor: ignore[superfluous-actions] # TODO
         with:
           title: Update no_atomic.rs
           body: |
@@ -151,38 +198,17 @@ jobs:
           branch: update-no-atomic-rs
         if: github.repository_owner == 'crossbeam-rs' && github.event_name == 'schedule' && steps.diff.outputs.success == 'false'
 
-  # Check formatting.
-  rustfmt:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install Rust
-        run: rustup update stable
-      - name: rustfmt
-        run: cargo fmt --all --check
-
-  # This branch no longer actively developed. Most commits to this
-  # branch are backporting and should not be blocked by clippy.
-  # # Check clippy.
-  # clippy:
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 60
-  #   steps:
-  #     - uses: taiki-e/checkout-action@v1
-  #     - name: Install Rust
-  #       run: rustup update stable
-  #     - name: clippy
-  #       run: cargo clippy --all --tests --examples
-
   # Run miri.
   miri:
     runs-on: ubuntu-latest
     timeout-minutes: 120 # TODO
     steps:
-      - uses: taiki-e/checkout-action@v1
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        run: rustup toolchain install nightly --component miri && rustup default nightly
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: rust@nightly+miri
+          fallback: none
       - name: miri
         run: ci/miri.sh
 
@@ -191,24 +217,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install Rust
-        run: rustup toolchain install nightly --component rust-src && rustup default nightly
-      - name: Install cargo-careful
-        run: cargo install cargo-careful --locked --debug
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+      - name: Install Rust and cargo-careful
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: rust@nightly+rust-src,cargo-careful
+          fallback: none
       - name: Run cargo-careful
-        run: ./ci/careful.sh
+        run: ci/careful.sh
 
   # Run sanitizers.
   san:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: taiki-e/checkout-action@v1
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
-      # https://github.com/google/sanitizers/issues/1716 / https://github.com/actions/runner-images/issues/9491
-      - run: sudo sysctl vm.mmap_rnd_bits=28
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: rust@nightly+rust-src+x86_64-unknown-linux-gnuasan+x86_64-unknown-linux-gnutsan+x86_64-unknown-linux-gnumsan
+          fallback: none
       - name: Run sanitizers
         run: ci/san.sh
 
@@ -217,55 +245,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: taiki-e/checkout-action@v1
+      - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
-        run: rustup update stable
+        uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+        with:
+          tool: rust@stable
+          fallback: none
       - name: loom
         run: ci/crossbeam-epoch-loom.sh
 
-  # Check if the document can be generated without warning.
-  docs:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install Rust
-        run: rustup update nightly && rustup default nightly
-      - name: docs
-        run: cargo doc --no-deps --all --all-features
-
-  shellcheck:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: taiki-e/checkout-action@v1
-      - name: Install shellcheck
-        uses: taiki-e/install-action@shellcheck
-      - run: shellcheck $(git ls-files '*.sh')
-
-  # This job doesn't actually test anything, but they're used to tell bors the
-  # build completed, as there is no practical way to detect when a workflow is
-  # successful listening to webhooks only.
-  #
-  # ALL THE PREVIOUS JOBS NEEDS TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
-
-  ci-success:
-    name: ci
-    if: github.event_name == 'push' && success()
-    needs:
-      - test
-      - features
-      - dependencies
-      - codegen
-      - rustfmt
-      # - clippy
-      - miri
-      - careful
-      - san
-      - loom
-      - docs
-      - shellcheck
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mark the job as a success
-        run: exit 0
+  # This branch no longer actively developed. Most commits to this
+  # branch are backporting and should not be blocked by clippy.
+  # tidy:
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 60
+  #   steps:
+  #     - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
+  #     - name: Install Rust, shfmt, shellcheck, taplo, and zizmor
+  #       uses: taiki-e/install-action@b8cecb83565409bcc297b2df6e77f030b2a468d5 # v2.82.0
+  #       with:
+  #         tool: rust@nightly+rustfmt,shfmt,shellcheck,taplo,zizmor
+  #         fallback: none
+  #     # `cargo fmt` cannot recognize files not included in the current workspace and modules
+  #     # defined inside macros, so run rustfmt directly.
+  #     # We need to use nightly rustfmt because we use the unstable formatting options of rustfmt.
+  #     - run: rustfmt --check $(git ls-files '*.rs')
+  #     - run: shfmt -d $(git ls-files '*.sh')
+  #     - run: RUST_LOG=warn taplo fmt --check $(git ls-files '*.toml')
+  #     - run: shellcheck $(git ls-files '*.sh')
+  #     - run: zizmor . -q --strict-collection --persona=auditor
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

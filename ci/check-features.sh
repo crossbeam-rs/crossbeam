@@ -8,6 +8,8 @@ cd "$(dirname "$0")"/..
 # * `--exclude benchmarks` - benchmarks doesn't published.
 # * `--skip nightly` - skip `nightly` feature as requires nightly compilers.
 if [[ "${RUST_VERSION}" == "msrv" ]]; then
+    # https://github.com/rust-lang/rust/pull/100081 merged in Rust 1.65 is not available on MSRV
+    export RUSTFLAGS="${RUSTFLAGS} -A unused-unsafe"
     cargo hack build --all --feature-powerset --no-dev-deps --exclude benchmarks --skip nightly --rust-version
 elif [[ "$RUST_VERSION" != "nightly"* ]]; then
     cargo hack build --all --feature-powerset --no-dev-deps --exclude benchmarks --skip nightly
