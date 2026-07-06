@@ -1,3 +1,7 @@
+# Version 0.9.20
+
+- Fix invalid pointer dereference in `fmt::Pointer` impl for `Atomic`/`Shared` when the underlying pointer is invalid. This fixes unsoundness that was not fully addressed in 0.9.19's fix. (#1276)
+
 # Version 0.9.19
 
 - Fix null pointer dereference in `fmt::Pointer` impl for `Atomic`/`Shared` when it is a null pointer. (#1273)
