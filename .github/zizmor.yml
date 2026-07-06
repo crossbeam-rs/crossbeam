@@ -1,0 +1,7 @@
+# zizmor configuration
+# https://docs.zizmor.sh/configuration/
+
+rules:
+  anonymous-definition: { disable: true } # This is pedantic/auditor only audit and requires explicitly naming each job, but is usually redundant.
+  dependabot-cooldown: { config: { days: 14 } }
+  unpinned-images: { disable: true }

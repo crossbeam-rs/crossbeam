@@ -265,7 +265,7 @@ macro_rules! go {
     }};
 }
 
-// https://github.com/golang/go/blob/master/test/chan/doubleselect.go
+// https://github.com/golang/go/blob/HEAD/test/chan/doubleselect.go
 mod doubleselect {
     use super::*;
 
@@ -330,7 +330,7 @@ mod doubleselect {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/fifo.go
+// https://github.com/golang/go/blob/HEAD/test/chan/fifo.go
 mod fifo {
     use super::*;
 
@@ -377,7 +377,7 @@ mod fifo {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/goroutines.go
+// https://github.com/golang/go/blob/HEAD/test/chan/goroutines.go
 mod goroutines {
     use super::*;
 
@@ -404,7 +404,7 @@ mod goroutines {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/nonblock.go
+// https://github.com/golang/go/blob/HEAD/test/chan/nonblock.go
 mod nonblock {
     use super::*;
 
@@ -672,7 +672,7 @@ mod nonblock {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/select.go
+// https://github.com/golang/go/blob/HEAD/test/chan/select.go
 mod select {
     use super::*;
 
@@ -724,7 +724,7 @@ mod select {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/select2.go
+// https://github.com/golang/go/blob/HEAD/test/chan/select2.go
 mod select2 {
     use super::*;
 
@@ -766,12 +766,12 @@ mod select2 {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/select3.go
+// https://github.com/golang/go/blob/HEAD/test/chan/select3.go
 mod select3 {
     // TODO
 }
 
-// https://github.com/golang/go/blob/master/test/chan/select4.go
+// https://github.com/golang/go/blob/HEAD/test/chan/select4.go
 mod select4 {
     use super::*;
 
@@ -787,7 +787,7 @@ mod select4 {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/select6.go
+// https://github.com/golang/go/blob/HEAD/test/chan/select6.go
 mod select6 {
     use super::*;
 
@@ -813,7 +813,7 @@ mod select6 {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/select7.go
+// https://github.com/golang/go/blob/HEAD/test/chan/select7.go
 mod select7 {
     use super::*;
 
@@ -881,7 +881,7 @@ mod select7 {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/sieve1.go
+// https://github.com/golang/go/blob/HEAD/test/chan/sieve1.go
 mod sieve1 {
     use super::*;
 
@@ -941,7 +941,7 @@ mod sieve1 {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/chan/zerosize.go
+// https://github.com/golang/go/blob/HEAD/test/chan/zerosize.go
 mod zerosize {
     use super::*;
 
@@ -957,7 +957,7 @@ mod zerosize {
     }
 }
 
-// https://github.com/golang/go/blob/master/src/runtime/chan_test.go
+// https://github.com/golang/go/blob/HEAD/src/runtime/chan_test.go
 mod chan_test {
     use super::*;
 
@@ -1538,22 +1538,22 @@ mod chan_test {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/closedchan.go
+// https://github.com/golang/go/blob/HEAD/test/closedchan.go
 mod closedchan {
     // TODO
 }
 
-// https://github.com/golang/go/blob/master/src/runtime/chanbarrier_test.go
+// https://github.com/golang/go/blob/HEAD/src/runtime/chanbarrier_test.go
 mod chanbarrier_test {
     // TODO
 }
 
-// https://github.com/golang/go/blob/master/src/runtime/race/testdata/chan_test.go
+// https://github.com/golang/go/blob/HEAD/src/runtime/race/testdata/chan_test.go
 mod race_chan_test {
     // TODO
 }
 
-// https://github.com/golang/go/blob/master/test/ken/chan.go
+// https://github.com/golang/go/blob/HEAD/test/ken/chan.go
 mod chan {
     use super::*;
 
@@ -2053,7 +2053,7 @@ mod chan {
     }
 }
 
-// https://github.com/golang/go/blob/master/test/ken/chan1.go
+// https://github.com/golang/go/blob/HEAD/test/ken/chan1.go
 mod chan1 {
     use super::*;
 

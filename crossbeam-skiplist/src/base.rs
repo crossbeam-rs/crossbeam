@@ -1636,12 +1636,12 @@ impl<'a, K: 'a, V: 'a, C: 'a> RefEntry<'a, K, V, C> {
     }
 
     /// Returns a reference to the key.
-    pub fn key(&self) -> &'a K {
+    pub fn key(&self) -> &K {
         &self.node.as_ref().key
     }
 
     /// Returns a reference to the value.
-    pub fn value(&self) -> &'a V {
+    pub fn value(&self) -> &V {
         &self.node.as_ref().value
     }
 
