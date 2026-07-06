@@ -943,7 +943,12 @@ impl<T: ?Sized + Pointable> fmt::Pointer for Atomic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, _) = decompose_tag::<T>(data);
-        fmt::Pointer::fmt(&(unsafe { T::deref(raw) as *const _ }), f)
+        let ptr = if raw == 0 {
+            raw as *const ()
+        } else {
+            unsafe { T::deref(raw) as *const T as *const () }
+        };
+        fmt::Pointer::fmt(&ptr, f)
     }
 }
 
@@ -1662,7 +1667,13 @@ impl<T: ?Sized + Pointable> fmt::Debug for Shared<'_, T> {
 
 impl<T: ?Sized + Pointable> fmt::Pointer for Shared<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Pointer::fmt(&(unsafe { self.deref() as *const _ }), f)
+        let (raw, _) = decompose_tag::<T>(self.data);
+        let ptr = if raw == 0 {
+            raw as *const ()
+        } else {
+            unsafe { T::deref(raw) as *const T as *const () }
+        };
+        fmt::Pointer::fmt(&ptr, f)
     }
 }
 
@@ -1674,8 +1685,8 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
-    use super::{Owned, Shared};
-    use std::mem::MaybeUninit;
+    use super::{Atomic, Owned, Shared};
+    use std::{format, mem::MaybeUninit};
 
     #[test]
     fn valid_tag_i8() {
@@ -1695,8 +1706,22 @@ mod tests {
 
     #[test]
     fn array_init() {
-        let owned = Owned::<[MaybeUninit<usize>]>::init(10);
-        let arr: &[MaybeUninit<usize>] = &owned;
+        let mut owned = Owned::<[MaybeUninit<usize>]>::init(10);
+        let arr: &mut [MaybeUninit<usize>] = &mut owned;
+        arr[arr.len() - 1].write(20);
         assert_eq!(arr.len(), 10);
+    }
+
+    #[test]
+    fn format_null() {
+        let atomic = Atomic::<usize>::null();
+        assert_eq!(format!("{atomic:p}"), "0x0");
+        let atomic = Atomic::<[MaybeUninit<usize>]>::null();
+        assert_eq!(format!("{atomic:p}"), "0x0");
+
+        let shared = Shared::<usize>::null();
+        assert_eq!(format!("{shared:p}"), "0x0");
+        let shared = Shared::<[MaybeUninit<usize>]>::null();
+        assert_eq!(format!("{shared:p}"), "0x0");
     }
 }
