@@ -33,7 +33,7 @@ use core::{
 ///
 /// # Layout
 ///
-/// Since crossbeam-utils 0.9.0, this type is `#[repr(C)]` and is guaranteed that the pointer to
+/// Since crossbeam-utils 0.8.22, this type is `#[repr(C)]` and is guaranteed that the pointer to
 /// `CachePadded<T>` has the same address as the pointer to the underlying `T`.
 ///
 /// # Examples
@@ -152,24 +152,6 @@ use core::{
     )),
     repr(align(64))
 )]
-// repr(C) ensures that the value is stored at the very start of this struct, which enables
-// pointers to this struct to be freely cast to pointers to T.
-//
-// The Rust language reference says the following in relation to field offsets in a repr(C) struct:
-//
-// "The size and offset of fields is determined by the following algorithm.
-//  Start with a current offset of 0 bytes.
-//  For each field in declaration order in the struct, first determine the size and alignment of the
-//  field. If the current offset is not a multiple of the field’s alignment, then add padding bytes
-//  to the current offset until it is a multiple of the field’s alignment. The offset for the field
-//  is what the current offset is now. Then increase the current offset by the size of the field."
-//
-// Since the value is the first an only item in the struct, it is placed in the 0th byte, since 0 is
-// a multiple of every integer, this its alignment wouldn't need to be padded.
-//
-// Sources:
-// - https://github.com/rust-lang/reference/blob/264aec433acc7503c48a8c4a2c59075c955f3497/src/type-layout.md?plain=1#L207C1-L208C1
-// 
 #[repr(C)]
 pub struct CachePadded<T> {
     value: T,
