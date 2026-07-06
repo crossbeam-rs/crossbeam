@@ -1,7 +1,6 @@
 name: Release
 
-permissions:
-  contents: read
+permissions: {}
 
 on:
   push:
