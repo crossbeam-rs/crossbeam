@@ -711,8 +711,10 @@ fn drain_excluded_start_usize_max() {
 
 // This test intentionally leaks memory via `mem::forget` to verify that
 // the queue remains in a consistent (empty) state after a `Drain` is forgotten.
-// Skipped under Miri due to intentional leaks; LeakSanitizer may also flag this test.
+// Skipped under Miri due to intentional leaks.
 #[cfg_attr(miri, ignore)]
+// LeakSanitizer flags the same intentional leaks; skip under sanitizers too.
+#[cfg_attr(crossbeam_sanitize, ignore)]
 #[test]
 fn drain_mem_forget() {
     // If mem::forget is called on Drain, queue must be left in
