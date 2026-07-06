@@ -534,7 +534,7 @@ impl<T> SegQueue<T> {
     /// outside the range are preserved in their original order.
     ///
     /// If `mem::forget` is called on the `Drain`, the queue is left empty.
-    /// Elements outside the range are leaked, but the queue remains in a
+    /// All elements not yet yielded are leaked, but the queue remains in a
     /// consistent (empty) state — no corruption occurs.
     ///
     /// # Panics
