@@ -635,7 +635,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         let mut prev = self.load(fail_order, guard);
         while let Some(next) = func(prev) {
             match self.compare_exchange_weak(prev, next, set_order, fail_order, guard) {
-                Ok(shared) => return Ok(shared),
+                Ok(_result) => return Ok(prev),
                 Err(next_prev) => prev = next_prev.current,
             }
         }
