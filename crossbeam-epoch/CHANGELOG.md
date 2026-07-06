@@ -1,3 +1,11 @@
+# Version 0.9.19
+
+- Fix null pointer dereference in `fmt::Pointer` impl for `Atomic`/`Shared` when it is a null pointer. (#1273)
+- Fix return value of `Atomic::fetch_update`. (#1197)
+- Improve compatibility with ThreadSanitizer. (#998)
+- Allow unsized types in `Guard::defer_destroy`. (#1201)
+- Use 64-bit integer for epoch representation on 32-bit platforms if `AtomicU64` is available. (#1230)
+
 # Version 0.9.18
 
 - Remove dependency on `cfg-if`. (#1072)

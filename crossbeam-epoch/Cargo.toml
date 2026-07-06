@@ -4,7 +4,7 @@ name = "crossbeam-epoch"
 # - Update CHANGELOG.md
 # - Update README.md (when increasing major or minor version)
 # - Run './tools/publish.sh crossbeam-epoch <version>'
-version = "0.9.18"
+version = "0.9.19"
 edition = "2021"
 # NB: Sync with msrv badge and "Compatibility" section in README.md
 rust-version = "1.74"

@@ -1,3 +1,9 @@
+# Version 0.8.22
+
+- Make `AtomicCell::{as_ptr,into_inner}` const. (#1237)
+- Make `CachePadded` `repr(C)`. (#1270)
+- Optimize `WaitGroup`. (#1195)
+
 # Version 0.8.21
 
 - Improve implementation of `CachePadded`. (#1152)

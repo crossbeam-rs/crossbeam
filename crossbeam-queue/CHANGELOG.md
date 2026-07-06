@@ -1,3 +1,7 @@
+# Version 0.3.13
+
+- Add `push_mut` and `pop_mut` to `ArrayQueue` and `SegQueue`. (#1191)
+
 # Version 0.3.12
 
 - Fix stack overflow when pushing large value to `SegQueue`. (#1146, #1147, #1159)
