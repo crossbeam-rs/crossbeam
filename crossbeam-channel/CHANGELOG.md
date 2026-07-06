@@ -1,3 +1,8 @@
+# Version 0.5.16
+
+- Improve support for rust-analyzer auto-completion of code inside `select!`/`select_biased!` macro. (#1240)
+- Make `never` const. (#1250)
+
 # Version 0.5.15
 
 - Fix regression introduced in 0.5.12 that can lead to a double free when dropping unbounded channel. (#1187)

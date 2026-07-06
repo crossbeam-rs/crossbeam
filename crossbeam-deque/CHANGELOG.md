@@ -1,3 +1,7 @@
+# Version 0.8.7
+
+- Optimize `Worker::push`, `Stealer::steal_batch*`, `Injector::steal_batch*`. (#1233)
+
 # Version 0.8.6
 
 - Fix stack overflow when pushing large value to `Injector`. (#1146, #1147, #1159)
