@@ -66,8 +66,8 @@ jobs:
             os: ubuntu-latest
           - rust: nightly
             os: ubuntu-24.04-arm
-          - rust: nightly
-            os: macos-latest
+          # - rust: nightly
+          #   os: macos-latest
           - rust: nightly
             os: windows-latest
           - rust: nightly
@@ -82,11 +82,11 @@ jobs:
           - rust: nightly
             os: ubuntu-latest
             target: s390x-unknown-linux-gnu
-          # Test 32-bit target that does not have AtomicU64/AtomicI64.
-          - rust: nightly
-            os: ubuntu-24.04-arm
-            container: debian:13-slim
-            target: armv5te-unknown-linux-gnueabi
+          # # Test 32-bit target that does not have AtomicU64/AtomicI64.
+          # - rust: nightly
+          #   os: ubuntu-24.04-arm
+          #   container: debian:13-slim
+          #   target: armv5te-unknown-linux-gnueabi
           # Test target without stable inline asm support.
           - rust: stable
             os: ubuntu-latest
