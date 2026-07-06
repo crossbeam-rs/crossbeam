@@ -62,7 +62,7 @@ members = [
   "crossbeam-deque",
   "crossbeam-epoch",
   "crossbeam-queue",
-  "crossbeam-skiplist",
+  # "crossbeam-skiplist", # Not published from this branch.
   "crossbeam-utils",
 ]
 

@@ -23,8 +23,7 @@ MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-ignor
 # -Zmiri-disable-stacked-borrows is needed for https://github.com/crossbeam-rs/crossbeam/issues/545
 MIRIFLAGS="-Zmiri-symbolic-alignment-check -Zmiri-disable-isolation -Zmiri-disable-stacked-borrows -Zmiri-ignore-leaks" \
     cargo miri test \
-    -p crossbeam-epoch \
-    -p crossbeam-skiplist 2>&1 | ts -i '%.s  '
+    -p crossbeam-epoch 2>&1 | ts -i '%.s  '
 
 # -Zmiri-ignore-leaks is needed for https://github.com/crossbeam-rs/crossbeam/issues/579
 # -Zmiri-disable-stacked-borrows is needed for https://github.com/crossbeam-rs/crossbeam/issues/545
