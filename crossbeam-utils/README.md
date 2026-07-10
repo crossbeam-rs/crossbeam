@@ -53,7 +53,7 @@ crossbeam-utils = "0.8"
 
 ## Compatibility
 
-Crossbeam Utils supports stable Rust releases going back at least six months,
+Crossbeam Utils supports stable Rust releases going back at least one year,
 and every time the minimum supported Rust version is increased, a new minor
 version is released. Currently, the minimum supported Rust version is 1.60.
 
