@@ -64,8 +64,8 @@ jobs:
             os: ubuntu-latest
           - rust: nightly
             os: ubuntu-24.04-arm
-          # - rust: nightly
-          #   os: macos-latest
+          - rust: nightly
+            os: macos-latest
           - rust: nightly
             os: windows-latest
           - rust: nightly
