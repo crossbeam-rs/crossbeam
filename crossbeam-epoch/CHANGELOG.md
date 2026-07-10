@@ -1,3 +1,16 @@
+# Version 0.10.0
+
+- Bump the minimum supported Rust version to 1.74.
+- Improve compatibility with Miri:
+  - Fix stacked borrows violations. (#871)
+  - Remove ptr-to-int casts for `-Zmiri-strict-provenance` compatibility. (#796)
+- Change `Atomic::{compare_exchange,compare_exchange_weak}` to return both the old and new values. (#1197)
+- Remove deprecated `CompareAndSetError`, `CompareAndSetOrdering`, and `Atomic::{compare_and_set,compare_and_set_weak}`. (#881)
+- Remove no longer used `nightly` feature. (#882)
+- Seal `Pointer` trait. (#884)
+- Make `Shared::null` const (#1227)
+- Update `crossbeam-utils` to 0.9.
+
 # Version 0.9.20
 
 - Fix invalid pointer dereference in `fmt::Pointer` impl for `Atomic`/`Shared` when the underlying pointer is invalid. This fixes unsoundness that was not fully addressed in 0.9.19's fix. (#1276)

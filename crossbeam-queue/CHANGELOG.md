@@ -1,3 +1,8 @@
+# Version 0.4.0
+
+- Remove no longer used `nightly` feature. (#882)
+- Update `crossbeam-utils` to 0.9.
+
 # Version 0.3.13
 
 - Add `push_mut` and `pop_mut` to `ArrayQueue` and `SegQueue`. (#1191)

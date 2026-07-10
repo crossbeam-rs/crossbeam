@@ -1,3 +1,13 @@
+# Version 0.8.8
+
+- Bump the minimum supported Rust version to 1.74.
+- Update `crossbeam-epoch` to 0.10.
+- Update `crossbeam-utils` to 0.9.
+
+TODO:
+- complete https://github.com/crossbeam-rs/crossbeam/pull/1219
+- decide https://github.com/crossbeam-rs/crossbeam/pull/743
+
 # Version 0.8.7
 
 - Optimize `Worker::push`, `Stealer::steal_batch*`, `Injector::steal_batch*`. (#1233)
