@@ -34,7 +34,7 @@ crossbeam-queue = "0.3"
 
 ## Compatibility
 
-Crossbeam Queue supports stable Rust releases going back at least six months,
+Crossbeam Queue supports stable Rust releases going back at least one year,
 and every time the minimum supported Rust version is increased, a new minor
 version is released. Currently, the minimum supported Rust version is 1.60.
 
