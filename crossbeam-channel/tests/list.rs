@@ -133,6 +133,15 @@ fn recv_timeout() {
 }
 
 #[test]
+fn recv_timeout_nonempty_expired() {
+    let (s, r) = unbounded::<i32>();
+    s.send(5).unwrap();
+    // A non-empty channel yields an already-available message even with a zero (elapsed) timeout.
+    assert_eq!(r.recv_timeout(ms(0)), Ok(5));
+    assert_eq!(r.recv_timeout(ms(0)), Err(RecvTimeoutError::Timeout));
+}
+
+#[test]
 fn try_send() {
     const COUNT: usize = if cfg!(miri) { 50 } else { 1000 };
 

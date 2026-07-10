@@ -860,7 +860,8 @@ impl<T> Receiver<T> {
     ///
     /// If the channel is empty and not disconnected, this call will block until the receive
     /// operation can proceed or the operation times out. If the channel is empty and becomes
-    /// disconnected, this call will wake up and return an error.
+    /// disconnected, this call will wake up and return an error. If the channel is non-empty
+    /// and the timeout has already elapsed, the next message in the channel will be returned.
     ///
     /// If called on a zero-capacity channel, this method will wait for a send operation to appear
     /// on the other side of the channel.
