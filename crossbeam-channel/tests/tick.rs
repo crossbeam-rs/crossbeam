@@ -16,6 +16,7 @@ fn ms(ms: u64) -> Duration {
 }
 
 #[test]
+#[cfg_attr(gha_macos_runner, ignore = "GitHub-hosted macOS runner is slow")]
 fn fire() {
     let start = Instant::now();
     let r = tick(ms(50));
