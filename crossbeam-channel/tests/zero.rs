@@ -318,7 +318,7 @@ fn stress_oneshot() {
     const COUNT: usize = 10_000;
 
     for _ in 0..COUNT {
-        let (s, r) = bounded(1);
+        let (s, r) = bounded(0);
 
         scope(|scope| {
             scope.spawn(|_| r.recv().unwrap());
