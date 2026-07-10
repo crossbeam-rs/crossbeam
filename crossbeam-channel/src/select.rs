@@ -1170,6 +1170,52 @@ impl<'a> Select<'a> {
             Some(index) => Ok(index),
         }
     }
+
+    /// Recycles this `Select` and its internal allocated buffer, clearing the `Select` and giving it a new lifetime.
+    ///
+    /// This can be used to avoid allocating a new `Select` when it would be preferable to reuse this one.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_channel::{unbounded, Select};
+    ///
+    /// let (s1, r1) = unbounded();
+    /// s1.send(1).unwrap();
+    ///
+    /// let mut sel = Select::new();
+    /// assert_eq!(sel.recv(&r1), 0);
+    ///
+    /// sel = sel.recycle();
+    /// // We are now free to drop these because they're no longer bound by the 'a lifetime
+    /// drop((s1, r1));
+    ///
+    /// let (s2, r2) = unbounded();
+    /// s2.send(2).unwrap();
+    ///
+    /// assert_eq!(sel.recv(&r2), 0);
+    /// assert_eq!(sel.select().recv(&r2), Ok(2));
+    /// ```
+    pub fn recycle<'b>(self) -> Select<'b> {
+        let Select {
+            mut handles,
+            next_index: _,
+            biased,
+        } = self;
+        handles.clear();
+        // FIXME: Unsafe but stable version of `Vec::recycle`.
+        // Replace with `Vec::into_raw_parts` when MSRV hits 1.93.
+        // Replace with `Vec::recycle` when it's stable.
+        let mut handles = mem::ManuallyDrop::new(handles);
+        let (ptr, length, capacity) = (handles.as_mut_ptr(), handles.len(), handles.capacity());
+        debug_assert_eq!(length, 0);
+        Select {
+            // SAFETY: this vec has been cleared beforehand, so the lifetime has ended.
+            handles: unsafe { Vec::from_raw_parts(ptr.cast(), length, capacity) },
+            next_index: 0,
+            biased,
+        }
+    }
 }
 
 impl Clone for Select<'_> {
