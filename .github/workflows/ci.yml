@@ -31,14 +31,13 @@ concurrency:
 
 jobs:
   check-external-types:
-    uses: taiki-e/github-actions/.github/workflows/rust-check-external-types.yml@8bc74abe5dc8a730ff1d49a7f65246a175cec715 # main
+    uses: taiki-e/github-actions/.github/workflows/rust-check-external-types.yml@e6a1170cbd07eb898017958967912976fce18f2d # 2026.7.3
   clippy:
-    uses: taiki-e/github-actions/.github/workflows/rust-clippy.yml@8bc74abe5dc8a730ff1d49a7f65246a175cec715 # main
+    uses: taiki-e/github-actions/.github/workflows/rust-clippy.yml@e6a1170cbd07eb898017958967912976fce18f2d # 2026.7.3
     with:
-      fuzzy_provenance_casts: false # TODO
-      lossy_provenance_casts: false # TODO
+      implicit_provenance_casts: false # TODO
   docs:
-    uses: taiki-e/github-actions/.github/workflows/rust-docs.yml@8bc74abe5dc8a730ff1d49a7f65246a175cec715 # main
+    uses: taiki-e/github-actions/.github/workflows/rust-docs.yml@e6a1170cbd07eb898017958967912976fce18f2d # 2026.7.3
 
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
