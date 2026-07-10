@@ -46,7 +46,7 @@ crossbeam-channel = "0.5"
 
 ## Compatibility
 
-Crossbeam Channel supports stable Rust releases going back at least six months,
+Crossbeam Channel supports stable Rust releases going back at least one year,
 and every time the minimum supported Rust version is increased, a new minor
 version is released. Currently, the minimum supported Rust version is 1.74.
 
