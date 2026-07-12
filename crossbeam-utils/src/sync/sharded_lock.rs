@@ -3,7 +3,7 @@ use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
@@ -26,7 +26,7 @@ struct Shard {
     ///
     /// Write operations will lock each shard and store the guard here. These guards get dropped at
     /// the same time the big guard is dropped.
-    write_guard: UnsafeCell<Option<RwLockWriteGuard<'static, ()>>>,
+    write_guard: UnsafeCell<MaybeUninit<RwLockWriteGuard<'static, ()>>>,
 }
 
 /// A sharded reader-writer lock.
@@ -105,7 +105,7 @@ impl<T> ShardedLock<T> {
                 .map(|_| {
                     CachePadded::new(Shard {
                         lock: RwLock::new(()),
-                        write_guard: UnsafeCell::new(None),
+                        write_guard: UnsafeCell::new(MaybeUninit::uninit()),
                     })
                 })
                 .collect::<Box<[_]>>(),
@@ -349,18 +349,18 @@ impl<T: ?Sized> ShardedLock<T> {
             unsafe {
                 let guard: RwLockWriteGuard<'static, ()> = mem::transmute(guard);
                 let dest: *mut _ = shard.write_guard.get();
-                *dest = Some(guard);
+                *dest = MaybeUninit::new(guard);
             }
         }
 
         if let Some(i) = blocked {
             // Unlock the shards in reverse order of locking.
             for shard in self.shards[0..i].iter().rev() {
-                unsafe {
-                    let dest: *mut _ = shard.write_guard.get();
-                    let guard = (*dest).take();
-                    drop(guard);
-                }
+                let dest: *mut MaybeUninit<RwLockWriteGuard<'static, ()>> = shard.write_guard.get();
+                // SAFETY: we've acquired lock and filled write_guard of self.shards[0..i].
+                // Note that drop_in_place cannot be used because it releases the lock during the drop.
+                let guard = unsafe { dest.cast::<RwLockWriteGuard<'static, ()>>().read() };
+                drop(guard);
             }
             Err(TryLockError::WouldBlock)
         } else if poisoned {
@@ -425,7 +425,7 @@ impl<T: ?Sized> ShardedLock<T> {
                 let guard: RwLockWriteGuard<'_, ()> = guard;
                 let guard: RwLockWriteGuard<'static, ()> = mem::transmute(guard);
                 let dest: *mut _ = shard.write_guard.get();
-                *dest = Some(guard);
+                *dest = MaybeUninit::new(guard);
             }
         }
 
@@ -526,11 +526,11 @@ impl<T: ?Sized> Drop for ShardedLockWriteGuard<'_, T> {
     fn drop(&mut self) {
         // Unlock the shards in reverse order of locking.
         for shard in self.lock.shards.iter().rev() {
-            unsafe {
-                let dest: *mut _ = shard.write_guard.get();
-                let guard = (*dest).take();
-                drop(guard);
-            }
+            let dest: *mut MaybeUninit<RwLockWriteGuard<'static, ()>> = shard.write_guard.get();
+            // SAFETY: ShardedLockWriteGuard is constructed only when all locks have been acquired.
+            // Note that drop_in_place cannot be used because it releases the lock during the drop.
+            let guard = unsafe { dest.cast::<RwLockWriteGuard<'static, ()>>().read() };
+            drop(guard);
         }
     }
 }
