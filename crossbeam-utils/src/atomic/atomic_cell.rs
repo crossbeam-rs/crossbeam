@@ -85,38 +85,6 @@ impl<T> AtomicCell<T> {
     /// assert_eq!(v, 7);
     /// ```
     pub const fn into_inner(self) -> T {
-        // HACK: This is equivalent to transmute_copy by value, but available in const
-        // context even on older rustc (const transmute_copy requires Rust 1.74), and
-        // can work around "cannot borrow here, since the borrowed element may contain
-        // interior mutability" error occurs (until const_refs_to_cell stabilized, i.e.,
-        // Rust 1.83) when using transmute_copy with generic type in const context
-        // (because this is a by-value transmutation that doesn't create a reference to
-        // the source value).
-        /// # Safety
-        ///
-        /// This function has the same safety requirements as [`core::mem::transmute_copy`].
-        ///
-        /// Since this is a by-value transmutation, it copies the bits from the source value
-        /// into the destination value, then forgets the original, as with the [`core::mem::transmute`].
-        #[inline]
-        #[must_use]
-        const unsafe fn transmute_copy_by_val<Src, Dst>(src: Src) -> Dst {
-            #[repr(C)]
-            union ConstHack<Src, Dst> {
-                src: ManuallyDrop<Src>,
-                dst: ManuallyDrop<Dst>,
-            }
-            assert!(mem::size_of::<Src>() >= mem::size_of::<Dst>()); // assertion copied from transmute_copy
-            // SAFETY: ConstHack is #[repr(C)] union, and the caller must guarantee that
-            // transmuting Src to Dst is safe.
-            ManuallyDrop::into_inner(unsafe {
-                ConstHack::<Src, Dst> {
-                    src: ManuallyDrop::new(src),
-                }
-                .dst
-            })
-        }
-
         // SAFETY:
         // - Self is repr(transparent) over `UnsafeCell<MaybeUninit<T>>` and
         //   `UnsafeCell<MaybeUninit<T>>` and `T` has the same layout.
@@ -1038,7 +1006,7 @@ where
         T, a,
         {
             a = unsafe { &*(src as *const _ as *const _) };
-            unsafe { mem::transmute_copy(&a.load(Ordering::Acquire)) }
+            unsafe { transmute_copy_by_val(a.load(Ordering::Acquire)) }
         },
         {
             let lock = lock(src as usize);
@@ -1077,8 +1045,7 @@ unsafe fn atomic_store<T>(dst: *mut T, val: T) {
         T, a,
         {
             a = unsafe { &*(dst as *const _ as *const _) };
-            a.store(unsafe { mem::transmute_copy(&val) }, Ordering::Release);
-            mem::forget(val);
+            a.store(unsafe { transmute_copy_by_val(val) }, Ordering::Release);
         },
         {
             let _guard = lock(dst as usize).write();
@@ -1096,9 +1063,7 @@ unsafe fn atomic_swap<T>(dst: *mut T, val: T) -> T {
         T, a,
         {
             a = unsafe { &*(dst as *const _ as *const _) };
-            let res = unsafe { mem::transmute_copy(&a.swap(mem::transmute_copy(&val), Ordering::AcqRel)) };
-            mem::forget(val);
-            res
+            unsafe { transmute_copy_by_val(a.swap(transmute_copy_by_val(val), Ordering::AcqRel)) }
         },
         {
             let _guard = lock(dst as usize).write();
@@ -1123,8 +1088,8 @@ where
         T, a,
         {
             a = unsafe { &*(dst as *const _ as *const _) };
-            let mut current_raw = unsafe { mem::transmute_copy(&current) };
-            let new_raw = unsafe { mem::transmute_copy(&new) };
+            let mut current_raw = unsafe { transmute_copy_by_val(current) };
+            let new_raw = unsafe { transmute_copy_by_val(new) };
 
             loop {
                 match a.compare_exchange_weak(
@@ -1135,7 +1100,7 @@ where
                 ) {
                     Ok(_) => break Ok(current),
                     Err(previous_raw) => {
-                        let previous = unsafe { mem::transmute_copy(&previous_raw) };
+                        let previous = unsafe { transmute_copy_by_val(previous_raw) };
 
                         if !T::eq(&previous, &current) {
                             break Err(previous);
@@ -1165,4 +1130,38 @@ where
             }
         }
     }
+}
+
+// HACK: This is equivalent to transmute_copy by value, but available in const
+// context even on older rustc (const transmute_copy requires Rust 1.74), and
+// can work around "cannot borrow here, since the borrowed element may contain
+// interior mutability" error occurs (until const_refs_to_cell stabilized, i.e.,
+// Rust 1.83) when using transmute_copy with generic type in const context
+// (because this is a by-value transmutation that doesn't create a reference to
+// the source value).
+// Additionally, this is usually safer than transmute_copy because there is no
+// need to care about the destructor of src.
+/// # Safety
+///
+/// This function has the same safety requirements as [`core::mem::transmute_copy`].
+///
+/// Since this is a by-value transmutation, it copies the bits from the source value
+/// into the destination value, then forgets the original, as with the [`core::mem::transmute`].
+#[inline]
+#[must_use]
+const unsafe fn transmute_copy_by_val<Src, Dst>(src: Src) -> Dst {
+    #[repr(C)]
+    union ConstHack<Src, Dst> {
+        src: ManuallyDrop<Src>,
+        dst: ManuallyDrop<Dst>,
+    }
+    assert!(mem::size_of::<Src>() >= mem::size_of::<Dst>()); // assertion copied from transmute_copy
+    // SAFETY: ConstHack is #[repr(C)] union, and the caller must guarantee that
+    // transmuting Src to Dst is safe.
+    ManuallyDrop::into_inner(unsafe {
+        ConstHack::<Src, Dst> {
+            src: ManuallyDrop::new(src),
+        }
+        .dst
+    })
 }

@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 use core::{
     fmt,
     iter::FusedIterator,
-    mem,
+    mem::{self, ManuallyDrop},
     panic::{RefUnwindSafe, UnwindSafe},
     time::Duration,
 };
@@ -783,16 +783,16 @@ impl<T> Receiver<T> {
             ReceiverFlavor::At(chan) => {
                 let msg = chan.try_recv();
                 unsafe {
-                    mem::transmute_copy::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
-                        &msg,
+                    transmute_copy_by_val::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
+                        msg,
                     )
                 }
             }
             ReceiverFlavor::Tick(chan) => {
                 let msg = chan.try_recv();
                 unsafe {
-                    mem::transmute_copy::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
-                        &msg,
+                    transmute_copy_by_val::<Result<Instant, TryRecvError>, Result<T, TryRecvError>>(
+                        msg,
                     )
                 }
             }
@@ -836,19 +836,19 @@ impl<T> Receiver<T> {
             ReceiverFlavor::At(chan) => {
                 let msg = chan.recv(None);
                 unsafe {
-                    mem::transmute_copy::<
+                    transmute_copy_by_val::<
                         Result<Instant, RecvTimeoutError>,
                         Result<T, RecvTimeoutError>,
-                    >(&msg)
+                    >(msg)
                 }
             }
             ReceiverFlavor::Tick(chan) => {
                 let msg = chan.recv(None);
                 unsafe {
-                    mem::transmute_copy::<
+                    transmute_copy_by_val::<
                         Result<Instant, RecvTimeoutError>,
                         Result<T, RecvTimeoutError>,
-                    >(&msg)
+                    >(msg)
                 }
             }
             ReceiverFlavor::Never(chan) => chan.recv(None),
@@ -950,19 +950,19 @@ impl<T> Receiver<T> {
             ReceiverFlavor::At(chan) => {
                 let msg = chan.recv(Some(deadline));
                 unsafe {
-                    mem::transmute_copy::<
+                    transmute_copy_by_val::<
                         Result<Instant, RecvTimeoutError>,
                         Result<T, RecvTimeoutError>,
-                    >(&msg)
+                    >(msg)
                 }
             }
             ReceiverFlavor::Tick(chan) => {
                 let msg = chan.recv(Some(deadline));
                 unsafe {
-                    mem::transmute_copy::<
+                    transmute_copy_by_val::<
                         Result<Instant, RecvTimeoutError>,
                         Result<T, RecvTimeoutError>,
-                    >(&msg)
+                    >(msg)
                 }
             }
             ReceiverFlavor::Never(chan) => chan.recv(Some(deadline)),
@@ -1555,12 +1555,46 @@ pub(crate) unsafe fn read<T>(r: &Receiver<T>, token: &mut Token) -> Result<T, ()
             ReceiverFlavor::List(chan) => chan.read(token),
             ReceiverFlavor::Zero(chan) => chan.read(token),
             ReceiverFlavor::At(chan) => {
-                mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
+                transmute_copy_by_val::<Result<Instant, ()>, Result<T, ()>>(chan.read(token))
             }
             ReceiverFlavor::Tick(chan) => {
-                mem::transmute_copy::<Result<Instant, ()>, Result<T, ()>>(&chan.read(token))
+                transmute_copy_by_val::<Result<Instant, ()>, Result<T, ()>>(chan.read(token))
             }
             ReceiverFlavor::Never(chan) => chan.read(token),
         }
     }
+}
+
+// HACK: This is equivalent to transmute_copy by value, but available in const
+// context even on older rustc (const transmute_copy requires Rust 1.74), and
+// can work around "cannot borrow here, since the borrowed element may contain
+// interior mutability" error occurs (until const_refs_to_cell stabilized, i.e.,
+// Rust 1.83) when using transmute_copy with generic type in const context
+// (because this is a by-value transmutation that doesn't create a reference to
+// the source value).
+// Additionally, this is usually safer than transmute_copy because there is no
+// need to care about the destructor of src.
+/// # Safety
+///
+/// This function has the same safety requirements as [`core::mem::transmute_copy`].
+///
+/// Since this is a by-value transmutation, it copies the bits from the source value
+/// into the destination value, then forgets the original, as with the [`core::mem::transmute`].
+#[inline]
+#[must_use]
+const unsafe fn transmute_copy_by_val<Src, Dst>(src: Src) -> Dst {
+    #[repr(C)]
+    union ConstHack<Src, Dst> {
+        src: ManuallyDrop<Src>,
+        dst: ManuallyDrop<Dst>,
+    }
+    assert!(mem::size_of::<Src>() >= mem::size_of::<Dst>()); // assertion copied from transmute_copy
+    // SAFETY: ConstHack is #[repr(C)] union, and the caller must guarantee that
+    // transmuting Src to Dst is safe.
+    ManuallyDrop::into_inner(unsafe {
+        ConstHack::<Src, Dst> {
+            src: ManuallyDrop::new(src),
+        }
+        .dst
+    })
 }
