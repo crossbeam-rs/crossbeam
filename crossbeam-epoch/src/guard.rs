@@ -384,7 +384,7 @@ impl Guard {
             // We need to acquire a handle here to ensure the Local doesn't
             // disappear from under us.
             local.acquire_handle();
-            local.unpin();
+            unsafe { Local::unpin(self.local) }
         }
 
         let _guard = ScopeGuard(self.local);
@@ -416,8 +416,8 @@ impl Guard {
 impl Drop for Guard {
     #[inline]
     fn drop(&mut self) {
-        if let Some(local) = unsafe { self.local.as_ref() } {
-            local.unpin();
+        if !self.local.is_null() {
+            unsafe { Local::unpin(self.local) }
         }
     }
 }
