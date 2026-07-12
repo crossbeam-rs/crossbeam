@@ -91,9 +91,9 @@ impl Channel {
             // Success! Return the message, which is the instant at which it was delivered.
             Ok(self.delivery_time)
         } else {
-            // The message was already received. Block forever.
-            utils::sleep_until(None);
-            unreachable!()
+            // The message was already received.
+            utils::sleep_until(deadline);
+            Err(RecvTimeoutError::Timeout)
         }
     }
 
