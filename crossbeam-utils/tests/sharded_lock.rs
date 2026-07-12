@@ -1,4 +1,5 @@
 use std::{
+    mem,
     sync::{
         Arc, TryLockError,
         atomic::{AtomicUsize, Ordering},
@@ -248,5 +249,19 @@ fn test_get_mut_poison() {
     match Arc::try_unwrap(m).unwrap().get_mut() {
         Err(e) => assert_eq!(*e.into_inner(), NonCopy(10)),
         Ok(x) => panic!("get_mut of poisoned ShardedLock is Ok: {:?}", x),
+    }
+}
+
+#[test]
+fn forget_guard() {
+    {
+        let lock = ShardedLock::new(vec![1, 2, 3]);
+        let guard = lock.write().unwrap();
+        mem::forget(guard);
+    }
+    {
+        let lock = ShardedLock::new(vec![1, 2, 3]);
+        let guard = lock.read().unwrap();
+        mem::forget(guard);
     }
 }
