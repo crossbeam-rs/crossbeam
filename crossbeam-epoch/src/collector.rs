@@ -101,7 +101,7 @@ impl Drop for LocalHandle {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            Local::release_handle(&*self.local);
+            Local::release_handle(self.local);
         }
     }
 }
@@ -451,5 +451,18 @@ mod tests {
             collector.global.collect(guard);
         }
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT * THREADS);
+    }
+
+    #[test]
+    fn use_guard_after_handle_and_collector_dropped() {
+        let collector = Collector::new();
+        let handle = collector.register();
+
+        let guard = handle.pin();
+
+        drop(collector);
+        drop(handle);
+
+        guard.flush();
     }
 }

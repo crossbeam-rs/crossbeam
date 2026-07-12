@@ -463,16 +463,16 @@ impl Local {
 
     /// Unpins the `Local`.
     #[inline]
-    pub(crate) fn unpin(&self) {
-        let guard_count = self.guard_count.get();
-        self.guard_count.set(guard_count - 1);
+    pub(crate) unsafe fn unpin(this: *const Self) {
+        let guard_count = unsafe { (*this).guard_count.get() };
+        unsafe { (*this).guard_count.set(guard_count - 1) }
 
         if guard_count == 1 {
-            self.epoch.store(Epoch::starting(), Ordering::Release);
+            unsafe { (*this).epoch.store(Epoch::starting(), Ordering::Release) }
 
-            if self.handle_count.get() == 0 {
+            if unsafe { (*this).handle_count.get() } == 0 {
                 unsafe {
-                    Self::finalize(self);
+                    Self::finalize(this);
                 }
             }
         }
