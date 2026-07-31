@@ -110,6 +110,9 @@ pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
 /// thread::sleep(Duration::from_secs(1));
 /// assert_eq!(r.recv(), Ok(1));
 /// ```
+/// # Panics
+///
+/// Panics if `cap` is too large to initialize the bounded channel.
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     if cap == 0 {
         let (s, r) = counter::new(flavors::zero::Channel::new());
