@@ -84,7 +84,7 @@ impl<T> ArrayQueue<T> {
     ///
     /// # Panics
     ///
-    /// Panics if the capacity is zero.
+    /// Panics if the capacity is zero or too large.
     ///
     /// # Examples
     ///
@@ -114,7 +114,10 @@ impl<T> ArrayQueue<T> {
             .collect();
 
         // One lap is the smallest power of two greater than `cap`.
-        let one_lap = (cap + 1).next_power_of_two();
+        let one_lap = cap
+            .checked_add(1)
+            .and_then(usize::checked_next_power_of_two)
+            .expect("queue capacity is too large");
 
         Self {
             buffer,
