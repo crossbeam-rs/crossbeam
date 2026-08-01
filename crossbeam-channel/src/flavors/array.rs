@@ -95,9 +95,14 @@ impl<T> Channel<T> {
     pub(crate) fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
-        // Compute constants `mark_bit` and `one_lap`.
-        let mark_bit = (cap + 1).next_power_of_two();
-        let one_lap = mark_bit * 2;
+        // Use checked arithmetic before computing `mark_bit` and `one_lap`.
+        let mark_bit = cap
+            .checked_add(1)
+            .and_then(usize::checked_next_power_of_two)
+            .expect("bounded channel capacity is too large");
+        let one_lap = mark_bit
+            .checked_mul(2)
+            .expect("bounded channel capacity is too large");
 
         // Head is initialized to `{ lap: 0, mark: 0, index: 0 }`.
         let head = 0;
