@@ -1,3 +1,13 @@
+# Version 0.9.21
+
+- Store pointers in `AtomicPtr` and use provenance-preserving address arithmetic
+  (`map_addr` / `wrapping_add`) instead of `AtomicUsize` int↔ptr casts, so Miri
+  (Stacked Borrows and Tree Borrows) can track epoch-protected pointers. This
+  unblocks aliasing-model Miri for dependents (e.g. skiplists). (#1181, #796)
+- Fix Stacked Borrows violation when a `Guard` is used after its
+  `LocalHandle`/`Collector` are dropped. (#1297)
+- Do not dereference the pointer in `fmt::Pointer` for `Atomic`/`Shared`. (#1276 follow-ups)
+
 # Version 0.9.20
 
 - Fix invalid pointer dereference in `fmt::Pointer` impl for `Atomic`/`Shared` when the underlying pointer is invalid. This fixes unsoundness that was not fully addressed in 0.9.19's fix. (#1276)
