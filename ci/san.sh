@@ -31,5 +31,5 @@ cargo test -Z build-std --all --all-features --release --target x86_64-unknown-l
 
 # Run thread sanitizer
 cargo clean
-TSAN_OPTIONS="${TSAN_OPTIONS:-} suppressions=$(pwd)/ci/tsan" \
+TSAN_OPTIONS="${TSAN_OPTIONS:-} enable_adaptive_delay=1 suppressions=$(pwd)/ci/tsan" \
   cargo test -Z build-std --all --all-features --release --target x86_64-unknown-linux-gnutsan --tests --exclude benchmarks -- --test-threads=1
