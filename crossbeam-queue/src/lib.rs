@@ -28,7 +28,11 @@ mod alloc_helper;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod array_queue;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+mod batch_queue;
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod seg_queue;
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub use crate::{array_queue::ArrayQueue, seg_queue::SegQueue};
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+pub use crate::{batch_queue::BatchQueue};

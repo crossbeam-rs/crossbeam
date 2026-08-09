@@ -25,7 +25,7 @@ const DESTROY: usize = 4;
 // Each block covers one "lap" of indices.
 const LAP: usize = 32;
 // The maximum number of values a block can hold.
-const BLOCK_CAP: usize = LAP - 1;
+pub(super)const BLOCK_CAP: usize = LAP - 1;
 // How many lower bits are reserved for metadata.
 const SHIFT: usize = 1;
 // Indicates that the block is not the last one.
@@ -42,7 +42,7 @@ struct Slot<T> {
 
 impl<T> Slot<T> {
     /// Waits until a value is written into the slot.
-    fn wait_write(&self) {
+    pub(super) fn wait_write(&self) {
         let backoff = Backoff::new();
         while self.state.load(Ordering::Acquire) & WRITE == 0 {
             backoff.snooze();
@@ -127,7 +127,7 @@ impl<T> Block<T> {
 }
 
 /// A position in a queue.
-struct Position<T> {
+pub(crate) struct Position<T> {
     /// The index in the queue.
     index: AtomicUsize,
 
