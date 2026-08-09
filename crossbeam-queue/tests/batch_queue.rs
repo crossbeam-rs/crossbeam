@@ -330,6 +330,36 @@ fn multiple_producers_preserve_each_producers_order() {
 }
 
 #[test]
+#[cfg(not(miri))]
+fn concurrent_first_pushes_reserve_their_preallocated_blocks() {
+    const PRODUCERS: usize = 8;
+    const ROUNDS: usize = 64;
+    const BATCH_SIZE: usize = 256;
+
+    for _ in 0..ROUNDS {
+        let queue = BatchQueue::new();
+        let start = Barrier::new(PRODUCERS);
+
+        scope(|scope| {
+            for producer in 0..PRODUCERS {
+                let queue = &queue;
+                let start = &start;
+
+                scope.spawn(move |_| {
+                    start.wait();
+                    queue.push((0..BATCH_SIZE).map(|offset| producer * BATCH_SIZE + offset));
+                });
+            }
+        })
+        .unwrap();
+
+        let mut values = queue.pop(PRODUCERS * BATCH_SIZE).collect::<Vec<_>>();
+        values.sort_unstable();
+        assert_eq!(values, (0..PRODUCERS * BATCH_SIZE).collect::<Vec<_>>());
+    }
+}
+
+#[test]
 fn multiple_consumers_receive_every_item_exactly_once() {
     const CONSUMERS: usize = 4;
     const ROUNDS: usize = if cfg!(miri) { 4 } else { 100 };

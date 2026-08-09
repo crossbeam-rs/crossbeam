@@ -8,7 +8,7 @@ use core::{
     ptr::{NonNull, drop_in_place, null_mut, slice_from_raw_parts_mut},
     sync::atomic::{
         AtomicPtr, AtomicU16, AtomicU64, AtomicUsize,
-        Ordering::{self, AcqRel, Acquire, Relaxed, Release, SeqCst},
+        Ordering::{self, AcqRel, Acquire, Relaxed, SeqCst},
         fence,
     },
 };
@@ -373,6 +373,8 @@ impl<T> BatchQueue<T> {
         let mut block_chain = BlockChain::new();
 
         loop {
+            let mut owns_initial_reservation = false;
+
             if head.index >= head.block_length && !block.is_null() {
                 backoff.snooze();
                 (head, block) = self.acquire_pinfo();
@@ -410,8 +412,9 @@ impl<T> BatchQueue<T> {
                         );
 
                         head.block_length = blen;
-
-                        self.phead.index.store(head.to_u64(), Release);
+                        // A non-null block with a zero head is a transitional state, so
+                        // competing producers wait until this first reservation is published.
+                        owns_initial_reservation = true;
                     }
                     Err(_) => {
                         block_chain.root = new;
@@ -429,13 +432,27 @@ impl<T> BatchQueue<T> {
                 ..head
             };
 
-            match self.phead.index.compare_exchange_weak(
-                head.to_u64(),
-                new_head.to_u64(),
-                Ordering::SeqCst,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => unsafe {
+            let reservation = if owns_initial_reservation {
+                Ok(())
+            } else {
+                self.phead
+                    .index
+                    .compare_exchange_weak(
+                        head.to_u64(),
+                        new_head.to_u64(),
+                        Ordering::SeqCst,
+                        Ordering::Acquire,
+                    )
+                    .map(|_| ())
+            };
+
+            match reservation {
+                Err(real) => {
+                    head = PHead::from_u64(real);
+                    block = self.acquire_pblock();
+                    backoff.spin();
+                }
+                Ok(()) => unsafe {
                     if new_head.index >= new_head.block_length {
                         let mut filled = usize::from(head.block_length - head.index);
                         let mut current = block;
@@ -485,6 +502,8 @@ impl<T> BatchQueue<T> {
                         self.phead
                             .index
                             .store(new_phead.to_u64(), Ordering::Release);
+                    } else if owns_initial_reservation {
+                        self.phead.index.store(new_head.to_u64(), Ordering::Release);
                     }
 
                     let mut current_block = &*block;
@@ -513,11 +532,6 @@ impl<T> BatchQueue<T> {
 
                     return;
                 },
-                Err(real) => {
-                    head = PHead::from_u64(real);
-                    block = self.acquire_pblock();
-                    backoff.spin();
-                }
             }
         }
     }
