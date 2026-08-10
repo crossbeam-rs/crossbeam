@@ -1378,9 +1378,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     ///
     /// # Safety
     ///
-    /// Dereferencing a pointer is unsafe because it could be pointing to invalid memory.
-    ///
-    /// Another concern is the possibility of data races due to lack of proper synchronization.
+    /// One concern is the possibility of data races due to lack of proper synchronization.
     /// For example, consider the following scenario:
     ///
     /// 1. A thread creates a new object: `a.store(Owned::new(10), Relaxed)`
