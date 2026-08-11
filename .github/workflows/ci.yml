@@ -69,6 +69,8 @@ jobs:
           - rust: nightly
             os: windows-latest
           - rust: nightly
+            os: windows-11-arm
+          - rust: nightly
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
           - rust: nightly
