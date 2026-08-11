@@ -1,3 +1,13 @@
+# Version 0.5.17
+
+- Bump the minimum supported Rust version to 1.74.
+- Fix panic in `SelectedOperation::{send,recv}` when cloned sender/receiver passed. (#1235)
+- Make some operations in `tick` lock-free on some platforms. (#1222)
+- Update `crossbeam-utils` to 0.9.
+
+TODO:
+- mention https://github.com/crossbeam-rs/crossbeam/pull/1121
+
 # Version 0.5.16
 
 - Improve support for rust-analyzer auto-completion of code inside `select!`/`select_biased!` macro. (#1240)
