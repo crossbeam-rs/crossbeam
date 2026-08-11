@@ -304,7 +304,7 @@ where
 impl<T, C> SkipSet<T, C>
 where
     C: Comparator<T>,
-    T: Send + 'static,
+    T: Send,
 {
     /// Inserts a `key`-`value` pair into the set and returns the new entry.
     ///
@@ -523,7 +523,7 @@ where
 impl<T, C> Entry<'_, T, C>
 where
     C: Comparator<T>,
-    T: Send + 'static,
+    T: Send,
 {
     /// Removes the entry from the set.
     ///
