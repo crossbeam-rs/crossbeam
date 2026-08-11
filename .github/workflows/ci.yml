@@ -93,7 +93,7 @@ jobs:
             target: sparc64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container && fromJSON(format('{{"image":"{0}","options":"--privileged"}}', matrix.container)) || '' }}
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - run: apt-get -o Acquire::Retries=10 -qq update && apt-get -o Acquire::Retries=10 -o Dpkg::Use-Pty=0 install -y --no-install-recommends gcc libc6-dev
@@ -126,7 +126,7 @@ jobs:
           - msrv
           - nightly
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
@@ -146,7 +146,7 @@ jobs:
   # Check for duplicate dependencies.
   dependencies:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust, cargo-hack, and cargo-minimal-versions
@@ -169,7 +169,7 @@ jobs:
           - ''
           - '-Zmiri-tree-borrows'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
@@ -186,7 +186,7 @@ jobs:
   # Run cargo-careful.
   careful:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust and cargo-careful
@@ -200,7 +200,7 @@ jobs:
   # Run sanitizers.
   san:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
@@ -214,7 +214,7 @@ jobs:
   # Run loom tests.
   loom:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust
@@ -227,7 +227,7 @@ jobs:
 
   tidy:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: taiki-e/checkout-action@7d1e50e93dc4fb3bba58f85018fadf77898aee8b # v1.4.2
       - name: Install Rust, shfmt, shellcheck, taplo, and zizmor
