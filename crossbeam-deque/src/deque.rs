@@ -385,7 +385,7 @@ impl<T> Worker<T> {
         b.wrapping_sub(f).max(0) as usize
     }
 
-    /// Pushes a task into the queue.
+    /// Pushes a task into the queue and returns the relative slot index written to.
     ///
     /// # Examples
     ///
@@ -393,10 +393,10 @@ impl<T> Worker<T> {
     /// use crossbeam_deque::Worker;
     ///
     /// let w = Worker::new_lifo();
-    /// w.push(1);
-    /// w.push(2);
+    /// assert_eq!(w.push(1), 0);
+    /// assert_eq!(w.push(2), 1);
     /// ```
-    pub fn push(&self, task: T) {
+    pub fn push(&self, task: T) -> isize {
         // Load the back index, front index, and buffer.
         let b = self.inner.back.load(Ordering::Relaxed);
         let f = self.inner.front.load(Ordering::Acquire);
@@ -429,7 +429,7 @@ impl<T> Worker<T> {
         };
 
         // Increment the back index.
-        self.inner.back.store(b.wrapping_add(1), store_order);
+        self.inner.back.swap(b.wrapping_add(1), store_order) - f
     }
 
     /// Pops a task from the queue.
