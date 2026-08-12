@@ -25,7 +25,7 @@ const DESTROY: usize = 4;
 // Each block covers one "lap" of indices.
 const LAP: usize = 32;
 // The maximum number of values a block can hold.
-pub(super)const BLOCK_CAP: usize = LAP - 1;
+pub(super) const BLOCK_CAP: usize = LAP - 1;
 // How many lower bits are reserved for metadata.
 const SHIFT: usize = 1;
 // Indicates that the block is not the last one.
