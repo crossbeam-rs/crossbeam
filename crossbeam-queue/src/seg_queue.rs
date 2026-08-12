@@ -42,7 +42,7 @@ struct Slot<T> {
 
 impl<T> Slot<T> {
     /// Waits until a value is written into the slot.
-    pub(super) fn wait_write(&self) {
+    fn wait_write(&self) {
         let backoff = Backoff::new();
         while self.state.load(Ordering::Acquire) & WRITE == 0 {
             backoff.snooze();
@@ -127,7 +127,7 @@ impl<T> Block<T> {
 }
 
 /// A position in a queue.
-pub(crate) struct Position<T> {
+struct Position<T> {
     /// The index in the queue.
     index: AtomicUsize,
 
