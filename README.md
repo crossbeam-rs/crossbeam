@@ -10,6 +10,7 @@ https://crates.io/crates/crossbeam)
 https://docs.rs/crossbeam)
 [![Rust 1.74+](https://img.shields.io/badge/rust-1.74+-lightgray.svg)](
 https://www.rust-lang.org)
+[![inspect.software](https://raw.githubusercontent.com/inspect-software/badges/main/v1/c/crossbeam-rs/crossbeam.svg)](https://inspect.software/software/crossbeam-rs/crossbeam)
 [![chat](https://img.shields.io/discord/569610676205781012.svg?logo=discord)](https://discord.com/invite/JXYwgWZ)
 
 This crate provides a set of tools for concurrent programming:
