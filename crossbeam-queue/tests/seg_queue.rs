@@ -1,7 +1,4 @@
-use std::{
-    ops::Bound,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::thread::scope;
@@ -361,39 +358,6 @@ fn drain_drops() {
         assert_eq!(q.len(), 40);
     }
     assert_eq!(DROPS.load(Ordering::SeqCst), 100);
-
-    // Case 5: fully consume drain(a..b)
-    DROPS.store(0, Ordering::SeqCst);
-    {
-        let mut q = SegQueue::new();
-        for _ in 0..100 {
-            q.push(DropCounter);
-        }
-        let _: Vec<_> = q.drain(20..70).collect();
-        // 50 drained, 50 remain (20 prefix + 30 suffix)
-        assert_eq!(DROPS.load(Ordering::SeqCst), 50);
-        assert_eq!(q.len(), 50);
-    }
-    assert_eq!(DROPS.load(Ordering::SeqCst), 100);
-
-    // Case 6: drop drain(a..b) mid-way
-    DROPS.store(0, Ordering::SeqCst);
-    {
-        let mut q = SegQueue::new();
-        for _ in 0..100 {
-            q.push(DropCounter);
-        }
-        {
-            let mut drain = q.drain(20..70);
-            for _ in 0..10 {
-                drain.next();
-            }
-            // drop — remaining 40 of range dropped, 50 outside range kept
-        }
-        assert_eq!(DROPS.load(Ordering::SeqCst), 50);
-        assert_eq!(q.len(), 50);
-    }
-    assert_eq!(DROPS.load(Ordering::SeqCst), 100);
 }
 
 #[test]
@@ -445,102 +409,25 @@ fn drain_prefix_exact() {
 }
 
 #[test]
-fn drain_range() {
-    let mut q = SegQueue::new();
-    for i in 0..100 {
-        q.push(i);
-    }
-    let drained: Vec<i32> = q.drain(20..70).collect();
-    assert_eq!(drained, (20..70).collect::<Vec<_>>());
-    assert_eq!(q.len(), 50);
-    // prefix intact
-    for i in 0..20 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    // suffix intact
-    for i in 70..100 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    assert!(q.is_empty());
-}
-
-#[test]
-fn drain_range_drop() {
-    // Drop drain(a..b) mid-way — prefix and suffix both preserved
-    let mut q = SegQueue::new();
-    for i in 0..100 {
-        q.push(i);
-    }
-    {
-        let mut drain = q.drain(20..70);
-        for i in 20..35 {
-            assert_eq!(drain.next(), Some(i));
-        }
-        // drop — elements 35..70 dropped, 0..20 and 70..100 stay
-    }
-    assert_eq!(q.len(), 50);
-    for i in 0..20 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    for i in 70..100 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    assert!(q.is_empty());
-}
-
-#[test]
-fn drain_range_inclusive() {
-    let mut q = SegQueue::new();
-    for i in 0..10 {
-        q.push(i);
-    }
-    let drained: Vec<i32> = q.drain(2..=5).collect();
-    assert_eq!(drained, [2, 3, 4, 5]);
-    assert_eq!(q.len(), 6);
-    for i in [0, 1, 6, 7, 8, 9] {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-}
-
-#[test]
-fn drain_range_start_only() {
-    // drain(a..) — skip prefix, drain everything else
-    let mut q = SegQueue::new();
-    for i in 0..100 {
-        q.push(i);
-    }
-    let drained: Vec<i32> = q.drain(30..).collect();
-    assert_eq!(drained, (30..100).collect::<Vec<_>>());
-    assert_eq!(q.len(), 30);
-    for i in 0..30 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    assert!(q.is_empty());
-}
-
-#[test]
-fn drain_range_exceeds_len() {
+fn drain_end_exceeds_len() {
     // range extends beyond queue length — should not panic
     let mut q = SegQueue::new();
     for i in 0..10 {
         q.push(i);
     }
-    let drained: Vec<i32> = q.drain(5..100).collect();
-    assert_eq!(drained, (5..10).collect::<Vec<_>>());
-    assert_eq!(q.len(), 5);
-    for i in 0..5 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
+    let drained: Vec<i32> = q.drain(..100).collect();
+    assert_eq!(drained, (0..10).collect::<Vec<_>>());
+    assert!(q.is_empty());
 }
 
 #[test]
-fn drain_range_empty_range() {
-    // drain(n..n) — drain nothing
+fn drain_empty_range() {
+    // drain(..0) - drain nothing
     let mut q = SegQueue::new();
     for i in 0..10 {
         q.push(i);
     }
-    let drained: Vec<i32> = q.drain(5..5).collect();
+    let drained: Vec<i32> = q.drain(..0).collect();
     assert!(drained.is_empty());
     assert_eq!(q.len(), 10);
     for i in 0..10 {
@@ -576,26 +463,6 @@ fn drain_prefix_block_boundary() {
     assert_eq!(drained, (0..40).collect::<Vec<_>>());
     assert_eq!(q.len(), 60);
     for i in 40..100 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    assert!(q.is_empty());
-}
-
-#[test]
-fn drain_range_block_boundary() {
-    // range that starts and ends across block boundaries
-    let mut q = SegQueue::new();
-    for i in 0..200 {
-        q.push(i);
-    }
-    // crosses boundaries at 31, 62, 93...
-    let drained: Vec<i32> = q.drain(25..95).collect();
-    assert_eq!(drained, (25..95).collect::<Vec<_>>());
-    assert_eq!(q.len(), 130);
-    for i in 0..25 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    for i in 95..200 {
         assert_eq!(q.pop_mut(), Some(i));
     }
     assert!(q.is_empty());
@@ -653,15 +520,6 @@ fn drain_exact_size() {
     assert_eq!(drain.len(), 40);
     drop(drain);
 
-    // drain(a..b)
-    let mut q = SegQueue::new();
-    for i in 0..100 {
-        q.push(i);
-    }
-    let drain = q.drain(20..70);
-    assert_eq!(drain.len(), 50);
-    drop(drain);
-
     // size_hint when range exceeds queue length
     let mut q = SegQueue::new();
     for i in 0..10 {
@@ -673,29 +531,6 @@ fn drain_exact_size() {
 }
 
 #[test]
-fn drain_range_then_reuse() {
-    let mut q = SegQueue::new();
-    for i in 0..50 {
-        q.push(i);
-    }
-    let _: Vec<_> = q.drain(10..40).collect();
-    assert_eq!(q.len(), 20);
-    for i in 100..110 {
-        q.push(i);
-    }
-    for i in 0..10 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    for i in 40..50 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    for i in 100..110 {
-        assert_eq!(q.pop_mut(), Some(i));
-    }
-    assert!(q.is_empty());
-}
-
-#[test]
 #[should_panic(expected = "end index overflow")]
 fn drain_inclusive_usize_max() {
     let mut q = SegQueue::<i32>::new();
@@ -703,22 +538,9 @@ fn drain_inclusive_usize_max() {
 }
 
 #[test]
-#[should_panic(expected = "start index overflow")]
-fn drain_excluded_start_usize_max() {
-    let mut q = SegQueue::<i32>::new();
-    q.drain((Bound::Excluded(usize::MAX), Bound::Unbounded));
-}
-
-// This test intentionally leaks memory via `mem::forget` to verify that
-// the queue remains in a consistent (empty) state after a `Drain` is forgotten.
-// Skipped under Miri due to intentional leaks.
-#[cfg_attr(miri, ignore)]
-// LeakSanitizer flags the same intentional leaks; skip under sanitizers too.
-#[cfg_attr(crossbeam_sanitize, ignore)]
-#[test]
 fn drain_mem_forget() {
-    // If mem::forget is called on Drain, queue must be left in
-    // a consistent (empty) state. Elements are leaked but no corruption.
+    // If the Drain is leaked (e.g. via mem::forget), the elements that were
+    // not yet yielded simply remain in the queue.
     static DROPS: AtomicUsize = AtomicUsize::new(0);
 
     #[derive(Debug)]
@@ -729,8 +551,6 @@ fn drain_mem_forget() {
         }
     }
 
-    // Case 1: mem::forget on drain(..)
-    DROPS.store(0, Ordering::SeqCst);
     {
         let mut q = SegQueue::new();
         for _ in 0..100 {
@@ -739,29 +559,11 @@ fn drain_mem_forget() {
         let mut drain = q.drain(..);
         drain.next(); // consume 1
         std::mem::forget(drain);
-        // queue must be empty and usable
-        assert!(q.is_empty());
+        // the other 99 elements are still in the queue, which remains usable
+        assert_eq!(q.len(), 99);
         q.push(DropCounter);
-        assert_eq!(q.len(), 1);
+        assert_eq!(q.len(), 100);
     }
-    // 1 from next() + 1 from q drop. remaining 99 are leaked.
-    assert_eq!(DROPS.load(Ordering::SeqCst), 2);
-
-    // Case 2: mem::forget on drain(a..b)
-    DROPS.store(0, Ordering::SeqCst);
-    {
-        let mut q = SegQueue::new();
-        for _ in 0..100 {
-            q.push(DropCounter);
-        }
-        let mut drain = q.drain(20..70);
-        drain.next(); // consume 1
-        std::mem::forget(drain);
-        // queue must be empty and usable
-        assert!(q.is_empty());
-        q.push(DropCounter);
-        assert_eq!(q.len(), 1);
-    }
-    // 1 from next() + 1 from q drop. remaining 99 are leaked.
-    assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+    // 1 from next() + 100 dropped with the queue. Nothing is leaked.
+    assert_eq!(DROPS.load(Ordering::SeqCst), 101);
 }

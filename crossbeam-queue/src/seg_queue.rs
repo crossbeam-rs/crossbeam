@@ -4,8 +4,8 @@ use core::{
     cell::UnsafeCell,
     fmt,
     marker::PhantomData,
-    mem::{self, MaybeUninit},
-    ops::{Bound, RangeBounds},
+    mem::MaybeUninit,
+    ops::{RangeFull, RangeTo, RangeToInclusive},
     panic::{RefUnwindSafe, UnwindSafe},
     ptr,
     sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering},
@@ -526,20 +526,23 @@ impl<T> SegQueue<T> {
         }
     }
 
-    /// Returns an iterator that drains elements from the queue within the given range.
+    /// Returns an iterator that removes elements from the front of the queue.
     ///
-    /// Elements before the range and after the range remain in the queue.
-    /// If the `Drain` iterator is dropped before being fully consumed,
-    /// the remaining elements within the range are dropped, and elements
-    /// outside the range are preserved in their original order.
+    /// Since a multi-consumer queue has no notion of indexed access, only
+    /// ranges starting at the front of the queue are supported: `..` drains
+    /// all elements, `..n` drains the first `n` elements, and `..=n` the
+    /// first `n + 1`. Other range types are rejected at compile time. If the
+    /// range end exceeds the length of the queue, all elements are drained.
     ///
-    /// If `mem::forget` is called on the `Drain`, the queue is left empty.
-    /// All elements not yet yielded are leaked, but the queue remains in a
-    /// consistent (empty) state — no corruption occurs.
+    /// If the `Drain` iterator is dropped before being fully consumed, the
+    /// elements within the range that were not yet yielded are removed from
+    /// the queue and dropped. If the `Drain` is leaked (e.g. via
+    /// [`mem::forget`](core::mem::forget)), those elements simply remain in
+    /// the queue.
     ///
     /// # Panics
     ///
-    /// Panics if the start of the range is greater than the end.
+    /// Panics if the end bound is `usize::MAX` inclusive (i.e. `..=usize::MAX`).
     ///
     /// # Examples
     ///
@@ -559,63 +562,21 @@ impl<T> SegQueue<T> {
     /// let v: Vec<_> = q.drain(..3).collect();
     /// assert_eq!(v, [0, 1, 2]);
     /// assert_eq!(q.len(), 2);
+    /// ```
     ///
-    /// // Range drain
+    /// Ranges with a start bound do not compile:
+    ///
+    /// ```compile_fail
+    /// use crossbeam_queue::SegQueue;
+    ///
     /// let mut q = SegQueue::new();
     /// for i in 0..5 { q.push(i); }
-    /// let v: Vec<_> = q.drain(1..4).collect();
-    /// assert_eq!(v, [1, 2, 3]);
-    /// assert_eq!(q.len(), 2);
+    /// q.drain(1..4);
     /// ```
-    pub fn drain<R: RangeBounds<usize>>(&mut self, range: R) -> Drain<'_, T> {
-        let start = match range.start_bound() {
-            Bound::Included(&n) => n,
-            Bound::Excluded(&n) => n.checked_add(1).expect("start index overflow"),
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(&n) => n.checked_add(1).expect("end index overflow"),
-            Bound::Excluded(&n) => n,
-            Bound::Unbounded => usize::MAX,
-        };
-        assert!(start <= end, "drain range start is greater than end");
-
-        // Step 1: pop `start` elements into prefix via pop_mut.
-        // prefix owns its own blocks — no pointer sharing with rest.
-        let mut prefix = SegQueue::new();
-        let mut actual_start = 0;
-        for _ in 0..start {
-            match self.pop_mut() {
-                Some(v) => {
-                    prefix.push_mut(v);
-                    actual_start += 1;
-                }
-                None => break,
-            }
-        }
-
-        // Step 2: snapshot the remaining queue (drain range + suffix) into `rest`
-        // by transferring head/tail pointers. No element copying
-        let mut rest = SegQueue::new();
-        *rest.head.index.get_mut() = *self.head.index.get_mut();
-        *rest.head.block.get_mut() = *self.head.block.get_mut();
-        *rest.tail.index.get_mut() = *self.tail.index.get_mut();
-        *rest.tail.block.get_mut() = *self.tail.block.get_mut();
-
-        // Step 3: reset original queue to empty immediately.
-        // If mem::forget is called on Drain, queue is left empty — consistent but leaky.
-        *self.head.index.get_mut() = 0;
-        *self.head.block.get_mut() = ptr::null_mut();
-        *self.tail.index.get_mut() = 0;
-        *self.tail.block.get_mut() = ptr::null_mut();
-
-        let remaining = end.saturating_sub(actual_start);
-
+    pub fn drain<R: DrainRange>(&mut self, range: R) -> Drain<'_, T> {
         Drain {
             queue: self,
-            prefix,
-            rest,
-            remaining,
+            remaining: range.remaining(),
         }
     }
 
@@ -690,19 +651,56 @@ impl<T> SegQueue<T> {
     }
 }
 
+mod sealed {
+    use core::ops::{RangeFull, RangeTo, RangeToInclusive};
+
+    pub trait Sealed {}
+    impl Sealed for RangeFull {}
+    impl Sealed for RangeTo<usize> {}
+    impl Sealed for RangeToInclusive<usize> {}
+}
+
+/// A range accepted by the [`drain`] method on [`SegQueue`]: `..`, `..n`, or
+/// `..=n`.
+///
+/// A multi-consumer queue has no notion of indexed access, so only ranges
+/// starting at the front of the queue can implement this trait. It is sealed
+/// and cannot be implemented outside of this crate.
+///
+/// [`drain`]: SegQueue::drain
+pub trait DrainRange: sealed::Sealed {
+    /// Returns the maximum number of elements to drain (`usize::MAX` for an
+    /// unbounded end).
+    #[doc(hidden)]
+    fn remaining(&self) -> usize;
+}
+
+impl DrainRange for RangeFull {
+    fn remaining(&self) -> usize {
+        usize::MAX
+    }
+}
+
+impl DrainRange for RangeTo<usize> {
+    fn remaining(&self) -> usize {
+        self.end
+    }
+}
+
+impl DrainRange for RangeToInclusive<usize> {
+    fn remaining(&self) -> usize {
+        self.end.checked_add(1).expect("end index overflow")
+    }
+}
+
 /// A draining iterator for `SegQueue<T>`.
 ///
 /// This struct is created by the [`drain`] method on [`SegQueue`].
 ///
 /// [`drain`]: SegQueue::drain
 pub struct Drain<'a, T> {
-    /// The original queue, reset to empty at `Drain` creation.
-    /// Restored to prefix + suffix on `Drop`.
+    /// The queue being drained.
     queue: &'a mut SegQueue<T>,
-    /// Saved prefix elements (before the drain range), owns its own blocks.
-    prefix: SegQueue<T>,
-    /// Drain range + suffix, owned via pointer snapshot from original queue.
-    rest: SegQueue<T>,
     /// How many elements are left to yield/drop within the drain range.
     remaining: usize,
 }
@@ -714,7 +712,7 @@ impl<T> Iterator for Drain<'_, T> {
         if self.remaining == 0 {
             return None;
         }
-        let val = self.rest.pop_mut();
+        let val = self.queue.pop_mut();
         if val.is_some() {
             self.remaining -= 1;
         }
@@ -724,7 +722,7 @@ impl<T> Iterator for Drain<'_, T> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         // Credit: size_hint and ExactSizeIterator suggested by @laycookie
         // in https://github.com/crossbeam-rs/crossbeam/issues/1228
-        let remaining = self.remaining.min(self.rest.len());
+        let remaining = self.remaining.min(self.queue.len());
         (remaining, Some(remaining))
     }
 }
@@ -733,20 +731,9 @@ impl<T> ExactSizeIterator for Drain<'_, T> {}
 
 impl<T> Drop for Drain<'_, T> {
     fn drop(&mut self) {
-        // Step 1: drop remaining elements in the drain range.
-        while self.remaining > 0 {
-            if self.next().is_none() {
-                break;
-            }
-        }
-        // Step 2: move suffix (whatever remains in rest) into prefix.
-        // At this point rest contains only suffix elements.
-        while let Some(v) = self.rest.pop_mut() {
-            self.prefix.push_mut(v);
-        }
-        // Step 3: swap prefix (now prefix + suffix) back into original queue.
-        mem::swap(self.queue, &mut self.prefix);
-        // self.prefix (now the old empty queue) drops cleanly here.
+        // Remove and drop the elements of the drain range that were not
+        // yielded.
+        while self.next().is_some() {}
     }
 }
 
