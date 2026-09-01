@@ -103,7 +103,7 @@ jobs:
         with:
           tool: rust@${{ matrix.rust }}
           fallback: none
-      - uses: taiki-e/setup-cross-toolchain-action@3d9770ce98eb7dbcf378563182a5e8031165f75b # v1.41.0
+      - uses: taiki-e/setup-cross-toolchain-action@12b7ad4acfa95a1476779d6c06699b96ec1691f8 # v1.42.0
         with:
           target: ${{ matrix.target }}
           runner: ${{ matrix.container && 'native' || '' }}
