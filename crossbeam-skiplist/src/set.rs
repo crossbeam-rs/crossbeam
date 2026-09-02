@@ -2,6 +2,7 @@
 
 use core::{
     fmt,
+    iter::FusedIterator,
     ops::{Bound, Deref, RangeBounds},
 };
 
@@ -642,6 +643,14 @@ where
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner.next_back().map(Entry::new)
     }
+}
+
+impl<Q, R, T, C> FusedIterator for Range<'_, Q, R, T, C>
+where
+    C: Comparator<T> + Comparator<T, Q>,
+    R: RangeBounds<Q>,
+    Q: ?Sized,
+{
 }
 
 impl<Q, R, T, C> fmt::Debug for Range<'_, Q, R, T, C>
