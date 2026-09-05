@@ -1,3 +1,11 @@
+# Version 0.5.17
+
+- Fix UB in bounded channel when `SelectedOperation` is leaked. (#1295)
+- Fix behavior inconsistency on already received case in `at()`. (#1296)
+- Handle overflow in bounded channel initialization. (#1301)
+- Use 64-bit index on 32-bit platforms if 64-bit atomic is available. (#1321)
+- Update MSRV policy to support 1 year instead of 6 months to meet rayon's MSRV policy. (#1284)
+
 # Version 0.5.16
 
 - Improve support for rust-analyzer auto-completion of code inside `select!`/`select_biased!` macro. (#1240)
