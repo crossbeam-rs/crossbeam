@@ -217,6 +217,14 @@ fn send_timeout() {
 }
 
 #[test]
+fn send_timeout_nonfull_expired() {
+    let (s, _r) = bounded::<i32>(1);
+    // A non-full channel accepts the message even with a zero (elapsed) timeout.
+    assert_eq!(s.send_timeout(1, ms(0)), Ok(()));
+    assert_eq!(s.send_timeout(2, ms(0)), Err(SendTimeoutError::Timeout(2)));
+}
+
+#[test]
 fn send_after_disconnect() {
     let (s, r) = bounded(100);
 
