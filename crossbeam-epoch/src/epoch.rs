@@ -11,7 +11,8 @@ use crate::primitive::sync::atomic::Ordering;
 
 // Ideally, we want to always use AtomicU64, but since it is not available on all platforms,
 // we only use it when it is available for now.
-// TODO: On platforms where AtomicU64 is unavailable, we may want to use AtomicCell instead of AtomicUsize.
+// TODO: On platforms where AtomicU64 is unavailable, we may want to use AtomicCell instead of
+// AtomicUsize. (https://github.com/crossbeam-rs/crossbeam/issues/433)
 #[cfg(target_has_atomic = "64")]
 type AtomicEpochRepr = crate::primitive::sync::atomic::AtomicU64;
 #[cfg(not(target_has_atomic = "64"))]
