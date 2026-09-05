@@ -27,7 +27,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-skiplist = "0.1"
+crossbeam-skiplist = "0.2"
 ```
 
 ## Compatibility
