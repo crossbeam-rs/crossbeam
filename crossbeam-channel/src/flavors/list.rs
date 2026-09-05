@@ -16,6 +16,19 @@ use crate::err::{RecvTimeoutError, SendTimeoutError, TryRecvError, TrySendError}
 use crate::select::{Operation, SelectHandle, Selected, Token};
 use crate::waker::SyncWaker;
 
+// Ideally, we want to always use AtomicU64, but since it is not available on all platforms,
+// we only use it when it is available for now.
+// TODO: On platforms where AtomicU64 is unavailable, we may want to use AtomicCell instead of
+// AtomicUsize. (https://github.com/crossbeam-rs/crossbeam/issues/433)
+#[cfg(target_has_atomic = "64")]
+type AtomicIndex = core::sync::atomic::AtomicU64;
+#[cfg(target_has_atomic = "64")]
+type Index = u64;
+#[cfg(not(target_has_atomic = "64"))]
+type AtomicIndex = core::sync::atomic::AtomicUsize;
+#[cfg(not(target_has_atomic = "64"))]
+type Index = usize;
+
 // TODO(stjepang): Once we bump the minimum required Rust version to 1.28 or newer, re-apply the
 // following changes by @kleimkuhler:
 //
@@ -31,15 +44,15 @@ const READ: usize = 2;
 const DESTROY: usize = 4;
 
 // Each block covers one "lap" of indices.
-const LAP: usize = 32;
+const LAP: Index = 32;
 // The maximum number of messages a block can hold.
-const BLOCK_CAP: usize = LAP - 1;
+const BLOCK_CAP: usize = LAP as usize - 1;
 // How many lower bits are reserved for metadata.
 const SHIFT: usize = 1;
 // Has two different purposes:
 // * If set in head, indicates that the block is not the last one.
 // * If set in tail, indicates that the channel is disconnected.
-const MARK_BIT: usize = 1;
+const MARK_BIT: Index = 1;
 
 /// A slot in a block.
 struct Slot<T> {
@@ -136,7 +149,7 @@ impl<T> Block<T> {
 #[derive(Debug)]
 struct Position<T> {
     /// The index in the channel.
-    index: AtomicUsize,
+    index: AtomicIndex,
 
     /// The block in the linked list.
     block: AtomicPtr<Block<T>>,
@@ -165,7 +178,7 @@ impl Default for ListToken {
 /// Unbounded channel implemented as a linked list.
 ///
 /// Each message sent into the channel is assigned a sequence number, i.e. an index. Indices are
-/// represented as numbers of type `usize` and wrap on overflow.
+/// represented as numbers of type `Index` and wrap on overflow.
 ///
 /// Consecutive messages are grouped into blocks in order to put less pressure on the allocator and
 /// improve cache efficiency.
@@ -189,11 +202,11 @@ impl<T> Channel<T> {
         Channel {
             head: CachePadded::new(Position {
                 block: AtomicPtr::new(ptr::null_mut()),
-                index: AtomicUsize::new(0),
+                index: AtomicIndex::new(0),
             }),
             tail: CachePadded::new(Position {
                 block: AtomicPtr::new(ptr::null_mut()),
-                index: AtomicUsize::new(0),
+                index: AtomicIndex::new(0),
             }),
             receivers: SyncWaker::new(),
             _marker: PhantomData,
@@ -225,7 +238,7 @@ impl<T> Channel<T> {
             }
 
             // Calculate the offset of the index into the block.
-            let offset = (tail >> SHIFT) % LAP;
+            let offset = ((tail >> SHIFT) % LAP) as usize;
 
             // If we reached the end of the block, wait until the next one is installed.
             if offset == BLOCK_CAP {
@@ -320,7 +333,7 @@ impl<T> Channel<T> {
 
         loop {
             // Calculate the offset of the index into the block.
-            let offset = (head >> SHIFT) % LAP;
+            let offset = ((head >> SHIFT) % LAP) as usize;
 
             // If we reached the end of the block, wait until the next one is installed.
             if offset == BLOCK_CAP {
@@ -538,7 +551,7 @@ impl<T> Channel<T> {
                 head >>= SHIFT;
 
                 // Return the difference minus the number of blocks between tail and head.
-                return tail - head - tail / LAP;
+                return (tail - head - tail / LAP) as usize;
             }
         }
     }
@@ -585,7 +598,7 @@ impl<T> Channel<T> {
         let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
         loop {
-            let offset = (tail >> SHIFT) % LAP;
+            let offset = ((tail >> SHIFT) % LAP) as usize;
             if offset != BLOCK_CAP {
                 break;
             }
@@ -618,7 +631,7 @@ impl<T> Channel<T> {
         unsafe {
             // Drop all messages between head and tail and deallocate the heap-allocated blocks.
             while head >> SHIFT != tail >> SHIFT {
-                let offset = (head >> SHIFT) % LAP;
+                let offset = ((head >> SHIFT) % LAP) as usize;
 
                 if offset < BLOCK_CAP {
                     // Drop the message in the slot.
@@ -676,7 +689,7 @@ impl<T> Drop for Channel<T> {
         unsafe {
             // Drop all messages between head and tail and deallocate the heap-allocated blocks.
             while head != tail {
-                let offset = (head >> SHIFT) % LAP;
+                let offset = ((head >> SHIFT) % LAP) as usize;
 
                 if offset < BLOCK_CAP {
                     // Drop the message in the slot.
