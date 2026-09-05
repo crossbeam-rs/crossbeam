@@ -1,3 +1,9 @@
+# Version 0.9.21
+
+- Make `Shared::null` const. (#1227)
+- Improve compatibility with ThreadSanitizer. (#1306, #1308)
+- Update MSRV policy to support 1 year instead of 6 months to meet rayon's MSRV policy. (#1284)
+
 # Version 0.9.20
 
 - Fix invalid pointer dereference in `fmt::Pointer` impl for `Atomic`/`Shared` when the underlying pointer is invalid. This fixes unsoundness that was not fully addressed in 0.9.19's fix. (#1276)

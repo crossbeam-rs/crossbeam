@@ -1,3 +1,7 @@
+# Version 0.8.5
+
+- Update MSRV policy to support 1 year instead of 6 months to meet rayon's MSRV policy. (#1284)
+
 # Version 0.8.4
 
 - Remove dependency on `cfg-if`. (#1072)

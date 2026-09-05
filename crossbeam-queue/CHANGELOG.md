@@ -1,3 +1,8 @@
+# Version 0.3.14
+
+- Use 64-bit index on 32-bit platforms if 64-bit atomic is available. (#1321)
+- Update MSRV policy to support 1 year instead of 6 months to meet rayon's MSRV policy. (#1284)
+
 # Version 0.3.13
 
 - Add `push_mut` and `pop_mut` to `ArrayQueue` and `SegQueue`. (#1191)
