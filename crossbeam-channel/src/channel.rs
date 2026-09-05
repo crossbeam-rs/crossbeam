@@ -451,7 +451,8 @@ impl<T> Sender<T> {
     ///
     /// If the channel is full and not disconnected, this call will block until the send operation
     /// can proceed or the operation times out. If the channel becomes disconnected, this call will
-    /// wake up and return an error. The returned error contains the original message.
+    /// wake up and return an error. The returned error contains the original message. If the
+    /// channel is not full and the timeout has already elapsed, the message will still be sent.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel.
@@ -495,7 +496,9 @@ impl<T> Sender<T> {
     ///
     /// If the channel is full and not disconnected, this call will block until the send operation
     /// can proceed or the operation times out. If the channel becomes disconnected, this call will
-    /// wake up and return an error. The returned error contains the original message.
+    /// wake up and return an error. The returned error contains the original message. If the
+    /// channel is not full and the deadline has already been reached, the message will still be
+    /// sent.
     ///
     /// If called on a zero-capacity channel, this method will wait for a receive operation to
     /// appear on the other side of the channel.
