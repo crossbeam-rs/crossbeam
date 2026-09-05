@@ -1,3 +1,9 @@
+# Version 0.8.8
+
+- Improve compatibility with ThreadSanitizer. (#1308)
+- Use 64-bit index on 32-bit platforms if 64-bit atomic is available. (#1321)
+- Update MSRV policy to support 1 year instead of 6 months to meet rayon's MSRV policy. (#1284)
+
 # Version 0.8.7
 
 - Optimize `Worker::push`, `Stealer::steal_batch*`, `Injector::steal_batch*`. (#1233)
