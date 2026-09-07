@@ -3,6 +3,7 @@
 use std::{
     any::Any,
     cell::Cell,
+    error::Error,
     thread,
     time::{Duration, Instant},
 };
@@ -246,6 +247,21 @@ fn default_only() {
     let now = Instant::now();
     assert!(now - start >= ms(450));
     assert!(now - start <= ms(550));
+}
+
+#[test]
+fn error_impls() {
+    let (_s, r) = unbounded::<i32>();
+
+    let mut sel = Select::new();
+    sel.recv(&r);
+    let err: Box<dyn Error> = Box::new(sel.try_ready().unwrap_err());
+    assert_eq!(err.to_string(), "all operations in select would block");
+
+    let mut sel = Select::new();
+    sel.recv(&r);
+    let err: Box<dyn Error> = Box::new(sel.ready_timeout(ms(0)).unwrap_err());
+    assert_eq!(err.to_string(), "timed out waiting on select");
 }
 
 #[test]

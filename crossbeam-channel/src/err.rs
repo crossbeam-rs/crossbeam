@@ -352,3 +352,19 @@ impl fmt::Display for SelectTimeoutError {
 }
 
 impl error::Error for SelectTimeoutError {}
+
+impl fmt::Display for TryReadyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        "all operations in select would block".fmt(f)
+    }
+}
+
+impl error::Error for TryReadyError {}
+
+impl fmt::Display for ReadyTimeoutError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        "timed out waiting on select".fmt(f)
+    }
+}
+
+impl error::Error for ReadyTimeoutError {}
