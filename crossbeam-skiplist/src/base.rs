@@ -441,11 +441,11 @@ struct Position<'a, K, V> {
 
 /// Frequently modified data associated with a skip list.
 struct HotData {
-    /// The seed for random height generation.
-    seed: AtomicUsize,
+    // /// The seed for random height generation.
+    // seed: AtomicUsize,
 
-    /// The number of entries in the skip list.
-    len: AtomicUsize,
+    // /// The number of entries in the skip list.
+    // len: AtomicUsize,
 
     /// Highest tower currently in use. This value is used as a hint for where
     /// to start lookups and never decreases.
@@ -496,8 +496,8 @@ impl<K, V, C> SkipList<K, V, C> {
             head: Head::new(),
             collector,
             hot_data: CachePadded::new(HotData {
-                seed: AtomicUsize::new(1),
-                len: AtomicUsize::new(0),
+                // seed: AtomicUsize::new(1),
+                // len: AtomicUsize::new(0),
                 max_height: AtomicUsize::new(1),
             }),
             comparator,
@@ -514,11 +514,12 @@ impl<K, V, C> SkipList<K, V, C> {
     /// If the skip list is being concurrently modified, consider the returned number just an
     /// approximation without any guarantees.
     pub fn len(&self) -> usize {
-        let len = self.hot_data.len.load(Ordering::Relaxed);
+        // let len = self.hot_data.len.load(Ordering::Relaxed);
 
-        // Due to the relaxed memory ordering, the length counter may sometimes
-        // underflow and produce a very large value. We treat such values as 0.
-        if len > isize::MAX as usize { 0 } else { len }
+        // // Due to the relaxed memory ordering, the length counter may sometimes
+        // // underflow and produce a very large value. We treat such values as 0.
+        // if len > isize::MAX as usize { 0 } else { len }
+        0
     }
 
     /// Ensures that all `Guard`s used with the skip list come from the same
@@ -710,11 +711,12 @@ where
         //
         // This particular set of operations generates 32-bit integers. See:
         // https://en.wikipedia.org/wiki/Xorshift#Example_implementation
-        let mut num = self.hot_data.seed.load(Ordering::Relaxed);
-        num ^= num << 13;
-        num ^= num >> 17;
-        num ^= num << 5;
-        self.hot_data.seed.store(num, Ordering::Relaxed);
+        // let mut num = self.hot_data.seed.load(Ordering::Relaxed);
+        // num ^= num << 13;
+        // num ^= num >> 17;
+        // num ^= num << 5;
+        // self.hot_data.seed.store(num, Ordering::Relaxed);
+        let num = rand::random::<u32>();
 
         let mut height = cmp::min(MAX_HEIGHT, num.trailing_zeros() as usize + 1);
         unsafe {
@@ -1064,8 +1066,8 @@ where
                 )
             };
 
-            // Optimistically increment `len`.
-            self.hot_data.len.fetch_add(1, Ordering::Relaxed);
+            // // Optimistically increment `len`.
+            // self.hot_data.len.fetch_add(1, Ordering::Relaxed);
 
             loop {
                 // Set the lowest successor of `n` to `search.right[0]`.
@@ -1087,7 +1089,7 @@ where
                     // This node has been abandoned
                     if let Some(r) = search.found {
                         if r.mark_tower() {
-                            self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
+                            // self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
                         }
                     }
                     break;
@@ -1115,7 +1117,7 @@ where
                         if let Some(e) = RefEntry::try_acquire(self, r) {
                             // Destroy the new node.
                             Node::finalize(node.as_raw() as *mut Node<K, V>);
-                            self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
+                            // self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
 
                             return e;
                         }
@@ -1296,7 +1298,7 @@ where
                 // Try removing the node by marking its tower.
                 if n.mark_tower() {
                     // Success! Decrement `len`.
-                    self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
+                    // self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
 
                     // Unlink the node at each level of the skip list. We could do this by simply
                     // repeating the search, but it's usually faster to unlink it manually using
@@ -1396,7 +1398,7 @@ where
                     // Try removing the current entry.
                     if e.node.mark_tower() {
                         // Success! Decrement `len`.
-                        self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
+                        // self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
                     }
 
                     entry = next;
@@ -1531,7 +1533,7 @@ where
         // Try marking the tower.
         if self.node.mark_tower() {
             // Success - the entry is removed. Now decrement `len`.
-            self.parent.hot_data.len.fetch_sub(1, Ordering::Relaxed);
+            // self.parent.hot_data.len.fetch_sub(1, Ordering::Relaxed);
 
             // Search for the key to unlink the node from the skip list.
             self.parent
@@ -1697,7 +1699,7 @@ where
         // Try marking the tower.
         if self.node.mark_tower() {
             // Success - the entry is removed. Now decrement `len`.
-            self.parent.hot_data.len.fetch_sub(1, Ordering::Relaxed);
+            // self.parent.hot_data.len.fetch_sub(1, Ordering::Relaxed);
 
             // Search for the key to unlink the node from the skip list.
             self.parent
