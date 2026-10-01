@@ -37,7 +37,7 @@ jobs:
     with:
       implicit_provenance_casts: false # TODO
   docs:
-    uses: taiki-e/github-actions/.github/workflows/rust-docs.yml@dc24bff2366e8ddeea5e0e4168df3d6f4b93f596 # 2026.8.8
+    uses: taiki-e/github-actions/.github/workflows/rust-docs.yml@04a42ca09aaeb9b6c0bce43c23fb9e13eb197d85 # 2026.9.9
 
   # Test crates on their minimum Rust versions and nightly Rust.
   test:
