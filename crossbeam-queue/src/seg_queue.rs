@@ -157,6 +157,15 @@ struct Position<T> {
 ///
 /// [`ArrayQueue`]: super::ArrayQueue
 ///
+/// # Lock-freedom
+///
+/// `SegQueue` is **not** completely lock-free. Growing and shrinking the linked list of segments
+/// effectively uses a spin-lock on shared state. That is rarely a problem for throughput, but under
+/// priority-preemptive scheduling it can lead to priority inversion (a high-priority thread spins
+/// while a preempted lower-priority thread holds the critical section). See
+/// [matklad's write-up on spinlocks](https://matklad.github.io/2020/01/02/spinlocks-considered-harmful.html)
+/// for details.
+///
 /// # Examples
 ///
 /// ```
