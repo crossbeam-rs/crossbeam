@@ -704,6 +704,91 @@ where
         }
     }
 
+    /// Returns an estimate of the number of entries in the given range.
+    ///
+    /// Runs in O(log n) by sampling the upper tower levels instead of walking
+    /// every node, using the same approach as RocksDB's
+    /// `InlineSkipList::EstimateCount`. The result may differ from the exact
+    /// count by a constant factor.
+    pub fn approximate_range_count<Q>(
+        &self,
+        start: Bound<&Q>,
+        end: Bound<&Q>,
+        guard: &Guard,
+    ) -> usize
+    where
+        C: Comparator<K, Q>,
+        Q: ?Sized,
+    {
+        self.check_guard(guard);
+
+        const BRANCHING_FACTOR: usize = 2;
+
+        // SAFETY: the epoch guard keeps all nodes alive for this traversal.
+        // Marked (tag=1) successors are logically-deleted nodes; we skip them
+        // without restarting, which is fine for an approximate result.
+        unsafe {
+            let mut level = self.hot_data.max_height.load(Ordering::Relaxed);
+
+            while level >= 1
+                && self
+                    .head
+                    .get_level(level - 1)
+                    .load(Ordering::Relaxed, guard)
+                    .is_null()
+            {
+                level -= 1;
+            }
+
+            let mut lower = self.head.as_tower();
+            let mut count: usize = 0;
+
+            while level >= 1 {
+                level -= 1;
+
+                let sufficient_samples = level * BRANCHING_FACTOR + 10;
+                if count >= sufficient_samples {
+                    count = count.saturating_mul(BRANCHING_FACTOR);
+                    continue;
+                }
+
+                count = 0;
+
+                // Advance lower to the start bound at this level.
+                let mut curr = lower.get_level(level).load_consume(guard);
+                while let Some(c) = NodeRef::from_shared(curr) {
+                    let succ = c.get_level(level).load_consume(guard);
+                    if succ.tag() == 1 {
+                        curr = succ.with_tag(0);
+                        continue;
+                    }
+                    if above_lower_bound(&self.comparator, &start, &c.key) {
+                        break;
+                    }
+                    lower = c.as_tower();
+                    curr = succ;
+                }
+
+                // Count nodes from lower to the end bound at this level.
+                let mut curr = lower.get_level(level).load_consume(guard);
+                while let Some(c) = NodeRef::from_shared(curr) {
+                    let succ = c.get_level(level).load_consume(guard);
+                    if succ.tag() == 1 {
+                        curr = succ.with_tag(0);
+                        continue;
+                    }
+                    if !below_upper_bound(&self.comparator, &end, &c.key) {
+                        break;
+                    }
+                    count += 1;
+                    curr = succ;
+                }
+            }
+
+            count
+        }
+    }
+
     /// Generates a random height and returns it.
     fn random_height(&self) -> usize {
         // Pseudorandom number generation from "Xorshift RNGs" by George Marsaglia.

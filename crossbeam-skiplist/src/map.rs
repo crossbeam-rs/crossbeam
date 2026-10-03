@@ -344,6 +344,34 @@ where
         try_pin_loop(|| self.inner.upper_bound(bound, guard)).map(Entry::new)
     }
 
+    /// Returns an estimate of the number of entries in the given range.
+    ///
+    /// This is an O(log n) operation that exploits the skip list's multi-level
+    /// structure to avoid walking every node. The result is approximate and may
+    /// differ from the exact count by a constant factor.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let map = SkipMap::new();
+    /// for i in 0..100 {
+    ///     map.insert(i, i);
+    /// }
+    /// let approx = map.approximate_range_count(20..80);
+    /// assert!(approx > 0);
+    /// ```
+    pub fn approximate_range_count<Q, R>(&self, range: R) -> usize
+    where
+        R: RangeBounds<Q>,
+        C: Comparator<K, Q>,
+        Q: ?Sized,
+    {
+        let guard = &epoch::pin();
+        self.inner
+            .approximate_range_count(range.start_bound(), range.end_bound(), guard)
+    }
+
     /// Returns an iterator over a subset of entries in the map.
     ///
     /// This iterator returns [`Entry`]s which
