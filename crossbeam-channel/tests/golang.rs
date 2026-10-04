@@ -1545,7 +1545,84 @@ mod closedchan {
 
 // https://github.com/golang/go/blob/HEAD/src/runtime/chanbarrier_test.go
 mod chanbarrier_test {
-    // TODO
+    use super::*;
+
+    // Go uses 100 outer goroutines with 100_000 iterations each, and 10 with
+    // 1_000 in short mode. Every `do_request` call spawns a thread, and threads
+    // here are OS threads rather than goroutines, so the counts are much lower:
+    // this suite also runs on emulated targets where spawning is far costlier.
+    const OUTER: usize = 10;
+    const INNER: usize = if cfg!(miri) { 10 } else { 100 };
+
+    struct Response;
+
+    struct MyError;
+
+    struct Async {
+        resp: Option<Response>,
+        err: Option<MyError>,
+    }
+
+    fn do_request(use_select: bool) -> (Option<Response>, Option<MyError>) {
+        let ch = make::<Async>(0);
+        let done = make::<()>(0);
+
+        if use_select {
+            go!(ch, done, {
+                select! {
+                    send(ch.tx(), Async { resp: None, err: Some(MyError) }) -> _ => {}
+                    recv(done.rx()) -> _ => {}
+                }
+            });
+        } else {
+            go!(ch, {
+                ch.send(Async {
+                    resp: None,
+                    err: Some(MyError),
+                });
+            });
+        }
+
+        let r = ch.recv().unwrap();
+        thread::yield_now();
+        (r.resp, r.err)
+    }
+
+    #[inline(never)]
+    fn make_byte() -> Vec<u8> {
+        vec![0; 1 << 10]
+    }
+
+    fn chan_send_barrier(use_select: bool) {
+        let wg = WaitGroup::new();
+
+        for _ in 0..OUTER {
+            wg.add(1);
+            go!(wg, {
+                defer! { wg.done() }
+
+                let mut garbage = Vec::new();
+                for _ in 0..INNER {
+                    let (_, err) = do_request(use_select);
+                    assert!(err.is_some());
+                    garbage = make_byte();
+                }
+                drop(garbage);
+            });
+        }
+
+        wg.wait();
+    }
+
+    #[test]
+    fn test_chan_send_select_barrier() {
+        chan_send_barrier(true);
+    }
+
+    #[test]
+    fn test_chan_send_barrier() {
+        chan_send_barrier(false);
+    }
 }
 
 // https://github.com/golang/go/blob/HEAD/src/runtime/race/testdata/chan_test.go
