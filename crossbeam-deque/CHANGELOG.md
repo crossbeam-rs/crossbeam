@@ -1,3 +1,13 @@
+# Version 0.8.9
+
+- Bump the minimum supported Rust version to 1.74.
+- Update `crossbeam-epoch` to 0.10.
+- Update `crossbeam-utils` to 0.9.
+
+TODO:
+- complete https://github.com/crossbeam-rs/crossbeam/pull/1219
+- decide https://github.com/crossbeam-rs/crossbeam/pull/1246
+
 # Version 0.8.8
 
 - Improve compatibility with ThreadSanitizer. (#1308)

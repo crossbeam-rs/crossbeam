@@ -1,3 +1,21 @@
+# Version 0.2.0
+
+- Bump the minimum supported Rust version to 1.74.
+- Improve compatibility with Miri:
+  - Fix stacked borrows violations. (#871)
+- Allow lookup to be customized. (#1132)
+- Support custom comparators. (#1182)
+- Fix #1023. (#1101)
+- Fix Send/Sync impl of `RefRange`. (#1287)
+- Fix memory leaks in `{map,set}::Range`/`base::RefRange`. (#1217)
+- Update `crossbeam-epoch` to 0.10.
+- Update `crossbeam-utils` to 0.9.
+- Update MSRV policy to support 1 year instead of 6 months to meet rayon's MSRV policy. (#1284)
+
+TODO:
+- entry for #1101 should be more descriptive.
+- mention https://github.com/crossbeam-rs/crossbeam/pull/1143
+
 # Version 0.1.3
 
 - Remove dependency on `cfg-if`. (#1072)

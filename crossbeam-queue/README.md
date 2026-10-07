@@ -29,7 +29,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-crossbeam-queue = "0.3"
+crossbeam-queue = "0.4"
 ```
 
 ## Compatibility

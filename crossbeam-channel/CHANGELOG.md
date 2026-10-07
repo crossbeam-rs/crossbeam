@@ -1,3 +1,12 @@
+# Version 0.5.18
+
+- Bump the minimum supported Rust version to 1.74.
+- Fix panic in `SelectedOperation::{send,recv}` when cloned sender/receiver passed. (#1235)
+- Drop all messages in bounded channel when the last receiver dropped. (#1121)
+- Add `Select::recycle`. (#1279)
+- Make some operations in `tick` lock-free on some platforms. (#1222)
+- Update `crossbeam-utils` to 0.9.
+
 # Version 0.5.17
 
 - Fix UB in bounded channel when `SelectedOperation` is leaked. (#1295)
