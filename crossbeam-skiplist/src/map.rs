@@ -151,6 +151,10 @@ where
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
     ///
+    /// <b>Note:</b> Another thread may insert the same key first. In that case
+    /// this call returns the entry that won the race and `value` is dropped
+    /// without being inserted.
+    ///
     /// # Example
     /// ```
     /// use crossbeam_skiplist::SkipMap;
@@ -405,14 +409,49 @@ where
         Entry::new(self.inner.insert(key, value, guard))
     }
 
-    /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
+    /// Inserts a `key`-`value` pair if the key is absent, or replaces the
+    /// existing entry when `compare_fn` approves the replacement.
     ///
-    /// If there is an existing entry with this key and compare(entry.value) returns true,
-    /// it will be removed before inserting the new one.
-    /// The closure will not be called if the key is not present.
+    /// The `compare_fn` closure is given a reference to the current value for
+    /// `key` and should return `true` if that entry may be replaced by `value`.
+    /// It is **not** called when `key` is absent; in that case the pair is
+    /// always inserted.
     ///
-    /// This function returns an [`Entry`] which
-    /// can be used to access the inserted key's associated value.
+    /// Returns an [`Entry`] pointing at the resulting mapping for `key`:
+    /// - the newly inserted entry, if the key was absent or was replaced; or
+    /// - the existing entry, if `compare_fn` returned `false` and the map was
+    ///   left unchanged.
+    ///
+    /// There is no separate status flag: inspect the returned entry's value
+    /// (or compare keys/values you already hold) to tell whether a replacement
+    /// took place.
+    ///
+    /// # Concurrency
+    ///
+    /// A successful replacement is installed as one lock-free update. Other
+    /// threads looking up `key` do not observe a gap in which the key is
+    /// missing between the old entry and the new one.
+    ///
+    /// This is **not** an in-place compare-and-swap of the stored value. The
+    /// map links a new node (and unlinks the old one on replacement) rather
+    /// than mutating the previous value through a shared reference.
+    ///
+    /// Concurrent callers may still race with each other and with other
+    /// mutating operations on the same key:
+    /// - `compare_fn` may run more than once if the map changes between the
+    ///   comparison and the attempt to publish the update; each call sees a
+    ///   value that was current at the time of that attempt.
+    /// - When several threads call `compare_insert` on the same key, their
+    ///   updates are ordered by the lock-free insertion. A thread whose
+    ///   compare no longer applies after a lost race either retries against
+    ///   the newer value or returns the entry that remained.
+    /// - `value` is moved into the map only if this call's insert or replace
+    ///   succeeds; otherwise it is dropped.
+    ///
+    /// Because of these races, `compare_insert` is not a substitute for a
+    /// per-entry atomic primitive (for example, it cannot implement a
+    /// contention-free atomic counter by itself). Compose it carefully when
+    /// the closure or the surrounding code relies on side effects.
     ///
     /// # Example
     /// ```
@@ -420,11 +459,17 @@ where
     ///
     /// let map = SkipMap::new();
     /// map.insert("key", 1);
-    /// map.compare_insert("key", 0, |x| x < &0);
+    /// // Replacement rejected: existing value is not less than 0.
+    /// let entry = map.compare_insert("key", 0, |x| x < &0);
+    /// assert_eq!(*entry.value(), 1);
     /// assert_eq!(*map.get("key").unwrap().value(), 1);
-    /// map.compare_insert("key", 2, |x| x < &2);
+    /// // Replacement accepted: existing value is less than 2.
+    /// let entry = map.compare_insert("key", 2, |x| x < &2);
+    /// assert_eq!(*entry.value(), 2);
     /// assert_eq!(*map.get("key").unwrap().value(), 2);
-    /// map.compare_insert("absent_key", 0, |_| false);
+    /// // Absent key: `compare_fn` is not called; the value is inserted.
+    /// let entry = map.compare_insert("absent_key", 0, |_| false);
+    /// assert_eq!(*entry.value(), 0);
     /// assert_eq!(*map.get("absent_key").unwrap().value(), 0);
     /// ```
     pub fn compare_insert<F>(&self, key: K, value: V, compare_fn: F) -> Entry<'_, K, V, C>

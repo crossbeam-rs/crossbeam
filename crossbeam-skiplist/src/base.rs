@@ -627,6 +627,10 @@ where
     }
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
+    ///
+    /// <b>Note:</b> Another thread may insert the same key first. In that case
+    /// this call returns the entry that won the race and `value` is dropped
+    /// without being inserted.
     pub fn get_or_insert(&self, key: K, value: V, guard: &Guard) -> RefEntry<'_, K, V, C> {
         self.insert_internal(key, || value, |_| false, guard)
     }
@@ -1009,7 +1013,14 @@ where
 
     /// Inserts an entry with the specified `key` and `value`.
     ///
-    /// If `replace` is `true`, then any existing entry with this key will first be removed.
+    /// `replace` is consulted whenever an entry with the same key is found. If
+    /// it returns `true`, that entry is replaced by linking a new node and
+    /// unlinking the old one after the new node is published; if it returns
+    /// `false`, the existing entry is returned and `value` is not inserted.
+    ///
+    /// On contention the search is retried, so `replace` may run more than once
+    /// for a single call. A successful publish never leaves the key absent
+    /// between the old and new entries.
     fn insert_internal<F, CompareF>(
         &self,
         key: K,
@@ -1248,11 +1259,44 @@ where
         self.insert_internal(key, || value, |_| true, guard)
     }
 
-    /// Inserts a `key`-`value` pair into the skip list and returns the new entry.
+    /// Inserts a `key`-`value` pair if the key is absent, or replaces the
+    /// existing entry when `compare_fn` approves the replacement.
     ///
-    /// If there is an existing entry with this key and compare(entry.value) returns true,
-    /// it will be removed before inserting the new one.
-    /// The closure will not be called if the key is not present.
+    /// The `compare_fn` closure is given a reference to the current value for
+    /// `key` and should return `true` if that entry may be replaced by `value`.
+    /// It is **not** called when `key` is absent; in that case the pair is
+    /// always inserted.
+    ///
+    /// Returns a [`RefEntry`] pointing at the resulting mapping for `key`:
+    /// - the newly inserted entry, if the key was absent or was replaced; or
+    /// - the existing entry, if `compare_fn` returned `false` and the list was
+    ///   left unchanged.
+    ///
+    /// # Concurrency
+    ///
+    /// A successful replacement is installed as one lock-free update. Other
+    /// threads looking up `key` do not observe a gap in which the key is
+    /// missing between the old entry and the new one.
+    ///
+    /// This is **not** an in-place compare-and-swap of the stored value.
+    /// Replacement links a new node and unlinks the old one rather than
+    /// mutating the previous value through a shared reference.
+    ///
+    /// Concurrent callers may still race with each other and with other
+    /// mutating operations on the same key:
+    /// - `compare_fn` may run more than once if the list changes between the
+    ///   comparison and the attempt to publish the update; each call sees a
+    ///   value that was current at the time of that attempt.
+    /// - When several threads call `compare_insert` on the same key, their
+    ///   updates are ordered by the lock-free insertion. A thread whose
+    ///   compare no longer applies after a lost race either retries against
+    ///   the newer value or returns the entry that remained.
+    /// - `value` is moved into the list only if this call's insert or replace
+    ///   succeeds; otherwise it is dropped.
+    ///
+    /// Because of these races, `compare_insert` is not a substitute for a
+    /// per-entry atomic primitive (for example, it cannot implement a
+    /// contention-free atomic counter by itself).
     pub fn compare_insert<F>(
         &self,
         key: K,
