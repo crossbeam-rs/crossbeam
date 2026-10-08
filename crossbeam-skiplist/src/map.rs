@@ -148,6 +148,9 @@ where
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
     ///
+    /// Unlike [`insert`](SkipMap::insert), this method does not require `K: Send` and `V: Send`
+    /// because it never removes an existing entry.
+    ///
     /// This function returns an [`Entry`] which
     /// can be used to access the key's associated value.
     ///
@@ -388,6 +391,11 @@ where
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
     ///
+    /// This method requires `K: Send` and `V: Send` because a removed entry is handed to the
+    /// epoch-based garbage collector, which may drop it on a different thread.
+    /// [`get_or_insert`](SkipMap::get_or_insert) never removes an existing entry and does not
+    /// require these bounds.
+    ///
     /// This function returns an [`Entry`] which
     /// can be used to access the inserted key's associated value.
     ///
@@ -410,6 +418,9 @@ where
     /// If there is an existing entry with this key and compare(entry.value) returns true,
     /// it will be removed before inserting the new one.
     /// The closure will not be called if the key is not present.
+    ///
+    /// This method requires `K: Send` and `V: Send` for the same reason as
+    /// [`insert`](SkipMap::insert).
     ///
     /// This function returns an [`Entry`] which
     /// can be used to access the inserted key's associated value.
@@ -439,6 +450,9 @@ where
     ///
     /// The value will not actually be dropped until all references to it have gone
     /// out of scope.
+    ///
+    /// This method requires `K: Send` and `V: Send` because the removed entry is handed to the
+    /// epoch-based garbage collector, which may drop it on a different thread.
     ///
     /// This function returns an [`Entry`] which
     /// can be used to access the removed key's associated value.
