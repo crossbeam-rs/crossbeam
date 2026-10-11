@@ -55,15 +55,12 @@ impl<T> Clone for Chan<T> {
 
 impl<T> Chan<T> {
     fn send(&self, msg: T) {
-        let s = self
-            .inner
-            .lock()
-            .unwrap()
-            .s
-            .as_ref()
-            .expect("sending into closed channel")
-            .clone();
-        let _ = s.send(msg);
+        let s = {
+            let inner = self.inner.lock().unwrap();
+            inner.s.clone()
+        };
+        // panic without holding the mutex to avoid poisoning it (for the sake of the tests)
+        let _ = s.expect("sending into closed channel").send(msg);
     }
 
     fn try_recv(&self) -> Option<T> {
@@ -768,7 +765,261 @@ mod select2 {
 
 // https://github.com/golang/go/blob/HEAD/test/chan/select3.go
 mod select3 {
-    // TODO
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    use super::*;
+
+    const ALWAYS: &str = "function did not";
+    const NEVER: &str = "function did";
+
+    fn test_panic<F>(signal: &str, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let mut s = NEVER;
+
+        if catch_unwind(AssertUnwindSafe(f)).is_err() {
+            s = ALWAYS;
+        }
+
+        if s != signal {
+            panic!("{} panic", signal);
+        }
+    }
+
+    fn test_block<F>(signal: &str, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        if cfg!(miri) && signal == ALWAYS {
+            return;
+        }
+
+        let (tx1, rx) = bounded::<&'static str>(0);
+
+        go!({
+            f();
+            let _ = tx1.send(NEVER);
+        });
+
+        let signal_str = signal.to_string();
+
+        let timeout = if signal_str == NEVER {
+            Duration::from_secs(10)
+        } else {
+            Duration::from_millis(10)
+        };
+
+        let result = match rx.recv_timeout(timeout) {
+            Ok(v) => v,
+            Err(_) => ALWAYS,
+        };
+
+        if result != signal {
+            panic!("{} block", signal);
+        }
+    }
+
+    #[test]
+    fn main() {
+        const ASYNC: usize = 1;
+
+        let nilch: Chan<i32> = make(0);
+        nilch.close_r();
+        nilch.close_s();
+
+        let closed_ch: Chan<i32> = make(0);
+        closed_ch.close_s();
+
+        // sending/receiving from a nil channel blocks
+        let nilch_clone = nilch.clone();
+        test_block(ALWAYS, move || {
+            let _ = nilch_clone.tx().send(7);
+        });
+
+        let nilch_clone = nilch.clone();
+        test_block(ALWAYS, move || {
+            let _ = nilch_clone.rx().recv();
+        });
+
+        // sending/receiving from a nil channel inside a select is never selected
+        let nilch_clone = nilch.clone();
+        test_panic(NEVER, move || {
+            select! {
+                send(nilch_clone.tx(), 7) -> _ => unreachable!(),
+                default => {},
+            }
+        });
+
+        let nilch_clone = nilch.clone();
+        test_panic(NEVER, move || {
+            select! {
+                recv(nilch_clone.rx()) -> _ => unreachable!(),
+                default => {},
+            }
+        });
+
+        // sending to an async channel with free buffer space never blocks
+        test_block(NEVER, move || {
+            let ch = make(ASYNC);
+            ch.send(7);
+        });
+
+        // receiving from a closed channel never blocks
+        let closed_clone = closed_ch.clone();
+        test_block(NEVER, move || {
+            for _i in 0..10 {
+                let val = closed_clone.recv().unwrap_or(0);
+
+                if val != 0 {
+                    panic!("expected zero value when reading from closed channel");
+                }
+
+                let res = closed_clone.recv();
+                let (x, ok) = match res {
+                    Some(v) => (v, true),
+                    None => (0, false),
+                };
+
+                if x != 0 || ok {
+                    println!("closedch: {} {}", x, ok);
+                    panic!("expected 0, false from closed channel");
+                }
+            }
+        });
+
+        // sending to a closed channel panics
+        let closed_clone = closed_ch.clone();
+        test_panic(ALWAYS, move || {
+            // this didn't work because tx() returns nil_s on None, essentially nil-channel instead of closed
+            //let _ = closed_clone.tx().send(7);
+            // this corrupted the mutex originally, so i made some changes to send,
+            // so that it doesn't panic while holding the mutex
+            closed_clone.send(7);
+        });
+
+        // receiving from a non-ready channel always blocks
+        test_block(ALWAYS, || {
+            let ch: Chan<i32> = make(0);
+            let _ = ch.rx().recv();
+        });
+
+        // empty selects always block
+        // test omitted
+        // crossbeam's select! requires at least one arm
+        // Go's zero-arm select has no direct equivalent here.
+
+        // selects with only nil channels always block
+        let nilch_clone = nilch.clone();
+        test_block(ALWAYS, move || {
+            select! {
+                recv(nilch_clone.rx()) -> _ => unreachable!(),
+            }
+        });
+
+        let nilch_clone = nilch.clone();
+        test_block(ALWAYS, move || {
+            select! {
+                send(nilch_clone.tx(), 7) -> _ => unreachable!(),
+            }
+        });
+
+        let nilch_clone = nilch.clone();
+        test_block(ALWAYS, move || {
+            select! {
+                recv(nilch_clone.rx()) -> _ => unreachable!(),
+                send(nilch_clone.tx(), 7) -> _ => unreachable!(),
+            }
+        });
+
+        // selects with non-ready non-nil channels always block
+        test_block(ALWAYS, || {
+            let ch: Chan<i32> = make(0);
+            select! {
+                recv(ch.rx()) -> _ => unreachable!(),
+            }
+        });
+
+        // selects with default cases don't block
+        test_block(NEVER, || {
+            select! {
+                default => {},
+            }
+        });
+
+        let nilch_clone = nilch.clone();
+        test_block(NEVER, move || {
+            select! {
+                recv(nilch_clone.rx()) -> _ => unreachable!(),
+                default => {},
+            }
+        });
+
+        let nilch_clone = nilch.clone();
+        test_block(NEVER, move || {
+            select! {
+                send(nilch_clone.tx(), 7) -> _ => unreachable!(),
+                default => {},
+            }
+        });
+
+        // selects with ready channels don't block
+        test_block(NEVER, || {
+            let ch: Chan<i32> = make(ASYNC);
+            select! {
+                send(ch.tx(), 7) -> _ => {},
+                default => unreachable!(),
+            }
+        });
+
+        test_block(NEVER, || {
+            let ch: Chan<i32> = make(ASYNC);
+            ch.send(7);
+            select! {
+                recv(ch.rx()) -> _ => {},
+                default => unreachable!(),
+            }
+        });
+
+        // selects with closed channels behave like ordinary operations
+        let closed_clone = closed_ch.clone();
+        // the closed_ch.send from before corrupts the mutex,
+        // so it can't be reused here without my workaround
+        // do we keep the workaround or just create new channel every time?
+        test_block(NEVER, move || {
+            select! {
+                recv(closed_clone.rx()) -> _ => {},
+            }
+        });
+
+        let closed_clone = closed_ch.clone();
+        test_block(NEVER, move || {
+            select! {
+                recv(closed_clone.rx()) -> x => { _ = x; }
+            }
+        });
+
+        // test omitted
+        // x, ok := (<-closedch) case is equivalent to previous case
+        // because Result already encodes the Go ok distinction
+
+        // right now, this blocks
+        // let closed_clone = closed_ch.clone();
+        // test_panic(ALWAYS, move || {
+        //     select! {
+        //         send(closed_clone.tx(), 7) -> _ => {}
+        //     }
+        // });
+
+        // select should not get confused if it sees itself
+        test_block(ALWAYS, || {
+            let (s, r) = bounded::<i32>(0);
+            select! {
+                send(s, 1) -> _ => unreachable!(),
+                recv(r) -> _ => unreachable!(),
+            }
+        });
+    }
 }
 
 // https://github.com/golang/go/blob/HEAD/test/chan/select4.go
