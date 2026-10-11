@@ -791,7 +791,9 @@ mod select3 {
     where
         F: FnOnce() + Send + 'static,
     {
-        if cfg!(miri) && signal == ALWAYS { return; }
+        if cfg!(miri) && signal == ALWAYS {
+            return;
+        }
 
         let (tx1, rx) = bounded::<&'static str>(0);
 
