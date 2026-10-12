@@ -1026,3 +1026,24 @@ fn comparator() {
     assert_eq!(s.remove("AbC").unwrap().key(), "ABC");
     assert!(s.is_empty());
 }
+
+#[test]
+fn non_static() {
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    struct G<'a>(&'a String, &'static str);
+    impl Drop for G<'_> {
+        fn drop(&mut self) {
+            assert_eq!(self.0, self.1);
+        }
+    }
+    {
+        const S1: &str = "abc";
+        const S2: &str = "def";
+        let s1 = String::from(S1);
+        let s2 = String::from(S2);
+        let map = SkipMap::new();
+        let _ = map.insert(G(&s1, S1), G(&s1, S1));
+        let _ = map.insert(G(&s2, S2), G(&s2, S2));
+        map.remove(&G(&s1, S1)).unwrap();
+    }
+}
