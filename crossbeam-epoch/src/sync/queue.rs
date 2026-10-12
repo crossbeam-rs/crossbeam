@@ -200,6 +200,13 @@ impl<T> Queue<T> {
             }
         }
     }
+
+    /// Returns `true` if the queue is observed to be empty.
+    pub(crate) fn is_empty(&self, guard: &Guard) -> bool {
+        let head = self.head.load(Acquire, guard);
+        let h = unsafe { head.deref() };
+        h.next.load(Acquire, guard).is_null()
+    }
 }
 
 impl<T> Drop for Queue<T> {

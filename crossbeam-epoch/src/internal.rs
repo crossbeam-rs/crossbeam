@@ -206,6 +206,15 @@ impl Global {
     /// `collect()` is not called.
     #[cold]
     pub(crate) fn collect(&self, guard: &Guard) {
+        // Advancing the epoch is only useful to make queued bags expirable, so if the queue is
+        // empty there is nothing to collect and the expensive `try_advance` (a `SeqCst` fence plus
+        // a traversal of every registered participant) is pure overhead. Skipping it only delays
+        // epoch advancement, never advances it early, so reclamation stays sound: any thread that
+        // pushed a bag will itself advance the epoch on a later `collect`.
+        if self.queue.is_empty(guard) {
+            return;
+        }
+
         let global_epoch = self.try_advance(guard);
 
         let steps = if cfg!(crossbeam_sanitize) {
