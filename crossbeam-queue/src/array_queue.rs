@@ -3,7 +3,7 @@
 //! Source:
 //!   - <http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue>
 
-use alloc::boxed::Box;
+use alloc::{collections::TryReserveError, vec::Vec};
 use core::{
     cell::UnsafeCell,
     fmt,
@@ -37,6 +37,15 @@ struct Slot<T> {
 
     /// The value in this slot.
     value: UnsafeCell<MaybeUninit<T>>,
+}
+
+impl<T> Slot<T> {
+    fn new(index: usize) -> Self {
+        Self {
+            stamp: AtomicIndex::new(index as Index),
+            value: UnsafeCell::new(MaybeUninit::uninit()),
+        }
+    }
 }
 
 /// A bounded multi-producer multi-consumer queue.
@@ -80,7 +89,7 @@ pub struct ArrayQueue<T> {
     tail: CachePadded<AtomicIndex>,
 
     /// The buffer holding slots.
-    buffer: Box<[Slot<T>]>,
+    buffer: Vec<Slot<T>>,
 
     /// A stamp with the value of `{ lap: 1, index: 0 }`.
     one_lap: Index,
@@ -108,23 +117,44 @@ impl<T> ArrayQueue<T> {
     /// ```
     pub fn new(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be non-zero");
+        Self::from_buffer((0..cap).map(Slot::new).collect())
+    }
+
+    /// Creates a bounded queue, returning an error if its backing storage cannot be allocated.
+    ///
+    /// Returns an error on capacity overflow or allocation failure. The queue's capacity is
+    /// exactly `cap`, and queue operations never grow its backing storage.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the capacity is zero.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::ArrayQueue;
+    ///
+    /// let q = ArrayQueue::<i32>::try_new(100)?;
+    /// assert_eq!(q.capacity(), 100);
+    /// # Ok::<(), std::collections::TryReserveError>(())
+    /// ```
+    pub fn try_new(cap: usize) -> Result<Self, TryReserveError> {
+        assert!(cap > 0, "capacity must be non-zero");
+        let mut buffer = Vec::new();
+        buffer.try_reserve_exact(cap)?;
+        buffer.extend((0..cap).map(Slot::new));
+        // Retain the Vec: conversion to a boxed slice could perform an infallible
+        // reallocation after the backing storage was successfully reserved.
+        Ok(Self::from_buffer(buffer))
+    }
+
+    fn from_buffer(buffer: Vec<Slot<T>>) -> Self {
+        let cap = buffer.len();
 
         // Head is initialized to `{ lap: 0, index: 0 }`.
         // Tail is initialized to `{ lap: 0, index: 0 }`.
         let head = 0;
         let tail = 0;
-
-        // Allocate a buffer of `cap` slots initialized
-        // with stamps.
-        let buffer: Box<[Slot<T>]> = (0..cap)
-            .map(|i| {
-                // Set the stamp to `{ lap: 0, index: i }`.
-                Slot {
-                    stamp: AtomicIndex::new(i as Index),
-                    value: UnsafeCell::new(MaybeUninit::uninit()),
-                }
-            })
-            .collect();
 
         // One lap is the smallest power of two greater than `cap`.
         let one_lap = (cap as Index)
