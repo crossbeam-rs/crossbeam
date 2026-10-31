@@ -57,6 +57,21 @@ fn is_lock_free() {
     }
 }
 
+/// Computes the next delivery time, saturating instead of panicking.
+///
+/// `tick()` only rejects durations whose *first* delivery time is unrepresentable, so a
+/// later tick can still overflow. An unrepresentable next tick means "effectively never",
+/// which matches the `None => never()` arm in `tick()`.
+#[inline]
+fn next_delivery(base: Instant, mut dur: Duration) -> Instant {
+    loop {
+        match base.checked_add(dur) {
+            Some(t) => return t,
+            None => dur /= 2,
+        }
+    }
+}
+
 /// Channel that delivers messages periodically.
 pub(crate) struct Channel {
     /// The instant at which the next message will be delivered.
@@ -89,7 +104,7 @@ impl Channel {
 
             if self
                 .delivery_time
-                .compare_exchange(delivery_time, Align(now + self.duration))
+                .compare_exchange(delivery_time, Align(next_delivery(now, self.duration)))
                 .is_ok()
             {
                 return Ok(delivery_time.0);
@@ -117,7 +132,7 @@ impl Channel {
                 .delivery_time
                 .compare_exchange(
                     delivery_time,
-                    Align(delivery_time.0.max(now) + self.duration),
+                    Align(next_delivery(delivery_time.0.max(now), self.duration)),
                 )
                 .is_ok()
             {
