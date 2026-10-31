@@ -503,11 +503,9 @@ impl<T: ?Sized> Deref for ShardedLockReadGuard<'_, T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for ShardedLockReadGuard<'_, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ShardedLockReadGuard")
-            .field("lock", &self.lock)
-            .finish()
+        (**self).fmt(f)
     }
 }
 
@@ -539,11 +537,9 @@ impl<T: ?Sized> Drop for ShardedLockWriteGuard<'_, T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for ShardedLockWriteGuard<'_, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ShardedLockWriteGuard")
-            .field("lock", &self.lock)
-            .finish()
+        (**self).fmt(f)
     }
 }
 

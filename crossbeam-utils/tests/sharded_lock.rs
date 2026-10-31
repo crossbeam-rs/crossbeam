@@ -265,3 +265,14 @@ fn forget_guard() {
         mem::forget(guard);
     }
 }
+
+#[test]
+fn guard_debug() {
+    let lock = ShardedLock::new(vec![1, 2, 3]);
+    assert_eq!(format!("{:?}", lock.read().unwrap()), "[1, 2, 3]");
+    assert_eq!(format!("{:?}", lock.write().unwrap()), "[1, 2, 3]");
+
+    let sl: &ShardedLock<[i32]> = &ShardedLock::new([1, 2, 3]);
+    assert_eq!(format!("{:?}", sl.read().unwrap()), "[1, 2, 3]");
+    assert_eq!(format!("{:?}", sl.write().unwrap()), "[1, 2, 3]");
+}
