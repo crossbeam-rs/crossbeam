@@ -737,7 +737,8 @@ impl<'a> Select<'a> {
     /// let oper1 = sel.recv(&r1);
     /// let oper2 = sel.recv(&r2);
     ///
-    /// // Both operations are initially ready, so a random one will be executed.
+    /// // Only operation 2 is ready: `r2` is disconnected, and a receive operation is ready
+    /// // even when it will simply return an error because the channel is disconnected.
     /// let oper = sel.select();
     /// assert_eq!(oper.index(), oper2);
     /// assert!(oper.recv(&r2).is_err());
