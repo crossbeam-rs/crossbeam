@@ -1026,3 +1026,97 @@ fn comparator() {
     assert_eq!(s.remove("AbC").unwrap().key(), "ABC");
     assert!(s.is_empty());
 }
+
+#[test]
+fn len_after_panic_in_insert_retry() {
+    use std::{
+        cmp::Ordering,
+        panic::{self, AssertUnwindSafe},
+        sync::atomic::{AtomicBool, Ordering as AtomicOrdering},
+    };
+
+    static ARMED: AtomicBool = AtomicBool::new(false);
+
+    // A key whose `Ord` panics once armed.
+    #[derive(Debug, PartialEq, Eq)]
+    struct Key(i32);
+
+    impl PartialOrd for Key {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for Key {
+        fn cmp(&self, other: &Self) -> Ordering {
+            assert!(!ARMED.load(AtomicOrdering::Relaxed), "panic in Ord::cmp");
+            self.0.cmp(&other.0)
+        }
+    }
+
+    let s = SkipMap::new();
+    s.insert(Key(10), 10);
+    s.insert(Key(30), 30);
+    assert_eq!(s.len(), 2);
+
+    // `get_or_insert_with` calls the value closure after the first search, but before the new
+    // node is installed. Inserting a key between `search.left[0]` and `search.right[0]` from
+    // inside the closure invalidates the search result, so the level 0 CAS fails and the retry
+    // path is taken without any other thread being involved. Arming the panic makes the retry
+    // search unwind.
+    let hook = panic::take_hook();
+    panic::set_hook(Box::new(|_| {}));
+    let res = panic::catch_unwind(AssertUnwindSafe(|| {
+        s.get_or_insert_with(Key(20), || {
+            s.insert(Key(15), 15);
+            ARMED.store(true, AtomicOrdering::Relaxed);
+            20
+        });
+    }));
+    panic::set_hook(hook);
+    ARMED.store(false, AtomicOrdering::Relaxed);
+    assert!(res.is_err());
+
+    // The panicking insert left no entry behind, so only 10, 15 and 30 are in the map.
+    assert_eq!(s.iter().count(), 3);
+    assert_eq!(s.len(), 3);
+
+    s.remove(&Key(10));
+    s.remove(&Key(15));
+    s.remove(&Key(30));
+    assert_eq!(s.iter().count(), 0);
+    assert_eq!(s.len(), 0);
+    assert!(s.is_empty());
+}
+
+#[test]
+fn len_after_insert_retry() {
+    let s = SkipMap::new();
+    s.insert(10, 10);
+    s.insert(30, 30);
+    assert_eq!(s.len(), 2);
+
+    // A plain insert and a replacement of an existing key.
+    s.insert(20, 20);
+    assert_eq!(s.len(), 3);
+    s.insert(20, 21);
+    assert_eq!(s.len(), 3);
+    assert_eq!(*s.get(&20).unwrap().value(), 21);
+
+    // Inserting the same key from inside the value closure makes the level 0 CAS fail, and the
+    // retry search then finds that key. `get_or_insert_with` does not replace it, so the new
+    // node is discarded and the planted entry is returned.
+    let e = s.get_or_insert_with(40, || {
+        s.insert(40, 41);
+        40
+    });
+    assert_eq!(*e.value(), 41);
+    assert_eq!(s.iter().count(), 4);
+    assert_eq!(s.len(), 4);
+
+    for key in [10, 20, 30, 40] {
+        s.remove(&key);
+    }
+    assert_eq!(s.len(), 0);
+    assert!(s.is_empty());
+}
