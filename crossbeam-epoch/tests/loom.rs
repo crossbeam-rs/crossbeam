@@ -158,4 +158,50 @@ mod tests {
             assert!(stack1.is_empty());
         });
     }
+
+    /// Regression test for https://github.com/crossbeam-rs/crossbeam/issues/1352.
+    ///
+    /// On non-x86 targets, `Local::pin` used to publish the new epoch with a `Relaxed`
+    /// store followed by a `SeqCst` fence. That does not order the previous critical
+    /// section's accesses before reclamation: since C++20, release sequences no longer
+    /// include same-thread plain stores, so `try_advance`'s `Acquire` fence could observe
+    /// the new epoch without synchronizing with the previous unpin, letting a deferred
+    /// destructor run while the earlier critical section's accesses were still in flight.
+    #[test]
+    fn pin_orders_previous_critical_section_before_reclamation() {
+        use loom::cell::UnsafeCell;
+        use loom::sync::atomic::AtomicBool;
+
+        loom::model(|| {
+            let collector = Collector::new();
+            let cell = Arc::new(UnsafeCell::new(7));
+            let linked = Arc::new(AtomicBool::new(true));
+
+            let h = collector.register();
+            let (c, l) = (cell.clone(), linked.clone());
+            let reader = spawn(move || {
+                for _ in 0..2 {
+                    let g = h.pin();
+                    if l.load(Acquire) {
+                        c.with(|v| unsafe { assert_eq!(*v, 7) });
+                    }
+                    drop(g);
+                }
+            });
+
+            let h = collector.register();
+            linked.store(false, Release);
+            {
+                let g = h.pin();
+                let c = cell.clone();
+                unsafe { g.defer_unchecked(move || c.with_mut(|v| *v = 0)) };
+                g.flush();
+            }
+            for _ in 0..3 {
+                h.pin().flush();
+            }
+
+            reader.join().unwrap();
+        });
+    }
 }
