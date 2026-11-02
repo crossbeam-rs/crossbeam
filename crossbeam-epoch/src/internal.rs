@@ -448,7 +448,15 @@ impl Local {
                 // it should go a long way.
                 atomic::compiler_fence(Ordering::SeqCst);
             } else {
-                self.epoch.store(new_epoch, Ordering::Relaxed);
+                // We store the new epoch with `Release` because we need to ensure that memory
+                // accesses from the previous critical section happen before the new epoch can
+                // be observed by `try_advance`'s `Acquire` fence. A `Relaxed` store followed by
+                // the `SeqCst` fence below does not order them: since C++20, release sequences
+                // no longer include same-thread plain stores, so `try_advance` could observe
+                // the new epoch without synchronizing with the previous unpin and reclaim a
+                // garbage bag while its accesses are still in flight.
+                // See https://github.com/crossbeam-rs/crossbeam/issues/1352.
+                self.epoch.store(new_epoch, Ordering::Release);
                 atomic::fence(Ordering::SeqCst);
             }
 
