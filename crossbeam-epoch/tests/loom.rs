@@ -169,8 +169,7 @@ mod tests {
     /// destructor run while the earlier critical section's accesses were still in flight.
     #[test]
     fn pin_orders_previous_critical_section_before_reclamation() {
-        use loom::cell::UnsafeCell;
-        use loom::sync::atomic::AtomicBool;
+        use loom::{cell::UnsafeCell, sync::atomic::AtomicBool};
 
         loom::model(|| {
             let collector = Collector::new();
