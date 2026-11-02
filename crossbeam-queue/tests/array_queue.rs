@@ -24,6 +24,88 @@ fn capacity() {
 }
 
 #[test]
+fn fallible_capacity_and_fifo() {
+    for capacity in [1, 2, 3, 63, 64, 65, 256] {
+        let queue = ArrayQueue::try_new(capacity).unwrap();
+        assert_eq!(queue.capacity(), capacity);
+        // Repeated fills exercise wraparound for power-of-two and other capacities.
+        for _ in 0..3 {
+            for value in 0..capacity {
+                queue.push(value).unwrap();
+            }
+            assert_eq!(queue.push(capacity), Err(capacity));
+            for value in 0..capacity {
+                assert_eq!(queue.pop(), Some(value));
+            }
+            assert!(queue.is_empty());
+        }
+    }
+}
+
+#[test]
+fn fallible_capacity_overflow() {
+    assert!(ArrayQueue::<usize>::try_new(usize::MAX).is_err());
+    assert!(ArrayQueue::<()>::try_new(usize::MAX).is_err());
+}
+
+#[test]
+#[should_panic(expected = "capacity must be non-zero")]
+fn fallible_zero_capacity() {
+    let _ = ArrayQueue::<usize>::try_new(0);
+}
+
+#[test]
+fn fallible_zero_sized_and_aligned_elements() {
+    #[derive(Debug, PartialEq)]
+    #[repr(align(256))]
+    struct Aligned(u8);
+
+    for capacity in [1, 3, 64] {
+        let empty = ArrayQueue::<()>::try_new(capacity).unwrap();
+        let aligned = ArrayQueue::try_new(capacity).unwrap();
+        for value in 0..capacity {
+            empty.push(()).unwrap();
+            aligned.push(Aligned(value as u8)).unwrap();
+        }
+        assert_eq!(empty.push(()), Err(()));
+        assert_eq!(aligned.push(Aligned(0)), Err(Aligned(0)));
+        for value in 0..capacity {
+            assert_eq!(empty.pop(), Some(()));
+            assert_eq!(aligned.pop(), Some(Aligned(value as u8)));
+        }
+        assert!(empty.is_empty());
+        assert!(aligned.is_empty());
+    }
+}
+
+#[test]
+fn fallible_wrapped_drop_and_into_iter() {
+    use std::sync::Arc;
+
+    #[derive(Debug)]
+    struct DropCounter(Arc<AtomicUsize>);
+
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let drops = Arc::new(AtomicUsize::new(0));
+    let queue = ArrayQueue::try_new(3).unwrap();
+    for _ in 0..3 {
+        queue.push(DropCounter(drops.clone())).unwrap();
+    }
+    drop(queue.pop());
+    queue.push(DropCounter(drops.clone())).unwrap();
+    let mut iter = queue.into_iter();
+    drop(iter.next());
+    assert_eq!(drops.load(Ordering::SeqCst), 2);
+    drop(iter);
+    assert_eq!(drops.load(Ordering::SeqCst), 4);
+}
+
+#[test]
 #[should_panic(expected = "capacity must be non-zero")]
 fn zero_capacity() {
     let _ = ArrayQueue::<i32>::new(0);
@@ -214,10 +296,17 @@ fn spsc_ring_buffer() {
 
 #[test]
 fn mpmc() {
+    check_mpmc(ArrayQueue::new(3));
+}
+
+#[test]
+fn fallible_mpmc() {
+    check_mpmc(ArrayQueue::try_new(3).unwrap());
+}
+
+fn check_mpmc(q: ArrayQueue<usize>) {
     const COUNT: usize = if cfg!(miri) { 50 } else { 25_000 };
     const THREADS: usize = 4;
-
-    let q = ArrayQueue::<usize>::new(3);
     let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
     scope(|scope| {
