@@ -272,6 +272,30 @@ where
         }
     }
 
+    /// Returns an estimate of the number of entries in the given range.
+    ///
+    /// This is an O(log n) operation that exploits the skip list's multi-level
+    /// structure to avoid walking every node. The result is approximate and may
+    /// differ from the exact count by a constant factor.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use crossbeam_skiplist::SkipSet;
+    ///
+    /// let set: SkipSet<i32> = (0..100).collect();
+    /// let approx = set.approximate_range_count(20..80);
+    /// assert!(approx > 0);
+    /// ```
+    pub fn approximate_range_count<Q, R>(&self, range: R) -> usize
+    where
+        R: RangeBounds<Q>,
+        C: Comparator<T, Q>,
+        Q: ?Sized,
+    {
+        self.inner.approximate_range_count(range)
+    }
+
     /// Returns an iterator over a subset of entries in the set.
     ///
     /// # Example

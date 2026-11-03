@@ -1026,3 +1026,83 @@ fn comparator() {
     assert_eq!(s.remove("AbC").unwrap().key(), "ABC");
     assert!(s.is_empty());
 }
+
+#[test]
+fn approximate_range_count_empty() {
+    let m: SkipMap<i32, i32> = SkipMap::new();
+    assert_eq!(m.approximate_range_count(..), 0);
+    assert_eq!(m.approximate_range_count(0..10), 0);
+}
+
+#[test]
+fn approximate_range_count_small() {
+    let m = SkipMap::new();
+    for i in 0..10 {
+        m.insert(i, i);
+    }
+    let count = m.approximate_range_count(..);
+    assert!(
+        count >= 8 && count <= 20,
+        "full range: approx={count}, expected ~10"
+    );
+}
+
+#[test]
+fn approximate_range_count_subrange() {
+    let m = SkipMap::new();
+    for i in 0..20 {
+        m.insert(i, i);
+    }
+    let count = m.approximate_range_count(5..15);
+    assert!(
+        count >= 8 && count <= 20,
+        "subrange: approx={count}, expected ~10"
+    );
+}
+
+#[test]
+fn approximate_range_count_bounds() {
+    let m = SkipMap::new();
+    for i in 0..20 {
+        m.insert(i, i);
+    }
+    let c1 = m.approximate_range_count(5..15);
+    assert!(c1 >= 8 && c1 <= 20, "range: approx={c1}, expected ~10");
+    let c2 = m.approximate_range_count((Bound::Excluded(4), Bound::Excluded(15)));
+    assert!(c2 >= 8 && c2 <= 20, "excluded: approx={c2}, expected ~10");
+    let c3 = m.approximate_range_count((Bound::Included(5), Bound::Included(14)));
+    assert!(c3 >= 8 && c3 <= 20, "included: approx={c3}, expected ~10");
+}
+
+#[test]
+fn approximate_range_count_large() {
+    let m = SkipMap::new();
+    let n = 10_000;
+    for i in 0..n {
+        m.insert(i, i);
+    }
+
+    let approx = m.approximate_range_count(..);
+    // Should be within a factor of 4 of the true count.
+    assert!(
+        approx >= n / 4 && approx <= n * 4,
+        "full range: approx={approx}, expected ~{n}"
+    );
+
+    let half_n = n / 2;
+    let approx_half = m.approximate_range_count(0..half_n);
+    assert!(
+        approx_half >= half_n / 4 && approx_half <= half_n * 4,
+        "half range: approx={approx_half}, expected ~{half_n}"
+    );
+}
+
+#[test]
+fn approximate_range_count_out_of_range() {
+    let m = SkipMap::new();
+    for i in 100..200 {
+        m.insert(i, i);
+    }
+    assert_eq!(m.approximate_range_count(0..50), 0);
+    assert_eq!(m.approximate_range_count(250..300), 0);
+}
