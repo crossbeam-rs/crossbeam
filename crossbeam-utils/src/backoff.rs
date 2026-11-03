@@ -118,6 +118,13 @@ impl Backoff {
     ///
     /// The processor may yield using the *YIELD* or *PAUSE* instruction.
     ///
+    /// The amount of spinning is capped at a fixed limit, and unlike [`snooze`], this method
+    /// never advances the backoff to completion: [`is_completed`] never returns `true` in a loop
+    /// that only calls `spin`.
+    ///
+    /// [`snooze`]: Backoff::snooze
+    /// [`is_completed`]: Backoff::is_completed
+    ///
     /// # Examples
     ///
     /// Backing off in a lock-free loop:
@@ -162,6 +169,7 @@ impl Backoff {
     ///
     /// In `#[no_std]` environments, this method is equivalent to [`spin`].
     ///
+    /// Unlike [`spin`], calling this method enough times advances the backoff to completion.
     /// If possible, use [`is_completed`] to check when it is advised to stop using backoff and
     /// block the current thread using a different synchronization mechanism instead.
     ///
@@ -226,7 +234,32 @@ impl Backoff {
 
     /// Returns `true` if exponential backoff has completed and blocking the thread is advised.
     ///
+    /// The backoff is completed only by calls to [`snooze`]. [`spin`] stops advancing the
+    /// backoff at a lower limit, so this method never returns `true` in a loop that only calls
+    /// [`spin`].
+    ///
+    /// [`spin`]: Backoff::spin
+    /// [`snooze`]: Backoff::snooze
+    ///
     /// # Examples
+    ///
+    /// The backoff is completed by [`snooze`], but never by [`spin`] alone:
+    ///
+    /// ```
+    /// use crossbeam_utils::Backoff;
+    ///
+    /// let backoff = Backoff::new();
+    ///
+    /// for _ in 0..100 {
+    ///     backoff.spin();
+    /// }
+    /// assert!(!backoff.is_completed());
+    ///
+    /// for _ in 0..100 {
+    ///     backoff.snooze();
+    /// }
+    /// assert!(backoff.is_completed());
+    /// ```
     ///
     /// Waiting for an [`AtomicBool`] to become `true` and parking the thread after a long wait:
     ///
