@@ -359,3 +359,15 @@ fn fairness_duplicates() {
         assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
     }
 }
+
+#[test]
+fn huge_duration_does_not_panic() {
+    // `tick()` accepts any duration whose first delivery time is representable,
+    // so re-arming must not panic when the next tick would overflow.
+    let r = tick(Duration::from_secs(1u64 << 62));
+    assert_eq!(r.try_recv(), Err(TryRecvError::Empty));
+
+    let h = thread::spawn(move || r.recv());
+    thread::sleep(ms(200));
+    assert!(!h.is_finished(), "recv() returned or panicked immediately");
+}
