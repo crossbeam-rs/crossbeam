@@ -1413,24 +1413,43 @@ where
 impl<K, V, C> Drop for SkipList<K, V, C> {
     fn drop(&mut self) {
         unsafe {
-            let mut node = NodeRef::from_shared(
+            let guard = epoch::unprotected();
+
+            // There can be removed nodes that remain linked only above level 0.
+            // With exclusive access, repurpose the reference-count bits to record
+            // each reachable node's highest linked level. Preserve its allocation
+            // height, which Node::dealloc still needs. This also handles forgotten
+            // entries whose reference counts would otherwise never reach zero.
+            for level in 0..MAX_HEIGHT {
+                let mut node =
+                    NodeRef::from_shared(self.head.get_level(level).load(Ordering::Relaxed, guard));
+                while let Some(n) = node {
+                    let height_bits = n.refs_and_height.load(Ordering::Relaxed) & HEIGHT_MASK;
+                    n.refs_and_height.store(
+                        height_bits | ((level + 1) << HEIGHT_BITS),
+                        Ordering::Relaxed,
+                    );
+                    node = NodeRef::from_shared(n.get_level(level).load(Ordering::Relaxed, guard));
+                }
+            }
+
+            // Traverse in the same order, freeing each node only on its last
+            // occurrence. Nodes on later levels remain allocated. Save the next
+            // pointer before finalizing; never follow links from processed levels.
+            for level in 0..MAX_HEIGHT {
+                let mut node =
+                    NodeRef::from_shared(self.head.get_level(level).load(Ordering::Relaxed, guard));
                 self.head
-                    .get_level(0)
-                    .load(Ordering::Relaxed, epoch::unprotected()),
-            );
-
-            // Iterate through the whole skip list and destroy every node.
-            while let Some(n) = node {
-                // Unprotected loads are okay because this function is the only one currently using
-                // the skip list.
-                let next = NodeRef::from_shared(
-                    n.get_level(0).load(Ordering::Relaxed, epoch::unprotected()),
-                );
-
-                // Deallocate every node.
-                Node::finalize(n.ptr.as_ptr());
-
-                node = next;
+                    .get_level(level)
+                    .store(Shared::null(), Ordering::Relaxed);
+                while let Some(n) = node {
+                    let next =
+                        NodeRef::from_shared(n.get_level(level).load(Ordering::Relaxed, guard));
+                    if n.refs_and_height.load(Ordering::Relaxed) >> HEIGHT_BITS == level + 1 {
+                        Node::finalize(n.ptr.as_ptr());
+                    }
+                    node = next;
+                }
             }
         }
     }
