@@ -683,7 +683,7 @@ impl<T> Stealer<T> {
         }
 
         // Load the buffer and read the task at the front.
-        let buffer = self.inner.buffer.load(Ordering::Acquire, guard);
+        let buffer = self.inner.buffer.load_consume(guard);
         let task = unsafe { buffer.deref().read(f) };
 
         // Try incrementing the front index to steal the task.
@@ -807,7 +807,7 @@ impl<T> Stealer<T> {
         let mut dest_b = dest.inner.back.load(Ordering::Relaxed);
 
         // Load the buffer.
-        let buffer = self.inner.buffer.load(Ordering::Acquire, guard);
+        let buffer = self.inner.buffer.load_consume(guard);
 
         match self.flavor {
             // Steal a batch of tasks from the front at once.
@@ -1049,7 +1049,7 @@ impl<T> Stealer<T> {
         let mut dest_b = dest.inner.back.load(Ordering::Relaxed);
 
         // Load the buffer
-        let buffer = self.inner.buffer.load(Ordering::Acquire, guard);
+        let buffer = self.inner.buffer.load_consume(guard);
 
         // Read the task at the front.
         let mut task = unsafe { buffer.deref().read(f) };
