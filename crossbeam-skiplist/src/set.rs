@@ -235,6 +235,9 @@ where
 
     /// Finds an entry with the specified key, or inserts a new `key`-`value` pair if none exist.
     ///
+    /// Unlike [`insert`](SkipSet::insert), this method does not require `T: Send` because it
+    /// never removes an existing entry.
+    ///
     /// # Example
     ///
     /// ```
@@ -311,6 +314,11 @@ where
     /// If there is an existing entry with this key, it will be removed before inserting the new
     /// one.
     ///
+    /// This method requires `T: Send` because a removed entry is handed to the epoch-based
+    /// garbage collector, which may drop it on a different thread.
+    /// [`get_or_insert`](SkipSet::get_or_insert) never removes an existing entry and does not
+    /// require this bound.
+    ///
     /// # Example
     ///
     /// ```
@@ -328,6 +336,9 @@ where
     ///
     /// The value will not actually be dropped until all references to it have gone
     /// out of scope.
+    ///
+    /// This method requires `T: Send` because the removed entry is handed to the epoch-based
+    /// garbage collector, which may drop it on a different thread.
     ///
     /// # Example
     ///
