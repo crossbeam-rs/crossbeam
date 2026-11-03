@@ -4,6 +4,7 @@ use alloc::alloc::handle_alloc_error;
 use core::{
     alloc::Layout,
     cmp, fmt,
+    iter::FusedIterator,
     marker::PhantomData,
     mem,
     ops::{Bound, Deref, RangeBounds},
@@ -652,6 +653,7 @@ where
             parent: self,
             head: None,
             tail: None,
+            finished: false,
             guard,
         }
     }
@@ -682,6 +684,7 @@ where
             head: None,
             tail: None,
             range,
+            finished: false,
             guard,
             _marker: PhantomData,
         }
@@ -1800,6 +1803,9 @@ pub struct Iter<'a: 'g, 'g, K, V, C = BasicComparator> {
     parent: &'a SkipList<K, V, C>,
     head: Option<NodeRef<'g, K, V>>,
     tail: Option<NodeRef<'g, K, V>>,
+    /// Set once the iterator returned `None`, from either end. `head` and
+    /// `tail` being `None` alone means the iterator has not started yet.
+    finished: bool,
     guard: &'g Guard,
 }
 
@@ -1810,6 +1816,9 @@ where
     type Item = Entry<'a, 'g, K, V, C>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
         self.head = match self.head {
             Some(n) => self
                 .parent
@@ -1825,6 +1834,9 @@ where
                 self.tail = None;
             }
         }
+        if self.head.is_none() {
+            self.finished = true;
+        }
         self.head.map(|n| Entry {
             parent: self.parent,
             node: n,
@@ -1838,6 +1850,9 @@ where
     C: Comparator<K>,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
         self.tail = match self.tail {
             Some(n) => self
                 .parent
@@ -1852,6 +1867,9 @@ where
                 self.tail = None;
             }
         }
+        if self.tail.is_none() {
+            self.finished = true;
+        }
         self.tail.map(|n| Entry {
             parent: self.parent,
             node: n,
@@ -1859,6 +1877,8 @@ where
         })
     }
 }
+
+impl<'a: 'g, 'g, K: 'a, V: 'a, C> FusedIterator for Iter<'a, 'g, K, V, C> where C: Comparator<K> {}
 
 impl<K, V, C> fmt::Debug for Iter<'_, '_, K, V, C>
 where
@@ -1986,6 +2006,9 @@ where
     head: Option<NodeRef<'g, K, V>>,
     tail: Option<NodeRef<'g, K, V>>,
     range: R,
+    /// Set once the iterator returned `None`, from either end. `head` and
+    /// `tail` being `None` alone means the iterator has not started yet.
+    finished: bool,
     guard: &'g Guard,
     _marker: PhantomData<fn() -> Q>, // covariant over `Q`
 }
@@ -1999,6 +2022,9 @@ where
     type Item = Entry<'a, 'g, K, V, C>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
         self.head = match self.head {
             Some(n) => self
                 .parent
@@ -2025,6 +2051,9 @@ where
                 }
             };
         }
+        if self.head.is_none() {
+            self.finished = true;
+        }
         self.head.map(|n| Entry {
             parent: self.parent,
             node: n,
@@ -2040,6 +2069,9 @@ where
     Q: ?Sized,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
         self.tail = match self.tail {
             Some(n) => self
                 .parent
@@ -2066,12 +2098,23 @@ where
                 }
             };
         }
+        if self.tail.is_none() {
+            self.finished = true;
+        }
         self.tail.map(|n| Entry {
             parent: self.parent,
             node: n,
             guard: self.guard,
         })
     }
+}
+
+impl<'a: 'g, 'g, Q, R, K: 'a, V: 'a, C> FusedIterator for Range<'a, 'g, Q, R, K, V, C>
+where
+    C: Comparator<K> + Comparator<K, Q>,
+    R: RangeBounds<Q>,
+    Q: ?Sized,
+{
 }
 
 impl<Q, R, K, V, C> fmt::Debug for Range<'_, '_, Q, R, K, V, C>
