@@ -5,6 +5,7 @@ use core::{
     fmt,
     marker::PhantomData,
     mem::MaybeUninit,
+    ops::{RangeFull, RangeTo, RangeToInclusive},
     panic::{RefUnwindSafe, UnwindSafe},
     ptr,
     sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering},
@@ -538,6 +539,60 @@ impl<T> SegQueue<T> {
         }
     }
 
+    /// Returns an iterator that removes elements from the front of the queue.
+    ///
+    /// Since a multi-consumer queue has no notion of indexed access, only
+    /// ranges starting at the front of the queue are supported: `..` drains
+    /// all elements, `..n` drains the first `n` elements, and `..=n` the
+    /// first `n + 1`. Other range types are rejected at compile time. If the
+    /// range end exceeds the length of the queue, all elements are drained.
+    ///
+    /// If the `Drain` iterator is dropped before being fully consumed, the
+    /// elements within the range that were not yet yielded are removed from
+    /// the queue and dropped. If the `Drain` is leaked (e.g. via
+    /// [`mem::forget`](core::mem::forget)), those elements simply remain in
+    /// the queue.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the end bound is `usize::MAX` inclusive (i.e. `..=usize::MAX`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crossbeam_queue::SegQueue;
+    ///
+    /// // Full drain
+    /// let mut q = SegQueue::new();
+    /// for i in 0..5 { q.push(i); }
+    /// let v: Vec<_> = q.drain(..).collect();
+    /// assert_eq!(v, [0, 1, 2, 3, 4]);
+    /// assert!(q.is_empty());
+    ///
+    /// // Prefix drain
+    /// let mut q = SegQueue::new();
+    /// for i in 0..5 { q.push(i); }
+    /// let v: Vec<_> = q.drain(..3).collect();
+    /// assert_eq!(v, [0, 1, 2]);
+    /// assert_eq!(q.len(), 2);
+    /// ```
+    ///
+    /// Ranges with a start bound do not compile:
+    ///
+    /// ```compile_fail
+    /// use crossbeam_queue::SegQueue;
+    ///
+    /// let mut q = SegQueue::new();
+    /// for i in 0..5 { q.push(i); }
+    /// q.drain(1..4);
+    /// ```
+    pub fn drain<R: DrainRange>(&mut self, range: R) -> Drain<'_, T> {
+        Drain {
+            queue: self,
+            remaining: range.remaining(),
+        }
+    }
+
     /// Returns `true` if the queue is empty.
     ///
     /// # Examples
@@ -606,6 +661,98 @@ impl<T> SegQueue<T> {
                 return (tail - head - tail / LAP) as usize;
             }
         }
+    }
+}
+
+mod sealed {
+    use core::ops::{RangeFull, RangeTo, RangeToInclusive};
+
+    pub trait Sealed {}
+    impl Sealed for RangeFull {}
+    impl Sealed for RangeTo<usize> {}
+    impl Sealed for RangeToInclusive<usize> {}
+}
+
+/// A range accepted by the [`drain`] method on [`SegQueue`]: `..`, `..n`, or
+/// `..=n`.
+///
+/// A multi-consumer queue has no notion of indexed access, so only ranges
+/// starting at the front of the queue can implement this trait. It is sealed
+/// and cannot be implemented outside of this crate.
+///
+/// [`drain`]: SegQueue::drain
+pub trait DrainRange: sealed::Sealed {
+    /// Returns the maximum number of elements to drain (`usize::MAX` for an
+    /// unbounded end).
+    #[doc(hidden)]
+    fn remaining(&self) -> usize;
+}
+
+impl DrainRange for RangeFull {
+    fn remaining(&self) -> usize {
+        usize::MAX
+    }
+}
+
+impl DrainRange for RangeTo<usize> {
+    fn remaining(&self) -> usize {
+        self.end
+    }
+}
+
+impl DrainRange for RangeToInclusive<usize> {
+    fn remaining(&self) -> usize {
+        self.end.checked_add(1).expect("end index overflow")
+    }
+}
+
+/// A draining iterator for `SegQueue<T>`.
+///
+/// This struct is created by the [`drain`] method on [`SegQueue`].
+///
+/// [`drain`]: SegQueue::drain
+pub struct Drain<'a, T> {
+    /// The queue being drained.
+    queue: &'a mut SegQueue<T>,
+    /// How many elements are left to yield/drop within the drain range.
+    remaining: usize,
+}
+
+impl<T> Iterator for Drain<'_, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.remaining == 0 {
+            return None;
+        }
+        let val = self.queue.pop_mut();
+        if val.is_some() {
+            self.remaining -= 1;
+        }
+        val
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        // Credit: size_hint and ExactSizeIterator suggested by @laycookie
+        // in https://github.com/crossbeam-rs/crossbeam/issues/1228
+        let remaining = self.remaining.min(self.queue.len());
+        (remaining, Some(remaining))
+    }
+}
+
+impl<T> ExactSizeIterator for Drain<'_, T> {}
+
+impl<T> Drop for Drain<'_, T> {
+    fn drop(&mut self) {
+        // Remove and drop the elements of the drain range that were not
+        // yielded.
+        while self.next().is_some() {}
+    }
+}
+
+impl<T> fmt::Debug for Drain<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad("Drain { .. }")
     }
 }
 
