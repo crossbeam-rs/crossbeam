@@ -569,7 +569,9 @@ impl<T> Drop for Channel<T> {
                 unsafe {
                     debug_assert!(index < self.buffer.len());
                     let slot = self.buffer.get_unchecked_mut(index);
-                    (*slot.msg.get()).assume_init_drop();
+                    if (*slot.stamp.get_mut() & (self.mark_bit - 1)) as usize == index + 1 {
+                        (*slot.msg.get()).assume_init_drop();
+                    }
                 }
             }
         }

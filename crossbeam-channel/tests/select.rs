@@ -1324,3 +1324,90 @@ fn reuse() {
     })
     .unwrap();
 }
+
+#[derive(Clone)]
+struct DropCounter(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for DropCounter {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn drop_incomplete_send_virgin() {
+    let drops = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (s, r) = bounded::<DropCounter>(1);
+
+    let mut sel = Select::new();
+    sel.send(&s);
+
+    let oper = sel.try_select().unwrap();
+    std::mem::forget(oper);
+
+    drop(sel);
+    drop(s);
+    drop(r);
+
+    assert_eq!(drops.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[test]
+fn drop_incomplete_send_after_wraparound() {
+    let drops = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (s, r) = bounded::<DropCounter>(1);
+
+    s.send(DropCounter(drops.clone())).unwrap();
+    let msg = r.recv().unwrap();
+    drop(msg);
+    assert_eq!(drops.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    let mut sel = Select::new();
+    sel.send(&s);
+    let oper = sel.try_select().unwrap();
+    std::mem::forget(oper);
+
+    drop(sel);
+    drop(s);
+    drop(r);
+
+    assert_eq!(drops.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[test]
+fn drop_incomplete_send_panic() {
+    let (s, r) = bounded::<Box<u64>>(1);
+
+    let mut sel = Select::new();
+    sel.send(&s);
+
+    let oper = sel.try_select().unwrap();
+
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        drop(oper);
+    }));
+
+    drop(sel);
+    drop(s);
+    drop(r);
+}
+
+#[test]
+fn drop_incomplete_send_mixed() {
+    let drops = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (s, r) = bounded::<DropCounter>(4);
+
+    s.send(DropCounter(drops.clone())).unwrap();
+    s.send(DropCounter(drops.clone())).unwrap();
+
+    let mut sel = Select::new();
+    sel.send(&s);
+    let oper = sel.try_select().unwrap();
+    std::mem::forget(oper);
+
+    drop(sel);
+    drop(s);
+    drop(r);
+
+    assert_eq!(drops.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
