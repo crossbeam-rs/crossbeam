@@ -1,3 +1,11 @@
+# Version 0.9.0
+
+- Bump the minimum supported Rust version to 1.74.
+- Remove no longer used `nightly` feature. (#882)
+- Update `crossbeam-epoch` to 0.10.
+- Update `crossbeam-queue` to 0.4.
+- Update `crossbeam-utils` to 0.9.
+
 # Version 0.8.5
 
 - Update MSRV policy to support 1 year instead of 6 months to meet rayon's MSRV policy. (#1284)
