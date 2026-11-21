@@ -383,10 +383,9 @@ impl<T: ?Sized> ShardedLock<T> {
 
     /// Locks with exclusive write access, blocking the current thread until it can be acquired.
     ///
-    /// The calling thread will be blocked until there are no more writers which hold the lock.
-    /// There may be other readers currently inside the lock when this method returns. This method
-    /// does not provide any guarantees with respect to the ordering of whether contentious readers
-    /// or writers will acquire the lock first.
+    /// This method will not return while other writers or other readers currently have access to
+    /// the lock. This method does not provide any guarantees with respect to the ordering of
+    /// whether contentious readers or writers will acquire the lock first.
     ///
     /// Returns a guard which will release the exclusive access when dropped.
     ///
@@ -503,11 +502,9 @@ impl<T: ?Sized> Deref for ShardedLockReadGuard<'_, T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for ShardedLockReadGuard<'_, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ShardedLockReadGuard")
-            .field("lock", &self.lock)
-            .finish()
+        (**self).fmt(f)
     }
 }
 
@@ -539,11 +536,9 @@ impl<T: ?Sized> Drop for ShardedLockWriteGuard<'_, T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for ShardedLockWriteGuard<'_, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for ShardedLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ShardedLockWriteGuard")
-            .field("lock", &self.lock)
-            .finish()
+        (**self).fmt(f)
     }
 }
 

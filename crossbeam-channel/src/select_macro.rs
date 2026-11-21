@@ -853,15 +853,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         match $r {
             ref _r => {
-                let $var: &$crate::Receiver<_> = unsafe {
-                    let _r: &$crate::Receiver<_> = _r;
-
-                    // Erase the lifetime so that `sel` can be dropped early even without NLL.
-                    unsafe fn unbind<'a, T>(x: &T) -> &'a T {
-                        ::std::mem::transmute(x)
-                    }
-                    unbind(_r)
-                };
+                let $var: &$crate::Receiver<_> = _r;
                 $sel[$i] = ($var, $i, $crate::internal::receiver_addr($var));
 
                 $crate::crossbeam_channel_internal!(
@@ -885,15 +877,7 @@ macro_rules! crossbeam_channel_internal {
     ) => {{
         match $s {
             ref _s => {
-                let $var: &$crate::Sender<_> = unsafe {
-                    let _s: &$crate::Sender<_> = _s;
-
-                    // Erase the lifetime so that `sel` can be dropped early even without NLL.
-                    unsafe fn unbind<'a, T>(x: &T) -> &'a T {
-                        ::std::mem::transmute(x)
-                    }
-                    unbind(_s)
-                };
+                let $var: &$crate::Sender<_> = _s;
                 $sel[$i] = ($var, $i, $crate::internal::sender_addr($var));
 
                 $crate::crossbeam_channel_internal!(
