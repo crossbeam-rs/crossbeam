@@ -1,3 +1,20 @@
+# Version 0.9.0
+
+- Relax the minimum supported Rust version with the default feature to 1.56. (#1157)
+- Move `atomic` module behind `atomic` Cargo feature. The minimum supported Rust version of this feature is currently 1.74. (#1155)
+- Return `UnparkReason` from `park_{timeout,deadline}`.
+(#1012)
+- Remove deprecated `AtomicCell::compare_and_swap`. (#881)
+- Remove no longer used `nightly` feature. (#882)
+- Use our own `unix::JoinHandleExt` trait instead of `std::os::unix::thread::JoinHandleExt` which is not intended to be implemented for types other than the standard library. (#999)
+- Fix UB around uninitialized bytes in `AtomicCell`. (#1015)
+- Use `cfg(target_has_atomic)` for `AtomicConsume` impl. (#1281)
+
+TODO:
+- complete https://github.com/crossbeam-rs/crossbeam/pull/1219
+- decide https://github.com/crossbeam-rs/crossbeam/pull/1210
+- unconst AtomicCell::is_lock_free for runtime-detection
+
 # Version 0.8.23
 
 - Fix SB violation when `ShardedLockWriteGuard` is leaked. (#1294)
