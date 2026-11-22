@@ -133,6 +133,7 @@ type SharedOption<T> = Arc<Mutex<Option<T>>>;
 /// # Examples
 ///
 /// ```
+/// // This is also available as `crossbeam::scope` and `crossbeam::thread::scope`.
 /// use crossbeam_utils::thread;
 ///
 /// let var = vec![1, 2, 3];
