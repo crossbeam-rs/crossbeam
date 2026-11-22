@@ -213,8 +213,6 @@ mod tests {
     }
 
     #[test]
-    // TODO: assertions failed due to `cfg(crossbeam_sanitize)` reduce `internal::MAX_OBJECTS`: https://github.com/crossbeam-rs/crossbeam/issues/662
-    #[cfg_attr(crossbeam_sanitize, ignore)]
     fn incremental() {
         const COUNT: usize = if cfg!(miri) { 500 } else { 100_000 };
         static DESTROYS: AtomicUsize = AtomicUsize::new(0);
@@ -238,7 +236,12 @@ mod tests {
 
         while last < COUNT {
             let curr = DESTROYS.load(Ordering::Relaxed);
-            assert!(curr - last <= 1024);
+            // With `cfg(crossbeam_sanitize)`, `Global::collect` drains every expired bag in one
+            // call instead of stopping after `COLLECT_STEPS`, so collection is not incremental
+            // and only complete destruction can be checked.
+            if !cfg!(crossbeam_sanitize) {
+                assert!(curr - last <= 1024);
+            }
             last = curr;
 
             let guard = &handle.pin();
