@@ -446,6 +446,40 @@ fn iter() {
 }
 
 #[test]
+fn range_seek() {
+    use std::ops::Bound::*;
+    let s: SkipSet<i32> = (0..100).collect();
+
+    let mut range = s.range(..);
+    assert_eq!(*range.seek(&50).unwrap(), 50);
+    assert_eq!(*range.next().unwrap(), 51);
+
+    // A key that is not present seeks to the next larger key.
+    assert_eq!(*range.seek(&55).unwrap(), 55);
+    assert_eq!(*range.seek(&60).unwrap(), 60);
+
+    // A key below the lower bound is clamped to the start of the range.
+    let mut range = s.range(40..);
+    assert_eq!(*range.seek(&10).unwrap(), 40);
+
+    // A key past the range finds nothing and leaves the iterator untouched.
+    let mut range = s.range(10..20);
+    assert!(range.seek(&90).is_none());
+    assert_eq!(*range.seek(&10).unwrap(), 10);
+
+    // A range that excludes its start bound still yields the first key it
+    // would iterate to.
+    let mut range = s.range((Excluded(10), Unbounded));
+    assert_eq!(*range.seek(&10).unwrap(), 11);
+
+    // Entries taken from the back stay out of reach of a seek.
+    let mut range = s.range(40..60);
+    assert_eq!(*range.next_back().unwrap(), 59);
+    assert_eq!(*range.seek(&55).unwrap(), 55);
+    assert!(range.seek(&59).is_none());
+}
+
+#[test]
 fn iter_range() {
     use std::ops::Bound::*;
     let s = SkipSet::new();

@@ -620,6 +620,44 @@ where
     inner: map::Range<'a, Q, R, T, (), C>,
 }
 
+impl<'a, Q, R, T, C> Range<'a, Q, R, T, C>
+where
+    C: Comparator<T> + Comparator<T, Q>,
+    R: RangeBounds<Q>,
+    Q: ?Sized,
+{
+    /// Seeks to the first entry whose key is greater than or equal to `key`
+    /// and returns it, leaving the iterator positioned there.
+    ///
+    /// A key below the lower bound of the range is clamped to its start, and a
+    /// key at or past the upper bound leaves the iterator exhausted. Seeking
+    /// costs O(log n) instead of rebuilding the range from a new start bound.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipSet;
+    ///
+    /// let numbers = SkipSet::new();
+    /// for i in 0..100 {
+    ///     numbers.insert(i);
+    /// }
+    ///
+    /// let mut range = numbers.range(10..);
+    /// let entry = range.seek(&50).unwrap();
+    /// assert_eq!(*entry, 50);
+    ///
+    /// // Iteration continues from where the seek left off.
+    /// assert_eq!(*range.next().unwrap(), 51);
+    /// ```
+    pub fn seek<Q2>(&mut self, key: &Q2) -> Option<Entry<'a, T, C>>
+    where
+        C: Comparator<T, Q2>,
+        Q2: ?Sized,
+    {
+        self.inner.seek(key).map(Entry::new)
+    }
+}
+
 impl<'a, Q, R, T, C> Iterator for Range<'a, Q, R, T, C>
 where
     C: Comparator<T> + Comparator<T, Q>,

@@ -2263,6 +2263,63 @@ where
         }
     }
 
+    /// Moves the iterator to the first entry at or after `key` and returns it.
+    ///
+    /// The iterator's range bounds still apply: a key below the lower bound is
+    /// clamped to the start of the range, and a key at or past the upper bound
+    /// returns `None` without moving the iterator. As with the rest of the
+    /// iterator, a key smaller than the current position moves it backwards.
+    pub fn seek<Q2>(&mut self, key: &Q2, guard: &Guard) -> Option<RefEntry<'a, K, V, C>>
+    where
+        C: Comparator<K, Q2>,
+        Q2: ?Sized,
+    {
+        self.parent.check_guard(guard);
+
+        let mut next_head = try_pin_loop(|| self.parent.lower_bound(Bound::Included(key), guard))?;
+
+        // A key below the lower bound of the range is clamped to its start, so
+        // that a seek never leaves the range.
+        if !above_lower_bound(
+            &self.parent.comparator,
+            &self.range.start_bound(),
+            next_head.key(),
+        ) {
+            unsafe {
+                next_head.node.decrement(guard);
+            }
+            next_head = try_pin_loop(|| self.parent.lower_bound(self.range.start_bound(), guard))?;
+        }
+
+        // The upper bound is either the range's end or the last entry returned
+        // from the back, whichever is narrower.
+        let within_end = match self.tail {
+            Some(ref t) => below_upper_bound(
+                &self.parent.comparator,
+                &Bound::Excluded(t.key()),
+                next_head.key(),
+            ),
+            None => below_upper_bound(
+                &self.parent.comparator,
+                &self.range.end_bound(),
+                next_head.key(),
+            ),
+        };
+        if !within_end {
+            unsafe {
+                next_head.node.decrement(guard);
+            }
+            return None;
+        }
+
+        if let Some(e) = self.head.replace(next_head.clone()) {
+            unsafe {
+                e.node.decrement(guard);
+            }
+        }
+        Some(next_head)
+    }
+
     /// Decrements a reference count owned by this iterator.
     pub fn drop_impl(&mut self, guard: &Guard) {
         self.parent.check_guard(guard);
