@@ -224,6 +224,88 @@ fn range_next_memory_leak() {
 }
 
 #[test]
+fn range_seek() {
+    let map: SkipMap<i32, i32> = (0..100).map(|i| (i, i)).collect();
+
+    // A key inside the range moves the iterator to the first key at or after it.
+    let mut range = map.range(..);
+    assert_eq!(*range.seek(&50).unwrap().key(), 50);
+    assert_eq!(*range.next().unwrap().key(), 51);
+
+    // A key that is not present seeks to the next larger key.
+    assert_eq!(*range.seek(&55).unwrap().key(), 55);
+    range.seek(&56);
+    assert_eq!(*range.seek(&60).unwrap().key(), 60);
+
+    // A key below the lower bound is clamped to the start of the range.
+    let mut range = map.range(40..);
+    assert_eq!(*range.seek(&10).unwrap().key(), 40);
+
+    // A key past the range finds nothing and leaves the iterator untouched.
+    let mut range = map.range(10..20);
+    assert!(range.seek(&90).is_none());
+    assert_eq!(*range.seek(&10).unwrap().key(), 10);
+    assert!(range.next().is_some());
+
+    // Seeking in a range whose start bound excludes the key still stops at the
+    // first key that the range yields.
+    let mut range = map.range((Bound::Excluded(10), Bound::Unbounded));
+    assert_eq!(*range.seek(&10).unwrap().key(), 11);
+
+    // Entries taken from the back stay out of reach of a seek.
+    let mut range = map.range(40..60);
+    assert_eq!(*range.next_back().unwrap().key(), 59);
+    assert_eq!(*range.seek(&55).unwrap().key(), 55);
+    assert!(range.seek(&60).is_none());
+    assert!(range.seek(&59).is_none());
+
+    // Repeated seeks at the same key are stable.
+    let mut range = map.range(..);
+    assert_eq!(*range.seek(&7).unwrap().key(), 7);
+    assert_eq!(*range.seek(&7).unwrap().key(), 7);
+
+    // Seeking to a smaller key moves the iterator backwards.
+    assert_eq!(*range.seek(&3).unwrap().key(), 3);
+    assert_eq!(*range.next().unwrap().key(), 4);
+}
+
+#[test]
+fn range_seek_empty_map() {
+    let map: SkipMap<i32, i32> = SkipMap::new();
+    let mut range = map.range(..);
+    assert!(range.seek(&0).is_none());
+    assert!(range.next().is_none());
+    assert!(range.next_back().is_none());
+}
+
+#[test]
+fn range_seek_concurrent_insert_remove() {
+    let map: SkipMap<i32, i32> = SkipMap::new();
+    let barrier = Barrier::new(2);
+    thread::scope(|s| {
+        s.spawn(|_| {
+            barrier.wait();
+            for i in 0..1000 {
+                map.insert(i, i);
+                if i % 2 == 0 {
+                    map.remove(&i);
+                }
+            }
+        });
+        s.spawn(|_| {
+            barrier.wait();
+            let mut range = map.range(..);
+            for i in 0..1000 {
+                if let Some(e) = range.seek(&i) {
+                    assert!(*e.key() >= i);
+                }
+            }
+        });
+    })
+    .unwrap();
+}
+
+#[test]
 fn entry() {
     let s = SkipMap::new();
 

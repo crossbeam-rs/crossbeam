@@ -763,6 +763,45 @@ where
     pub(crate) inner: base::RefRange<'a, Q, R, K, V, C>,
 }
 
+impl<'a, Q, R, K, V, C> Range<'a, Q, R, K, V, C>
+where
+    C: Comparator<K> + Comparator<K, Q>,
+    R: RangeBounds<Q>,
+    Q: ?Sized,
+{
+    /// Seeks to the first entry whose key is greater than or equal to `key`
+    /// and returns it, leaving the iterator positioned there.
+    ///
+    /// A key below the lower bound of the range is clamped to its start, and a
+    /// key at or past the upper bound leaves the iterator exhausted. Seeking
+    /// costs O(log n) instead of rebuilding the range from a new start bound.
+    ///
+    /// # Example
+    /// ```
+    /// use crossbeam_skiplist::SkipMap;
+    ///
+    /// let numbers = SkipMap::new();
+    /// for i in 0..100 {
+    ///     numbers.insert(i, i);
+    /// }
+    ///
+    /// let mut range = numbers.range(10..);
+    /// let entry = range.seek(&50).unwrap();
+    /// assert_eq!(*entry.key(), 50);
+    ///
+    /// // Iteration continues from where the seek left off.
+    /// assert_eq!(*range.next().unwrap().key(), 51);
+    /// ```
+    pub fn seek<Q2>(&mut self, key: &Q2) -> Option<Entry<'a, K, V, C>>
+    where
+        C: Comparator<K, Q2>,
+        Q2: ?Sized,
+    {
+        let guard = &epoch::pin();
+        self.inner.seek(key, guard).map(Entry::new)
+    }
+}
+
 impl<'a, Q, R, K, V, C> Iterator for Range<'a, Q, R, K, V, C>
 where
     C: Comparator<K> + Comparator<K, Q>,
