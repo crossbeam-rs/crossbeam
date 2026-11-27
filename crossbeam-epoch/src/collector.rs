@@ -453,6 +453,127 @@ mod tests {
         assert_eq!(DROPS.load(Ordering::Relaxed), COUNT * THREADS);
     }
 
+    // A participant that exits is unlinked from the list of participants by another thread, and
+    // the thread that later advances the epoch may never see its entry. The accesses of the
+    // exited participant must still happen before the reclamation of what it accessed.
+    #[test]
+    fn exited_participant_accesses_happen_before_reclamation() {
+        use std::sync::{
+            Barrier,
+            atomic::Ordering::{AcqRel, Acquire, Relaxed, Release},
+        };
+
+        use crate::{Atomic, Shared};
+
+        struct Elem(u64);
+
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                DROPS.fetch_add(1, Relaxed);
+            }
+        }
+
+        // The steps are ordered with `Relaxed` accesses only, so that the test does not add any
+        // synchronization of its own.
+        let step = AtomicUsize::new(0);
+        let wait = |n: usize| {
+            while step.load(Relaxed) != n {
+                std::thread::yield_now();
+            }
+        };
+
+        let collector = Collector::new();
+        let shared = Atomic::new(Elem(7));
+        let registered = AtomicUsize::new(0);
+        let barrier = Barrier::new(5);
+
+        // Registered in this order, the list of participants is [b, x, p, t, q].
+        let roles = ["q", "t", "p", "x", "b"];
+
+        thread::scope(|scope| {
+            for (i, &role) in roles.iter().enumerate() {
+                let (collector, shared, registered, barrier, step, wait) =
+                    (&collector, &shared, &registered, &barrier, &step, &wait);
+                scope.spawn(move |_| {
+                    while registered.load(Acquire) != i {
+                        std::thread::yield_now();
+                    }
+                    let handle = collector.register();
+                    registered.store(i + 1, Release);
+                    // The first pin of a handle collects; later pins in this test do not.
+                    drop(handle.pin());
+                    barrier.wait();
+
+                    match role {
+                        "q" => {
+                            // Pins in the current epoch E and holds it there.
+                            wait(0);
+                            let guard = handle.pin();
+                            step.store(1, Relaxed);
+                            wait(5);
+                            drop(guard);
+                            step.store(6, Relaxed);
+                        }
+                        "t" => {
+                            // Reads the element, then exits.
+                            wait(1);
+                            let guard = handle.pin();
+                            let elem = shared.load(Acquire, &guard);
+                            assert_eq!(unsafe { elem.deref() }.0, 7);
+                            step.store(2, Relaxed);
+                            wait(3);
+                            drop(guard);
+                            drop(handle);
+                            step.store(4, Relaxed);
+                            return;
+                        }
+                        "p" => {
+                            // Removes the element, defers its destruction and advances to E + 1.
+                            wait(2);
+                            let guard = handle.pin();
+                            let elem = shared.swap(Shared::null(), AcqRel, &guard);
+                            unsafe { guard.defer_destroy(elem) };
+                            guard.flush();
+                            drop(guard);
+                            step.store(3, Relaxed);
+                        }
+                        "x" => {
+                            // Unlinks the entry of `t`, then cannot advance because of `q`. Stays
+                            // pinned: if it unpinned, `b` would synchronize with it.
+                            wait(4);
+                            let guard = handle.pin();
+                            guard.flush();
+                            step.store(5, Relaxed);
+                            wait(7);
+                            drop(guard);
+                        }
+                        "b" => {
+                            // Never sees the entry of `t`, advances to E + 2 and destroys the
+                            // element. The loop is bounded because `x` may have pinned in a stale
+                            // epoch, which holds the epoch back until `x` unpins.
+                            wait(6);
+                            for _ in 0..100 {
+                                if DROPS.load(Relaxed) != 0 {
+                                    break;
+                                }
+                                handle.pin().flush();
+                            }
+                            step.store(7, Relaxed);
+                        }
+                        _ => unreachable!(),
+                    }
+                    wait(7);
+                });
+            }
+        })
+        .unwrap();
+
+        drop(collector);
+        assert_eq!(DROPS.load(Relaxed), 1);
+    }
+
     #[test]
     fn use_guard_after_handle_and_collector_dropped() {
         let collector = Collector::new();
