@@ -2,6 +2,7 @@
 
 use core::{
     fmt,
+    iter::FusedIterator,
     mem::ManuallyDrop,
     ops::{Bound, RangeBounds},
     ptr,
@@ -787,6 +788,14 @@ where
         let guard = &epoch::pin();
         self.inner.next_back(guard).map(Entry::new)
     }
+}
+
+impl<Q, R, K, V, C> FusedIterator for Range<'_, Q, R, K, V, C>
+where
+    C: Comparator<K> + Comparator<K, Q>,
+    R: RangeBounds<Q>,
+    Q: ?Sized,
+{
 }
 
 impl<Q, R, K, V, C> fmt::Debug for Range<'_, Q, R, K, V, C>

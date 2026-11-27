@@ -999,7 +999,9 @@ fn remove_race() {
                 let mut removed_entries = Vec::with_capacity(KEY_RANGE as usize);
 
                 barrier1.fetch_sub(1, Ordering::Relaxed);
-                while barrier1.load(Ordering::Acquire) != 0 {}
+                while barrier1.load(Ordering::Acquire) != 0 {
+                    std::hint::spin_loop();
+                }
 
                 for x in 0..KEY_RANGE {
                     if let Some(entry) = s.remove(&x, guard) {
@@ -1008,7 +1010,9 @@ fn remove_race() {
                 }
 
                 barrier2.fetch_sub(1, Ordering::Relaxed);
-                while barrier2.load(Ordering::Acquire) != 0 {}
+                while barrier2.load(Ordering::Acquire) != 0 {
+                    std::hint::spin_loop();
+                }
 
                 total_removed.fetch_add(removed_entries.len() as u32, Ordering::Relaxed);
 
@@ -1020,4 +1024,24 @@ fn remove_race() {
     });
 
     assert_eq!(*total_removed.get_mut(), KEY_RANGE);
+}
+
+// Regression test for https://github.com/crossbeam-rs/crossbeam/issues/1142
+#[test]
+fn range_does_not_rewind_after_exhaustion() {
+    let guard = &epoch::pin();
+    let s = SkipList::new(epoch::default_collector().clone());
+    let v = (0..10).map(|x| x * 10).collect::<Vec<_>>();
+    for &x in v.iter() {
+        s.insert(x, x, guard).release(guard);
+    }
+
+    // Range ..=5 should only yield the entry with key 0.
+    let mut it = s.range(..=5, guard);
+    assert_eq!(*it.next().unwrap().key(), 0);
+    assert!(it.next().is_none());
+
+    // After exhaustion, the iterator must not rewind to the beginning.
+    assert!(it.next().is_none());
+    assert!(it.next().is_none());
 }
