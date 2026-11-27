@@ -6,7 +6,7 @@
 use core::{
     marker::PhantomData,
     ptr::NonNull,
-    sync::atomic::Ordering::{Acquire, Relaxed, Release},
+    sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, Release},
 };
 
 use crate::{Atomic, Guard, Shared, unprotected};
@@ -251,9 +251,13 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                 debug_assert!(self.curr.tag() == 0);
 
                 // Try to unlink `curr` from the list, and get the new value of `self.pred`.
+                //
+                // `Release` passes on what we acquired from the deletion mark: a thread that
+                // later reads `self.pred` no longer sees `curr`, but must still be ordered after
+                // all accesses of the thread that deleted it.
                 let succ = match self
                     .pred
-                    .compare_exchange(self.curr, succ, Acquire, Acquire, self.guard)
+                    .compare_exchange(self.curr, succ, AcqRel, Acquire, self.guard)
                 {
                     Ok(_) => {
                         // We succeeded in unlinking `curr`, so we have to schedule
