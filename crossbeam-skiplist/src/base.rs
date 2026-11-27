@@ -1094,18 +1094,18 @@ where
                 }
 
                 // We failed. Let's search for the key and try again.
-                {
-                    // Create a guard that destroys the new node in case search panics.
-                    struct ScopeGuard<K, V>(*const Node<K, V>);
-                    impl<K, V> Drop for ScopeGuard<K, V> {
-                        fn drop(&mut self) {
-                            unsafe { Node::finalize(self.0 as *mut Node<K, V>) }
-                        }
+                //
+                // Create a guard that destroys the new node and reverts the optimistic `len`
+                // increment in case the search or the `replace` closure panics.
+                struct ScopeGuard<'a, K, V>(*const Node<K, V>, &'a AtomicUsize);
+                impl<K, V> Drop for ScopeGuard<'_, K, V> {
+                    fn drop(&mut self) {
+                        self.1.fetch_sub(1, Ordering::Relaxed);
+                        unsafe { Node::finalize(self.0 as *mut Node<K, V>) }
                     }
-                    let sg = ScopeGuard(node.as_raw());
-                    search = self.search_position(&n.key, guard);
-                    mem::forget(sg);
                 }
+                let sg = ScopeGuard(node.as_raw(), &self.hot_data.len);
+                search = self.search_position(&n.key, guard);
 
                 if let Some(r) = search.found {
                     let replace = replace(&r.value);
@@ -1113,9 +1113,8 @@ where
                         // If a node with the key was found and we're not going to replace it,
                         // let's try returning it as an entry.
                         if let Some(e) = RefEntry::try_acquire(self, r) {
-                            // Destroy the new node.
-                            Node::finalize(node.as_raw() as *mut Node<K, V>);
-                            self.hot_data.len.fetch_sub(1, Ordering::Relaxed);
+                            // Destroy the new node and revert the `len` increment.
+                            drop(sg);
 
                             return e;
                         }
@@ -1124,6 +1123,7 @@ where
                         // just now removed the node.
                     }
                 }
+                mem::forget(sg);
             }
 
             // The new node was successfully installed. Let's create an entry associated with it.
