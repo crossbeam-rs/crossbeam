@@ -596,6 +596,92 @@ fn iter() {
     assert!(it.next().is_none());
 }
 
+// https://github.com/crossbeam-rs/crossbeam/issues/1142
+#[test]
+fn iter_fused() {
+    let guard = &epoch::pin();
+    let s = SkipList::new(epoch::default_collector().clone());
+    for x in 0..5 {
+        s.insert(x, x, guard).release(guard);
+    }
+
+    // Forward to the end.
+    let mut it = s.iter(guard);
+    assert_eq!(it.by_ref().count(), 5);
+    assert!(it.next().is_none());
+    assert!(it.next().is_none());
+    assert!(it.next_back().is_none());
+
+    // Backward to the start.
+    let mut it = s.iter(guard);
+    assert_eq!(it.by_ref().rev().count(), 5);
+    assert!(it.next_back().is_none());
+    assert!(it.next().is_none());
+
+    // Both ends meet in the middle.
+    let mut it = s.iter(guard);
+    assert_eq!(*it.next().unwrap().key(), 0);
+    assert_eq!(*it.next_back().unwrap().key(), 4);
+    assert_eq!(*it.next().unwrap().key(), 1);
+    assert_eq!(*it.next_back().unwrap().key(), 3);
+    assert_eq!(*it.next().unwrap().key(), 2);
+    assert!(it.next_back().is_none());
+    assert!(it.next().is_none());
+    assert!(it.next_back().is_none());
+
+    // Empty list.
+    let empty = SkipList::<i32, i32>::new(epoch::default_collector().clone());
+    let mut it = empty.iter(guard);
+    assert!(it.next().is_none());
+    assert!(it.next_back().is_none());
+    assert!(it.next().is_none());
+}
+
+// https://github.com/crossbeam-rs/crossbeam/issues/1142
+#[test]
+fn range_fused() {
+    let guard = &epoch::pin();
+    let s = SkipList::new(epoch::default_collector().clone());
+    for x in 0..10 {
+        s.insert(x * 10, x * 10, guard).release(guard);
+    }
+
+    // The example from the issue: the range ends before the end of the list.
+    let mut it = s.range(..=5, guard);
+    assert_eq!(it.by_ref().count(), 1);
+    assert!(it.next().is_none());
+    assert!(it.next().is_none());
+    assert!(it.next_back().is_none());
+
+    // The range reaches the end of the list.
+    let mut it = s.range(55.., guard);
+    assert_eq!(it.by_ref().count(), 4);
+    assert!(it.next().is_none());
+    assert!(it.next_back().is_none());
+
+    // Backward.
+    let mut it = s.range(15..=45, guard);
+    assert_eq!(it.by_ref().rev().count(), 3);
+    assert!(it.next_back().is_none());
+    assert!(it.next().is_none());
+
+    // Both ends meet in the middle.
+    let mut it = s.range(10..=40, guard);
+    assert_eq!(*it.next().unwrap().key(), 10);
+    assert_eq!(*it.next_back().unwrap().key(), 40);
+    assert_eq!(*it.next().unwrap().key(), 20);
+    assert_eq!(*it.next_back().unwrap().key(), 30);
+    assert!(it.next().is_none());
+    assert!(it.next_back().is_none());
+    assert!(it.next().is_none());
+
+    // Empty range.
+    let mut it = s.range(21..29, guard);
+    assert!(it.next().is_none());
+    assert!(it.next_back().is_none());
+    assert!(it.next().is_none());
+}
+
 #[test]
 fn iter_range() {
     use crate::Bound::*;
