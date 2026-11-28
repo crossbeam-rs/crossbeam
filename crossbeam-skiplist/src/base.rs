@@ -1373,7 +1373,7 @@ where
         /// Number of steps after which we repin the current thread and unlink removed nodes.
         const BATCH_SIZE: usize = 100;
 
-        loop {
+        'clear: loop {
             {
                 // Search for the first entry in order to unlink all the preceding entries
                 // we have removed.
@@ -1386,7 +1386,7 @@ where
                 for _ in 0..BATCH_SIZE {
                     // Stop if we have reached the end of the list.
                     let e = match entry {
-                        None => return,
+                        None => break 'clear,
                         Some(e) => e,
                     };
 
@@ -1407,6 +1407,14 @@ where
             // epoch for a too long time.
             guard.repin();
         }
+
+        // Unlink the nodes removed by the final batch. The search at the start of each
+        // batch only unlinks nodes removed by earlier batches, so without this the
+        // entries removed last stay linked (marked, but with a reference count above
+        // zero) until the list is dropped or another operation happens to traverse those
+        // links: their values are never dropped and their memory is never reclaimed.
+        // With no live entries left, this search walks every level in full.
+        self.search_bound::<K>(Bound::Unbounded, false, guard);
     }
 }
 
