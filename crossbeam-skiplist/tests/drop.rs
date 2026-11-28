@@ -101,6 +101,58 @@ fn drop_at_clear_batch_boundaries() {
     }
 }
 
+// `clear()` is the sibling of #1343/#1344 that `Drop` does not cover: it
+// marked the removed nodes but never unlinked them, so the values of the
+// final batch were never dropped (and their memory never reclaimed) while
+// the list stayed alive. Unlike `check_drop`, the list is deliberately kept
+// alive here and the epoch is flushed instead of destroying the collector.
+fn check_clear_drops_without_dropping_list(keys: &[u64], iterate: bool) {
+    let drops = counters(keys.len());
+    let collector = Collector::new();
+    let handle = collector.register();
+    let list = SkipList::new(collector.clone());
+    {
+        let mut guard = handle.pin();
+        for (id, &key) in keys.iter().enumerate() {
+            let entry = list.insert(
+                key,
+                Value {
+                    id,
+                    drops: drops.clone(),
+                },
+                &guard,
+            );
+            entry.release(&guard);
+        }
+        if iterate {
+            for entry in list.iter(&guard) {
+                let _ = entry.key();
+            }
+        }
+        list.clear(&mut guard);
+        drop(guard);
+        // Flush the epoch so any deferred destructor would have run.
+        for _ in 0..8 {
+            let guard = handle.pin();
+            guard.flush();
+        }
+    }
+    assert_all_dropped(&drops);
+    drop(list);
+    drop(handle);
+    drop(collector);
+}
+
+#[test]
+fn clear_drops_values_without_dropping_list() {
+    check_clear_drops_without_dropping_list(&KEYS, true);
+    check_clear_drops_without_dropping_list(&KEYS, false);
+    for len in [1, 99, 100, 101, 201] {
+        let keys: Vec<_> = (0..len).chain(0..len).collect();
+        check_clear_drops_without_dropping_list(&keys, true);
+    }
+}
+
 #[test]
 fn drop_after_partial_tower_panic() {
     struct PanicOnEquality(Arc<AtomicBool>);
